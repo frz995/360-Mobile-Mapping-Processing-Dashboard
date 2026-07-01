@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   MapPin,
-  Map,
   ZoomIn,
   ZoomOut,
   TrendingUp,
@@ -21,7 +20,6 @@ import {
   Edit2
 } from 'lucide-react';
 import {
-  AreaChart,
   Area,
   Line,
   XAxis,
@@ -56,16 +54,6 @@ interface BatchLog {
   images: number;
   defects: number;
   status: 'Success' | 'Flagged' | 'Recapture';
-}
-
-interface GisRouteLedgerItem {
-  batchId: string;
-  date: string;
-  extentBoundingBox: [number, number, number, number]; // [minLat, minLon, maxLat, maxLon]
-  lineGeometry: [number, number][]; // array of [lon, lat] coordinates
-  totalImages: number;
-  linearDistanceKm: number;
-  spatialDefects: { coordinates: [number, number]; type: string }[];
 }
 
 // ==============================================
@@ -475,7 +463,7 @@ const DataForm = ({
   onSave: (data: any) => void,
   onCancel: () => void
 }) => {
-  const [formData, setFormData] = useState(
+  const [formData, setFormData] = useState<any>(
     initialData || 
     (dataType === 'batches' 
       ? { date: new Date().toISOString().slice(0, 16), grid: '1', subgrid: 'N101E83', images: 0, defects: 0, status: 'Success' as const }
