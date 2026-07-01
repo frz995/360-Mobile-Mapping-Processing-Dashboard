@@ -136,12 +136,16 @@ const KpiCard = ({
   </div>
 );
 
-const MapComponent = () => {
+const MapComponent = ({
+  dataManagement = false,
+  uploadedGeoJSON = null
+}: {
+  dataManagement?: boolean;
+  uploadedGeoJSON?: any;
+}) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const uploadedLayersRef = useRef<L.LayerGroup | null>(null);
-  const [uploadedFiles, setUploadedFiles] = useState<string[]>([]);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!mapContainerRef.current) return;
@@ -168,89 +172,54 @@ const MapComponent = () => {
     };
   }, []);
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
-    if (files.length === 0) return;
+  // Update layers when uploadedGeoJSON changes
+  useEffect(() => {
+    if (uploadedGeoJSON && uploadedLayersRef.current) {
+      uploadedLayersRef.current.clearLayers();
+      const geoJsonLayer = L.geoJSON(uploadedGeoJSON, {
+        style: () => ({ color: '#0ea5e9', weight: 2 }),
+        pointToLayer: (_feature, latlng) =>
+          L.circleMarker(latlng, { radius: 6, fillColor: '#0ea5e9', color: '#fff', weight: 2 }),
+      }).addTo(uploadedLayersRef.current);
 
-    for (const file of files) {
-      try {
-        let geojson: any = null;
-
-        if (file.name.toLowerCase().endsWith('.geojson') || file.name.toLowerCase().endsWith('.json')) {
-          // GeoJSON
-          const text = await file.text();
-          geojson = JSON.parse(text);
-        } else if (file.name.toLowerCase().endsWith('.kml')) {
-          // KML
-          const text = await file.text();
-          const parser = new DOMParser();
-          const kmlDoc = parser.parseFromString(text, 'text/xml');
-          geojson = toGeoJSON.kml(kmlDoc);
-        } else if (file.name.toLowerCase().endsWith('.gpx')) {
-          // GPX
-          const text = await file.text();
-          const parser = new DOMParser();
-          const gpxDoc = parser.parseFromString(text, 'text/xml');
-          geojson = toGeoJSON.gpx(gpxDoc);
-        } else if (file.name.toLowerCase().endsWith('.shp')) {
-          // Shapefile (single .shp, but should ideally have .dbf too)
-          const buffer = await file.arrayBuffer();
-          const shpData = await shapefile.open(buffer);
-          const features = [];
-          let result = await shpData.read();
-          while (!result.done) {
-            features.push(result.value);
-            result = await shpData.read();
-          }
-          geojson = { type: 'FeatureCollection', features };
-        } else if (file.name.toLowerCase().endsWith('.csv')) {
-          // Simple CSV with lat/lng
-          const text = await file.text();
-          const lines = text.split('\n');
-          const headers = lines[0].split(',').map(h => h.trim());
-          const latIdx = headers.findIndex(h => h.toLowerCase().includes('lat') || h.toLowerCase().includes('latitude'));
-          const lngIdx = headers.findIndex(h => h.toLowerCase().includes('lng') || h.toLowerCase().includes('lon') || h.toLowerCase().includes('longitude'));
-
-          if (latIdx !== -1 && lngIdx !== -1) {
-            const features = lines.slice(1).filter(line => line.trim()).map(line => {
-              const values = line.split(',');
-              return {
-                type: 'Feature',
-                geometry: { type: 'Point', coordinates: [parseFloat(values[lngIdx]), parseFloat(values[latIdx])] },
-                properties: {}
-              };
-            });
-            geojson = { type: 'FeatureCollection', features };
-          }
-        }
-
-        if (geojson && mapRef.current && uploadedLayersRef.current) {
-          L.geoJSON(geojson, {
-            style: () => ({ color: '#0ea5e9', weight: 2 }),
-            pointToLayer: (_feature, latlng) => L.circleMarker(latlng, { radius: 6, fillColor: '#0ea5e9', color: '#fff', weight: 2 })
-          }).addTo(uploadedLayersRef.current);
-          
-          setUploadedFiles(prev => [...prev, file.name]);
-        }
-      } catch (err) {
-        console.error('Error parsing file:', err);
-        alert(`Error parsing ${file.name}. Please check the file format.`);
+      // Fit bounds to uploaded data
+      const bounds = geoJsonLayer.getBounds();
+      if (bounds.isValid()) {
+        mapRef.current?.fitBounds(bounds, { padding: [50, 50] });
       }
-    }
-
-    // Reset input
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
-  };
-
-  const clearUploadedLayers = () => {
-    if (uploadedLayersRef.current) {
+    } else if (uploadedLayersRef.current) {
       uploadedLayersRef.current.clearLayers();
     }
-    setUploadedFiles([]);
-  };
+  }, [uploadedGeoJSON]);
 
+  if (dataManagement) {
+    return (
+      <div className="relative w-full h-full overflow-hidden rounded-xl border border-slate-800">
+        <div
+          ref={mapContainerRef}
+          className="w-full h-full bg-[#f5f5f5]"
+          style={{ height: '100%', width: '100%' }}
+        />
+        {/* Zoom controls */}
+        <div className="absolute right-4 top-4 z-[1000] flex flex-col gap-2">
+          <button
+            onClick={() => mapRef.current?.zoomIn()}
+            className="w-10 h-10 bg-slate-900/95 border border-slate-800 rounded-lg flex items-center justify-center text-slate-400 hover:text-white hover:border-slate-600 transition-all"
+          >
+            <ZoomIn size={20} />
+          </button>
+          <button
+            onClick={() => mapRef.current?.zoomOut()}
+            className="w-10 h-10 bg-slate-900/95 border border-slate-800 rounded-lg flex items-center justify-center text-slate-400 hover:text-white hover:border-slate-600 transition-all"
+          >
+            <ZoomOut size={20} />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Original Dashboard Map
   return (
     <div className="relative w-full h-full overflow-hidden">
       {/* Floating Header */}
@@ -271,57 +240,17 @@ const MapComponent = () => {
       </div>
 
       {/* Leaflet Map Container */}
-      <div 
-        ref={mapContainerRef} 
-        className="w-full h-full bg-[#f5f5f5]"
-        style={{ height: '100%', width: '100%' }}
-      />
-
-      {/* Upload Button */}
-      <div className="absolute left-4 top-1/2 -translate-y-1/2 z-[1000] flex flex-col gap-2">
-        <label className="w-10 h-10 bg-slate-900/95 border border-slate-800 rounded-lg flex items-center justify-center text-slate-400 hover:text-white hover:border-slate-600 transition-all cursor-pointer">
-          <Upload size={20} />
-          <input 
-            ref={fileInputRef}
-            type="file" 
-            accept=".geojson,.json,.kml,.gpx,.shp,.csv"
-            multiple
-            hidden
-            onChange={handleFileUpload}
-          />
-        </label>
-        {uploadedFiles.length > 0 && (
-          <button 
-            onClick={clearUploadedLayers}
-            className="w-10 h-10 bg-slate-900/95 border border-slate-800 rounded-lg flex items-center justify-center text-slate-400 hover:text-red-500 hover:border-red-600 transition-all"
-            title="Clear uploaded layers"
-          >
-            <X size={20} />
-          </button>
-        )}
-      </div>
-
-      {/* Uploaded Files List */}
-      {uploadedFiles.length > 0 && (
-        <div className="absolute left-4 top-[calc(50%+64px)] z-[1000] bg-slate-900/90 backdrop-blur-md border border-slate-800 rounded-lg p-3 max-w-[250px]">
-          <p className="text-xs font-semibold text-slate-300 mb-2">Uploaded Layers:</p>
-          <ul className="text-xs text-slate-400 space-y-1">
-            {uploadedFiles.map((name, idx) => (
-              <li key={idx} className="truncate">{name}</li>
-            ))}
-          </ul>
-        </div>
-      )}
+      <div ref={mapContainerRef} className="w-full h-full bg-[#f5f5f5]" style={{ height: '100%', width: '100%' }} />
 
       {/* Custom Zoom Controls */}
       <div className="absolute right-4 top-1/2 -translate-y-1/2 z-[1000] flex flex-col gap-2">
-        <button 
+        <button
           onClick={() => mapRef.current?.zoomIn()}
           className="w-10 h-10 bg-slate-900/95 border border-slate-800 rounded-lg flex items-center justify-center text-slate-400 hover:text-white hover:border-slate-600 transition-all"
         >
           <ZoomIn size={20} />
         </button>
-        <button 
+        <button
           onClick={() => mapRef.current?.zoomOut()}
           className="w-10 h-10 bg-slate-900/95 border border-slate-800 rounded-lg flex items-center justify-center text-slate-400 hover:text-white hover:border-slate-600 transition-all"
         >
@@ -359,9 +288,96 @@ const DataManagementPage = ({
   setBatchLogs: (data: BatchLog[]) => void,
   onBackToDashboard: () => void
 }) => {
-  const [dataTab, setDataTab] = useState<'batches' | 'daily'>('batches');
+  const [dataTab, setDataTab] = useState<'batches' | 'daily' | 'vector'>('batches');
   const [editingItem, setEditingItem] = useState<BatchLog | DailyTimeSeries | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [uploadedGeoJSON, setUploadedGeoJSON] = useState<any>(null);
+  const [uploadedFiles, setUploadedFiles] = useState<string[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+
+    let allFeatures: any[] = [];
+    const fileNames: string[] = [];
+
+    for (const file of files) {
+      try {
+        let geojson: any = null;
+
+        if (file.name.toLowerCase().endsWith('.geojson') || file.name.toLowerCase().endsWith('.json')) {
+          const text = await file.text();
+          geojson = JSON.parse(text);
+        } else if (file.name.toLowerCase().endsWith('.kml')) {
+          const text = await file.text();
+          const parser = new DOMParser();
+          const kmlDoc = parser.parseFromString(text, 'text/xml');
+          geojson = toGeoJSON.kml(kmlDoc);
+        } else if (file.name.toLowerCase().endsWith('.gpx')) {
+          const text = await file.text();
+          const parser = new DOMParser();
+          const gpxDoc = parser.parseFromString(text, 'text/xml');
+          geojson = toGeoJSON.gpx(gpxDoc);
+        } else if (file.name.toLowerCase().endsWith('.shp')) {
+          const buffer = await file.arrayBuffer();
+          const shpData = await shapefile.open(buffer);
+          const features = [];
+          let result = await shpData.read();
+          while (!result.done) {
+            features.push(result.value);
+            result = await shpData.read();
+          }
+          geojson = { type: 'FeatureCollection', features };
+        } else if (file.name.toLowerCase().endsWith('.csv')) {
+          const text = await file.text();
+          const lines = text.split('\n');
+          const headers = lines[0].split(',').map(h => h.trim());
+          const latIdx = headers.findIndex(h => h.toLowerCase().includes('lat') || h.toLowerCase().includes('latitude'));
+          const lngIdx = headers.findIndex(h => h.toLowerCase().includes('lng') || h.toLowerCase().includes('lon') || h.toLowerCase().includes('longitude'));
+
+          if (latIdx !== -1 && lngIdx !== -1) {
+            const features = lines.slice(1).filter(line => line.trim()).map(line => {
+              const values = line.split(',');
+              return {
+                type: 'Feature',
+                geometry: { type: 'Point', coordinates: [parseFloat(values[lngIdx]), parseFloat(values[latIdx])] },
+                properties: {}
+              };
+            });
+            geojson = { type: 'FeatureCollection', features };
+          }
+        }
+
+        if (geojson) {
+          if (geojson.features) {
+            allFeatures = [...allFeatures, ...geojson.features];
+          } else {
+            allFeatures.push(geojson);
+          }
+          fileNames.push(file.name);
+        }
+      } catch (err) {
+        console.error('Error parsing file:', err);
+        alert(`Error parsing ${file.name}. Please check the file format.`);
+      }
+    }
+
+    if (allFeatures.length > 0) {
+      setUploadedGeoJSON({ type: 'FeatureCollection', features: allFeatures });
+      setUploadedFiles(fileNames);
+    }
+
+    // Reset input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const clearUploadedLayers = () => {
+    setUploadedGeoJSON(null);
+    setUploadedFiles([]);
+  };
 
   const handleSave = (item: BatchLog | DailyTimeSeries) => {
     if (dataTab === 'batches') {
@@ -427,114 +443,182 @@ const DataManagementPage = ({
             Daily Data
           </button>
           <button 
-            onClick={() => {
-              setEditingItem(null);
-              setIsFormOpen(true);
-            }}
-            className="ml-auto flex items-center gap-2 bg-sky-600 hover:bg-sky-500 px-4 py-2 rounded-lg transition-all"
+            onClick={() => setDataTab('vector')}
+            className={`px-6 py-3 rounded-t-lg font-semibold transition-all ${
+              dataTab === 'vector' ? 'bg-sky-600 text-white' : 'text-slate-400 hover:text-slate-200'
+            }`}
           >
-            <Plus size={20} />
-            Add New
+            Vector Layers
           </button>
+          {(dataTab === 'batches' || dataTab === 'daily') && (
+            <button 
+              onClick={() => {
+                setEditingItem(null);
+                setIsFormOpen(true);
+              }}
+              className="ml-auto flex items-center gap-2 bg-sky-600 hover:bg-sky-500 px-4 py-2 rounded-lg transition-all"
+            >
+              <Plus size={20} />
+              Add New
+            </button>
+          )}
         </div>
 
-        {/* Data Table */}
-        <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
-          <table className="w-full text-left">
-            <thead className="bg-slate-800">
-              <tr>
-                {dataTab === 'batches' ? (
-                  <>
-                    <th className="px-6 py-4 text-slate-400 font-semibold">Date</th>
-                    <th className="px-6 py-4 text-slate-400 font-semibold">Grid</th>
-                    <th className="px-6 py-4 text-slate-400 font-semibold">Subgrid</th>
-                    <th className="px-6 py-4 text-slate-400 font-semibold">Images</th>
-                    <th className="px-6 py-4 text-slate-400 font-semibold">Defects</th>
-                    <th className="px-6 py-4 text-slate-400 font-semibold">Status</th>
-                    <th className="px-6 py-4 text-slate-400 font-semibold">Actions</th>
-                  </>
-                ) : (
-                  <>
-                    <th className="px-6 py-4 text-slate-400 font-semibold">Date</th>
-                    <th className="px-6 py-4 text-slate-400 font-semibold">Grid</th>
-                    <th className="px-6 py-4 text-slate-400 font-semibold">Subgrid</th>
-                    <th className="px-6 py-4 text-slate-400 font-semibold">KM Processed</th>
-                    <th className="px-6 py-4 text-slate-400 font-semibold">Images Ingested</th>
-                    <th className="px-6 py-4 text-slate-400 font-semibold">Defect Count</th>
-                    <th className="px-6 py-4 text-slate-400 font-semibold">Actions</th>
-                  </>
+        {/* Tab Content */}
+        {dataTab === 'vector' ? (
+          /* Vector Layers Section */
+          <div className="space-y-6">
+            {/* Upload Area */}
+            <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
+              <h2 className="text-xl font-bold text-white mb-4">Upload Vector Data</h2>
+              <p className="text-slate-400 mb-6">Supported formats: GeoJSON, KML, GPX, Shapefile, CSV</p>
+              
+              <div className="flex gap-4">
+                <label className="flex items-center gap-2 bg-sky-600 hover:bg-sky-500 px-6 py-3 rounded-lg transition-all cursor-pointer">
+                  <Upload size={20} />
+                  Select Files
+                  <input 
+                    ref={fileInputRef}
+                    type="file" 
+                    accept=".geojson,.json,.kml,.gpx,.shp,.csv"
+                    multiple
+                    hidden
+                    onChange={handleFileUpload}
+                  />
+                </label>
+                {uploadedFiles.length > 0 && (
+                  <button 
+                    onClick={clearUploadedLayers}
+                    className="flex items-center gap-2 bg-red-600 hover:bg-red-500 px-6 py-3 rounded-lg transition-all"
+                  >
+                    <X size={20} />
+                    Clear All
+                  </button>
                 )}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800">
-              {dataTab === 'batches' ? (
-                batchLogs.map((batch) => (
-                  <tr key={batch.id} className="hover:bg-slate-800/50 transition-all">
-                    <td className="px-6 py-4">{batch.date}</td>
-                    <td className="px-6 py-4 font-mono">{batch.grid}</td>
-                    <td className="px-6 py-4">{batch.subgrid}</td>
-                    <td className="px-6 py-4">{batch.images.toLocaleString()}</td>
-                    <td className="px-6 py-4 text-amber-400">{batch.defects}</td>
-                    <td className="px-6 py-4">
-                      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                        batch.status === 'Success' ? 'bg-green-500/20 text-green-400' :
-                        batch.status === 'Flagged' ? 'bg-amber-500/20 text-amber-400' :
-                        'bg-red-500/20 text-red-400'
-                      }`}>
-                        {batch.status}
+              </div>
+
+              {/* Uploaded Files List */}
+              {uploadedFiles.length > 0 && (
+                <div className="mt-6">
+                  <p className="text-sm font-semibold text-slate-300 mb-2">Uploaded Files:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {uploadedFiles.map((name, idx) => (
+                      <span key={idx} className="bg-slate-800 text-slate-300 px-3 py-1 rounded-full text-sm">
+                        {name}
                       </span>
-                    </td>
-                    <td className="px-6 py-4 flex gap-2">
-                      <button 
-                        onClick={() => {
-                          setEditingItem(batch);
-                          setIsFormOpen(true);
-                        }}
-                        className="text-slate-400 hover:text-sky-400 transition-colors"
-                      >
-                        <Edit2 size={18} />
-                      </button>
-                      <button 
-                        onClick={() => handleDelete(batch)}
-                        className="text-slate-400 hover:text-red-400 transition-colors"
-                      >
-                        <Trash2 size={18} />
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              ) : (
-                dailyData.map((daily) => (
-                  <tr key={daily.date} className="hover:bg-slate-800/50 transition-all">
-                    <td className="px-6 py-4">{daily.date}</td>
-                    <td className="px-6 py-4">{daily.grid}</td>
-                    <td className="px-6 py-4">{daily.subgrid}</td>
-                    <td className="px-6 py-4">{daily.kmProcessed.toFixed(1)}</td>
-                    <td className="px-6 py-4">{daily.imagesIngested.toLocaleString()}</td>
-                    <td className="px-6 py-4 text-amber-400">{daily.defectCount}</td>
-                    <td className="px-6 py-4 flex gap-2">
-                      <button 
-                        onClick={() => {
-                          setEditingItem(daily);
-                          setIsFormOpen(true);
-                        }}
-                        className="text-slate-400 hover:text-sky-400 transition-colors"
-                      >
-                        <Edit2 size={18} />
-                      </button>
-                      <button 
-                        onClick={() => handleDelete(daily)}
-                        className="text-slate-400 hover:text-red-400 transition-colors"
-                      >
-                        <Trash2 size={18} />
-                      </button>
-                    </td>
-                  </tr>
-                ))
+                    ))}
+                  </div>
+                </div>
               )}
-            </tbody>
-          </table>
-        </div>
+            </div>
+
+            {/* Map Preview */}
+            <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+              <h2 className="text-xl font-bold text-white p-4 border-b border-slate-800">Basemap Preview</h2>
+              <div className="h-[500px]">
+                <MapComponent dataManagement uploadedGeoJSON={uploadedGeoJSON} />
+              </div>
+            </div>
+          </div>
+        ) : (
+          /* Data Table (Batches or Daily) */
+          <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+            <table className="w-full text-left">
+              <thead className="bg-slate-800">
+                <tr>
+                  {dataTab === 'batches' ? (
+                    <>
+                      <th className="px-6 py-4 text-slate-400 font-semibold">Date</th>
+                      <th className="px-6 py-4 text-slate-400 font-semibold">Grid</th>
+                      <th className="px-6 py-4 text-slate-400 font-semibold">Subgrid</th>
+                      <th className="px-6 py-4 text-slate-400 font-semibold">Images</th>
+                      <th className="px-6 py-4 text-slate-400 font-semibold">Defects</th>
+                      <th className="px-6 py-4 text-slate-400 font-semibold">Status</th>
+                      <th className="px-6 py-4 text-slate-400 font-semibold">Actions</th>
+                    </>
+                  ) : (
+                    <>
+                      <th className="px-6 py-4 text-slate-400 font-semibold">Date</th>
+                      <th className="px-6 py-4 text-slate-400 font-semibold">Grid</th>
+                      <th className="px-6 py-4 text-slate-400 font-semibold">Subgrid</th>
+                      <th className="px-6 py-4 text-slate-400 font-semibold">KM Processed</th>
+                      <th className="px-6 py-4 text-slate-400 font-semibold">Images Ingested</th>
+                      <th className="px-6 py-4 text-slate-400 font-semibold">Defect Count</th>
+                      <th className="px-6 py-4 text-slate-400 font-semibold">Actions</th>
+                    </>
+                  )}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800">
+                {dataTab === 'batches' ? (
+                  batchLogs.map((batch) => (
+                    <tr key={batch.id} className="hover:bg-slate-800/50 transition-all">
+                      <td className="px-6 py-4">{batch.date}</td>
+                      <td className="px-6 py-4 font-mono">{batch.grid}</td>
+                      <td className="px-6 py-4">{batch.subgrid}</td>
+                      <td className="px-6 py-4">{batch.images.toLocaleString()}</td>
+                      <td className="px-6 py-4 text-amber-400">{batch.defects}</td>
+                      <td className="px-6 py-4">
+                        <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                          batch.status === 'Success' ? 'bg-green-500/20 text-green-400' :
+                          batch.status === 'Flagged' ? 'bg-amber-500/20 text-amber-400' :
+                          'bg-red-500/20 text-red-400'
+                        }`}>
+                          {batch.status}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 flex gap-2">
+                        <button 
+                          onClick={() => {
+                            setEditingItem(batch);
+                            setIsFormOpen(true);
+                          }}
+                          className="text-slate-400 hover:text-sky-400 transition-colors"
+                        >
+                          <Edit2 size={18} />
+                        </button>
+                        <button 
+                          onClick={() => handleDelete(batch)}
+                          className="text-slate-400 hover:text-red-400 transition-colors"
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  dailyData.map((daily) => (
+                    <tr key={daily.date} className="hover:bg-slate-800/50 transition-all">
+                      <td className="px-6 py-4">{daily.date}</td>
+                      <td className="px-6 py-4">{daily.grid}</td>
+                      <td className="px-6 py-4">{daily.subgrid}</td>
+                      <td className="px-6 py-4">{daily.kmProcessed.toFixed(1)}</td>
+                      <td className="px-6 py-4">{daily.imagesIngested.toLocaleString()}</td>
+                      <td className="px-6 py-4 text-amber-400">{daily.defectCount}</td>
+                      <td className="px-6 py-4 flex gap-2">
+                        <button 
+                          onClick={() => {
+                            setEditingItem(daily);
+                            setIsFormOpen(true);
+                          }}
+                          className="text-slate-400 hover:text-sky-400 transition-colors"
+                        >
+                          <Edit2 size={18} />
+                        </button>
+                        <button 
+                          onClick={() => handleDelete(daily)}
+                          className="text-slate-400 hover:text-red-400 transition-colors"
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
 
         {/* Add/Edit Form */}
         {isFormOpen && (
