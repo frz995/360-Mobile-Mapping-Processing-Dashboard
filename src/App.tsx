@@ -640,7 +640,7 @@ const DataManagementPage = ({
               </div>
               <DataForm 
                 initialData={editingItem}
-                dataType={dataTab}
+                dataType={dataTab as 'batches' | 'daily'}
                 onSave={handleSave}
                 onCancel={() => {
                   setIsFormOpen(false);
