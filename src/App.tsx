@@ -192,25 +192,34 @@ const MapComponent = ({
       for (const layer of visibleLayers) {
         if (!layer.geojson) continue;
 
-        const geoJsonLayer = L.geoJSON(layer.geojson, {
-          style: () => ({ color: layer.color, weight: 2 }),
-          pointToLayer: (_feature, latlng) =>
-            L.circleMarker(latlng, { radius: 6, fillColor: layer.color, color: '#fff', weight: 2 }),
-        }).addTo(uploadedLayersRef.current);
+        try {
+          const geoJsonLayer = L.geoJSON(layer.geojson, {
+            style: () => ({ color: layer.color, weight: 2 }),
+            pointToLayer: (_feature, latlng) =>
+              L.circleMarker(latlng, { radius: 6, fillColor: layer.color, color: '#fff', weight: 2 }),
+          }).addTo(uploadedLayersRef.current);
 
-        const bounds = geoJsonLayer.getBounds();
-        if (bounds.isValid()) {
-          allBounds.push(bounds);
+          const bounds = geoJsonLayer.getBounds();
+          if (bounds.isValid()) {
+            allBounds.push(bounds);
+          }
+        } catch (err) {
+          console.error('Error rendering layer:', layer.name, err);
+          alert(`Error rendering layer ${layer.name}: ${(err as Error).message}`);
         }
       }
 
       // Fit bounds to visible layers if there are any
       if (allBounds.length > 0) {
-        const combinedBounds = new L.LatLngBounds(allBounds[0].getSouthWest(), allBounds[0].getNorthEast());
-        for (let i = 1; i < allBounds.length; i++) {
-          combinedBounds.extend(allBounds[i]);
+        try {
+          const combinedBounds = new L.LatLngBounds(allBounds[0].getSouthWest(), allBounds[0].getNorthEast());
+          for (let i = 1; i < allBounds.length; i++) {
+            combinedBounds.extend(allBounds[i]);
+          }
+          mapRef.current?.fitBounds(combinedBounds, { padding: [50, 50] });
+        } catch (err) {
+          console.error('Error fitting map bounds:', err);
         }
-        mapRef.current?.fitBounds(combinedBounds, { padding: [50, 50] });
       }
     }
   }, [layerCatalog]);
@@ -315,8 +324,27 @@ const DataManagementPage = ({
   const [editingItem, setEditingItem] = useState<BatchLog | DailyTimeSeries | Layer | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [layerCatalog, setLayerCatalog] = useState<Layer[]>(() => {
-    const saved = localStorage.getItem('layerCatalog');
-    return saved ? JSON.parse(saved) : [];
+    try {
+      const saved = localStorage.getItem('layerCatalog');
+      if (!saved) return [];
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) {
+        // Validate each layer
+        return parsed.map(layer => ({
+          id: layer.id || Date.now().toString() + Math.random().toString(36).substr(2, 9),
+          name: layer.name || 'Unnamed Layer',
+          color: layer.color || '#0ea5e9',
+          visible: typeof layer.visible === 'boolean' ? layer.visible : true,
+          geojson: layer.geojson || null,
+          files: Array.isArray(layer.files) ? layer.files : [],
+          uploadedAt: layer.uploadedAt || new Date().toISOString(),
+        }));
+      }
+      return [];
+    } catch (err) {
+      console.error('Error loading layer catalog from localStorage:', err);
+      return [];
+    }
   });
   const [isLayerEditModalOpen, setIsLayerEditModalOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -334,6 +362,7 @@ const DataManagementPage = ({
 
     for (const file of files) {
       try {
+        console.log('Processing file:', file.name);
         let geojson: any = null;
 
         if (file.name.toLowerCase().endsWith('.geojson') || file.name.toLowerCase().endsWith('.json')) {
@@ -343,11 +372,16 @@ const DataManagementPage = ({
           const text = await file.text();
           const parser = new DOMParser();
           const kmlDoc = parser.parseFromString(text, 'text/xml');
+          // Check for XML parsing errors
+          const parserError = kmlDoc.querySelector('parsererror');
+          if (parserError) throw new Error('Invalid KML format');
           geojson = toGeoJSON.kml(kmlDoc);
         } else if (file.name.toLowerCase().endsWith('.gpx')) {
           const text = await file.text();
           const parser = new DOMParser();
           const gpxDoc = parser.parseFromString(text, 'text/xml');
+          const parserError = gpxDoc.querySelector('parsererror');
+          if (parserError) throw new Error('Invalid GPX format');
           geojson = toGeoJSON.gpx(gpxDoc);
         } else if (file.name.toLowerCase().endsWith('.shp')) {
           const buffer = await file.arrayBuffer();
@@ -361,39 +395,60 @@ const DataManagementPage = ({
           geojson = { type: 'FeatureCollection', features };
         } else if (file.name.toLowerCase().endsWith('.csv')) {
           const text = await file.text();
-          const lines = text.split('\n');
+          const lines = text.split('\n').filter(line => line.trim());
+          if (lines.length < 2) throw new Error('CSV must have at least a header row and one data row');
           const headers = lines[0].split(',').map(h => h.trim());
           const latIdx = headers.findIndex(h => h.toLowerCase().includes('lat') || h.toLowerCase().includes('latitude'));
           const lngIdx = headers.findIndex(h => h.toLowerCase().includes('lng') || h.toLowerCase().includes('lon') || h.toLowerCase().includes('longitude'));
 
           if (latIdx !== -1 && lngIdx !== -1) {
-            const features = lines.slice(1).filter(line => line.trim()).map(line => {
-              const values = line.split(',');
+            const features = lines.slice(1).map(line => {
+              const values = line.split(',').map(v => v.trim());
+              const lat = parseFloat(values[latIdx]);
+              const lng = parseFloat(values[lngIdx]);
+              if (isNaN(lat) || isNaN(lng)) {
+                console.warn('Skipping invalid coordinate:', values[latIdx], values[lngIdx]);
+                return null;
+              }
               return {
                 type: 'Feature',
-                geometry: { type: 'Point', coordinates: [parseFloat(values[lngIdx]), parseFloat(values[latIdx])] },
+                geometry: { type: 'Point', coordinates: [lng, lat] },
                 properties: {}
               };
-            });
+            }).filter(Boolean);
             geojson = { type: 'FeatureCollection', features };
+          } else {
+            throw new Error('CSV must have columns with "lat"/"latitude" and "lng"/"lon"/"longitude"');
           }
+        } else {
+          console.warn('Unsupported file format:', file.name);
+          alert(`${file.name} is an unsupported format. Please use GeoJSON, KML, GPX, SHP, or CSV.`);
+          continue;
         }
 
-        if (geojson) {
-          const newLayer: Layer = {
-            id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
-            name: file.name,
-            color: colors[layerCatalog.length % colors.length],
-            visible: true,
-            geojson: geojson,
-            files: [file.name],
-            uploadedAt: new Date().toISOString(),
-          };
-          setLayerCatalog(prev => [...prev, newLayer]);
+        // Validate GeoJSON
+        if (!geojson) throw new Error('Failed to parse file');
+        if (!geojson.type) geojson = { type: 'FeatureCollection', features: [geojson] };
+        if (geojson.type === 'Feature' && !geojson.geometry) throw new Error('Invalid GeoJSON: feature missing geometry');
+        if (geojson.type === 'FeatureCollection' && !Array.isArray(geojson.features)) {
+          geojson.features = [];
         }
+
+        console.log('Parsed GeoJSON:', geojson);
+
+        const newLayer: Layer = {
+          id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+          name: file.name,
+          color: colors[layerCatalog.length % colors.length],
+          visible: true,
+          geojson: geojson,
+          files: [file.name],
+          uploadedAt: new Date().toISOString(),
+        };
+        setLayerCatalog(prev => [...prev, newLayer]);
       } catch (err) {
-        console.error('Error parsing file:', err);
-        alert(`Error parsing ${file.name}. Please check the file format.`);
+        console.error('Error processing file:', err);
+        alert(`Error processing ${file.name}: ${(err as Error).message}`);
       }
     }
 
@@ -540,14 +595,17 @@ const DataManagementPage = ({
                     </label>
                     
                     {layerCatalog.length > 0 && (
-                      <button 
-                        onClick={() => setLayerCatalog([])}
-                        className="flex items-center justify-center gap-2 bg-red-600 hover:bg-red-500 px-6 py-3 rounded-lg transition-all"
-                      >
-                        <X size={20} />
-                        Clear All Layers
-                      </button>
-                    )}
+          <button 
+            onClick={() => {
+              setLayerCatalog([]);
+              localStorage.removeItem('layerCatalog');
+            }}
+            className="flex items-center justify-center gap-2 bg-red-600 hover:bg-red-500 px-6 py-3 rounded-lg transition-all"
+          >
+            <X size={20} />
+            Clear All Layers
+          </button>
+        )}
                   </div>
                 </div>
 
