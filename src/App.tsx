@@ -60,6 +60,16 @@ interface BatchLog {
   status: 'Success' | 'Flagged' | 'Recapture';
 }
 
+type Layer = {
+  id: string;
+  name: string;
+  color: string;
+  visible: boolean;
+  geojson: any;
+  files: string[];
+  uploadedAt: string;
+};
+
 // ==============================================
 // Initial Mock Data
 // ==============================================
@@ -138,10 +148,10 @@ const KpiCard = ({
 
 const MapComponent = ({
   dataManagement = false,
-  uploadedGeoJSON = null
+  layerCatalog = []
 }: {
   dataManagement?: boolean;
-  uploadedGeoJSON?: any;
+  layerCatalog?: Layer[];
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -172,25 +182,38 @@ const MapComponent = ({
     };
   }, []);
 
-  // Update layers when uploadedGeoJSON changes
+  // Update layers when layerCatalog or visibility changes
   useEffect(() => {
-    if (uploadedGeoJSON && uploadedLayersRef.current) {
+    if (uploadedLayersRef.current) {
       uploadedLayersRef.current.clearLayers();
-      const geoJsonLayer = L.geoJSON(uploadedGeoJSON, {
-        style: () => ({ color: '#0ea5e9', weight: 2 }),
-        pointToLayer: (_feature, latlng) =>
-          L.circleMarker(latlng, { radius: 6, fillColor: '#0ea5e9', color: '#fff', weight: 2 }),
-      }).addTo(uploadedLayersRef.current);
+      const visibleLayers = layerCatalog.filter(layer => layer.visible);
+      const allBounds: L.LatLngBounds[] = [];
 
-      // Fit bounds to uploaded data
-      const bounds = geoJsonLayer.getBounds();
-      if (bounds.isValid()) {
-        mapRef.current?.fitBounds(bounds, { padding: [50, 50] });
+      for (const layer of visibleLayers) {
+        if (!layer.geojson) continue;
+
+        const geoJsonLayer = L.geoJSON(layer.geojson, {
+          style: () => ({ color: layer.color, weight: 2 }),
+          pointToLayer: (_feature, latlng) =>
+            L.circleMarker(latlng, { radius: 6, fillColor: layer.color, color: '#fff', weight: 2 }),
+        }).addTo(uploadedLayersRef.current);
+
+        const bounds = geoJsonLayer.getBounds();
+        if (bounds.isValid()) {
+          allBounds.push(bounds);
+        }
       }
-    } else if (uploadedLayersRef.current) {
-      uploadedLayersRef.current.clearLayers();
+
+      // Fit bounds to visible layers if there are any
+      if (allBounds.length > 0) {
+        const combinedBounds = new L.LatLngBounds(allBounds[0].getSouthWest(), allBounds[0].getNorthEast());
+        for (let i = 1; i < allBounds.length; i++) {
+          combinedBounds.extend(allBounds[i]);
+        }
+        mapRef.current?.fitBounds(combinedBounds, { padding: [50, 50] });
+      }
     }
-  }, [uploadedGeoJSON]);
+  }, [layerCatalog]);
 
   if (dataManagement) {
     return (
@@ -289,18 +312,25 @@ const DataManagementPage = ({
   onBackToDashboard: () => void
 }) => {
   const [dataTab, setDataTab] = useState<'batches' | 'daily' | 'vector'>('batches');
-  const [editingItem, setEditingItem] = useState<BatchLog | DailyTimeSeries | null>(null);
+  const [editingItem, setEditingItem] = useState<BatchLog | DailyTimeSeries | Layer | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
-  const [uploadedGeoJSON, setUploadedGeoJSON] = useState<any>(null);
-  const [uploadedFiles, setUploadedFiles] = useState<string[]>([]);
+  const [layerCatalog, setLayerCatalog] = useState<Layer[]>(() => {
+    const saved = localStorage.getItem('layerCatalog');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [isLayerEditModalOpen, setIsLayerEditModalOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Save to localStorage when layerCatalog changes
+  useEffect(() => {
+    localStorage.setItem('layerCatalog', JSON.stringify(layerCatalog));
+  }, [layerCatalog]);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
 
-    let allFeatures: any[] = [];
-    const fileNames: string[] = [];
+    const colors = ['#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
 
     for (const file of files) {
       try {
@@ -350,22 +380,21 @@ const DataManagementPage = ({
         }
 
         if (geojson) {
-          if (geojson.features) {
-            allFeatures = [...allFeatures, ...geojson.features];
-          } else {
-            allFeatures.push(geojson);
-          }
-          fileNames.push(file.name);
+          const newLayer: Layer = {
+            id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+            name: file.name,
+            color: colors[layerCatalog.length % colors.length],
+            visible: true,
+            geojson: geojson,
+            files: [file.name],
+            uploadedAt: new Date().toISOString(),
+          };
+          setLayerCatalog(prev => [...prev, newLayer]);
         }
       } catch (err) {
         console.error('Error parsing file:', err);
         alert(`Error parsing ${file.name}. Please check the file format.`);
       }
-    }
-
-    if (allFeatures.length > 0) {
-      setUploadedGeoJSON({ type: 'FeatureCollection', features: allFeatures });
-      setUploadedFiles(fileNames);
     }
 
     // Reset input
@@ -374,9 +403,29 @@ const DataManagementPage = ({
     }
   };
 
-  const clearUploadedLayers = () => {
-    setUploadedGeoJSON(null);
-    setUploadedFiles([]);
+  const toggleLayerVisibility = (layerId: string) => {
+    setLayerCatalog(prev => prev.map(layer => 
+      layer.id === layerId ? { ...layer, visible: !layer.visible } : layer
+    ));
+  };
+
+  const deleteLayer = (layerId: string) => {
+    if (confirm('Are you sure you want to delete this layer?')) {
+      setLayerCatalog(prev => prev.filter(layer => layer.id !== layerId));
+    }
+  };
+
+  const editLayer = (layer: Layer) => {
+    setEditingItem(layer);
+    setIsLayerEditModalOpen(true);
+  };
+
+  const saveLayerEdit = (updatedLayer: Layer) => {
+    setLayerCatalog(prev => prev.map(layer => 
+      layer.id === updatedLayer.id ? updatedLayer : layer
+    ));
+    setIsLayerEditModalOpen(false);
+    setEditingItem(null);
   };
 
   const handleSave = (item: BatchLog | DailyTimeSeries) => {
@@ -468,55 +517,105 @@ const DataManagementPage = ({
         {dataTab === 'vector' ? (
           /* Vector Layers Section */
           <div className="space-y-6">
-            {/* Upload Area */}
-            <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
-              <h2 className="text-xl font-bold text-white mb-4">Upload Vector Data</h2>
-              <p className="text-slate-400 mb-6">Supported formats: GeoJSON, KML, GPX, Shapefile, CSV</p>
-              
-              <div className="flex gap-4">
-                <label className="flex items-center gap-2 bg-sky-600 hover:bg-sky-500 px-6 py-3 rounded-lg transition-all cursor-pointer">
-                  <Upload size={20} />
-                  Select Files
-                  <input 
-                    ref={fileInputRef}
-                    type="file" 
-                    accept=".geojson,.json,.kml,.gpx,.shp,.csv"
-                    multiple
-                    hidden
-                    onChange={handleFileUpload}
-                  />
-                </label>
-                {uploadedFiles.length > 0 && (
-                  <button 
-                    onClick={clearUploadedLayers}
-                    className="flex items-center gap-2 bg-red-600 hover:bg-red-500 px-6 py-3 rounded-lg transition-all"
-                  >
-                    <X size={20} />
-                    Clear All
-                  </button>
-                )}
-              </div>
-
-              {/* Uploaded Files List */}
-              {uploadedFiles.length > 0 && (
-                <div className="mt-6">
-                  <p className="text-sm font-semibold text-slate-300 mb-2">Uploaded Files:</p>
-                  <div className="flex flex-wrap gap-2">
-                    {uploadedFiles.map((name, idx) => (
-                      <span key={idx} className="bg-slate-800 text-slate-300 px-3 py-1 rounded-full text-sm">
-                        {name}
-                      </span>
-                    ))}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Left Column: Upload & Catalog */}
+              <div className="lg:col-span-1 space-y-6">
+                {/* Upload Area */}
+                <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
+                  <h2 className="text-xl font-bold text-white mb-4">Upload Vector Data</h2>
+                  <p className="text-slate-400 mb-6">Supported formats: GeoJSON, KML, GPX, Shapefile, CSV</p>
+                  
+                  <div className="flex flex-col gap-4">
+                    <label className="flex items-center justify-center gap-2 bg-sky-600 hover:bg-sky-500 px-6 py-3 rounded-lg transition-all cursor-pointer">
+                      <Upload size={20} />
+                      Select Files
+                      <input 
+                        ref={fileInputRef}
+                        type="file" 
+                        accept=".geojson,.json,.kml,.gpx,.shp,.csv"
+                        multiple
+                        hidden
+                        onChange={handleFileUpload}
+                      />
+                    </label>
+                    
+                    {layerCatalog.length > 0 && (
+                      <button 
+                        onClick={() => setLayerCatalog([])}
+                        className="flex items-center justify-center gap-2 bg-red-600 hover:bg-red-500 px-6 py-3 rounded-lg transition-all"
+                      >
+                        <X size={20} />
+                        Clear All Layers
+                      </button>
+                    )}
                   </div>
                 </div>
-              )}
-            </div>
 
-            {/* Map Preview */}
-            <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
-              <h2 className="text-xl font-bold text-white p-4 border-b border-slate-800">Basemap Preview</h2>
-              <div className="h-[500px]">
-                <MapComponent dataManagement uploadedGeoJSON={uploadedGeoJSON} />
+                {/* Layer Catalog */}
+                <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-xl font-bold text-white">Layer Catalog</h2>
+                    {layerCatalog.length > 0 && (
+                      <span className="text-slate-400 text-sm">{layerCatalog.length} layer{layerCatalog.length !== 1 ? 's' : ''}</span>
+                    )}
+                  </div>
+                  {layerCatalog.length === 0 ? (
+                    <div className="text-slate-500 text-center py-8">
+                      <p>No layers uploaded yet</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {layerCatalog.map(layer => (
+                        <div key={layer.id} className="bg-slate-800 border border-slate-700 rounded-lg p-4">
+                          <div className="flex items-center justify-between mb-2">
+                            <label className="flex items-center gap-3 cursor-pointer">
+                              <input 
+                                type="checkbox" 
+                                checked={layer.visible} 
+                                onChange={() => toggleLayerVisibility(layer.id)}
+                                className="w-4 h-4 text-sky-600 bg-slate-700 border-slate-600 rounded focus:ring-sky-500"
+                              />
+                              <div className="flex items-center gap-2">
+                                <div 
+                                  className="w-3 h-3 rounded-full" 
+                                  style={{ backgroundColor: layer.color }}
+                                />
+                                <span className="text-slate-200 font-medium truncate max-w-[150px">{layer.name}</span>
+                              </div>
+                            </label>
+                            <div className="flex items-center gap-2">
+                              <button 
+                                onClick={() => editLayer(layer)}
+                                className="text-slate-400 hover:text-sky-400 transition-colors"
+                              >
+                                <Edit2 size={16} />
+                              </button>
+                              <button 
+                                onClick={() => deleteLayer(layer.id)}
+                                className="text-slate-400 hover:text-red-400 transition-colors"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </div>
+                          </div>
+                          <p className="text-xs text-slate-500">
+                            Uploaded: {new Date(layer.uploadedAt).toLocaleString()}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Right Column: Map Preview */}
+              <div className="lg:col-span-2">
+                <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+                  <h2 className="text-xl font-bold text-white p-4 border-b border-slate-800">Basemap Preview</h2>
+                  <div className="h-[600px]">
+                    <MapComponent dataManagement layerCatalog={layerCatalog} />
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -639,7 +738,7 @@ const DataManagementPage = ({
                 </button>
               </div>
               <DataForm 
-                initialData={editingItem}
+                initialData={editingItem as BatchLog | DailyTimeSeries | null}
                 dataType={dataTab as 'batches' | 'daily'}
                 onSave={handleSave}
                 onCancel={() => {
@@ -650,6 +749,69 @@ const DataManagementPage = ({
             </div>
           </div>
         )}
+
+        {/* Layer Edit Modal */}
+        {isLayerEditModalOpen && editingItem && 'id' in editingItem && (() => {
+          const layer = editingItem as Layer;
+          return (
+            <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+              <div className="bg-slate-900 border border-slate-800 rounded-xl p-8 max-w-md w-full mx-4">
+                <div className="flex justify-between items-center mb-6">
+                  <h2 className="text-2xl font-bold text-white">Edit Layer</h2>
+                  <button 
+                    onClick={() => {
+                      setIsLayerEditModalOpen(false);
+                      setEditingItem(null);
+                    }}
+                    className="text-slate-400 hover:text-white"
+                  >
+                    &times;
+                  </button>
+                </div>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-300 mb-2">Layer Name</label>
+                    <input 
+                      type="text"
+                      value={layer.name}
+                      onChange={(e) => setEditingItem({ ...layer, name: e.target.value })}
+                      className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-300 mb-2">Color</label>
+                    <div className="flex items-center gap-4">
+                      <input 
+                        type="color"
+                        value={layer.color}
+                        onChange={(e) => setEditingItem({ ...layer, color: e.target.value })}
+                        className="w-12 h-12 cursor-pointer rounded-lg border border-slate-700"
+                      />
+                      <span className="text-slate-400 text-sm font-mono">{layer.color}</span>
+                    </div>
+                  </div>
+                  <div className="flex gap-3 pt-4">
+                    <button 
+                      onClick={() => saveLayerEdit(editingItem as Layer)}
+                      className="flex-1 bg-sky-600 hover:bg-sky-500 px-4 py-3 rounded-lg transition-all"
+                    >
+                      Save Changes
+                    </button>
+                    <button 
+                      onClick={() => {
+                        setIsLayerEditModalOpen(false);
+                        setEditingItem(null);
+                      }}
+                      className="flex-1 bg-slate-700 hover:bg-slate-600 px-4 py-3 rounded-lg transition-all"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );
