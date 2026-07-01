@@ -323,36 +323,18 @@ const DataManagementPage = ({
   const [dataTab, setDataTab] = useState<'batches' | 'daily' | 'vector'>('batches');
   const [editingItem, setEditingItem] = useState<BatchLog | DailyTimeSeries | Layer | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
-  const [layerCatalog, setLayerCatalog] = useState<Layer[]>(() => {
-    try {
-      const saved = localStorage.getItem('layerCatalog');
-      if (!saved) return [];
-      const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed)) {
-        // Validate each layer
-        return parsed.map(layer => ({
-          id: layer.id || Date.now().toString() + Math.random().toString(36).substr(2, 9),
-          name: layer.name || 'Unnamed Layer',
-          color: layer.color || '#0ea5e9',
-          visible: typeof layer.visible === 'boolean' ? layer.visible : true,
-          geojson: layer.geojson || null,
-          files: Array.isArray(layer.files) ? layer.files : [],
-          uploadedAt: layer.uploadedAt || new Date().toISOString(),
-        }));
-      }
-      return [];
-    } catch (err) {
-      console.error('Error loading layer catalog from localStorage:', err);
-      return [];
-    }
-  });
+  const [layerCatalog, setLayerCatalog] = useState<Layer[]>([]);
   const [isLayerEditModalOpen, setIsLayerEditModalOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Save to localStorage when layerCatalog changes
+  // Clear localStorage on first load to fix quota error
   useEffect(() => {
-    localStorage.setItem('layerCatalog', JSON.stringify(layerCatalog));
-  }, [layerCatalog]);
+    try {
+      localStorage.removeItem('layerCatalog');
+    } catch (e) {
+      console.error('Error clearing localStorage:', e);
+    }
+  }, []);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
