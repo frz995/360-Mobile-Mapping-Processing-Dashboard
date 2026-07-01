@@ -10,12 +10,14 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@tmcw/togeojson": "^7.1.2",
     "esri-leaflet": "^3.0.19",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.400.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "recharts": "^2.12.7"
+    "recharts": "^2.12.7",
+    "shapefile": "^0.6.6"
   },
   "devDependencies": {
     "@types/esri-leaflet": "^3.0.4",

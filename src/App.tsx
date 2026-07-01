@@ -17,7 +17,9 @@ import {
   Plus,
   Save,
   Trash2,
-  Edit2
+  Edit2,
+  Upload,
+  X
 } from 'lucide-react';
 import {
   Area,
@@ -32,6 +34,8 @@ import {
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { basemapLayer } from 'esri-leaflet';
+import * as shapefile from 'shapefile';
+import * as toGeoJSON from '@tmcw/togeojson';
 
 // ==============================================
 // Data Interfaces & Types
@@ -135,6 +139,9 @@ const KpiCard = ({
 const MapComponent = () => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
+  const uploadedLayersRef = useRef<L.LayerGroup | null>(null);
+  const [uploadedFiles, setUploadedFiles] = useState<string[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!mapContainerRef.current) return;
@@ -149,6 +156,10 @@ const MapComponent = () => {
     // Add Esri Light Gray Basemap
     basemapLayer('Gray').addTo(map);
 
+    // Create layer group for uploaded data
+    const layerGroup = L.layerGroup().addTo(map);
+    uploadedLayersRef.current = layerGroup;
+
     mapRef.current = map;
 
     // Cleanup on unmount
@@ -156,6 +167,89 @@ const MapComponent = () => {
       map.remove();
     };
   }, []);
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+
+    for (const file of files) {
+      try {
+        let geojson: any = null;
+
+        if (file.name.toLowerCase().endsWith('.geojson') || file.name.toLowerCase().endsWith('.json')) {
+          // GeoJSON
+          const text = await file.text();
+          geojson = JSON.parse(text);
+        } else if (file.name.toLowerCase().endsWith('.kml')) {
+          // KML
+          const text = await file.text();
+          const parser = new DOMParser();
+          const kmlDoc = parser.parseFromString(text, 'text/xml');
+          geojson = toGeoJSON.kml(kmlDoc);
+        } else if (file.name.toLowerCase().endsWith('.gpx')) {
+          // GPX
+          const text = await file.text();
+          const parser = new DOMParser();
+          const gpxDoc = parser.parseFromString(text, 'text/xml');
+          geojson = toGeoJSON.gpx(gpxDoc);
+        } else if (file.name.toLowerCase().endsWith('.shp')) {
+          // Shapefile (single .shp, but should ideally have .dbf too)
+          const buffer = await file.arrayBuffer();
+          const shpData = await shapefile.open(buffer);
+          const features = [];
+          let result = await shpData.read();
+          while (!result.done) {
+            features.push(result.value);
+            result = await shpData.read();
+          }
+          geojson = { type: 'FeatureCollection', features };
+        } else if (file.name.toLowerCase().endsWith('.csv')) {
+          // Simple CSV with lat/lng
+          const text = await file.text();
+          const lines = text.split('\n');
+          const headers = lines[0].split(',').map(h => h.trim());
+          const latIdx = headers.findIndex(h => h.toLowerCase().includes('lat') || h.toLowerCase().includes('latitude'));
+          const lngIdx = headers.findIndex(h => h.toLowerCase().includes('lng') || h.toLowerCase().includes('lon') || h.toLowerCase().includes('longitude'));
+
+          if (latIdx !== -1 && lngIdx !== -1) {
+            const features = lines.slice(1).filter(line => line.trim()).map(line => {
+              const values = line.split(',');
+              return {
+                type: 'Feature',
+                geometry: { type: 'Point', coordinates: [parseFloat(values[lngIdx]), parseFloat(values[latIdx])] },
+                properties: {}
+              };
+            });
+            geojson = { type: 'FeatureCollection', features };
+          }
+        }
+
+        if (geojson && mapRef.current && uploadedLayersRef.current) {
+          L.geoJSON(geojson, {
+            style: () => ({ color: '#0ea5e9', weight: 2 }),
+            pointToLayer: (_feature, latlng) => L.circleMarker(latlng, { radius: 6, fillColor: '#0ea5e9', color: '#fff', weight: 2 })
+          }).addTo(uploadedLayersRef.current);
+          
+          setUploadedFiles(prev => [...prev, file.name]);
+        }
+      } catch (err) {
+        console.error('Error parsing file:', err);
+        alert(`Error parsing ${file.name}. Please check the file format.`);
+      }
+    }
+
+    // Reset input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const clearUploadedLayers = () => {
+    if (uploadedLayersRef.current) {
+      uploadedLayersRef.current.clearLayers();
+    }
+    setUploadedFiles([]);
+  };
 
   return (
     <div className="relative w-full h-full overflow-hidden">
@@ -182,6 +276,42 @@ const MapComponent = () => {
         className="w-full h-full bg-[#f5f5f5]"
         style={{ height: '100%', width: '100%' }}
       />
+
+      {/* Upload Button */}
+      <div className="absolute left-4 top-1/2 -translate-y-1/2 z-[1000] flex flex-col gap-2">
+        <label className="w-10 h-10 bg-slate-900/95 border border-slate-800 rounded-lg flex items-center justify-center text-slate-400 hover:text-white hover:border-slate-600 transition-all cursor-pointer">
+          <Upload size={20} />
+          <input 
+            ref={fileInputRef}
+            type="file" 
+            accept=".geojson,.json,.kml,.gpx,.shp,.csv"
+            multiple
+            hidden
+            onChange={handleFileUpload}
+          />
+        </label>
+        {uploadedFiles.length > 0 && (
+          <button 
+            onClick={clearUploadedLayers}
+            className="w-10 h-10 bg-slate-900/95 border border-slate-800 rounded-lg flex items-center justify-center text-slate-400 hover:text-red-500 hover:border-red-600 transition-all"
+            title="Clear uploaded layers"
+          >
+            <X size={20} />
+          </button>
+        )}
+      </div>
+
+      {/* Uploaded Files List */}
+      {uploadedFiles.length > 0 && (
+        <div className="absolute left-4 top-[calc(50%+64px)] z-[1000] bg-slate-900/90 backdrop-blur-md border border-slate-800 rounded-lg p-3 max-w-[250px]">
+          <p className="text-xs font-semibold text-slate-300 mb-2">Uploaded Layers:</p>
+          <ul className="text-xs text-slate-400 space-y-1">
+            {uploadedFiles.map((name, idx) => (
+              <li key={idx} className="truncate">{name}</li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* Custom Zoom Controls */}
       <div className="absolute right-4 top-1/2 -translate-y-1/2 z-[1000] flex flex-col gap-2">
