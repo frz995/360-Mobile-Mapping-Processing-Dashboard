@@ -1,0 +1,957 @@
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  MapPin,
+  Map,
+  ZoomIn,
+  ZoomOut,
+  TrendingUp,
+  AlertTriangle,
+  CheckCircle,
+  Activity,
+  Ruler,
+  Clock,
+  Camera,
+  Navigation,
+  BarChart2,
+  Settings,
+  LayoutDashboard,
+  Plus,
+  Save,
+  Trash2,
+  Edit2
+} from 'lucide-react';
+import {
+  AreaChart,
+  Area,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  ComposedChart
+} from 'recharts';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+import { basemapLayer } from 'esri-leaflet';
+
+// ==============================================
+// Data Interfaces & Types
+// ==============================================
+
+interface DailyTimeSeries {
+  date: string;
+  grid: string;
+  subgrid: string;
+  kmProcessed: number;
+  imagesIngested: number;
+  defectCount: number;
+}
+
+interface BatchLog {
+  id?: string;
+  date: string;
+  grid: string;
+  subgrid: string;
+  images: number;
+  defects: number;
+  status: 'Success' | 'Flagged' | 'Recapture';
+}
+
+interface GisRouteLedgerItem {
+  batchId: string;
+  date: string;
+  extentBoundingBox: [number, number, number, number]; // [minLat, minLon, maxLat, maxLon]
+  lineGeometry: [number, number][]; // array of [lon, lat] coordinates
+  totalImages: number;
+  linearDistanceKm: number;
+  spatialDefects: { coordinates: [number, number]; type: string }[];
+}
+
+// ==============================================
+// Initial Mock Data
+// ==============================================
+
+const INITIAL_DAILY_DATA: DailyTimeSeries[] = [
+  { date: 'Jun 20', grid: '1', subgrid: 'N101E83', kmProcessed: 150.2, imagesIngested: 52000, defectCount: 45 },
+  { date: 'Jun 21', grid: '2', subgrid: 'N101E84', kmProcessed: 180.5, imagesIngested: 65000, defectCount: 62 },
+  { date: 'Jun 22', grid: '3', subgrid: 'N101E85', kmProcessed: 165.8, imagesIngested: 58000, defectCount: 38 },
+  { date: 'Jun 23', grid: '4', subgrid: 'N101E86', kmProcessed: 210.3, imagesIngested: 75000, defectCount: 89 },
+  { date: 'Jun 24', grid: '5', subgrid: 'N101E87', kmProcessed: 195.7, imagesIngested: 68000, defectCount: 54 },
+  { date: 'Jun 25', grid: '6', subgrid: 'N101E88', kmProcessed: 140.4, imagesIngested: 48000, defectCount: 31 },
+  { date: 'Jun 26', grid: '7', subgrid: 'N102E83', kmProcessed: 220.1, imagesIngested: 78000, defectCount: 72 },
+];
+
+const INITIAL_BATCH_LOGS: BatchLog[] = [
+  { id: '1', date: '2026-06-26 14:30', grid: '1', subgrid: 'N101E83', images: 78000, defects: 72, status: 'Success' },
+  { id: '2', date: '2026-06-25 11:15', grid: '2', subgrid: 'N101E84', images: 48000, defects: 31, status: 'Flagged' },
+  { id: '3', date: '2026-06-24 16:45', grid: '3', subgrid: 'N101E85', images: 68000, defects: 54, status: 'Success' },
+  { id: '4', date: '2026-06-23 09:20', grid: '4', subgrid: 'N101E86', images: 75000, defects: 89, status: 'Recapture' },
+];
+
+// ==============================================
+// Helper Components
+// ==============================================
+
+const KpiCard = ({ 
+  title, 
+  value, 
+  delta, 
+  icon: Icon, 
+  colorClass, 
+  progress, 
+  subValue 
+}: { 
+  title: string; 
+  value: string; 
+  delta?: string; 
+  icon: any; 
+  colorClass: string; 
+  progress?: number; 
+  subValue?: string; 
+}) => (
+  <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-lg hover:shadow-sky-900/20 transition-all duration-300">
+    <div className="flex items-start justify-between">
+      <div className="flex-1">
+        <p className="text-slate-400 text-sm font-medium mb-2">{title}</p>
+        <h3 className="text-2xl font-bold text-white mb-1">{value}</h3>
+        {subValue && <p className="text-xs text-slate-500">{subValue}</p>}
+        {delta && (
+          <p className={`text-xs font-semibold mt-2 flex items-center gap-1 ${colorClass}`}>
+            <TrendingUp size={12} />
+            {delta}
+          </p>
+        )}
+        {progress !== undefined && (
+          <div className="mt-3">
+            <div className="flex justify-between text-xs text-slate-400 mb-1">
+              <span>Progress</span>
+              <span>{progress}%</span>
+            </div>
+            <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+              <div 
+                className={`h-full transition-all duration-1000 ease-out ${colorClass.replace('text-', 'bg-')}`}
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+      <div className={`p-3 rounded-lg bg-opacity-10 ${colorClass.replace('text-', 'bg-')}`}>
+        <Icon className={colorClass} size={24} />
+      </div>
+    </div>
+  </div>
+);
+
+const MapComponent = () => {
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<L.Map | null>(null);
+
+  useEffect(() => {
+    if (!mapContainerRef.current) return;
+
+    // Initialize Leaflet map
+    const map = L.map(mapContainerRef.current, {
+      center: [3.1390, 101.6869], // Klang Valley
+      zoom: 11,
+      zoomControl: false, // Hide default zoom controls since we have custom ones
+    });
+
+    // Add Esri Light Gray Basemap
+    basemapLayer('Gray').addTo(map);
+
+    mapRef.current = map;
+
+    // Cleanup on unmount
+    return () => {
+      map.remove();
+    };
+  }, []);
+
+  return (
+    <div className="relative w-full h-full overflow-hidden">
+      {/* Floating Header */}
+      <div className="absolute top-4 left-4 right-4 flex items-center justify-between z-[1000]">
+        <div className="bg-slate-900/90 backdrop-blur-md border border-slate-800 rounded-lg px-4 py-2">
+          <h2 className="text-white font-bold text-lg">TNB Low Voltage Network Digitization</h2>
+          <p className="text-xs text-slate-400">Klang Valley Sector</p>
+        </div>
+        <div className="flex items-center gap-4">
+          <div className="bg-slate-900/90 backdrop-blur-md border border-slate-800 rounded-lg px-3 py-2">
+            <p className="text-xs text-slate-400">EPSG:4326 (WGS 84)</p>
+          </div>
+          <div className="bg-slate-900/90 backdrop-blur-md border border-slate-800 rounded-lg px-3 py-2 flex items-center gap-2">
+            <CheckCircle size={14} className="text-green-500" />
+            <span className="text-xs text-white font-medium">System Sync: Stable</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Leaflet Map Container */}
+      <div 
+        ref={mapContainerRef} 
+        className="w-full h-full bg-[#f5f5f5]"
+        style={{ height: '100%', width: '100%' }}
+      />
+
+      {/* Custom Zoom Controls */}
+      <div className="absolute right-4 top-1/2 -translate-y-1/2 z-[1000] flex flex-col gap-2">
+        <button 
+          onClick={() => mapRef.current?.zoomIn()}
+          className="w-10 h-10 bg-slate-900/95 border border-slate-800 rounded-lg flex items-center justify-center text-slate-400 hover:text-white hover:border-slate-600 transition-all"
+        >
+          <ZoomIn size={20} />
+        </button>
+        <button 
+          onClick={() => mapRef.current?.zoomOut()}
+          className="w-10 h-10 bg-slate-900/95 border border-slate-800 rounded-lg flex items-center justify-center text-slate-400 hover:text-white hover:border-slate-600 transition-all"
+        >
+          <ZoomOut size={20} />
+        </button>
+        <button className="w-10 h-10 bg-slate-900/95 border border-slate-800 rounded-lg flex items-center justify-center text-slate-400 hover:text-white hover:border-slate-600 transition-all">
+          <Ruler size={20} />
+        </button>
+      </div>
+
+      {/* Coordinates Overlay */}
+      <div className="absolute bottom-4 left-4 bg-slate-900/90 backdrop-blur-md border border-slate-800 rounded-lg px-3 py-2 z-[1000]">
+        <p className="text-xs text-slate-400">
+          Center: 3.1390° N, 101.6869° E | Covered: Subang/PJ/Cheras
+        </p>
+      </div>
+    </div>
+  );
+};
+
+// ==============================================
+// Data Management Page Component
+// ==============================================
+
+const DataManagementPage = ({ 
+  dailyData, 
+  setDailyData, 
+  batchLogs, 
+  setBatchLogs,
+  onBackToDashboard
+}: { 
+  dailyData: DailyTimeSeries[], 
+  setDailyData: (data: DailyTimeSeries[]) => void, 
+  batchLogs: BatchLog[], 
+  setBatchLogs: (data: BatchLog[]) => void,
+  onBackToDashboard: () => void
+}) => {
+  const [dataTab, setDataTab] = useState<'batches' | 'daily'>('batches');
+  const [editingItem, setEditingItem] = useState<BatchLog | DailyTimeSeries | null>(null);
+  const [isFormOpen, setIsFormOpen] = useState(false);
+
+  const handleSave = (item: BatchLog | DailyTimeSeries) => {
+    if (dataTab === 'batches') {
+      const batchItem = item as BatchLog;
+      if (editingItem && 'id' in editingItem) {
+        setBatchLogs(batchLogs.map(b => b.id === editingItem.id ? { ...batchItem, id: editingItem.id } : b));
+      } else {
+        setBatchLogs([...batchLogs, { ...batchItem, id: Date.now().toString() }]);
+      }
+    } else {
+      const dailyItem = item as DailyTimeSeries;
+      if (editingItem && !( 'id' in editingItem)) {
+        setDailyData(dailyData.map(d => d.date === editingItem.date ? dailyItem : d));
+      } else {
+        setDailyData([...dailyData, dailyItem]);
+      }
+    }
+    setIsFormOpen(false);
+    setEditingItem(null);
+  };
+
+  const handleDelete = (item: BatchLog | DailyTimeSeries) => {
+    if (dataTab === 'batches' && 'id' in item) {
+      setBatchLogs(batchLogs.filter(b => b.id !== item.id));
+    } else if (dataTab === 'daily') {
+      setDailyData(dailyData.filter(d => d.date !== item.date));
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-950 text-slate-200 font-sans p-8">
+      <div className="max-w-6xl mx-auto">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={onBackToDashboard}
+              className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 px-4 py-2 rounded-lg transition-all"
+            >
+              <LayoutDashboard size={20} />
+              Back to Dashboard
+            </button>
+            <h1 className="text-3xl font-bold text-white">Data Management</h1>
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex gap-4 mb-6 border-b border-slate-800 pb-4">
+          <button 
+            onClick={() => setDataTab('batches')}
+            className={`px-6 py-3 rounded-t-lg font-semibold transition-all ${
+              dataTab === 'batches' ? 'bg-sky-600 text-white' : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            Batch Logs
+          </button>
+          <button 
+            onClick={() => setDataTab('daily')}
+            className={`px-6 py-3 rounded-t-lg font-semibold transition-all ${
+              dataTab === 'daily' ? 'bg-sky-600 text-white' : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            Daily Data
+          </button>
+          <button 
+            onClick={() => {
+              setEditingItem(null);
+              setIsFormOpen(true);
+            }}
+            className="ml-auto flex items-center gap-2 bg-sky-600 hover:bg-sky-500 px-4 py-2 rounded-lg transition-all"
+          >
+            <Plus size={20} />
+            Add New
+          </button>
+        </div>
+
+        {/* Data Table */}
+        <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+          <table className="w-full text-left">
+            <thead className="bg-slate-800">
+              <tr>
+                {dataTab === 'batches' ? (
+                  <>
+                    <th className="px-6 py-4 text-slate-400 font-semibold">Date</th>
+                    <th className="px-6 py-4 text-slate-400 font-semibold">Grid</th>
+                    <th className="px-6 py-4 text-slate-400 font-semibold">Subgrid</th>
+                    <th className="px-6 py-4 text-slate-400 font-semibold">Images</th>
+                    <th className="px-6 py-4 text-slate-400 font-semibold">Defects</th>
+                    <th className="px-6 py-4 text-slate-400 font-semibold">Status</th>
+                    <th className="px-6 py-4 text-slate-400 font-semibold">Actions</th>
+                  </>
+                ) : (
+                  <>
+                    <th className="px-6 py-4 text-slate-400 font-semibold">Date</th>
+                    <th className="px-6 py-4 text-slate-400 font-semibold">Grid</th>
+                    <th className="px-6 py-4 text-slate-400 font-semibold">Subgrid</th>
+                    <th className="px-6 py-4 text-slate-400 font-semibold">KM Processed</th>
+                    <th className="px-6 py-4 text-slate-400 font-semibold">Images Ingested</th>
+                    <th className="px-6 py-4 text-slate-400 font-semibold">Defect Count</th>
+                    <th className="px-6 py-4 text-slate-400 font-semibold">Actions</th>
+                  </>
+                )}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800">
+              {dataTab === 'batches' ? (
+                batchLogs.map((batch) => (
+                  <tr key={batch.id} className="hover:bg-slate-800/50 transition-all">
+                    <td className="px-6 py-4">{batch.date}</td>
+                    <td className="px-6 py-4 font-mono">{batch.grid}</td>
+                    <td className="px-6 py-4">{batch.subgrid}</td>
+                    <td className="px-6 py-4">{batch.images.toLocaleString()}</td>
+                    <td className="px-6 py-4 text-amber-400">{batch.defects}</td>
+                    <td className="px-6 py-4">
+                      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                        batch.status === 'Success' ? 'bg-green-500/20 text-green-400' :
+                        batch.status === 'Flagged' ? 'bg-amber-500/20 text-amber-400' :
+                        'bg-red-500/20 text-red-400'
+                      }`}>
+                        {batch.status}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 flex gap-2">
+                      <button 
+                        onClick={() => {
+                          setEditingItem(batch);
+                          setIsFormOpen(true);
+                        }}
+                        className="text-slate-400 hover:text-sky-400 transition-colors"
+                      >
+                        <Edit2 size={18} />
+                      </button>
+                      <button 
+                        onClick={() => handleDelete(batch)}
+                        className="text-slate-400 hover:text-red-400 transition-colors"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                dailyData.map((daily) => (
+                  <tr key={daily.date} className="hover:bg-slate-800/50 transition-all">
+                    <td className="px-6 py-4">{daily.date}</td>
+                    <td className="px-6 py-4">{daily.grid}</td>
+                    <td className="px-6 py-4">{daily.subgrid}</td>
+                    <td className="px-6 py-4">{daily.kmProcessed.toFixed(1)}</td>
+                    <td className="px-6 py-4">{daily.imagesIngested.toLocaleString()}</td>
+                    <td className="px-6 py-4 text-amber-400">{daily.defectCount}</td>
+                    <td className="px-6 py-4 flex gap-2">
+                      <button 
+                        onClick={() => {
+                          setEditingItem(daily);
+                          setIsFormOpen(true);
+                        }}
+                        className="text-slate-400 hover:text-sky-400 transition-colors"
+                      >
+                        <Edit2 size={18} />
+                      </button>
+                      <button 
+                        onClick={() => handleDelete(daily)}
+                        className="text-slate-400 hover:text-red-400 transition-colors"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Add/Edit Form */}
+        {isFormOpen && (
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+            <div className="bg-slate-900 border border-slate-800 rounded-xl p-8 max-w-2xl w-full mx-4">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold text-white">
+                  {editingItem ? 'Edit' : 'Add New'} {dataTab === 'batches' ? 'Batch' : 'Daily Record'}
+                </h2>
+                <button 
+                  onClick={() => {
+                    setIsFormOpen(false);
+                    setEditingItem(null);
+                  }}
+                  className="text-slate-400 hover:text-white"
+                >
+                  &times;
+                </button>
+              </div>
+              <DataForm 
+                initialData={editingItem}
+                dataType={dataTab}
+                onSave={handleSave}
+                onCancel={() => {
+                  setIsFormOpen(false);
+                  setEditingItem(null);
+                }}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ==============================================
+// Data Form Component
+// ==============================================
+
+const SUBGRIDS = [
+  'N101E83', 'N101E84', 'N101E85', 'N101E86', 
+  'N101E87', 'N101E88', 'N102E83', 'N102E84', 
+  'N102E85', 'N102E86', 'N102E87', 'N102E88'
+];
+const GRIDS = Array.from({ length: 12 }, (_, i) => (i + 1).toString());
+
+const DataForm = ({ 
+  initialData, 
+  dataType, 
+  onSave, 
+  onCancel 
+}: { 
+  initialData: BatchLog | DailyTimeSeries | null, 
+  dataType: 'batches' | 'daily',
+  onSave: (data: any) => void,
+  onCancel: () => void
+}) => {
+  const [formData, setFormData] = useState(
+    initialData || 
+    (dataType === 'batches' 
+      ? { date: new Date().toISOString().slice(0, 16), grid: '1', subgrid: 'N101E83', images: 0, defects: 0, status: 'Success' as const }
+      : { date: '', grid: '1', subgrid: 'N101E83', kmProcessed: 0, imagesIngested: 0, defectCount: 0 }
+    )
+  );
+
+  return (
+    <form 
+      onSubmit={(e) => {
+        e.preventDefault();
+        onSave(formData);
+      }}
+      className="space-y-6"
+    >
+      {dataType === 'batches' ? (
+        <>
+          <div>
+            <label className="block text-sm font-semibold text-slate-300 mb-2">Date & Time</label>
+            <input 
+              type="datetime-local"
+              value={formData.date}
+              onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-white"
+              required
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-semibold text-slate-300 mb-2">Grid</label>
+              <select 
+                value={formData.grid}
+                onChange={(e) => setFormData({ ...formData, grid: e.target.value })}
+                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-white"
+                required
+              >
+                {GRIDS.map(g => <option key={g} value={g}>{g}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-slate-300 mb-2">Subgrid</label>
+              <select 
+                value={formData.subgrid}
+                onChange={(e) => setFormData({ ...formData, subgrid: e.target.value })}
+                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-white"
+                required
+              >
+                {SUBGRIDS.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-semibold text-slate-300 mb-2">Images</label>
+              <input 
+                type="number"
+                value={formData.images}
+                onChange={(e) => setFormData({ ...formData, images: Number(e.target.value) })}
+                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-white"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-slate-300 mb-2">Defects</label>
+              <input 
+                type="number"
+                value={formData.defects}
+                onChange={(e) => setFormData({ ...formData, defects: Number(e.target.value) })}
+                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-white"
+                required
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-semibold text-slate-300 mb-2">Status</label>
+            <select 
+              value={formData.status}
+              onChange={(e) => setFormData({ ...formData, status: e.target.value as 'Success' | 'Flagged' | 'Recapture' })}
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-white"
+              required
+            >
+              <option value="Success">Success</option>
+              <option value="Flagged">Flagged</option>
+              <option value="Recapture">Recapture</option>
+            </select>
+          </div>
+        </>
+      ) : (
+        <>
+          <div>
+            <label className="block text-sm font-semibold text-slate-300 mb-2">Date</label>
+            <input 
+              type="text"
+              value={formData.date}
+              onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+              placeholder="e.g., Jun 27"
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-white"
+              required
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-semibold text-slate-300 mb-2">Grid</label>
+              <select 
+                value={formData.grid}
+                onChange={(e) => setFormData({ ...formData, grid: e.target.value })}
+                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-white"
+                required
+              >
+                {GRIDS.map(g => <option key={g} value={g}>{g}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-slate-300 mb-2">Subgrid</label>
+              <select 
+                value={formData.subgrid}
+                onChange={(e) => setFormData({ ...formData, subgrid: e.target.value })}
+                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-white"
+                required
+              >
+                {SUBGRIDS.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-semibold text-slate-300 mb-2">KM Processed</label>
+            <input 
+              type="number"
+              step="0.1"
+              value={formData.kmProcessed}
+              onChange={(e) => setFormData({ ...formData, kmProcessed: Number(e.target.value) })}
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-white"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-semibold text-slate-300 mb-2">Images Ingested</label>
+            <input 
+              type="number"
+              value={formData.imagesIngested}
+              onChange={(e) => setFormData({ ...formData, imagesIngested: Number(e.target.value) })}
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-white"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-semibold text-slate-300 mb-2">Defect Count</label>
+            <input 
+              type="number"
+              value={formData.defectCount}
+              onChange={(e) => setFormData({ ...formData, defectCount: Number(e.target.value) })}
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-white"
+              required
+            />
+          </div>
+        </>
+      )}
+      
+      <div className="flex justify-end gap-4 pt-4">
+        <button 
+          type="button"
+          onClick={onCancel}
+          className="px-6 py-3 bg-slate-700 hover:bg-slate-600 rounded-lg font-semibold transition-all"
+        >
+          Cancel
+        </button>
+        <button 
+          type="submit"
+          className="flex items-center gap-2 px-6 py-3 bg-sky-600 hover:bg-sky-500 rounded-lg font-semibold transition-all"
+        >
+          <Save size={20} />
+          Save
+        </button>
+      </div>
+    </form>
+  );
+};
+
+// ==============================================
+// Main Application Component
+// ==============================================
+
+export default function App() {
+  const [currentPage, setCurrentPage] = useState<'dashboard' | 'data'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'batches' | 'daily'>('batches');
+
+  // Clear old localStorage to avoid conflicts with new schema
+  React.useEffect(() => {
+    localStorage.removeItem('dailyData');
+    localStorage.removeItem('batchLogs');
+  }, []);
+
+  // Load data from localStorage or use initial data
+  const [dailyData, setDailyData] = useState<DailyTimeSeries[]>(() => {
+    const saved = localStorage.getItem('dailyData');
+    return saved ? JSON.parse(saved) : INITIAL_DAILY_DATA;
+  });
+
+  const [batchLogs, setBatchLogs] = useState<BatchLog[]>(() => {
+    const saved = localStorage.getItem('batchLogs');
+    return saved ? JSON.parse(saved) : INITIAL_BATCH_LOGS;
+  });
+
+  // Save to localStorage whenever data changes
+  useEffect(() => {
+    localStorage.setItem('dailyData', JSON.stringify(dailyData));
+  }, [dailyData]);
+
+  useEffect(() => {
+    localStorage.setItem('batchLogs', JSON.stringify(batchLogs));
+  }, [batchLogs]);
+
+  // Calculated totals
+  const totalImages = dailyData.reduce((sum, d) => sum + d.imagesIngested, 0);
+  const totalKm = dailyData.reduce((sum, d) => sum + d.kmProcessed, 0);
+  const totalDefects = dailyData.reduce((sum, d) => sum + d.defectCount, 0);
+  const targetKm = 5000;
+  const progressPercent = Math.round((totalKm / targetKm) * 100);
+  const latestBatch = dailyData[dailyData.length - 1];
+
+  // If on data management page, render that instead
+  if (currentPage === 'data') {
+    return (
+      <DataManagementPage 
+        dailyData={dailyData}
+        setDailyData={setDailyData}
+        batchLogs={batchLogs}
+        setBatchLogs={setBatchLogs}
+        onBackToDashboard={() => setCurrentPage('dashboard')}
+      />
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-950 text-slate-200 font-sans">
+      <div className="flex flex-col h-screen">
+        {/* Main Content Area */}
+        <div className="flex-1 flex overflow-hidden">
+          {/* Left Sidebar - Analytics */}
+          <div className="w-[30%] bg-slate-900 border-r border-slate-800 flex flex-col">
+            {/* Header */}
+            <div className="p-6 border-b border-slate-800">
+              <div className="flex items-center gap-3 mb-1">
+                <div className="p-2 bg-sky-500/10 rounded-lg">
+                  <MapPin className="text-sky-500" size={24} />
+                </div>
+                <div className="flex-1">
+                  <h1 className="text-xl font-bold text-white">Geo360 Process</h1>
+                  <p className="text-xs text-slate-500">TNB LV Asset Mapping</p>
+                </div>
+                <button 
+                  onClick={() => setCurrentPage('data')}
+                  className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 px-3 py-2 rounded-lg text-sm font-semibold transition-all"
+                >
+                  <Settings size={18} />
+                  Manage Data
+                </button>
+              </div>
+              <div className="mt-4 flex items-center gap-2 text-sm text-slate-400">
+                <Clock size={14} />
+                Last Updated: {new Date().toLocaleString()}
+              </div>
+            </div>
+
+            {/* KPI Cards */}
+            <div className="p-6 space-y-4 overflow-y-auto flex-1">
+              <KpiCard 
+                title="Total Images Processed"
+                value={totalImages.toLocaleString()}
+                delta={`+${latestBatch.imagesIngested.toLocaleString()} last batch`}
+                icon={Camera}
+                colorClass="text-sky-500"
+              />
+              <KpiCard 
+                title="Total Distance Processed"
+                value={`${totalKm.toFixed(1)} km`}
+                delta={`+${latestBatch.kmProcessed.toFixed(1)} km last batch`}
+                icon={Navigation}
+                colorClass="text-emerald-500"
+              />
+              <KpiCard 
+                title="Overall Project Mileage"
+                value={`${totalKm.toFixed(1)} km`}
+                subValue="Target: 5,000 km"
+                icon={BarChart2}
+                colorClass="text-amber-500"
+                progress={progressPercent}
+              />
+              <div className="grid grid-cols-2 gap-4">
+                <KpiCard 
+                  title="Image Defects"
+                  value={totalDefects.toLocaleString()}
+                  icon={AlertTriangle}
+                  colorClass="text-amber-500"
+                />
+                <KpiCard 
+                  title="Recapture Required"
+                  value="85 km"
+                  icon={Activity}
+                  colorClass="text-red-500"
+                />
+              </div>
+
+              {/* Timeseries Chart */}
+              <div className="bg-slate-950 border border-slate-800 rounded-xl p-5">
+                <h3 className="text-sm font-semibold text-slate-300 mb-4">Daily Performance</h3>
+                <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <ComposedChart data={dailyData}>
+                      <defs>
+                        <linearGradient id="colorKm" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#0ea5e9" stopOpacity={0.3}/>
+                          <stop offset="95%" stopColor="#0ea5e9" stopOpacity={0}/>
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+                      <XAxis 
+                        dataKey="date" 
+                        stroke="#64748b" 
+                        fontSize={10} 
+                        tickLine={false}
+                        axisLine={false}
+                      />
+                      <YAxis 
+                        yAxisId="left"
+                        stroke="#0ea5e9" 
+                        fontSize={10}
+                        tickLine={false}
+                        axisLine={false}
+                        tickFormatter={(val) => `${val}km`}
+                      />
+                      <YAxis 
+                        yAxisId="right"
+                        orientation="right"
+                        stroke="#f59e0b" 
+                        fontSize={10}
+                        tickLine={false}
+                        axisLine={false}
+                        tickFormatter={(val) => `${val/1000}k`}
+                      />
+                      <Tooltip 
+                        contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', color: '#f8fafc' }}
+                        itemStyle={{ color: '#f8fafc' }}
+                      />
+                      <Area 
+                        yAxisId="left"
+                        type="monotone" 
+                        dataKey="kmProcessed" 
+                        stroke="#0ea5e9" 
+                        strokeWidth={2}
+                        fillOpacity={1} 
+                        fill="url(#colorKm)" 
+                      />
+                      <Line 
+                        yAxisId="right"
+                        type="monotone" 
+                        dataKey="imagesIngested" 
+                        stroke="#f59e0b" 
+                        strokeWidth={2}
+                        dot={{ r: 3, fill: '#f59e0b' }}
+                      />
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Right Side - Map & Tables */}
+          <div className="flex-1 flex flex-col">
+            {/* Map Component */}
+            <div className="flex-1 relative">
+              <MapComponent />
+            </div>
+
+            {/* Bottom Tables */}
+            <div className="h-72 bg-slate-900 border-t border-slate-800 flex flex-col">
+              {/* Tabs */}
+              <div className="flex border-b border-slate-800 px-6">
+                <button 
+                  onClick={() => setActiveTab('batches')}
+                  className={`py-4 px-4 text-sm font-medium border-b-2 transition-colors ${
+                    activeTab === 'batches' 
+                      ? 'text-sky-500 border-sky-500' 
+                      : 'text-slate-500 border-transparent hover:text-slate-300'
+                  }`}
+                >
+                  Processed Batch Logs
+                </button>
+                <button 
+                  onClick={() => setActiveTab('daily')}
+                  className={`py-4 px-4 text-sm font-medium border-b-2 transition-colors ${
+                    activeTab === 'daily' 
+                      ? 'text-sky-500 border-sky-500' 
+                      : 'text-slate-500 border-transparent hover:text-slate-300'
+                  }`}
+                >
+                  Day-by-Day Processing Ledger
+                </button>
+              </div>
+
+              {/* Table Content */}
+              <div className="flex-1 overflow-auto">
+                {activeTab === 'batches' ? (
+                  <table className="w-full text-left text-sm">
+                    <thead className="bg-slate-800/50 text-slate-400 sticky top-0">
+                      <tr>
+                        <th className="px-6 py-3 font-medium">Upload Date</th>
+                        <th className="px-6 py-3 font-medium">Grid</th>
+                        <th className="px-6 py-3 font-medium">Subgrid</th>
+                        <th className="px-6 py-3 font-medium">Images</th>
+                        <th className="px-6 py-3 font-medium">Defects</th>
+                        <th className="px-6 py-3 font-medium">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800">
+                      {batchLogs.map((log, i) => (
+                        <tr key={log.id || i} className="hover:bg-slate-800/30 transition-colors">
+                          <td className="px-6 py-4 text-slate-300 font-mono text-xs">{log.date}</td>
+                          <td className="px-6 py-4 text-slate-200 font-semibold">{log.grid}</td>
+                          <td className="px-6 py-4 text-slate-300">{log.subgrid}</td>
+                          <td className="px-6 py-4 text-slate-300">{log.images.toLocaleString()}</td>
+                          <td className="px-6 py-4 text-amber-400">{log.defects}</td>
+                          <td className="px-6 py-4">
+                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                              log.status === 'Success' ? 'bg-green-500/10 text-green-400' :
+                              log.status === 'Flagged' ? 'bg-amber-500/10 text-amber-400' :
+                              'bg-red-500/10 text-red-400'
+                            }`}>
+                              {log.status === 'Success' ? <CheckCircle size={10} /> : <AlertTriangle size={10} />}
+                              {log.status}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : (
+                  <table className="w-full text-left text-sm">
+                    <thead className="bg-slate-800/50 text-slate-400 sticky top-0">
+                      <tr>
+                        <th className="px-6 py-3 font-medium">Date</th>
+                        <th className="px-6 py-3 font-medium">Grid</th>
+                        <th className="px-6 py-3 font-medium">Subgrid</th>
+                        <th className="px-6 py-3 font-medium">Distance (km)</th>
+                        <th className="px-6 py-3 font-medium">Images Ingested</th>
+                        <th className="px-6 py-3 font-medium">Spatial Density (img/km)</th>
+                        <th className="px-6 py-3 font-medium">Defect Rate</th>
+                        <th className="px-6 py-3 font-medium">Compliance</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800">
+                      {[...dailyData].reverse().map((log, i) => (
+                        <tr key={i} className="hover:bg-slate-800/30 transition-colors">
+                          <td className="px-6 py-4 text-slate-300">{log.date}</td>
+                          <td className="px-6 py-4 text-slate-200 font-semibold">{log.grid}</td>
+                          <td className="px-6 py-4 text-slate-300">{log.subgrid}</td>
+                          <td className="px-6 py-4 text-slate-200 font-semibold">{log.kmProcessed.toFixed(1)}</td>
+                          <td className="px-6 py-4 text-slate-300">{log.imagesIngested.toLocaleString()}</td>
+                          <td className="px-6 py-4 text-slate-300">{Math.round(log.imagesIngested / log.kmProcessed)}</td>
+                          <td className="px-6 py-4 text-amber-400">{((log.defectCount / log.imagesIngested) * 100).toFixed(3)}%</td>
+                          <td className="px-6 py-4">
+                            <span className="bg-green-500/10 text-green-400 px-2.5 py-0.5 rounded-full text-xs font-medium">
+                              Compliant
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
