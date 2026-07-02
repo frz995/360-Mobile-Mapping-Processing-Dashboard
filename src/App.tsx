@@ -312,29 +312,23 @@ const DataManagementPage = ({
   setDailyData, 
   batchLogs, 
   setBatchLogs,
+  layerCatalog,
+  setLayerCatalog,
   onBackToDashboard
 }: { 
   dailyData: DailyTimeSeries[], 
   setDailyData: (data: DailyTimeSeries[]) => void, 
   batchLogs: BatchLog[], 
   setBatchLogs: (data: BatchLog[]) => void,
+  layerCatalog: Layer[],
+  setLayerCatalog: (data: Layer[]) => void,
   onBackToDashboard: () => void
 }) => {
   const [dataTab, setDataTab] = useState<'batches' | 'daily' | 'vector'>('batches');
   const [editingItem, setEditingItem] = useState<BatchLog | DailyTimeSeries | Layer | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
-  const [layerCatalog, setLayerCatalog] = useState<Layer[]>([]);
   const [isLayerEditModalOpen, setIsLayerEditModalOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Clear localStorage on first load to fix quota error
-  useEffect(() => {
-    try {
-      localStorage.removeItem('layerCatalog');
-    } catch (e) {
-      console.error('Error clearing localStorage:', e);
-    }
-  }, []);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -427,7 +421,7 @@ const DataManagementPage = ({
           files: [file.name],
           uploadedAt: new Date().toISOString(),
         };
-        setLayerCatalog(prev => [...prev, newLayer]);
+        setLayerCatalog([...layerCatalog, newLayer]);
       } catch (err) {
         console.error('Error processing file:', err);
         alert(`Error processing ${file.name}: ${(err as Error).message}`);
@@ -441,14 +435,14 @@ const DataManagementPage = ({
   };
 
   const toggleLayerVisibility = (layerId: string) => {
-    setLayerCatalog(prev => prev.map(layer => 
+    setLayerCatalog(layerCatalog.map((layer: Layer) => 
       layer.id === layerId ? { ...layer, visible: !layer.visible } : layer
     ));
   };
 
   const deleteLayer = (layerId: string) => {
     if (confirm('Are you sure you want to delete this layer?')) {
-      setLayerCatalog(prev => prev.filter(layer => layer.id !== layerId));
+      setLayerCatalog(layerCatalog.filter((layer: Layer) => layer.id !== layerId));
     }
   };
 
@@ -458,7 +452,7 @@ const DataManagementPage = ({
   };
 
   const saveLayerEdit = (updatedLayer: Layer) => {
-    setLayerCatalog(prev => prev.map(layer => 
+    setLayerCatalog(layerCatalog.map((layer: Layer) => 
       layer.id === updatedLayer.id ? updatedLayer : layer
     ));
     setIsLayerEditModalOpen(false);
@@ -761,7 +755,7 @@ const DataManagementPage = ({
 
         {/* Add/Edit Form */}
         {isFormOpen && (
-          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[1000]">
             <div className="bg-slate-900 border border-slate-800 rounded-xl p-8 max-w-2xl w-full mx-4">
               <div className="flex justify-between items-center mb-6">
                 <h2 className="text-2xl font-bold text-white">
@@ -794,7 +788,7 @@ const DataManagementPage = ({
         {isLayerEditModalOpen && editingItem && 'id' in editingItem && (() => {
           const layer = editingItem as Layer;
           return (
-            <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+            <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[1000]">
               <div className="bg-slate-900 border border-slate-800 rounded-xl p-8 max-w-md w-full mx-4">
                 <div className="flex justify-between items-center mb-6">
                   <h2 className="text-2xl font-bold text-white">Edit Layer</h2>
@@ -1065,6 +1059,7 @@ const DataForm = ({
 export default function App() {
   const [currentPage, setCurrentPage] = useState<'dashboard' | 'data'>('dashboard');
   const [activeTab, setActiveTab] = useState<'batches' | 'daily'>('batches');
+  const [layerCatalog, setLayerCatalog] = useState<Layer[]>([]);
 
   // Clear old localStorage to avoid conflicts with new schema
   React.useEffect(() => {
@@ -1108,6 +1103,8 @@ export default function App() {
         setDailyData={setDailyData}
         batchLogs={batchLogs}
         setBatchLogs={setBatchLogs}
+        layerCatalog={layerCatalog}
+        setLayerCatalog={setLayerCatalog}
         onBackToDashboard={() => setCurrentPage('dashboard')}
       />
     );
@@ -1252,7 +1249,7 @@ export default function App() {
           <div className="flex-1 flex flex-col">
             {/* Map Component */}
             <div className="flex-1 relative">
-              <MapComponent />
+              <MapComponent layerCatalog={layerCatalog} />
             </div>
 
             {/* Bottom Tables */}
