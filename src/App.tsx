@@ -19,7 +19,10 @@ import {
   Trash2,
   Edit2,
   Upload,
-  X
+  X,
+  Folder,
+  ChevronDown,
+  ChevronRight
 } from 'lucide-react';
 import {
   Area,
@@ -60,9 +63,19 @@ interface BatchLog {
   status: 'Success' | 'Flagged' | 'Recapture';
 }
 
+type Folder = {
+  id: string;
+  name: string;
+  type: 'folder';
+  expanded: boolean;
+  children: (Layer | Folder)[];
+  createdAt: string;
+};
+
 type Layer = {
   id: string;
   name: string;
+  type: 'layer';
   color: string;
   visible: boolean;
   geojson: any;
@@ -90,6 +103,59 @@ const INITIAL_BATCH_LOGS: BatchLog[] = [
   { id: '3', date: '2026-06-24 16:45', grid: '3', subgrid: 'N101E85', images: 68000, defects: 54, status: 'Success' },
   { id: '4', date: '2026-06-23 09:20', grid: '4', subgrid: 'N101E86', images: 75000, defects: 89, status: 'Recapture' },
 ];
+
+// ==============================================
+// Helper Functions
+// ==============================================
+
+// Flatten folder tree to get all layers
+function flattenLayers(items: (Layer | Folder)[]): Layer[] {
+  let layers: Layer[] = [];
+  for (const item of items) {
+    if (item.type === 'layer') {
+      layers.push(item);
+    } else {
+      layers = [...layers, ...flattenLayers(item.children)];
+    }
+  }
+  return layers;
+}
+
+// Find item in tree by id
+function findItem(items: (Layer | Folder)[], id: string): (Layer | Folder) | null {
+  for (const item of items) {
+    if (item.id === id) return item;
+    if (item.type === 'folder') {
+      const found = findItem(item.children, id);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+// Update item in tree
+function updateItem(items: (Layer | Folder)[], id: string, updater: (item: Layer | Folder) => Layer | Folder): (Layer | Folder)[] {
+  return items.map(item => {
+    if (item.id === id) {
+      return updater(item);
+    }
+    if (item.type === 'folder') {
+      return { ...item, children: updateItem(item.children, id, updater) };
+    }
+    return item;
+  });
+}
+
+// Delete item from tree
+function removeItemFromTree(items: (Layer | Folder)[], id: string): (Layer | Folder)[] {
+  return items.filter(item => {
+    if (item.id === id) return false;
+    if (item.type === 'folder') {
+      return { ...item, children: removeItemFromTree(item.children, id) };
+    }
+    return true;
+  });
+}
 
 // ==============================================
 // Helper Components
@@ -151,7 +217,7 @@ const MapComponent = ({
   layerCatalog = []
 }: {
   dataManagement?: boolean;
-  layerCatalog?: Layer[];
+  layerCatalog?: (Layer | Folder)[];
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -186,7 +252,7 @@ const MapComponent = ({
   useEffect(() => {
     if (uploadedLayersRef.current) {
       uploadedLayersRef.current.clearLayers();
-      const visibleLayers = layerCatalog.filter(layer => layer.visible);
+      const visibleLayers = flattenLayers(layerCatalog).filter(layer => layer.visible);
       const allBounds: L.LatLngBounds[] = [];
 
       for (const layer of visibleLayers) {
@@ -307,6 +373,123 @@ const MapComponent = ({
 // Data Management Page Component
 // ==============================================
 
+// Component to render catalog items (layers or folders)
+const CatalogItem = ({ 
+  item, 
+  depth = 0,
+  onToggleFolder,
+  onToggleLayer,
+  onEdit,
+  onDelete,
+  onMoveToFolder
+}: {
+  item: Layer | Folder;
+  depth?: number;
+  onToggleFolder: (id: string) => void;
+  onToggleLayer: (id: string) => void;
+  onEdit: (item: Layer | Folder) => void;
+  onDelete: (id: string) => void;
+  onMoveToFolder: (itemId: string, folderId: string | null) => void;
+}) => {
+  if (item.type === 'folder') {
+    return (
+      <div>
+        <div 
+          className="bg-slate-800 border border-slate-700 rounded-lg p-4"
+          style={{ marginLeft: `${depth * 16}px` }}
+        >
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-3 cursor-pointer" onClick={() => onToggleFolder(item.id)}>
+              {item.expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+              <Folder size={16} className="text-amber-500" />
+              <span className="text-slate-200 font-medium truncate max-w-[150px]">
+                {item.name}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={() => onEdit(item)}
+                className="text-slate-400 hover:text-sky-400 transition-colors"
+              >
+                <Edit2 size={16} />
+              </button>
+              <button 
+                onClick={() => onDelete(item.id)}
+                className="text-slate-400 hover:text-red-400 transition-colors"
+              >
+                <Trash2 size={16} />
+              </button>
+            </div>
+          </div>
+          <p className="text-xs text-slate-500">
+            Created: {new Date(item.createdAt).toLocaleString()}
+          </p>
+        </div>
+        {item.expanded && (
+          <div className="mt-2">
+            {item.children.map(child => (
+              <CatalogItem
+                key={child.id}
+                item={child}
+                depth={depth + 1}
+                onToggleFolder={onToggleFolder}
+                onToggleLayer={onToggleLayer}
+                onEdit={onEdit}
+                onDelete={onDelete}
+                onMoveToFolder={onMoveToFolder}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  } else {
+    return (
+      <div 
+        className="bg-slate-800 border border-slate-700 rounded-lg p-4"
+        style={{ marginLeft: `${depth * 16}px` }}
+      >
+        <div className="flex items-center justify-between mb-2">
+          <label className="flex items-center gap-3 cursor-pointer">
+            <input 
+              type="checkbox" 
+              checked={item.visible} 
+              onChange={() => onToggleLayer(item.id)}
+              className="w-4 h-4 text-sky-600 bg-slate-700 border-slate-600 rounded focus:ring-sky-500"
+            />
+            <div className="flex items-center gap-2">
+              <div 
+                className="w-3 h-3 rounded-full" 
+                style={{ backgroundColor: item.color }}
+              />
+              <span className="text-slate-200 font-medium truncate max-w-[150px]">
+                {item.name}
+              </span>
+            </div>
+          </label>
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={() => onEdit(item)}
+              className="text-slate-400 hover:text-sky-400 transition-colors"
+            >
+              <Edit2 size={16} />
+            </button>
+            <button 
+              onClick={() => onDelete(item.id)}
+              className="text-slate-400 hover:text-red-400 transition-colors"
+            >
+              <Trash2 size={16} />
+            </button>
+          </div>
+        </div>
+        <p className="text-xs text-slate-500">
+          Uploaded: {new Date(item.uploadedAt).toLocaleString()}
+        </p>
+      </div>
+    );
+  }
+};
+
 const DataManagementPage = ({ 
   dailyData, 
   setDailyData, 
@@ -320,15 +503,18 @@ const DataManagementPage = ({
   setDailyData: (data: DailyTimeSeries[]) => void, 
   batchLogs: BatchLog[], 
   setBatchLogs: (data: BatchLog[]) => void,
-  layerCatalog: Layer[],
-  setLayerCatalog: (data: Layer[]) => void,
+  layerCatalog: (Layer | Folder)[],
+  setLayerCatalog: (data: (Layer | Folder)[]) => void,
   onBackToDashboard: () => void
 }) => {
   const [dataTab, setDataTab] = useState<'batches' | 'daily' | 'vector'>('batches');
-  const [editingItem, setEditingItem] = useState<BatchLog | DailyTimeSeries | Layer | null>(null);
+  const [editingItem, setEditingItem] = useState<BatchLog | DailyTimeSeries | Layer | Folder | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isLayerEditModalOpen, setIsLayerEditModalOpen] = useState(false);
-  const [stagedLayers, setStagedLayers] = useState<Layer[]>([]);
+  const [isFolderCreateModalOpen, setIsFolderCreateModalOpen] = useState(false);
+  const [isFolderEditModalOpen, setIsFolderEditModalOpen] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
+  const [stagedLayers, setStagedLayers] = useState<(Layer | Folder)[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -415,8 +601,9 @@ const DataManagementPage = ({
 
         const newLayer: Layer = {
           id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+          type: 'layer',
           name: file.name,
-          color: colors[(layerCatalog.length + stagedLayers.length) % colors.length],
+          color: colors[(flattenLayers(layerCatalog).length + flattenLayers(stagedLayers).length) % colors.length],
           visible: true,
           geojson: geojson,
           files: [file.name],
@@ -435,37 +622,102 @@ const DataManagementPage = ({
     }
   };
 
-  const toggleLayerVisibility = (layerId: string) => {
-    setLayerCatalog(layerCatalog.map((layer: Layer) => 
-      layer.id === layerId ? { ...layer, visible: !layer.visible } : layer
-    ));
-  };
-
-  const deleteLayer = (layerId: string) => {
-    if (confirm('Are you sure you want to delete this layer?')) {
-      setLayerCatalog(layerCatalog.filter((layer: Layer) => layer.id !== layerId));
+  // Catalog functions
+  const toggleFolder = (catalog: 'staged' | 'saved', folderId: string) => {
+    if (catalog === 'staged') {
+      setStagedLayers(updateItem(stagedLayers, folderId, item => ({
+        ...(item as Folder),
+        expanded: !(item as Folder).expanded
+      })));
+    } else {
+      setLayerCatalog(updateItem(layerCatalog, folderId, item => ({
+        ...(item as Folder),
+        expanded: !(item as Folder).expanded
+      })));
     }
   };
 
-  const editLayer = (layer: Layer) => {
-    setEditingItem(layer);
-    setIsLayerEditModalOpen(true);
+  const toggleLayerVisibility = (catalog: 'staged' | 'saved', layerId: string) => {
+    if (catalog === 'staged') {
+      setStagedLayers(updateItem(stagedLayers, layerId, item => ({
+        ...(item as Layer),
+        visible: !(item as Layer).visible
+      })));
+    } else {
+      setLayerCatalog(updateItem(layerCatalog, layerId, item => ({
+        ...(item as Layer),
+        visible: !(item as Layer).visible
+      })));
+    }
+  };
+
+  const deleteItem = (catalog: 'staged' | 'saved', itemId: string) => {
+    const item = catalog === 'staged' ? findItem(stagedLayers, itemId) : findItem(layerCatalog, itemId);
+    const confirmMessage = item?.type === 'folder' 
+      ? 'Are you sure you want to delete this folder and all its contents?'
+      : 'Are you sure you want to delete this layer?';
+    
+    if (confirm(confirmMessage)) {
+      if (catalog === 'staged') {
+        setStagedLayers(removeItemFromTree(stagedLayers, itemId));
+      } else {
+        setLayerCatalog(removeItemFromTree(layerCatalog, itemId));
+      }
+    }
+  };
+
+  const editItem = (item: Layer | Folder) => {
+    setEditingItem(item);
+    if (item.type === 'folder') {
+      setIsFolderEditModalOpen(true);
+      setNewFolderName(item.name);
+    } else {
+      setIsLayerEditModalOpen(true);
+    }
   };
 
   const saveLayerEdit = (updatedLayer: Layer) => {
-    // Check if it's a staged layer or saved layer
     const isStaged = stagedLayers.some(l => l.id === updatedLayer.id);
     if (isStaged) {
-      setStagedLayers(stagedLayers.map((layer: Layer) => 
-        layer.id === updatedLayer.id ? updatedLayer : layer
-      ));
+      setStagedLayers(updateItem(stagedLayers, updatedLayer.id, () => updatedLayer));
     } else {
-      setLayerCatalog(layerCatalog.map((layer: Layer) => 
-        layer.id === updatedLayer.id ? updatedLayer : layer
-      ));
+      setLayerCatalog(updateItem(layerCatalog, updatedLayer.id, () => updatedLayer));
     }
     setIsLayerEditModalOpen(false);
     setEditingItem(null);
+  };
+
+  const createFolder = (name: string) => {
+    const newFolder: Folder = {
+      id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+      type: 'folder',
+      name: name,
+      expanded: true,
+      children: [],
+      createdAt: new Date().toISOString()
+    };
+    setStagedLayers([...stagedLayers, newFolder]);
+    setIsFolderCreateModalOpen(false);
+    setNewFolderName('');
+  };
+
+  const saveFolderEdit = (updatedName: string) => {
+    // Type guard to check if editingItem is a Folder
+    const isFolder = (item: any): item is Folder => {
+      return item && 'type' in item && item.type === 'folder';
+    };
+    if (!editingItem || !isFolder(editingItem)) return;
+    const updatedFolder: Folder = { ...editingItem, name: updatedName };
+    
+    const isStaged = stagedLayers.some(l => l.id === updatedFolder.id);
+    if (isStaged) {
+      setStagedLayers(updateItem(stagedLayers, updatedFolder.id, () => updatedFolder));
+    } else {
+      setLayerCatalog(updateItem(layerCatalog, updatedFolder.id, () => updatedFolder));
+    }
+    setIsFolderEditModalOpen(false);
+    setEditingItem(null);
+    setNewFolderName('');
   };
 
   const saveStagedLayers = () => {
@@ -475,19 +727,9 @@ const DataManagementPage = ({
   };
 
   const clearStagedLayers = () => {
-    if (confirm('Are you sure you want to discard all staged layers?')) {
+    if (confirm('Are you sure you want to discard all staged layers and folders?')) {
       setStagedLayers([]);
     }
-  };
-
-  const toggleStagedLayerVisibility = (layerId: string) => {
-    setStagedLayers(stagedLayers.map((layer: Layer) => 
-      layer.id === layerId ? { ...layer, visible: !layer.visible } : layer
-    ));
-  };
-
-  const deleteStagedLayer = (layerId: string) => {
-    setStagedLayers(stagedLayers.filter((layer: Layer) => layer.id !== layerId));
   };
 
   const handleSave = (item: BatchLog | DailyTimeSeries) => {
@@ -601,6 +843,14 @@ const DataManagementPage = ({
                       />
                     </label>
                     
+                    <button 
+                      onClick={() => setIsFolderCreateModalOpen(true)}
+                      className="flex items-center justify-center gap-2 bg-amber-600 hover:bg-amber-500 px-6 py-3 rounded-lg transition-all"
+                    >
+                      <Folder size={20} />
+                      Create Folder
+                    </button>
+                    
                     {stagedLayers.length > 0 && (
                       <div className="flex gap-2">
                         <button 
@@ -639,11 +889,11 @@ const DataManagementPage = ({
                   <div className="flex items-center justify-between mb-4">
                     <h2 className="text-xl font-bold text-white">Layer Catalog</h2>
                     <span className="text-slate-400 text-sm">
-                      {layerCatalog.length} saved, {stagedLayers.length} staged
+                      {flattenLayers(layerCatalog).length} saved, {flattenLayers(stagedLayers).length} staged
                     </span>
                   </div>
                   
-                  {/* Staged Layers */}
+                  {/* Staged Items */}
                   {stagedLayers.length > 0 && (
                     <div className="mb-4">
                       <h3 className="text-sm font-semibold text-amber-500 mb-2 flex items-center gap-2">
@@ -651,51 +901,22 @@ const DataManagementPage = ({
                         Staged for Save
                       </h3>
                       <div className="space-y-3">
-                        {stagedLayers.map(layer => (
-                          <div key={layer.id} className="bg-amber-900/30 border border-amber-700/50 rounded-lg p-4">
-                            <div className="flex items-center justify-between mb-2">
-                              <label className="flex items-center gap-3 cursor-pointer">
-                                <input 
-                                  type="checkbox" 
-                                  checked={layer.visible} 
-                                  onChange={() => toggleStagedLayerVisibility(layer.id)}
-                                  className="w-4 h-4 text-sky-600 bg-slate-700 border-slate-600 rounded focus:ring-sky-500"
-                                />
-                                <div className="flex items-center gap-2">
-                                  <div 
-                                    className="w-3 h-3 rounded-full" 
-                                    style={{ backgroundColor: layer.color }}
-                                  />
-                                  <span className="text-slate-200 font-medium truncate max-w-[150px]">
-                                    {layer.name}
-                                  </span>
-                                </div>
-                              </label>
-                              <div className="flex items-center gap-2">
-                                <button 
-                                  onClick={() => editLayer(layer)}
-                                  className="text-slate-400 hover:text-sky-400 transition-colors"
-                                >
-                                  <Edit2 size={16} />
-                                </button>
-                                <button 
-                                  onClick={() => deleteStagedLayer(layer.id)}
-                                  className="text-slate-400 hover:text-red-400 transition-colors"
-                                >
-                                  <Trash2 size={16} />
-                                </button>
-                              </div>
-                            </div>
-                            <p className="text-xs text-slate-500">
-                              Staged: {new Date(layer.uploadedAt).toLocaleString()}
-                            </p>
-                          </div>
+                        {stagedLayers.map(item => (
+                          <CatalogItem
+                            key={item.id}
+                            item={item}
+                            onToggleFolder={(id) => toggleFolder('staged', id)}
+                            onToggleLayer={(id) => toggleLayerVisibility('staged', id)}
+                            onEdit={editItem}
+                            onDelete={(id) => deleteItem('staged', id)}
+                            onMoveToFolder={() => {}}
+                          />
                         ))}
                       </div>
                     </div>
                   )}
 
-                  {/* Saved Layers */}
+                  {/* Saved Items */}
                   {layerCatalog.length > 0 && (
                     <div>
                       <h3 className="text-sm font-semibold text-sky-500 mb-2 flex items-center gap-2">
@@ -703,45 +924,16 @@ const DataManagementPage = ({
                         Saved to Dashboard
                       </h3>
                       <div className="space-y-3">
-                        {layerCatalog.map(layer => (
-                          <div key={layer.id} className="bg-slate-800 border border-slate-700 rounded-lg p-4">
-                            <div className="flex items-center justify-between mb-2">
-                              <label className="flex items-center gap-3 cursor-pointer">
-                                <input 
-                                  type="checkbox" 
-                                  checked={layer.visible} 
-                                  onChange={() => toggleLayerVisibility(layer.id)}
-                                  className="w-4 h-4 text-sky-600 bg-slate-700 border-slate-600 rounded focus:ring-sky-500"
-                                />
-                                <div className="flex items-center gap-2">
-                                  <div 
-                                    className="w-3 h-3 rounded-full" 
-                                    style={{ backgroundColor: layer.color }}
-                                  />
-                                  <span className="text-slate-200 font-medium truncate max-w-[150px]">
-                                    {layer.name}
-                                  </span>
-                                </div>
-                              </label>
-                              <div className="flex items-center gap-2">
-                                <button 
-                                  onClick={() => editLayer(layer)}
-                                  className="text-slate-400 hover:text-sky-400 transition-colors"
-                                >
-                                  <Edit2 size={16} />
-                                </button>
-                                <button 
-                                  onClick={() => deleteLayer(layer.id)}
-                                  className="text-slate-400 hover:text-red-400 transition-colors"
-                                >
-                                  <Trash2 size={16} />
-                                </button>
-                              </div>
-                            </div>
-                            <p className="text-xs text-slate-500">
-                              Uploaded: {new Date(layer.uploadedAt).toLocaleString()}
-                            </p>
-                          </div>
+                        {layerCatalog.map(item => (
+                          <CatalogItem
+                            key={item.id}
+                            item={item}
+                            onToggleFolder={(id) => toggleFolder('saved', id)}
+                            onToggleLayer={(id) => toggleLayerVisibility('saved', id)}
+                            onEdit={editItem}
+                            onDelete={(id) => deleteItem('saved', id)}
+                            onMoveToFolder={() => {}}
+                          />
                         ))}
                       </div>
                     </div>
@@ -749,7 +941,7 @@ const DataManagementPage = ({
 
                   {stagedLayers.length === 0 && layerCatalog.length === 0 && (
                     <div className="text-slate-500 text-center py-8">
-                      <p>No layers yet</p>
+                      <p>No layers or folders yet</p>
                     </div>
                   )}
                 </div>
@@ -959,6 +1151,112 @@ const DataManagementPage = ({
             </div>
           );
         })()}
+
+        {/* Folder Create Modal */}
+        {isFolderCreateModalOpen && (
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[1000]">
+            <div className="bg-slate-900 border border-slate-800 rounded-xl p-8 max-w-md w-full mx-4">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold text-white">Create Folder</h2>
+                <button 
+                  onClick={() => {
+                    setIsFolderCreateModalOpen(false);
+                    setNewFolderName('');
+                  }}
+                  className="text-slate-400 hover:text-white"
+                >
+                  &times;
+                </button>
+              </div>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-semibold text-slate-300 mb-2">Folder Name</label>
+                  <input 
+                    type="text"
+                    value={newFolderName}
+                    onChange={(e) => setNewFolderName(e.target.value)}
+                    placeholder="Enter folder name"
+                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-white"
+                  />
+                </div>
+                <div className="flex gap-3 pt-4">
+                  <button 
+                    onClick={() => {
+                      if (newFolderName.trim()) {
+                        createFolder(newFolderName.trim());
+                        setNewFolderName('');
+                      }
+                    }}
+                    disabled={!newFolderName.trim()}
+                    className="flex-1 bg-amber-600 hover:bg-amber-500 disabled:bg-slate-700 px-4 py-3 rounded-lg transition-all"
+                  >
+                    Create Folder
+                  </button>
+                  <button 
+                    onClick={() => {
+                      setIsFolderCreateModalOpen(false);
+                      setNewFolderName('');
+                    }}
+                    className="flex-1 bg-slate-700 hover:bg-slate-600 px-4 py-3 rounded-lg transition-all"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Folder Edit Modal */}
+        {isFolderEditModalOpen && editingItem && 'id' in editingItem && 'type' in editingItem && (editingItem as any).type === 'folder' && (
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[1000]">
+            <div className="bg-slate-900 border border-slate-800 rounded-xl p-8 max-w-md w-full mx-4">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold text-white">Edit Folder</h2>
+                <button 
+                  onClick={() => {
+                    setIsFolderEditModalOpen(false);
+                    setEditingItem(null);
+                    setNewFolderName('');
+                  }}
+                  className="text-slate-400 hover:text-white"
+                >
+                  &times;
+                </button>
+              </div>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-semibold text-slate-300 mb-2">Folder Name</label>
+                  <input 
+                    type="text"
+                    value={newFolderName}
+                    onChange={(e) => setNewFolderName(e.target.value)}
+                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-white"
+                  />
+                </div>
+                <div className="flex gap-3 pt-4">
+                  <button 
+                    onClick={() => saveFolderEdit(newFolderName)}
+                    disabled={!newFolderName.trim()}
+                    className="flex-1 bg-amber-600 hover:bg-amber-500 disabled:bg-slate-700 px-4 py-3 rounded-lg transition-all"
+                  >
+                    Save Changes
+                  </button>
+                  <button 
+                    onClick={() => {
+                      setIsFolderEditModalOpen(false);
+                      setEditingItem(null);
+                      setNewFolderName('');
+                    }}
+                    className="flex-1 bg-slate-700 hover:bg-slate-600 px-4 py-3 rounded-lg transition-all"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1172,7 +1470,7 @@ const DataForm = ({
 export default function App() {
   const [currentPage, setCurrentPage] = useState<'dashboard' | 'data'>('dashboard');
   const [activeTab, setActiveTab] = useState<'batches' | 'daily'>('batches');
-  const [layerCatalog, setLayerCatalog] = useState<Layer[]>([]);
+  const [layerCatalog, setLayerCatalog] = useState<(Layer | Folder)[]>([]);
 
   // Clear old localStorage to avoid conflicts with new schema
   React.useEffect(() => {
