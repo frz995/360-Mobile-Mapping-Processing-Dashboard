@@ -651,6 +651,14 @@ const DataManagementPage = ({
   const [movingItem, setMovingItem] = useState<{ item: Layer | Folder; catalog: 'staged' | 'saved' } | null>(null);
   const [targetFolderId, setTargetFolderId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [draftDailyData, setDraftDailyData] = useState<DailyTimeSeries[]>(dailyData);
+  const [isDailyDirty, setIsDailyDirty] = useState(false);
+
+  useEffect(() => {
+    if (!isDailyDirty) {
+      setDraftDailyData(dailyData);
+    }
+  }, [dailyData, isDailyDirty]);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -921,10 +929,11 @@ const DataManagementPage = ({
     } else {
       const dailyItem = item as DailyTimeSeries;
       if (editingItem && !( 'id' in editingItem)) {
-        setDailyData(dailyData.map(d => d.date === editingItem.date ? dailyItem : d));
+        setDraftDailyData(draftDailyData.map(d => d.date === editingItem.date ? dailyItem : d));
       } else {
-        setDailyData([...dailyData, dailyItem]);
+        setDraftDailyData([...draftDailyData, dailyItem]);
       }
+      setIsDailyDirty(true);
     }
     setIsFormOpen(false);
     setEditingItem(null);
@@ -934,7 +943,8 @@ const DataManagementPage = ({
     if (dataTab === 'batches' && 'id' in item) {
       setBatchLogs(batchLogs.filter(b => b.id !== item.id));
     } else if (dataTab === 'daily') {
-      setDailyData(dailyData.filter(d => d.date !== item.date));
+      setDraftDailyData(draftDailyData.filter(d => d.date !== item.date));
+      setIsDailyDirty(true);
     }
   };
 
@@ -1218,7 +1228,7 @@ const DataManagementPage = ({
                     </tr>
                   ))
                 ) : (
-                  dailyData.map((daily) => (
+                  draftDailyData.map((daily) => (
                     <tr key={daily.date} className="hover:bg-slate-800/50 transition-all">
                       <td className="px-6 py-4">{daily.date}</td>
                       <td className="px-6 py-4">{daily.grid}</td>
@@ -1263,6 +1273,19 @@ const DataManagementPage = ({
               </tbody>
             </table>
           </div>
+          {dataTab === 'daily' && isDailyDirty && (
+            <div className="mt-4 flex justify-end">
+              <button
+                onClick={() => {
+                  setDailyData(draftDailyData);
+                  setIsDailyDirty(false);
+                }}
+                className="bg-emerald-600 hover:bg-emerald-500 px-5 py-3 rounded-lg font-semibold transition-all"
+              >
+                Apply update
+              </button>
+            </div>
+          )}
         )}
 
         {/* Add/Edit Form */}
@@ -1797,7 +1820,16 @@ const DataForm = ({
 export default function App() {
   const [currentPage, setCurrentPage] = useState<'dashboard' | 'data'>('dashboard');
   const [activeTab, setActiveTab] = useState<'batches' | 'daily'>('batches');
-  const [layerCatalog, setLayerCatalog] = useState<(Layer | Folder)[]>([]);
+  const [layerCatalog, setLayerCatalog] = useState<(Layer | Folder)[]>(() => {
+    const saved = localStorage.getItem('layerCatalog');
+    if (!saved) return [];
+    try {
+      const parsed = JSON.parse(saved);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  });
 
 
 
@@ -1836,6 +1868,10 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('batchLogs', JSON.stringify(batchLogs));
   }, [batchLogs]);
+
+  useEffect(() => {
+    localStorage.setItem('layerCatalog', JSON.stringify(layerCatalog));
+  }, [layerCatalog]);
 
   // Sync batch logs to daily data by subgrid (only update computed fields)
   useEffect(() => {
