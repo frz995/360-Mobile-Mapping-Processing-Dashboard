@@ -49,8 +49,12 @@ interface DailyTimeSeries {
   grid: string;
   subgrid: string;
   kmProcessed: number;
-  imagesIngested: number;
+  imagesProcessed: number; // renamed from imagesIngested
   defectCount: number;
+  captureEquipment: 'MMS' | 'Backpack';
+  imagesDefected: number; // renamed from defect rate (wait, no, user said defect rate → image defected, let's use imagesDefected)
+  publishToUSVPRO: 'yes' | 'need to recheck' | 'no' | 'in process';
+  action: string; // remarks field
 }
 
 interface BatchLog {
@@ -88,13 +92,90 @@ type Layer = {
 // ==============================================
 
 const INITIAL_DAILY_DATA: DailyTimeSeries[] = [
-  { date: 'Jun 20', grid: '1', subgrid: 'N101E83', kmProcessed: 150.2, imagesIngested: 52000, defectCount: 45 },
-  { date: 'Jun 21', grid: '2', subgrid: 'N101E84', kmProcessed: 180.5, imagesIngested: 65000, defectCount: 62 },
-  { date: 'Jun 22', grid: '3', subgrid: 'N101E85', kmProcessed: 165.8, imagesIngested: 58000, defectCount: 38 },
-  { date: 'Jun 23', grid: '4', subgrid: 'N101E86', kmProcessed: 210.3, imagesIngested: 75000, defectCount: 89 },
-  { date: 'Jun 24', grid: '5', subgrid: 'N101E87', kmProcessed: 195.7, imagesIngested: 68000, defectCount: 54 },
-  { date: 'Jun 25', grid: '6', subgrid: 'N101E88', kmProcessed: 140.4, imagesIngested: 48000, defectCount: 31 },
-  { date: 'Jun 26', grid: '7', subgrid: 'N102E83', kmProcessed: 220.1, imagesIngested: 78000, defectCount: 72 },
+  { 
+    date: 'Jun 20', 
+    grid: '1', 
+    subgrid: 'N101E83', 
+    kmProcessed: 150.2, 
+    imagesProcessed: 52000, 
+    defectCount: 45,
+    imagesDefected: 45,
+    captureEquipment: 'MMS',
+    publishToUSVPRO: 'yes',
+    action: 'Looks good, ready to go'
+  },
+  { 
+    date: 'Jun 21', 
+    grid: '2', 
+    subgrid: 'N101E84', 
+    kmProcessed: 180.5, 
+    imagesProcessed: 65000, 
+    defectCount: 62,
+    imagesDefected: 62,
+    captureEquipment: 'Backpack',
+    publishToUSVPRO: 'need to recheck',
+    action: 'Need to verify some areas'
+  },
+  { 
+    date: 'Jun 22', 
+    grid: '3', 
+    subgrid: 'N101E85', 
+    kmProcessed: 165.8, 
+    imagesProcessed: 58000, 
+    defectCount: 38,
+    imagesDefected: 38,
+    captureEquipment: 'MMS',
+    publishToUSVPRO: 'in process',
+    action: 'Currently being processed'
+  },
+  { 
+    date: 'Jun 23', 
+    grid: '4', 
+    subgrid: 'N101E86', 
+    kmProcessed: 210.3, 
+    imagesProcessed: 75000, 
+    defectCount: 89,
+    imagesDefected: 89,
+    captureEquipment: 'Backpack',
+    publishToUSVPRO: 'no',
+    action: 'Waiting for additional data'
+  },
+  { 
+    date: 'Jun 24', 
+    grid: '5', 
+    subgrid: 'N101E87', 
+    kmProcessed: 195.7, 
+    imagesProcessed: 68000, 
+    defectCount: 54,
+    imagesDefected: 54,
+    captureEquipment: 'MMS',
+    publishToUSVPRO: 'yes',
+    action: 'Verified and published'
+  },
+  { 
+    date: 'Jun 25', 
+    grid: '6', 
+    subgrid: 'N101E88', 
+    kmProcessed: 140.4, 
+    imagesProcessed: 48000, 
+    defectCount: 31,
+    imagesDefected: 31,
+    captureEquipment: 'Backpack',
+    publishToUSVPRO: 'in process',
+    action: 'Processing in progress'
+  },
+  { 
+    date: 'Jun 26', 
+    grid: '7', 
+    subgrid: 'N102E83', 
+    kmProcessed: 220.1, 
+    imagesProcessed: 78000, 
+    defectCount: 72,
+    imagesDefected: 72,
+    captureEquipment: 'MMS',
+    publishToUSVPRO: 'yes',
+    action: 'Ready'
+  },
 ];
 
 const INITIAL_BATCH_LOGS: BatchLog[] = [
@@ -1086,8 +1167,11 @@ const DataManagementPage = ({
                       <th className="px-6 py-4 text-slate-400 font-semibold">Grid</th>
                       <th className="px-6 py-4 text-slate-400 font-semibold">Subgrid</th>
                       <th className="px-6 py-4 text-slate-400 font-semibold">KM Processed</th>
-                      <th className="px-6 py-4 text-slate-400 font-semibold">Images Ingested</th>
-                      <th className="px-6 py-4 text-slate-400 font-semibold">Defect Count</th>
+                      <th className="px-6 py-4 text-slate-400 font-semibold">Images Processed</th>
+                      <th className="px-6 py-4 text-slate-400 font-semibold">Capture Equipment</th>
+                      <th className="px-6 py-4 text-slate-400 font-semibold">Images Defected</th>
+                      <th className="px-6 py-4 text-slate-400 font-semibold">Publish to USVPRO</th>
+                      <th className="px-6 py-4 text-slate-400 font-semibold">Action</th>
                       <th className="px-6 py-4 text-slate-400 font-semibold">Actions</th>
                     </>
                   )}
@@ -1137,8 +1221,22 @@ const DataManagementPage = ({
                       <td className="px-6 py-4">{daily.grid}</td>
                       <td className="px-6 py-4">{daily.subgrid}</td>
                       <td className="px-6 py-4">{daily.kmProcessed.toFixed(1)}</td>
-                      <td className="px-6 py-4">{daily.imagesIngested.toLocaleString()}</td>
-                      <td className="px-6 py-4 text-amber-400">{daily.defectCount}</td>
+                      <td className="px-6 py-4">{daily.imagesProcessed.toLocaleString()}</td>
+                      <td className="px-6 py-4">{daily.captureEquipment}</td>
+                      <td className="px-6 py-4 text-amber-400">{daily.imagesDefected}</td>
+                      <td className="px-6 py-4">
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                          daily.publishToUSVPRO === 'yes' ? 'bg-green-500/10 text-green-400' :
+                          daily.publishToUSVPRO === 'need to recheck' ? 'bg-amber-500/10 text-amber-400' :
+                          daily.publishToUSVPRO === 'in process' ? 'bg-blue-500/10 text-blue-400' :
+                          'bg-red-500/10 text-red-400'
+                        }`}>
+                          {daily.publishToUSVPRO}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-slate-300 truncate max-w-[150px]" title={daily.action}>
+                        {daily.action}
+                      </td>
                       <td className="px-6 py-4 flex gap-2">
                         <button 
                           onClick={() => {
@@ -1456,7 +1554,18 @@ const DataForm = ({
     initialData || 
     (dataType === 'batches' 
       ? { date: new Date().toISOString().slice(0, 16), grid: '1', subgrid: 'N101E83', images: 0, defects: 0, status: 'Success' as const }
-      : { date: '', grid: '1', subgrid: 'N101E83', kmProcessed: 0, imagesIngested: 0, defectCount: 0 }
+      : { 
+          date: '', 
+          grid: '1', 
+          subgrid: 'N101E83', 
+          kmProcessed: 0, 
+          imagesProcessed: 0, 
+          defectCount: 0,
+          imagesDefected: 0,
+          captureEquipment: 'MMS' as const,
+          publishToUSVPRO: 'in process' as const,
+          action: ''
+        }
     )
   );
 
@@ -1589,23 +1698,59 @@ const DataForm = ({
             />
           </div>
           <div>
-            <label className="block text-sm font-semibold text-slate-300 mb-2">Images Ingested</label>
+            <label className="block text-sm font-semibold text-slate-300 mb-2">Images Processed</label>
             <input 
               type="number"
-              value={formData.imagesIngested}
-              onChange={(e) => setFormData({ ...formData, imagesIngested: Number(e.target.value) })}
+              value={formData.imagesProcessed}
+              onChange={(e) => setFormData({ ...formData, imagesProcessed: Number(e.target.value) })}
               className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-white"
               required
             />
           </div>
           <div>
-            <label className="block text-sm font-semibold text-slate-300 mb-2">Defect Count</label>
+            <label className="block text-sm font-semibold text-slate-300 mb-2">Images Defected</label>
             <input 
               type="number"
-              value={formData.defectCount}
-              onChange={(e) => setFormData({ ...formData, defectCount: Number(e.target.value) })}
+              value={formData.imagesDefected}
+              onChange={(e) => setFormData({ ...formData, imagesDefected: Number(e.target.value) })}
               className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-white"
               required
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-semibold text-slate-300 mb-2">Capture Equipment</label>
+            <select 
+              value={formData.captureEquipment}
+              onChange={(e) => setFormData({ ...formData, captureEquipment: e.target.value as 'MMS' | 'Backpack' })}
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-white"
+              required
+            >
+              <option value="MMS">MMS</option>
+              <option value="Backpack">Backpack</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-semibold text-slate-300 mb-2">Publish to USVPRO</label>
+            <select 
+              value={formData.publishToUSVPRO}
+              onChange={(e) => setFormData({ ...formData, publishToUSVPRO: e.target.value as 'yes' | 'need to recheck' | 'no' | 'in process' })}
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-white"
+              required
+            >
+              <option value="yes">yes</option>
+              <option value="need to recheck">need to recheck</option>
+              <option value="no">no</option>
+              <option value="in process">in process</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-semibold text-slate-300 mb-2">Action</label>
+            <input 
+              type="text"
+              value={formData.action}
+              onChange={(e) => setFormData({ ...formData, action: e.target.value })}
+              placeholder="Enter remarks or actions taken..."
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-white"
             />
           </div>
         </>
@@ -1666,10 +1811,42 @@ export default function App() {
     localStorage.setItem('batchLogs', JSON.stringify(batchLogs));
   }, [batchLogs]);
 
+  // Sync batch logs to daily data by subgrid
+  useEffect(() => {
+    // Group batch logs by subgrid
+    const batchBySubgrid = batchLogs.reduce((acc, batch) => {
+      if (!acc[batch.subgrid]) {
+        acc[batch.subgrid] = { totalImages: 0, totalDefects: 0 };
+      }
+      acc[batch.subgrid].totalImages += batch.images;
+      acc[batch.subgrid].totalDefects += batch.defects;
+      return acc;
+    }, {} as Record<string, { totalImages: number; totalDefects: number }>);
+
+    // Update daily data with batch sums
+    const updatedDailyData = dailyData.map(daily => {
+      if (batchBySubgrid[daily.subgrid]) {
+        const { totalImages, totalDefects } = batchBySubgrid[daily.subgrid];
+        return {
+          ...daily,
+          imagesProcessed: totalImages,
+          imagesDefected: totalDefects,
+          defectCount: totalDefects
+        };
+      }
+      return daily;
+    });
+
+    // Only update if there's a change
+    if (JSON.stringify(updatedDailyData) !== JSON.stringify(dailyData)) {
+      setDailyData(updatedDailyData);
+    }
+  }, [batchLogs]);
+
   // Calculated totals
-  const totalImages = dailyData.reduce((sum, d) => sum + d.imagesIngested, 0);
+  const totalImages = dailyData.reduce((sum, d) => sum + d.imagesProcessed, 0);
   const totalKm = dailyData.reduce((sum, d) => sum + d.kmProcessed, 0);
-  const totalDefects = dailyData.reduce((sum, d) => sum + d.defectCount, 0);
+  const totalDefects = dailyData.reduce((sum, d) => sum + d.imagesDefected, 0);
   const targetKm = 5000;
   const progressPercent = Math.round((totalKm / targetKm) * 100);
   const latestBatch = dailyData[dailyData.length - 1];
@@ -1725,7 +1902,7 @@ export default function App() {
               <KpiCard 
                 title="Total Images Processed"
                 value={totalImages.toLocaleString()}
-                delta={`+${latestBatch.imagesIngested.toLocaleString()} last batch`}
+                delta={`+${latestBatch.imagesProcessed.toLocaleString()} last batch`}
                 icon={Camera}
                 colorClass="text-sky-500"
               />
@@ -1812,7 +1989,7 @@ export default function App() {
                       <Line 
                         yAxisId="right"
                         type="monotone" 
-                        dataKey="imagesIngested" 
+                        dataKey="imagesProcessed" 
                         stroke="#f59e0b" 
                         strokeWidth={2}
                         dot={{ r: 3, fill: '#f59e0b' }}
@@ -1901,10 +2078,11 @@ export default function App() {
                         <th className="px-6 py-3 font-medium">Grid</th>
                         <th className="px-6 py-3 font-medium">Subgrid</th>
                         <th className="px-6 py-3 font-medium">Distance (km)</th>
-                        <th className="px-6 py-3 font-medium">Images Ingested</th>
-                        <th className="px-6 py-3 font-medium">Spatial Density (img/km)</th>
-                        <th className="px-6 py-3 font-medium">Defect Rate</th>
-                        <th className="px-6 py-3 font-medium">Compliance</th>
+                        <th className="px-6 py-3 font-medium">Images Processed</th>
+                        <th className="px-6 py-3 font-medium">Capture Equipment</th>
+                        <th className="px-6 py-3 font-medium">Images Defected</th>
+                        <th className="px-6 py-3 font-medium">Publish to USVPRO</th>
+                        <th className="px-6 py-3 font-medium">Action</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-800">
@@ -1914,13 +2092,21 @@ export default function App() {
                           <td className="px-6 py-4 text-slate-200 font-semibold">{log.grid}</td>
                           <td className="px-6 py-4 text-slate-300">{log.subgrid}</td>
                           <td className="px-6 py-4 text-slate-200 font-semibold">{log.kmProcessed.toFixed(1)}</td>
-                          <td className="px-6 py-4 text-slate-300">{log.imagesIngested.toLocaleString()}</td>
-                          <td className="px-6 py-4 text-slate-300">{Math.round(log.imagesIngested / log.kmProcessed)}</td>
-                          <td className="px-6 py-4 text-amber-400">{((log.defectCount / log.imagesIngested) * 100).toFixed(3)}%</td>
+                          <td className="px-6 py-4 text-slate-300">{log.imagesProcessed.toLocaleString()}</td>
+                          <td className="px-6 py-4 text-slate-300">{log.captureEquipment}</td>
+                          <td className="px-6 py-4 text-amber-400">{log.imagesDefected}</td>
                           <td className="px-6 py-4">
-                            <span className="bg-green-500/10 text-green-400 px-2.5 py-0.5 rounded-full text-xs font-medium">
-                              Compliant
+                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                              log.publishToUSVPRO === 'yes' ? 'bg-green-500/10 text-green-400' :
+                              log.publishToUSVPRO === 'need to recheck' ? 'bg-amber-500/10 text-amber-400' :
+                              log.publishToUSVPRO === 'in process' ? 'bg-blue-500/10 text-blue-400' :
+                              'bg-red-500/10 text-red-400'
+                            }`}>
+                              {log.publishToUSVPRO}
                             </span>
+                          </td>
+                          <td className="px-6 py-4 text-slate-300 truncate max-w-[200px]" title={log.action}>
+                            {log.action}
                           </td>
                         </tr>
                       ))}
