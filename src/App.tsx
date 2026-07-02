@@ -328,6 +328,7 @@ const DataManagementPage = ({
   const [editingItem, setEditingItem] = useState<BatchLog | DailyTimeSeries | Layer | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isLayerEditModalOpen, setIsLayerEditModalOpen] = useState(false);
+  const [stagedLayers, setStagedLayers] = useState<Layer[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -415,13 +416,13 @@ const DataManagementPage = ({
         const newLayer: Layer = {
           id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
           name: file.name,
-          color: colors[layerCatalog.length % colors.length],
+          color: colors[(layerCatalog.length + stagedLayers.length) % colors.length],
           visible: true,
           geojson: geojson,
           files: [file.name],
           uploadedAt: new Date().toISOString(),
         };
-        setLayerCatalog([...layerCatalog, newLayer]);
+        setStagedLayers([...stagedLayers, newLayer]);
       } catch (err) {
         console.error('Error processing file:', err);
         alert(`Error processing ${file.name}: ${(err as Error).message}`);
@@ -452,11 +453,41 @@ const DataManagementPage = ({
   };
 
   const saveLayerEdit = (updatedLayer: Layer) => {
-    setLayerCatalog(layerCatalog.map((layer: Layer) => 
-      layer.id === updatedLayer.id ? updatedLayer : layer
-    ));
+    // Check if it's a staged layer or saved layer
+    const isStaged = stagedLayers.some(l => l.id === updatedLayer.id);
+    if (isStaged) {
+      setStagedLayers(stagedLayers.map((layer: Layer) => 
+        layer.id === updatedLayer.id ? updatedLayer : layer
+      ));
+    } else {
+      setLayerCatalog(layerCatalog.map((layer: Layer) => 
+        layer.id === updatedLayer.id ? updatedLayer : layer
+      ));
+    }
     setIsLayerEditModalOpen(false);
     setEditingItem(null);
+  };
+
+  const saveStagedLayers = () => {
+    setLayerCatalog([...layerCatalog, ...stagedLayers]);
+    setStagedLayers([]);
+    alert('Layers saved! They are now visible on the Dashboard map!');
+  };
+
+  const clearStagedLayers = () => {
+    if (confirm('Are you sure you want to discard all staged layers?')) {
+      setStagedLayers([]);
+    }
+  };
+
+  const toggleStagedLayerVisibility = (layerId: string) => {
+    setStagedLayers(stagedLayers.map((layer: Layer) => 
+      layer.id === layerId ? { ...layer, visible: !layer.visible } : layer
+    ));
+  };
+
+  const deleteStagedLayer = (layerId: string) => {
+    setStagedLayers(stagedLayers.filter((layer: Layer) => layer.id !== layerId));
   };
 
   const handleSave = (item: BatchLog | DailyTimeSeries) => {
@@ -570,18 +601,36 @@ const DataManagementPage = ({
                       />
                     </label>
                     
+                    {stagedLayers.length > 0 && (
+                      <div className="flex gap-2">
+                        <button 
+                          onClick={saveStagedLayers}
+                          className="flex-1 flex items-center justify-center gap-2 bg-green-600 hover:bg-green-500 px-6 py-3 rounded-lg transition-all"
+                        >
+                          <Save size={20} />
+                          Save to Dashboard
+                        </button>
+                        <button 
+                          onClick={clearStagedLayers}
+                          className="flex-1 flex items-center justify-center gap-2 bg-red-600 hover:bg-red-500 px-6 py-3 rounded-lg transition-all"
+                        >
+                          <X size={20} />
+                          Discard
+                        </button>
+                      </div>
+                    )}
+                    
                     {layerCatalog.length > 0 && (
-          <button 
-            onClick={() => {
-              setLayerCatalog([]);
-              localStorage.removeItem('layerCatalog');
-            }}
-            className="flex items-center justify-center gap-2 bg-red-600 hover:bg-red-500 px-6 py-3 rounded-lg transition-all"
-          >
-            <X size={20} />
-            Clear All Layers
-          </button>
-        )}
+                      <button 
+                        onClick={() => {
+                          setLayerCatalog([]);
+                        }}
+                        className="flex items-center justify-center gap-2 bg-red-600 hover:bg-red-500 px-6 py-3 rounded-lg transition-all"
+                      >
+                        <X size={20} />
+                        Clear All Saved Layers
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -589,54 +638,118 @@ const DataManagementPage = ({
                 <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
                   <div className="flex items-center justify-between mb-4">
                     <h2 className="text-xl font-bold text-white">Layer Catalog</h2>
-                    {layerCatalog.length > 0 && (
-                      <span className="text-slate-400 text-sm">{layerCatalog.length} layer{layerCatalog.length !== 1 ? 's' : ''}</span>
-                    )}
+                    <span className="text-slate-400 text-sm">
+                      {layerCatalog.length} saved, {stagedLayers.length} staged
+                    </span>
                   </div>
-                  {layerCatalog.length === 0 ? (
-                    <div className="text-slate-500 text-center py-8">
-                      <p>No layers uploaded yet</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {layerCatalog.map(layer => (
-                        <div key={layer.id} className="bg-slate-800 border border-slate-700 rounded-lg p-4">
-                          <div className="flex items-center justify-between mb-2">
-                            <label className="flex items-center gap-3 cursor-pointer">
-                              <input 
-                                type="checkbox" 
-                                checked={layer.visible} 
-                                onChange={() => toggleLayerVisibility(layer.id)}
-                                className="w-4 h-4 text-sky-600 bg-slate-700 border-slate-600 rounded focus:ring-sky-500"
-                              />
-                              <div className="flex items-center gap-2">
-                                <div 
-                                  className="w-3 h-3 rounded-full" 
-                                  style={{ backgroundColor: layer.color }}
+                  
+                  {/* Staged Layers */}
+                  {stagedLayers.length > 0 && (
+                    <div className="mb-4">
+                      <h3 className="text-sm font-semibold text-amber-500 mb-2 flex items-center gap-2">
+                        <AlertTriangle size={16} />
+                        Staged for Save
+                      </h3>
+                      <div className="space-y-3">
+                        {stagedLayers.map(layer => (
+                          <div key={layer.id} className="bg-amber-900/30 border border-amber-700/50 rounded-lg p-4">
+                            <div className="flex items-center justify-between mb-2">
+                              <label className="flex items-center gap-3 cursor-pointer">
+                                <input 
+                                  type="checkbox" 
+                                  checked={layer.visible} 
+                                  onChange={() => toggleStagedLayerVisibility(layer.id)}
+                                  className="w-4 h-4 text-sky-600 bg-slate-700 border-slate-600 rounded focus:ring-sky-500"
                                 />
-                                <span className="text-slate-200 font-medium truncate max-w-[150px">{layer.name}</span>
+                                <div className="flex items-center gap-2">
+                                  <div 
+                                    className="w-3 h-3 rounded-full" 
+                                    style={{ backgroundColor: layer.color }}
+                                  />
+                                  <span className="text-slate-200 font-medium truncate max-w-[150px]">
+                                    {layer.name}
+                                  </span>
+                                </div>
+                              </label>
+                              <div className="flex items-center gap-2">
+                                <button 
+                                  onClick={() => editLayer(layer)}
+                                  className="text-slate-400 hover:text-sky-400 transition-colors"
+                                >
+                                  <Edit2 size={16} />
+                                </button>
+                                <button 
+                                  onClick={() => deleteStagedLayer(layer.id)}
+                                  className="text-slate-400 hover:text-red-400 transition-colors"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
                               </div>
-                            </label>
-                            <div className="flex items-center gap-2">
-                              <button 
-                                onClick={() => editLayer(layer)}
-                                className="text-slate-400 hover:text-sky-400 transition-colors"
-                              >
-                                <Edit2 size={16} />
-                              </button>
-                              <button 
-                                onClick={() => deleteLayer(layer.id)}
-                                className="text-slate-400 hover:text-red-400 transition-colors"
-                              >
-                                <Trash2 size={16} />
-                              </button>
                             </div>
+                            <p className="text-xs text-slate-500">
+                              Staged: {new Date(layer.uploadedAt).toLocaleString()}
+                            </p>
                           </div>
-                          <p className="text-xs text-slate-500">
-                            Uploaded: {new Date(layer.uploadedAt).toLocaleString()}
-                          </p>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Saved Layers */}
+                  {layerCatalog.length > 0 && (
+                    <div>
+                      <h3 className="text-sm font-semibold text-sky-500 mb-2 flex items-center gap-2">
+                        <CheckCircle size={16} />
+                        Saved to Dashboard
+                      </h3>
+                      <div className="space-y-3">
+                        {layerCatalog.map(layer => (
+                          <div key={layer.id} className="bg-slate-800 border border-slate-700 rounded-lg p-4">
+                            <div className="flex items-center justify-between mb-2">
+                              <label className="flex items-center gap-3 cursor-pointer">
+                                <input 
+                                  type="checkbox" 
+                                  checked={layer.visible} 
+                                  onChange={() => toggleLayerVisibility(layer.id)}
+                                  className="w-4 h-4 text-sky-600 bg-slate-700 border-slate-600 rounded focus:ring-sky-500"
+                                />
+                                <div className="flex items-center gap-2">
+                                  <div 
+                                    className="w-3 h-3 rounded-full" 
+                                    style={{ backgroundColor: layer.color }}
+                                  />
+                                  <span className="text-slate-200 font-medium truncate max-w-[150px]">
+                                    {layer.name}
+                                  </span>
+                                </div>
+                              </label>
+                              <div className="flex items-center gap-2">
+                                <button 
+                                  onClick={() => editLayer(layer)}
+                                  className="text-slate-400 hover:text-sky-400 transition-colors"
+                                >
+                                  <Edit2 size={16} />
+                                </button>
+                                <button 
+                                  onClick={() => deleteLayer(layer.id)}
+                                  className="text-slate-400 hover:text-red-400 transition-colors"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </div>
+                            </div>
+                            <p className="text-xs text-slate-500">
+                              Uploaded: {new Date(layer.uploadedAt).toLocaleString()}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {stagedLayers.length === 0 && layerCatalog.length === 0 && (
+                    <div className="text-slate-500 text-center py-8">
+                      <p>No layers yet</p>
                     </div>
                   )}
                 </div>
@@ -647,7 +760,7 @@ const DataManagementPage = ({
                 <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
                   <h2 className="text-xl font-bold text-white p-4 border-b border-slate-800">Basemap Preview</h2>
                   <div className="h-[600px]">
-                    <MapComponent dataManagement layerCatalog={layerCatalog} />
+                    <MapComponent dataManagement layerCatalog={[...layerCatalog, ...stagedLayers]} />
                   </div>
                 </div>
               </div>
