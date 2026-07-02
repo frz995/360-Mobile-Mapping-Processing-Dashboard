@@ -64,6 +64,7 @@ interface BatchLog {
   subgrid: string;
   images: number;
   defects: number;
+  kmProcessed: number;
   status: 'Success' | 'Flagged' | 'Recapture';
 }
 
@@ -179,10 +180,10 @@ const INITIAL_DAILY_DATA: DailyTimeSeries[] = [
 ];
 
 const INITIAL_BATCH_LOGS: BatchLog[] = [
-  { id: '1', date: '2026-06-26 14:30', grid: '1', subgrid: 'N101E83', images: 78000, defects: 72, status: 'Success' },
-  { id: '2', date: '2026-06-25 11:15', grid: '2', subgrid: 'N101E84', images: 48000, defects: 31, status: 'Flagged' },
-  { id: '3', date: '2026-06-24 16:45', grid: '3', subgrid: 'N101E85', images: 68000, defects: 54, status: 'Success' },
-  { id: '4', date: '2026-06-23 09:20', grid: '4', subgrid: 'N101E86', images: 75000, defects: 89, status: 'Recapture' },
+  { id: '1', date: '2026-06-26 14:30', grid: '1', subgrid: 'N101E83', images: 78000, defects: 72, kmProcessed: 220.1, status: 'Success' },
+  { id: '2', date: '2026-06-25 11:15', grid: '2', subgrid: 'N101E84', images: 48000, defects: 31, kmProcessed: 140.4, status: 'Flagged' },
+  { id: '3', date: '2026-06-24 16:45', grid: '3', subgrid: 'N101E85', images: 68000, defects: 54, kmProcessed: 195.7, status: 'Success' },
+  { id: '4', date: '2026-06-23 09:20', grid: '4', subgrid: 'N101E86', images: 75000, defects: 89, kmProcessed: 210.3, status: 'Recapture' },
 ];
 
 // ==============================================
@@ -1153,9 +1154,10 @@ const DataManagementPage = ({
                 <tr>
                   {dataTab === 'batches' ? (
                     <>
-                      <th className="px-6 py-4 text-slate-400 font-semibold">Date</th>
+                      <th className="px-6 py-4 text-slate-400 font-semibold">Date & Time</th>
                       <th className="px-6 py-4 text-slate-400 font-semibold">Grid</th>
                       <th className="px-6 py-4 text-slate-400 font-semibold">Subgrid</th>
+                      <th className="px-6 py-4 text-slate-400 font-semibold">Distance (km)</th>
                       <th className="px-6 py-4 text-slate-400 font-semibold">Images</th>
                       <th className="px-6 py-4 text-slate-400 font-semibold">Defects</th>
                       <th className="px-6 py-4 text-slate-400 font-semibold">Status</th>
@@ -1184,6 +1186,7 @@ const DataManagementPage = ({
                       <td className="px-6 py-4">{batch.date}</td>
                       <td className="px-6 py-4 font-mono">{batch.grid}</td>
                       <td className="px-6 py-4">{batch.subgrid}</td>
+                      <td className="px-6 py-4">{batch.kmProcessed.toFixed(1)}</td>
                       <td className="px-6 py-4">{batch.images.toLocaleString()}</td>
                       <td className="px-6 py-4 text-amber-400">{batch.defects}</td>
                       <td className="px-6 py-4">
@@ -1553,7 +1556,7 @@ const DataForm = ({
   const [formData, setFormData] = useState<any>(
     initialData || 
     (dataType === 'batches' 
-      ? { date: new Date().toISOString().slice(0, 16), grid: '1', subgrid: 'N101E83', images: 0, defects: 0, status: 'Success' as const }
+      ? { date: new Date().toISOString().slice(0, 16), grid: '1', subgrid: 'N101E83', images: 0, defects: 0, kmProcessed: 0, status: 'Success' as const }
       : { 
           date: '', 
           grid: '1', 
@@ -1634,6 +1637,17 @@ const DataForm = ({
                 required
               />
             </div>
+          </div>
+          <div>
+            <label className="block text-sm font-semibold text-slate-300 mb-2">Distance (km)</label>
+            <input 
+              type="number"
+              step="0.1"
+              value={formData.kmProcessed}
+              onChange={(e) => setFormData({ ...formData, kmProcessed: Number(e.target.value) })}
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-white"
+              required
+            />
           </div>
           <div>
             <label className="block text-sm font-semibold text-slate-300 mb-2">Status</label>
@@ -1787,11 +1801,11 @@ export default function App() {
 
   // Clear old localStorage to avoid conflicts with new schema (only on first load)
   React.useEffect(() => {
-    const hasCleared = localStorage.getItem('hasClearedV2');
+    const hasCleared = localStorage.getItem('hasClearedV3');
     if (!hasCleared) {
       localStorage.removeItem('dailyData');
       localStorage.removeItem('batchLogs');
-      localStorage.setItem('hasClearedV2', 'true');
+      localStorage.setItem('hasClearedV3', 'true');
     }
   }, []);
 
@@ -1813,7 +1827,13 @@ export default function App() {
 
   const [batchLogs, setBatchLogs] = useState<BatchLog[]>(() => {
     const saved = localStorage.getItem('batchLogs');
-    return saved ? JSON.parse(saved) : INITIAL_BATCH_LOGS;
+    if (!saved) return INITIAL_BATCH_LOGS;
+    const parsed = JSON.parse(saved);
+    // Add default kmProcessed if missing
+    return parsed.map((log: any) => ({
+      ...log,
+      kmProcessed: log.kmProcessed ?? 0
+    }));
   });
 
   // Save to localStorage whenever data changes
@@ -1830,22 +1850,24 @@ export default function App() {
     // Group batch logs by subgrid
     const batchBySubgrid = batchLogs.reduce((acc, batch) => {
       if (!acc[batch.subgrid]) {
-        acc[batch.subgrid] = { totalImages: 0, totalDefects: 0 };
+        acc[batch.subgrid] = { totalImages: 0, totalDefects: 0, totalKm: 0 };
       }
       acc[batch.subgrid].totalImages += batch.images;
       acc[batch.subgrid].totalDefects += batch.defects;
+      acc[batch.subgrid].totalKm += batch.kmProcessed;
       return acc;
-    }, {} as Record<string, { totalImages: number; totalDefects: number }>);
+    }, {} as Record<string, { totalImages: number; totalDefects: number; totalKm: number }>);
 
     // Update daily data with batch sums
     const updatedDailyData = dailyData.map(daily => {
       if (batchBySubgrid[daily.subgrid]) {
-        const { totalImages, totalDefects } = batchBySubgrid[daily.subgrid];
+        const { totalImages, totalDefects, totalKm } = batchBySubgrid[daily.subgrid];
         return {
           ...daily,
           imagesProcessed: totalImages,
           imagesDefected: totalDefects,
-          defectCount: totalDefects
+          defectCount: totalDefects,
+          kmProcessed: totalKm
         };
       }
       return daily;
@@ -2057,6 +2079,7 @@ export default function App() {
                         <th className="px-6 py-3 font-medium">Upload Date</th>
                         <th className="px-6 py-3 font-medium">Grid</th>
                         <th className="px-6 py-3 font-medium">Subgrid</th>
+                        <th className="px-6 py-3 font-medium">Distance (km)</th>
                         <th className="px-6 py-3 font-medium">Images</th>
                         <th className="px-6 py-3 font-medium">Defects</th>
                         <th className="px-6 py-3 font-medium">Status</th>
@@ -2068,6 +2091,7 @@ export default function App() {
                           <td className="px-6 py-4 text-slate-300 font-mono text-xs">{log.date}</td>
                           <td className="px-6 py-4 text-slate-200 font-semibold">{log.grid}</td>
                           <td className="px-6 py-4 text-slate-300">{log.subgrid}</td>
+                          <td className="px-6 py-4 text-slate-200 font-semibold">{log.kmProcessed.toFixed(1)}</td>
                           <td className="px-6 py-4 text-slate-300">{log.images.toLocaleString()}</td>
                           <td className="px-6 py-4 text-amber-400">{log.defects}</td>
                           <td className="px-6 py-4">
