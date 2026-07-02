@@ -1799,15 +1799,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'batches' | 'daily'>('batches');
   const [layerCatalog, setLayerCatalog] = useState<(Layer | Folder)[]>([]);
 
-  // Clear old localStorage to avoid conflicts with new schema (only on first load)
-  React.useEffect(() => {
-    const hasCleared = localStorage.getItem('hasClearedV3');
-    if (!hasCleared) {
-      localStorage.removeItem('dailyData');
-      localStorage.removeItem('batchLogs');
-      localStorage.setItem('hasClearedV3', 'true');
-    }
-  }, []);
+
 
   // Load data from localStorage or use initial data
   const [dailyData, setDailyData] = useState<DailyTimeSeries[]>(() => {
