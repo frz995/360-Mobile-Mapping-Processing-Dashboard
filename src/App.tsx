@@ -1837,7 +1837,7 @@ export default function App() {
     localStorage.setItem('batchLogs', JSON.stringify(batchLogs));
   }, [batchLogs]);
 
-  // Sync batch logs to daily data by subgrid
+  // Sync batch logs to daily data by subgrid (only update computed fields)
   useEffect(() => {
     // Group batch logs by subgrid
     const batchBySubgrid = batchLogs.reduce((acc, batch) => {
@@ -1850,23 +1850,33 @@ export default function App() {
       return acc;
     }, {} as Record<string, { totalImages: number; totalDefects: number; totalKm: number }>);
 
-    // Update daily data with batch sums
+    // Update daily data with batch sums (only update computed fields, preserve user edits)
     const updatedDailyData = dailyData.map(daily => {
       if (batchBySubgrid[daily.subgrid]) {
         const { totalImages, totalDefects, totalKm } = batchBySubgrid[daily.subgrid];
-        return {
-          ...daily,
-          imagesProcessed: totalImages,
-          imagesDefected: totalDefects,
-          defectCount: totalDefects,
-          kmProcessed: totalKm
-        };
+        // Check if any computed fields need updating
+        const needsUpdate = 
+          daily.imagesProcessed !== totalImages ||
+          daily.imagesDefected !== totalDefects ||
+          daily.defectCount !== totalDefects ||
+          daily.kmProcessed !== totalKm;
+
+        if (needsUpdate) {
+          return {
+            ...daily,
+            imagesProcessed: totalImages,
+            imagesDefected: totalDefects,
+            defectCount: totalDefects,
+            kmProcessed: totalKm
+          };
+        }
       }
       return daily;
     });
 
-    // Only update if there's a change
-    if (JSON.stringify(updatedDailyData) !== JSON.stringify(dailyData)) {
+    // Only update state if there are actual changes to avoid infinite loops
+    const hasChanges = JSON.stringify(updatedDailyData) !== JSON.stringify(dailyData);
+    if (hasChanges) {
       setDailyData(updatedDailyData);
     }
   }, [batchLogs]);
