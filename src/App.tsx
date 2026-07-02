@@ -1785,16 +1785,30 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'batches' | 'daily'>('batches');
   const [layerCatalog, setLayerCatalog] = useState<(Layer | Folder)[]>([]);
 
-  // Clear old localStorage to avoid conflicts with new schema
+  // Clear old localStorage to avoid conflicts with new schema (only on first load)
   React.useEffect(() => {
-    localStorage.removeItem('dailyData');
-    localStorage.removeItem('batchLogs');
+    const hasCleared = localStorage.getItem('hasClearedV2');
+    if (!hasCleared) {
+      localStorage.removeItem('dailyData');
+      localStorage.removeItem('batchLogs');
+      localStorage.setItem('hasClearedV2', 'true');
+    }
   }, []);
 
   // Load data from localStorage or use initial data
   const [dailyData, setDailyData] = useState<DailyTimeSeries[]>(() => {
     const saved = localStorage.getItem('dailyData');
-    return saved ? JSON.parse(saved) : INITIAL_DAILY_DATA;
+    if (!saved) return INITIAL_DAILY_DATA;
+    const parsed = JSON.parse(saved);
+    // Add defaults for missing fields to prevent errors
+    return parsed.map((d: any) => ({
+      ...d,
+      imagesProcessed: d.imagesProcessed ?? d.imagesIngested ?? 0,
+      captureEquipment: d.captureEquipment ?? 'MMS',
+      imagesDefected: d.imagesDefected ?? d.defectCount ?? 0,
+      publishToUSVPRO: d.publishToUSVPRO ?? 'in process',
+      action: d.action ?? ''
+    }));
   });
 
   const [batchLogs, setBatchLogs] = useState<BatchLog[]>(() => {
