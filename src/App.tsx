@@ -151,10 +151,39 @@ function removeItemFromTree(items: (Layer | Folder)[], id: string): (Layer | Fol
   return items.filter(item => {
     if (item.id === id) return false;
     if (item.type === 'folder') {
-      return { ...item, children: removeItemFromTree(item.children, id) };
+      item.children = removeItemFromTree(item.children, id);
     }
     return true;
   });
+}
+
+// Add item to folder (or root if folderId is null)
+function addItemToFolder(items: (Layer | Folder)[], itemToAdd: Layer | Folder, folderId: string | null): (Layer | Folder)[] {
+  if (!folderId) {
+    return [...items, itemToAdd];
+  }
+  return items.map(item => {
+    if (item.type === 'folder') {
+      if (item.id === folderId) {
+        return { ...item, children: [...item.children, itemToAdd] };
+      }
+      return { ...item, children: addItemToFolder(item.children, itemToAdd, folderId) };
+    }
+    return item;
+  });
+}
+
+// Get flat list of folders with their paths
+function getFlatFolderList(items: (Layer | Folder)[], path: string = ''): Array<{ id: string; name: string; path: string }> {
+  let folders: Array<{ id: string; name: string; path: string }> = [];
+  for (const item of items) {
+    if (item.type === 'folder') {
+      const currentPath = path ? `${path} / ${item.name}` : item.name;
+      folders.push({ id: item.id, name: item.name, path: currentPath });
+      folders = [...folders, ...getFlatFolderList(item.children, currentPath)];
+    }
+  }
+  return folders;
 }
 
 // ==============================================
@@ -377,19 +406,21 @@ const MapComponent = ({
 const CatalogItem = ({ 
   item, 
   depth = 0,
+  catalog,
   onToggleFolder,
   onToggleLayer,
   onEdit,
   onDelete,
-  onMoveToFolder
+  onMove
 }: {
   item: Layer | Folder;
   depth?: number;
+  catalog: 'staged' | 'saved';
   onToggleFolder: (id: string) => void;
   onToggleLayer: (id: string) => void;
   onEdit: (item: Layer | Folder) => void;
   onDelete: (id: string) => void;
-  onMoveToFolder: (itemId: string, folderId: string | null) => void;
+  onMove: (item: Layer | Folder, catalog: 'staged' | 'saved') => void;
 }) => {
   if (item.type === 'folder') {
     return (
@@ -402,22 +433,31 @@ const CatalogItem = ({
             <div className="flex items-center gap-3 cursor-pointer" onClick={() => onToggleFolder(item.id)}>
               {item.expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
               <Folder size={16} className="text-amber-500" />
-              <span className="text-slate-200 font-medium truncate max-w-[150px]">
+              <span className="text-slate-200 font-medium truncate max-w-[120px]">
                 {item.name}
               </span>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1">
               <button 
-                onClick={() => onEdit(item)}
-                className="text-slate-400 hover:text-sky-400 transition-colors"
+                onClick={(e) => { e.stopPropagation(); onMove(item, catalog); }}
+                className="text-slate-400 hover:text-emerald-400 transition-colors p-1"
+                title="Move"
               >
-                <Edit2 size={16} />
+                <Navigation size={14} />
               </button>
               <button 
-                onClick={() => onDelete(item.id)}
-                className="text-slate-400 hover:text-red-400 transition-colors"
+                onClick={(e) => { e.stopPropagation(); onEdit(item); }}
+                className="text-slate-400 hover:text-sky-400 transition-colors p-1"
+                title="Edit"
               >
-                <Trash2 size={16} />
+                <Edit2 size={14} />
+              </button>
+              <button 
+                onClick={(e) => { e.stopPropagation(); onDelete(item.id); }}
+                className="text-slate-400 hover:text-red-400 transition-colors p-1"
+                title="Delete"
+              >
+                <Trash2 size={14} />
               </button>
             </div>
           </div>
@@ -432,11 +472,12 @@ const CatalogItem = ({
                 key={child.id}
                 item={child}
                 depth={depth + 1}
+                catalog={catalog}
                 onToggleFolder={onToggleFolder}
                 onToggleLayer={onToggleLayer}
                 onEdit={onEdit}
                 onDelete={onDelete}
-                onMoveToFolder={onMoveToFolder}
+                onMove={onMove}
               />
             ))}
           </div>
@@ -462,23 +503,32 @@ const CatalogItem = ({
                 className="w-3 h-3 rounded-full" 
                 style={{ backgroundColor: item.color }}
               />
-              <span className="text-slate-200 font-medium truncate max-w-[150px]">
+              <span className="text-slate-200 font-medium truncate max-w-[120px]">
                 {item.name}
               </span>
             </div>
           </label>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
+            <button 
+              onClick={() => onMove(item, catalog)}
+              className="text-slate-400 hover:text-emerald-400 transition-colors p-1"
+              title="Move"
+            >
+              <Navigation size={14} />
+            </button>
             <button 
               onClick={() => onEdit(item)}
-              className="text-slate-400 hover:text-sky-400 transition-colors"
+              className="text-slate-400 hover:text-sky-400 transition-colors p-1"
+              title="Edit"
             >
-              <Edit2 size={16} />
+              <Edit2 size={14} />
             </button>
             <button 
               onClick={() => onDelete(item.id)}
-              className="text-slate-400 hover:text-red-400 transition-colors"
+              className="text-slate-400 hover:text-red-400 transition-colors p-1"
+              title="Delete"
             >
-              <Trash2 size={16} />
+              <Trash2 size={14} />
             </button>
           </div>
         </div>
@@ -513,8 +563,11 @@ const DataManagementPage = ({
   const [isLayerEditModalOpen, setIsLayerEditModalOpen] = useState(false);
   const [isFolderCreateModalOpen, setIsFolderCreateModalOpen] = useState(false);
   const [isFolderEditModalOpen, setIsFolderEditModalOpen] = useState(false);
+  const [isMoveModalOpen, setIsMoveModalOpen] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
   const [stagedLayers, setStagedLayers] = useState<(Layer | Folder)[]>([]);
+  const [movingItem, setMovingItem] = useState<{ item: Layer | Folder; catalog: 'staged' | 'saved' } | null>(null);
+  const [targetFolderId, setTargetFolderId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -732,6 +785,49 @@ const DataManagementPage = ({
     }
   };
 
+  const moveItemToFolder = (itemId: string, sourceCatalog: 'staged' | 'saved', targetFolderId: string | null) => {
+    // Get the item first
+    const sourceItems = sourceCatalog === 'staged' ? stagedLayers : layerCatalog;
+    const item = findItem(sourceItems, itemId);
+    if (!item) return;
+
+    // Check if we're trying to move a folder into itself or its child
+    if (item.type === 'folder') {
+      const isDescendant = (folder: Folder, targetId: string | null): boolean => {
+        if (!targetId) return false;
+        if (folder.id === targetId) return true;
+        for (const child of folder.children) {
+          if (child.type === 'folder' && isDescendant(child, targetId)) return true;
+        }
+        return false;
+      };
+      if (isDescendant(item, targetFolderId)) {
+        alert('Cannot move a folder into itself or its subfolder');
+        return;
+      }
+    }
+
+    // Remove from source
+    let updatedSource = removeItemFromTree(sourceItems, itemId);
+    
+    // Add to target (same catalog)
+    updatedSource = addItemToFolder(updatedSource, item, targetFolderId);
+    
+    if (sourceCatalog === 'staged') {
+      setStagedLayers(updatedSource);
+    } else {
+      setLayerCatalog(updatedSource);
+    }
+  };
+
+  const handleMoveItem = () => {
+    if (!movingItem) return;
+    moveItemToFolder(movingItem.item.id, movingItem.catalog, targetFolderId);
+    setIsMoveModalOpen(false);
+    setMovingItem(null);
+    setTargetFolderId(null);
+  };
+
   const handleSave = (item: BatchLog | DailyTimeSeries) => {
     if (dataTab === 'batches') {
       const batchItem = item as BatchLog;
@@ -905,11 +1001,16 @@ const DataManagementPage = ({
                           <CatalogItem
                             key={item.id}
                             item={item}
+                            catalog="staged"
                             onToggleFolder={(id) => toggleFolder('staged', id)}
                             onToggleLayer={(id) => toggleLayerVisibility('staged', id)}
                             onEdit={editItem}
                             onDelete={(id) => deleteItem('staged', id)}
-                            onMoveToFolder={() => {}}
+                            onMove={(item, catalog) => {
+                              setMovingItem({ item, catalog });
+                              setTargetFolderId(null);
+                              setIsMoveModalOpen(true);
+                            }}
                           />
                         ))}
                       </div>
@@ -928,11 +1029,16 @@ const DataManagementPage = ({
                           <CatalogItem
                             key={item.id}
                             item={item}
+                            catalog="saved"
                             onToggleFolder={(id) => toggleFolder('saved', id)}
                             onToggleLayer={(id) => toggleLayerVisibility('saved', id)}
                             onEdit={editItem}
                             onDelete={(id) => deleteItem('saved', id)}
-                            onMoveToFolder={() => {}}
+                            onMove={(item, catalog) => {
+                              setMovingItem({ item, catalog });
+                              setTargetFolderId(null);
+                              setIsMoveModalOpen(true);
+                            }}
                           />
                         ))}
                       </div>
@@ -1257,6 +1363,68 @@ const DataManagementPage = ({
             </div>
           </div>
         )}
+
+        {/* Move Item Modal */}
+        {isMoveModalOpen && movingItem && (() => {
+          const currentCatalogItems = movingItem.catalog === 'staged' ? stagedLayers : layerCatalog;
+          const availableFolders = getFlatFolderList(currentCatalogItems).filter(f => f.id !== movingItem.item.id);
+          return (
+            <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[1000]">
+              <div className="bg-slate-900 border border-slate-800 rounded-xl p-8 max-w-md w-full mx-4">
+                <div className="flex justify-between items-center mb-6">
+                  <h2 className="text-2xl font-bold text-white">
+                    Move {movingItem.item.type === 'folder' ? 'Folder' : 'Layer'}
+                  </h2>
+                  <button 
+                    onClick={() => {
+                      setIsMoveModalOpen(false);
+                      setMovingItem(null);
+                      setTargetFolderId(null);
+                    }}
+                    className="text-slate-400 hover:text-white"
+                  >
+                    &times;
+                  </button>
+                </div>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-300 mb-2">Move to</label>
+                    <select 
+                      value={targetFolderId || ''}
+                      onChange={(e) => setTargetFolderId(e.target.value || null)}
+                      className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-white"
+                    >
+                      <option value="">Root</option>
+                      {availableFolders.map(folder => (
+                        <option key={folder.id} value={folder.id}>
+                          {folder.path}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex gap-3 pt-4">
+                    <button 
+                      onClick={handleMoveItem}
+                      className="flex-1 bg-emerald-600 hover:bg-emerald-500 px-4 py-3 rounded-lg transition-all"
+                    >
+                      Move
+                    </button>
+                    <button 
+                      onClick={() => {
+                        setIsMoveModalOpen(false);
+                        setMovingItem(null);
+                        setTargetFolderId(null);
+                      }}
+                      className="flex-1 bg-slate-700 hover:bg-slate-600 px-4 py-3 rounded-lg transition-all"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );
