@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  MapPin,
   TrendingUp,
   AlertTriangle,
   CheckCircle,
   Activity,
   Clock,
   Camera,
+  Cpu,
   Navigation,
   BarChart2,
   Settings,
@@ -34,7 +34,7 @@ import {
   KeyRound,
   Layers
 } from 'lucide-react';
-import { supabase, publishToSupabase, fetchSupabaseData } from './services/supabase';
+import { supabase, publishToSupabase, fetchSupabaseData, deleteFromSupabase } from './services/supabase';
 import {
   Area,
   Line,
@@ -426,12 +426,14 @@ const KpiCard = ({
 );
 
 const MapComponent = ({
-  refreshKey
+  refreshKey,
+  selectedSubgridFilter
 }: {
   dataManagement?: boolean;
   layerCatalog?: (Layer | Folder)[];
   refreshKey?: number;
   onManualRefresh?: () => void;
+  selectedSubgridFilter?: string | null;
 }) => {
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
 
@@ -458,7 +460,7 @@ const MapComponent = ({
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-white font-bold text-sm sm:text-base tracking-tight">
-                TNB LV Digitization
+                TNB LV Asset Mapping
               </h2>
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[10px] font-semibold">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
@@ -490,7 +492,7 @@ const MapComponent = ({
 
       <iframe
         key={refreshKey || 0}
-        src={`https://mobilemapping-nine.vercel.app/?embed=true${refreshKey ? `&t=${refreshKey}` : ''}`}
+        src={`${import.meta.env.VITE_MAP_URL || 'https://mobilemapping-nine.vercel.app'}/?embed=true${selectedSubgridFilter ? `&subgrid=${selectedSubgridFilter}` : ''}${refreshKey ? `&t=${refreshKey}` : ''}`}
         className="w-full h-full border-0"
         title="360 Mobile Mapping Map"
         allow="geolocation; camera; microphone"
@@ -681,6 +683,26 @@ const DataManagementPage = ({
   const csvInputRef = useRef<HTMLInputElement>(null);
   const [draftDailyData, setDraftDailyData] = useState<DailyTimeSeries[]>(dailyData);
   const [isDailyDirty, setIsDailyDirty] = useState(false);
+
+  // Selected subgrid filter state (interactive row click -> zoom to extent, filter, & blink)
+  const [selectedSubgridFilter, setSelectedSubgridFilter] = useState<string | null>(null);
+
+  const toggleSubgridFilter = (subgridRaw: string) => {
+    const sg = (extractSubgridName(subgridRaw) || subgridRaw).toUpperCase().trim();
+    setSelectedSubgridFilter(prev => {
+      const next = prev === sg ? null : sg;
+      
+      // Broadcast filter message to embedded WebGIS map iframe
+      const iframes = document.querySelectorAll('iframe');
+      iframes.forEach(f => {
+        try {
+          f.contentWindow?.postMessage({ type: 'FILTER_SUBGRID', subgrid: next || '' }, '*');
+        } catch (e) {}
+      });
+
+      return next;
+    });
+  };
 
   // Admin Security Delete State
   const [deleteTarget, setDeleteTarget] = useState<BatchLog | DailyTimeSeries | null>(null);
@@ -1296,91 +1318,119 @@ const DataManagementPage = ({
     return filteredDailyData.slice(start, start + pageSize);
   }, [filteredDailyData, safePage, pageSize]);
 
-  // Helper: Combine unique PICs (Person In Charge) for Processed Batch Logs
-  function combinePics(existingPic?: string, newPic?: string): string {
-    const pics = new Set<string>();
-    if (existingPic) {
-      existingPic.split(',').forEach(p => {
-        const trimmed = p.trim();
-        if (trimmed) pics.add(trimmed);
-      });
-    }
-    if (newPic) {
-      newPic.split(',').forEach(p => {
-        const trimmed = p.trim();
-        if (trimmed) pics.add(trimmed);
-      });
-    }
-    return Array.from(pics).join(', ') || 'Fariz';
-  }
-
-  // Helper: Reconcile Processed Batch Logs summary from published daily processing ledger records & base batch logs
+  // Helper: Reconcile Processed Batch Logs masterlist summary from published daily processing ledger records & base batch logs
   function reconcileBatchLogs(dailyItems: DailyTimeSeries[], baseBatches: BatchLog[]): BatchLog[] {
-    const batchMap = new Map<string, BatchLog>();
+    const batchMap = new Map<string, {
+      id: string;
+      subgrid: string;
+      grid: string;
+      date: string;
+      imageFilename: string;
+      images: number;
+      kmProcessed: number;
+      defects: number;
+      pics: Set<string>;
+      captureEquipment: string;
+      panoramas: any[];
+    }>();
 
-    // 1. Populate base batches
-    for (const b of baseBatches) {
-      const rawSub = b.subgrid || b.imageFilename || '';
-      const normSub = (extractSubgridName(rawSub) || rawSub).toUpperCase();
-      if (normSub) {
-        batchMap.set(normSub, { ...b, subgrid: normSub });
-      }
-    }
-
-    // 2. Process all published daily records
+    // Process all published daily records (including d1..d4 and new entries)
     for (const d of dailyItems) {
       const isPublished = d.publishToUSVPRO === 'yes' || d.isSyncedWithSupabase || d.action?.startsWith('Published');
       if (!isPublished) continue;
 
-      // Initial mock daily items d1..d4 are already accounted for in INITIAL_BATCH_LOGS
-      if (d.id && ['d1', 'd2', 'd3', 'd4'].includes(d.id)) continue;
-
       const rawSub = d.subgrid || (d.panoramas?.[0]?.filename) || '';
-      const normSub = (extractSubgridName(rawSub) || rawSub).toUpperCase();
+      const normSub = (extractSubgridName(rawSub) || rawSub).toUpperCase().trim();
       if (!normSub) continue;
+
+      const imgCount = Number(d.imagesProcessed || 0);
+      const kmVal = Number(d.kmProcessed || 0);
+      const defCount = Number(d.imagesDefected || d.defectCount || 0);
 
       const existing = batchMap.get(normSub);
       if (existing) {
-        const combinedPic = combinePics(existing.pic, d.pic);
-        const combinedPanoramas = [...(existing.panoramas || []), ...(d.panoramas || [])];
-        const trackKm = calculatePanoramaTrackKm(combinedPanoramas);
-        const newKm = trackKm > 0
-          ? trackKm
-          : Math.round((Number(existing.kmProcessed || 0) + Number(d.kmProcessed || 0)) * 100) / 100;
-
-        batchMap.set(normSub, {
-          ...existing,
-          images: Number(existing.images || 0) + Number(d.imagesProcessed || 0),
-          kmProcessed: newKm,
-          defects: Number(existing.defects || 0) + Number(d.imagesDefected || d.defectCount || 0),
-          pic: combinedPic,
-          captureEquipment: d.captureEquipment || existing.captureEquipment,
-          panoramas: combinedPanoramas,
-          status: 'Complete'
-        });
+        if (d.pic) {
+          d.pic.split(',').map(p => p.trim()).filter(Boolean).forEach(p => existing.pics.add(p));
+        }
+        existing.images += imgCount;
+        existing.kmProcessed = Math.round((existing.kmProcessed + kmVal) * 100) / 100;
+        existing.defects += defCount;
+        if (d.date) existing.date = d.date;
+        if (d.captureEquipment) existing.captureEquipment = d.captureEquipment;
+        if (d.panoramas && d.panoramas.length > 0) {
+          existing.panoramas.push(...d.panoramas);
+        }
       } else {
-        const trackKm = calculatePanoramaTrackKm(d.panoramas);
-        const initialKm = trackKm > 0 ? trackKm : Number(d.kmProcessed || 0);
+        const picSet = new Set<string>();
+        if (d.pic) {
+          d.pic.split(',').map(p => p.trim()).filter(Boolean).forEach(p => picSet.add(p));
+        } else {
+          picSet.add('Fariz');
+        }
 
         batchMap.set(normSub, {
-          id: `b-pub-${normSub}`,
-          date: d.date || new Date().toISOString().slice(0, 10),
-          grid: d.grid || '1',
+          id: `sp-b-${normSub}`,
           subgrid: normSub,
+          grid: d.grid || '1',
+          date: d.date || '2022-09-03 00:43',
           imageFilename: (d.panoramas?.[0]?.filename) || `${normSub}-0001.jpg`,
-          images: Number(d.imagesProcessed || 0),
-          defects: Number(d.imagesDefected || d.defectCount || 0),
-          kmProcessed: initialKm,
-          status: 'Complete',
+          images: imgCount,
+          kmProcessed: kmVal,
+          defects: defCount,
+          pics: picSet,
           captureEquipment: d.captureEquipment || 'MMS',
-          pic: d.pic || 'Fariz',
-          panoramas: d.panoramas || [],
-          isSyncedWithSupabase: true
+          panoramas: d.panoramas || []
         });
       }
     }
 
-    return Array.from(batchMap.values());
+    // Blend any base batches if subgrid is not present in dailyItems
+    for (const b of baseBatches) {
+      const rawSub = b.subgrid || b.imageFilename || '';
+      const normSub = (extractSubgridName(rawSub) || rawSub).toUpperCase().trim();
+      if (!normSub || batchMap.has(normSub)) continue;
+
+      const picSet = new Set<string>();
+      if (b.pic) {
+        b.pic.split(',').map(p => p.trim()).filter(Boolean).forEach(p => picSet.add(p));
+      }
+
+      batchMap.set(normSub, {
+        id: b.id || `sp-b-${normSub}`,
+        subgrid: normSub,
+        grid: b.grid || '1',
+        date: b.date || '2022-09-03 00:43',
+        imageFilename: b.imageFilename || `${normSub}-0001.jpg`,
+        images: Number(b.images || 0),
+        kmProcessed: Number(b.kmProcessed || 0),
+        defects: Number(b.defects || 0),
+        pics: picSet,
+        captureEquipment: b.captureEquipment || 'MMS',
+        panoramas: b.panoramas || []
+      });
+    }
+
+    // Convert map to BatchLog array
+    const result: BatchLog[] = [];
+    for (const [normSub, entry] of batchMap.entries()) {
+      result.push({
+        id: entry.id,
+        date: entry.date.length <= 10 ? `${entry.date} 00:43` : entry.date,
+        grid: entry.grid,
+        subgrid: normSub,
+        imageFilename: entry.imageFilename,
+        images: entry.images,
+        kmProcessed: entry.kmProcessed,
+        defects: entry.defects,
+        pic: Array.from(entry.pics).join(', ') || 'Fariz',
+        status: 'Complete',
+        captureEquipment: entry.captureEquipment,
+        panoramas: entry.panoramas,
+        isSyncedWithSupabase: true
+      });
+    }
+
+    return result;
   }
 
   // Supabase publishing states
@@ -1450,7 +1500,7 @@ const DataManagementPage = ({
     setTimeout(() => setPublishMessage(null), 5000);
   };
 
-  const handleSave = (item: BatchLog | DailyTimeSeries) => {
+  const handleSave = async (item: BatchLog | DailyTimeSeries) => {
     if (dataTab === 'batches') {
       const batchItem = item as BatchLog;
       if (editingItem && 'id' in editingItem && editingItem.id) {
@@ -1461,14 +1511,24 @@ const DataManagementPage = ({
     } else {
       const dailyItem = item as DailyTimeSeries;
       const editingId = editingItem ? getItemId(editingItem as DailyTimeSeries) : null;
+      const updatedItem: DailyTimeSeries = {
+        ...dailyItem,
+        publishToUSVPRO: 'yes',
+        isSyncedWithSupabase: true,
+        action: 'Published in database'
+      };
+
       const updatedDraft = editingId
-        ? draftDailyData.map(d => getItemId(d) === editingId ? { ...dailyItem, id: editingId } : d)
-        : [...draftDailyData, { ...dailyItem, id: dailyItem.id || Date.now().toString() }];
+        ? draftDailyData.map(d => getItemId(d) === editingId ? { ...updatedItem, id: editingId } : d)
+        : [...draftDailyData, { ...updatedItem, id: updatedItem.id || Date.now().toString() }];
 
       setDraftDailyData(updatedDraft);
       setDailyData(updatedDraft);
       setBatchLogs(reconcileBatchLogs(updatedDraft, INITIAL_BATCH_LOGS));
       setIsDailyDirty(true);
+
+      // Auto-persist directly to Supabase DB in real-time
+      publishToSupabase(updatedItem).catch(err => console.warn('Background auto-publish error:', err));
     }
     setIsFormOpen(false);
     setEditingItem(null);
@@ -1481,7 +1541,7 @@ const DataManagementPage = ({
     setIsDeleteModalOpen(true);
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (!deleteTarget) return;
 
     if (!adminPasscode.trim()) {
@@ -1512,6 +1572,9 @@ const DataManagementPage = ({
       setDraftDailyData(draftDailyData.filter(d => getItemId(d) !== idToDelete));
       setIsDailyDirty(true);
     }
+
+    // Auto-delete from Supabase DB in real-time
+    deleteFromSupabase(subgridName).catch(err => console.warn('Background delete error:', err));
 
     setPublishMessage({
       text: `[Admin Security Action] Record for subgrid "${subgridName}" was permanently deleted from database.`,
@@ -1851,6 +1914,25 @@ const DataManagementPage = ({
             </div>
           ) : (
             <>
+              {/* Active Subgrid Filter Banner */}
+              {selectedSubgridFilter && (
+                <div className="mb-5 p-3.5 bg-sky-950/90 border border-sky-500/50 rounded-xl flex items-center justify-between text-sky-200 text-sm shadow-xl shadow-sky-950/50 animate-pulse">
+                  <div className="flex items-center gap-3">
+                    <span className="w-3 h-3 rounded-full bg-sky-400 animate-ping shrink-0" />
+                    <div>
+                      <span className="font-bold text-white uppercase text-base tracking-wide">FILTER ACTIVE: Subgrid [{selectedSubgridFilter}]</span>
+                      <span className="text-xs text-sky-300 ml-2 block sm:inline">— Showing only this subgrid. WebGIS map zoomed to extent &amp; blinking.</span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => toggleSubgridFilter(selectedSubgridFilter)}
+                    className="px-4 py-1.5 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-xs font-bold transition-all shadow-md cursor-pointer shrink-0"
+                  >
+                    Show All Data
+                  </button>
+                </div>
+              )}
+
               <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-x-auto shadow-xl">
                 <table className="w-full text-left">
                   <thead className="bg-slate-800 text-slate-300">
@@ -1888,46 +1970,60 @@ const DataManagementPage = ({
                   <tbody className="divide-y divide-slate-800">
                     {dataTab === 'batches' ? (
                       paginatedBatchLogs.length > 0 ? (
-                        paginatedBatchLogs.map((batch, index) => (
-                          <tr key={batch.id || `b-${index}`} className="hover:bg-slate-800/50 transition-all">
-                            <td className="px-4 py-3.5 font-mono text-xs text-slate-300 whitespace-nowrap">{batch.date}</td>
-                            <td className="px-4 py-3.5 font-mono text-slate-200 font-semibold whitespace-nowrap">{batch.grid}</td>
-                            <td className="px-4 py-3.5 font-semibold text-sky-400 whitespace-nowrap">{extractSubgridName(batch.subgrid || batch.imageFilename)}</td>
-                            <td className="px-4 py-3.5 font-mono text-xs text-slate-300 whitespace-nowrap">{batch.imageFilename || `${batch.subgrid}-0001.jpg`}</td>
-                            <td className="px-4 py-3.5 font-semibold text-slate-200 whitespace-nowrap">{batch.kmProcessed.toFixed(1)}</td>
-                            <td className="px-4 py-3.5 text-slate-300 whitespace-nowrap">{batch.images.toLocaleString()}</td>
-                            <td className="px-4 py-3.5 text-amber-400 font-medium whitespace-nowrap">{batch.defects}</td>
-                            <td className="px-4 py-3.5 text-emerald-400 font-semibold whitespace-nowrap">{batch.pic || 'Fariz'}</td>
-                            <td className="px-4 py-3.5 whitespace-nowrap">
-                              <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${batch.status === 'Complete'
-                                ? 'bg-green-500/20 text-green-400 border border-green-500/30'
-                                : 'bg-sky-500/20 text-sky-400 border border-sky-500/30'
-                                }`}>
-                                {batch.status === 'Complete' ? <CheckCircle size={10} /> : <Clock size={10} />}
-                                {batch.status}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3.5 flex items-center gap-3 whitespace-nowrap">
-                              <button
-                                onClick={() => {
-                                  setEditingItem(batch);
-                                  setIsFormOpen(true);
-                                }}
-                                className="text-slate-400 hover:text-sky-400 transition-colors p-1"
-                                title="Edit"
-                              >
-                                <Edit2 size={18} />
-                              </button>
-                              <button
-                                onClick={() => initiateDelete(batch)}
-                                className="text-slate-400 hover:text-red-400 transition-colors p-1 cursor-pointer"
-                                title="Delete Record (Admin Authorization Required)"
-                              >
-                                <Trash2 size={18} />
-                              </button>
-                            </td>
-                          </tr>
-                        ))
+                        paginatedBatchLogs.map((batch, index) => {
+                          const batchSubgrid = (extractSubgridName(batch.subgrid || batch.imageFilename) || '').toUpperCase().trim();
+                          const isSelected = selectedSubgridFilter === batchSubgrid;
+                          return (
+                            <tr
+                              key={batch.id || `b-${index}`}
+                              onClick={() => toggleSubgridFilter(batchSubgrid)}
+                              className={`cursor-pointer transition-all ${isSelected
+                                ? 'bg-sky-950/90 border-l-4 border-sky-400 font-bold text-white shadow-lg shadow-sky-950/50 ring-1 ring-sky-500/30'
+                                : 'hover:bg-slate-800/50'
+                                }`}
+                            >
+                              <td className="px-4 py-3.5 font-mono text-xs text-slate-300 whitespace-nowrap">{batch.date}</td>
+                              <td className="px-4 py-3.5 font-mono text-slate-200 font-semibold whitespace-nowrap">{batch.grid}</td>
+                              <td className="px-4 py-3.5 font-semibold text-sky-400 whitespace-nowrap flex items-center gap-2">
+                                <span>{batchSubgrid}</span>
+                                {isSelected && <span className="bg-sky-500 text-white text-[10px] px-1.5 py-0.5 rounded-full font-bold animate-pulse">FILTERED</span>}
+                              </td>
+                              <td className="px-4 py-3.5 font-mono text-xs text-slate-300 whitespace-nowrap">{batch.imageFilename || `${batch.subgrid}-0001.jpg`}</td>
+                              <td className="px-4 py-3.5 font-semibold text-slate-200 whitespace-nowrap">{batch.kmProcessed.toFixed(1)}</td>
+                              <td className="px-4 py-3.5 text-slate-300 whitespace-nowrap">{batch.images.toLocaleString()}</td>
+                              <td className="px-4 py-3.5 text-amber-400 font-medium whitespace-nowrap">{batch.defects}</td>
+                              <td className="px-4 py-3.5 text-emerald-400 font-semibold whitespace-nowrap">{batch.pic || 'Fariz'}</td>
+                              <td className="px-4 py-3.5 whitespace-nowrap">
+                                <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${batch.status === 'Complete'
+                                  ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+                                  : 'bg-sky-500/20 text-sky-400 border border-sky-500/30'
+                                  }`}>
+                                  {batch.status === 'Complete' ? <CheckCircle size={10} /> : <Clock size={10} />}
+                                  {batch.status}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3.5 flex items-center gap-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                                <button
+                                  onClick={() => {
+                                    setEditingItem(batch);
+                                    setIsFormOpen(true);
+                                  }}
+                                  className="text-slate-400 hover:text-sky-400 transition-colors p-1"
+                                  title="Edit"
+                                >
+                                  <Edit2 size={18} />
+                                </button>
+                                <button
+                                  onClick={() => initiateDelete(batch)}
+                                  className="text-slate-400 hover:text-red-400 transition-colors p-1 cursor-pointer"
+                                  title="Delete Record (Admin Authorization Required)"
+                                >
+                                  <Trash2 size={18} />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })
                       ) : (
                         <tr>
                           <td colSpan={10} className="px-4 py-12 text-center text-slate-500">
@@ -1938,12 +2034,24 @@ const DataManagementPage = ({
                     ) : (
                       paginatedDailyData.length > 0 ? (
                         paginatedDailyData.map((daily, index) => {
+                          const dailySubgrid = (daily.subgrid || '').toUpperCase().trim();
+                          const isSelected = selectedSubgridFilter === dailySubgrid;
                           const isPublished = daily.publishToUSVPRO === 'yes' || daily.isSyncedWithSupabase;
                           return (
-                            <tr key={daily.id || `d-${daily.date}-${daily.subgrid}-${index}`} className="hover:bg-slate-800/50 transition-all">
+                            <tr
+                              key={daily.id || `d-${daily.date}-${daily.subgrid}-${index}`}
+                              onClick={() => toggleSubgridFilter(dailySubgrid)}
+                              className={`cursor-pointer transition-all ${isSelected
+                                ? 'bg-sky-950/90 border-l-4 border-sky-400 font-bold text-white shadow-lg shadow-sky-950/50 ring-1 ring-sky-500/30'
+                                : 'hover:bg-slate-800/50'
+                                }`}
+                            >
                               <td className="px-4 py-3.5 text-slate-300 font-mono text-xs whitespace-nowrap">{daily.date}</td>
                               <td className="px-4 py-3.5 text-slate-200 font-semibold whitespace-nowrap">{daily.grid}</td>
-                              <td className="px-4 py-3.5 text-sky-400 font-semibold whitespace-nowrap">{daily.subgrid}</td>
+                              <td className="px-4 py-3.5 text-sky-400 font-semibold whitespace-nowrap flex items-center gap-2">
+                                <span>{daily.subgrid}</span>
+                                {isSelected && <span className="bg-sky-500 text-white text-[10px] px-1.5 py-0.5 rounded-full font-bold animate-pulse">FILTERED</span>}
+                              </td>
                               <td className="px-4 py-3.5 text-slate-200 font-semibold whitespace-nowrap">{daily.kmProcessed.toFixed(1)}</td>
                               <td className="px-4 py-3.5 text-slate-300 whitespace-nowrap">{daily.imagesProcessed.toLocaleString()}</td>
                               <td className="px-4 py-3.5 text-slate-300 whitespace-nowrap">{daily.captureEquipment}</td>
@@ -1971,7 +2079,7 @@ const DataManagementPage = ({
                                   </span>
                                 )}
                               </td>
-                              <td className="px-4 py-3.5 flex items-center gap-2 whitespace-nowrap">
+                              <td className="px-4 py-3.5 flex items-center gap-2 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                                 {isPublished ? (
                                   <button
                                     disabled
@@ -1999,8 +2107,8 @@ const DataManagementPage = ({
                                     setEditingItem(daily);
                                     setIsFormOpen(true);
                                   }}
-                                  className="text-slate-400 hover:text-sky-400 transition-colors p-1"
-                                  title="Edit"
+                                  className="text-slate-400 hover:text-sky-400 transition-colors p-1 cursor-pointer"
+                                  title="Edit Record"
                                 >
                                   <Edit2 size={18} />
                                 </button>
@@ -3106,10 +3214,10 @@ export default function App() {
 
   // Load data from localStorage or use initial data
   const [dailyData, setDailyData] = useState<DailyTimeSeries[]>(() => {
-    ['dailyData_v4', 'dailyData_v5', 'dailyData_v6', 'dailyData_v7', 'dailyData_v8', 'dailyData_v9', 'dailyData_v10', 'batchLogs_v5', 'batchLogs_v6', 'batchLogs_v7', 'batchLogs_v8', 'batchLogs_v9', 'batchLogs_v10'].forEach(k => {
+    ['dailyData_v4', 'dailyData_v5', 'dailyData_v6', 'dailyData_v7', 'dailyData_v8', 'dailyData_v9', 'dailyData_v10', 'dailyData_v11', 'dailyData_v12', 'batchLogs_v5', 'batchLogs_v6', 'batchLogs_v7', 'batchLogs_v8', 'batchLogs_v9', 'batchLogs_v10', 'batchLogs_v11', 'batchLogs_v12'].forEach(k => {
       try { localStorage.removeItem(k); } catch { }
     });
-    const saved = localStorage.getItem('dailyData_v11');
+    const saved = localStorage.getItem('dailyData_v13');
     if (!saved) return INITIAL_DAILY_DATA;
     try {
       const parsed = JSON.parse(saved);
@@ -3120,7 +3228,7 @@ export default function App() {
   });
 
   const [batchLogs, setBatchLogs] = useState<BatchLog[]>(() => {
-    const saved = localStorage.getItem('batchLogs_v11');
+    const saved = localStorage.getItem('batchLogs_v13');
     if (!saved) return INITIAL_BATCH_LOGS;
     try {
       const parsed = JSON.parse(saved);
@@ -3130,18 +3238,24 @@ export default function App() {
     }
   });
 
-  // Fetch live database records on mount if local cache doesn't exist
+  // Fetch live database records on mount and merge with local drafts
   useEffect(() => {
     async function initLiveSupabaseData() {
       try {
         const { dailyData: sDaily, batchLogs: sBatches } = await fetchSupabaseData();
-        const savedLocalDaily = localStorage.getItem('dailyData_v11');
-        if (!savedLocalDaily && sDaily && sDaily.length > 0) {
-          setDailyData(sDaily);
+        if (sDaily && sDaily.length > 0) {
+          setDailyData(prev => {
+            const supabaseIds = new Set(sDaily.map(d => d.id || `${d.date}-${d.subgrid}`));
+            const localDrafts = prev.filter(d => !d.isSyncedWithSupabase && !supabaseIds.has(d.id || `${d.date}-${d.subgrid}`));
+            return [...sDaily, ...localDrafts];
+          });
         }
-        const savedLocalBatch = localStorage.getItem('batchLogs_v11');
-        if (!savedLocalBatch && sBatches && sBatches.length > 0) {
-          setBatchLogs(sBatches);
+        if (sBatches && sBatches.length > 0) {
+          setBatchLogs(prev => {
+            const supabaseSubgrids = new Set(sBatches.map(b => b.subgrid));
+            const localDrafts = prev.filter(b => !supabaseSubgrids.has(b.subgrid));
+            return [...sBatches, ...localDrafts];
+          });
         }
       } catch (err) {
         console.warn('Supabase initial fetch skipped:', err);
@@ -3154,8 +3268,8 @@ export default function App() {
   // Save to localStorage whenever data changes
   useEffect(() => {
     try {
-      localStorage.setItem('dailyData_v11', JSON.stringify(dailyData));
-      localStorage.setItem('batchLogs_v11', JSON.stringify(batchLogs));
+      localStorage.setItem('dailyData_v13', JSON.stringify(dailyData));
+      localStorage.setItem('batchLogs_v13', JSON.stringify(batchLogs));
     } catch (err) {
       console.warn('Unable to save to localStorage:', err);
     }
@@ -3187,6 +3301,26 @@ export default function App() {
 
   const [mapRefreshKey, setMapRefreshKey] = useState<number>(Date.now());
   const handleRefreshMap = () => setMapRefreshKey(Date.now());
+
+  // Top-level subgrid filter state for Main Dashboard Page interactive row filtering
+  const [selectedSubgridFilter, setSelectedSubgridFilter] = useState<string | null>(null);
+
+  const toggleSubgridFilter = (subgridRaw: string) => {
+    const sg = (extractSubgridName(subgridRaw) || subgridRaw).toUpperCase().trim();
+    setSelectedSubgridFilter(prev => {
+      const next = prev === sg ? null : sg;
+
+      // Broadcast filter message to embedded WebGIS map iframe
+      const iframes = document.querySelectorAll('iframe');
+      iframes.forEach(f => {
+        try {
+          f.contentWindow?.postMessage({ type: 'FILTER_SUBGRID', subgrid: next || '' }, '*');
+        } catch (e) { }
+      });
+
+      return next;
+    });
+  };
 
   // ===== Render Supabase Auth Protection Gate =====
   if (!authSession && !authLoading) {
@@ -3313,42 +3447,46 @@ export default function App() {
           {/* Left Sidebar - Analytics */}
           <div className="w-[30%] bg-slate-900 border-r border-slate-800 flex flex-col">
             {/* Header */}
-            <div className="p-6 border-b border-slate-800">
-              <div className="flex items-center justify-between gap-3 mb-1">
-                <div className="flex items-center gap-3 flex-1 min-w-0">
-                  <div className="p-2 bg-sky-500/10 rounded-lg shrink-0">
-                    <MapPin className="text-sky-500" size={24} />
+            <div className="p-4 sm:p-5 border-b border-slate-800">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="p-2.5 bg-gradient-to-tr from-sky-600 to-emerald-500 rounded-xl shadow-md shadow-sky-950/40 shrink-0">
+                    <Cpu className="text-white" size={20} />
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <h1 className="text-xl font-bold text-white truncate">Geo360 Process</h1>
-                    <p className="text-xs text-slate-500 truncate">TNB LV Asset Mapping</p>
+                  <div className="min-w-0">
+                    <h1 className="text-base sm:text-lg font-bold text-white tracking-tight leading-tight whitespace-nowrap">
+                      Processing Dashboard
+                    </h1>
+                    <p className="text-xs text-slate-400 font-medium">
+                      TNB LV Asset Mapping
+                    </p>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0">
-                  <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-xs font-semibold text-emerald-400" title={`Logged in as ${authSession?.user?.email || 'fariz@tnb.com'}`}>
+                  <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-800/80 border border-slate-700/80 rounded-lg text-xs font-semibold text-emerald-400" title={`Logged in as ${authSession?.user?.email || 'fariz@tnb.com'}`}>
                     <User size={12} className="text-emerald-400" />
-                    <span className="truncate max-w-[80px]">{authSession?.user?.email?.split('@')[0] || 'fariz'}</span>
+                    <span className="truncate max-w-[90px]">{authSession?.user?.email?.split('@')[0] || 'fariz'}</span>
                   </div>
                   <button
                     onClick={handleSignOut}
                     className="p-2 bg-red-950/40 border border-red-800/60 hover:bg-red-900/60 text-red-300 rounded-lg text-xs font-semibold transition-all cursor-pointer"
                     title="Sign Out"
                   >
-                    <LogOut size={16} />
+                    <LogOut size={15} />
                   </button>
                   <button
                     onClick={() => setCurrentPage('data')}
-                    className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 px-3 py-2 rounded-lg text-sm font-semibold transition-all cursor-pointer"
+                    className="flex items-center gap-1.5 bg-sky-600 hover:bg-sky-500 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer shadow-sm shadow-sky-950"
                   >
-                    <Settings size={18} />
-                    Manage Data
+                    <Settings size={15} />
+                    <span>Manage Data</span>
                   </button>
                 </div>
               </div>
-              <div className="mt-4 flex items-center gap-2 text-sm text-slate-400">
-                <Clock size={14} />
-                Last Updated: {new Date().toLocaleString()}
+              <div className="mt-3 flex items-center gap-2 text-xs text-slate-400 font-medium">
+                <Clock size={13} className="text-slate-500" />
+                <span>Last Updated: {new Date().toLocaleString()}</span>
               </div>
             </div>
 
@@ -3460,16 +3598,33 @@ export default function App() {
           <div className="flex-1 flex flex-col">
             {/* Map Component */}
             <div className="flex-1 relative">
-              <MapComponent layerCatalog={layerCatalog} refreshKey={mapRefreshKey} onManualRefresh={handleRefreshMap} />
+              <MapComponent layerCatalog={layerCatalog} refreshKey={mapRefreshKey} onManualRefresh={handleRefreshMap} selectedSubgridFilter={selectedSubgridFilter} />
             </div>
 
             {/* Bottom Tables */}
             <div className="h-72 bg-slate-900 border-t border-slate-800 flex flex-col">
+              {/* Active Subgrid Filter Banner */}
+              {selectedSubgridFilter && (
+                <div className="px-6 py-2 bg-sky-950/90 border-b border-sky-500/50 flex items-center justify-between text-sky-200 text-xs animate-pulse shrink-0">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-sky-400 animate-ping shrink-0" />
+                    <span className="font-bold text-white uppercase">FILTER ACTIVE: Subgrid [{selectedSubgridFilter}]</span>
+                    <span className="text-xs text-sky-300 ml-1">— Map zoomed to data extent &amp; blinking. Other subgrids hidden.</span>
+                  </div>
+                  <button
+                    onClick={() => toggleSubgridFilter(selectedSubgridFilter)}
+                    className="px-3 py-1 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-xs font-bold transition-all shadow-md cursor-pointer shrink-0"
+                  >
+                    Show All Data
+                  </button>
+                </div>
+              )}
+
               {/* Tabs */}
-              <div className="flex border-b border-slate-800 px-6">
+              <div className="flex border-b border-slate-800 px-6 shrink-0">
                 <button
                   onClick={() => setActiveTab('batches')}
-                  className={`py-4 px-4 text-sm font-medium border-b-2 transition-colors ${activeTab === 'batches'
+                  className={`py-3 px-4 text-sm font-medium border-b-2 transition-colors ${activeTab === 'batches'
                     ? 'text-sky-500 border-sky-500'
                     : 'text-slate-500 border-transparent hover:text-slate-300'
                     }`}
@@ -3478,7 +3633,7 @@ export default function App() {
                 </button>
                 <button
                   onClick={() => setActiveTab('daily')}
-                  className={`py-4 px-4 text-sm font-medium border-b-2 transition-colors ${activeTab === 'daily'
+                  className={`py-3 px-4 text-sm font-medium border-b-2 transition-colors ${activeTab === 'daily'
                     ? 'text-sky-500 border-sky-500'
                     : 'text-slate-500 border-transparent hover:text-slate-300'
                     }`}
@@ -3491,7 +3646,7 @@ export default function App() {
               <div className="flex-1 overflow-auto">
                 {activeTab === 'batches' ? (
                   <table className="w-full text-left text-sm">
-                    <thead className="bg-slate-800/50 text-slate-400 sticky top-0">
+                    <thead className="bg-slate-800/50 text-slate-400 sticky top-0 z-10">
                       <tr>
                         <th className="px-6 py-3 font-medium">Upload Date</th>
                         <th className="px-6 py-3 font-medium">Grid</th>
@@ -3505,32 +3660,46 @@ export default function App() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-800">
-                      {batchLogs.map((log, i) => (
-                        <tr key={log.id || i} className="hover:bg-slate-800/30 transition-colors">
-                          <td className="px-6 py-4 text-slate-300 font-mono text-xs">{log.date}</td>
-                          <td className="px-6 py-4 text-slate-200 font-semibold">{log.grid}</td>
-                          <td className="px-6 py-4 text-sky-400 font-semibold">{extractSubgridName(log.subgrid || log.imageFilename)}</td>
-                          <td className="px-6 py-4 text-slate-300 font-mono text-xs">{log.imageFilename || `${log.subgrid}-0001.jpg`}</td>
-                          <td className="px-6 py-4 text-slate-200 font-semibold">{log.kmProcessed.toFixed(1)}</td>
-                          <td className="px-6 py-4 text-slate-300">{log.images.toLocaleString()}</td>
-                          <td className="px-6 py-4 text-amber-400">{log.defects}</td>
-                          <td className="px-6 py-4 text-emerald-400 font-semibold">{log.pic || 'Fariz'}</td>
-                          <td className="px-6 py-4">
-                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${log.status === 'Complete'
-                              ? 'bg-green-500/10 text-green-400 border border-green-500/20'
-                              : 'bg-sky-500/10 text-sky-400 border border-sky-500/20'
-                              }`}>
-                              {log.status === 'Complete' ? <CheckCircle size={10} /> : <Clock size={10} />}
-                              {log.status}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
+                      {batchLogs.map((log, i) => {
+                        const batchSubgrid = (extractSubgridName(log.subgrid || log.imageFilename) || '').toUpperCase().trim();
+                        const isSelected = selectedSubgridFilter === batchSubgrid;
+                        return (
+                          <tr
+                            key={log.id || i}
+                            onClick={() => toggleSubgridFilter(batchSubgrid)}
+                            className={`cursor-pointer transition-all ${isSelected
+                              ? 'bg-sky-950/90 border-l-4 border-sky-400 font-bold text-white shadow-lg ring-1 ring-sky-500/30'
+                              : 'hover:bg-slate-800/30'
+                              }`}
+                          >
+                            <td className="px-6 py-3.5 text-slate-300 font-mono text-xs">{log.date}</td>
+                            <td className="px-6 py-3.5 text-slate-200 font-semibold">{log.grid}</td>
+                            <td className="px-6 py-3.5 text-sky-400 font-semibold flex items-center gap-2">
+                              <span>{batchSubgrid}</span>
+                              {isSelected && <span className="bg-sky-500 text-white text-[10px] px-1.5 py-0.5 rounded-full font-bold animate-pulse">FILTERED</span>}
+                            </td>
+                            <td className="px-6 py-3.5 text-slate-300 font-mono text-xs">{log.imageFilename || `${log.subgrid}-0001.jpg`}</td>
+                            <td className="px-6 py-3.5 text-slate-200 font-semibold">{log.kmProcessed.toFixed(1)}</td>
+                            <td className="px-6 py-3.5 text-slate-300">{log.images.toLocaleString()}</td>
+                            <td className="px-6 py-3.5 text-amber-400">{log.defects}</td>
+                            <td className="px-6 py-3.5 text-emerald-400 font-semibold">{log.pic || 'Fariz'}</td>
+                            <td className="px-6 py-3.5">
+                              <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${log.status === 'Complete'
+                                ? 'bg-green-500/10 text-green-400 border border-green-500/20'
+                                : 'bg-sky-500/10 text-sky-400 border border-sky-500/20'
+                                }`}>
+                                {log.status === 'Complete' ? <CheckCircle size={10} /> : <Clock size={10} />}
+                                {log.status}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 ) : (
                   <table className="w-full text-left text-sm">
-                    <thead className="bg-slate-800/50 text-slate-400 sticky top-0">
+                    <thead className="bg-slate-800/50 text-slate-400 sticky top-0 z-10">
                       <tr>
                         <th className="px-6 py-3 font-medium">Date</th>
                         <th className="px-6 py-3 font-medium">Grid</th>
@@ -3545,30 +3714,44 @@ export default function App() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-800">
-                      {[...dailyData].reverse().map((log, i) => (
-                        <tr key={log.id || `dash-d-${log.date}-${log.subgrid}-${i}`} className="hover:bg-slate-800/30 transition-colors">
-                          <td className="px-6 py-4 text-slate-300">{log.date}</td>
-                          <td className="px-6 py-4 text-slate-200 font-semibold">{log.grid}</td>
-                          <td className="px-6 py-4 text-slate-300">{log.subgrid}</td>
-                          <td className="px-6 py-4 text-slate-200 font-semibold">{log.kmProcessed.toFixed(1)}</td>
-                          <td className="px-6 py-4 text-slate-300">{log.imagesProcessed.toLocaleString()}</td>
-                          <td className="px-6 py-4 text-slate-300">{log.captureEquipment}</td>
-                          <td className="px-6 py-4 text-amber-400">{log.imagesDefected}</td>
-                          <td className="px-6 py-4 text-emerald-400 font-semibold">{log.pic || 'Fariz'}</td>
-                          <td className="px-6 py-4">
-                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${log.publishToUSVPRO === 'yes' ? 'bg-green-500/10 text-green-400' :
-                              log.publishToUSVPRO === 'need to recheck' ? 'bg-amber-500/10 text-amber-400' :
-                                log.publishToUSVPRO === 'in process' ? 'bg-blue-500/10 text-blue-400' :
-                                  'bg-red-500/10 text-red-400'
-                              }`}>
-                              {log.publishToUSVPRO}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 text-slate-300 truncate max-w-[200px]" title={log.publishToUSVPRO === 'yes' || log.isSyncedWithSupabase || log.action?.startsWith('Published') ? 'Published in database' : log.action}>
-                            {log.publishToUSVPRO === 'yes' || log.isSyncedWithSupabase || log.action?.startsWith('Published') ? 'Published in database' : log.action}
-                          </td>
-                        </tr>
-                      ))}
+                      {[...dailyData].reverse().map((log, i) => {
+                        const dailySubgrid = (log.subgrid || '').toUpperCase().trim();
+                        const isSelected = selectedSubgridFilter === dailySubgrid;
+                        return (
+                          <tr
+                            key={log.id || `dash-d-${log.date}-${log.subgrid}-${i}`}
+                            onClick={() => toggleSubgridFilter(dailySubgrid)}
+                            className={`cursor-pointer transition-all ${isSelected
+                              ? 'bg-sky-950/90 border-l-4 border-sky-400 font-bold text-white shadow-lg ring-1 ring-sky-500/30'
+                              : 'hover:bg-slate-800/30'
+                              }`}
+                          >
+                            <td className="px-6 py-3.5 text-slate-300">{log.date}</td>
+                            <td className="px-6 py-3.5 text-slate-200 font-semibold">{log.grid}</td>
+                            <td className="px-6 py-3.5 text-sky-400 font-semibold flex items-center gap-2">
+                              <span>{dailySubgrid}</span>
+                              {isSelected && <span className="bg-sky-500 text-white text-[10px] px-1.5 py-0.5 rounded-full font-bold animate-pulse">FILTERED</span>}
+                            </td>
+                            <td className="px-6 py-3.5 text-slate-200 font-semibold">{log.kmProcessed.toFixed(1)}</td>
+                            <td className="px-6 py-3.5 text-slate-300">{log.imagesProcessed.toLocaleString()}</td>
+                            <td className="px-6 py-3.5 text-slate-300">{log.captureEquipment}</td>
+                            <td className="px-6 py-3.5 text-amber-400">{log.imagesDefected}</td>
+                            <td className="px-6 py-3.5 text-emerald-400 font-semibold">{log.pic || 'Fariz'}</td>
+                            <td className="px-6 py-3.5">
+                              <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${log.publishToUSVPRO === 'yes' ? 'bg-green-500/10 text-green-400' :
+                                log.publishToUSVPRO === 'need to recheck' ? 'bg-amber-500/10 text-amber-400' :
+                                  log.publishToUSVPRO === 'in process' ? 'bg-blue-500/10 text-blue-400' :
+                                    'bg-red-500/10 text-red-400'
+                                }`}>
+                                {log.publishToUSVPRO}
+                              </span>
+                            </td>
+                            <td className="px-6 py-3.5 text-slate-300 truncate max-w-[200px]" title={log.publishToUSVPRO === 'yes' || log.isSyncedWithSupabase || log.action?.startsWith('Published') ? 'Published in database' : log.action}>
+                              {log.publishToUSVPRO === 'yes' || log.isSyncedWithSupabase || log.action?.startsWith('Published') ? 'Published in database' : log.action}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 )}

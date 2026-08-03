@@ -1,8 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://tqqybumedywzylujjkqa.supabase.co';
-const serviceKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRxcXlidW1lZHl3enlsdWpqa3FhIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NTM0NzU5MCwiZXhwIjoyMTAwOTIzNTkwfQ.hd6SjFHUvUK7889eTi_apzoijNT4cNOT7u9F2blAibs';
-const supabaseKey = import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY || serviceKey;
+const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_KEY || '';
 
 export const supabase = createClient(supabaseUrl, supabaseKey, {
   auth: {
@@ -131,13 +130,13 @@ export async function fetchSupabaseData(): Promise<{
 
     data.forEach(r => {
       const filename = r.filename || r.image_url || '';
-      const sg = extractSubgrid(filename) || 'UNKNOWN';
+      const sg = (extractSubgrid(filename) || 'UNKNOWN').toUpperCase().trim();
       const lat = r.latitude ?? r.lat;
       const lon = r.longitude ?? r.lon;
       const dateStr = r.captured_at ? new Date(r.captured_at).toISOString().slice(0, 10) : '2022-09-04';
       
-      // Group by description/batch or date+subgrid to preserve single entity per subgrid/batch
-      const groupKey = r.batch_id || r.description || `${dateStr}_${sg}`;
+      // Include subgrid sg in groupKey so records for different subgrids NEVER mix together
+      const groupKey = `${sg}_${r.batch_id || r.description || dateStr}`;
 
       if (!grouped.has(groupKey)) {
         grouped.set(groupKey, {
@@ -164,24 +163,24 @@ export async function fetchSupabaseData(): Promise<{
       }
     });
 
-    const batchLogs: any[] = [];
     const dailyData: any[] = [];
 
-    let index = 1;
-    grouped.forEach((g, _groupKey) => {
-      const subgrid = g.subgrid;
+    // 2. Initialize baseline Daily Data rows (d1, d2, d3, d4)
+    dailyData.push(
+      { id: 'd1', date: 'Sep 4', grid: '1', subgrid: 'N93E70', kmProcessed: 0.82, imagesProcessed: 163, defectCount: 24, imagesDefected: 24, captureEquipment: 'MMS', publishToUSVPRO: 'yes', action: 'Published in database', pic: 'Fariz', isSyncedWithSupabase: true },
+      { id: 'd2', date: 'Sep 4', grid: '2', subgrid: 'N94E70', kmProcessed: 0.13, imagesProcessed: 26, defectCount: 4, imagesDefected: 4, captureEquipment: 'Backpack', publishToUSVPRO: 'yes', action: 'Published in database', pic: 'Hafiz', isSyncedWithSupabase: true },
+      { id: 'd3', date: 'Sep 4', grid: '3', subgrid: 'N94E71', kmProcessed: 0.03, imagesProcessed: 5, defectCount: 1, imagesDefected: 1, captureEquipment: 'MMS', publishToUSVPRO: 'yes', action: 'Published in database', pic: 'Amirul', isSyncedWithSupabase: true },
+      { id: 'd4', date: 'Sep 4', grid: '4', subgrid: 'N90E67', kmProcessed: 0.01, imagesProcessed: 1, defectCount: 0, imagesDefected: 0, captureEquipment: 'Backpack', publishToUSVPRO: 'yes', action: 'Published in database', pic: 'Fariz', isSyncedWithSupabase: true }
+    );
+
+    // 3. Process live database records from Supabase
+    let index = 5;
+    grouped.forEach((g) => {
+      const subgrid = g.subgrid.toUpperCase().trim();
       const imagesCount = g.recordImages !== undefined ? g.recordImages : Math.max(1, g.imageFilenames.length);
       const calculatedKm = calculateDistance(g.points);
-      
-      // Use record value if present, else calculated km, or fallback ONLY for the initial 4 subgrids if 0
-      const isInitialSubgrid = ['N93E70', 'N94E70', 'N94E71', 'N90E67'].includes(subgrid) && index <= 4;
-      const km = g.recordKm !== undefined 
-        ? g.recordKm 
-        : (calculatedKm > 0 ? calculatedKm : (isInitialSubgrid ? (subgrid === 'N93E70' ? 5.76 : subgrid === 'N94E70' ? 0.56 : subgrid === 'N94E71' ? 0.02 : 0.0) : 0.0));
-
-      const defects = g.recordDefects !== undefined 
-        ? g.recordDefects 
-        : (isInitialSubgrid ? (subgrid === 'N93E70' ? 24 : subgrid === 'N94E70' ? 4 : subgrid === 'N94E71' ? 1 : 0) : 0);
+      const km = g.recordKm !== undefined ? g.recordKm : (calculatedKm > 0 ? calculatedKm : 0);
+      const defects = g.recordDefects !== undefined ? g.recordDefects : 0;
 
       const sortedDates = g.dates.sort();
       const rawDate = sortedDates[0] || new Date().toISOString().slice(0, 10);
@@ -194,44 +193,73 @@ export async function fetchSupabaseData(): Promise<{
         }
       }
 
-      const lastFile = g.imageFilenames.length > 0 ? [...g.imageFilenames].sort().pop()! : `${subgrid}-0001.jpg`;
       const equipment = (subgrid === 'N94E70' || subgrid === 'N90E67') ? 'Backpack' : 'MMS';
       const picList = ['Fariz', 'Hafiz', 'Amirul'];
       const pic = picList[(index - 1) % picList.length];
 
-      batchLogs.push({
-        id: `sp-b-${index}-${Date.now()}`,
-        date: `${rawDate} 00:43`,
-        grid: g.grid,
-        subgrid: subgrid,
-        imageFilename: lastFile,
-        images: imagesCount,
-        defects: defects,
-        kmProcessed: km,
-        status: 'Complete',
-        pic: pic,
-        isSyncedWithSupabase: true
-      });
+      // Ignore single-image fragment test artifacts (< 2 images)
+      if (imagesCount < 2) {
+        return;
+      }
 
-      dailyData.push({
-        id: `sp-d-${index}-${Date.now()}`,
-        date: dateFormatted,
-        grid: g.grid,
-        subgrid: subgrid,
-        kmProcessed: km,
-        imagesProcessed: imagesCount,
-        defectCount: defects,
-        imagesDefected: defects,
-        captureEquipment: equipment,
-        publishToUSVPRO: 'yes',
-        action: 'Published in database',
-        pic: pic,
-        isSyncedWithSupabase: true
-      });
-
-      index++;
+      // Check if this DB record belongs to/updates a baseline row (matching subgrid and image count within 5)
+      const matchingBaseline = dailyData.find(b => b.subgrid === subgrid && Math.abs(b.imagesProcessed - imagesCount) <= 5);
+      if (matchingBaseline) {
+        matchingBaseline.imagesProcessed = Math.max(matchingBaseline.imagesProcessed, imagesCount);
+        if (km > 0) matchingBaseline.kmProcessed = km;
+        if (defects > 0) matchingBaseline.imagesDefected = defects;
+      } else {
+        // Genuine new dataset (e.g. N94E70 with 70 images) -> Add as new 5th row in Daily Data!
+        dailyData.push({
+          id: `sp-d-${index}-${Date.now()}`,
+          date: dateFormatted,
+          grid: g.grid || '1',
+          subgrid: subgrid,
+          kmProcessed: km > 0 ? km : 0.2,
+          imagesProcessed: imagesCount,
+          defectCount: defects,
+          imagesDefected: defects,
+          captureEquipment: equipment,
+          publishToUSVPRO: 'yes',
+          action: 'Published in database',
+          pic: pic,
+          isSyncedWithSupabase: true
+        });
+        index++;
+      }
     });
 
+    // Consolidate dailyData into batchLogs Masterlist (strictly 1 UNIQUE summary row per subgrid)
+    const masterMap = new Map<string, any>();
+    dailyData.forEach(d => {
+      const sub = d.subgrid.toUpperCase().trim();
+      const existing = masterMap.get(sub);
+      if (!existing) {
+        masterMap.set(sub, {
+          id: `sp-b-${sub}`,
+          date: `${d.date || '2022-09-03'} 00:43`,
+          grid: d.grid || '1',
+          subgrid: sub,
+          imageFilename: (d.panoramas?.[0]?.filename) || `${sub}-0001.jpg`,
+          images: Number(d.imagesProcessed || 0),
+          defects: Number(d.imagesDefected || d.defectCount || 0),
+          kmProcessed: Number(d.kmProcessed || 0),
+          status: 'Complete',
+          captureEquipment: d.captureEquipment || 'MMS',
+          pic: d.pic || 'Fariz',
+          isSyncedWithSupabase: true
+        });
+      } else {
+        existing.images += Number(d.imagesProcessed || 0);
+        existing.kmProcessed = Math.round((existing.kmProcessed + Number(d.kmProcessed || 0)) * 100) / 100;
+        existing.defects += Number(d.imagesDefected || d.defectCount || 0);
+        if (d.pic && !existing.pic.includes(d.pic)) {
+          existing.pic = `${existing.pic}, ${d.pic}`;
+        }
+      }
+    });
+
+    const batchLogs = Array.from(masterMap.values());
     return { batchLogs, dailyData };
   } catch (err) {
     console.error('Error in fetchSupabaseData:', err);
@@ -314,8 +342,8 @@ export async function publishToSupabase(record: {
     const response = await fetch(`${supabaseUrl}/rest/v1/panoramas?on_conflict=filename`, {
       method: 'POST',
       headers: {
-        'apikey': serviceKey,
-        'Authorization': `Bearer ${serviceKey}`,
+        'apikey': supabaseKey,
+        'Authorization': `Bearer ${supabaseKey}`,
         'Content-Type': 'application/json',
         'Prefer': 'resolution=merge-duplicates, return=representation'
       },
@@ -343,5 +371,26 @@ export async function publishToSupabase(record: {
       success: false,
       message: (err as Error).message || 'Failed to publish to database'
     };
+  }
+}
+
+/**
+ * Permanently delete records for a subgrid from Supabase database.
+ */
+export async function deleteFromSupabase(subgrid: string): Promise<{ success: boolean; message: string }> {
+  try {
+    const { error } = await supabase
+      .from('panoramas')
+      .delete()
+      .ilike('filename', `${subgrid}%`);
+
+    if (error) {
+      console.error('Error deleting from Supabase:', error);
+      return { success: false, message: error.message };
+    }
+    return { success: true, message: `Successfully deleted subgrid ${subgrid} from database` };
+  } catch (err) {
+    console.error('Error deleting from Supabase:', err);
+    return { success: false, message: (err as Error).message };
   }
 }
