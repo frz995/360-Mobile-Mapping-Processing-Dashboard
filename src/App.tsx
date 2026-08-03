@@ -436,6 +436,7 @@ const MapComponent = ({
   selectedSubgridFilter?: string | null;
 }) => {
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
 
   useEffect(() => {
     const handler = (e: MessageEvent) => {
@@ -446,6 +447,16 @@ const MapComponent = ({
     window.addEventListener('message', handler);
     return () => window.removeEventListener('message', handler);
   }, []);
+
+  // Send postMessage subgrid filter update to embedded WebGIS map iframe
+  useEffect(() => {
+    if (iframeRef.current && iframeRef.current.contentWindow) {
+      iframeRef.current.contentWindow.postMessage({
+        type: 'SET_SUBGRID_FILTER',
+        subgrid: selectedSubgridFilter || ''
+      }, '*');
+    }
+  }, [selectedSubgridFilter]);
 
   return (
     <div className="relative w-full h-full overflow-hidden bg-slate-950">
@@ -491,6 +502,7 @@ const MapComponent = ({
       </div>
 
       <iframe
+        ref={iframeRef}
         key={refreshKey || 0}
         src={`${import.meta.env.VITE_MAP_URL || 'https://mobilemapping-nine.vercel.app'}/?embed=true${selectedSubgridFilter ? `&subgrid=${selectedSubgridFilter}` : ''}${refreshKey ? `&t=${refreshKey}` : ''}`}
         className="w-full h-full border-0"
@@ -3714,23 +3726,21 @@ export default function App() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-800">
-                      {[...dailyData].reverse().map((log, i) => {
+                      {[...dailyData]
+                        .reverse()
+                        .filter(log => !selectedSubgridFilter || (log.subgrid || '').toUpperCase().trim() === selectedSubgridFilter)
+                        .map((log, i) => {
                         const dailySubgrid = (log.subgrid || '').toUpperCase().trim();
-                        const isSelected = selectedSubgridFilter === dailySubgrid;
                         return (
                           <tr
                             key={log.id || `dash-d-${log.date}-${log.subgrid}-${i}`}
                             onClick={() => toggleSubgridFilter(dailySubgrid)}
-                            className={`cursor-pointer transition-all ${isSelected
-                              ? 'bg-sky-950/90 border-l-4 border-sky-400 font-bold text-white shadow-lg ring-1 ring-sky-500/30'
-                              : 'hover:bg-slate-800/30'
-                              }`}
+                            className="cursor-pointer transition-all hover:bg-slate-800/30"
                           >
                             <td className="px-6 py-3.5 text-slate-300">{log.date}</td>
                             <td className="px-6 py-3.5 text-slate-200 font-semibold">{log.grid}</td>
                             <td className="px-6 py-3.5 text-sky-400 font-semibold flex items-center gap-2">
                               <span>{dailySubgrid}</span>
-                              {isSelected && <span className="bg-sky-500 text-white text-[10px] px-1.5 py-0.5 rounded-full font-bold animate-pulse">FILTERED</span>}
                             </td>
                             <td className="px-6 py-3.5 text-slate-200 font-semibold">{log.kmProcessed.toFixed(1)}</td>
                             <td className="px-6 py-3.5 text-slate-300">{log.imagesProcessed.toLocaleString()}</td>
