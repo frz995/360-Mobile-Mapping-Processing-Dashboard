@@ -10,6 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.111.0",
     "@tmcw/togeojson": "^7.1.2",
     "esri-leaflet": "^3.0.19",
     "leaflet": "^1.9.4",
