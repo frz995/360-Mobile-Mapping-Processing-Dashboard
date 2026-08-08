@@ -1,0 +1,92 @@
+import React, { useEffect, useRef } from 'react';
+
+interface WebGISViewerIframeProps {
+  panoramaUrl: string;
+  subgrid?: string;
+  bearing?: number;
+  className?: string;
+}
+
+export const WebGISViewerIframe: React.FC<WebGISViewerIframeProps> = ({
+  panoramaUrl,
+  subgrid = 'KL_Drive_04',
+  bearing = 0,
+  className = 'w-full h-full'
+}) => {
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
+
+  const webGisBaseUrl = import.meta.env.VITE_MAP_URL || (
+    typeof window !== 'undefined' && window.location.hostname === 'localhost'
+      ? 'http://localhost:5173'
+      : 'https://mobilemapping-nine.vercel.app'
+  );
+
+  // Static iframe URL created ONCE on mount so iframe never reloads on prop updates
+  const staticSrc = useRef(`${webGisBaseUrl}/?embed=true&viewerOnly=true`).current;
+
+  const postData = React.useCallback(() => {
+    if (iframeRef.current && iframeRef.current.contentWindow && panoramaUrl) {
+      try {
+        iframeRef.current.contentWindow.postMessage({
+          type: 'SET_PANORAMA',
+          point: {
+            image_url: panoramaUrl,
+            subgrid: subgrid,
+            bearing: bearing
+          }
+        }, '*');
+      } catch (err) {
+        console.warn('Failed to postMessage to WebGIS viewer iframe:', err);
+      }
+    }
+  }, [panoramaUrl, subgrid, bearing]);
+
+  // Listen for iframe onLoad and VIEWER_READY message to re-post SET_PANORAMA when iframe is ready
+  useEffect(() => {
+    const handleMessage = (e: MessageEvent) => {
+      if (e.data?.type === 'VIEWER_READY') {
+        postData();
+      }
+    };
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [postData]);
+
+  // Send SET_PANORAMA whenever panoramaUrl, subgrid, or bearing changes
+  useEffect(() => {
+    if (!panoramaUrl) return;
+
+    postData();
+
+    // Retry sending at 150ms, 400ms, and 800ms to guarantee initial cold load delivery
+    const t1 = setTimeout(postData, 150);
+    const t2 = setTimeout(postData, 400);
+    const t3 = setTimeout(postData, 800);
+
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+    };
+  }, [panoramaUrl, subgrid, bearing, postData]);
+
+  const handleIframeLoad = () => {
+    postData();
+    setTimeout(postData, 300);
+  };
+
+  return (
+    <div className={`relative overflow-hidden rounded-lg bg-black ${className}`}>
+      <iframe
+        ref={iframeRef}
+        src={staticSrc}
+        onLoad={handleIframeLoad}
+        title="WebGIS 360 Viewer"
+        className="w-full h-full border-0 rounded-lg"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+      />
+    </div>
+  );
+};
+
+export default WebGISViewerIframe;
