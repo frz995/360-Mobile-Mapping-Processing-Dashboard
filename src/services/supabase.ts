@@ -49,6 +49,9 @@ export interface SupabasePanoramaRecord {
   bearing?: number;
   pitch?: number;
   roll?: number;
+  defect_count?: number;
+  qa_status?: string;
+  defect_flags?: any;
   geom?: {
     type: string;
     coordinates: [number, number];
@@ -56,7 +59,7 @@ export interface SupabasePanoramaRecord {
 }
 
 // Subgrid default centroid coordinates (longitude, latitude)
-const SUBGRID_COORDINATES: Record<string, [number, number]> = {
+export const SUBGRID_COORDINATES: Record<string, [number, number]> = {
   'N93E70': [102.826514, 2.558054],
   'N94E70': [102.805000, 2.538900],
   'N94E71': [102.810000, 2.540000],
@@ -405,6 +408,38 @@ export async function deleteFromSupabase(subgrid: string): Promise<{ success: bo
     return { success: true, message: `Successfully deleted subgrid ${subgrid} from database` };
   } catch (err) {
     console.error('Error deleting from Supabase:', err);
+    return { success: false, message: (err as Error).message };
+  }
+}
+
+/**
+ * Real-time update of defect count, QA status, and defect flags in Supabase database.
+ */
+export async function updateDefectStatusInSupabase(
+  subgrid: string,
+  defectCount: number,
+  qaStatus: string = 'Reviewing',
+  defectFlags?: any
+): Promise<{ success: boolean; message: string }> {
+  try {
+    const cleanSubgrid = (subgrid || 'N93E70').toUpperCase().trim();
+    const { error } = await supabase
+      .from('panoramas')
+      .update({
+        defect_count: defectCount,
+        qa_status: qaStatus,
+        defect_flags: defectFlags || {}
+      })
+      .ilike('filename', `${cleanSubgrid}%`);
+
+    if (error) {
+      console.warn('Supabase update warning (non-fatal, local state active):', error.message);
+      return { success: false, message: error.message };
+    }
+    console.log(`Successfully updated defect status in Supabase for ${cleanSubgrid}`);
+    return { success: true, message: `Updated defect status for ${cleanSubgrid} in Supabase` };
+  } catch (err) {
+    console.warn('Supabase defect update error:', err);
     return { success: false, message: (err as Error).message };
   }
 }
