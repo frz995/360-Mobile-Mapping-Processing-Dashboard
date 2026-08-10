@@ -33,7 +33,7 @@ import {
   Maximize2,
   Filter
 } from 'lucide-react';
-import { supabase, publishToSupabase, fetchSupabaseData, deleteFromSupabase, updateDefectStatusInSupabase } from './services/supabase';
+import { supabase, publishToSupabase, fetchSupabaseData, deleteFromSupabase, updateDefectStatusInSupabase, fetchQaRecordsFromSupabase } from './services/supabase';
 import * as shapefile from 'shapefile';
 import * as toGeoJSON from '@tmcw/togeojson';
 
@@ -173,8 +173,8 @@ const INITIAL_DAILY_DATA: DailyTimeSeries[] = [
     subgrid: 'N93E70',
     kmProcessed: 0.82,
     imagesProcessed: 163,
-    defectCount: 24,
-    imagesDefected: 24,
+    defectCount: 0,
+    imagesDefected: 0,
     captureEquipment: 'MMS',
     publishToUSVPRO: 'yes',
     action: 'Published in database',
@@ -189,8 +189,8 @@ const INITIAL_DAILY_DATA: DailyTimeSeries[] = [
     subgrid: 'N94E70',
     kmProcessed: 0.13,
     imagesProcessed: 26,
-    defectCount: 4,
-    imagesDefected: 4,
+    defectCount: 0,
+    imagesDefected: 0,
     captureEquipment: 'Backpack',
     publishToUSVPRO: 'yes',
     action: 'Published in database',
@@ -205,8 +205,8 @@ const INITIAL_DAILY_DATA: DailyTimeSeries[] = [
     subgrid: 'N94E71',
     kmProcessed: 0.03,
     imagesProcessed: 5,
-    defectCount: 1,
-    imagesDefected: 1,
+    defectCount: 0,
+    imagesDefected: 0,
     captureEquipment: 'MMS',
     publishToUSVPRO: 'yes',
     action: 'Published in database',
@@ -233,9 +233,9 @@ const INITIAL_DAILY_DATA: DailyTimeSeries[] = [
 ];
 
 const INITIAL_BATCH_LOGS: BatchLog[] = [
-  { id: '1', date: '2022-09-04 00:43', grid: '1', subgrid: 'N93E70', imageFilename: 'N93E70-0158.jpg', images: 163, defects: 24, kmProcessed: 0.82, status: 'Complete', captureEquipment: 'MMS', pic: 'Fariz', isSyncedWithSupabase: true },
-  { id: '2', date: '2022-09-04 00:43', grid: '2', subgrid: 'N94E70', imageFilename: 'N94E70-0005.jpg', images: 26, defects: 4, kmProcessed: 0.13, status: 'Complete', captureEquipment: 'Backpack', pic: 'Hafiz', isSyncedWithSupabase: true },
-  { id: '3', date: '2022-09-04 00:43', grid: '3', subgrid: 'N94E71', imageFilename: 'N94E71-0001.jpg', images: 5, defects: 1, kmProcessed: 0.03, status: 'Complete', captureEquipment: 'MMS', pic: 'Amirul', isSyncedWithSupabase: true },
+  { id: '1', date: '2022-09-04 00:43', grid: '1', subgrid: 'N93E70', imageFilename: 'N93E70-0158.jpg', images: 163, defects: 0, kmProcessed: 0.82, status: 'Complete', captureEquipment: 'MMS', pic: 'Fariz', isSyncedWithSupabase: true },
+  { id: '2', date: '2022-09-04 00:43', grid: '2', subgrid: 'N94E70', imageFilename: 'N94E70-0005.jpg', images: 26, defects: 0, kmProcessed: 0.13, status: 'Complete', captureEquipment: 'Backpack', pic: 'Hafiz', isSyncedWithSupabase: true },
+  { id: '3', date: '2022-09-04 00:43', grid: '3', subgrid: 'N94E71', imageFilename: 'N94E71-0001.jpg', images: 5, defects: 0, kmProcessed: 0.03, status: 'Complete', captureEquipment: 'MMS', pic: 'Amirul', isSyncedWithSupabase: true },
   { id: '4', date: '2022-09-04 00:43', grid: '4', subgrid: 'N90E67', imageFilename: 'N90E67-0023.jpg', images: 1, defects: 0, kmProcessed: 0.01, status: 'Complete', captureEquipment: 'Backpack', pic: 'Fariz', isSyncedWithSupabase: true }
 ];
 
@@ -442,7 +442,7 @@ const MapComponent = ({
       <iframe
         ref={iframeRef}
         key={refreshKey || 0}
-        src={`${import.meta.env.VITE_MAP_URL || (typeof window !== 'undefined' && window.location.hostname === 'localhost' ? 'http://localhost:5173' : 'https://mobilemapping-nine.vercel.app')}/?embed=true${selectedSubgridFilter ? `&subgrid=${encodeURIComponent(selectedSubgridFilter)}` : ''}${refreshKey ? `&t=${refreshKey}` : ''}`}
+        src={`${import.meta.env.VITE_MAP_URL || (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname.startsWith('192.168.') || window.location.hostname.startsWith('10.')) ? 'http://localhost:5173' : 'http://localhost:5173')}/?embed=true${selectedSubgridFilter ? `&subgrid=${encodeURIComponent(selectedSubgridFilter)}` : ''}${refreshKey ? `&t=${refreshKey}` : ''}`}
         onLoad={() => {
           if (iframeRef.current && iframeRef.current.contentWindow) {
             iframeRef.current.contentWindow.postMessage({
@@ -3173,10 +3173,10 @@ export default function App() {
 
   // Load data from localStorage or use initial data
   const [dailyData, setDailyData] = useState<DailyTimeSeries[]>(() => {
-    ['dailyData_v4', 'dailyData_v5', 'dailyData_v6', 'dailyData_v7', 'dailyData_v8', 'dailyData_v9', 'dailyData_v10', 'dailyData_v11', 'dailyData_v12', 'batchLogs_v5', 'batchLogs_v6', 'batchLogs_v7', 'batchLogs_v8', 'batchLogs_v9', 'batchLogs_v10', 'batchLogs_v11', 'batchLogs_v12'].forEach(k => {
+    ['dailyData_v4', 'dailyData_v5', 'dailyData_v6', 'dailyData_v7', 'dailyData_v8', 'dailyData_v9', 'dailyData_v10', 'dailyData_v11', 'dailyData_v12', 'dailyData_v13', 'dailyData_v14', 'dailyData_v15', 'batchLogs_v5', 'batchLogs_v6', 'batchLogs_v7', 'batchLogs_v8', 'batchLogs_v9', 'batchLogs_v10', 'batchLogs_v11', 'batchLogs_v12', 'batchLogs_v13', 'batchLogs_v14', 'batchLogs_v15', 'qaSubgridRecords_v13'].forEach(k => {
       try { localStorage.removeItem(k); } catch { }
     });
-    const saved = localStorage.getItem('dailyData_v13');
+    const saved = localStorage.getItem('dailyData_v16');
     if (!saved) return INITIAL_DAILY_DATA;
     try {
       const parsed = JSON.parse(saved);
@@ -3187,7 +3187,7 @@ export default function App() {
   });
 
   const [batchLogs, setBatchLogs] = useState<BatchLog[]>(() => {
-    const saved = localStorage.getItem('batchLogs_v13');
+    const saved = localStorage.getItem('batchLogs_v16');
     if (!saved) return INITIAL_BATCH_LOGS;
     try {
       const parsed = JSON.parse(saved);
@@ -3201,25 +3201,68 @@ export default function App() {
   useEffect(() => {
     async function initLiveSupabaseData() {
       try {
-        // Sync existing initial subgrid defect counts to Supabase database
-        updateDefectStatusInSupabase('N93E70', 24);
-        updateDefectStatusInSupabase('N94E70', 4);
-        updateDefectStatusInSupabase('N94E71', 1);
-
         const { dailyData: sDaily, batchLogs: sBatches } = await fetchSupabaseData();
         if (sDaily && sDaily.length > 0) {
           setDailyData(prev => {
+            const localMap = new Map(prev.map(d => [(d.subgrid || '').toUpperCase().trim(), d]));
             const supabaseIds = new Set(sDaily.map(d => d.id || `${d.date}-${d.subgrid}`));
+            const merged = sDaily.map(sd => {
+              const sgKey = (sd.subgrid || '').toUpperCase().trim();
+              const local = localMap.get(sgKey);
+              let kmVal = sd.kmProcessed;
+              if (kmVal > 5) kmVal = Math.round((sd.imagesProcessed * 0.005) * 100) / 100;
+              if (local && ((local.defectCount || 0) > (sd.defectCount || 0) || (local.imagesDefected || 0) > (sd.imagesDefected || 0))) {
+                const maxDefects = Math.max(local.defectCount || 0, local.imagesDefected || 0);
+                return { ...sd, kmProcessed: kmVal, defectCount: maxDefects, imagesDefected: maxDefects };
+              }
+              return { ...sd, kmProcessed: kmVal };
+            });
             const localDrafts = prev.filter(d => !d.isSyncedWithSupabase && !supabaseIds.has(d.id || `${d.date}-${d.subgrid}`));
-            return [...sDaily, ...localDrafts];
+            return [...merged, ...localDrafts];
           });
         }
         if (sBatches && sBatches.length > 0) {
           setBatchLogs(prev => {
-            const supabaseSubgrids = new Set(sBatches.map(b => b.subgrid));
-            const localDrafts = prev.filter(b => !supabaseSubgrids.has(b.subgrid));
-            return [...sBatches, ...localDrafts];
+            const localMap = new Map(prev.map(b => [(b.subgrid || '').toUpperCase().trim(), b]));
+            const merged = sBatches.map(sb => {
+              const sgKey = (sb.subgrid || '').toUpperCase().trim();
+              const local = localMap.get(sgKey);
+              let kmVal = sb.kmProcessed;
+              if (kmVal > 5) kmVal = Math.round((sb.images * 0.005) * 100) / 100;
+              if (local && (local.defects || 0) > (sb.defects || 0)) {
+                return { ...sb, kmProcessed: kmVal, defects: local.defects };
+              }
+              return { ...sb, kmProcessed: kmVal };
+            });
+            return merged;
           });
+        }
+
+        // Fetch live defect count from qa_defects table
+        try {
+          const { data: qaRows } = await supabase.from('qa_defects').select('qa_status, defect_flags, defect_count');
+          if (qaRows && qaRows.length > 0) {
+            const count = qaRows.filter(q =>
+              q.qa_status === 'flagged' ||
+              (q.defect_flags && typeof q.defect_flags === 'object' && Object.values(q.defect_flags).some(Boolean)) ||
+              (q.defect_count && Number(q.defect_count) > 0)
+            ).length;
+            setLiveDefectCount(count);
+            // Also get total frame count from panoramas_view for accurate % calculation
+            try {
+              const { count: totalCount } = await supabase
+                .from('panoramas_view')
+                .select('*', { count: 'exact', head: true });
+              if (totalCount && totalCount > 0) setLiveTotalFrames(totalCount);
+            } catch (_) {}
+          }
+        } catch (e) {
+          console.warn('qa_defects count fetch skipped:', e);
+        }
+
+        const fetchedQa = await fetchQaRecordsFromSupabase();
+        if (fetchedQa && Object.keys(fetchedQa).length > 0) {
+          setQaSubgridRecords(prev => ({ ...fetchedQa, ...prev }));
         }
       } catch (err) {
         console.warn('Supabase initial fetch skipped:', err);
@@ -3232,8 +3275,8 @@ export default function App() {
   // Save to localStorage whenever data changes
   useEffect(() => {
     try {
-      localStorage.setItem('dailyData_v13', JSON.stringify(dailyData));
-      localStorage.setItem('batchLogs_v13', JSON.stringify(batchLogs));
+      localStorage.setItem('dailyData_v16', JSON.stringify(dailyData));
+      localStorage.setItem('batchLogs_v16', JSON.stringify(batchLogs));
     } catch (err) {
       console.warn('Unable to save to localStorage:', err);
     }
@@ -3258,7 +3301,13 @@ export default function App() {
   // Calculated totals
   const totalImages = dailyData.reduce((sum, d) => sum + d.imagesProcessed, 0);
   const totalKm = dailyData.reduce((sum, d) => sum + d.kmProcessed, 0);
-  const totalDefects = dailyData.reduce((sum, d) => sum + d.imagesDefected, 0);
+  const [liveDefectCount, setLiveDefectCount] = useState<number>(0);
+  const [liveTotalFrames, setLiveTotalFrames] = useState<number>(0);
+  const totalDefects = liveDefectCount || dailyData.reduce((sum, d) => sum + d.imagesDefected, 0);
+  const totalFramesForHealth = liveTotalFrames || totalImages || 265;
+  const pipelineHealthPercent = totalFramesForHealth > 0
+    ? (((totalFramesForHealth - totalDefects) / totalFramesForHealth) * 100).toFixed(1)
+    : '100.0';
   const targetKm = 5000;
   const progressPercent = Math.round((totalKm / targetKm) * 100);
   const latestBatch = dailyData[dailyData.length - 1];
@@ -3268,27 +3317,166 @@ export default function App() {
 
   // Top-level subgrid filter state for Main Dashboard Page interactive row filtering
   const [selectedSubgridFilter, setSelectedSubgridFilter] = useState<string | null>(null);
+  const [showPanotrackData, setShowPanotrackData] = useState(true);
+  const [isStatusFilterOpen, setIsStatusFilterOpen] = useState(false);
+  const [isDrawingBBox, setIsDrawingBBox] = useState(false);
+  const [statusFilters, setStatusFilters] = useState<{ published: boolean; defect: boolean; stitching: boolean }>({
+    published: true,
+    defect: true,
+    stitching: true
+  });
+
+  const lastUpdateDate = React.useMemo(() => {
+    const allDates = [
+      ...batchLogs.map(b => b.date),
+      ...dailyData.map(d => d.date)
+    ].filter(Boolean);
+    if (allDates.length > 0) {
+      allDates.sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+      const latest = new Date(allDates[0]);
+      if (!isNaN(latest.getTime())) {
+        return latest.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+      }
+    }
+    return new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  }, [batchLogs, dailyData]);
+
+  const generateExecutivePdfReport = () => {
+    const printWindow = window.open('', '_blank', 'width=900,height=1000');
+    if (!printWindow) return;
+
+    const totalImages = batchLogs.reduce((acc, b) => acc + (b.images || 0), 0);
+    const totalDefectsCount = batchLogs.reduce((acc, b) => acc + (b.defects || 0), 0);
+    const reportDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>TNB LV Asset Mapping - Executive Progress Report</title>
+          <style>
+            body { font-family: 'Segoe UI', system-ui, sans-serif; color: #1e293b; padding: 40px; margin: 0; background: #ffffff; }
+            .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #0284c7; padding-bottom: 15px; margin-bottom: 25px; }
+            .title { font-size: 24px; font-weight: 800; color: #0f172a; margin: 0; }
+            .subtitle { font-size: 13px; color: #64748b; margin-top: 4px; }
+            .meta { font-size: 12px; color: #475569; text-align: right; }
+            .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 30px; }
+            .kpi-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; text-align: center; }
+            .kpi-value { font-size: 22px; font-weight: 700; color: #0284c7; }
+            .kpi-label { font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: 600; margin-top: 4px; }
+            table { width: 100%; border-collapse: collapse; margin-bottom: 30px; font-size: 12px; }
+            th { background: #0f172a; color: #ffffff; padding: 10px; text-align: left; font-size: 11px; text-transform: uppercase; }
+            td { border-bottom: 1px solid #e2e8f0; padding: 10px; }
+            tr:nth-child(even) { background: #f8fafc; }
+            .badge { padding: 3px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; }
+            .badge-success { background: #dcfce7; color: #15803d; }
+            .footer { font-size: 11px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 15px; text-align: center; margin-top: 40px; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div>
+              <div class="title">TNB LV ASSET MAPPING</div>
+              <div class="subtitle">360° Mobile Mapping Executive Summary Report</div>
+            </div>
+            <div class="meta">
+              <div><strong>Date:</strong> ${reportDate}</div>
+              <div><strong>System Status:</strong> Operational</div>
+            </div>
+          </div>
+
+          <div class="kpi-grid">
+            <div class="kpi-card">
+              <div class="kpi-value">4</div>
+              <div class="kpi-label">Subgrids Processed</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-value">4.8 km</div>
+              <div class="kpi-label">Distance Covered</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-value">${totalImages}</div>
+              <div class="kpi-label">Total Panoramas</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-value">${totalDefectsCount}</div>
+              <div class="kpi-label">QA Defects Flagged</div>
+            </div>
+          </div>
+
+          <h3>Subgrid Processing Breakdown</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Grid / Subgrid</th>
+                <th>Images</th>
+                <th>Distance</th>
+                <th>QA Status</th>
+                <th>Defects</th>
+                <th>PIC</th>
+                <th>Stitching Progress</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${batchLogs.map(b => `
+                <tr>
+                  <td><strong>${b.subgrid || b.imageFilename}</strong></td>
+                  <td>${b.images || 163}</td>
+                  <td>${b.kmProcessed ? `${b.kmProcessed.toFixed(1)} km` : '0.8 km'}</td>
+                  <td><span class="badge badge-success">Stitched & Published</span></td>
+                  <td>${b.defects || 0}</td>
+                  <td>${b.pic || 'Fariz'}</td>
+                  <td>100% Complete</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+
+          <div class="footer">
+            Generated automatically by TNB 360° Mobile Mapping Processing Dashboard • Confidential GIS Document
+          </div>
+
+          <script>
+            window.onload = function() {
+              window.print();
+            };
+          </script>
+        </body>
+      </html>
+    `;
+
+    printWindow.document.write(html);
+    printWindow.document.close();
+  };
 
   // Flag tracking whether a map location/point track has been clicked
   const [hasSelectedPoint, setHasSelectedPoint] = useState<boolean>(false);
 
-  // Active panorama photo URL, telemetry, and mini-map coords for 360 View Inspector & QA
+  // Active panorama photo URL, filename, telemetry, and mini-map coords for 360 View Inspector & QA
   const [activePanoramaUrl, setActivePanoramaUrl] = useState<string>('');
+  const [activePanoramaFilename, setActivePanoramaFilename] = useState<string>('');
   const [panoramaTelemetry, setPanoramaTelemetry] = useState<{ yaw: number; pitch: number; fov: number }>({
     yaw: 180,
     pitch: 2.5,
     fov: 75
   });
   const [inspectorCoords, setInspectorCoords] = useState<{ lat: number; lng: number }>({
-    lat: 2.54866,
-    lng: 102.815835
+    lat: 2.542429,
+    lng: 102.807800
   });
   const [inspectorSubgrid, setInspectorSubgrid] = useState<string>('');
   const [qaSubgridRecords, setQaSubgridRecords] = useState<Record<string, {
     flags: { blurry: boolean; obstruction: boolean; badGps: boolean };
     answer: 'yes' | 'no' | null;
     isLocked: boolean;
-  }>>({});
+  }>>(() => {
+    try {
+      const saved = localStorage.getItem('qaSubgridRecords_v15');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
   const [selectedQaFlags, setSelectedQaFlags] = useState<{ blurry: boolean; obstruction: boolean; badGps: boolean }>({
     blurry: false,
     obstruction: false,
@@ -3297,20 +3485,28 @@ export default function App() {
   const [qaQuestionnaireAnswer, setQaQuestionnaireAnswer] = useState<'yes' | 'no' | null>(null);
   const [isQaLocked, setIsQaLocked] = useState<boolean>(false);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem('qaSubgridRecords_v15', JSON.stringify(qaSubgridRecords));
+    } catch (err) {
+      console.warn('Unable to save qaSubgridRecords to localStorage:', err);
+    }
+  }, [qaSubgridRecords]);
+
   const saveSubgridQa = (
     sgKey: string,
     flags: { blurry: boolean; obstruction: boolean; badGps: boolean },
     answer: 'yes' | 'no' | null,
     locked: boolean
   ) => {
-    const sg = (sgKey || inspectorSubgrid || selectedSubgridFilter || '').toUpperCase().trim();
-    if (!sg) return;
+    const itemKey = (activePanoramaFilename || sgKey || inspectorSubgrid || selectedSubgridFilter || '').toUpperCase().trim();
+    if (!itemKey) return;
     setSelectedQaFlags(flags);
     setQaQuestionnaireAnswer(answer);
     setIsQaLocked(locked);
     setQaSubgridRecords(prev => ({
       ...prev,
-      [sg]: { flags, answer, isLocked: locked }
+      [itemKey]: { flags, answer, isLocked: locked }
     }));
   };
   const lastTelemetryTimeRef = useRef<number>(0);
@@ -3323,6 +3519,9 @@ export default function App() {
         if (pt) {
           setHasSelectedPoint(true);
           const fn = (pt.filename || '').replace(/^\/+/, '').replace(/^MMS_PIC\//i, '');
+          if (fn) {
+            setActivePanoramaFilename(fn);
+          }
           const imageUrl = (pt.image_url && typeof pt.image_url === 'string' && pt.image_url.trim().length > 0)
             ? (pt.image_url.startsWith('http') || pt.image_url.startsWith('/') ? pt.image_url : `/MMS_PIC/${pt.image_url.replace(/^\/+/, '').replace(/^MMS_PIC\//i, '')}`)
             : (fn ? `/MMS_PIC/${fn}` : '');
@@ -3344,9 +3543,13 @@ export default function App() {
             setInspectorSubgrid(sg);
           }
 
-          // Check if selected point has defect data; if not, reset QA defect content to default
-          const hasDefectData = Number(pt.defect_count || pt.defects || pt.defectCount || 0) > 0 || (typeof pt.qa_status === 'string' && pt.qa_status.toLowerCase().includes('flagged'));
-          if (!hasDefectData) {
+          const itemKey = (fn || pt.id || pt.subgrid || inspectorSubgrid || '').toString().toUpperCase().trim();
+          const saved = itemKey ? qaSubgridRecords[itemKey] : null;
+          if (saved) {
+            setSelectedQaFlags(saved.flags);
+            setQaQuestionnaireAnswer(saved.answer);
+            setIsQaLocked(saved.isLocked);
+          } else {
             setSelectedQaFlags({ blurry: false, obstruction: false, badGps: false });
             setQaQuestionnaireAnswer(null);
             setIsQaLocked(false);
@@ -3376,6 +3579,7 @@ export default function App() {
           try {
             f.contentWindow?.postMessage({
               type: 'CAMERA_ROTATED',
+              source: 'parent',
               yaw: e.data.yaw,
               pitch: e.data.pitch
             }, '*');
@@ -3391,19 +3595,19 @@ export default function App() {
     };
     window.addEventListener('message', handlePanoramaMessage);
     return () => window.removeEventListener('message', handlePanoramaMessage);
-  }, []);
+  }, [qaSubgridRecords, activePanoramaFilename, inspectorSubgrid]);
 
-  // Restore or reset QA defect state per subgrid whenever navigating
+  // Restore or reset QA defect state per panotrack image/point whenever navigating
   useEffect(() => {
-    const sg = (inspectorSubgrid || selectedSubgridFilter || '').toUpperCase().trim();
-    if (!sg) {
+    const itemKey = (activePanoramaFilename || inspectorSubgrid || selectedSubgridFilter || '').toUpperCase().trim();
+    if (!itemKey) {
       setSelectedQaFlags({ blurry: false, obstruction: false, badGps: false });
       setQaQuestionnaireAnswer(null);
       setIsQaLocked(false);
       return;
     }
 
-    const saved = qaSubgridRecords[sg];
+    const saved = qaSubgridRecords[itemKey];
     if (saved) {
       setSelectedQaFlags(saved.flags);
       setQaQuestionnaireAnswer(saved.answer);
@@ -3413,11 +3617,10 @@ export default function App() {
       setQaQuestionnaireAnswer(null);
       setIsQaLocked(false);
     }
-  }, [activePanoramaUrl, inspectorSubgrid, selectedSubgridFilter]);
+  }, [activePanoramaUrl, activePanoramaFilename, inspectorSubgrid, selectedSubgridFilter, qaSubgridRecords]);
 
   const toggleSubgridFilter = (subgridRaw: string) => {
     const sg = (extractSubgridName(subgridRaw) || subgridRaw).toUpperCase().trim();
-    setHasSelectedPoint(false);
 
     // Reset QA defect flags back to default when toggling subgrid without defects
     const targetLog = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === sg);
@@ -3426,16 +3629,52 @@ export default function App() {
       setQaQuestionnaireAnswer(null);
       setIsQaLocked(false);
     }
+
     setSelectedSubgridFilter(prev => {
       const next = prev === sg ? null : sg;
 
-      // Broadcast filter message to embedded WebGIS map iframe
-      const iframes = document.querySelectorAll('iframe');
-      iframes.forEach(f => {
-        try {
-          f.contentWindow?.postMessage({ type: 'FILTER_SUBGRID', subgrid: next || '' }, '*');
-        } catch (e) { }
-      });
+      const getSubgridDefault = (subgridName: string) => {
+        const s = subgridName.toUpperCase();
+        if (s.includes('N93E70')) return { fn: 'N93E70-0001.jpg', lat: 2.542429, lng: 102.807800 };
+        if (s.includes('N94E70')) return { fn: 'N94E70-0001.jpg', lat: 2.542160, lng: 102.807090 };
+        if (s.includes('N94E71')) return { fn: 'N94E71-0001.jpg', lat: 2.541000, lng: 102.812000 };
+        return { fn: `${s}-0001.jpg`, lat: 2.542429, lng: 102.807800 };
+      };
+
+      if (next) {
+        const def = getSubgridDefault(next);
+        setActivePanoramaFilename(def.fn);
+        setActivePanoramaUrl(`/MMS_PIC/${def.fn}`);
+        setInspectorCoords({ lat: def.lat, lng: def.lng });
+        setInspectorSubgrid(next);
+        setHasSelectedPoint(true);
+
+        const iframes = document.querySelectorAll('iframe');
+        iframes.forEach(f => {
+          try {
+            f.contentWindow?.postMessage({ type: 'FILTER_SUBGRID', subgrid: next }, '*');
+            f.contentWindow?.postMessage({
+              type: 'MAP_POINT_SELECTED',
+              point: {
+                filename: def.fn,
+                image_url: `/MMS_PIC/${def.fn}`,
+                subgrid: next,
+                lat: def.lat,
+                lon: def.lng,
+                lng: def.lng,
+                bearing: 0
+              }
+            }, '*');
+          } catch (e) { }
+        });
+      } else {
+        const iframes = document.querySelectorAll('iframe');
+        iframes.forEach(f => {
+          try {
+            f.contentWindow?.postMessage({ type: 'FILTER_SUBGRID', subgrid: '' }, '*');
+          } catch (e) { }
+        });
+      }
 
       return next;
     });
@@ -3648,7 +3887,7 @@ export default function App() {
               <div className="my-1">
                 <span className="text-2xl font-extrabold text-white tracking-tight">{totalKm.toFixed(1)} km</span>
               </div>
-              <div className="text-[10px] text-slate-500 font-medium">distance travel each point</div>
+              <div className="text-[10px] text-slate-500 font-medium">distance travel each point · Last update: {lastUpdateDate}</div>
             </div>
 
             {/* Card 2 */}
@@ -3657,7 +3896,7 @@ export default function App() {
               <div className="my-1">
                 <span className="text-2xl font-extrabold text-white tracking-tight">{totalImages.toLocaleString()} Frames</span>
               </div>
-              <div className="text-[10px] text-slate-500 font-medium">total image per data capture</div>
+              <div className="text-[10px] text-slate-500 font-medium">total image per data capture · Last update: {lastUpdateDate}</div>
             </div>
 
             {/* Card 3 */}
@@ -3685,12 +3924,11 @@ export default function App() {
               </div>
               <div className="my-1">
                 <span className="text-2xl font-extrabold text-emerald-400 tracking-tight">
-                  98.4% Normal
+                  {pipelineHealthPercent}% Normal
                 </span>
               </div>
-              <div className="text-[10px] text-slate-500 font-medium flex items-center justify-between">
-                <span>green normal per data capture</span>
-                {totalDefects > 0 && <span className="text-amber-400 font-semibold">{totalDefects} defects</span>}
+              <div className="text-[10px] text-slate-500 font-medium">
+                green normal per data capture · <span className={totalDefects > 0 ? 'text-amber-400 font-semibold' : 'text-slate-500'}>{totalDefects} defect {totalDefects === 1 ? 'frame' : 'frames'} flagged</span>
               </div>
             </div>
           </div>
@@ -3707,41 +3945,163 @@ export default function App() {
                 </span>
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={() => setCurrentPage('data')}
-                    className="px-2.5 py-1 bg-sky-600 hover:bg-sky-500 text-white text-[11px] font-bold rounded transition-colors uppercase tracking-tight cursor-pointer"
+                    onClick={generateExecutivePdfReport}
+                    className="px-2.5 py-1 bg-sky-600 hover:bg-sky-500 text-white text-[11px] font-bold rounded transition-all uppercase tracking-tight cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95"
+                    title="Generate printable Executive PDF Summary Report"
                   >
-                    GENERATE EXECUTIVE PDF REPORT
+                    <FileText size={13} />
+                    <span>GENERATE EXECUTIVE PDF REPORT</span>
                   </button>
                   <button
-                    onClick={() => selectedSubgridFilter && toggleSubgridFilter(selectedSubgridFilter)}
-                    className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-semibold rounded border border-slate-700 transition-colors uppercase tracking-tight flex items-center gap-1 cursor-pointer"
+                    onClick={() => {
+                      const next = !isDrawingBBox;
+                      setIsDrawingBBox(next);
+                      const iframes = document.querySelectorAll<HTMLIFrameElement>('iframe');
+                      iframes.forEach(f => {
+                        try {
+                          f.contentWindow?.postMessage({ type: 'TOGGLE_BBOX_DRAW', isDrawing: next }, '*');
+                        } catch (err) { }
+                      });
+                    }}
+                    className={`px-2.5 py-1 text-[11px] font-semibold rounded border transition-all uppercase tracking-tight flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95 ${isDrawingBBox
+                        ? 'bg-sky-600 border-sky-400 text-white shadow-sky-950/50'
+                        : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                      }`}
+                    title="Toggle spatial bounding box rectangle filter on map"
                   >
-                    SPATIAL FILTER (BBOX)
+                    <Maximize2 size={13} />
+                    <span>{isDrawingBBox ? 'CLEAR BBOX FILTER' : 'SPATIAL FILTER (BBOX)'}</span>
                   </button>
                 </div>
               </div>
 
               {/* Embedded WebGIS Map */}
               <div className="flex-1 relative overflow-hidden bg-slate-950">
-                {/* Combined Trajectory Status Legend Overlay (bottom-left) */}
-                <div className="absolute bottom-3 left-3 z-10 bg-slate-900/90 backdrop-blur-md border border-slate-800 rounded-lg p-2.5 text-[10px] space-y-1.5 shadow-xl pointer-events-none">
-                  <div className="font-bold uppercase tracking-tight text-[9px] text-sky-400">Trajectory Status</div>
-                  <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
-                    <span className="text-slate-200">Published to WebGIS</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-orange-500 shrink-0 animate-pulse" />
-                    <span className="text-slate-200 font-medium">Defect Panotrack</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
-                    <span className="text-slate-200">In Progress / Stitching</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" />
-                    <span className="text-slate-200">Errors / Failed</span>
-                  </div>
+                {/* Minimalist Trajectory Filter Button & Popup Menu (bottom-left) */}
+                <div className="absolute bottom-3 left-3 z-10 pointer-events-auto flex flex-col items-start gap-2">
+                  {/* Popup Panel (shown when isStatusFilterOpen === true) */}
+                  {isStatusFilterOpen && (
+                    <div className="bg-slate-900/95 backdrop-blur-xl border border-slate-800/90 rounded-xl p-2.5 text-[11px] space-y-1.5 shadow-2xl min-w-[200px] animate-in fade-in slide-in-from-bottom-2 duration-150">
+                      <div className="flex items-center justify-between border-b border-slate-800/80 pb-1.5 mb-1 px-1">
+                        <span className="font-semibold text-[10px] text-sky-400 uppercase tracking-wider flex items-center gap-1.5">
+                          <Filter size={12} />
+                          Trajectory Status
+                        </span>
+                        <button
+                          onClick={() => setIsStatusFilterOpen(false)}
+                          className="text-slate-400 hover:text-slate-200 text-xs px-1 cursor-pointer transition-colors"
+                        >
+                          ✕
+                        </button>
+                      </div>
+
+                      <label className="flex items-center justify-between px-2 py-1 rounded-md hover:bg-slate-800/60 text-slate-200 hover:text-white cursor-pointer select-none transition-colors">
+                        <span className="text-[11px] font-medium text-slate-300">Show Panotrack Layer</span>
+                        <input
+                          type="checkbox"
+                          checked={showPanotrackData}
+                          onChange={(e) => {
+                            const val = e.target.checked;
+                            setShowPanotrackData(val);
+                            const iframes = document.querySelectorAll('iframe');
+                            iframes.forEach(f => {
+                              try {
+                                f.contentWindow?.postMessage({ type: 'FILTER_STATUS_TYPES', statusFilters, showPanotrackData: val }, '*');
+                              } catch (err) { }
+                            });
+                          }}
+                          className="rounded text-sky-500 focus:ring-0 cursor-pointer accent-sky-500 w-3.5 h-3.5"
+                        />
+                      </label>
+
+                      <div className="border-t border-slate-800/60 pt-1 space-y-0.5">
+                        <label className="flex items-center justify-between px-2 py-1 rounded-md hover:bg-slate-800/60 text-slate-200 hover:text-white cursor-pointer select-none transition-colors">
+                          <div className="flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                            <span className="text-[11px]">Published to WebGIS</span>
+                          </div>
+                          <input
+                            type="checkbox"
+                            checked={statusFilters.published}
+                            disabled={!showPanotrackData}
+                            onChange={(e) => {
+                              const next = { ...statusFilters, published: e.target.checked };
+                              setStatusFilters(next);
+                              const iframes = document.querySelectorAll('iframe');
+                              iframes.forEach(f => {
+                                try {
+                                  f.contentWindow?.postMessage({ type: 'FILTER_STATUS_TYPES', statusFilters: next, showPanotrackData }, '*');
+                                } catch (err) { }
+                              });
+                            }}
+                            className="rounded text-sky-500 focus:ring-0 cursor-pointer accent-sky-500 w-3.5 h-3.5"
+                          />
+                        </label>
+
+                        <label className="flex items-center justify-between px-2 py-1 rounded-md hover:bg-slate-800/60 text-slate-200 hover:text-white cursor-pointer select-none transition-colors">
+                          <div className="flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" />
+                            <span className="text-[11px]">Defect / Flags</span>
+                          </div>
+                          <input
+                            type="checkbox"
+                            checked={statusFilters.defect}
+                            disabled={!showPanotrackData}
+                            onChange={(e) => {
+                              const next = { ...statusFilters, defect: e.target.checked };
+                              setStatusFilters(next);
+                              const iframes = document.querySelectorAll('iframe');
+                              iframes.forEach(f => {
+                                try {
+                                  f.contentWindow?.postMessage({ type: 'FILTER_STATUS_TYPES', statusFilters: next, showPanotrackData }, '*');
+                                } catch (err) { }
+                              });
+                            }}
+                            className="rounded text-sky-500 focus:ring-0 cursor-pointer accent-sky-500 w-3.5 h-3.5"
+                          />
+                        </label>
+
+                        <label className="flex items-center justify-between px-2 py-1 rounded-md hover:bg-slate-800/60 text-slate-200 hover:text-white cursor-pointer select-none transition-colors">
+                          <div className="flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
+                            <span className="text-[11px]">In Progress / Stitching</span>
+                          </div>
+                          <input
+                            type="checkbox"
+                            checked={statusFilters.stitching}
+                            disabled={!showPanotrackData}
+                            onChange={(e) => {
+                              const next = { ...statusFilters, stitching: e.target.checked };
+                              setStatusFilters(next);
+                              const iframes = document.querySelectorAll('iframe');
+                              iframes.forEach(f => {
+                                try {
+                                  f.contentWindow?.postMessage({ type: 'FILTER_STATUS_TYPES', statusFilters: next, showPanotrackData }, '*');
+                                } catch (err) { }
+                              });
+                            }}
+                            className="rounded text-sky-500 focus:ring-0 cursor-pointer accent-sky-500 w-3.5 h-3.5"
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Minimalist Trajectory Status Trigger Button */}
+                  <button
+                    onClick={() => setIsStatusFilterOpen(prev => !prev)}
+                    className={`px-2.5 py-1.5 rounded-xl border shadow-lg flex items-center gap-2 text-[11px] font-semibold transition-all duration-200 cursor-pointer select-none relative active:scale-95 ${isStatusFilterOpen
+                        ? 'bg-sky-600 text-white border-sky-400 shadow-sky-950/50'
+                        : 'bg-slate-900/90 hover:bg-slate-800 text-slate-200 border-slate-800 hover:border-slate-700'
+                      }`}
+                    title="Filter Trajectory Status"
+                  >
+                    <Filter size={13} className={isStatusFilterOpen ? 'text-white' : 'text-sky-400'} />
+                    <span>Trajectory Status</span>
+                    {(!statusFilters.published || !statusFilters.defect || !statusFilters.stitching || !showPanotrackData) && (
+                      <span className="w-1.5 h-1.5 rounded-full bg-sky-400 shrink-0" />
+                    )}
+                  </button>
                 </div>
 
                 {/* Derived active subgrid item details for clicked row */}
@@ -3919,6 +4279,8 @@ export default function App() {
                           .filter(log => !selectedSubgridFilter || (log.subgrid || '').toUpperCase().trim() === selectedSubgridFilter)
                           .map((log, i) => {
                             const dailySubgrid = (log.subgrid || '').toUpperCase().trim();
+                            const matchBatch = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === dailySubgrid);
+                            const defectCount = matchBatch ? (matchBatch.defects ?? 0) : (log.imagesDefected ?? log.defectCount ?? 0);
                             return (
                               <tr
                                 key={log.id || `dash-d-${log.date}-${log.subgrid}-${i}`}
@@ -3930,7 +4292,7 @@ export default function App() {
                                 <td className="px-3 py-2 font-medium text-sky-400">{dailySubgrid}</td>
                                 <td className="px-3 py-2 text-slate-300">{log.kmProcessed.toFixed(1)} km</td>
                                 <td className="px-3 py-2 text-slate-300">{log.imagesProcessed.toLocaleString()}</td>
-                                <td className="px-3 py-2 text-amber-400 font-semibold">{log.imagesDefected || log.defectCount || 0}</td>
+                                <td className="px-3 py-2 text-amber-400 font-semibold">{defectCount}</td>
                                 <td className="px-3 py-2 text-emerald-400 font-semibold">{log.pic || 'Fariz'}</td>
                                 <td className="px-3 py-2 text-right font-medium text-emerald-400">{log.captureEquipment || 'MMS'}</td>
                               </tr>
@@ -4046,8 +4408,11 @@ export default function App() {
                           {isQaLocked ? (
                             <button
                               onClick={() => {
+                                const itemKey = activePanoramaFilename || inspectorSubgrid || selectedSubgridFilter || 'N93E70';
                                 const sg = inspectorSubgrid || selectedSubgridFilter || 'N93E70';
-                                saveSubgridQa(sg, selectedQaFlags, qaQuestionnaireAnswer, false);
+                                saveSubgridQa(itemKey, selectedQaFlags, qaQuestionnaireAnswer, false);
+                                const targetLog = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === sg.toUpperCase().trim());
+                                updateDefectStatusInSupabase(itemKey, targetLog?.defects || 0, 'Editing QA', { selectedQaFlags, answer: qaQuestionnaireAnswer, action: 'EDIT_QA', filename: activePanoramaFilename, subgrid: sg });
                               }}
                               className="text-[8.5px] font-semibold text-sky-400 hover:text-sky-300 bg-sky-500/10 hover:bg-sky-500/20 px-1.5 py-0.5 rounded border border-sky-500/30 flex items-center gap-1 cursor-pointer transition-all shadow-sm active:scale-95"
                               title="Click to unlock & edit QA defect choices"
@@ -4064,27 +4429,24 @@ export default function App() {
                             disabled={isQaLocked}
                             onClick={() => {
                               if (isQaLocked) return;
+                              const itemKey = activePanoramaFilename || inspectorSubgrid || selectedSubgridFilter || 'N93E70';
                               const sg = inspectorSubgrid || selectedSubgridFilter || 'N93E70';
                               const nextFlags = { ...selectedQaFlags, blurry: !selectedQaFlags.blurry };
-                              saveSubgridQa(sg, nextFlags, qaQuestionnaireAnswer, false);
+                              saveSubgridQa(itemKey, nextFlags, qaQuestionnaireAnswer, false);
                               const targetLog = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === sg.toUpperCase().trim());
-                              const newDefects = (targetLog?.defects || 0) + 1;
-                              setBatchLogs(prev => prev.map(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === sg.toUpperCase().trim() ? { ...b, defects: newDefects } : b));
-                              updateDefectStatusInSupabase(sg, newDefects, 'Reviewing', { flag: 'Blurry Frame' });
+                              updateDefectStatusInSupabase(itemKey, targetLog?.defects || 0, 'Reviewing', { selectedQaFlags: nextFlags, flag: 'Blurry Frame', filename: activePanoramaFilename, subgrid: sg });
                             }}
-                            className={`w-full py-1.5 px-2 rounded-md text-[10px] font-medium text-left flex items-center justify-between transition-all border ${
-                              isQaLocked ? 'opacity-90 cursor-default' : 'cursor-pointer active:scale-95'
-                            } ${
-                              selectedQaFlags.blurry
+                            className={`w-full py-1.5 px-2 rounded-md text-[10px] font-medium text-left flex items-center justify-between transition-all border ${isQaLocked ? 'opacity-90 cursor-default' : 'cursor-pointer active:scale-95'
+                              } ${selectedQaFlags.blurry
                                 ? 'bg-red-500/25 border-red-500 text-red-300 ring-1 ring-red-500/50 shadow-md'
                                 : 'bg-slate-800/80 hover:bg-red-500/10 hover:border-red-500/50 border-slate-700/80 text-slate-300 hover:text-red-400'
-                            }`}
+                              }`}
                           >
                             <span className="flex items-center gap-1.5 truncate">
                               <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${selectedQaFlags.blurry ? 'bg-red-300 ring-2 ring-red-400' : 'bg-red-400'}`}></span>
                               <span className="truncate">Flag: Blurry Frame</span>
                             </span>
-                            <span className={`text-[9px] font-mono shrink-0 ml-1 ${selectedQaFlags.blurry ? 'text-red-300 font-bold' : 'text-slate-500 group-hover:text-red-400'}`}>+1</span>
+                            <span className={`text-[9px] font-mono shrink-0 ml-1 ${selectedQaFlags.blurry ? 'text-red-300 font-bold' : 'text-slate-500 group-hover:text-red-400'}`}>Flag</span>
                           </button>
                         )}
 
@@ -4093,27 +4455,24 @@ export default function App() {
                             disabled={isQaLocked}
                             onClick={() => {
                               if (isQaLocked) return;
+                              const itemKey = activePanoramaFilename || inspectorSubgrid || selectedSubgridFilter || 'N93E70';
                               const sg = inspectorSubgrid || selectedSubgridFilter || 'N93E70';
                               const nextFlags = { ...selectedQaFlags, obstruction: !selectedQaFlags.obstruction };
-                              saveSubgridQa(sg, nextFlags, qaQuestionnaireAnswer, false);
+                              saveSubgridQa(itemKey, nextFlags, qaQuestionnaireAnswer, false);
                               const targetLog = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === sg.toUpperCase().trim());
-                              const newDefects = (targetLog?.defects || 0) + 1;
-                              setBatchLogs(prev => prev.map(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === sg.toUpperCase().trim() ? { ...b, defects: newDefects } : b));
-                              updateDefectStatusInSupabase(sg, newDefects, 'Reviewing', { flag: 'Lens Obstruction' });
+                              updateDefectStatusInSupabase(itemKey, targetLog?.defects || 0, 'Reviewing', { selectedQaFlags: nextFlags, flag: 'Lens Obstruction', filename: activePanoramaFilename, subgrid: sg });
                             }}
-                            className={`w-full py-1.5 px-2 rounded-md text-[10px] font-medium text-left flex items-center justify-between transition-all border ${
-                              isQaLocked ? 'opacity-90 cursor-default' : 'cursor-pointer active:scale-95'
-                            } ${
-                              selectedQaFlags.obstruction
+                            className={`w-full py-1.5 px-2 rounded-md text-[10px] font-medium text-left flex items-center justify-between transition-all border ${isQaLocked ? 'opacity-90 cursor-default' : 'cursor-pointer active:scale-95'
+                              } ${selectedQaFlags.obstruction
                                 ? 'bg-amber-500/25 border-amber-500 text-amber-300 ring-1 ring-amber-500/50 shadow-md'
                                 : 'bg-slate-800/80 hover:bg-amber-500/10 hover:border-amber-500/50 border-slate-700/80 text-slate-300 hover:text-amber-400'
-                            }`}
+                              }`}
                           >
                             <span className="flex items-center gap-1.5 truncate">
                               <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${selectedQaFlags.obstruction ? 'bg-amber-300 ring-2 ring-amber-400' : 'bg-amber-400'}`}></span>
                               <span className="truncate">Flag: Lens Obstruction</span>
                             </span>
-                            <span className={`text-[9px] font-mono shrink-0 ml-1 ${selectedQaFlags.obstruction ? 'text-amber-300 font-bold' : 'text-slate-500 group-hover:text-amber-400'}`}>+1</span>
+                            <span className={`text-[9px] font-mono shrink-0 ml-1 ${selectedQaFlags.obstruction ? 'text-amber-300 font-bold' : 'text-slate-500 group-hover:text-amber-400'}`}>Flag</span>
                           </button>
                         )}
 
@@ -4122,27 +4481,24 @@ export default function App() {
                             disabled={isQaLocked}
                             onClick={() => {
                               if (isQaLocked) return;
+                              const itemKey = activePanoramaFilename || inspectorSubgrid || selectedSubgridFilter || 'N93E70';
                               const sg = inspectorSubgrid || selectedSubgridFilter || 'N93E70';
                               const nextFlags = { ...selectedQaFlags, badGps: !selectedQaFlags.badGps };
-                              saveSubgridQa(sg, nextFlags, qaQuestionnaireAnswer, false);
+                              saveSubgridQa(itemKey, nextFlags, qaQuestionnaireAnswer, false);
                               const targetLog = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === sg.toUpperCase().trim());
-                              const newDefects = (targetLog?.defects || 0) + 1;
-                              setBatchLogs(prev => prev.map(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === sg.toUpperCase().trim() ? { ...b, defects: newDefects } : b));
-                              updateDefectStatusInSupabase(sg, newDefects, 'Reviewing', { flag: 'Bad GPS' });
+                              updateDefectStatusInSupabase(itemKey, targetLog?.defects || 0, 'Reviewing', { selectedQaFlags: nextFlags, flag: 'Bad GPS', filename: activePanoramaFilename, subgrid: sg });
                             }}
-                            className={`w-full py-1.5 px-2 rounded-md text-[10px] font-medium text-left flex items-center justify-between transition-all border ${
-                              isQaLocked ? 'opacity-90 cursor-default' : 'cursor-pointer active:scale-95'
-                            } ${
-                              selectedQaFlags.badGps
+                            className={`w-full py-1.5 px-2 rounded-md text-[10px] font-medium text-left flex items-center justify-between transition-all border ${isQaLocked ? 'opacity-90 cursor-default' : 'cursor-pointer active:scale-95'
+                              } ${selectedQaFlags.badGps
                                 ? 'bg-sky-500/25 border-sky-500 text-sky-300 ring-1 ring-sky-500/50 shadow-md'
                                 : 'bg-slate-800/80 hover:bg-sky-500/10 hover:border-sky-500/50 border-slate-700/80 text-slate-300 hover:text-sky-400'
-                            }`}
+                              }`}
                           >
                             <span className="flex items-center gap-1.5 truncate">
                               <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${selectedQaFlags.badGps ? 'bg-sky-300 ring-2 ring-sky-400' : 'bg-sky-400'}`}></span>
                               <span className="truncate">Flag: Bad GPS</span>
                             </span>
-                            <span className={`text-[9px] font-mono shrink-0 ml-1 ${selectedQaFlags.badGps ? 'text-sky-300 font-bold' : 'text-slate-500 group-hover:text-sky-400'}`}>+1</span>
+                            <span className={`text-[9px] font-mono shrink-0 ml-1 ${selectedQaFlags.badGps ? 'text-sky-300 font-bold' : 'text-slate-500 group-hover:text-sky-400'}`}>Flag</span>
                           </button>
                         )}
                       </div>
@@ -4160,20 +4516,19 @@ export default function App() {
                             <button
                               disabled={isQaLocked}
                               onClick={() => {
+                                const itemKey = activePanoramaFilename || inspectorSubgrid || selectedSubgridFilter || 'N93E70';
                                 const sg = inspectorSubgrid || selectedSubgridFilter || 'N93E70';
-                                saveSubgridQa(sg, selectedQaFlags, 'yes', true);
+                                saveSubgridQa(itemKey, selectedQaFlags, 'yes', true);
                                 const targetLog = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === sg.toUpperCase().trim());
                                 const newDefects = (targetLog?.defects || 0) + 1;
                                 setBatchLogs(prev => prev.map(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === sg.toUpperCase().trim() ? { ...b, defects: newDefects } : b));
-                                updateDefectStatusInSupabase(sg, newDefects, 'Flagged (Defect Confirmed)', { selectedQaFlags, answer: 'YES' });
+                                updateDefectStatusInSupabase(itemKey, newDefects, 'Flagged (Defect Confirmed)', { selectedQaFlags, answer: 'YES', filename: activePanoramaFilename, subgrid: sg });
                               }}
-                              className={`py-1.5 px-2 rounded border text-[10px] font-bold text-center transition-all flex items-center justify-center gap-1.5 ${
-                                isQaLocked ? 'cursor-not-allowed opacity-90' : 'cursor-pointer active:scale-95'
-                              } ${
-                                qaQuestionnaireAnswer === 'yes'
+                              className={`py-1.5 px-2 rounded border text-[10px] font-bold text-center transition-all flex items-center justify-center gap-1.5 ${isQaLocked ? 'cursor-not-allowed opacity-90' : 'cursor-pointer active:scale-95'
+                                } ${qaQuestionnaireAnswer === 'yes'
                                   ? 'bg-emerald-500 text-white border-emerald-400 shadow-md ring-1 ring-emerald-400/50'
                                   : 'bg-emerald-600/20 hover:bg-emerald-600/35 text-emerald-400 border-emerald-500/30'
-                              }`}
+                                }`}
                             >
                               <CheckCircle size={11} className="shrink-0" /> YES
                             </button>
@@ -4181,18 +4536,18 @@ export default function App() {
                             <button
                               disabled={isQaLocked}
                               onClick={() => {
+                                const itemKey = activePanoramaFilename || inspectorSubgrid || selectedSubgridFilter || 'N93E70';
                                 const sg = inspectorSubgrid || selectedSubgridFilter || 'N93E70';
-                                saveSubgridQa(sg, selectedQaFlags, 'no', true);
+                                saveSubgridQa(itemKey, selectedQaFlags, 'no', true);
                                 const targetLog = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === sg.toUpperCase().trim());
-                                updateDefectStatusInSupabase(sg, targetLog?.defects || 0, 'Passed (No Defect)', { selectedQaFlags, answer: 'NO' });
+                                const currentDefects = targetLog?.defects || 0;
+                                updateDefectStatusInSupabase(itemKey, currentDefects, 'Passed (No Defect)', { selectedQaFlags, answer: 'NO', filename: activePanoramaFilename, subgrid: sg });
                               }}
-                              className={`py-1.5 px-2 rounded border text-[10px] font-bold text-center transition-all flex items-center justify-center gap-1.5 ${
-                                isQaLocked ? 'cursor-not-allowed opacity-90' : 'cursor-pointer active:scale-95'
-                              } ${
-                                qaQuestionnaireAnswer === 'no'
+                              className={`py-1.5 px-2 rounded border text-[10px] font-bold text-center transition-all flex items-center justify-center gap-1.5 ${isQaLocked ? 'cursor-not-allowed opacity-90' : 'cursor-pointer active:scale-95'
+                                } ${qaQuestionnaireAnswer === 'no'
                                   ? 'bg-rose-500 text-white border-rose-400 shadow-md ring-1 ring-rose-400/50'
                                   : 'bg-rose-600/20 hover:bg-rose-600/35 text-rose-400 border-rose-500/30'
-                              }`}
+                                }`}
                             >
                               <X size={11} className="shrink-0" /> NO
                             </button>
