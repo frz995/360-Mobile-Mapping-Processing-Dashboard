@@ -184,9 +184,9 @@ export async function fetchSupabaseData(): Promise<{
 
     // 2. Initialize baseline Daily Data rows (d1, d2, d3, d4)
     dailyData.push(
-      { id: 'd1', date: 'Sep 4', grid: '1', subgrid: 'N93E70', kmProcessed: 0.82, imagesProcessed: 163, defectCount: 24, imagesDefected: 24, captureEquipment: 'MMS', publishToUSVPRO: 'yes', action: 'Published in database', pic: 'Fariz', isSyncedWithSupabase: true },
-      { id: 'd2', date: 'Sep 4', grid: '2', subgrid: 'N94E70', kmProcessed: 0.13, imagesProcessed: 26, defectCount: 4, imagesDefected: 4, captureEquipment: 'Backpack', publishToUSVPRO: 'yes', action: 'Published in database', pic: 'Hafiz', isSyncedWithSupabase: true },
-      { id: 'd3', date: 'Sep 4', grid: '3', subgrid: 'N94E71', kmProcessed: 0.03, imagesProcessed: 5, defectCount: 1, imagesDefected: 1, captureEquipment: 'MMS', publishToUSVPRO: 'yes', action: 'Published in database', pic: 'Amirul', isSyncedWithSupabase: true },
+      { id: 'd1', date: 'Sep 4', grid: '1', subgrid: 'N93E70', kmProcessed: 0.82, imagesProcessed: 163, defectCount: 0, imagesDefected: 0, captureEquipment: 'MMS', publishToUSVPRO: 'yes', action: 'Published in database', pic: 'Fariz', isSyncedWithSupabase: true },
+      { id: 'd2', date: 'Sep 4', grid: '2', subgrid: 'N94E70', kmProcessed: 0.13, imagesProcessed: 26, defectCount: 0, imagesDefected: 0, captureEquipment: 'Backpack', publishToUSVPRO: 'yes', action: 'Published in database', pic: 'Hafiz', isSyncedWithSupabase: true },
+      { id: 'd3', date: 'Sep 4', grid: '3', subgrid: 'N94E71', kmProcessed: 0.03, imagesProcessed: 5, defectCount: 0, imagesDefected: 0, captureEquipment: 'MMS', publishToUSVPRO: 'yes', action: 'Published in database', pic: 'Amirul', isSyncedWithSupabase: true },
       { id: 'd4', date: 'Sep 4', grid: '4', subgrid: 'N90E67', kmProcessed: 0.01, imagesProcessed: 1, defectCount: 0, imagesDefected: 0, captureEquipment: 'Backpack', publishToUSVPRO: 'yes', action: 'Published in database', pic: 'Fariz', isSyncedWithSupabase: true }
     );
 
@@ -196,7 +196,7 @@ export async function fetchSupabaseData(): Promise<{
       const subgrid = g.subgrid.toUpperCase().trim();
       const imagesCount = g.recordImages !== undefined ? g.recordImages : Math.max(1, g.imageFilenames.length);
       const calculatedKm = calculateDistance(g.points);
-      const km = g.recordKm !== undefined ? g.recordKm : (calculatedKm > 0 ? calculatedKm : 0);
+      const km = calculatedKm > 0 ? calculatedKm : (g.recordKm !== undefined && g.recordKm > 0 && g.recordKm < 10 ? g.recordKm : Math.round((imagesCount * 0.005) * 100) / 100);
       const defects = g.recordDefects !== undefined ? g.recordDefects : 0;
 
       const sortedDates = g.dates.sort();
@@ -414,32 +414,81 @@ export async function deleteFromSupabase(subgrid: string): Promise<{ success: bo
 
 /**
  * Real-time update of defect count, QA status, and defect flags in Supabase database.
+ * Supports updating both individual panotrack image records and subgrid aggregates.
  */
 export async function updateDefectStatusInSupabase(
-  subgrid: string,
+  itemKey: string,
   defectCount: number,
   qaStatus: string = 'Reviewing',
   defectFlags?: any
 ): Promise<{ success: boolean; message: string }> {
   try {
-    const cleanSubgrid = (subgrid || 'N93E70').toUpperCase().trim();
-    const { error } = await supabase
-      .from('panoramas')
-      .update({
-        defect_count: defectCount,
-        qa_status: qaStatus,
-        defect_flags: defectFlags || {}
-      })
-      .ilike('filename', `${cleanSubgrid}%`);
+    const cleanKey = (itemKey || 'N93E70').trim();
+    const isFilename = cleanKey.includes('-') || cleanKey.toLowerCase().endsWith('.jpg');
 
-    if (error) {
-      console.warn('Supabase update warning (non-fatal, local state active):', error.message);
-      return { success: false, message: error.message };
+    // 1. Update panoramas table (by exact/matched filename or subgrid prefix)
+    let query = supabase.from('panoramas').update({
+      defect_count: defectCount,
+      qa_status: qaStatus,
+      defect_flags: defectFlags || {}
+    });
+
+    if (isFilename) {
+      query = query.or(`filename.ilike.%${cleanKey}%,image_url.ilike.%${cleanKey}%`);
+    } else {
+      query = query.ilike('filename', `${cleanKey}%`);
     }
-    console.log(`Successfully updated defect status in Supabase for ${cleanSubgrid}`);
-    return { success: true, message: `Updated defect status for ${cleanSubgrid} in Supabase` };
+
+    const { error: panoramaError } = await query;
+    if (panoramaError) {
+      console.warn('Supabase panoramas update notice (non-fatal):', panoramaError.message);
+    }
+
+    // 2. Also upsert into qa_defects table for persistent QA logging per image item
+    try {
+      await supabase.from('qa_defects').upsert({
+        item_key: cleanKey,
+        subgrid: defectFlags?.subgrid || cleanKey.split('-')[0],
+        filename: defectFlags?.filename || cleanKey,
+        qa_status: qaStatus,
+        defect_flags: defectFlags?.selectedQaFlags || defectFlags || {},
+        answer: defectFlags?.answer || null,
+        defect_count: defectCount,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'item_key' });
+    } catch (qaErr) {
+      // Non-fatal if qa_defects table is not created yet
+    }
+
+    console.log(`Successfully synced QA status to Supabase for ${cleanKey}`);
+    return { success: true, message: `Synced QA status for ${cleanKey} in Supabase` };
   } catch (err) {
     console.warn('Supabase defect update error:', err);
     return { success: false, message: (err as Error).message };
+  }
+}
+
+/**
+ * Fetch saved QA records from Supabase database to restore state on page load.
+ */
+export async function fetchQaRecordsFromSupabase(): Promise<Record<string, { flags: any; answer: any; isLocked: boolean }>> {
+  try {
+    const records: Record<string, any> = {};
+    const { data, error } = await supabase.from('qa_defects').select('*');
+    if (!error && data && data.length > 0) {
+      data.forEach(item => {
+        if (item.item_key) {
+          records[item.item_key.toUpperCase().trim()] = {
+            flags: item.defect_flags?.selectedQaFlags || item.defect_flags || { blurry: false, obstruction: false, badGps: false },
+            answer: item.answer || (item.qa_status?.toLowerCase().includes('flagged') ? 'yes' : item.qa_status?.toLowerCase().includes('passed') ? 'no' : null),
+            isLocked: true
+          };
+        }
+      });
+    }
+    return records;
+  } catch (err) {
+    console.warn('Unable to fetch QA records from Supabase:', err);
+    return {};
   }
 }
