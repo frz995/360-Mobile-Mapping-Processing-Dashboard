@@ -757,7 +757,8 @@ const DataManagementPage = ({
   authSession,
   onSignOut,
   addNotification,
-  addAuditLog
+  addAuditLog,
+  isGuestUser
 }: {
   dailyData: DailyTimeSeries[],
   setDailyData: (data: DailyTimeSeries[]) => void,
@@ -771,7 +772,8 @@ const DataManagementPage = ({
   authSession?: any,
   onSignOut?: () => void,
   addNotification?: (item: Omit<NotificationItem, 'id' | 'timestamp' | 'read'>) => void,
-  addAuditLog?: (type: AuditLogItem['type'], title: string, details: string, status?: AuditLogItem['status']) => void
+  addAuditLog?: (type: AuditLogItem['type'], title: string, details: string, status?: AuditLogItem['status']) => void,
+  isGuestUser?: boolean
 }) => {
   const [dataTab, setDataTab] = useState<'batches' | 'daily' | 'vector'>('batches');
   const [editingItem, setEditingItem] = useState<BatchLog | DailyTimeSeries | Layer | Folder | null>(null);
@@ -1765,9 +1767,13 @@ const DataManagementPage = ({
             {authSession && (
               <div className="flex items-center gap-3">
                 <div className="flex items-center gap-2 px-3.5 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-slate-300 shadow-md">
-                  <User size={14} className="text-emerald-400" />
-                  <span className="font-semibold text-white">{authSession.user?.email || 'fariz@tnb.com'}</span>
-                  <span className="bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full text-[10px] font-bold">Authorized</span>
+                  <User size={14} className={isGuestUser ? 'text-amber-400' : 'text-emerald-400'} />
+                  <span className="font-semibold text-white">{authSession.user?.email || 'guest@tnb.com.my'}</span>
+                  {isGuestUser ? (
+                    <span className="bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded-full text-[10px] font-bold">Guest</span>
+                  ) : (
+                    <span className="bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full text-[10px] font-bold">Authorized</span>
+                  )}
                 </div>
                 {onSignOut && (
                   <button
@@ -1782,6 +1788,14 @@ const DataManagementPage = ({
               </div>
             )}
           </div>
+
+          {/* Guest Read-Only Banner */}
+          {isGuestUser && (
+            <div className="mb-5 p-3 bg-amber-950/30 border border-amber-700/40 rounded-xl flex items-center gap-3 text-xs text-amber-300">
+              <AlertTriangle size={15} className="text-amber-400 shrink-0" />
+              <span><strong className="text-amber-300 font-semibold">Guest Mode — Read Only.</strong> You can view all data but editing, uploading, deleting, and publishing are disabled. Sign in with an authorized account to make changes.</span>
+            </div>
+          )}
 
           {/* Banner notification */}
           {publishMessage && (
@@ -1907,36 +1921,40 @@ const DataManagementPage = ({
                     Sync Database
                   </button>
 
-                  <button
-                    onClick={handlePublishAll}
-                    disabled={isPublishingAll || totalItems === 0}
-                    className="flex items-center gap-2 bg-sky-600 hover:bg-sky-500 disabled:bg-slate-800 text-white px-3.5 py-2 rounded-lg transition-all text-xs font-semibold cursor-pointer shadow-md shadow-sky-900/20"
-                    title="Publish all filtered records to Supabase database"
-                  >
-                    {isPublishingAll ? (
-                      <>
-                        <RefreshCw size={14} className="animate-spin" />
-                        Publishing All...
-                      </>
-                    ) : (
-                      <>
-                        <UploadCloud size={14} />
-                        Publish to Database
-                      </>
-                    )}
-                  </button>
+                  {!isGuestUser && (
+                    <>
+                      <button
+                        onClick={handlePublishAll}
+                        disabled={isPublishingAll || totalItems === 0}
+                        className="flex items-center gap-2 bg-sky-600 hover:bg-sky-500 disabled:bg-slate-800 text-white px-3.5 py-2 rounded-lg transition-all text-xs font-semibold cursor-pointer shadow-md shadow-sky-900/20"
+                        title="Publish all filtered records to Supabase database"
+                      >
+                        {isPublishingAll ? (
+                          <>
+                            <RefreshCw size={14} className="animate-spin" />
+                            Publishing All...
+                          </>
+                        ) : (
+                          <>
+                            <UploadCloud size={14} />
+                            Publish to Database
+                          </>
+                        )}
+                      </button>
 
-                  <label className="flex items-center gap-2 bg-emerald-700 hover:bg-emerald-600 px-3.5 py-2 rounded-lg transition-all cursor-pointer text-white font-semibold text-xs shadow-md shadow-emerald-900/20">
-                    <FileText size={14} />
-                    Import CSV
-                    <input
-                      ref={csvInputRef}
-                      type="file"
-                      accept=".csv"
-                      className="hidden"
-                      onChange={handleCsvFile}
-                    />
-                  </label>
+                      <label className="flex items-center gap-2 bg-emerald-700 hover:bg-emerald-600 px-3.5 py-2 rounded-lg transition-all cursor-pointer text-white font-semibold text-xs shadow-md shadow-emerald-900/20">
+                        <FileText size={14} />
+                        Import CSV
+                        <input
+                          ref={csvInputRef}
+                          type="file"
+                          accept=".csv"
+                          className="hidden"
+                          onChange={handleCsvFile}
+                        />
+                      </label>
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -2281,23 +2299,29 @@ const DataManagementPage = ({
                                 </span>
                               </td>
                               <td className="px-4 py-3.5 flex items-center gap-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                                <button
-                                  onClick={() => {
-                                    setEditingItem(batch);
-                                    setIsFormOpen(true);
-                                  }}
-                                  className="text-slate-400 hover:text-sky-400 transition-colors p-1"
-                                  title="Edit"
-                                >
-                                  <Edit2 size={18} />
-                                </button>
-                                <button
-                                  onClick={() => initiateDelete(batch)}
-                                  className="text-slate-400 hover:text-red-400 transition-colors p-1 cursor-pointer"
-                                  title="Delete Record (Admin Authorization Required)"
-                                >
-                                  <Trash2 size={18} />
-                                </button>
+                                {!isGuestUser ? (
+                                  <>
+                                    <button
+                                      onClick={() => {
+                                        setEditingItem(batch);
+                                        setIsFormOpen(true);
+                                      }}
+                                      className="text-slate-400 hover:text-sky-400 transition-colors p-1"
+                                      title="Edit"
+                                    >
+                                      <Edit2 size={18} />
+                                    </button>
+                                    <button
+                                      onClick={() => initiateDelete(batch)}
+                                      className="text-slate-400 hover:text-red-400 transition-colors p-1 cursor-pointer"
+                                      title="Delete Record (Admin Authorization Required)"
+                                    >
+                                      <Trash2 size={18} />
+                                    </button>
+                                  </>
+                                ) : (
+                                  <span className="text-[10px] text-slate-600 italic">View only</span>
+                                )}
                               </td>
                             </tr>
                           );
@@ -2363,45 +2387,51 @@ const DataManagementPage = ({
                                 )}
                               </td>
                               <td className="px-4 py-3.5 flex items-center gap-2 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                                {isPublished ? (
-                                  <button
-                                    disabled
-                                    className="text-slate-600 cursor-not-allowed p-1 opacity-40"
-                                    title="Already published in database"
-                                  >
-                                    <Database size={18} />
-                                  </button>
-                                ) : (
-                                  <button
-                                    onClick={() => handlePublishRecord(daily)}
-                                    disabled={publishingId === getItemId(daily)}
-                                    className="text-emerald-400 hover:text-emerald-300 transition-colors p-1 cursor-pointer"
-                                    title="New data available - Click to publish to database"
-                                  >
-                                    {publishingId === getItemId(daily) ? (
-                                      <RefreshCw size={18} className="animate-spin text-sky-400" />
+                                {!isGuestUser ? (
+                                  <>
+                                    {isPublished ? (
+                                      <button
+                                        disabled
+                                        className="text-slate-600 cursor-not-allowed p-1 opacity-40"
+                                        title="Already published in database"
+                                      >
+                                        <Database size={18} />
+                                      </button>
                                     ) : (
-                                      <Database size={18} className="animate-pulse" />
+                                      <button
+                                        onClick={() => handlePublishRecord(daily)}
+                                        disabled={publishingId === getItemId(daily)}
+                                        className="text-emerald-400 hover:text-emerald-300 transition-colors p-1 cursor-pointer"
+                                        title="New data available - Click to publish to database"
+                                      >
+                                        {publishingId === getItemId(daily) ? (
+                                          <RefreshCw size={18} className="animate-spin text-sky-400" />
+                                        ) : (
+                                          <Database size={18} className="animate-pulse" />
+                                        )}
+                                      </button>
                                     )}
-                                  </button>
+                                    <button
+                                      onClick={() => {
+                                        setEditingItem(daily);
+                                        setIsFormOpen(true);
+                                      }}
+                                      className="text-slate-400 hover:text-sky-400 transition-colors p-1 cursor-pointer"
+                                      title="Edit Record"
+                                    >
+                                      <Edit2 size={18} />
+                                    </button>
+                                    <button
+                                      onClick={() => initiateDelete(daily)}
+                                      className="text-slate-400 hover:text-red-400 transition-colors p-1 cursor-pointer"
+                                      title="Delete Record (Admin Authorization Required)"
+                                    >
+                                      <Trash2 size={18} />
+                                    </button>
+                                  </>
+                                ) : (
+                                  <span className="text-[10px] text-slate-600 italic">View only</span>
                                 )}
-                                <button
-                                  onClick={() => {
-                                    setEditingItem(daily);
-                                    setIsFormOpen(true);
-                                  }}
-                                  className="text-slate-400 hover:text-sky-400 transition-colors p-1 cursor-pointer"
-                                  title="Edit Record"
-                                >
-                                  <Edit2 size={18} />
-                                </button>
-                                <button
-                                  onClick={() => initiateDelete(daily)}
-                                  className="text-slate-400 hover:text-red-400 transition-colors p-1 cursor-pointer"
-                                  title="Delete Record (Admin Authorization Required)"
-                                >
-                                  <Trash2 size={18} />
-                                </button>
                               </td>
                             </tr>
                           );
@@ -3423,6 +3453,23 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
+  const isGuestUser = Boolean(authSession?.isGuest || authSession?.user?.role === 'guest' || authSession?.user?.email?.toLowerCase().includes('guest'));
+
+  const handleGuestLogin = () => {
+    setAuthError(null);
+    const guestSession = {
+      user: {
+        id: 'guest-user-001',
+        email: 'guest@tnb.com.my',
+        role: 'guest'
+      },
+      isGuest: true
+    };
+    setAuthSession(guestSession);
+    try { localStorage.setItem('tnb_mock_session', JSON.stringify(guestSession)); } catch (e) { }
+    addAuditLog('CREATE', 'Guest Login', 'User logged in under Guest Read-Only mode', 'info');
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError(null);
@@ -4166,6 +4213,26 @@ export default function App() {
             </button>
           </form>
 
+          {/* Divider */}
+          <div className="relative my-4 flex items-center justify-center">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-zinc-800" />
+            </div>
+            <span className="relative bg-[#09090b] px-2 text-[10px] uppercase text-zinc-500 font-medium">
+              or
+            </span>
+          </div>
+
+          {/* Guest Login Button */}
+          <button
+            type="button"
+            onClick={handleGuestLogin}
+            className="w-full py-2.5 px-4 bg-zinc-900 hover:bg-zinc-800 active:bg-zinc-750 text-zinc-300 hover:text-white border border-zinc-800 text-xs font-semibold rounded-lg shadow-sm transition-all duration-150 flex items-center justify-center gap-2 cursor-pointer"
+          >
+            <User size={15} className="text-zinc-400" />
+            <span>Continue as Guest (Read-Only Mode)</span>
+          </button>
+
           {/* Footer Security Note */}
           <div className="mt-8 text-center">
             <p className="text-[11px] text-zinc-500">
@@ -4465,9 +4532,16 @@ export default function App() {
             )}
           </div>
           <div className="flex items-center gap-2 pl-2 border-l border-slate-800">
-            <div className="w-7 h-7 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-xs font-bold text-sky-400" title={`Logged in as ${authSession?.user?.email || 'fariz@tnb.com'}`}>
-              {authSession?.user?.email?.charAt(0).toUpperCase() || 'F'}
+            <div className={`w-7 h-7 rounded-full border flex items-center justify-center text-xs font-bold ${
+              isGuestUser ? 'bg-amber-900/40 border-amber-700 text-amber-400' : 'bg-slate-800 border-slate-700 text-sky-400'
+            }`} title={`Logged in as ${authSession?.user?.email || 'guest@tnb.com.my'}`}>
+              {isGuestUser ? 'G' : (authSession?.user?.email?.charAt(0).toUpperCase() || 'F')}
             </div>
+            {isGuestUser && (
+              <span className="text-[10px] font-semibold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded-md">
+                Guest
+              </span>
+            )}
             <button
               onClick={handleSignOut}
               className="p-1 hover:text-red-400 transition-colors"
@@ -5343,6 +5417,7 @@ export default function App() {
                 onSignOut={handleSignOut}
                 addNotification={addNotification}
                 addAuditLog={addAuditLog}
+                isGuestUser={isGuestUser}
               />
             </div>
           )}
