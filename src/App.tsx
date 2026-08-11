@@ -4613,7 +4613,7 @@ export default function App() {
                 </span>
               </div>
               <div className="text-[10px] text-slate-500 font-medium truncate">
-                Cumulative trajectory distance &bull; Last update: {lastUpdateDate}
+                Cumulative Trajectory Distance &bull; Updated {lastUpdateDate}
               </div>
             </div>
 
@@ -4627,7 +4627,7 @@ export default function App() {
                 <span className="text-2xl font-extrabold text-white tracking-tight">{totalImages.toLocaleString()} Frames</span>
               </div>
               <div className="text-[10px] text-slate-500 font-medium truncate">
-                Total 360° image frames ingested &bull; Last update: {lastUpdateDate}
+                Total 360° Image Frames Ingested &bull; Updated {lastUpdateDate}
               </div>
             </div>
 
@@ -4643,7 +4643,7 @@ export default function App() {
                 </span>
               </div>
               <div className="text-[10px] text-slate-500 font-medium truncate">
-                {latestBatch ? `Latest: ${latestBatch.imagesProcessed || 0} img (${latestBatch.kmProcessed?.toFixed(1) || 0} km)` : 'Subgrid processing active'} &bull; Last update: {lastUpdateDate}
+                {latestBatch ? `Latest Batch: ${latestBatch.imagesProcessed || 0} images · ${latestBatch.kmProcessed?.toFixed(1) || 0} km` : 'Subgrid processing active'} &bull; Updated {lastUpdateDate}
               </div>
             </div>
 
@@ -4663,7 +4663,7 @@ export default function App() {
                 </span>
               </div>
               <div className="text-[10px] text-slate-500 font-medium truncate">
-                <span className={totalDefects > 0 ? 'text-amber-400 font-semibold' : 'text-slate-500'}>{totalDefects} defect {totalDefects === 1 ? 'frame' : 'frames'} flagged</span> &bull; Last update: {lastUpdateDate}
+                <span className={totalDefects > 0 ? 'text-amber-400 font-semibold' : 'text-slate-500'}>{totalDefects} Defect {totalDefects === 1 ? 'Frame' : 'Frames'} Flagged</span> &bull; Updated {lastUpdateDate}
               </div>
             </div>
           </div>
@@ -5262,7 +5262,7 @@ export default function App() {
                               <Edit2 size={10} /> Edit QA
                             </button>
                           ) : (
-                            <span className="text-[8.5px] text-slate-500 font-mono">Select Flags</span>
+                            <span className="text-[8.5px] text-slate-500 font-mono">Toggle to Flag</span>
                           )}
                         </div>
 
@@ -5270,9 +5270,9 @@ export default function App() {
                           /* Guest: show flags as view-only, no interaction */
                           <div className="space-y-1.5 pointer-events-none opacity-40 select-none">
                             {[
-                              { label: 'Flag: Blurry Frame', color: 'red' },
-                              { label: 'Flag: Lens Obstruction', color: 'amber' },
-                              { label: 'Flag: Bad GPS', color: 'sky' },
+                              { label: 'Blurry Frame', color: 'red' },
+                              { label: 'Lens Obstruction', color: 'amber' },
+                              { label: 'Bad GPS Signal', color: 'sky' },
                             ].map(({ label, color }) => (
                               <div key={label} className={`w-full py-1.5 px-2 rounded-md text-[10px] font-medium text-left flex items-center justify-between border bg-slate-800/80 border-slate-700/80 text-slate-400 cursor-not-allowed`}>
                                 <span className="flex items-center gap-1.5 truncate">
@@ -5306,7 +5306,7 @@ export default function App() {
                               >
                                 <span className="flex items-center gap-1.5 truncate">
                                   <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${selectedQaFlags.blurry ? 'bg-red-300 ring-2 ring-red-400' : 'bg-red-400'}`}></span>
-                                  <span className="truncate">Flag: Blurry Frame</span>
+                                  <span className="truncate">Blurry Frame</span>
                                 </span>
                                 <span className={`text-[9px] font-mono shrink-0 ml-1 ${selectedQaFlags.blurry ? 'text-red-300 font-bold' : 'text-slate-500 group-hover:text-red-400'}`}>Flag</span>
                               </button>
@@ -5332,7 +5332,7 @@ export default function App() {
                               >
                                 <span className="flex items-center gap-1.5 truncate">
                                   <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${selectedQaFlags.obstruction ? 'bg-amber-300 ring-2 ring-amber-400' : 'bg-amber-400'}`}></span>
-                                  <span className="truncate">Flag: Lens Obstruction</span>
+                                  <span className="truncate">Lens Obstruction</span>
                                 </span>
                                 <span className={`text-[9px] font-mono shrink-0 ml-1 ${selectedQaFlags.obstruction ? 'text-amber-300 font-bold' : 'text-slate-500 group-hover:text-amber-400'}`}>Flag</span>
                               </button>
@@ -5358,7 +5358,7 @@ export default function App() {
                               >
                                 <span className="flex items-center gap-1.5 truncate">
                                   <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${selectedQaFlags.badGps ? 'bg-sky-300 ring-2 ring-sky-400' : 'bg-sky-400'}`}></span>
-                                  <span className="truncate">Flag: Bad GPS</span>
+                                  <span className="truncate">Bad GPS Signal</span>
                                 </span>
                                 <span className={`text-[9px] font-mono shrink-0 ml-1 ${selectedQaFlags.badGps ? 'text-sky-300 font-bold' : 'text-slate-500 group-hover:text-sky-400'}`}>Flag</span>
                               </button>
