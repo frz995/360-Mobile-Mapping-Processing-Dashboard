@@ -5245,7 +5245,9 @@ export default function App() {
                           <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block">
                             QA Defect Flags
                           </span>
-                          {isQaLocked ? (
+                          {isGuestUser ? (
+                            <span className="text-[8.5px] font-semibold text-amber-500/80 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded">Guest</span>
+                          ) : isQaLocked ? (
                             <button
                               onClick={() => {
                                 const itemKey = activePanoramaFilename || inspectorSubgrid || selectedSubgridFilter || 'N93E70';
@@ -5264,87 +5266,109 @@ export default function App() {
                           )}
                         </div>
 
-                        {(!isQaLocked || selectedQaFlags.blurry) && (
-                          <button
-                            disabled={isQaLocked}
-                            onClick={() => {
-                              if (isQaLocked) return;
-                              const itemKey = activePanoramaFilename || inspectorSubgrid || selectedSubgridFilter || 'N93E70';
-                              const sg = inspectorSubgrid || selectedSubgridFilter || 'N93E70';
-                              const nextFlags = { ...selectedQaFlags, blurry: !selectedQaFlags.blurry };
-                              saveSubgridQa(itemKey, nextFlags, qaQuestionnaireAnswer, false);
-                              const targetLog = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === sg.toUpperCase().trim());
-                              updateDefectStatusInSupabase(itemKey, targetLog?.defects || 0, 'Reviewing', { selectedQaFlags: nextFlags, flag: 'Blurry Frame', filename: activePanoramaFilename, subgrid: sg });
-                            }}
-                            className={`w-full py-1.5 px-2 rounded-md text-[10px] font-medium text-left flex items-center justify-between transition-all border ${isQaLocked ? 'opacity-90 cursor-default' : 'cursor-pointer active:scale-95'
-                              } ${selectedQaFlags.blurry
-                                ? 'bg-red-500/25 border-red-500 text-red-300 ring-1 ring-red-500/50 shadow-md'
-                                : 'bg-slate-800/80 hover:bg-red-500/10 hover:border-red-500/50 border-slate-700/80 text-slate-300 hover:text-red-400'
-                              }`}
-                          >
-                            <span className="flex items-center gap-1.5 truncate">
-                              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${selectedQaFlags.blurry ? 'bg-red-300 ring-2 ring-red-400' : 'bg-red-400'}`}></span>
-                              <span className="truncate">Flag: Blurry Frame</span>
-                            </span>
-                            <span className={`text-[9px] font-mono shrink-0 ml-1 ${selectedQaFlags.blurry ? 'text-red-300 font-bold' : 'text-slate-500 group-hover:text-red-400'}`}>Flag</span>
-                          </button>
-                        )}
+                        {isGuestUser ? (
+                          /* Guest: show flags as view-only, no interaction */
+                          <div className="space-y-1.5 pointer-events-none opacity-40 select-none">
+                            {[
+                              { label: 'Flag: Blurry Frame', color: 'red' },
+                              { label: 'Flag: Lens Obstruction', color: 'amber' },
+                              { label: 'Flag: Bad GPS', color: 'sky' },
+                            ].map(({ label, color }) => (
+                              <div key={label} className={`w-full py-1.5 px-2 rounded-md text-[10px] font-medium text-left flex items-center justify-between border bg-slate-800/80 border-slate-700/80 text-slate-400 cursor-not-allowed`}>
+                                <span className="flex items-center gap-1.5 truncate">
+                                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 bg-${color}-400`}></span>
+                                  <span className="truncate">{label}</span>
+                                </span>
+                                <span className="text-[9px] font-mono shrink-0 ml-1 text-slate-600">Flag</span>
+                              </div>
+                            ))}
+                            <p className="text-[9px] text-amber-500/70 text-center pt-1 italic">QA editing disabled for guests</p>
+                          </div>
+                        ) : (
+                          <>
+                            {(!isQaLocked || selectedQaFlags.blurry) && (
+                              <button
+                                disabled={isQaLocked}
+                                onClick={() => {
+                                  if (isQaLocked) return;
+                                  const itemKey = activePanoramaFilename || inspectorSubgrid || selectedSubgridFilter || 'N93E70';
+                                  const sg = inspectorSubgrid || selectedSubgridFilter || 'N93E70';
+                                  const nextFlags = { ...selectedQaFlags, blurry: !selectedQaFlags.blurry };
+                                  saveSubgridQa(itemKey, nextFlags, qaQuestionnaireAnswer, false);
+                                  const targetLog = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === sg.toUpperCase().trim());
+                                  updateDefectStatusInSupabase(itemKey, targetLog?.defects || 0, 'Reviewing', { selectedQaFlags: nextFlags, flag: 'Blurry Frame', filename: activePanoramaFilename, subgrid: sg });
+                                }}
+                                className={`w-full py-1.5 px-2 rounded-md text-[10px] font-medium text-left flex items-center justify-between transition-all border ${isQaLocked ? 'opacity-90 cursor-default' : 'cursor-pointer active:scale-95'
+                                  } ${selectedQaFlags.blurry
+                                    ? 'bg-red-500/25 border-red-500 text-red-300 ring-1 ring-red-500/50 shadow-md'
+                                    : 'bg-slate-800/80 hover:bg-red-500/10 hover:border-red-500/50 border-slate-700/80 text-slate-300 hover:text-red-400'
+                                  }`}
+                              >
+                                <span className="flex items-center gap-1.5 truncate">
+                                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${selectedQaFlags.blurry ? 'bg-red-300 ring-2 ring-red-400' : 'bg-red-400'}`}></span>
+                                  <span className="truncate">Flag: Blurry Frame</span>
+                                </span>
+                                <span className={`text-[9px] font-mono shrink-0 ml-1 ${selectedQaFlags.blurry ? 'text-red-300 font-bold' : 'text-slate-500 group-hover:text-red-400'}`}>Flag</span>
+                              </button>
+                            )}
 
-                        {(!isQaLocked || selectedQaFlags.obstruction) && (
-                          <button
-                            disabled={isQaLocked}
-                            onClick={() => {
-                              if (isQaLocked) return;
-                              const itemKey = activePanoramaFilename || inspectorSubgrid || selectedSubgridFilter || 'N93E70';
-                              const sg = inspectorSubgrid || selectedSubgridFilter || 'N93E70';
-                              const nextFlags = { ...selectedQaFlags, obstruction: !selectedQaFlags.obstruction };
-                              saveSubgridQa(itemKey, nextFlags, qaQuestionnaireAnswer, false);
-                              const targetLog = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === sg.toUpperCase().trim());
-                              updateDefectStatusInSupabase(itemKey, targetLog?.defects || 0, 'Reviewing', { selectedQaFlags: nextFlags, flag: 'Lens Obstruction', filename: activePanoramaFilename, subgrid: sg });
-                            }}
-                            className={`w-full py-1.5 px-2 rounded-md text-[10px] font-medium text-left flex items-center justify-between transition-all border ${isQaLocked ? 'opacity-90 cursor-default' : 'cursor-pointer active:scale-95'
-                              } ${selectedQaFlags.obstruction
-                                ? 'bg-amber-500/25 border-amber-500 text-amber-300 ring-1 ring-amber-500/50 shadow-md'
-                                : 'bg-slate-800/80 hover:bg-amber-500/10 hover:border-amber-500/50 border-slate-700/80 text-slate-300 hover:text-amber-400'
-                              }`}
-                          >
-                            <span className="flex items-center gap-1.5 truncate">
-                              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${selectedQaFlags.obstruction ? 'bg-amber-300 ring-2 ring-amber-400' : 'bg-amber-400'}`}></span>
-                              <span className="truncate">Flag: Lens Obstruction</span>
-                            </span>
-                            <span className={`text-[9px] font-mono shrink-0 ml-1 ${selectedQaFlags.obstruction ? 'text-amber-300 font-bold' : 'text-slate-500 group-hover:text-amber-400'}`}>Flag</span>
-                          </button>
-                        )}
+                            {(!isQaLocked || selectedQaFlags.obstruction) && (
+                              <button
+                                disabled={isQaLocked}
+                                onClick={() => {
+                                  if (isQaLocked) return;
+                                  const itemKey = activePanoramaFilename || inspectorSubgrid || selectedSubgridFilter || 'N93E70';
+                                  const sg = inspectorSubgrid || selectedSubgridFilter || 'N93E70';
+                                  const nextFlags = { ...selectedQaFlags, obstruction: !selectedQaFlags.obstruction };
+                                  saveSubgridQa(itemKey, nextFlags, qaQuestionnaireAnswer, false);
+                                  const targetLog = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === sg.toUpperCase().trim());
+                                  updateDefectStatusInSupabase(itemKey, targetLog?.defects || 0, 'Reviewing', { selectedQaFlags: nextFlags, flag: 'Lens Obstruction', filename: activePanoramaFilename, subgrid: sg });
+                                }}
+                                className={`w-full py-1.5 px-2 rounded-md text-[10px] font-medium text-left flex items-center justify-between transition-all border ${isQaLocked ? 'opacity-90 cursor-default' : 'cursor-pointer active:scale-95'
+                                  } ${selectedQaFlags.obstruction
+                                    ? 'bg-amber-500/25 border-amber-500 text-amber-300 ring-1 ring-amber-500/50 shadow-md'
+                                    : 'bg-slate-800/80 hover:bg-amber-500/10 hover:border-amber-500/50 border-slate-700/80 text-slate-300 hover:text-amber-400'
+                                  }`}
+                              >
+                                <span className="flex items-center gap-1.5 truncate">
+                                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${selectedQaFlags.obstruction ? 'bg-amber-300 ring-2 ring-amber-400' : 'bg-amber-400'}`}></span>
+                                  <span className="truncate">Flag: Lens Obstruction</span>
+                                </span>
+                                <span className={`text-[9px] font-mono shrink-0 ml-1 ${selectedQaFlags.obstruction ? 'text-amber-300 font-bold' : 'text-slate-500 group-hover:text-amber-400'}`}>Flag</span>
+                              </button>
+                            )}
 
-                        {(!isQaLocked || selectedQaFlags.badGps) && (
-                          <button
-                            disabled={isQaLocked}
-                            onClick={() => {
-                              if (isQaLocked) return;
-                              const itemKey = activePanoramaFilename || inspectorSubgrid || selectedSubgridFilter || 'N93E70';
-                              const sg = inspectorSubgrid || selectedSubgridFilter || 'N93E70';
-                              const nextFlags = { ...selectedQaFlags, badGps: !selectedQaFlags.badGps };
-                              saveSubgridQa(itemKey, nextFlags, qaQuestionnaireAnswer, false);
-                              const targetLog = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === sg.toUpperCase().trim());
-                              updateDefectStatusInSupabase(itemKey, targetLog?.defects || 0, 'Reviewing', { selectedQaFlags: nextFlags, flag: 'Bad GPS', filename: activePanoramaFilename, subgrid: sg });
-                            }}
-                            className={`w-full py-1.5 px-2 rounded-md text-[10px] font-medium text-left flex items-center justify-between transition-all border ${isQaLocked ? 'opacity-90 cursor-default' : 'cursor-pointer active:scale-95'
-                              } ${selectedQaFlags.badGps
-                                ? 'bg-sky-500/25 border-sky-500 text-sky-300 ring-1 ring-sky-500/50 shadow-md'
-                                : 'bg-slate-800/80 hover:bg-sky-500/10 hover:border-sky-500/50 border-slate-700/80 text-slate-300 hover:text-sky-400'
-                              }`}
-                          >
-                            <span className="flex items-center gap-1.5 truncate">
-                              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${selectedQaFlags.badGps ? 'bg-sky-300 ring-2 ring-sky-400' : 'bg-sky-400'}`}></span>
-                              <span className="truncate">Flag: Bad GPS</span>
-                            </span>
-                            <span className={`text-[9px] font-mono shrink-0 ml-1 ${selectedQaFlags.badGps ? 'text-sky-300 font-bold' : 'text-slate-500 group-hover:text-sky-400'}`}>Flag</span>
-                          </button>
+                            {(!isQaLocked || selectedQaFlags.badGps) && (
+                              <button
+                                disabled={isQaLocked}
+                                onClick={() => {
+                                  if (isQaLocked) return;
+                                  const itemKey = activePanoramaFilename || inspectorSubgrid || selectedSubgridFilter || 'N93E70';
+                                  const sg = inspectorSubgrid || selectedSubgridFilter || 'N93E70';
+                                  const nextFlags = { ...selectedQaFlags, badGps: !selectedQaFlags.badGps };
+                                  saveSubgridQa(itemKey, nextFlags, qaQuestionnaireAnswer, false);
+                                  const targetLog = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === sg.toUpperCase().trim());
+                                  updateDefectStatusInSupabase(itemKey, targetLog?.defects || 0, 'Reviewing', { selectedQaFlags: nextFlags, flag: 'Bad GPS', filename: activePanoramaFilename, subgrid: sg });
+                                }}
+                                className={`w-full py-1.5 px-2 rounded-md text-[10px] font-medium text-left flex items-center justify-between transition-all border ${isQaLocked ? 'opacity-90 cursor-default' : 'cursor-pointer active:scale-95'
+                                  } ${selectedQaFlags.badGps
+                                    ? 'bg-sky-500/25 border-sky-500 text-sky-300 ring-1 ring-sky-500/50 shadow-md'
+                                    : 'bg-slate-800/80 hover:bg-sky-500/10 hover:border-sky-500/50 border-slate-700/80 text-slate-300 hover:text-sky-400'
+                                  }`}
+                              >
+                                <span className="flex items-center gap-1.5 truncate">
+                                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${selectedQaFlags.badGps ? 'bg-sky-300 ring-2 ring-sky-400' : 'bg-sky-400'}`}></span>
+                                  <span className="truncate">Flag: Bad GPS</span>
+                                </span>
+                                <span className={`text-[9px] font-mono shrink-0 ml-1 ${selectedQaFlags.badGps ? 'text-sky-300 font-bold' : 'text-slate-500 group-hover:text-sky-400'}`}>Flag</span>
+                              </button>
+                            )}
+                          </>
                         )}
                       </div>
 
-                      {/* QA Questionnaire Box: Update Status? (Hidden after status confirmation) */}
-                      {!isQaLocked && (selectedQaFlags.blurry || selectedQaFlags.obstruction || selectedQaFlags.badGps) && (
+                      {/* QA Questionnaire Box: Update Status? (Hidden after status confirmation and for guests) */}
+                      {!isGuestUser && !isQaLocked && (selectedQaFlags.blurry || selectedQaFlags.obstruction || selectedQaFlags.badGps) && (
                         <div className="bg-slate-900/90 rounded-md p-2 border border-slate-800 space-y-1.5 text-[10px] mt-2.5 animate-in fade-in slide-in-from-top-2 duration-200">
                           <div className="flex items-center justify-between text-slate-300 font-medium">
                             <span>Update Status?</span>
