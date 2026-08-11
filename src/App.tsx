@@ -24,14 +24,18 @@ import {
   UploadCloud,
   ShieldAlert,
   Lock,
-  Mail,
   User,
   LogOut,
   ShieldCheck,
-  KeyRound,
   Layers,
   Maximize2,
-  Filter
+  Filter,
+  Globe,
+  Bell,
+  ClipboardList,
+  History,
+  Calendar,
+  HelpCircle
 } from 'lucide-react';
 import { supabase, publishToSupabase, fetchSupabaseData, deleteFromSupabase, updateDefectStatusInSupabase, fetchQaRecordsFromSupabase } from './services/supabase';
 import * as shapefile from 'shapefile';
@@ -84,6 +88,27 @@ interface BatchLog {
   pic?: 'Fariz' | 'Hafiz' | 'Amirul' | string;
   isSyncedWithSupabase?: boolean;
   panoramas?: PanoramaItem[];
+}
+
+export interface NotificationItem {
+  id: string;
+  timestamp: string;
+  title: string;
+  message: string;
+  category: 'PUBLISH' | 'PENDING' | 'SYSTEM' | 'ERROR';
+  read: boolean;
+  totalItems?: number;
+}
+
+export interface AuditLogItem {
+  id: string;
+  timestamp: string;
+  type: 'CREATE' | 'EDIT' | 'DELETE' | 'PUBLISH' | 'ERROR' | 'SYNC';
+  title: string;
+  details: string;
+  user: string;
+  status: 'success' | 'warning' | 'error' | 'info';
+  read?: boolean;
 }
 
 type Folder = {
@@ -165,6 +190,123 @@ export function createBatchLogFromSupabaseOrDummy(
 // Initial Mock Data
 // ==============================================
 
+const INITIAL_NOTIFICATIONS: NotificationItem[] = [
+  {
+    id: 'notif-1',
+    timestamp: '11 Aug 2026, 10:45 AM',
+    title: 'Data Published to Database',
+    message: 'Successfully published 4 subgrids (265 panoramas) to Supabase production database.',
+    category: 'PUBLISH',
+    read: false,
+    totalItems: 4
+  },
+  {
+    id: 'notif-2',
+    timestamp: '11 Aug 2026, 10:30 AM',
+    title: 'Pending Task: Batch Stitching Job',
+    message: 'Subgrid N94E71 batch stitching pipeline in progress (65% completed).',
+    category: 'PENDING',
+    read: false
+  },
+  {
+    id: 'notif-3',
+    timestamp: '11 Aug 2026, 09:15 AM',
+    title: 'Pending Task: WebGIS Sync',
+    message: '1 daily subgrid record (N90E67) awaiting WebGIS database sync.',
+    category: 'PENDING',
+    read: false
+  },
+  {
+    id: 'notif-4',
+    timestamp: '11 Aug 2026, 08:00 AM',
+    title: 'System Health Audit',
+    message: 'All 4 subgrid batch runs reconciled. 6 QA defect frames flagged.',
+    category: 'SYSTEM',
+    read: true
+  }
+];
+
+const INITIAL_AUDIT_LOGS: AuditLogItem[] = [
+  {
+    id: 'audit-1',
+    timestamp: '11 Aug 2026, 10:45 AM',
+    type: 'PUBLISH',
+    title: 'Database Publish Executed',
+    details: 'Published 4 subgrids (N93E70, N94E70, N94E71, N90E67) to Supabase database',
+    user: 'Fariz',
+    status: 'success'
+  },
+  {
+    id: 'audit-2',
+    timestamp: '11 Aug 2026, 10:20 AM',
+    type: 'EDIT',
+    title: 'Daily Subgrid N94E70 Modified',
+    details: 'Updated distance to 0.6 km, defect count to 6, PIC set to Hafiz',
+    user: 'Hafiz',
+    status: 'info'
+  },
+  {
+    id: 'audit-3',
+    timestamp: '11 Aug 2026, 09:45 AM',
+    type: 'SYNC',
+    title: 'Supabase Database Sync',
+    details: 'Synced 5 daily subgrid records from remote mobilemapping PostGIS store',
+    user: 'System',
+    status: 'success'
+  },
+  {
+    id: 'audit-4',
+    timestamp: '11 Aug 2026, 09:10 AM',
+    type: 'CREATE',
+    title: 'CSV Import Completed',
+    details: 'Imported batch data for subgrids N93E70 & N94E70 via CSV upload',
+    user: 'Fariz',
+    status: 'success'
+  },
+  {
+    id: 'audit-5',
+    timestamp: '10 Aug 2026, 05:30 PM',
+    type: 'ERROR',
+    title: 'Batch Stitching Warning',
+    details: 'Frame N94E71-0005 reported low feature match density (65% completed)',
+    user: 'BatchWorker',
+    status: 'error'
+  }
+];
+
+const TOUR_STEPS = [
+  {
+    step: 1,
+    title: '1. Executive KPI Summary Cards',
+    desc: 'Provides real-time tracking of total mapped trajectory distance, 360° panorama frame counts, active batch stitching jobs, and overall quality health.',
+    highlight: 'Top row metrics cards'
+  },
+  {
+    step: 2,
+    title: '2. Interactive Coverage Map & Subgrid Filters',
+    desc: 'Explore mobile mapping trajectories on Leaflet. Click any subgrid (e.g. N94E70) to inspect data. Click subgrid cards in the daily control table to filter specific dates without hiding concurrent subgrids.',
+    highlight: 'Left column GIS WebMap'
+  },
+  {
+    step: 3,
+    title: '3. 360° Panorama Street-View Inspector',
+    desc: 'Examine high-definition 360° spherical panoramas, step between frames, review AI defect detections, and perform QA validations with YES/NO confirmations.',
+    highlight: 'Right panel Street-View viewer'
+  },
+  {
+    step: 4,
+    title: '4. Daily Processing Control & Supabase DB Publishing',
+    desc: 'Filter progress records by column, perform authorized admin edits or deletes, and execute real-time production database publishing directly to Supabase.',
+    highlight: 'Bottom daily progress table'
+  },
+  {
+    step: 5,
+    title: '5. Audit Logs & System Notifications',
+    desc: 'Use the top header icons to track system activity logs (create, edit, delete, publish, errors) with date track-back filtering and publish notifications.',
+    highlight: 'Top navbar header icons'
+  }
+];
+
 const INITIAL_DAILY_DATA: DailyTimeSeries[] = [
   {
     id: 'd1',
@@ -173,8 +315,8 @@ const INITIAL_DAILY_DATA: DailyTimeSeries[] = [
     subgrid: 'N93E70',
     kmProcessed: 0.82,
     imagesProcessed: 163,
-    defectCount: 0,
-    imagesDefected: 0,
+    defectCount: 6,
+    imagesDefected: 6,
     captureEquipment: 'MMS',
     publishToUSVPRO: 'yes',
     action: 'Published in database',
@@ -442,7 +584,7 @@ const MapComponent = ({
       <iframe
         ref={iframeRef}
         key={refreshKey || 0}
-        src={`${import.meta.env.VITE_MAP_URL || (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname.startsWith('192.168.') || window.location.hostname.startsWith('10.')) ? 'http://localhost:5173' : 'http://localhost:5173')}/?embed=true${selectedSubgridFilter ? `&subgrid=${encodeURIComponent(selectedSubgridFilter)}` : ''}${refreshKey ? `&t=${refreshKey}` : ''}`}
+        src={`${import.meta.env.VITE_MAP_URL || (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname.startsWith('192.168.') || window.location.hostname.startsWith('10.')) ? 'http://localhost:5173' : 'https://mobilemapping-nine.vercel.app')}/?embed=true${selectedSubgridFilter ? `&subgrid=${encodeURIComponent(selectedSubgridFilter)}` : ''}${refreshKey ? `&t=${refreshKey}` : ''}`}
         onLoad={() => {
           if (iframeRef.current && iframeRef.current.contentWindow) {
             iframeRef.current.contentWindow.postMessage({
@@ -613,7 +755,9 @@ const DataManagementPage = ({
   mapRefreshKey,
   onRefreshMap,
   authSession,
-  onSignOut
+  onSignOut,
+  addNotification,
+  addAuditLog
 }: {
   dailyData: DailyTimeSeries[],
   setDailyData: (data: DailyTimeSeries[]) => void,
@@ -625,7 +769,9 @@ const DataManagementPage = ({
   mapRefreshKey?: number,
   onRefreshMap?: () => void,
   authSession?: any,
-  onSignOut?: () => void
+  onSignOut?: () => void,
+  addNotification?: (item: Omit<NotificationItem, 'id' | 'timestamp' | 'read'>) => void,
+  addAuditLog?: (type: AuditLogItem['type'], title: string, details: string, status?: AuditLogItem['status']) => void
 }) => {
   const [dataTab, setDataTab] = useState<'batches' | 'daily' | 'vector'>('batches');
   const [editingItem, setEditingItem] = useState<BatchLog | DailyTimeSeries | Layer | Folder | null>(null);
@@ -642,6 +788,24 @@ const DataManagementPage = ({
   const csvInputRef = useRef<HTMLInputElement>(null);
   const [draftDailyData, setDraftDailyData] = useState<DailyTimeSeries[]>(dailyData);
   const [isDailyDirty, setIsDailyDirty] = useState(false);
+
+  // Daily Data Column Filters state
+  const [isColumnFilterOpen, setIsColumnFilterOpen] = useState(false);
+  const [dailyColumnFilters, setDailyColumnFilters] = useState<{
+    grid: string;
+    subgrid: string;
+    equipment: string;
+    pic: string;
+    publishStatus: string;
+  }>({
+    grid: '',
+    subgrid: '',
+    equipment: '',
+    pic: '',
+    publishStatus: ''
+  });
+
+  const activeDailyFilterCount = Object.values(dailyColumnFilters).filter(Boolean).length;
 
   // Selected subgrid filter state (interactive row click -> zoom to extent, filter, & blink)
   const [selectedSubgridFilter, setSelectedSubgridFilter] = useState<string | null>(null);
@@ -1251,17 +1415,32 @@ const DataManagementPage = ({
   }, [batchLogs, searchQuery]);
 
   const filteredDailyData = React.useMemo(() => {
-    if (!searchQuery.trim()) return draftDailyData;
-    const q = searchQuery.toLowerCase().trim();
-    return draftDailyData.filter(d =>
-      (d.date && d.date.toLowerCase().includes(q)) ||
-      (d.grid && d.grid.toLowerCase().includes(q)) ||
-      (d.subgrid && d.subgrid.toLowerCase().includes(q)) ||
-      (d.captureEquipment && d.captureEquipment.toLowerCase().includes(q)) ||
-      (d.publishToUSVPRO && d.publishToUSVPRO.toLowerCase().includes(q)) ||
-      (d.action && d.action.toLowerCase().includes(q))
-    );
-  }, [draftDailyData, searchQuery]);
+    return draftDailyData.filter(d => {
+      // 1. Global search query filter
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        const matchGlobal = (
+          (d.date && d.date.toLowerCase().includes(q)) ||
+          (d.grid && d.grid.toLowerCase().includes(q)) ||
+          (d.subgrid && d.subgrid.toLowerCase().includes(q)) ||
+          (d.captureEquipment && d.captureEquipment.toLowerCase().includes(q)) ||
+          (d.publishToUSVPRO && d.publishToUSVPRO.toLowerCase().includes(q)) ||
+          (d.action && d.action.toLowerCase().includes(q)) ||
+          (d.pic && d.pic.toLowerCase().includes(q))
+        );
+        if (!matchGlobal) return false;
+      }
+
+      // 2. Daily Data Column filters
+      if (dailyColumnFilters.grid && d.grid !== dailyColumnFilters.grid) return false;
+      if (dailyColumnFilters.subgrid && (d.subgrid || '').toUpperCase().trim() !== dailyColumnFilters.subgrid.toUpperCase().trim()) return false;
+      if (dailyColumnFilters.equipment && d.captureEquipment !== dailyColumnFilters.equipment) return false;
+      if (dailyColumnFilters.pic && (d.pic || 'Fariz') !== dailyColumnFilters.pic) return false;
+      if (dailyColumnFilters.publishStatus && d.publishToUSVPRO !== dailyColumnFilters.publishStatus) return false;
+
+      return true;
+    });
+  }, [draftDailyData, searchQuery, dailyColumnFilters]);
 
   const totalItems = dataTab === 'batches' ? filteredBatchLogs.length : filteredDailyData.length;
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
@@ -1452,6 +1631,19 @@ const DataManagementPage = ({
 
     setIsPublishingAll(false);
     if (successCount > 0 && onRefreshMap) onRefreshMap();
+    if (successCount > 0) {
+      if (addNotification) {
+        addNotification({
+          title: 'Data Published to Database',
+          message: `Successfully published ${successCount} subgrid record(s) directly to Supabase production database.`,
+          category: 'PUBLISH',
+          totalItems: successCount
+        });
+      }
+      if (addAuditLog) {
+        addAuditLog('PUBLISH', 'Database Publish Executed', `Published ${successCount} subgrids to production database`, 'success');
+      }
+    }
     setPublishMessage({
       text: `Successfully published ${successCount} record(s) & updated batch logs!`,
       type: 'success'
@@ -1489,6 +1681,10 @@ const DataManagementPage = ({
       // Auto-persist directly to Supabase DB in real-time
       publishToSupabase(updatedItem).catch(err => console.warn('Background auto-publish error:', err));
     }
+
+    const subName = (item as any).subgrid || (item as any).imageFilename || 'record';
+    if (addAuditLog) addAuditLog('EDIT', `Record Modified: ${subName}`, `Updated parameters for subgrid ${subName}`, 'info');
+
     setIsFormOpen(false);
     setEditingItem(null);
   };
@@ -1535,6 +1731,8 @@ const DataManagementPage = ({
     // Auto-delete from Supabase DB in real-time
     deleteFromSupabase(subgridName).catch(err => console.warn('Background delete error:', err));
 
+    if (addAuditLog) addAuditLog('DELETE', `Record Deleted: ${subgridName}`, `Admin passcode verified, permanently deleted record ${subgridName}`, 'warning');
+
     setPublishMessage({
       text: `[Admin Security Action] Record for subgrid "${subgridName}" was permanently deleted from database.`,
       type: 'success'
@@ -1549,8 +1747,8 @@ const DataManagementPage = ({
 
   return (
     <>
-      <div className="min-h-screen bg-slate-950 text-slate-200 font-sans p-8">
-        <div className="max-w-6xl mx-auto">
+      <div className="flex-1 flex flex-col h-full bg-[#0B0F17] text-slate-200 font-sans p-4 sm:p-5 overflow-y-auto min-h-0">
+        <div className="max-w-7xl mx-auto w-full">
           {/* Header */}
           <div className="flex items-center justify-between mb-8">
             <div className="flex items-center gap-4">
@@ -1641,22 +1839,46 @@ const DataManagementPage = ({
           {/* Action Toolbar Row */}
           {(dataTab === 'batches' || dataTab === 'daily') && (
             <div className="flex flex-wrap items-center justify-between gap-4 mb-6 bg-slate-900/80 border border-slate-800/80 p-3.5 rounded-xl shadow-lg">
-              {/* Search Bar */}
-              <div className="relative flex-1 max-w-xs min-w-[200px]">
-                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search records..."
-                  className="w-full bg-slate-950 border border-slate-700/80 rounded-lg pl-9 pr-8 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 transition-all shadow-inner"
-                />
-                {searchQuery && (
+              {/* Search Bar & Filter Toggle Button */}
+              <div className="flex items-center gap-3 flex-1 max-w-md">
+                <div className="relative flex-1 min-w-[200px]">
+                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search records..."
+                    className="w-full bg-slate-950 border border-slate-700/80 rounded-lg pl-9 pr-8 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 transition-all shadow-inner"
+                  />
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+
+                {dataTab === 'daily' && (
                   <button
-                    onClick={() => setSearchQuery('')}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white"
+                    onClick={() => setIsColumnFilterOpen(prev => !prev)}
+                    className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer border shrink-0 ${
+                      activeDailyFilterCount > 0
+                        ? 'bg-sky-600 border-sky-500 text-white shadow-md shadow-sky-900/40'
+                        : isColumnFilterOpen
+                        ? 'bg-slate-800 border-sky-500 text-sky-400'
+                        : 'bg-slate-950 border-slate-700/80 text-slate-300 hover:bg-slate-800 hover:text-white'
+                    }`}
+                    title="Filter Daily Data by specific columns"
                   >
-                    <X size={14} />
+                    <Filter size={14} />
+                    <span>Filter Columns</span>
+                    {activeDailyFilterCount > 0 && (
+                      <span className="bg-sky-400 text-slate-950 px-1.5 py-0.2 rounded-full font-bold text-[10px]">
+                        {activeDailyFilterCount}
+                      </span>
+                    )}
                   </button>
                 )}
               </div>
@@ -1717,6 +1939,103 @@ const DataManagementPage = ({
                   </label>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Expandable Column Filter Panel (Daily Data) */}
+          {isColumnFilterOpen && dataTab === 'daily' && (
+            <div className="mb-6 p-4 bg-slate-900/90 border border-slate-800 rounded-xl shadow-xl space-y-3 animate-in fade-in duration-200">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-800 text-xs text-slate-300 font-semibold uppercase tracking-wider">
+                <div className="flex items-center gap-2">
+                  <Filter size={14} className="text-sky-400" />
+                  <span>Daily Data Column Filters</span>
+                </div>
+                {activeDailyFilterCount > 0 && (
+                  <button
+                    onClick={() => setDailyColumnFilters({ grid: '', subgrid: '', equipment: '', pic: '', publishStatus: '' })}
+                    className="text-red-400 hover:text-red-300 text-xs font-medium cursor-pointer flex items-center gap-1 transition-colors"
+                  >
+                    <X size={12} /> Clear Column Filters
+                  </button>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 text-xs">
+                {/* Grid Filter */}
+                <div>
+                  <label className="block text-slate-400 mb-1 font-medium text-[11px]">Grid</label>
+                  <select
+                    value={dailyColumnFilters.grid}
+                    onChange={(e) => setDailyColumnFilters(prev => ({ ...prev, grid: e.target.value }))}
+                    className="w-full bg-slate-950 border border-slate-700 text-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-sky-500"
+                  >
+                    <option value="">All Grids</option>
+                    {Array.from(new Set(draftDailyData.map(d => d.grid).filter(Boolean))).sort().map(g => (
+                      <option key={g} value={g}>Grid {g}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Subgrid Filter */}
+                <div>
+                  <label className="block text-slate-400 mb-1 font-medium text-[11px]">Subgrid</label>
+                  <select
+                    value={dailyColumnFilters.subgrid}
+                    onChange={(e) => setDailyColumnFilters(prev => ({ ...prev, subgrid: e.target.value }))}
+                    className="w-full bg-slate-950 border border-slate-700 text-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-sky-500"
+                  >
+                    <option value="">All Subgrids</option>
+                    {Array.from(new Set(draftDailyData.map(d => (d.subgrid || '').toUpperCase().trim()).filter(Boolean))).sort().map(sg => (
+                      <option key={sg} value={sg}>{sg}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Capture Equipment */}
+                <div>
+                  <label className="block text-slate-400 mb-1 font-medium text-[11px]">Equipment</label>
+                  <select
+                    value={dailyColumnFilters.equipment}
+                    onChange={(e) => setDailyColumnFilters(prev => ({ ...prev, equipment: e.target.value }))}
+                    className="w-full bg-slate-950 border border-slate-700 text-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-sky-500"
+                  >
+                    <option value="">All Equipment</option>
+                    {Array.from(new Set(draftDailyData.map(d => d.captureEquipment).filter(Boolean))).sort().map(eq => (
+                      <option key={eq} value={eq}>{eq}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* PIC Filter */}
+                <div>
+                  <label className="block text-slate-400 mb-1 font-medium text-[11px]">PIC</label>
+                  <select
+                    value={dailyColumnFilters.pic}
+                    onChange={(e) => setDailyColumnFilters(prev => ({ ...prev, pic: e.target.value }))}
+                    className="w-full bg-slate-950 border border-slate-700 text-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-sky-500"
+                  >
+                    <option value="">All PICs</option>
+                    {Array.from(new Set(draftDailyData.map(d => d.pic || 'Fariz').filter(Boolean))).sort().map(p => (
+                      <option key={p} value={p}>{p}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Publish Status */}
+                <div>
+                  <label className="block text-slate-400 mb-1 font-medium text-[11px]">Publish Status</label>
+                  <select
+                    value={dailyColumnFilters.publishStatus}
+                    onChange={(e) => setDailyColumnFilters(prev => ({ ...prev, publishStatus: e.target.value }))}
+                    className="w-full bg-slate-950 border border-slate-700 text-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-sky-500"
+                  >
+                    <option value="">All Statuses</option>
+                    {Array.from(new Set(draftDailyData.map(d => d.publishToUSVPRO).filter(Boolean))).sort().map(st => (
+                      <option key={st} value={st}>{st}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
             </div>
           )}
 
@@ -2014,7 +2333,12 @@ const DataManagementPage = ({
                               <td className="px-4 py-3.5 text-slate-200 font-semibold whitespace-nowrap">{daily.kmProcessed.toFixed(1)}</td>
                               <td className="px-4 py-3.5 text-slate-300 whitespace-nowrap">{daily.imagesProcessed.toLocaleString()}</td>
                               <td className="px-4 py-3.5 text-slate-300 whitespace-nowrap">{daily.captureEquipment}</td>
-                              <td className="px-4 py-3.5 text-amber-400 font-medium whitespace-nowrap">{daily.imagesDefected}</td>
+                              <td className="px-4 py-3.5 text-amber-400 font-semibold whitespace-nowrap">
+                                {(() => {
+                                  const matchBatch = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === dailySubgrid);
+                                  return matchBatch ? (matchBatch.defects ?? 0) : (daily.imagesDefected ?? daily.defectCount ?? 0);
+                                })()}
+                              </td>
                               <td className="px-4 py-3.5 text-emerald-400 font-semibold whitespace-nowrap">{daily.pic || 'Fariz'}</td>
                               <td className="px-4 py-3.5 whitespace-nowrap">
                                 <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${daily.publishToUSVPRO === 'yes' ? 'bg-green-500/10 text-green-400 border border-green-500/20' :
@@ -3080,8 +3404,8 @@ export default function App() {
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
   const [authError, setAuthError] = useState<string | null>(null);
-  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
   const [isAuthenticating, setIsAuthenticating] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -3127,31 +3451,6 @@ export default function App() {
     }
   };
 
-  const handleSignUp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setAuthError(null);
-    setIsAuthenticating(true);
-
-    const { data, error } = await supabase.auth.signUp({
-      email: authEmail,
-      password: authPassword
-    });
-
-    setIsAuthenticating(false);
-
-    if (error) {
-      setAuthError(error.message || 'Failed to register account.');
-    } else if (data.session) {
-      setAuthSession(data.session);
-    } else if (data.user) {
-      setAuthError(null);
-      alert('Account created successfully! Signing in...');
-      const mockSession = { user: { email: authEmail, id: data.user.id } };
-      setAuthSession(mockSession);
-      try { localStorage.setItem('tnb_mock_session', JSON.stringify(mockSession)); } catch (e) { }
-    }
-  };
-
   const handleSignOut = async () => {
     try {
       await supabase.auth.signOut();
@@ -3173,10 +3472,10 @@ export default function App() {
 
   // Load data from localStorage or use initial data
   const [dailyData, setDailyData] = useState<DailyTimeSeries[]>(() => {
-    ['dailyData_v4', 'dailyData_v5', 'dailyData_v6', 'dailyData_v7', 'dailyData_v8', 'dailyData_v9', 'dailyData_v10', 'dailyData_v11', 'dailyData_v12', 'dailyData_v13', 'dailyData_v14', 'dailyData_v15', 'batchLogs_v5', 'batchLogs_v6', 'batchLogs_v7', 'batchLogs_v8', 'batchLogs_v9', 'batchLogs_v10', 'batchLogs_v11', 'batchLogs_v12', 'batchLogs_v13', 'batchLogs_v14', 'batchLogs_v15', 'qaSubgridRecords_v13'].forEach(k => {
+    ['dailyData_v4', 'dailyData_v5', 'dailyData_v6', 'dailyData_v7', 'dailyData_v8', 'dailyData_v9', 'dailyData_v10', 'dailyData_v11', 'dailyData_v12', 'dailyData_v13', 'dailyData_v14', 'dailyData_v15', 'dailyData_v16', 'batchLogs_v5', 'batchLogs_v6', 'batchLogs_v7', 'batchLogs_v8', 'batchLogs_v9', 'batchLogs_v10', 'batchLogs_v11', 'batchLogs_v12', 'batchLogs_v13', 'batchLogs_v14', 'batchLogs_v15', 'batchLogs_v16', 'qaSubgridRecords_v13'].forEach(k => {
       try { localStorage.removeItem(k); } catch { }
     });
-    const saved = localStorage.getItem('dailyData_v16');
+    const saved = localStorage.getItem('dailyData_v17');
     if (!saved) return INITIAL_DAILY_DATA;
     try {
       const parsed = JSON.parse(saved);
@@ -3187,7 +3486,7 @@ export default function App() {
   });
 
   const [batchLogs, setBatchLogs] = useState<BatchLog[]>(() => {
-    const saved = localStorage.getItem('batchLogs_v16');
+    const saved = localStorage.getItem('batchLogs_v17');
     if (!saved) return INITIAL_BATCH_LOGS;
     try {
       const parsed = JSON.parse(saved);
@@ -3275,8 +3574,8 @@ export default function App() {
   // Save to localStorage whenever data changes
   useEffect(() => {
     try {
-      localStorage.setItem('dailyData_v16', JSON.stringify(dailyData));
-      localStorage.setItem('batchLogs_v16', JSON.stringify(batchLogs));
+      localStorage.setItem('dailyData_v17', JSON.stringify(dailyData));
+      localStorage.setItem('batchLogs_v17', JSON.stringify(batchLogs));
     } catch (err) {
       console.warn('Unable to save to localStorage:', err);
     }
@@ -3308,17 +3607,106 @@ export default function App() {
   const pipelineHealthPercent = totalFramesForHealth > 0
     ? (((totalFramesForHealth - totalDefects) / totalFramesForHealth) * 100).toFixed(1)
     : '100.0';
-  const targetKm = 5000;
-  const progressPercent = Math.round((totalKm / targetKm) * 100);
+  const targetKm = 315.2;
+  const progressPercent = ((totalKm / targetKm) * 100).toFixed(1);
   const latestBatch = dailyData[dailyData.length - 1];
 
   const [mapRefreshKey, setMapRefreshKey] = useState<number>(Date.now());
   const handleRefreshMap = () => setMapRefreshKey(Date.now());
 
+  // Notification & Audit Log State Management
+  const [notifications, setNotifications] = useState<NotificationItem[]>(() => {
+    const saved = localStorage.getItem('app_notifications_v1');
+    if (!saved) return INITIAL_NOTIFICATIONS;
+    try {
+      const parsed = JSON.parse(saved);
+      return Array.isArray(parsed) ? parsed : INITIAL_NOTIFICATIONS;
+    } catch { return INITIAL_NOTIFICATIONS; }
+  });
+
+  const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>(() => {
+    const saved = localStorage.getItem('app_audit_logs_v1');
+    if (!saved) return INITIAL_AUDIT_LOGS;
+    try {
+      const parsed = JSON.parse(saved);
+      return Array.isArray(parsed) ? parsed : INITIAL_AUDIT_LOGS;
+    } catch { return INITIAL_AUDIT_LOGS; }
+  });
+
+  const [isNotifOpen, setIsNotifOpen] = useState(false);
+  const [isAuditLogOpen, setIsAuditLogOpen] = useState(false);
+  const [auditFilterTab, setAuditFilterTab] = useState<'ALL' | 'EDIT' | 'DELETE' | 'CREATE' | 'PUBLISH' | 'ERROR'>('ALL');
+  const [auditDateFilter, setAuditDateFilter] = useState<string>('');
+  const [isHelpGuideOpen, setIsHelpGuideOpen] = useState(false);
+  const [helpGuideTab, setHelpGuideTab] = useState<'map' | 'panorama' | 'data' | 'audit'>('map');
+  const [tourStep, setTourStep] = useState<number | null>(null);
+
+  const availableAuditDates = React.useMemo(() => {
+    const dates = auditLogs.map(l => l.timestamp.split(',')[0].trim());
+    return Array.from(new Set(dates)).filter(Boolean);
+  }, [auditLogs]);
+
+  useEffect(() => {
+    try { localStorage.setItem('app_notifications_v1', JSON.stringify(notifications)); } catch {}
+  }, [notifications]);
+
+  useEffect(() => {
+    try { localStorage.setItem('app_audit_logs_v1', JSON.stringify(auditLogs)); } catch {}
+  }, [auditLogs]);
+
+  const unreadNotifCount = notifications.filter(n => !n.read).length;
+  const unreadAuditCount = auditLogs.filter(a => !a.read).length;
+
+  const addNotification = React.useCallback((item: Omit<NotificationItem, 'id' | 'timestamp' | 'read'>) => {
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    const newNotif: NotificationItem = {
+      ...item,
+      id: `notif-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      timestamp: `${dateStr}, ${timeStr}`,
+      read: false
+    };
+    setNotifications(prev => [newNotif, ...prev]);
+  }, []);
+
+  const addAuditLog = React.useCallback((type: AuditLogItem['type'], title: string, details: string, status: AuditLogItem['status'] = 'info') => {
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    const newAudit: AuditLogItem = {
+      id: `audit-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      timestamp: `${dateStr}, ${timeStr}`,
+      type,
+      title,
+      details,
+      user: authSession?.user?.email ? authSession.user.email.split('@')[0] : 'Fariz',
+      status,
+      read: false
+    };
+    setAuditLogs(prev => [newAudit, ...prev]);
+  }, [authSession]);
+
   // Top-level subgrid filter state for Main Dashboard Page interactive row filtering
   const [selectedSubgridFilter, setSelectedSubgridFilter] = useState<string | null>(null);
+  const [selectedDateFilter, setSelectedDateFilter] = useState<string | null>(null);
   const [showPanotrackData, setShowPanotrackData] = useState(true);
   const [isStatusFilterOpen, setIsStatusFilterOpen] = useState(false);
+  // Dashboard Processing Control & Admin column filter state
+  const [isDashFilterOpen, setIsDashFilterOpen] = useState(false);
+  const [dashDailyFilters, setDashDailyFilters] = useState<{
+    grid: string;
+    subgrid: string;
+    pic: string;
+    equipment: string;
+  }>({
+    grid: '',
+    subgrid: '',
+    pic: '',
+    equipment: ''
+  });
+
+  const hasActiveDashFilters = Object.values(dashDailyFilters).some(Boolean);
   const [isDrawingBBox, setIsDrawingBBox] = useState(false);
   const [statusFilters, setStatusFilters] = useState<{ published: boolean; defect: boolean; stitching: boolean }>({
     published: true,
@@ -3619,8 +4007,9 @@ export default function App() {
     }
   }, [activePanoramaUrl, activePanoramaFilename, inspectorSubgrid, selectedSubgridFilter, qaSubgridRecords]);
 
-  const toggleSubgridFilter = (subgridRaw: string) => {
+  const toggleSubgridFilter = (subgridRaw: string, date?: string) => {
     const sg = (extractSubgridName(subgridRaw) || subgridRaw).toUpperCase().trim();
+    const dateStr = date ? date.trim() : null;
 
     // Reset QA defect flags back to default when toggling subgrid without defects
     const targetLog = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === sg);
@@ -3630,8 +4019,19 @@ export default function App() {
       setIsQaLocked(false);
     }
 
-    setSelectedSubgridFilter(prev => {
-      const next = prev === sg ? null : sg;
+    setSelectedSubgridFilter(prevSubgrid => {
+      const isSameSubgrid = prevSubgrid === sg;
+      const isSameDate = selectedDateFilter === dateStr;
+
+      let nextSubgrid: string | null = sg;
+      let nextDate: string | null = dateStr;
+
+      if (isSameSubgrid && isSameDate) {
+        nextSubgrid = null;
+        nextDate = null;
+      }
+
+      setSelectedDateFilter(nextDate);
 
       const getSubgridDefault = (subgridName: string) => {
         const s = subgridName.toUpperCase();
@@ -3641,24 +4041,24 @@ export default function App() {
         return { fn: `${s}-0001.jpg`, lat: 2.542429, lng: 102.807800 };
       };
 
-      if (next) {
-        const def = getSubgridDefault(next);
+      if (nextSubgrid) {
+        const def = getSubgridDefault(nextSubgrid);
         setActivePanoramaFilename(def.fn);
         setActivePanoramaUrl(`/MMS_PIC/${def.fn}`);
         setInspectorCoords({ lat: def.lat, lng: def.lng });
-        setInspectorSubgrid(next);
+        setInspectorSubgrid(nextSubgrid);
         setHasSelectedPoint(true);
 
         const iframes = document.querySelectorAll('iframe');
         iframes.forEach(f => {
           try {
-            f.contentWindow?.postMessage({ type: 'FILTER_SUBGRID', subgrid: next }, '*');
+            f.contentWindow?.postMessage({ type: 'FILTER_SUBGRID', subgrid: nextSubgrid, date: nextDate || '' }, '*');
             f.contentWindow?.postMessage({
               type: 'MAP_POINT_SELECTED',
               point: {
                 filename: def.fn,
                 image_url: `/MMS_PIC/${def.fn}`,
-                subgrid: next,
+                subgrid: nextSubgrid,
                 lat: def.lat,
                 lon: def.lng,
                 lng: def.lng,
@@ -3676,65 +4076,75 @@ export default function App() {
         });
       }
 
-      return next;
+      return nextSubgrid;
     });
   };
 
-  // ===== Render Supabase Auth Protection Gate =====
+  // ===== Render Supabase Auth Protection Gate (Minimalist Professional Enterprise Design) =====
   if (!authSession && !authLoading) {
     return (
-      <div className="min-h-screen bg-slate-950 text-slate-200 font-sans flex items-center justify-center p-6 relative overflow-hidden">
-        {/* Ambient Glows */}
-        <div className="absolute -top-40 -left-40 w-96 h-96 bg-sky-600/20 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute -bottom-40 -right-40 w-96 h-96 bg-emerald-600/20 rounded-full blur-3xl pointer-events-none" />
+      <div className="min-h-screen bg-[#09090b] text-zinc-100 font-sans flex items-center justify-center p-6 relative overflow-hidden select-none">
+        {/* Subtle Ambient Radial Glow */}
+        <div className="absolute -top-40 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-zinc-800/20 rounded-full blur-[120px] pointer-events-none" />
 
-        <div className="max-w-md w-full bg-slate-900/90 border border-slate-800/90 rounded-2xl shadow-2xl backdrop-blur-xl p-8 z-10 relative">
+        <div className="w-full max-w-[380px] z-10 relative">
           {/* Header Branding */}
           <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-tr from-sky-600 to-emerald-500 shadow-xl shadow-sky-950 mb-4">
-              <ShieldCheck size={36} className="text-white" />
+            <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-zinc-900 border border-zinc-800 shadow-sm mb-4">
+              <Globe size={22} className="text-zinc-200" />
             </div>
-            <h1 className="text-2xl font-bold text-white tracking-tight">Processing Dashboard</h1>
-            <p className="text-xs text-sky-400 font-semibold tracking-wider uppercase mt-1">360° Mobile Mapping System</p>
-            <p className="text-slate-400 text-xs mt-2">Protected by Supabase Access Authentication</p>
+            <h1 className="text-xl font-semibold text-white tracking-tight">
+              Sign in to Dashboard
+            </h1>
+            <p className="text-xs text-zinc-400 mt-1.5 leading-relaxed">
+              360° Mobile Mapping System &bull; TNB LV Network
+            </p>
           </div>
 
           {/* Form */}
-          <form onSubmit={authMode === 'login' ? handleLogin : handleSignUp} className="space-y-4">
+          <form onSubmit={handleLogin} className="space-y-4">
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center gap-1.5">
-                <Mail size={14} className="text-sky-400" />
-                User Email:
+              <label className="block text-xs font-medium text-zinc-300 mb-1.5">
+                Email address
               </label>
               <input
                 type="email"
                 value={authEmail}
                 onChange={(e) => setAuthEmail(e.target.value)}
-                placeholder="e.g. fariz@tnb.com"
+                placeholder="name@tnb.com.my"
                 required
-                className="w-full bg-slate-950 border border-slate-700/90 focus:border-sky-500 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none transition-all"
+                className="w-full bg-zinc-900/90 border border-zinc-800 focus:border-zinc-500 focus:ring-1 focus:ring-zinc-500/20 rounded-lg px-3.5 py-2.5 text-sm text-zinc-100 placeholder-zinc-500 outline-none transition-all duration-150"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center gap-1.5">
-                <Lock size={14} className="text-emerald-400" />
-                Password:
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-xs font-medium text-zinc-300">
+                  Password
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors cursor-pointer"
+                  tabIndex={-1}
+                >
+                  {showPassword ? 'Hide' : 'Show'}
+                </button>
+              </div>
               <input
-                type="password"
+                type={showPassword ? 'text' : 'password'}
                 value={authPassword}
                 onChange={(e) => setAuthPassword(e.target.value)}
                 placeholder="••••••••"
                 required
-                className="w-full bg-slate-950 border border-slate-700/90 focus:border-sky-500 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none transition-all"
+                className="w-full bg-zinc-900/90 border border-zinc-800 focus:border-zinc-500 focus:ring-1 focus:ring-zinc-500/20 rounded-lg px-3.5 py-2.5 text-sm text-zinc-100 placeholder-zinc-500 outline-none transition-all duration-150"
               />
             </div>
 
             {/* Error Message */}
             {authError && (
-              <div className="p-3 bg-red-950/80 border border-red-800 rounded-xl text-xs text-red-300 flex items-start gap-2">
-                <AlertTriangle size={16} className="text-red-400 shrink-0 mt-0.5" />
+              <div className="p-3 bg-red-950/40 border border-red-900/50 rounded-lg text-xs text-red-400 flex items-center gap-2">
+                <AlertTriangle size={14} className="shrink-0" />
                 <span>{authError}</span>
               </div>
             )}
@@ -3743,59 +4153,31 @@ export default function App() {
             <button
               type="submit"
               disabled={isAuthenticating}
-              className="w-full py-3.5 px-4 bg-gradient-to-r from-sky-600 to-emerald-600 hover:from-sky-500 hover:to-emerald-500 disabled:opacity-50 text-white font-bold rounded-xl shadow-lg shadow-sky-950/40 transition-all flex items-center justify-center gap-2 text-sm cursor-pointer mt-2"
+              className="w-full py-2.5 px-4 bg-white hover:bg-zinc-200 active:bg-zinc-300 disabled:opacity-50 text-zinc-950 text-sm font-semibold rounded-lg shadow-sm transition-all duration-150 flex items-center justify-center gap-2 cursor-pointer mt-5"
             >
               {isAuthenticating ? (
                 <>
-                  <RefreshCw size={16} className="animate-spin" />
-                  Authenticating...
+                  <RefreshCw size={15} className="animate-spin text-zinc-950" />
+                  <span>Signing in...</span>
                 </>
               ) : (
-                <>
-                  <KeyRound size={16} />
-                  {authMode === 'login' ? 'Sign In to Dashboard' : 'Create Account'}
-                </>
+                <span>Continue</span>
               )}
             </button>
           </form>
 
-          {/* Toggle Mode */}
-          <div className="mt-6 pt-4 border-t border-slate-800 text-center text-xs text-slate-400 flex items-center justify-between">
-            <span>{authMode === 'login' ? 'Need an account?' : 'Already have an account?'}</span>
-            <button
-              type="button"
-              onClick={() => {
-                setAuthMode(authMode === 'login' ? 'signup' : 'login');
-                setAuthError(null);
-              }}
-              className="text-sky-400 hover:text-sky-300 font-semibold cursor-pointer"
-            >
-              {authMode === 'login' ? 'Register Account' : 'Sign In'}
-            </button>
+          {/* Footer Security Note */}
+          <div className="mt-8 text-center">
+            <p className="text-[11px] text-zinc-500">
+              Protected by Supabase Access Authentication
+            </p>
           </div>
         </div>
       </div>
     );
   }
 
-  // If on data management page, render that instead
-  if (currentPage === 'data') {
-    return (
-      <DataManagementPage
-        dailyData={dailyData}
-        setDailyData={setDailyData}
-        batchLogs={batchLogs}
-        setBatchLogs={setBatchLogs}
-        layerCatalog={layerCatalog}
-        setLayerCatalog={setLayerCatalog}
-        onBackToDashboard={() => setCurrentPage('dashboard')}
-        mapRefreshKey={mapRefreshKey}
-        onRefreshMap={handleRefreshMap}
-        authSession={authSession}
-        onSignOut={handleSignOut}
-      />
-    );
-  }
+
 
   return (
     <div className="h-screen w-screen bg-[#0b0e14] text-slate-200 font-sans flex flex-col overflow-hidden">
@@ -3814,21 +4196,274 @@ export default function App() {
         </div>
 
         {/* Top Right Controls */}
-        <div className="flex items-center gap-3 text-slate-400">
+        <div className={`flex items-center gap-3 text-slate-400 relative transition-all duration-300 ${
+          tourStep === 5 ? 'ring-2 ring-sky-400/90 shadow-[0_0_35px_rgba(56,189,248,0.4)] z-30 relative bg-slate-900/90 px-2 py-1 rounded-xl' : tourStep !== null ? 'opacity-30 blur-[1.5px] pointer-events-none' : ''
+        }`}>
+          {/* HELP & USER GUIDE ICON (Interactive Tour & Webmap Manual) */}
           <button
-            onClick={() => setCurrentPage('data')}
-            className="p-1.5 hover:text-white transition-colors"
-            title="Folder / Layer Catalog & Data Management"
+            onClick={() => {
+              setIsHelpGuideOpen(true);
+              setIsNotifOpen(false);
+              setIsAuditLogOpen(false);
+            }}
+            className="p-1.5 hover:text-sky-400 transition-colors cursor-pointer relative"
+            title="Help & User Guide (Interactive WebMap Tour & Manual)"
           >
-            <Folder size={18} />
+            <HelpCircle size={18} />
           </button>
-          <button className="p-1.5 hover:text-white transition-colors" title="Help & Guides">
-            <FileText size={18} />
-          </button>
-          <button className="p-1.5 hover:text-white transition-colors relative" title="Notifications">
-            <Activity size={18} />
-            <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-red-500" />
-          </button>
+
+          {/* BATCH AUDIT LOGS ICON (Tracks User Edits, Deletes, Creates, Modifies, Errors) */}
+          <div className="relative">
+            <button
+              onClick={() => {
+                setIsAuditLogOpen(prev => {
+                  const next = !prev;
+                  if (next) {
+                    setAuditLogs(old => old.map(a => ({ ...a, read: true })));
+                  }
+                  return next;
+                });
+                setIsNotifOpen(false);
+              }}
+              className={`p-1.5 transition-colors cursor-pointer relative ${
+                isAuditLogOpen ? 'text-sky-400 bg-slate-800/80 rounded-lg border border-slate-700/60' : 'hover:text-white'
+              }`}
+              title="Batch & System Audit Logs (Track user edits, creates, deletes, errors)"
+            >
+              <ClipboardList size={18} />
+              {unreadAuditCount > 0 && (
+                <span className="absolute -top-1 -right-1.5 px-1 py-0.2 min-w-[15px] h-[15px] rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center shadow-md">
+                  {unreadAuditCount}
+                </span>
+              )}
+            </button>
+
+            {/* BATCH AUDIT LOGS POPOVER */}
+            {isAuditLogOpen && (
+              <div className="absolute right-0 top-10 w-96 max-w-[90vw] bg-[#111827] border border-[rgba(255,255,255,0.08)] rounded-xl shadow-2xl z-50 overflow-hidden text-slate-200 animate-in fade-in duration-150 backdrop-blur-md">
+                <div className="p-3 bg-[#0d121d] border-b border-[rgba(255,255,255,0.08)] flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 shrink-0">
+                    <History size={15} className="text-sky-400" />
+                    <span className="text-xs font-semibold uppercase tracking-wider text-slate-200">
+                      Audit Logs
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {/* Date Track-Back Filter */}
+                    <div className="flex items-center gap-1 bg-[#151d2a] border border-slate-700/60 rounded px-2 py-0.5 text-[10px]">
+                      <Calendar size={11} className="text-sky-400 shrink-0" />
+                      <select
+                        value={auditDateFilter}
+                        onChange={(e) => setAuditDateFilter(e.target.value)}
+                        className="bg-transparent text-slate-200 text-[10px] focus:outline-none cursor-pointer"
+                        title="Filter audit logs by track-back date"
+                      >
+                        <option value="" className="bg-[#111827]">All Dates</option>
+                        {availableAuditDates.map(date => (
+                          <option key={date} value={date} className="bg-[#111827]">{date}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <button
+                      onClick={() => setIsAuditLogOpen(false)}
+                      className="text-slate-400 hover:text-white p-0.5 cursor-pointer shrink-0"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Filter Tabs */}
+                <div className="px-3 py-1.5 bg-[#0b0f17] border-b border-[rgba(255,255,255,0.06)] flex items-center gap-1 overflow-x-auto text-[10px]">
+                  {(['ALL', 'EDIT', 'DELETE', 'CREATE', 'PUBLISH', 'ERROR'] as const).map(tab => (
+                    <button
+                      key={tab}
+                      onClick={() => setAuditFilterTab(tab)}
+                      className={`px-2 py-0.5 rounded font-medium transition-all cursor-pointer whitespace-nowrap border ${
+                        auditFilterTab === tab
+                          ? 'bg-[#1f2937] text-white border-slate-600'
+                          : 'text-slate-400 border-transparent hover:text-slate-200 hover:bg-slate-800/50'
+                      }`}
+                    >
+                      {tab}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Audit Logs List */}
+                <div className="max-h-80 overflow-y-auto divide-y divide-[rgba(255,255,255,0.06)] p-1">
+                  {auditLogs.filter(item => {
+                    if (auditFilterTab !== 'ALL' && item.type !== auditFilterTab) return false;
+                    if (auditDateFilter && !item.timestamp.toLowerCase().includes(auditDateFilter.toLowerCase())) return false;
+                    return true;
+                  }).length > 0 ? (
+                    auditLogs
+                      .filter(item => {
+                        if (auditFilterTab !== 'ALL' && item.type !== auditFilterTab) return false;
+                        if (auditDateFilter && !item.timestamp.toLowerCase().includes(auditDateFilter.toLowerCase())) return false;
+                        return true;
+                      })
+                      .map(log => {
+                        const badgeColor =
+                          log.type === 'CREATE' ? 'bg-slate-800/80 text-sky-300 border-slate-700/60' :
+                          log.type === 'EDIT' ? 'bg-slate-800/80 text-slate-300 border-slate-700/60' :
+                          log.type === 'DELETE' ? 'bg-slate-800/80 text-rose-300 border-slate-700/60' :
+                          log.type === 'PUBLISH' ? 'bg-sky-950/60 text-sky-300 border-sky-800/60' :
+                          log.type === 'ERROR' ? 'bg-rose-950/60 text-rose-300 border-rose-900/60' :
+                          'bg-slate-800/80 text-slate-300 border-slate-700/60';
+
+                        return (
+                          <div key={log.id} className="p-2.5 hover:bg-slate-800/30 transition-colors rounded-lg space-y-1">
+                            <div className="flex items-center justify-between text-[10px]">
+                              <span className={`px-1.5 py-0.2 rounded font-semibold uppercase border ${badgeColor}`}>
+                                {log.type}
+                              </span>
+                              <span className="text-slate-500 text-[10px]">{log.timestamp}</span>
+                            </div>
+                            <div className="text-xs font-medium text-slate-200">{log.title}</div>
+                            <div className="text-[11px] text-slate-400">{log.details}</div>
+                            <div className="text-[9px] text-slate-500 text-right">User: <span className="text-slate-300 font-medium">{log.user}</span></div>
+                          </div>
+                        );
+                      })
+                  ) : (
+                    <div className="p-8 text-center text-slate-500 text-xs">
+                      No audit log records found for filter "{auditFilterTab}"{auditDateFilter ? ` on date ${auditDateFilter}` : ''}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* NOTIFICATIONS ICON (Publish Progress & Pending Tasks) */}
+          <div className="relative">
+            <button
+              onClick={() => {
+                setIsNotifOpen(prev => {
+                  const next = !prev;
+                  if (next) {
+                    setNotifications(old => old.map(n => ({ ...n, read: true })));
+                  }
+                  return next;
+                });
+                setIsAuditLogOpen(false);
+              }}
+              className={`p-1.5 transition-colors cursor-pointer relative ${
+                isNotifOpen ? 'text-sky-400 bg-slate-800/80 rounded-lg border border-slate-700/60' : 'hover:text-white'
+              }`}
+              title="Notifications (Publish Progress & Pending Tasks)"
+            >
+              <Activity size={18} />
+              {unreadNotifCount > 0 && (
+                <span className="absolute -top-1 -right-1.5 px-1 py-0.2 min-w-[15px] h-[15px] rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center shadow-md">
+                  {unreadNotifCount}
+                </span>
+              )}
+            </button>
+
+            {/* NOTIFICATIONS POPOVER */}
+            {isNotifOpen && (
+              <div className="absolute right-0 top-10 w-96 max-w-[90vw] bg-[#111827] border border-[rgba(255,255,255,0.08)] rounded-xl shadow-2xl z-50 overflow-hidden text-slate-200 animate-in fade-in duration-150 backdrop-blur-md">
+                <div className="p-3 bg-[#0d121d] border-b border-[rgba(255,255,255,0.08)] flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Bell size={15} className="text-sky-400" />
+                    <span className="text-xs font-semibold uppercase tracking-wider text-slate-200">
+                      Notifications
+                    </span>
+                    {unreadNotifCount > 0 && (
+                      <span className="bg-slate-800 text-sky-400 border border-slate-700 text-[10px] font-medium px-1.5 py-0.2 rounded-full">
+                        {unreadNotifCount} new
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {notifications.length > 0 && (
+                      <button
+                        onClick={() => setNotifications([])}
+                        className="text-slate-400 hover:text-rose-400 text-[10px] font-medium transition-colors flex items-center gap-1 cursor-pointer"
+                        title="Clear all notifications"
+                      >
+                        <Trash2 size={11} /> Clear All
+                      </button>
+                    )}
+                    <button
+                      onClick={() => setIsNotifOpen(false)}
+                      className="text-slate-400 hover:text-white p-0.5 cursor-pointer"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Notifications List */}
+                <div className="max-h-80 overflow-y-auto divide-y divide-[rgba(255,255,255,0.06)] p-1">
+                  {notifications.length > 0 ? (
+                    notifications.map(notif => {
+                      const isPublish = notif.category === 'PUBLISH';
+                      const isPending = notif.category === 'PENDING';
+
+                      return (
+                        <div
+                          key={notif.id}
+                          className={`p-3 transition-colors rounded-lg space-y-1.5 relative group ${
+                            !notif.read ? 'bg-[#151d2a] border-l-2 border-sky-400' : 'hover:bg-slate-800/30'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-1.5">
+                              {isPublish ? (
+                                <span className="bg-sky-950/60 text-sky-300 border border-sky-800/60 px-1.5 py-0.2 rounded text-[9px] font-medium">
+                                  PUBLISH SUCCESS
+                                </span>
+                              ) : isPending ? (
+                                <span className="bg-slate-800/80 text-slate-300 border border-slate-700/60 px-1.5 py-0.2 rounded text-[9px] font-medium">
+                                  PENDING TASK
+                                </span>
+                              ) : (
+                                <span className="bg-slate-800/80 text-slate-400 border border-slate-700/60 px-1.5 py-0.2 rounded text-[9px] font-medium">
+                                  {notif.category}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[10px] text-slate-500">{notif.timestamp}</span>
+                              <button
+                                onClick={() => setNotifications(prev => prev.filter(n => n.id !== notif.id))}
+                                className="text-slate-500 hover:text-rose-400 p-0.5 cursor-pointer opacity-80 hover:opacity-100 transition-opacity"
+                                title="Dismiss notification"
+                              >
+                                <X size={12} />
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="text-xs font-medium text-slate-200 flex items-center gap-1.5">
+                            {isPublish ? <UploadCloud size={14} className="text-sky-400 shrink-0" /> : isPending ? <Clock size={14} className="text-slate-400 shrink-0" /> : <Activity size={14} className="text-sky-400 shrink-0" />}
+                            <span>{notif.title}</span>
+                          </div>
+
+                          <p className="text-[11px] text-slate-400 leading-snug">{notif.message}</p>
+
+                          {/* Detail Badges: Total Data & Published Timestamp */}
+                          {isPublish && (
+                            <div className="pt-1.5 border-t border-[rgba(255,255,255,0.06)] flex items-center justify-between text-[10px]">
+                              <span className="text-slate-400">Total Data Included: <strong className="text-slate-200">{notif.totalItems || 1} subgrid(s)</strong></span>
+                              <span className="text-slate-400">Date Published: <strong className="text-sky-400">{notif.timestamp}</strong></span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div className="p-8 text-center text-slate-500 text-xs">
+                      No notifications available
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
           <div className="flex items-center gap-2 pl-2 border-l border-slate-800">
             <div className="w-7 h-7 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-xs font-bold text-sky-400" title={`Logged in as ${authSession?.user?.email || 'fariz@tnb.com'}`}>
               {authSession?.user?.email?.charAt(0).toUpperCase() || 'F'}
@@ -3851,17 +4486,26 @@ export default function App() {
         <nav className="w-12 bg-[#12161f] border-r border-slate-800/80 flex flex-col items-center py-3 gap-5 shrink-0 z-10">
           <button
             onClick={() => setCurrentPage('dashboard')}
-            className="p-2 rounded-lg transition-colors relative text-sky-400 bg-sky-500/10"
-            title="Dashboard"
+            className={`p-2 rounded-lg transition-all duration-200 relative cursor-pointer ${
+              currentPage === 'dashboard' ? 'text-sky-400 bg-sky-500/10' : 'text-slate-500 hover:text-slate-300'
+            }`}
+            title="Dashboard Canvas"
           >
-            <span className="absolute left-0 top-1 bottom-1 w-1 bg-sky-400 rounded-r-full" />
+            {currentPage === 'dashboard' && (
+              <span className="absolute left-0 top-1 bottom-1 w-1 bg-sky-400 rounded-r-full shadow-[0_0_8px_rgba(56,189,248,0.6)]" />
+            )}
             <LayoutDashboard size={20} />
           </button>
           <button
             onClick={() => setCurrentPage('data')}
-            className="p-2 rounded-lg transition-colors relative text-slate-500 hover:text-slate-300"
-            title="Data & Layer Management"
+            className={`p-2 rounded-lg transition-all duration-200 relative cursor-pointer ${
+              currentPage === 'data' ? 'text-sky-400 bg-sky-500/10' : 'text-slate-500 hover:text-slate-300'
+            }`}
+            title="Data & Layer Management Canvas"
           >
+            {currentPage === 'data' && (
+              <span className="absolute left-0 top-1 bottom-1 w-1 bg-sky-400 rounded-r-full shadow-[0_0_8px_rgba(56,189,248,0.6)]" />
+            )}
             <Database size={20} />
           </button>
           <button
@@ -3873,50 +4517,67 @@ export default function App() {
           </button>
         </nav>
 
-        {/* MAIN DASHBOARD CONTENT (TOP 4-KPI CARDS + SPLIT MAP & RIGHT PANELS) */}
-        <main className="flex-1 flex flex-col p-3 gap-3 overflow-hidden bg-[#0b0e14]">
+        {/* MAIN DASHBOARD CONTENT CANVAS */}
+        <main className="flex-1 flex flex-col p-3 gap-3 overflow-hidden bg-[#0B0F17] relative">
 
-          {/* TOP ROW: EXECUTIVE KPI SUMMARY (4 Cards) */}
-          <div className="grid grid-cols-4 gap-3 shrink-0">
-            {/* Card 1 */}
-            <div className="bg-[#151a23] border border-slate-800/90 rounded-xl p-3 flex flex-col justify-between">
-              <div>
-                <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">EXECUTIVE KPI SUMMARY</div>
-                <div className="text-xs font-bold text-slate-300 mt-1 uppercase tracking-tight">TOTAL DISTANCE MAPPED</div>
+          {currentPage === 'dashboard' ? (
+            <div key="dashboard-canvas" className="flex-1 flex flex-col gap-3 min-h-0 overflow-hidden animate-in fade-in zoom-in-98 duration-300 ease-out">
+              {/* TOP ROW: EXECUTIVE KPI SUMMARY (4 Cards) */}
+              <div className={`grid grid-cols-4 gap-3 shrink-0 transition-all duration-300 ${
+                tourStep === 1 ? 'ring-2 ring-sky-400/90 shadow-[0_0_35px_rgba(56,189,248,0.4)] z-30 relative rounded-xl p-1 bg-sky-950/20' : tourStep !== null ? 'opacity-30 blur-[1.5px] pointer-events-none' : ''
+              }`}>
+            {/* Card 1: Total Distance Mapped */}
+            <div className="bg-[#111827] border border-[rgba(255,255,255,0.08)] backdrop-blur-md rounded-xl p-3.5 flex flex-col justify-between shadow-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-300 uppercase tracking-tight">TOTAL DISTANCE MAPPED</span>
+                <Navigation size={15} className="text-sky-400 shrink-0" />
               </div>
-              <div className="my-1">
+              <div className="my-1 flex items-baseline gap-2">
                 <span className="text-2xl font-extrabold text-white tracking-tight">{totalKm.toFixed(1)} km</span>
+                <span className="text-[10px] text-white bg-slate-800/80 border border-slate-700/60 px-1.5 py-0.5 rounded font-medium">
+                  {progressPercent}% of 315.2 km Target
+                </span>
               </div>
-              <div className="text-[10px] text-slate-500 font-medium">distance travel each point · Last update: {lastUpdateDate}</div>
+              <div className="text-[10px] text-slate-500 font-medium truncate">
+                Cumulative trajectory distance &bull; Last update: {lastUpdateDate}
+              </div>
             </div>
 
-            {/* Card 2 */}
-            <div className="bg-[#151a23] border border-slate-800/90 rounded-xl p-3 flex flex-col justify-between">
-              <div className="text-xs font-bold text-slate-300 uppercase tracking-tight">PROCESSED PANORAMAS</div>
+            {/* Card 2: Processed Panoramas */}
+            <div className="bg-[#111827] border border-[rgba(255,255,255,0.08)] backdrop-blur-md rounded-xl p-3.5 flex flex-col justify-between shadow-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-300 uppercase tracking-tight">PROCESSED PANORAMAS</span>
+                <Camera size={15} className="text-sky-400 shrink-0" />
+              </div>
               <div className="my-1">
                 <span className="text-2xl font-extrabold text-white tracking-tight">{totalImages.toLocaleString()} Frames</span>
               </div>
-              <div className="text-[10px] text-slate-500 font-medium">total image per data capture · Last update: {lastUpdateDate}</div>
+              <div className="text-[10px] text-slate-500 font-medium truncate">
+                Total 360° image frames ingested &bull; Last update: {lastUpdateDate}
+              </div>
             </div>
 
-            {/* Card 3 */}
-            <div className="bg-[#151a23] border border-slate-800/90 rounded-xl p-3 flex flex-col justify-between">
-              <div className="text-xs font-bold text-slate-300 uppercase tracking-tight">ACTIVE PROCESSING JOBS</div>
+            {/* Card 3: Active Processing Jobs */}
+            <div className="bg-[#111827] border border-[rgba(255,255,255,0.08)] backdrop-blur-md rounded-xl p-3.5 flex flex-col justify-between shadow-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-300 uppercase tracking-tight">ACTIVE PROCESSING JOBS</span>
+                <Database size={15} className="text-sky-400 shrink-0" />
+              </div>
               <div className="my-1">
                 <span className="text-2xl font-extrabold text-white tracking-tight">
-                  {batchLogs.filter(b => b.status === 'Ongoing').length || batchLogs.length} Batch Runs / {progressPercent}% Avg.
+                  {batchLogs.filter(b => b.status === 'Ongoing').length || batchLogs.length} Batch Runs
                 </span>
               </div>
-              <div className="text-[10px] text-slate-500 font-medium">
-                {latestBatch ? `Latest: +${latestBatch.imagesProcessed || 0} img (${latestBatch.kmProcessed?.toFixed(1) || 0} km)` : 'totd image per data capture'}
+              <div className="text-[10px] text-slate-500 font-medium truncate">
+                {latestBatch ? `Latest: ${latestBatch.imagesProcessed || 0} img (${latestBatch.kmProcessed?.toFixed(1) || 0} km)` : 'Subgrid processing active'} &bull; Last update: {lastUpdateDate}
               </div>
             </div>
 
-            {/* Card 4 */}
-            <div className="bg-[#151a23] border border-slate-800/90 rounded-xl p-3 flex flex-col justify-between">
+            {/* Card 4: Pipeline Health */}
+            <div className="bg-[#111827] border border-[rgba(255,255,255,0.08)] backdrop-blur-md rounded-xl p-3.5 flex flex-col justify-between shadow-sm">
               <div className="flex items-center justify-between">
-                <div className="text-xs font-bold text-slate-300 uppercase tracking-tight">PIPELINE HEALTH</div>
-                <div className="w-16 h-6">
+                <span className="text-xs font-bold text-slate-300 uppercase tracking-tight">PIPELINE HEALTH</span>
+                <div className="w-14 h-5">
                   <svg className="w-full h-full text-emerald-400 stroke-current fill-none stroke-2" viewBox="0 0 50 20">
                     <path d="M0,15 L10,12 L20,18 L30,5 L40,10 L50,2" />
                   </svg>
@@ -3927,8 +4588,8 @@ export default function App() {
                   {pipelineHealthPercent}% Normal
                 </span>
               </div>
-              <div className="text-[10px] text-slate-500 font-medium">
-                green normal per data capture · <span className={totalDefects > 0 ? 'text-amber-400 font-semibold' : 'text-slate-500'}>{totalDefects} defect {totalDefects === 1 ? 'frame' : 'frames'} flagged</span>
+              <div className="text-[10px] text-slate-500 font-medium truncate">
+                <span className={totalDefects > 0 ? 'text-amber-400 font-semibold' : 'text-slate-500'}>{totalDefects} defect {totalDefects === 1 ? 'frame' : 'frames'} flagged</span> &bull; Last update: {lastUpdateDate}
               </div>
             </div>
           </div>
@@ -3937,16 +4598,18 @@ export default function App() {
           <div className="flex-1 grid grid-cols-12 gap-3 min-h-0">
 
             {/* LEFT COLUMN: INTERACTIVE COVERAGE MAP (7 Cols) */}
-            <div className="col-span-7 bg-[#151a23] border border-slate-800/90 rounded-xl flex flex-col overflow-hidden relative">
+            <div className={`col-span-7 bg-[#111827] border border-[rgba(255,255,255,0.08)] backdrop-blur-md rounded-xl flex flex-col overflow-hidden relative transition-all duration-300 ${
+              tourStep === 2 ? 'ring-2 ring-sky-400/90 shadow-[0_0_35px_rgba(56,189,248,0.4)] z-30 relative scale-[1.002]' : tourStep !== null ? 'opacity-30 blur-[1.5px] pointer-events-none' : ''
+            }`}>
               {/* Header */}
-              <div className="p-3 border-b border-slate-800/80 flex items-center justify-between shrink-0 bg-[#12161f]">
+              <div className="p-3 border-b border-[rgba(255,255,255,0.08)] flex items-center justify-between shrink-0 bg-[#0d121d]">
                 <span className="text-xs font-bold uppercase tracking-wider text-slate-300">
                   INTERACTIVE COVERAGE MAP
                 </span>
                 <div className="flex items-center gap-2">
                   <button
                     onClick={generateExecutivePdfReport}
-                    className="px-2.5 py-1 bg-sky-600 hover:bg-sky-500 text-white text-[11px] font-bold rounded transition-all uppercase tracking-tight cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95"
+                    className="px-3 py-1.5 bg-[#1f2937]/80 hover:bg-[#374151] text-slate-300 hover:text-white border border-[rgba(255,255,255,0.12)] text-[11px] font-medium rounded-lg transition-all uppercase tracking-tight cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95"
                     title="Generate printable Executive PDF Summary Report"
                   >
                     <FileText size={13} />
@@ -3963,9 +4626,9 @@ export default function App() {
                         } catch (err) { }
                       });
                     }}
-                    className={`px-2.5 py-1 text-[11px] font-semibold rounded border transition-all uppercase tracking-tight flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95 ${isDrawingBBox
-                        ? 'bg-sky-600 border-sky-400 text-white shadow-sky-950/50'
-                        : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                    className={`px-3 py-1.5 text-[11px] font-medium rounded-lg border transition-all uppercase tracking-tight flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95 ${isDrawingBBox
+                        ? 'bg-[#374151] border-slate-400 text-white'
+                        : 'bg-[#1f2937]/80 hover:bg-[#374151] text-slate-300 border-[rgba(255,255,255,0.12)] hover:border-[rgba(255,255,255,0.2)]'
                       }`}
                     title="Toggle spatial bounding box rectangle filter on map"
                   >
@@ -4110,8 +4773,9 @@ export default function App() {
                     (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === (selectedSubgridFilter || '').toUpperCase().trim()
                   );
                   const activeDailyLog = dailyData.find(d =>
-                    (d.subgrid || '').toUpperCase().trim() === (selectedSubgridFilter || '').toUpperCase().trim()
-                  );
+                    (d.subgrid || '').toUpperCase().trim() === (selectedSubgridFilter || '').toUpperCase().trim() &&
+                    (!selectedDateFilter || d.date === selectedDateFilter)
+                  ) || dailyData.find(d => (d.subgrid || '').toUpperCase().trim() === (selectedSubgridFilter || '').toUpperCase().trim());
 
                   const getSubgridCoords = (subgrid?: string | null) => {
                     const name = (subgrid || '').toUpperCase();
@@ -4124,15 +4788,15 @@ export default function App() {
 
                   const activeCoords = getSubgridCoords(selectedSubgridFilter);
                   const activeKm = activeDailyLog?.kmProcessed ? activeDailyLog.kmProcessed.toFixed(1) : activeBatchLog?.kmProcessed ? activeBatchLog.kmProcessed.toFixed(1) : '6.5';
-                  const activeImages = activeBatchLog?.images || activeDailyLog?.imagesProcessed || 265;
-                  const activeDefects = activeBatchLog?.defects ?? activeDailyLog?.imagesDefected ?? 0;
-                  const activePic = activeBatchLog?.pic || activeDailyLog?.pic || 'Fariz';
+                  const activeImages = activeDailyLog?.imagesProcessed || activeBatchLog?.images || 265;
+                  const activeDefects = (activeDailyLog?.imagesDefected ?? activeDailyLog?.defectCount) ?? activeBatchLog?.defects ?? 0;
+                  const activePic = activeDailyLog?.pic || activeBatchLog?.pic || 'Fariz';
                   const activeStatus = activeBatchLog?.status === 'Complete' || activeDailyLog?.publishToUSVPRO === 'yes' ? 'Published to WebGIS' : 'In Progress';
 
                   return selectedSubgridFilter ? (
                     <div className="absolute top-3 right-3 z-20 bg-[#12161f]/95 backdrop-blur-md border border-slate-800 rounded-xl p-3 text-xs text-slate-200 shadow-2xl max-w-xs space-y-1.5 animate-in fade-in zoom-in-95 duration-200">
                       <div className="flex items-center justify-between font-bold pb-1 border-b border-slate-800">
-                        <span className="text-sky-400 font-mono text-xs">Subgrid ID: {selectedSubgridFilter}</span>
+                        <span className="text-sky-400 font-mono text-xs">Subgrid ID: {selectedSubgridFilter} {selectedDateFilter ? `(${selectedDateFilter})` : ''}</span>
                         <button onClick={() => toggleSubgridFilter(selectedSubgridFilter)} className="text-slate-400 hover:text-white p-0.5 rounded cursor-pointer transition-colors" title="Close filter">✕</button>
                       </div>
                       <div className="text-slate-300 font-mono text-[11px] flex justify-between gap-4"><span className="text-slate-400">Coordinates:</span> <span>{activeCoords.lat.toFixed(4)}° N, {activeCoords.lng.toFixed(4)}° E</span></div>
@@ -4156,7 +4820,7 @@ export default function App() {
                           className="font-semibold text-amber-400 bg-amber-500/10 hover:bg-amber-500/25 px-2 py-0.5 rounded border border-amber-500/30 hover:border-amber-500/60 text-[10px] cursor-pointer transition-all flex items-center gap-1.5 group shadow-sm active:scale-95"
                           title="Click to filter & select defect data"
                         >
-                          <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0 animate-pulse"></span>
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0"></span>
                           <span>{activeDefects} Flagged</span>
                           <Filter size={10} className="text-amber-400/80 group-hover:text-amber-400 group-hover:scale-110 transition-transform shrink-0" />
                         </button>
@@ -4180,54 +4844,144 @@ export default function App() {
             <div className="col-span-5 flex flex-col gap-3 min-h-0">
 
               {/* TOP RIGHT PANEL: PROCESSING CONTROL & ADMIN */}
-              <div className="flex-1 bg-[#151a23] border border-slate-800/90 rounded-xl flex flex-col overflow-hidden min-h-0">
-                <div className="p-3 border-b border-slate-800/80 flex items-center justify-between shrink-0 bg-[#12161f]">
+              <div className={`flex-1 bg-[#111827] border border-[rgba(255,255,255,0.08)] backdrop-blur-md rounded-xl flex flex-col overflow-hidden min-h-0 shadow-sm transition-all duration-300 ${
+                tourStep === 4 ? 'ring-2 ring-sky-400/90 shadow-[0_0_35px_rgba(56,189,248,0.4)] z-30 relative scale-[1.002]' : tourStep !== null ? 'opacity-30 blur-[1.5px] pointer-events-none' : ''
+              }`}>
+                <div className="p-3 border-b border-[rgba(255,255,255,0.08)] flex items-center justify-between shrink-0 bg-[#0d121d]">
                   <div className="flex items-center gap-3">
                     <span className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-2">
                       <Database size={14} className="text-sky-400" />
                       PROCESSING CONTROL & ADMIN
                     </span>
-                    <div className="flex bg-slate-900 border border-slate-800 rounded-lg p-0.5 text-[10px]">
+                    <div className="flex bg-[#192231] border border-[rgba(255,255,255,0.08)] rounded-lg p-0.5 text-[10px]">
                       <button
                         onClick={() => setActiveTab('batches')}
-                        className={`px-2 py-0.5 rounded font-semibold transition-colors cursor-pointer ${activeTab === 'batches' ? 'bg-sky-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
+                        className={`px-2 py-0.5 rounded font-semibold transition-colors cursor-pointer ${activeTab === 'batches' ? 'bg-[#374151] text-white' : 'text-slate-400 hover:text-slate-200'}`}
                       >
                         Overall Progress ({batchLogs.length})
                       </button>
                       <button
                         onClick={() => setActiveTab('daily')}
-                        className={`px-2 py-0.5 rounded font-semibold transition-colors cursor-pointer ${activeTab === 'daily' ? 'bg-sky-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
+                        className={`px-2 py-0.5 rounded font-semibold transition-colors cursor-pointer ${activeTab === 'daily' ? 'bg-[#374151] text-white' : 'text-slate-400 hover:text-slate-200'}`}
                       >
                         Daily Progress ({dailyData.length})
                       </button>
                     </div>
+
+                    {/* Simple Icon-Only Filter Button */}
+                    <button
+                      onClick={() => setIsDashFilterOpen(prev => !prev)}
+                      className={`p-1 rounded-lg border transition-all cursor-pointer ${
+                        hasActiveDashFilters
+                          ? 'bg-sky-600 border-sky-500 text-white shadow-sm'
+                          : isDashFilterOpen
+                          ? 'bg-[#374151] border-slate-600 text-sky-400'
+                          : 'bg-[#192231] border-[rgba(255,255,255,0.08)] text-slate-400 hover:text-slate-200 hover:bg-[#253043]'
+                      }`}
+                      title="Filter Daily Progress columns"
+                    >
+                      <Filter size={13} />
+                    </button>
                   </div>
                   <button
                     onClick={() => setCurrentPage('data')}
-                    className="px-2.5 py-1 bg-sky-600 hover:bg-sky-500 text-white text-[11px] font-bold rounded transition-colors uppercase tracking-tight cursor-pointer"
+                    className="px-3 py-1.5 bg-[#1f2937]/80 hover:bg-[#374151] text-slate-300 hover:text-white border border-[rgba(255,255,255,0.12)] text-[11px] font-medium rounded-lg transition-all uppercase tracking-tight cursor-pointer shadow-sm"
                   >
                     RE-UPLOAD CSV
                   </button>
                 </div>
 
+                {/* Compact Inline Filter Bar for Daily Progress */}
+                {isDashFilterOpen && (
+                  <div className="px-3 py-2 bg-[#0a0e17] border-b border-[rgba(255,255,255,0.08)] flex flex-wrap items-center justify-between gap-2 text-[10px] animate-in fade-in duration-150">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="flex items-center gap-1">
+                        <span className="text-slate-400 font-medium">Grid:</span>
+                        <select
+                          value={dashDailyFilters.grid}
+                          onChange={(e) => setDashDailyFilters(prev => ({ ...prev, grid: e.target.value }))}
+                          className="bg-[#151d2a] border border-slate-700/70 text-slate-200 rounded px-1.5 py-0.5 focus:outline-none focus:border-sky-500"
+                        >
+                          <option value="">All</option>
+                          {Array.from(new Set(dailyData.map(d => d.grid).filter(Boolean))).sort().map(g => (
+                            <option key={g} value={g}>{g}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="flex items-center gap-1">
+                        <span className="text-slate-400 font-medium">Subgrid:</span>
+                        <select
+                          value={dashDailyFilters.subgrid}
+                          onChange={(e) => setDashDailyFilters(prev => ({ ...prev, subgrid: e.target.value }))}
+                          className="bg-[#151d2a] border border-slate-700/70 text-slate-200 rounded px-1.5 py-0.5 focus:outline-none focus:border-sky-500"
+                        >
+                          <option value="">All</option>
+                          {Array.from(new Set(dailyData.map(d => (d.subgrid || '').toUpperCase().trim()).filter(Boolean))).sort().map(sg => (
+                            <option key={sg} value={sg}>{sg}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="flex items-center gap-1">
+                        <span className="text-slate-400 font-medium">PIC:</span>
+                        <select
+                          value={dashDailyFilters.pic}
+                          onChange={(e) => setDashDailyFilters(prev => ({ ...prev, pic: e.target.value }))}
+                          className="bg-[#151d2a] border border-slate-700/70 text-slate-200 rounded px-1.5 py-0.5 focus:outline-none focus:border-sky-500"
+                        >
+                          <option value="">All</option>
+                          {Array.from(new Set(dailyData.map(d => d.pic || 'Fariz').filter(Boolean))).sort().map(p => (
+                            <option key={p} value={p}>{p}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="flex items-center gap-1">
+                        <span className="text-slate-400 font-medium">Equipment:</span>
+                        <select
+                          value={dashDailyFilters.equipment}
+                          onChange={(e) => setDashDailyFilters(prev => ({ ...prev, equipment: e.target.value }))}
+                          className="bg-[#151d2a] border border-slate-700/70 text-slate-200 rounded px-1.5 py-0.5 focus:outline-none focus:border-sky-500"
+                        >
+                          <option value="">All</option>
+                          {Array.from(new Set(dailyData.map(d => d.captureEquipment || 'MMS').filter(Boolean))).sort().map(eq => (
+                            <option key={eq} value={eq}>{eq}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    {hasActiveDashFilters && (
+                      <button
+                        onClick={() => setDashDailyFilters({ grid: '', subgrid: '', pic: '', equipment: '' })}
+                        className="text-red-400 hover:text-red-300 text-[10px] font-semibold cursor-pointer flex items-center gap-1"
+                        title="Clear dashboard filters"
+                      >
+                        <X size={12} /> Clear
+                      </button>
+                    )}
+                  </div>
+                )}
+
                 {/* Table */}
                 <div className="flex-1 overflow-auto">
                   {activeTab === 'batches' ? (
                     <table className="w-full text-left text-[11px]">
-                      <thead className="bg-[#12161f] text-slate-400 sticky top-0 z-10 border-b border-slate-800">
+                      <thead className="bg-[#0d121d] text-slate-400 sticky top-0 z-10 border-b border-[rgba(255,255,255,0.08)]">
                         <tr>
-                          <th className="px-3 py-2 font-semibold">Batch ID</th>
-                          <th className="px-3 py-2 font-semibold">Grid</th>
-                          <th className="px-3 py-2 font-semibold">Subgrid</th>
-                          <th className="px-3 py-2 font-semibold">POI</th>
-                          <th className="px-3 py-2 font-semibold">Images</th>
-                          <th className="px-3 py-2 font-semibold">Defect Images</th>
-                          <th className="px-3 py-2 font-semibold">PIC</th>
-                          <th className="px-3 py-2 font-semibold">Status</th>
-                          <th className="px-3 py-2 font-semibold text-right">Actions</th>
+                          <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-slate-400">Batch ID</th>
+                          <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-slate-400">Grid</th>
+                          <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-slate-400">Subgrid</th>
+                          <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-slate-400">POI</th>
+                          <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-slate-400">Images</th>
+                          <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-slate-400">Defect Images</th>
+                          <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-slate-400">PIC</th>
+                          <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-slate-400">Status</th>
+                          <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-slate-400 text-right">Actions</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-800/60">
+                      <tbody className="divide-y divide-[rgba(255,255,255,0.06)]">
                         {batchLogs.map((log, i) => {
                           const batchSubgrid = (extractSubgridName(log.subgrid || log.imageFilename) || '').toUpperCase().trim();
                           const isSelected = selectedSubgridFilter === batchSubgrid;
@@ -4235,22 +4989,22 @@ export default function App() {
                             <tr
                               key={log.id || i}
                               onClick={() => toggleSubgridFilter(batchSubgrid)}
-                              className={`cursor-pointer transition-all ${isSelected ? 'bg-sky-950/80 text-white font-medium' : 'hover:bg-slate-800/40 text-slate-300'}`}
+                              className={`cursor-pointer transition-all ${isSelected ? 'bg-sky-950/70 text-white font-medium' : 'hover:bg-slate-800/40 text-slate-300'}`}
                             >
-                              <td className="px-3 py-2 font-mono text-[10px] text-slate-400">{log.id ? `2123S${String(log.id).padStart(4, '0')}` : `2123S${3000 + i}`}</td>
-                              <td className="px-3 py-2 font-medium text-slate-200">{log.grid || 'N93'}</td>
-                              <td className="px-3 py-2 font-medium text-sky-400">{batchSubgrid}</td>
-                              <td className="px-3 py-2 text-slate-300">{log.images}</td>
-                              <td className="px-3 py-2 text-slate-300">{log.images}</td>
-                              <td className="px-3 py-2 text-amber-400 font-semibold">{log.defects || 0}</td>
-                              <td className="px-3 py-2 text-emerald-400 font-semibold">{log.pic || 'Fariz'}</td>
-                              <td className="px-3 py-2">
+                              <td className="px-3.5 py-3.5 font-mono text-[10px] text-slate-400">{log.id ? `2123S${String(log.id).padStart(4, '0')}` : `2123S${3000 + i}`}</td>
+                              <td className="px-3.5 py-3.5 font-medium text-slate-200">{log.grid || 'N93'}</td>
+                              <td className="px-3.5 py-3.5 font-medium text-sky-400">{batchSubgrid}</td>
+                              <td className="px-3.5 py-3.5 text-slate-300">{log.images}</td>
+                              <td className="px-3.5 py-3.5 text-slate-300">{log.images}</td>
+                              <td className="px-3.5 py-3.5 text-amber-400 font-semibold">{log.defects || 0}</td>
+                              <td className="px-3.5 py-3.5 text-emerald-400 font-semibold">{log.pic || 'Fariz'}</td>
+                              <td className="px-3.5 py-3.5">
                                 <span className={`inline-flex items-center gap-1 text-[10px] font-semibold ${log.status === 'Complete' ? 'text-emerald-400' : 'text-sky-400'}`}>
                                   {log.status === 'Complete' ? 'Stitched: 100%' : 'Stitching: 65%'}
                                 </span>
                               </td>
-                              <td className="px-3 py-2 text-right">
-                                <button onClick={(e) => { e.stopPropagation(); toggleSubgridFilter(batchSubgrid); }} className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-[10px] font-semibold cursor-pointer border border-slate-700/80 transition-colors">
+                              <td className="px-3.5 py-3.5 text-right">
+                                <button onClick={(e) => { e.stopPropagation(); toggleSubgridFilter(batchSubgrid); }} className="px-2.5 py-1 bg-[#1f2937]/90 hover:bg-[#374151] text-slate-300 border border-[rgba(255,255,255,0.1)] rounded text-[10px] font-medium cursor-pointer transition-colors">
                                   View Logs
                                 </button>
                               </td>
@@ -4261,40 +5015,50 @@ export default function App() {
                     </table>
                   ) : (
                     <table className="w-full text-left text-[11px]">
-                      <thead className="bg-[#12161f] text-slate-400 sticky top-0 z-10 border-b border-slate-800">
+                      <thead className="bg-[#0d121d] text-slate-400 sticky top-0 z-10 border-b border-[rgba(255,255,255,0.08)]">
                         <tr>
-                          <th className="px-3 py-2 font-semibold">Date</th>
-                          <th className="px-3 py-2 font-semibold">Grid</th>
-                          <th className="px-3 py-2 font-semibold">Subgrid</th>
-                          <th className="px-3 py-2 font-semibold">Distance</th>
-                          <th className="px-3 py-2 font-semibold">Images</th>
-                          <th className="px-3 py-2 font-semibold">Defect Images</th>
-                          <th className="px-3 py-2 font-semibold">PIC</th>
-                          <th className="px-3 py-2 font-semibold text-right">Equipment</th>
+                          <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-slate-400">Date</th>
+                          <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-slate-400">Grid</th>
+                          <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-slate-400">Subgrid</th>
+                          <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-slate-400">Distance</th>
+                          <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-slate-400">Images</th>
+                          <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-slate-400">Defect Images</th>
+                          <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-slate-400">PIC</th>
+                          <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-slate-400 text-right">Equipment</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-800/60">
+                      <tbody className="divide-y divide-[rgba(255,255,255,0.06)]">
                         {[...dailyData]
                           .reverse()
-                          .filter(log => !selectedSubgridFilter || (log.subgrid || '').toUpperCase().trim() === selectedSubgridFilter)
+                          .filter(log => {
+                            if (dashDailyFilters.grid && log.grid !== dashDailyFilters.grid) return false;
+                            if (dashDailyFilters.subgrid && (log.subgrid || '').toUpperCase().trim() !== dashDailyFilters.subgrid.toUpperCase().trim()) return false;
+                            if (dashDailyFilters.pic && (log.pic || 'Fariz') !== dashDailyFilters.pic) return false;
+                            if (dashDailyFilters.equipment && (log.captureEquipment || 'MMS') !== dashDailyFilters.equipment) return false;
+                            return true;
+                          })
                           .map((log, i) => {
                             const dailySubgrid = (log.subgrid || '').toUpperCase().trim();
+                            const isRowSelected = selectedSubgridFilter === dailySubgrid && (!selectedDateFilter || selectedDateFilter === log.date);
                             const matchBatch = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === dailySubgrid);
-                            const defectCount = matchBatch ? (matchBatch.defects ?? 0) : (log.imagesDefected ?? log.defectCount ?? 0);
+                            const defectCount = (log.imagesDefected && log.imagesDefected > 0) ? log.imagesDefected : (log.defectCount && log.defectCount > 0) ? log.defectCount : (matchBatch ? (matchBatch.defects ?? 0) : 0);
                             return (
                               <tr
                                 key={log.id || `dash-d-${log.date}-${log.subgrid}-${i}`}
-                                onClick={() => toggleSubgridFilter(dailySubgrid)}
-                                className="cursor-pointer transition-all hover:bg-slate-800/40 text-slate-300"
+                                onClick={() => toggleSubgridFilter(dailySubgrid, log.date)}
+                                className={`cursor-pointer transition-all ${isRowSelected ? 'bg-sky-950/80 text-white font-medium border-l-2 border-sky-400' : 'hover:bg-slate-800/40 text-slate-300'}`}
                               >
-                                <td className="px-3 py-2 font-mono text-[10px] text-slate-400">{log.date}</td>
-                                <td className="px-3 py-2 font-medium text-slate-200">{log.grid}</td>
-                                <td className="px-3 py-2 font-medium text-sky-400">{dailySubgrid}</td>
-                                <td className="px-3 py-2 text-slate-300">{log.kmProcessed.toFixed(1)} km</td>
-                                <td className="px-3 py-2 text-slate-300">{log.imagesProcessed.toLocaleString()}</td>
-                                <td className="px-3 py-2 text-amber-400 font-semibold">{defectCount}</td>
-                                <td className="px-3 py-2 text-emerald-400 font-semibold">{log.pic || 'Fariz'}</td>
-                                <td className="px-3 py-2 text-right font-medium text-emerald-400">{log.captureEquipment || 'MMS'}</td>
+                                <td className="px-3.5 py-3.5 font-mono text-[10px] text-slate-400 flex items-center gap-1.5">
+                                  <span>{log.date}</span>
+                                  {isRowSelected && <span className="w-1.5 h-1.5 rounded-full bg-sky-400" />}
+                                </td>
+                                <td className="px-3.5 py-3.5 font-medium text-slate-200">{log.grid}</td>
+                                <td className="px-3.5 py-3.5 font-medium text-sky-400">{dailySubgrid}</td>
+                                <td className="px-3.5 py-3.5 text-slate-300">{log.kmProcessed.toFixed(1)} km</td>
+                                <td className="px-3.5 py-3.5 text-slate-300">{log.imagesProcessed.toLocaleString()}</td>
+                                <td className="px-3.5 py-3.5 text-amber-400 font-semibold">{defectCount}</td>
+                                <td className="px-3.5 py-3.5 text-emerald-400 font-semibold">{log.pic || 'Fariz'}</td>
+                                <td className="px-3.5 py-3.5 text-right font-medium text-emerald-400">{log.captureEquipment || 'MMS'}</td>
                               </tr>
                             );
                           })}
@@ -4305,8 +5069,10 @@ export default function App() {
               </div>
 
               {/* BOTTOM RIGHT PANEL: 360 VIEW INSPECTOR & QA */}
-              <div className="h-96 sm:h-[420px] bg-[#151a23] border border-slate-800/90 rounded-xl flex flex-col overflow-hidden shrink-0 transition-all duration-200 shadow-xl">
-                <div className="px-3 py-2 border-b border-slate-800/80 bg-[#12161f] flex items-center justify-between shrink-0">
+              <div className={`h-96 sm:h-[420px] bg-[#111827] border border-[rgba(255,255,255,0.08)] backdrop-blur-md rounded-xl flex flex-col overflow-hidden shrink-0 transition-all duration-300 shadow-sm ${
+                tourStep === 3 ? 'ring-2 ring-sky-400/90 shadow-[0_0_35px_rgba(56,189,248,0.4)] z-30 relative scale-[1.002]' : tourStep !== null ? 'opacity-30 blur-[1.5px] pointer-events-none' : ''
+              }`}>
+                <div className="px-3.5 py-2.5 border-b border-[rgba(255,255,255,0.08)] bg-[#0d121d] flex items-center justify-between shrink-0">
                   <span className="text-xs font-bold uppercase tracking-wider text-slate-200 flex items-center gap-2">
                     <Camera size={15} className="text-sky-400" />
                     360 VIEW INSPECTOR & QA
@@ -4558,12 +5324,265 @@ export default function App() {
                   </div>
                 </div>
               </div>
-
             </div>
-
           </div>
+        </div>
+      ) : (
+            <div key="data-canvas" className="flex-1 flex flex-col min-h-0 overflow-hidden bg-[#111827] rounded-xl border border-[rgba(255,255,255,0.08)] shadow-2xl animate-in fade-in zoom-in-98 slide-in-from-right-2 duration-300 ease-out">
+              <DataManagementPage
+                dailyData={dailyData}
+                setDailyData={setDailyData}
+                batchLogs={batchLogs}
+                setBatchLogs={setBatchLogs}
+                layerCatalog={layerCatalog}
+                setLayerCatalog={setLayerCatalog}
+                onBackToDashboard={() => setCurrentPage('dashboard')}
+                mapRefreshKey={mapRefreshKey}
+                onRefreshMap={handleRefreshMap}
+                authSession={authSession}
+                onSignOut={handleSignOut}
+                addNotification={addNotification}
+                addAuditLog={addAuditLog}
+              />
+            </div>
+          )}
 
         </main>
+
+        {/* ========================================================= */}
+        {/* INTERACTIVE GUIDED TOUR FLOATING TOOLTIP OVERLAY */}
+        {/* ========================================================= */}
+        {tourStep !== null && (
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[90vw] max-w-lg bg-[#0d121d] border border-sky-500/50 rounded-2xl shadow-2xl z-50 p-4 text-slate-200 backdrop-blur-xl animate-in fade-in slide-in-from-bottom-4 duration-200">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-2 mb-3">
+              <div className="flex items-center gap-2">
+                <span className="bg-sky-500 text-slate-950 text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider">
+                  Tour Step {tourStep} of {TOUR_STEPS.length}
+                </span>
+                <h3 className="text-sm font-bold text-white">
+                  {TOUR_STEPS[tourStep - 1].title}
+                </h3>
+              </div>
+              <button
+                onClick={() => setTourStep(null)}
+                className="text-slate-400 hover:text-white p-1 cursor-pointer"
+                title="End Guided Tour"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed mb-4">
+              {TOUR_STEPS[tourStep - 1].desc}
+            </p>
+
+            <div className="flex items-center justify-between pt-2 border-t border-slate-800/80">
+              <span className="text-[10px] text-slate-500 font-medium">
+                Focus: <strong className="text-sky-400">{TOUR_STEPS[tourStep - 1].highlight}</strong>
+              </span>
+
+              <div className="flex items-center gap-2">
+                {tourStep > 1 && (
+                  <button
+                    onClick={() => setTourStep(tourStep - 1)}
+                    className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg transition-all cursor-pointer"
+                  >
+                    Previous
+                  </button>
+                )}
+                {tourStep < TOUR_STEPS.length ? (
+                  <button
+                    onClick={() => setTourStep(tourStep + 1)}
+                    className="px-3 py-1 bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold rounded-lg transition-all cursor-pointer shadow-md flex items-center gap-1"
+                  >
+                    Next Step <ChevronRight size={14} />
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => setTourStep(null)}
+                    className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg transition-all cursor-pointer shadow-md"
+                  >
+                    Complete Tour ✓
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ========================================================= */}
+        {/* HELP & USER GUIDE MODAL (Clean Minimalist Enterprise Design) */}
+        {/* ========================================================= */}
+        {isHelpGuideOpen && (
+          <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-150">
+            <div className="bg-[#111827] border border-[rgba(255,255,255,0.08)] rounded-xl w-full max-w-3xl max-h-[85vh] shadow-2xl flex flex-col overflow-hidden text-slate-200">
+              
+              {/* Modal Header */}
+              <div className="p-4 bg-[#0d121d] border-b border-[rgba(255,255,255,0.08)] flex items-center justify-between">
+                <div>
+                  <h2 className="text-sm font-bold text-white tracking-tight">
+                    User Guide & System Manual
+                  </h2>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    360° WebGIS Mobile Mapping Operations Manual
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      setIsHelpGuideOpen(false);
+                      setTourStep(1);
+                    }}
+                    className="px-3 py-1.5 bg-[#1f2937] hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 text-xs font-semibold rounded-lg transition-all cursor-pointer"
+                    title="Start guided step-by-step tour"
+                  >
+                    Start Interactive Tour
+                  </button>
+                  <button
+                    onClick={() => setIsHelpGuideOpen(false)}
+                    className="text-slate-400 hover:text-white p-1 cursor-pointer"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Modal Navigation Tabs (Clean text, no emojis or icons) */}
+              <div className="px-4 py-2 bg-[#0b0f17] border-b border-[rgba(255,255,255,0.06)] flex items-center gap-1.5 overflow-x-auto text-xs">
+                {[
+                  { id: 'map', label: 'Interactive Map' },
+                  { id: 'panorama', label: '360° Street View' },
+                  { id: 'data', label: 'Daily Progress & DB' },
+                  { id: 'audit', label: 'Notifications & Audit' }
+                ].map(tab => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setHelpGuideTab(tab.id as any)}
+                    className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer whitespace-nowrap border font-medium ${
+                      helpGuideTab === tab.id
+                        ? 'bg-[#1f2937] text-white border-slate-600'
+                        : 'text-slate-400 border-transparent hover:text-slate-200 hover:bg-slate-800/40'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Modal Body Content (Clean neat boxes, no lightbulb/book icons) */}
+              <div className="p-5 overflow-y-auto space-y-3 flex-1 text-xs text-slate-300 leading-relaxed">
+                {helpGuideTab === 'map' && (
+                  <div className="space-y-3">
+                    <div className="bg-[#0b0f17] p-3.5 rounded-lg border border-[rgba(255,255,255,0.06)] space-y-1">
+                      <h4 className="font-semibold text-white text-xs">1. Selecting & Filtering Subgrids</h4>
+                      <p className="text-slate-400">
+                        Click on any subgrid feature (e.g. <code className="bg-[#1f2937] px-1.5 py-0.5 rounded text-slate-200">N94E70</code>) on the map or inside the daily progress table to filter trajectories and panorama points.
+                      </p>
+                    </div>
+
+                    <div className="bg-[#0b0f17] p-3.5 rounded-lg border border-[rgba(255,255,255,0.06)] space-y-1">
+                      <h4 className="font-semibold text-white text-xs">2. Date Filter Behavior</h4>
+                      <p className="text-slate-400">
+                        Selecting a specific date filters trajectory points corresponding to that capture run without hiding concurrent subgrid lists or layer items.
+                      </p>
+                    </div>
+
+                    <div className="bg-[#0b0f17] p-3.5 rounded-lg border border-[rgba(255,255,255,0.06)] space-y-1">
+                      <h4 className="font-semibold text-white text-xs">3. Map Layer Control</h4>
+                      <p className="text-slate-400">
+                        Use the layer control panel on the map to toggle subgrid boundary overlays, panorama trajectory points, and high-voltage grid lines.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {helpGuideTab === 'panorama' && (
+                  <div className="space-y-3">
+                    <div className="bg-[#0b0f17] p-3.5 rounded-lg border border-[rgba(255,255,255,0.06)] space-y-1">
+                      <h4 className="font-semibold text-white text-xs">1. Navigating Panoramas</h4>
+                      <p className="text-slate-400">
+                        Click and drag inside the 360° viewer to rotate camera view. Use previous/next buttons to step along trajectory frames.
+                      </p>
+                    </div>
+
+                    <div className="bg-[#0b0f17] p-3.5 rounded-lg border border-[rgba(255,255,255,0.06)] space-y-1">
+                      <h4 className="font-semibold text-white text-xs">2. Defect Inspection & QA Validation</h4>
+                      <p className="text-slate-400">
+                        When AI defect detection flags a frame, review defect type and answer QA questionnaire (YES/NO) to update database defect status.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {helpGuideTab === 'data' && (
+                  <div className="space-y-3">
+                    <div className="bg-[#0b0f17] p-3.5 rounded-lg border border-[rgba(255,255,255,0.06)] space-y-1">
+                      <h4 className="font-semibold text-white text-xs">1. Column Filtering</h4>
+                      <p className="text-slate-400">
+                        Click the filter button on table column headers to filter records by subgrid, date, or PIC.
+                      </p>
+                    </div>
+
+                    <div className="bg-[#0b0f17] p-3.5 rounded-lg border border-[rgba(255,255,255,0.06)] space-y-1">
+                      <h4 className="font-semibold text-white text-xs">2. Authorized Data Editing & Deletion</h4>
+                      <p className="text-slate-400">
+                        Click edit or delete icons to update records. Record deletion requires admin passcode verification for audit security.
+                      </p>
+                    </div>
+
+                    <div className="bg-[#0b0f17] p-3.5 rounded-lg border border-[rgba(255,255,255,0.06)] space-y-1">
+                      <h4 className="font-semibold text-white text-xs">3. Real-Time Production DB Publishing</h4>
+                      <p className="text-slate-400">
+                        Click <strong className="text-slate-200">Publish All to Database</strong> to sync processed subgrid trajectories directly to Supabase PostgreSQL database.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {helpGuideTab === 'audit' && (
+                  <div className="space-y-3">
+                    <div className="bg-[#0b0f17] p-3.5 rounded-lg border border-[rgba(255,255,255,0.06)] space-y-1">
+                      <h4 className="font-semibold text-white text-xs">1. Batch Audit Logs</h4>
+                      <p className="text-slate-400">
+                        Click the audit log icon in top header to view logged user edits, creates, deletes, publishes, and errors with date track-back filtering.
+                      </p>
+                    </div>
+
+                    <div className="bg-[#0b0f17] p-3.5 rounded-lg border border-[rgba(255,255,255,0.06)] space-y-1">
+                      <h4 className="font-semibold text-white text-xs">2. Publish Notifications</h4>
+                      <p className="text-slate-400">
+                        The notification icon alerts you whenever data is published to production, showing total data included and date published.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Modal Footer */}
+              <div className="p-4 bg-[#0d121d] border-t border-[rgba(255,255,255,0.08)] flex items-center justify-between">
+                <button
+                  onClick={() => {
+                    setIsHelpGuideOpen(false);
+                    setCurrentPage('data');
+                  }}
+                  className="px-3.5 py-2 bg-[#1f2937] hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 text-xs font-semibold rounded-lg transition-all cursor-pointer"
+                  title="Open Layer Catalog & Data Management Page"
+                >
+                  Open Layer Catalog & Data Management Page
+                </button>
+
+                <button
+                  onClick={() => setIsHelpGuideOpen(false)}
+                  className="px-4 py-2 bg-[#1f2937] hover:bg-slate-700 text-white text-xs font-semibold rounded-lg transition-all cursor-pointer"
+                >
+                  Close Manual
+                </button>
+              </div>
+
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

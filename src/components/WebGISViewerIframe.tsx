@@ -23,7 +23,7 @@ export const WebGISViewerIframe: React.FC<WebGISViewerIframeProps> = ({
       window.location.hostname.startsWith('10.')
     )
       ? 'http://localhost:5173'
-      : 'http://localhost:5173'
+      : 'https://mobilemapping-nine.vercel.app'
   );
 
   // Static iframe URL created ONCE on mount so iframe never reloads on prop updates

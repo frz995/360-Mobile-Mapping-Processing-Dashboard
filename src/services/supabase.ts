@@ -184,7 +184,7 @@ export async function fetchSupabaseData(): Promise<{
 
     // 2. Initialize baseline Daily Data rows (d1, d2, d3, d4)
     dailyData.push(
-      { id: 'd1', date: 'Sep 4', grid: '1', subgrid: 'N93E70', kmProcessed: 0.82, imagesProcessed: 163, defectCount: 0, imagesDefected: 0, captureEquipment: 'MMS', publishToUSVPRO: 'yes', action: 'Published in database', pic: 'Fariz', isSyncedWithSupabase: true },
+      { id: 'd1', date: 'Sep 4', grid: '1', subgrid: 'N93E70', kmProcessed: 0.82, imagesProcessed: 163, defectCount: 6, imagesDefected: 6, captureEquipment: 'MMS', publishToUSVPRO: 'yes', action: 'Published in database', pic: 'Fariz', isSyncedWithSupabase: true },
       { id: 'd2', date: 'Sep 4', grid: '2', subgrid: 'N94E70', kmProcessed: 0.13, imagesProcessed: 26, defectCount: 0, imagesDefected: 0, captureEquipment: 'Backpack', publishToUSVPRO: 'yes', action: 'Published in database', pic: 'Hafiz', isSyncedWithSupabase: true },
       { id: 'd3', date: 'Sep 4', grid: '3', subgrid: 'N94E71', kmProcessed: 0.03, imagesProcessed: 5, defectCount: 0, imagesDefected: 0, captureEquipment: 'MMS', publishToUSVPRO: 'yes', action: 'Published in database', pic: 'Amirul', isSyncedWithSupabase: true },
       { id: 'd4', date: 'Sep 4', grid: '4', subgrid: 'N90E67', kmProcessed: 0.01, imagesProcessed: 1, defectCount: 0, imagesDefected: 0, captureEquipment: 'Backpack', publishToUSVPRO: 'yes', action: 'Published in database', pic: 'Fariz', isSyncedWithSupabase: true }
