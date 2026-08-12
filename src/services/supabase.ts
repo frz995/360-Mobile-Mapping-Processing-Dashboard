@@ -125,6 +125,73 @@ export async function fetchSupabaseData(): Promise<{
       return { dailyData: [], batchLogs: [] };
     }
 
+    // Count actual available images in MMS_PIC storage bucket
+    const storageImageCounts = new Map<string, number>();
+    let storageQuerySucceeded = false;
+
+    try {
+      // 1. Try listing the bucket directly using uppercase 'MMS_PIC'
+      const { data: storageFiles, error: storageError } = await supabase.storage.from('MMS_PIC').list('', { limit: 10000 });
+      console.log('MMS_PIC storage list result:', storageFiles?.length, 'files, error:', storageError?.message);
+
+      if (!storageError && storageFiles && storageFiles.length > 0) {
+        storageQuerySucceeded = true;
+        storageFiles.forEach(file => {
+          if (file.name && file.name.includes('.') && !file.name.startsWith('.')) {
+            const sg = extractSubgrid(file.name);
+            if (sg && sg !== 'N/A') {
+              storageImageCounts.set(sg, (storageImageCounts.get(sg) || 0) + 1);
+            }
+          }
+        });
+      }
+    } catch (err) {
+      console.warn('MMS_PIC storage list exception:', err);
+    }
+
+    // 2. Fallback / Verification via public URL (using uppercase MMS_PIC in URL path)
+    if (!storageQuerySucceeded || storageImageCounts.size === 0) {
+      const supabaseStorageBase = `${supabaseUrl}/storage/v1/object/public/MMS_PIC`;
+      const subgridFilenames = new Map<string, string[]>();
+
+      data.forEach(r => {
+        const filename = r.filename || r.image_url || '';
+        if (!filename) return;
+        const cleanName = filename.replace(/^\/+/, '').replace(/^MMS_PIC\//i, '').replace(/^mms_pic\//i, '').trim();
+        if (!cleanName) return;
+        const sg = (extractSubgrid(cleanName) || 'UNKNOWN').toUpperCase().trim();
+        if (!subgridFilenames.has(sg)) subgridFilenames.set(sg, []);
+        const list = subgridFilenames.get(sg)!;
+        if (!list.includes(cleanName)) list.push(cleanName);
+      });
+
+      try {
+        for (const [sg, filenames] of subgridFilenames.entries()) {
+          let existCount = 0;
+          const batchSize = 20;
+          for (let i = 0; i < filenames.length; i += batchSize) {
+            const batch = filenames.slice(i, i + batchSize);
+            const results = await Promise.allSettled(
+              batch.map(fn => 
+                fetch(`${supabaseStorageBase}/${fn}`, { method: 'GET' })
+                  .then(res => res.ok)
+                  .catch(() => false)
+              )
+            );
+            results.forEach(r => {
+              if (r.status === 'fulfilled' && r.value === true) existCount++;
+            });
+          }
+          storageImageCounts.set(sg, existCount);
+          storageQuerySucceeded = true;
+        }
+      } catch (storageErr) {
+        console.warn('MMS_PIC image public URL verification failed:', storageErr);
+      }
+    }
+
+    console.log('MMS_PIC verified storage image counts:', Object.fromEntries(storageImageCounts), 'query succeeded:', storageQuerySucceeded);
+
     const gridMap: Record<string, string> = {
       'N93E70': '1',
       'N94E70': '2',
@@ -182,19 +249,27 @@ export async function fetchSupabaseData(): Promise<{
 
     const dailyData: any[] = [];
 
-    // 2. Initialize baseline Daily Data rows (d1, d2, d3, d4)
+    // 2. Initialize baseline Daily Data rows (d1, d2, d3, d4) with availableImagesCount from mms_pic storage
+    // If storage query succeeded, use actual count (0 if subgrid not found in bucket). If failed, show 0 as unknown.
+    const getStorageCount = (sg: string, fallback: number) => storageQuerySucceeded ? (storageImageCounts.get(sg) ?? 0) : fallback;
     dailyData.push(
-      { id: 'd1', date: 'Sep 4', grid: '1', subgrid: 'N93E70', kmProcessed: 0.82, imagesProcessed: 163, defectCount: 6, imagesDefected: 6, captureEquipment: 'MMS', publishToUSVPRO: 'yes', action: 'Published in database', pic: 'Fariz', isSyncedWithSupabase: true },
-      { id: 'd2', date: 'Sep 4', grid: '2', subgrid: 'N94E70', kmProcessed: 0.13, imagesProcessed: 26, defectCount: 0, imagesDefected: 0, captureEquipment: 'Backpack', publishToUSVPRO: 'yes', action: 'Published in database', pic: 'Hafiz', isSyncedWithSupabase: true },
-      { id: 'd3', date: 'Sep 4', grid: '3', subgrid: 'N94E71', kmProcessed: 0.03, imagesProcessed: 5, defectCount: 0, imagesDefected: 0, captureEquipment: 'MMS', publishToUSVPRO: 'yes', action: 'Published in database', pic: 'Amirul', isSyncedWithSupabase: true },
-      { id: 'd4', date: 'Sep 4', grid: '4', subgrid: 'N90E67', kmProcessed: 0.01, imagesProcessed: 1, defectCount: 0, imagesDefected: 0, captureEquipment: 'Backpack', publishToUSVPRO: 'yes', action: 'Published in database', pic: 'Fariz', isSyncedWithSupabase: true }
+      { id: 'd1', date: 'Sep 4', grid: '1', subgrid: 'N93E70', kmProcessed: 0.82, imagesProcessed: 163, availableImagesCount: getStorageCount('N93E70', 163), defectCount: 6, imagesDefected: 6, captureEquipment: 'MMS', publishToUSVPRO: 'yes', action: 'Published in database', pic: 'Fariz', isSyncedWithSupabase: true },
+      { id: 'd2', date: 'Sep 4', grid: '2', subgrid: 'N94E70', kmProcessed: 0.13, imagesProcessed: 26, availableImagesCount: getStorageCount('N94E70', 26), defectCount: 0, imagesDefected: 0, captureEquipment: 'Backpack', publishToUSVPRO: 'yes', action: 'Published in database', pic: 'Hafiz', isSyncedWithSupabase: true },
+      { id: 'd3', date: 'Sep 4', grid: '3', subgrid: 'N94E71', kmProcessed: 0.03, imagesProcessed: 5, availableImagesCount: getStorageCount('N94E71', 5), defectCount: 0, imagesDefected: 0, captureEquipment: 'MMS', publishToUSVPRO: 'yes', action: 'Published in database', pic: 'Amirul', isSyncedWithSupabase: true },
+      { id: 'd4', date: 'Sep 4', grid: '4', subgrid: 'N90E67', kmProcessed: 0.01, imagesProcessed: 1, availableImagesCount: getStorageCount('N90E67', 1), defectCount: 0, imagesDefected: 0, captureEquipment: 'Backpack', publishToUSVPRO: 'yes', action: 'Published in database', pic: 'Fariz', isSyncedWithSupabase: true }
     );
 
     // 3. Process live database records from Supabase
     let index = 5;
     grouped.forEach((g) => {
       const subgrid = g.subgrid.toUpperCase().trim();
-      const imagesCount = g.recordImages !== undefined ? g.recordImages : Math.max(1, g.imageFilenames.length);
+      // poiCount = from CSV metadata (total track points recorded)
+      const poiCount = g.recordImages !== undefined ? g.recordImages : Math.max(1, g.imageFilenames.length);
+      // availableImagesCount = actual files in mms_pic storage bucket
+      // If storage query succeeded: use storageImageCounts (0 if subgrid missing = no files uploaded)
+      // If storage query failed: fall back to panoramas table filename count
+      const availableImagesCount = storageQuerySucceeded ? (storageImageCounts.get(subgrid) ?? 0) : g.imageFilenames.length;
+      const imagesCount = poiCount;
       const calculatedKm = calculateDistance(g.points);
       const km = calculatedKm > 0 ? calculatedKm : (g.recordKm !== undefined && g.recordKm > 0 && g.recordKm < 10 ? g.recordKm : Math.round((imagesCount * 0.005) * 100) / 100);
       const defects = g.recordDefects !== undefined ? g.recordDefects : 0;
@@ -223,6 +298,9 @@ export async function fetchSupabaseData(): Promise<{
       const matchingBaseline = dailyData.find(b => b.subgrid === subgrid && Math.abs(b.imagesProcessed - imagesCount) <= 5);
       if (matchingBaseline) {
         matchingBaseline.imagesProcessed = Math.max(matchingBaseline.imagesProcessed, imagesCount);
+        matchingBaseline.poiCount = matchingBaseline.imagesProcessed;
+        // availableImagesCount: how many files actually exist in mms_pic for this subgrid
+        matchingBaseline.availableImagesCount = availableImagesCount > 0 ? availableImagesCount : matchingBaseline.availableImagesCount;
         if (km > 0) matchingBaseline.kmProcessed = km;
         if (defects > 0) matchingBaseline.imagesDefected = defects;
       } else {
@@ -234,6 +312,8 @@ export async function fetchSupabaseData(): Promise<{
           subgrid: subgrid,
           kmProcessed: km > 0 ? km : 0.2,
           imagesProcessed: imagesCount,
+          poiCount: poiCount,
+          availableImagesCount: availableImagesCount,
           defectCount: defects,
           imagesDefected: defects,
           captureEquipment: equipment,
@@ -259,6 +339,8 @@ export async function fetchSupabaseData(): Promise<{
           subgrid: sub,
           imageFilename: (d.panoramas?.[0]?.filename) || `${sub}-0001.jpg`,
           images: Number(d.imagesProcessed || 0),
+          poiCount: Number(d.poiCount || d.imagesProcessed || 0),
+          availableImagesCount: Number(d.availableImagesCount ?? d.imagesProcessed ?? 0),
           defects: Number(d.imagesDefected || d.defectCount || 0),
           kmProcessed: Number(d.kmProcessed || 0),
           status: 'Complete',
@@ -268,12 +350,18 @@ export async function fetchSupabaseData(): Promise<{
         });
       } else {
         existing.images += Number(d.imagesProcessed || 0);
+        existing.poiCount = (existing.poiCount || 0) + Number(d.poiCount || d.imagesProcessed || 0);
+        existing.availableImagesCount = (existing.availableImagesCount || 0) + Number(d.availableImagesCount ?? d.imagesProcessed ?? 0);
         existing.kmProcessed = Math.round((existing.kmProcessed + Number(d.kmProcessed || 0)) * 100) / 100;
         existing.defects += Number(d.imagesDefected || d.defectCount || 0);
         if (d.pic && !existing.pic.includes(d.pic)) {
           existing.pic = `${existing.pic}, ${d.pic}`;
         }
       }
+    });
+
+    masterMap.forEach(entry => {
+      entry.status = entry.status || 'Complete';
     });
 
     const batchLogs = Array.from(masterMap.values());
