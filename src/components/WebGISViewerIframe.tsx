@@ -4,6 +4,7 @@ interface WebGISViewerIframeProps {
   panoramaUrl: string;
   subgrid?: string;
   bearing?: number;
+  themeMode?: 'dark' | 'light';
   className?: string;
 }
 
@@ -11,6 +12,7 @@ export const WebGISViewerIframe: React.FC<WebGISViewerIframeProps> = ({
   panoramaUrl,
   subgrid = 'KL_Drive_04',
   bearing = 0,
+  themeMode = 'dark',
   className = 'w-full h-full'
 }) => {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -30,21 +32,27 @@ export const WebGISViewerIframe: React.FC<WebGISViewerIframeProps> = ({
   const staticSrc = useRef(`${webGisBaseUrl}/?embed=true&viewerOnly=true`).current;
 
   const postData = React.useCallback(() => {
-    if (iframeRef.current && iframeRef.current.contentWindow && panoramaUrl) {
+    if (iframeRef.current && iframeRef.current.contentWindow) {
       try {
+        if (panoramaUrl) {
+          iframeRef.current.contentWindow.postMessage({
+            type: 'SET_PANORAMA',
+            point: {
+              image_url: panoramaUrl,
+              subgrid: subgrid,
+              bearing: bearing
+            }
+          }, '*');
+        }
         iframeRef.current.contentWindow.postMessage({
-          type: 'SET_PANORAMA',
-          point: {
-            image_url: panoramaUrl,
-            subgrid: subgrid,
-            bearing: bearing
-          }
+          type: 'SET_THEME',
+          theme: themeMode
         }, '*');
       } catch (err) {
         console.warn('Failed to postMessage to WebGIS viewer iframe:', err);
       }
     }
-  }, [panoramaUrl, subgrid, bearing]);
+  }, [panoramaUrl, subgrid, bearing, themeMode]);
 
   // Listen for iframe onLoad and VIEWER_READY message to re-post SET_PANORAMA when iframe is ready
   useEffect(() => {
