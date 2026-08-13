@@ -806,7 +806,7 @@ ${missingFilenames.length > 0 ? missingFilenames.join('\n') : 'None - All images
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `QC_Missing_Report_${subgrid}_${new Date().toISOString().slice(0,10)}.txt`;
+    link.download = `QC_Missing_Report_${subgrid}_${new Date().toISOString().slice(0, 10)}.txt`;
     link.click();
     URL.revokeObjectURL(url);
   };
@@ -814,7 +814,7 @@ ${missingFilenames.length > 0 ? missingFilenames.join('\n') : 'None - All images
   return (
     <div className="fixed inset-0 bg-black/85 flex items-center justify-center z-[1000] p-4 backdrop-blur-md">
       <div className="bg-[#0f172a] border border-slate-800 rounded-2xl p-6 max-w-2xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-        
+
         {/* Header */}
         <div className="flex justify-between items-start pb-4 mb-4 border-b border-slate-800 shrink-0">
           <div>
@@ -2294,10 +2294,10 @@ const DataManagementPage = ({
                   <button
                     onClick={() => setIsColumnFilterOpen(prev => !prev)}
                     className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer border shrink-0 ${activeDailyFilterCount > 0
-                        ? 'bg-sky-600 border-sky-500 text-white shadow-md shadow-sky-900/40'
-                        : isColumnFilterOpen
-                          ? 'bg-slate-800 border-sky-500 text-sky-400'
-                          : 'bg-slate-950 border-slate-700/80 text-slate-300 hover:bg-slate-800 hover:text-white'
+                      ? 'bg-sky-600 border-sky-500 text-white shadow-md shadow-sky-900/40'
+                      : isColumnFilterOpen
+                        ? 'bg-slate-800 border-sky-500 text-sky-400'
+                        : 'bg-slate-950 border-slate-700/80 text-slate-300 hover:bg-slate-800 hover:text-white'
                       }`}
                     title="Filter Daily Data by specific columns"
                   >
@@ -2733,28 +2733,27 @@ const DataManagementPage = ({
                                 </span>
                               </td>
                               <td className="px-4 py-3.5 flex items-center gap-2 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                                 <button
-                                   onClick={() => setQcModal({
-                                     isOpen: true,
-                                     subgrid: batchSubgrid,
-                                     poiCount: getPOICount(batch),
-                                     availableCount: getImagesProcessedCount(batch),
-                                     baseFilename: batch.imageFilename
-                                   })}
-                                   className={`px-2 py-1 rounded-lg border text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer ${
-                                     getPOICount(batch) > getImagesProcessedCount(batch)
-                                       ? 'bg-rose-500/20 text-rose-300 border-rose-500/40 hover:bg-rose-500/30'
-                                       : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20'
-                                   }`}
-                                   title={`Run QC Audit for ${batchSubgrid}`}
-                                 >
-                                   {getPOICount(batch) > getImagesProcessedCount(batch) ? (
-                                     <ShieldAlert size={14} className="text-rose-400" />
-                                   ) : (
-                                     <ShieldCheck size={14} className="text-emerald-400" />
-                                   )}
-                                   <span>QC Audit</span>
-                                 </button>
+                                <button
+                                  onClick={() => setQcModal({
+                                    isOpen: true,
+                                    subgrid: batchSubgrid,
+                                    poiCount: getPOICount(batch),
+                                    availableCount: getImagesProcessedCount(batch),
+                                    baseFilename: batch.imageFilename
+                                  })}
+                                  className={`px-2 py-1 rounded-lg border text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer ${getPOICount(batch) > getImagesProcessedCount(batch)
+                                      ? 'bg-rose-500/20 text-rose-300 border-rose-500/40 hover:bg-rose-500/30'
+                                      : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20'
+                                    }`}
+                                  title={`Run QC Audit for ${batchSubgrid}`}
+                                >
+                                  {getPOICount(batch) > getImagesProcessedCount(batch) ? (
+                                    <ShieldAlert size={14} className="text-rose-400" />
+                                  ) : (
+                                    <ShieldCheck size={14} className="text-emerald-400" />
+                                  )}
+                                  <span>QC Audit</span>
+                                </button>
                                 {!isGuestUser ? (
                                   <>
                                     <button
@@ -4963,8 +4962,8 @@ export default function App() {
                       key={tab}
                       onClick={() => setAuditFilterTab(tab)}
                       className={`px-2 py-0.5 rounded font-medium transition-all cursor-pointer whitespace-nowrap border ${auditFilterTab === tab
-                          ? 'bg-[#1f2937] text-white border-slate-600'
-                          : 'text-slate-400 border-transparent hover:text-slate-200 hover:bg-slate-800/50'
+                        ? 'bg-[#1f2937] text-white border-slate-600'
+                        : 'text-slate-400 border-transparent hover:text-slate-200 hover:bg-slate-800/50'
                         }`}
                     >
                       {tab}
@@ -5598,10 +5597,10 @@ export default function App() {
                         <button
                           onClick={() => setIsDashFilterOpen(prev => !prev)}
                           className={`p-1 rounded-lg border transition-all cursor-pointer ${hasActiveDashFilters
-                              ? 'bg-sky-600 border-sky-500 text-white shadow-sm'
-                              : isDashFilterOpen
-                                ? 'bg-[#374151] border-slate-600 text-sky-400'
-                                : 'bg-[#192231] border-[rgba(255,255,255,0.08)] text-slate-400 hover:text-slate-200 hover:bg-[#253043]'
+                            ? 'bg-sky-600 border-sky-500 text-white shadow-sm'
+                            : isDashFilterOpen
+                              ? 'bg-[#374151] border-slate-600 text-sky-400'
+                              : 'bg-[#192231] border-[rgba(255,255,255,0.08)] text-slate-400 hover:text-slate-200 hover:bg-[#253043]'
                             }`}
                           title="Filter Daily Progress columns"
                         >
@@ -5767,8 +5766,8 @@ export default function App() {
                                     <td className="px-3.5 py-3.5 text-emerald-400 font-semibold whitespace-nowrap">{log.pic || 'Fariz'}</td>
                                     <td className="px-3.5 py-3.5 whitespace-nowrap">
                                       <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap ${log.status === 'Complete' || (log.status as string) === 'Published'
-                                          ? 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-400'
-                                          : 'bg-sky-500/15 border border-sky-500/30 text-sky-400'
+                                        ? 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-400'
+                                        : 'bg-sky-500/15 border border-sky-500/30 text-sky-400'
                                         }`}>
                                         {log.status === 'Complete' || (log.status as string) === 'Published' ? <CheckCircle size={10} /> : <Clock size={10} />}
                                         {log.status || 'Complete'}
@@ -6365,8 +6364,8 @@ export default function App() {
                     key={tab.id}
                     onClick={() => setHelpGuideTab(tab.id as any)}
                     className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer whitespace-nowrap border font-medium ${helpGuideTab === tab.id
-                        ? 'bg-[#1f2937] text-white border-slate-600'
-                        : 'text-slate-400 border-transparent hover:text-slate-200 hover:bg-slate-800/40'
+                      ? 'bg-[#1f2937] text-white border-slate-600'
+                      : 'text-slate-400 border-transparent hover:text-slate-200 hover:bg-slate-800/40'
                       }`}
                   >
                     {tab.label}
