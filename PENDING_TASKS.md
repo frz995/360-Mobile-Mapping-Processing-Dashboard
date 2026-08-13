@@ -4,18 +4,32 @@
 
 ---
 
-## UI / UX Polish
+## 🗺️ Map Engine & GIS Rendering (Future Implementation)
 
-- `[x]` **Mobile Responsiveness** — Dense grid layout likely breaks on smaller screens. Adapt layout to stack panels vertically on tablet/mobile viewports.
-- `[x]` **Loading States** — Replace empty dashes (`—`) during data fetch with skeleton loaders for KPI cards, table rows, and map panels.
-- `[x]` **Empty State Design** — When no data exists, show illustrated/descriptive empty states instead of blank panels (e.g., "No batch logs yet. Import a CSV to get started.").
+- `[ ]` **Migrate WebGIS Map to MapLibre GL (Mapcn) Only**:
+  * Consolidate map engine from Leaflet wrapper to MapLibre GL for GPU-accelerated rendering of 50,000+ panorama points and 3D terrain pitch.
+  * ⚠️ **Known Technical Issue to Resolve**: Fix panotrack vector line rendering failure on MapLibre map sources. Ensure GeoJSON `LineString` trajectory features use correct `map.addSource()` and `map.addLayer({ type: 'line', paint: { 'line-color': '#38bdf8', 'line-width': 4 } })` formatting below marker symbol layers so panotracks render cleanly.
 
-## Reliability & Robustness
+---
 
-- `[x]` **Error Boundaries** — Add graceful UI fallback when Supabase is unreachable or returns an error (currently may silently fail).
+## 🚀 Advanced Features
 
-## Accessibility
+- `[ ]` **Supabase Storage Persistence for Vector Layers**: Move uploaded KML, GPX, GeoJSON, and Shapefile vector catalogs from local storage to Supabase Storage bucket.
+- `[ ]` **Automated CSV Export for Filtered BBOX Points**: Allow exporting spatially-selected subgrid points to CSV from the map viewer.
 
-- `[x]` **Keyboard Navigation** — Ensure all interactive elements (buttons, tabs, map controls) are reachable and operable via keyboard.
-- `[x]` **ARIA Labels** — Add descriptive `aria-label` attributes to icon-only buttons, toggle controls, and modal dialogs.
+---
 
+## 🎨 UI / UX Polish
+
+- `[x]` **Mobile Responsiveness** — Dense grid layout adapts to stack panels vertically on tablet/mobile viewports.
+- `[x]` **Executive Dark Slate Theme** — Executive dark palette (`#111827`, `#121824`) with sky blue accents and light mode overrides.
+- `[x]` **Project & Database Settings Administration Canvas Page** — Dedicated `/settings` canvas for Supabase credentials, CSV header aliases, image storage paths, and spatial rules.
+- `[x]` **CSV Staging Pipeline** — Staged initial mode (`0 verified frames`, `In Process`) updating to verified frame counts upon `Publish to Database`.
+- `[x]` **Zero (0,0) GPS Coordinate Detection** — Auto-detects missing or zero coordinate rows on CSV import with admin alert banners.
+
+---
+
+## 🛡️ Reliability & Security
+
+- `[x]` **Supabase Row Level Security (RLS)** — Row Level Security policies configured on `panoramas` and `batch_logs` tables.
+- `[x]` **Error Boundaries & Fallbacks** — Graceful UI fallbacks when database connections or physical image files are missing.
