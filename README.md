@@ -1,124 +1,68 @@
-# TNB LV Asset Mapping — 360° Mobile Mapping Processing Dashboard
+# TNB 360° Mobile Mapping System (MMS) — Processing Dashboard
 
-> **Project**: Tenaga Nasional Berhad (TNB) Low Voltage Asset Mapping using 360° Mobile Mapping System (MMS)
-> **Stack**: React 18 + TypeScript + Vite · Tailwind CSS · Leaflet · Supabase · Recharts
-
----
-
-## Overview
-
-A dual-app system for field capture, QA inspection, and executive reporting of 360° panoramic street-level imagery across TNB subgrid coverage zones.
-
-| Item | Details |
-|---|---|
-| Total Panoramas | 265 frames (live from Supabase) |
-| Coverage | ~1.6 km active / ~4.8 km project total |
-| Subgrids | N93E70, N94E70, N94E71, N90E67 |
-| Equipment | MMS (Backpack / Vehicle) |
-| PICs | Fariz, Hafiz, Amirul |
-| Backend | Supabase (`panoramas_view`, `qa_defects`, `daily_logs`, `batch_logs`) |
+Executive dashboard for Tenaga Nasional Berhad (TNB) Low Voltage Asset Mapping. Built for 360° StreetView panorama processing, spatial trajectory monitoring, quality control (QA/QC), and database administration.
 
 ---
 
-## Tech Stack
+## 📌 Executive Summary
 
-| Layer | Library |
-|---|---|
-| Frontend | React 18 + TypeScript + Vite |
-| Styling | Tailwind CSS + Lucide React icons |
-| Map | Leaflet + Esri Leaflet (embedded WebGIS iframe) |
-| Charts | Recharts |
-| Spatial | GeoJSON · KML/GPX (`@tmcw/togeojson`) · SHP (`shapefile`) · CSV lat/lon |
-| Backend | Supabase (`@supabase/supabase-js`) — auth, panoramas, QA defects, batch/daily data |
-| Storage | `localStorage` persistence for `dailyData`, `batchLogs`, `layerCatalog` |
+* **Project**: TNB Low Voltage Asset Subgrid Mapping
+* **Target Trajectory**: 315.2 km (~50,000 Equirectangular Panoramas)
+* **Active Subgrids**: `N93E70`, `N94E70`, `N94E71`, `N90E67`
+* **Equipment**: MMS Vehicle Unit / Backpack Unit
+* **Database**: PostgreSQL 15 + PostGIS 3.3 (Supabase Cloud + Local PostGIS)
 
 ---
 
-## Implemented Features
+## ⚡ Tech Stack
 
-### 🗺️ Interactive Coverage Map (Dashboard)
-- Embedded WebGIS iframe (`mobilemapping-nine.vercel.app`) with live Supabase panorama point markers
-- `postMessage` bridge for inter-app communication (`FILTER_SUBGRID`, `FILTER_STATUS_TYPES`, `TOGGLE_BBOX_DRAW`, `UPDATE_POINT_DEFECT`)
-- **Trajectory Status Filter** — togglable popup (Published · Defect/Flags · In Progress) with per-type show/hide
-- **Spatial BBOX Filter** — 2-click corner bounding box to spatially filter visible map points
-- Panotrack markers coloured: 🟢 Published · 🔴 Defect/Flagged · 🟡 Stitching/In Progress
-
-### 📊 Executive KPI Summary (4 Cards)
-- **Total Distance Mapped** — computed from `dailyData.kmProcessed` with last-update date
-- **Processed Panoramas** — live frame count from `panoramas_view` with last-update date
-- **Active Processing Jobs** — batch run count / average progress %
-- **Pipeline Health** — dynamically computed `(total frames − defects) / total frames × 100%` with live amber defect frame count from `qa_defects`
-
-### 🔍 Operator QA Panel
-- Per-frame defect flag selection: `Blurry Frame`, `Lens Obstruction`, `Bad GPS`
-- Conditional YES/NO status confirmation flow
-- Post-confirmation summary with PIC, status (`DEFECT CONFIRMED` / `PASSED`), and `✏️ Edit QA` unlock
-- Real-time sync to `qa_defects` Supabase table (`defect_count`, `qa_status`, `defect_flags`)
-- `postMessage → UPDATE_POINT_DEFECT` turns map marker red immediately on flag confirmation
-- Per-subgrid session memory via `qaSubgridRecords` (restored on navigation return)
-- Clickable `N flagged` badge on table rows filters the coverage map to that subgrid
-
-### 📁 Data Management Page
-- Batch log table (subgrid, images, km, status, PIC, equipment) with inline edit/delete/add
-- Daily ledger table with same CRUD and CSV import with field mapping
-- Vector layer upload: GeoJSON · KML · GPX · SHP · CSV — staged → saved to folder catalog
-- Folder-based layer catalog with rename, delete, visibility toggle, move
-
-### 📄 Executive PDF Report
-- Opens a print-ready HTML summary with KPI metrics, subgrid breakdown table, and system status
-- Auto-launches browser print/save-to-PDF dialog
-
-### 🔐 Auth
-- Supabase auth gate (sign-in / sign-up / sign-out) with session restore on reload
+| Component | Technologies & Libraries |
+| :--- | :--- |
+| **Frontend Framework** | React 18 · TypeScript · Vite |
+| **UI Design & Theme** | Tailwind CSS · Executive Dark Slate Theme (`#111827`, `#121824`) · Custom Light Mode Overrides · Lucide Icons |
+| **GIS & 360 Viewer** | Leaflet WebGIS · Esri Imagery · PhotoSphereViewer / Three.js 360° Equirectangular Viewer |
+| **Backend & Database** | Supabase Cloud (`@supabase/supabase-js`) · PostgreSQL 15 + PostGIS 3.3 · Row Level Security (RLS) |
+| **Spatial Formats** | GeoJSON · KML · GPX · Shapefiles (`.shp`) · CSV Trametry Logs |
 
 ---
 
-## Data Flow
+## 🚀 Key Modules & Workflow
 
+### 1. 📊 Interactive Processing Dashboard
+* **WebGIS Coverage Map**: Real-time Leaflet viewer with inter-app `postMessage` bridge (`FILTER_SUBGRID`, `UPDATE_POINT_DEFECT`).
+* **360° QA Inspector**: Per-frame defect auditing (`Blurry Frame`, `Lens Obstruction`, `Bad GPS`). Red marker sync on defect confirmation.
+* **Executive KPI Cards**: Real-time trajectory distance (km), processed frames count, active job status, and pipeline health %.
+
+### 2. 🗄️ Data Management Canvas & CSV Staging Pipeline
+* **CSV Staging Pipeline**: Imported CSVs initialize in **Staged Mode** (`0 verified frames`, status `In Process`). Frame counts update to verified totals upon clicking **Publish to Database**.
+* **Automatic GPS Sanitization**: Detects missing or zero `(0,0)` coordinate rows and alerts administrators on import.
+* **Vector Layer Catalog**: Upload and organize GeoJSON, KML, GPX, SHP, and CSV spatial layers.
+
+### 3. ⚙️ Project & Database Administration Canvas (`/settings`)
+* **Supabase & PostGIS Configuration**: Endpoint URL, Anon Key, Auto-Sync frequency, and DB connection diagnostics.
+* **Image Fetch Rules**: Storage path (`/MMS_PIC/`), panorama naming pattern (`{subgrid}-{index:04d}.jpg`), and pre-fetch cache.
+* **CSV Column Alias Mapping**: Custom alias mapping (`latitude, lat, y`, `longitude, lon, x`, `heading, bearing`) for vendor compatibility.
+* **Spatial & GIS Rules**: Selangor/KL bounding box spatial filters, subgrid deduplication, and AI defect thresholding (%).
+
+---
+
+## 🔒 Security & Database RLS
+
+Row Level Security (RLS) policies configured on `public.panoramas` and `public.batch_logs`:
+* **Public Role**: Read-Only access (`SELECT`) for map rendering and 360 viewing.
+* **Authenticated Role**: Full Write access (`INSERT`, `UPDATE`, `DELETE`) restricted to authenticated administrators.
+
+---
+
+## 🛠️ Quick Start
+
+```bash
+# Install dependencies
+npm install
+
+# Launch Development Server
+npm run dev
+
+# TypeScript Type-Check
+npx tsc --noEmit
 ```
-Supabase DB
-  ├── panoramas_view       → useSupabasePoints (WebGIS map) + liveTotalFrames count
-  ├── qa_defects           → liveDefectCount + pipelineHealthPercent + map marker color
-  ├── daily_logs           → dailyData state (totalImages, totalKm, totalDefects fallback)
-  └── batch_logs           → batchLogs state (subgrid cards, active jobs card)
-
-App.tsx (state hub)
-  ├── dailyData / batchLogs  ← localStorage init → merged with Supabase on mount
-  ├── layerCatalog           ← localStorage, promoted from stagedLayers via saveStagedLayers()
-  ├── qaSubgridRecords       ← per-subgrid QA memory, synced to Supabase
-  ├── liveDefectCount        ← direct qa_defects query on mount
-  ├── liveTotalFrames        ← direct panoramas_view COUNT query on mount
-  └── selectedSubgridFilter  → postMessage → embedded WebGIS iframe
-```
-
----
-
-## Inter-App postMessage Events
-
-| Event | Direction | Purpose |
-|---|---|---|
-| `FILTER_SUBGRID` | Dashboard → Map | Filter map points to subgrid |
-| `FILTER_STATUS_TYPES` | Dashboard → Map | Toggle Published / Defect / Stitching layers |
-| `TOGGLE_BBOX_DRAW` | Dashboard → Map | Activate / deactivate spatial BBOX filter |
-| `UPDATE_POINT_DEFECT` | Dashboard → Map | Turn single frame marker red on QA flag |
-| `MAP_POINT_SELECTED` | Map → Dashboard | Open panorama viewer for clicked point |
-| `VIEWER_READY` | Map → Dashboard | Map iframe fully loaded signal |
-
----
-
-## Embedded WebGIS App (`/360 web mapping`)
-
-- Separate Vite/React app at `d:\Webmap\360 web mapping\360 web mapping`
-- Fetches points from `panoramas_view` + joins `qa_defects` on mount
-- Renders Leaflet `CircleMarker` per panorama with colour-coded status
-- `BBoxDrawLayer` — 2-click spatial rectangle selection with live point filtering
-- Responds to all `postMessage` events from the Dashboard iframe parent
-
----
-
-## Roadmap
-
-- [ ] Move vector layer catalog persistence from `localStorage` to Supabase storage
-- [ ] Add per-subgrid completion % progress bar on Coverage Map
-- [ ] Export BBOX-filtered point list to CSV
-- [ ] Role-based access (Operator vs Supervisor views)
