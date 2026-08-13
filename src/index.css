@@ -37,3 +37,405 @@ body {
   }
 }
 
+/* ==========================================================================
+   LIGHT MODE DASHBOARD THEME OVERRIDES
+   ========================================================================== */
+
+.light-mode {
+  color-scheme: light;
+  background-color: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+/* Header & Top Navigation */
+.light-mode header,
+.light-mode header.bg-\[\#12161f\] {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+
+.light-mode header h1,
+.light-mode header h2 {
+  color: #0f172a !important;
+}
+
+/* Far Left Icon Sidebar & Navigation */
+.light-mode nav,
+.light-mode nav.bg-\[\#12161f\] {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
+}
+
+/* Main Dashboard Canvas & Container Backgrounds */
+.light-mode main,
+.light-mode main.bg-\[\#0B0F17\],
+.light-mode .bg-\[\#0b0e14\],
+.light-mode .bg-\[\#0B0F17\],
+.light-mode .bg-slate-950,
+.light-mode .bg-\[\#09090b\] {
+  background-color: #f8fafc !important;
+}
+
+/* All Dark Card, Panel & Hex Container Backgrounds */
+.light-mode .bg-\[\#111827\],
+.light-mode .bg-\[\#0f172a\],
+.light-mode .bg-\[\#131b2e\],
+.light-mode .bg-\[\#12161f\],
+.light-mode .bg-\[\#121824\],
+.light-mode .bg-\[\#0d121d\],
+.light-mode .bg-\[\#0e131f\],
+.light-mode .bg-\[\#0c1017\],
+.light-mode .bg-\[\#11151c\],
+.light-mode .bg-\[\#151d2a\],
+.light-mode .bg-\[\#161f30\],
+.light-mode .bg-\[\#192231\],
+.light-mode .bg-\[\#1a2332\],
+.light-mode .bg-\[\#1e293b\],
+.light-mode .bg-slate-900,
+.light-mode .bg-slate-900\/90,
+.light-mode .bg-slate-900\/95,
+.light-mode .bg-slate-900\/50,
+.light-mode .bg-slate-900\/80,
+.light-mode .bg-slate-950\/90,
+.light-mode .bg-slate-950\/80,
+.light-mode .bg-slate-800,
+.light-mode .bg-slate-800\/90,
+.light-mode .bg-slate-800\/80,
+.light-mode .bg-slate-800\/50 {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
+  color: #0f172a !important;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05) !important;
+}
+
+/* Semi-Transparent Hex Background Classes */
+.light-mode [class*="bg-\[\#111827\]"],
+.light-mode [class*="bg-\[\#12161f\]"],
+.light-mode [class*="bg-\[\#121824\]"],
+.light-mode [class*="bg-\[\#0d121d\]"],
+.light-mode [class*="bg-\[\#131b2e\]"],
+.light-mode [class*="bg-\[\#151d2a\]"],
+.light-mode [class*="bg-\[\#192231\]"],
+.light-mode [class*="bg-\[\#11151c\]"],
+.light-mode [class*="bg-\[\#0c1017\]"] {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+
+/* Sub-panels, Inner Containers & Tab Control Bars */
+.light-mode .bg-\[\#0d121d\],
+.light-mode .bg-\[\#0b0f17\],
+.light-mode .bg-\[\#0c1017\],
+.light-mode .bg-\[\#11151c\],
+.light-mode .bg-\[\#192231\],
+.light-mode .bg-slate-900\/40,
+.light-mode .bg-slate-900\/60,
+.light-mode .bg-slate-900\/30,
+.light-mode .bg-slate-800\/40 {
+  background-color: #f8fafc !important;
+  border-color: #e2e8f0 !important;
+}
+
+/* Active Filter Buttons & Dark Buttons in Light Mode */
+.light-mode .bg-\[\#1f2937\],
+.light-mode .bg-\[\#374151\],
+.light-mode [class*="bg-\[\#1f2937\]"],
+.light-mode [class*="bg-\[\#374151\]"] {
+  background-color: #e2e8f0 !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
+}
+
+.light-mode button.bg-\[\#1f2937\]\/80:hover,
+.light-mode button.bg-\[\#374151\]:hover,
+.light-mode .hover\:bg-\[\#374151\]:hover {
+  background-color: #cbd5e1 !important;
+  color: #0f172a !important;
+}
+
+/* Dark Status Badges Inverted for Light Mode */
+.light-mode .bg-emerald-950\/60,
+.light-mode .bg-emerald-950\/40,
+.light-mode .bg-emerald-950\/20,
+.light-mode .bg-emerald-500\/25 {
+  background-color: #d1fae5 !important;
+  border-color: #a7f3d0 !important;
+  color: #047857 !important;
+}
+
+.light-mode .bg-rose-950\/60,
+.light-mode .bg-rose-950\/40,
+.light-mode .bg-red-950\/60,
+.light-mode .bg-red-950\/40,
+.light-mode .bg-red-500\/25 {
+  background-color: #ffe4e6 !important;
+  border-color: #fecdd3 !important;
+  color: #be123c !important;
+}
+
+.light-mode .bg-amber-950\/30,
+.light-mode .bg-amber-950\/70,
+.light-mode .bg-amber-950\/40,
+.light-mode .bg-amber-500\/25 {
+  background-color: #fef3c7 !important;
+  border-color: #fde68a !important;
+  color: #b45309 !important;
+}
+
+.light-mode .bg-sky-950\/60,
+.light-mode .bg-sky-950\/40,
+.light-mode .bg-sky-950\/20,
+.light-mode .bg-sky-500\/25 {
+  background-color: #e0f2fe !important;
+  border-color: #bae6fd !important;
+  color: #0369a1 !important;
+}
+
+/* Borders in Light Mode */
+.light-mode .border-slate-800,
+.light-mode .border-slate-800\/80,
+.light-mode .border-slate-800\/60,
+.light-mode .border-slate-800\/50,
+.light-mode .border-slate-800\/40,
+.light-mode .border-slate-800\/90,
+.light-mode .border-slate-700,
+.light-mode .border-slate-700\/80,
+.light-mode .border-slate-700\/60,
+.light-mode .border-slate-600,
+.light-mode [class*="border-\[rgba\(255\,255\,255"] {
+  border-color: #e2e8f0 !important;
+}
+
+/* Text Colors in Light Mode */
+.light-mode .text-white,
+.light-mode .text-slate-100,
+.light-mode .text-slate-200,
+.light-mode .text-zinc-100 {
+  color: #0f172a !important;
+}
+
+.light-mode .text-slate-300,
+.light-mode .text-slate-400 {
+  color: #334155 !important;
+}
+
+.light-mode .text-slate-500 {
+  color: #64748b !important;
+}
+
+.light-mode .text-sky-300 {
+  color: #0284c7 !important;
+}
+
+.light-mode .text-emerald-300 {
+  color: #047857 !important;
+}
+
+.light-mode .text-amber-300 {
+  color: #b45309 !important;
+}
+
+.light-mode .text-rose-300,
+.light-mode .text-red-300 {
+  color: #be123c !important;
+}
+
+/* PRESERVE WHITE TEXT ON FILLED BUTTONS & ACCENT BADGES */
+.light-mode button.bg-sky-600,
+.light-mode button.bg-sky-500,
+.light-mode button.bg-emerald-600,
+.light-mode button.bg-emerald-500,
+.light-mode button.bg-indigo-600,
+.light-mode button.bg-indigo-500,
+.light-mode button.bg-rose-600,
+.light-mode button.bg-red-600,
+.light-mode button.bg-blue-600,
+.light-mode .bg-sky-600,
+.light-mode .bg-sky-700,
+.light-mode .bg-sky-500,
+.light-mode .bg-emerald-600,
+.light-mode .bg-indigo-600,
+.light-mode .bg-rose-600,
+.light-mode .bg-red-600,
+.light-mode .bg-sky-600 *,
+.light-mode .bg-sky-700 *,
+.light-mode .bg-emerald-600 *,
+.light-mode .bg-indigo-600 *,
+.light-mode .bg-rose-600 *,
+.light-mode .bg-red-600 *,
+.light-mode [class*="bg-sky-600"] *,
+.light-mode [class*="bg-emerald-600"] * {
+  color: #ffffff !important;
+}
+
+/* Table Headers & Body */
+.light-mode table thead,
+.light-mode thead.bg-slate-800,
+.light-mode thead.bg-\[\#0d121d\],
+.light-mode table header {
+  background-color: #f1f5f9 !important;
+  border-color: #e2e8f0 !important;
+  color: #334155 !important;
+}
+
+.light-mode table thead th {
+  color: #475569 !important;
+}
+
+.light-mode table tbody tr {
+  border-color: #e2e8f0 !important;
+}
+
+.light-mode table tbody tr:hover,
+.light-mode .hover\:bg-slate-800\/50:hover,
+.light-mode .hover\:bg-slate-800:hover,
+.light-mode .hover\:bg-\[\#151d2a\]:hover,
+.light-mode .hover\:bg-\[\#1e293b\]\/50:hover {
+  background-color: #f8fafc !important;
+}
+
+.light-mode .divide-slate-800 > :not([hidden]) ~ :not([hidden]),
+.light-mode .divide-slate-700 > :not([hidden]) ~ :not([hidden]) {
+  border-color: #e2e8f0 !important;
+}
+
+/* Form Inputs, Selects, and Filters */
+.light-mode input,
+.light-mode select,
+.light-mode textarea,
+.light-mode input[class*="bg-"],
+.light-mode select[class*="bg-"] {
+  background-color: #ffffff !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
+}
+
+.light-mode select option,
+.light-mode option {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+}
+
+.light-mode input::placeholder,
+.light-mode textarea::placeholder {
+  color: #94a3b8 !important;
+}
+
+/* Accent Colors (Contrast tuned for light background) */
+.light-mode .text-sky-400 {
+  color: #0284c7 !important;
+}
+
+.light-mode .text-emerald-400 {
+  color: #059669 !important;
+}
+
+.light-mode .text-amber-400 {
+  color: #d97706 !important;
+}
+
+.light-mode .text-rose-400 {
+  color: #e11d48 !important;
+}
+
+/* Popovers & Modals */
+.light-mode .fixed .bg-\[\#0f172a\],
+.light-mode .fixed .bg-\[\#111827\],
+.light-mode .fixed .bg-slate-900,
+.light-mode .fixed .bg-\[\#0d121d\],
+.light-mode .absolute .bg-\[\#111827\],
+.light-mode .absolute .bg-\[\#12161f\],
+.light-mode .absolute .bg-\[\#0d121d\] {
+  background-color: #ffffff !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1) !important;
+}
+
+/* ============================================================
+   PANO TRACK CLICK POPUP BOX LIGHT MODE STYLING
+   ============================================================ */
+.light-mode .custom-panotrack-popup .leaflet-popup-tip,
+.light-mode .leaflet-popup-tip {
+  background: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08) !important;
+}
+
+.light-mode .custom-panotrack-popup .leaflet-popup-content-wrapper,
+.light-mode .leaflet-popup-content-wrapper {
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1) !important;
+}
+
+.light-mode .custom-panotrack-popup a.leaflet-popup-close-button,
+.light-mode .leaflet-container a.leaflet-popup-close-button {
+  color: #64748b !important;
+}
+
+.light-mode .custom-panotrack-popup a.leaflet-popup-close-button:hover,
+.light-mode .leaflet-container a.leaflet-popup-close-button:hover {
+  color: #0f172a !important;
+  background: #f1f5f9 !important;
+  border-radius: 6px !important;
+}
+
+.light-mode .custom-panotrack-popup .bg-slate-900\/95,
+.light-mode .custom-panotrack-popup .bg-slate-900,
+.light-mode .custom-panotrack-popup .bg-\[\#0f172a\],
+.light-mode .custom-panotrack-popup [class*="bg-slate-"],
+.light-mode .custom-panotrack-popup [class*="bg-\[\#"],
+.light-mode .leaflet-popup [class*="bg-slate-"],
+.light-mode .leaflet-popup [class*="bg-\[\#"] {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+
+.light-mode .custom-panotrack-popup .border-slate-800,
+.light-mode .custom-panotrack-popup .border-slate-700\/80 {
+  border-color: #e2e8f0 !important;
+}
+
+.light-mode .custom-panotrack-popup .text-slate-100,
+.light-mode .custom-panotrack-popup .text-slate-200 {
+  color: #0f172a !important;
+}
+
+.light-mode .custom-panotrack-popup .text-slate-400 {
+  color: #475569 !important;
+}
+
+.light-mode .custom-panotrack-popup .text-slate-500 {
+  color: #64748b !important;
+}
+
+.light-mode .custom-panotrack-popup .bg-sky-500\/15 {
+  background-color: #e0f2fe !important;
+  border-color: #bae6fd !important;
+  color: #0369a1 !important;
+}
+
+.light-mode .custom-panotrack-popup .bg-amber-500\/15 {
+  background-color: #fef3c7 !important;
+  border-color: #fde68a !important;
+  color: #b45309 !important;
+}
+
+/* Light Mode Scrollbars */
+.light-mode ::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+.light-mode ::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+.light-mode ::-webkit-scrollbar-thumb:hover {
+  background: #0ea5e9;
+}
+
+
