@@ -8,7 +8,10 @@
 
 - `[ ]` **Migrate WebGIS Map to MapLibre GL (Mapcn) Only**:
   * Consolidate map engine from Leaflet wrapper to MapLibre GL for GPU-accelerated rendering of 50,000+ panorama points and 3D terrain pitch.
-  * ⚠️ **Known Technical Issue to Resolve**: Fix panotrack vector line rendering failure on MapLibre map sources. Ensure GeoJSON `LineString` trajectory features use correct `map.addSource()` and `map.addLayer({ type: 'line', paint: { 'line-color': '#38bdf8', 'line-width': 4 } })` formatting below marker symbol layers so panotracks render cleanly.
+  * ⚠️ **Known Technical Issue & Solution**:
+    1. Wait for `map.on('style.load')` event before adding vector line sources to prevent silent tile load drops.
+    2. Separate GeoJSON sources into distinct `'line'` (`LineString` trajectory) and `'circle'` (`Point` markers) layers.
+    3. Enforce layer z-index order so line layers render below symbol markers (`paint: { 'line-color': '#38bdf8', 'line-width': 4 }`).
 
 ---
 
