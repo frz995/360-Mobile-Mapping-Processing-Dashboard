@@ -1,54 +1,85 @@
 # TNB 360° Mobile Mapping System (MMS) — Processing Dashboard
 
-Executive dashboard for Tenaga Nasional Berhad (TNB) Low Voltage Asset Mapping. Built for 360° StreetView panorama processing, spatial trajectory monitoring, quality control (QA/QC), and database administration.
+> Executive WebGIS dashboard for Tenaga Nasional Berhad (TNB) Low Voltage Asset Mapping. Built for 360° StreetView panorama processing, spatial trajectory monitoring, quality control (QA/QC), vector layer management, and database administration.
 
 ---
 
-## 📌 Executive Summary
+## 📌 Project Overview & Technical Context
 
-* **Project**: TNB Low Voltage Asset Subgrid Mapping
+* **Project Scope**: TNB Low Voltage Asset Subgrid Mapping
 * **Target Trajectory**: 315.2 km (~50,000 Equirectangular Panoramas)
 * **Active Subgrids**: `N93E70`, `N94E70`, `N94E71`, `N90E67`
-* **Equipment**: MMS Vehicle Unit / Backpack Unit
-* **Database**: PostgreSQL 15 + PostGIS 3.3 (Supabase Cloud + Local PostGIS)
+* **Equipment Units**: MMS Vehicle Unit / Backpack Mobile Unit
+* **Database & Storage**: PostgreSQL 15 + PostGIS 3.3 (Supabase Cloud) & Supabase Storage (`/MMS_PIC/`, `/vector_layers/`)
 
 ---
 
-## ⚡ Tech Stack
+## 🛠️ Tech Stack & Core Services
 
-| Component | Technologies & Libraries |
+| Component | Technologies & Service Modules |
 | :--- | :--- |
 | **Frontend Framework** | React 18 · TypeScript · Vite |
-| **UI Design & Theme** | Tailwind CSS · Executive Dark Slate Theme (`#111827`, `#121824`) · Custom Light Mode Overrides · Lucide Icons |
-| **GIS & 360 Viewer** | Leaflet WebGIS · Esri Imagery · PhotoSphereViewer / Three.js 360° Equirectangular Viewer |
-| **Backend & Database** | Supabase Cloud (`@supabase/supabase-js`) · PostgreSQL 15 + PostGIS 3.3 · Row Level Security (RLS) |
-| **Spatial Formats** | GeoJSON · KML · GPX · Shapefiles (`.shp`) · CSV Trametry Logs |
+| **UI Theme & Styling** | Tailwind CSS · Executive Dark Slate Theme (`#111827`, `#121824`) · Custom Light Overrides · Lucide React Icons · Recharts |
+| **GIS & Map Engine** | Leaflet WebGIS · Esri Satellite Imagery · MapLibre GL Helpers (`src/services/maplibreHelpers.ts`) |
+| **360° Panorama Viewers** | PhotoSphereViewer (`@photo-sphere-viewer/core` v5) · Custom WebGL 360° Sphere Renderer built with Three.js (r185) with 60 FPS damping |
+| **Backend & Database** | Supabase Cloud (`@supabase/supabase-js` v2) · PostgreSQL 15 + PostGIS 3.3 (`public.panoramas`, `public.batch_logs`, `public.vector_layers_meta`) · Row Level Security (RLS) |
+| **Spatial Data Services** | `@tmcw/togeojson` (KML/GPX) · `shapefile` (`.shp` parser) · Native GeoJSON · `src/services/csvExport.ts` · `src/services/supabase.ts` |
 
 ---
 
-## 🚀 Key Modules & Workflow
+## 🚀 Implemented Modules & Features
 
-### 1. 📊 Interactive Processing Dashboard
-* **WebGIS Coverage Map**: Real-time Leaflet viewer with inter-app `postMessage` bridge (`FILTER_SUBGRID`, `UPDATE_POINT_DEFECT`).
-* **360° QA Inspector**: Per-frame defect auditing (`Blurry Frame`, `Lens Obstruction`, `Bad GPS`). Red marker sync on defect confirmation.
-* **Executive KPI Cards**: Real-time trajectory distance (km), processed frames count, active job status, and pipeline health %.
+### 1. 📊 Interactive Processing Dashboard & Trajectory Monitoring
+* **Real-time Trajectory KPIs**: Tracks total trajectory distance (km via Haversine calculation), total processed frames, active subgrid counts, and pipeline health %.
+* **WebGIS Map Integration**: Embedded WebGIS viewer with cross-app bidirectional iframe sync protocol.
 
-### 2. 🗄️ Data Management Canvas & CSV Staging Pipeline
-* **CSV Staging Pipeline**: Imported CSVs initialize in **Staged Mode** (`0 verified frames`, status `In Process`). Frame counts update to verified totals upon clicking **Publish to Database**.
-* **Automatic GPS Sanitization**: Detects missing or zero `(0,0)` coordinate rows and alerts administrators on import.
-* **Vector Layer Catalog**: Upload and organize GeoJSON, KML, GPX, SHP, and CSV spatial layers.
+### 2. 🔍 Dual 360° QA Inspector & Defect Auditing
+* **Dual Rendering Engine**: Supports both PhotoSphereViewer and Three.js 60 FPS WebGL equirectangular sphere views.
+* **Per-Frame QA Auditing**: Enables flagging defects (`Blurry Frame`, `Lens Obstruction`, `Bad GPS`) and syncs status in real-time to Supabase (`qa_status` & `defect_flags`).
 
-### 3. ⚙️ Project & Database Administration Canvas (`/settings`)
-* **Supabase & PostGIS Configuration**: Endpoint URL, Anon Key, Auto-Sync frequency, and DB connection diagnostics.
-* **Image Fetch Rules**: Storage path (`/MMS_PIC/`), panorama naming pattern (`{subgrid}-{index:04d}.jpg`), and pre-fetch cache.
-* **CSV Column Alias Mapping**: Custom alias mapping (`latitude, lat, y`, `longitude, lon, x`, `heading, bearing`) for vendor compatibility.
-* **Spatial & GIS Rules**: Selangor/KL bounding box spatial filters, subgrid deduplication, and AI defect thresholding (%).
+### 3. 🔄 Cold-Start Iframe Handshake Bridge
+* **`WebGISViewerIframe.tsx`**: Implements a robust event handshake (`VIEWER_READY` / `VIEWER_ACK`) and a pending queue (`pendingPanoramaRef`) with exponential retries (100ms–3000ms) to prevent message drops during cold loads.
+
+### 4. 🛰️ Automatic GPS Sanitization & Staging Pipeline
+* **Coordinate Sanitizer (`sanitizeCoordinates` in `supabase.ts`)**: Auto-detects `(0,0)`, `NaN`, `null`, or out-of-bounds coordinates, assigning safe default subgrid centroids (`SUBGRID_COORDINATES`) to eliminate "Null Island" map rendering bugs.
+* **CSV Staging Pipeline**: Ingests vendor telemetry CSVs in **Staged Mode** (`0 verified frames`, status `In Process`) until clicking **Publish to Database**.
+
+### 5. 🗂️ Supabase-Persisted Vector Layer Catalog
+* **Storage & Metadata Persistence**: Uploaded GeoJSON, KML, GPX, and Shapefile layers are stored in Supabase Storage (`vector_layers` bucket) and tracked in `vector_layers_meta`, restoring layer catalog trees automatically across sessions.
+
+### 6. 🗺️ MapLibre GL Rendering Helpers
+* **`src/services/maplibreHelpers.ts`**: Provides `style.load` guards, separates GeoJSON sources into distinct `'line'` (trajectory route) and `'circle'` (point markers) layers, and enforces Z-index layer order.
+
+### 7. 📥 Automated BBOX Spatial CSV Exporter
+* **`src/services/csvExport.ts`**: Filters spatial trajectory points within user-defined bounding boxes (`minLon, minLat, maxLon, maxLat`) and triggers instant browser CSV file downloads.
+
+### 8. ⚙️ Advanced Project Settings & Regional BBOX Administration
+* **Malaysia Project Region BBOX Selector**: Configure bounding box bounds dynamically across 11 Malaysian regions (`Selangor/KL`, `Johor`, `Negeri Sembilan & Melaka`, `Perak`, `Penang/Kedah/Perlis`, `Pahang`, `Terengganu/Kelantan`, `Sarawak`, `Sabah`, `Entire Malaysia`, `Custom`).
+* **Dynamic Storage & Persistence Controls**: Configure image fetch sources (`Local WebServer`, `Supabase Storage MMS_PIC Cloud`, `AWS S3 Proxy`) and GIS vector layer catalog persistence buckets.
+
+---
+
+## 📁 Key Service Modules
+
+```
+src/
+├── components/
+│   ├── PhotoSphereViewerComponent.tsx  # PhotoSphereViewer v5 Equirectangular Inspector
+│   ├── ThreePanoramaViewer.tsx         # Custom Three.js r185 WebGL 360° Sphere Viewer
+│   └── WebGISViewerIframe.tsx          # Handshake-enabled postMessage WebGIS Bridge
+├── services/
+│   ├── supabase.ts                     # Supabase Cloud, PostGIS, GPS Sanitizer & Layer Persistence
+│   ├── maplibreHelpers.ts              # MapLibre GL style.load guards & layer separation
+│   └── csvExport.ts                    # BBOX spatial point filtering & CSV download export
+├── App.tsx                             # Monolithic Dashboard application controller
+└── main.tsx                            # React root entrypoint
+```
 
 ---
 
 ## 🔒 Security & Database RLS
 
-Row Level Security (RLS) policies configured on `public.panoramas` and `public.batch_logs`:
+Row Level Security (RLS) policies configured on `public.panoramas`, `public.batch_logs`, and `public.vector_layers_meta`:
 * **Public Role**: Read-Only access (`SELECT`) for map rendering and 360 viewing.
 * **Authenticated Role**: Full Write access (`INSERT`, `UPDATE`, `DELETE`) restricted to authenticated administrators.
 
