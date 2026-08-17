@@ -122,13 +122,7 @@ export async function fetchSupabaseData(): Promise<{
       throw new Error(error.message);
     }
 
-    // Baseline metadata configuration for standard subgrids
-    const knownMetadata: Record<string, { grid: string; pic: string; equipment: string; date: string; defaultKm: number; defaultCount: number }> = {
-      'N93E70': { grid: '1', pic: 'Fariz', equipment: 'MMS', date: 'Sep 4', defaultKm: 2.7, defaultCount: 163 },
-      'N94E70': { grid: '2', pic: 'Hafiz', equipment: 'Backpack', date: 'Sep 4', defaultKm: 0.6, defaultCount: 96 },
-      'N94E71': { grid: '3', pic: 'Amirul', equipment: 'MMS', date: 'Sep 4', defaultKm: 0.0, defaultCount: 5 },
-      'N90E67': { grid: '4', pic: 'Fariz', equipment: 'Backpack', date: 'Sep 4', defaultKm: 0.0, defaultCount: 1 }
-    };
+
 
     // If no records in database at all, return empty data
     if (!data || data.length === 0) {
@@ -178,6 +172,8 @@ export async function fetchSupabaseData(): Promise<{
       recordKm?: number;
       recordDefects?: number;
       recordImages?: number;
+      pic?: string;
+      equipment?: string;
     }>();
 
     data.forEach(r => {
@@ -213,7 +209,7 @@ export async function fetchSupabaseData(): Promise<{
           imageFilenames: [],
           points: [],
           dates: [],
-          grid: knownMetadata[sg]?.grid || '1',
+          grid: r.grid || '1',
           recordKm: typeof r.km_processed === 'number' ? r.km_processed : typeof r.kmProcessed === 'number' ? r.kmProcessed : undefined,
           recordDefects: typeof r.defects === 'number' ? r.defects : typeof r.defect_count === 'number' ? r.defect_count : undefined,
           recordImages: typeof r.images_processed === 'number' ? r.images_processed : typeof r.imagesProcessed === 'number' ? r.imagesProcessed : typeof r.images === 'number' ? r.images : undefined
@@ -250,13 +246,12 @@ export async function fetchSupabaseData(): Promise<{
         : (g.recordImages !== undefined ? g.recordImages : countFromDB);
 
       const grid = g.grid || String(idx + 1);
-      const pic = knownMetadata[subgrid]?.pic || 'Fariz';
-      const equipment = knownMetadata[subgrid]?.equipment || 'MMS';
-      const knownKm = knownMetadata[subgrid]?.defaultKm;
+      const pic = g.pic || 'Fariz';
+      const equipment = g.equipment || 'MMS';
       const calcKm = calculateDistance(g.points);
       const km = (typeof g.recordKm === 'number' && g.recordKm > 0)
         ? g.recordKm
-        : (knownKm !== undefined ? knownKm : (calcKm > 0 ? calcKm : Math.round((poiCount * 0.005) * 100) / 100));
+        : (calcKm > 0 ? calcKm : Math.round((poiCount * 0.005) * 100) / 100);
 
       const defects = g.recordDefects !== undefined ? g.recordDefects : 0;
 
@@ -324,14 +319,14 @@ export async function fetchSupabaseData(): Promise<{
             stagingGrouped.set(entryKey, {
               id: entryKey,
               subgrid: sg,
-              grid: r.grid || knownMetadata[sg]?.grid || '1',
+              grid: r.grid || String(rIdx + 1),
               imageFilenames: [],
               poiCount: r.poi_count || r.images_processed || 0,
               imagesProcessed: r.images_processed || 0,
               kmProcessed: typeof r.km_processed === 'number' ? r.km_processed : 0,
               defectCount: r.defect_count || 0,
               capturedAt: r.captured_at || r.created_at,
-              equipment: r.capture_equipment || knownMetadata[sg]?.equipment || 'MMS',
+              equipment: r.capture_equipment || 'MMS',
               status: r.status || 'in process',
               points: []
             });
@@ -385,7 +380,7 @@ export async function fetchSupabaseData(): Promise<{
             captureEquipment: g.equipment,
             publishToWebGIS: 'in process',
             action: 'Imported (staging)',
-            pic: knownMetadata[sg]?.pic || 'Fariz',
+            pic: g.pic || 'Fariz',
             isStagingPreview: true,
             isSyncedWithSupabase: false,
             isStagedInSupabase: true
