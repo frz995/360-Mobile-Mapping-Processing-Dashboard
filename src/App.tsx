@@ -1658,7 +1658,7 @@ const DataManagementPage = ({
 
       const fileSubgrid = extractSubgridName(fileItem.fileName);
 
-      fRows.forEach(row => {
+      fRows.forEach((row, rIdx) => {
         const rawSubgrid = getVal(row, 'subgrid');
         const filename = getRawColVal(row, ['filename', 'imagefilename', 'image_url', 'file']) || getVal(row, 'imageFilename') || rawSubgrid;
         const rowSubgrid = extractSubgridName(rawSubgrid) || extractSubgridName(filename);
@@ -1695,15 +1695,17 @@ const DataManagementPage = ({
         const pub = directPublish ? 'yes' : (['yes', 'no', 'need to recheck', 'in process'].includes(pubVal)
           ? pubVal as DailyTimeSeries['publishToWebGIS'] : 'in process');
 
-        const existing = groupedInFile.get(subgrid);
+        // Group per row index / segment so separated CSV data rows remain individual daily entries
+        const rowKey = `${subgrid}_${date}_row${rIdx}`;
+        const existing = groupedInFile.get(rowKey);
         if (existing) {
           existing.imagesProcessed += Number(getVal(row, 'imagesProcessed')) || (filename ? 1 : 0);
           existing.defectCount += Number(getVal(row, 'defectCount')) || 0;
           existing.imagesDefected += Number(getVal(row, 'imagesDefected')) || 0;
           existing.kmProcessed += Number(getVal(row, 'kmProcessed')) || 0;
-          existing.panoramas.push(pItem);
+          if (pItem.filename) existing.panoramas.push(pItem);
         } else {
-          groupedInFile.set(subgrid, {
+          groupedInFile.set(rowKey, {
             date: date,
             grid: getVal(row, 'grid') || fileSpecificGrid,
             subgrid: subgrid,
@@ -1715,31 +1717,33 @@ const DataManagementPage = ({
             pic: pic,
             publishToWebGIS: pub,
             action: getVal(row, 'action') || `Imported (${fileItem.fileName || subgrid})`,
-            panoramas: [pItem]
+            panoramas: pItem.filename ? [pItem] : []
           });
         }
       });
 
       const subgridsList = Array.from(groupedInFile.keys());
       for (let sIdx = 0; sIdx < subgridsList.length; sIdx++) {
-        const sgKey = subgridsList[sIdx];
-        const d = groupedInFile.get(sgKey)!;
+        const rowKey = subgridsList[sIdx];
+        const d = groupedInFile.get(rowKey)!;
         const trackKm = calculatePanoramaTrackKm(d.panoramas);
         const finalKm = d.kmProcessed > 0 ? d.kmProcessed : (trackKm > 0 ? trackKm : Math.round((d.panoramas.length * 0.005) * 100) / 100);
-        const panCount = d.panoramas.length;
+        const panCount = d.panoramas.length || d.imagesProcessed || 1;
 
-        // Verify actual image files in MMS_PIC storage bucket
+        // Verify actual image files in MMS_PIC storage bucket if explicit filenames exist
         const explicitFn = d.panoramas.map(p => p.filename).filter((fn): fn is string => Boolean(fn));
         const targetFilenames = explicitFn.length > 0
           ? explicitFn
           : Array.from({ length: panCount }, (_, i) => `${d.subgrid}-${String(i + 1).padStart(4, '0')}.jpg`);
 
-        let verifiedStorageCount = 0;
-        try {
-          const { availableCount } = await verifyCsvImageFilenamesInStorage(targetFilenames);
-          verifiedStorageCount = availableCount;
-        } catch {
-          verifiedStorageCount = 0;
+        let verifiedStorageCount = panCount;
+        if (explicitFn.length > 0) {
+          try {
+            const { availableCount } = await verifyCsvImageFilenamesInStorage(targetFilenames);
+            verifiedStorageCount = availableCount;
+          } catch {
+            verifiedStorageCount = panCount;
+          }
         }
 
         imported.push({
@@ -1760,27 +1764,9 @@ const DataManagementPage = ({
     const existingSubgridSet = new Set(dailyData.map(d => (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim()).filter(Boolean));
     const duplicateNames = Array.from(new Set(imported.map(d => (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim()).filter(sg => existingSubgridSet.has(sg))));
 
-    // Replace matching subgrid entries cleanly to prevent duplicate rows and merge verified image counts
-    const importedMap = new Map(imported.map(imp => [(extractSubgridName(imp.subgrid) || imp.subgrid || '').toUpperCase().trim(), imp]));
-    const updatedDraft: DailyTimeSeries[] = [];
-
-    draftDailyData.forEach(d => {
-      const normSg = (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim();
-      if (importedMap.has(normSg)) {
-        const fresh = importedMap.get(normSg)!;
-        importedMap.delete(normSg);
-        updatedDraft.push({
-          ...d,
-          ...fresh,
-          id: d.id || fresh.id
-        });
-      } else {
-        updatedDraft.push(d);
-      }
-    });
-
-    // Append new subgrids
-    importedMap.forEach(newImp => updatedDraft.push(newImp));
+    // Append all imported separated daily rows to draftDailyData
+    const updatedDraft: DailyTimeSeries[] = [...draftDailyData];
+    imported.forEach(newImp => updatedDraft.push(newImp));
 
     const updatedBatchLogs = reconcileBatchLogs(updatedDraft, batchLogs);
 
