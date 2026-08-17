@@ -2989,14 +2989,16 @@ const DataManagementPage = ({
                                     e.stopPropagation();
                                     const subFilter = (extractSubgridName(dailySubgrid) || dailySubgrid).toUpperCase().trim();
                                     const pList = (daily.panoramas || []).map(p => p.filename).filter((f): f is string => Boolean(f) && (extractSubgridName(f) || '').toUpperCase().trim() === subFilter);
-                                    const customFn = Array.from(new Set(pList));
+                                    const uniquePList = Array.from(new Set(pList));
+                                    const rowFrameCount = getImagesProcessedCount(daily);
+                                    const slicedFn = rowFrameCount > 0 ? uniquePList.slice(0, rowFrameCount) : [];
                                     setImagesListModal({
                                       isOpen: true,
                                       subgrid: dailySubgrid,
-                                      count: customFn.length > 0 ? customFn.length : getImagesProcessedCount(daily),
+                                      count: rowFrameCount,
                                       poiCount: getPOICount(daily),
                                       baseFilename: (daily.panoramas?.[0]?.filename) || `${dailySubgrid}-0001.jpg`,
-                                      customFilenames: customFn.length > 0 ? customFn : undefined
+                                      customFilenames: slicedFn
                                     });
                                   }}
                                   className="text-white hover:text-slate-200 hover:underline font-semibold text-xs cursor-pointer inline-flex items-center gap-1.5 whitespace-nowrap"
@@ -6698,14 +6700,16 @@ export default function App() {
                                             e.stopPropagation();
                                             const subFilter = (extractSubgridName(dailySubgrid) || dailySubgrid).toUpperCase().trim();
                                             const pList = (log.panoramas || []).map(p => p.filename).filter((f): f is string => Boolean(f) && (extractSubgridName(f) || '').toUpperCase().trim() === subFilter);
-                                            const customFn = Array.from(new Set(pList));
+                                            const uniquePList = Array.from(new Set(pList));
+                                            const rowFrameCount = getImagesProcessedCount(log);
+                                            const slicedFn = rowFrameCount > 0 ? uniquePList.slice(0, rowFrameCount) : [];
                                             setImagesListModal({
                                               isOpen: true,
                                               subgrid: dailySubgrid,
-                                              count: customFn.length > 0 ? customFn.length : getImagesProcessedCount(log),
+                                              count: rowFrameCount,
                                               poiCount: getPOICount(log),
                                               baseFilename: (log.panoramas?.[0]?.filename) || `${dailySubgrid}-0001.jpg`,
-                                              customFilenames: customFn.length > 0 ? customFn : undefined
+                                              customFilenames: slicedFn
                                             });
                                           }}
                                           className="inline-flex items-center gap-1.5 text-white hover:text-slate-200 hover:underline font-semibold text-[11px] cursor-pointer whitespace-nowrap"
