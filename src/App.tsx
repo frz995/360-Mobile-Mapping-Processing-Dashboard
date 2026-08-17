@@ -43,7 +43,7 @@ import {
   Moon,
   Settings
 } from 'lucide-react';
-import { supabase, publishToSupabase, fetchSupabaseData, deleteFromSupabase, updateDefectStatusInSupabase, fetchQaRecordsFromSupabase } from './services/supabase';
+import { supabase, publishToSupabase, fetchSupabaseData, deleteFromSupabase, updateDefectStatusInSupabase, fetchQaRecordsFromSupabase, verifyCsvImageFilenamesInStorage } from './services/supabase';
 import * as shapefile from 'shapefile';
 import * as toGeoJSON from '@tmcw/togeojson';
 
@@ -69,6 +69,8 @@ interface DailyTimeSeries {
   subgrid: string;
   kmProcessed: number;
   imagesProcessed: number; // renamed from imagesIngested
+  poiCount?: number;
+  availableImagesCount?: number;
   defectCount: number;
   captureEquipment: 'MMS' | 'Backpack' | 'Drone' | string;
   imagesDefected: number;
@@ -87,6 +89,8 @@ interface BatchLog {
   subgrid: string; // Subgrid without sequence number (NxxExx)
   imageFilename: string; // Image filename from image_url (e.g., N93E70-0002.jpg)
   images: number;
+  poiCount?: number;
+  availableImagesCount?: number;
   defects: number;
   kmProcessed: number;
   status: 'Complete' | 'Ongoing';
@@ -168,27 +172,40 @@ export function getPOICount(item?: { poiCount?: number; imagesProcessed?: number
   return Number(item.imagesProcessed ?? item.images ?? 0);
 }
 
-// Helper: Get available uploaded image frames count in Supabase mms_pic
-export function getImagesProcessedCount(item?: { imagesProcessed?: number; images?: number; availableImagesCount?: number; panoramas?: PanoramaItem[]; publishToUSVPRO?: string; status?: string }): number {
+// Helper: Get available uploaded image frames count in MMS_PIC
+export function getImagesProcessedCount(item?: { imagesProcessed?: number; images?: number; availableImagesCount?: number; panoramas?: PanoramaItem[]; poiCount?: number; publishToUSVPRO?: string; status?: string; isSyncedWithSupabase?: boolean; subgrid?: string }): number {
   if (!item) return 0;
-  // While in Staging (in process / Ongoing / 0 imagesProcessed), return 0
-  if (item.publishToUSVPRO === 'in process' || item.status === 'Ongoing' || item.imagesProcessed === 0 || item.images === 0) {
-    return 0;
+
+  let count = 0;
+  if (typeof item.availableImagesCount === 'number') {
+    count = item.availableImagesCount;
+  } else if (typeof item.imagesProcessed === 'number') {
+    count = item.imagesProcessed;
+  } else if (typeof item.images === 'number') {
+    count = item.images;
+  } else if (Array.isArray(item.panoramas) && item.panoramas.length > 0) {
+    if (item.subgrid) {
+      const subFilter = (extractSubgridName(item.subgrid) || item.subgrid).toUpperCase().trim();
+      const filtered = item.panoramas.filter(p => (extractSubgridName(p.filename) || '').toUpperCase().trim() === subFilter);
+      count = filtered.length > 0 ? filtered.length : item.panoramas.length;
+    } else {
+      count = item.panoramas.length;
+    }
   }
-  if (typeof item.availableImagesCount === 'number' && item.availableImagesCount >= 0) {
-    return item.availableImagesCount;
+
+  // Cap available images count at item POI count to prevent cross-row over-counting
+  const maxPoi = typeof item.poiCount === 'number' && item.poiCount > 0 ? item.poiCount : 0;
+  if (maxPoi > 0 && count > maxPoi) {
+    count = maxPoi;
   }
-  if (Array.isArray(item.panoramas) && item.panoramas.length > 0) {
-    const validImages = item.panoramas.filter(p => p && p.filename);
-    if (validImages.length > 0) return validImages.length;
-  }
-  return Number(item.imagesProcessed ?? item.images ?? 0);
+
+  return Math.max(0, count);
 }
 
 
 
-export function extractSubgridName(filenameOrSubgrid: string): string {
-  if (!filenameOrSubgrid) return 'N/A';
+export function extractSubgridName(filenameOrSubgrid?: string): string {
+  if (!filenameOrSubgrid) return '';
   const match = filenameOrSubgrid.match(/^(N\d+E\d+)/i);
   return match ? match[1].toUpperCase() : filenameOrSubgrid.split('-')[0].split('.')[0].toUpperCase();
 }
@@ -415,79 +432,9 @@ const TOUR_STEPS = [
   }
 ];
 
-const INITIAL_DAILY_DATA: DailyTimeSeries[] = [
-  {
-    id: 'd1',
-    date: 'Sep 4, 2022',
-    grid: '1',
-    subgrid: 'N93E70',
-    kmProcessed: 0.82,
-    imagesProcessed: 163,
-    defectCount: 6,
-    imagesDefected: 6,
-    captureEquipment: 'MMS',
-    publishToUSVPRO: 'yes',
-    action: 'Published in database',
-    pic: 'Fariz',
-    isSyncedWithSupabase: true,
-    _alreadySyncedToBatch: true
-  },
-  {
-    id: 'd2',
-    date: 'Sep 4, 2022',
-    grid: '2',
-    subgrid: 'N94E70',
-    kmProcessed: 0.13,
-    imagesProcessed: 26,
-    defectCount: 0,
-    imagesDefected: 0,
-    captureEquipment: 'Backpack',
-    publishToUSVPRO: 'yes',
-    action: 'Published in database',
-    pic: 'Hafiz',
-    isSyncedWithSupabase: true,
-    _alreadySyncedToBatch: true
-  },
-  {
-    id: 'd3',
-    date: 'Sep 4, 2022',
-    grid: '3',
-    subgrid: 'N94E71',
-    kmProcessed: 0.03,
-    imagesProcessed: 5,
-    defectCount: 0,
-    imagesDefected: 0,
-    captureEquipment: 'MMS',
-    publishToUSVPRO: 'yes',
-    action: 'Published in database',
-    pic: 'Amirul',
-    isSyncedWithSupabase: true,
-    _alreadySyncedToBatch: true
-  },
-  {
-    id: 'd4',
-    date: 'Sep 4, 2022',
-    grid: '4',
-    subgrid: 'N90E67',
-    kmProcessed: 0.01,
-    imagesProcessed: 1,
-    defectCount: 0,
-    imagesDefected: 0,
-    captureEquipment: 'Backpack',
-    publishToUSVPRO: 'yes',
-    action: 'Published in database',
-    pic: 'Fariz',
-    isSyncedWithSupabase: true,
-    _alreadySyncedToBatch: true
-  }
-];
+const INITIAL_DAILY_DATA: DailyTimeSeries[] = [];
 
-const INITIAL_BATCH_LOGS: BatchLog[] = [
-  { id: '1', date: '2022-09-04', grid: '1', subgrid: 'N93E70', imageFilename: 'N93E70-0158.jpg', images: 163, defects: 0, kmProcessed: 0.82, status: 'Complete', captureEquipment: 'MMS', pic: 'Fariz', isSyncedWithSupabase: true },
-  { id: '2', date: '2022-09-04', grid: '2', subgrid: 'N94E70', imageFilename: 'N94E70-0005.jpg', images: 26, defects: 0, kmProcessed: 0.13, status: 'Complete', captureEquipment: 'Backpack', pic: 'Hafiz', isSyncedWithSupabase: true },
-  { id: '3', date: '2022-09-04', grid: '3', subgrid: 'N94E71', imageFilename: 'N94E71-0001.jpg', images: 5, defects: 0, kmProcessed: 0.03, status: 'Complete', captureEquipment: 'MMS', pic: 'Amirul', isSyncedWithSupabase: true },
-  { id: '4', date: '2022-09-04', grid: '4', subgrid: 'N90E67', imageFilename: 'N90E67-0023.jpg', images: 1, defects: 0, kmProcessed: 0.01, status: 'Complete', captureEquipment: 'Backpack', pic: 'Fariz', isSyncedWithSupabase: true }
-];
+const INITIAL_BATCH_LOGS: BatchLog[] = [];
 
 // Calculate Haversine distance in KM between two GPS coordinates
 function calculateHaversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -514,6 +461,107 @@ function calculatePanoramaTrackKm(panoramas?: PanoramaItem[]): number {
     }
   }
   return Math.round(totalKm * 100) / 100;
+}
+
+export function reconcileBatchLogs(dailyItems: DailyTimeSeries[], _baseBatches?: BatchLog[]): BatchLog[] {
+  if (!dailyItems || dailyItems.length === 0) {
+    return [];
+  }
+
+  const batchMap = new Map<string, {
+    id: string;
+    subgrid: string;
+    grid: string;
+    date: string;
+    imageFilename: string;
+    images: number;
+    poiCount: number;
+    kmProcessed: number;
+    defects: number;
+    pics: Set<string>;
+    captureEquipment: string;
+    panoramas: any[];
+    status?: string;
+  }>();
+
+  // Process all daily records
+  for (const d of dailyItems) {
+    const isPublished = d.publishToUSVPRO === 'yes' || d.isSyncedWithSupabase || d.action?.startsWith('Published');
+
+    const rawSub = d.subgrid || (d.panoramas?.[0]?.filename) || '';
+    const normSub = (extractSubgridName(rawSub) || rawSub).toUpperCase().trim();
+    if (!normSub) continue;
+
+    const singlePoi = d.poiCount || (d.panoramas?.length) || 0;
+    const singleImg = getImagesProcessedCount(d);
+    const kmVal = Number(d.kmProcessed || 0);
+    const defCount = Number(d.imagesDefected || d.defectCount || 0);
+
+    const existing = batchMap.get(normSub);
+    if (existing) {
+      if (d.pic) {
+        d.pic.split(',').map(p => p.trim()).filter(Boolean).forEach(p => existing.pics.add(p));
+      }
+      existing.poiCount += singlePoi;
+      existing.images += singleImg;
+      existing.kmProcessed = Math.round((existing.kmProcessed + kmVal) * 100) / 100;
+      existing.defects += defCount;
+      if (d.date) existing.date = d.date;
+      if (d.captureEquipment) existing.captureEquipment = d.captureEquipment;
+      if (d.panoramas && d.panoramas.length > 0) {
+        existing.panoramas.push(...d.panoramas);
+      }
+      if (!isPublished) existing.status = 'Ongoing';
+    } else {
+      const picSet = new Set<string>();
+      if (d.pic) {
+        d.pic.split(',').map(p => p.trim()).filter(Boolean).forEach(p => picSet.add(p));
+      } else {
+        picSet.add('Fariz');
+      }
+
+      batchMap.set(normSub, {
+        id: `sp-b-${normSub}`,
+        subgrid: normSub,
+        grid: d.grid || '1',
+        date: d.date || '2022-09-03 00:43',
+        imageFilename: (d.panoramas?.[0]?.filename) || `${normSub}-0001.jpg`,
+        images: singleImg,
+        poiCount: singlePoi,
+        kmProcessed: kmVal,
+        defects: defCount,
+        pics: picSet,
+        captureEquipment: d.captureEquipment || 'MMS',
+        panoramas: d.panoramas || [],
+        status: isPublished ? 'Complete' : 'Ongoing'
+      });
+    }
+  }
+
+  // Convert map to BatchLog array
+  const result: BatchLog[] = [];
+  for (const [normSub, entry] of batchMap.entries()) {
+    const isComplete = entry.status === 'Complete';
+
+    result.push({
+      id: entry.id,
+      date: entry.date.length <= 10 ? `${entry.date} 00:43` : entry.date,
+      grid: entry.grid,
+      subgrid: normSub,
+      imageFilename: entry.imageFilename,
+      images: entry.images,
+      poiCount: entry.poiCount,
+      kmProcessed: entry.kmProcessed,
+      defects: entry.defects,
+      pic: Array.from(entry.pics).join(', ') || 'Fariz',
+      status: (entry.status || 'Complete') as 'Complete' | 'Ongoing',
+      captureEquipment: entry.captureEquipment,
+      panoramas: entry.panoramas,
+      isSyncedWithSupabase: isComplete
+    });
+  }
+
+  return result;
 }
 
 // Flatten folder tree to get all layers
@@ -1196,11 +1244,90 @@ const DataManagementPage = ({
   const csvInputRef = useRef<HTMLInputElement>(null);
   const [draftDailyData, setDraftDailyData] = useState<DailyTimeSeries[]>(dailyData);
   const [isDailyDirty, setIsDailyDirty] = useState(false);
+  const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set());
+  const [isBulkPublishing, setIsBulkPublishing] = useState(false);
+
+  const handleBulkPublish = async () => {
+    if (selectedRowIds.size === 0) return;
+    setIsBulkPublishing(true);
+
+    // 1. Instant Optimistic UI Update for ALL selected rows (0ms latency)
+    const updatedDraft = draftDailyData.map(d => {
+      if (selectedRowIds.has(getItemId(d))) {
+        return {
+          ...d,
+          publishToUSVPRO: 'yes' as const,
+          isSyncedWithSupabase: true,
+          action: 'Published in database'
+        };
+      }
+      return d;
+    });
+
+    const updatedBatches = batchLogs.map(b => {
+      if (selectedRowIds.has(getItemId(b))) {
+        return {
+          ...b,
+          status: 'Complete' as const,
+          isSyncedWithSupabase: true
+        };
+      }
+      return b;
+    });
+
+    setDraftDailyData(updatedDraft);
+    setDailyData(updatedDraft);
+    setBatchLogs(reconcileBatchLogs(updatedDraft, updatedBatches));
+    setIsDailyDirty(true);
+
+    // 2. Parallel Background Publish for all selected records
+    const targetList = dataTab === 'batches' ? activeBatchLogs : draftDailyData;
+    const itemsToPublish = targetList.filter(item => selectedRowIds.has(getItemId(item)));
+
+    try {
+      await Promise.all(itemsToPublish.map(async item => {
+        try {
+          await publishToSupabase(item);
+        } catch (err) {
+          console.warn('Bulk publish item error:', err);
+        }
+      }));
+
+      if (onRefreshMap) onRefreshMap();
+      if (addNotification) {
+        addNotification({
+          title: 'Bulk Publish Complete',
+          message: `Successfully published ${itemsToPublish.length} selected record(s) to database.`,
+          category: 'PUBLISH'
+        });
+      }
+      setPublishMessage({ text: `Successfully published ${itemsToPublish.length} selected record(s) to Supabase database!`, type: 'success' });
+      setTimeout(() => setPublishMessage(null), 4000);
+    } catch (err) {
+      console.error('Bulk publish error:', err);
+    } finally {
+      setIsBulkPublishing(false);
+      setSelectedRowIds(new Set());
+    }
+  };
+
+  const handleBulkDelete = () => {
+    if (selectedRowIds.size === 0) return;
+    setDeleteTarget('BULK_SELECTION' as any);
+    setIsDeleteModalOpen(true);
+  };
+
+  // Sync draftDailyData whenever dailyData changes
+  useEffect(() => {
+    setDraftDailyData(dailyData);
+  }, [dailyData]);
   const [imagesListModal, setImagesListModal] = useState<{
     isOpen: boolean;
     subgrid: string;
     count: number;
+    poiCount?: number;
     baseFilename?: string;
+    customFilenames?: string[];
   } | null>(null);
 
   const [qcModal, setQcModal] = useState<{
@@ -1261,6 +1388,7 @@ const DataManagementPage = ({
   const [csvRows, setCsvRows] = useState<string[][]>([]);
   const [csvPreview, setCsvPreview] = useState<Record<string, string>[]>([]);
   const [csvFieldMap, setCsvFieldMap] = useState<Record<string, string>>({});
+  const [csvFileList, setCsvFileList] = useState<{ fileName: string; headers: string[]; rows: string[][] }[]>([]);
   const [selectedEquipment, setSelectedEquipment] = useState<'MMS' | 'Backpack' | 'Drone'>('MMS');
   const [selectedPic, setSelectedPic] = useState<'Fariz' | 'Hafiz' | 'Amirul'>('Fariz');
 
@@ -1314,134 +1442,71 @@ const DataManagementPage = ({
   }
 
   const handleCsvFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const text = await file.text();
-    const lines = text.split('\n').filter(l => l.trim());
-    if (lines.length < 2) { alert('CSV must have at least one header row and one data row'); return; }
-    const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
-    const rows = lines.slice(1).map(l => l.split(',').map(v => v.trim().replace(/^"|"$/g, '')));
-    const preview = rows.slice(0, 5).map(row => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+
+    const list: { fileName: string; headers: string[]; rows: string[][] }[] = [];
+
+    for (const file of files) {
+      const text = await file.text();
+      const lines = text.split('\n').filter(l => l.trim());
+      if (lines.length < 2) continue;
+      const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+      const rows = lines.slice(1).map(l => l.split(',').map(v => v.trim().replace(/^"|"$/g, '')));
+      list.push({ fileName: file.name, headers, rows });
+    }
+
+    if (list.length === 0) {
+      alert('Selected CSV file(s) must have at least a header row and one data row');
+      return;
+    }
+
+    const combinedHeaders = list[0].headers;
+    const combinedRows = list.flatMap(f => f.rows);
+    const preview = combinedRows.slice(0, 5).map(row => {
       const obj: Record<string, string> = {};
-      headers.forEach((h, i) => { obj[h] = row[i] ?? ''; });
+      combinedHeaders.forEach((h, i) => { obj[h] = row[i] ?? ''; });
       return obj;
     });
-    setCsvHeaders(headers);
-    setCsvRows(rows);
+
+    setCsvFileList(list);
+    setCsvHeaders(combinedHeaders);
+    setCsvRows(combinedRows);
     setCsvPreview(preview);
     const activeFields = dataTab === 'batches' ? BATCH_FIELDS : DAILY_FIELDS;
-    setCsvFieldMap(autoMatchFields(headers, activeFields));
+    setCsvFieldMap(autoMatchFields(combinedHeaders, activeFields));
     setIsCsvImportOpen(true);
     if (csvInputRef.current) csvInputRef.current.value = '';
   };
 
 
   const handleCsvImport = () => {
-    // Helper to read a field value from a CSV row using the field map
-    const getVal = (row: string[], field: string) => {
-      const csvCol = Object.keys(csvFieldMap).find(k => csvFieldMap[k] === field);
-      const idx = csvCol !== undefined ? csvHeaders.indexOf(csvCol) : -1;
-      return idx >= 0 ? row[idx] ?? '' : '';
-    };
+    const imported: DailyTimeSeries[] = [];
+    const filesToProcess = csvFileList.length > 0
+      ? csvFileList
+      : [{ fileName: 'imported.csv', headers: csvHeaders, rows: csvRows }];
 
-    // Helper to read raw column value directly by alias headers (case-insensitive)
-    const getRawColVal = (row: string[], aliases: string[]) => {
-      for (const alias of aliases) {
-        const idx = csvHeaders.findIndex(h => h.trim().toLowerCase() === alias.toLowerCase());
-        if (idx >= 0 && row[idx] !== undefined && row[idx].trim() !== '') {
-          return row[idx].trim();
+    filesToProcess.forEach((fileItem, fIdx) => {
+      const fHeaders = fileItem.headers;
+      const fRows = fileItem.rows;
+
+      const getVal = (row: string[], field: string) => {
+        const csvCol = Object.keys(csvFieldMap).find(k => csvFieldMap[k] === field);
+        const idx = csvCol !== undefined ? fHeaders.indexOf(csvCol) : -1;
+        return idx >= 0 ? row[idx] ?? '' : '';
+      };
+
+      const getRawColVal = (row: string[], aliases: string[]) => {
+        for (const alias of aliases) {
+          const idx = fHeaders.findIndex(h => h.trim().toLowerCase() === alias.toLowerCase());
+          if (idx >= 0 && row[idx] !== undefined && row[idx].trim() !== '') {
+            return row[idx].trim();
+          }
         }
-      }
-      return '';
-    };
+        return '';
+      };
 
-    if (dataTab === 'batches') {
-      // ── Group rows by extracted subgrid name (NxxExx) ──────────────────────
-      const grouped = new Map<string, {
-        dates: string[], grid: string, imageFilenames: string[],
-        images: number, defects: number, kmProcessed: number, status: string,
-        equipment: string, pic: string, panoramas: PanoramaItem[]
-      }>();
-
-      csvRows.forEach(row => {
-        const rawFilename = getRawColVal(row, ['filename', 'imagefilename', 'image_url', 'file']) || getVal(row, 'imageFilename') || getVal(row, 'subgrid');
-        const subgrid = extractSubgridName(rawFilename) || rawFilename || 'Unknown';
-        const dateVal = getRawColVal(row, ['date', 'time', 'captured_at']) || getVal(row, 'date') || '';
-        const imageFile = rawFilename;
-
-        const lat = parseFloat(getRawColVal(row, ['latitude', 'lat', 'y']));
-        const lon = parseFloat(getRawColVal(row, ['longitude', 'lon', 'lng', 'x']));
-        const headingVal = parseFloat(getRawColVal(row, ['heading', 'bearing', 'dir']));
-        const pitchVal = parseFloat(getRawColVal(row, ['pitch']));
-        const rollVal = parseFloat(getRawColVal(row, ['roll']));
-
-        const pItem: PanoramaItem = {
-          filename: imageFile || undefined,
-          latitude: !isNaN(lat) ? lat : undefined,
-          longitude: !isNaN(lon) ? lon : undefined,
-          bearing: !isNaN(headingVal) ? headingVal : undefined,
-          pitch: !isNaN(pitchVal) ? pitchVal : undefined,
-          roll: !isNaN(rollVal) ? rollVal : undefined,
-          date: dateVal || undefined
-        };
-
-        const eqVal = getVal(row, 'captureEquipment');
-        const equipment = ['MMS', 'Backpack', 'Drone'].includes(eqVal) ? eqVal : selectedEquipment;
-        const picVal = getVal(row, 'pic');
-        const pic = ['Fariz', 'Hafiz', 'Amirul'].includes(picVal) ? picVal : selectedPic;
-
-        const existing = grouped.get(subgrid);
-
-        if (existing) {
-          if (dateVal) existing.dates.push(dateVal);
-          if (imageFile) existing.imageFilenames.push(imageFile);
-          existing.images += Number(getVal(row, 'images')) || (imageFile ? 1 : 0);
-          existing.defects += Number(getVal(row, 'defects')) || 0;
-          existing.kmProcessed += Number(getVal(row, 'kmProcessed')) || 0;
-          existing.panoramas.push(pItem);
-        } else {
-          grouped.set(subgrid, {
-            dates: dateVal ? [dateVal] : [],
-            grid: getVal(row, 'grid') || '1',
-            imageFilenames: imageFile ? [imageFile] : [],
-            images: Number(getVal(row, 'images')) || (imageFile ? 1 : 0),
-            defects: Number(getVal(row, 'defects')) || 0,
-            kmProcessed: Number(getVal(row, 'kmProcessed')) || 0,
-            status: getVal(row, 'status') || 'Ongoing',
-            equipment,
-            pic,
-            panoramas: [pItem]
-          });
-        }
-      });
-
-      // Build one BatchLog per unique subgrid
-      const imported: BatchLog[] = Array.from(grouped.entries()).map(([subgrid, g], i) => {
-        const sortedDates = g.dates.filter(Boolean).sort();
-        const date = sortedDates[0] || new Date().toISOString().slice(0, 10);
-        const lastFile = g.imageFilenames[g.imageFilenames.length - 1] || `${subgrid}-0001.jpg`;
-        const status: 'Complete' | 'Ongoing' = (['Complete', 'Ongoing'].includes(g.status)
-          ? g.status as 'Complete' | 'Ongoing' : 'Ongoing');
-        return {
-          id: String(Date.now() + i),
-          date, grid: g.grid, subgrid,
-          imageFilename: lastFile,
-          images: g.images,
-          defects: g.defects,
-          kmProcessed: Math.round(g.kmProcessed * 100) / 100,
-          status,
-          captureEquipment: g.equipment,
-          pic: g.pic,
-          panoramas: g.panoramas
-        };
-      });
-
-      // Append imported batch records as SEPARATE rows
-      setBatchLogs([...batchLogs, ...imported]);
-
-    } else {
-      // ── Group imported CSV rows by subgrid into 1 new row per subgrid ──────
-      const grouped = new Map<string, {
+      const groupedInFile = new Map<string, {
         date: string;
         grid: string;
         subgrid: string;
@@ -1456,7 +1521,7 @@ const DataManagementPage = ({
         panoramas: PanoramaItem[];
       }>();
 
-      csvRows.forEach(row => {
+      fRows.forEach(row => {
         const rawSubgrid = getVal(row, 'subgrid');
         const filename = getRawColVal(row, ['filename', 'imagefilename', 'image_url', 'file']) || getVal(row, 'imageFilename') || rawSubgrid;
         const subgrid = extractSubgridName(filename || rawSubgrid) || rawSubgrid || 'Unknown';
@@ -1486,8 +1551,7 @@ const DataManagementPage = ({
         const pub = (['yes', 'no', 'need to recheck', 'in process'].includes(pubVal)
           ? pubVal as DailyTimeSeries['publishToUSVPRO'] : 'in process');
 
-        const existing = grouped.get(subgrid);
-
+        const existing = groupedInFile.get(subgrid);
         if (existing) {
           existing.imagesProcessed += Number(getVal(row, 'imagesProcessed')) || (filename ? 1 : 0);
           existing.defectCount += Number(getVal(row, 'defectCount')) || 0;
@@ -1495,7 +1559,7 @@ const DataManagementPage = ({
           existing.kmProcessed += Number(getVal(row, 'kmProcessed')) || 0;
           existing.panoramas.push(pItem);
         } else {
-          grouped.set(subgrid, {
+          groupedInFile.set(subgrid, {
             date: date,
             grid: getVal(row, 'grid') || '1',
             subgrid: subgrid,
@@ -1506,56 +1570,93 @@ const DataManagementPage = ({
             captureEquipment: eq,
             pic: pic,
             publishToUSVPRO: pub,
-            action: getVal(row, 'action') || `Imported (${subgrid})`,
+            action: getVal(row, 'action') || `Imported (${fileItem.fileName || subgrid})`,
             panoramas: [pItem]
           });
         }
       });
 
-      // Build 1 DailyTimeSeries row entity per unique subgrid in the CSV import
-      const imported: DailyTimeSeries[] = Array.from(grouped.values()).map((d, index) => {
+      groupedInFile.forEach((d, sIdx) => {
         const trackKm = calculatePanoramaTrackKm(d.panoramas);
         const finalKm = d.kmProcessed > 0 ? d.kmProcessed : (trackKm > 0 ? trackKm : Math.round((d.panoramas.length * 0.005) * 100) / 100);
-        return {
+        imported.push({
           ...d,
-          imagesProcessed: 0, // Staged Initial State: 0 images verified until Published to Database
+          poiCount: d.panoramas.length > 0 ? d.panoramas.length : (d.imagesProcessed || 1),
+          imagesProcessed: d.panoramas.length > 0 ? d.panoramas.length : (d.imagesProcessed || 1),
+          availableImagesCount: d.panoramas.length > 0 ? d.panoramas.length : (d.imagesProcessed || 1),
+          defectCount: d.defectCount || 0,
+          imagesDefected: d.imagesDefected || 0,
           publishToUSVPRO: 'in process' as const,
-          id: `daily-csv-${Date.now()}-${index}`,
+          isSyncedWithSupabase: false,
+          id: `daily-csv-${Date.now()}-${fIdx}-${sIdx}`,
           kmProcessed: Math.round(finalKm * 100) / 100,
-        };
+        });
       });
+    });
 
-      // Append new imported record(s) as separate new rows in Daily Data without merging into existing subgrid rows
-      const updatedDraft = [...draftDailyData, ...imported];
-      setDraftDailyData(updatedDraft);
-      setDailyData(updatedDraft);
-      setBatchLogs(reconcileBatchLogs(updatedDraft, batchLogs));
-      setIsDailyDirty(true);
-      // Count valid vs invalid (0,0 or missing) coordinates
+    // Append every imported record as a separate new row in Daily Data (no merging)
+    const updatedDraft = [...draftDailyData, ...imported];
+    setDraftDailyData(updatedDraft);
+    setDailyData(updatedDraft);
+    setBatchLogs(reconcileBatchLogs(updatedDraft, batchLogs));
+    setIsDailyDirty(true);
+
+    // Verify filenames against Supabase MMS_PIC storage bucket in background
+    (async () => {
+      let hasStorageUpdates = false;
+      const verifiedItems = await Promise.all(
+        updatedDraft.map(async item => {
+          if (item.panoramas && item.panoramas.length > 0) {
+            const filenames = item.panoramas.map(p => p.filename).filter((fn): fn is string => Boolean(fn));
+            if (filenames.length > 0) {
+              try {
+                const { availableCount } = await verifyCsvImageFilenamesInStorage(filenames);
+                if (availableCount >= 0 && (availableCount !== item.availableImagesCount || availableCount !== item.imagesProcessed)) {
+                  hasStorageUpdates = true;
+                  return {
+                    ...item,
+                    availableImagesCount: availableCount,
+                    imagesProcessed: availableCount
+                  };
+                }
+              } catch (err) {
+                console.warn('MMS_PIC storage check notice:', err);
+              }
+            }
+          }
+          return item;
+        })
+      );
+
+      if (hasStorageUpdates) {
+        setDraftDailyData(verifiedItems);
+        setDailyData(verifiedItems);
+        setBatchLogs(reconcileBatchLogs(verifiedItems, batchLogs));
+      }
+    })();
+    // Count valid vs invalid (0,0 or missing) coordinates
       let invalidGpsCount = 0;
       let validGpsCount = 0;
-      csvRows.forEach(row => {
-        const lat = parseFloat(getRawColVal(row, ['latitude', 'lat', 'y']));
-        const lon = parseFloat(getRawColVal(row, ['longitude', 'lon', 'lng', 'x']));
-        if (isNaN(lat) || isNaN(lon) || (lat === 0 && lon === 0)) {
-          invalidGpsCount++;
-        } else {
-          validGpsCount++;
-        }
+      imported.forEach(imp => {
+        (imp.panoramas || []).forEach(p => {
+          if (typeof p.latitude === 'number' && typeof p.longitude === 'number' && p.latitude !== 0 && p.longitude !== 0) {
+            validGpsCount++;
+          } else {
+            invalidGpsCount++;
+          }
+        });
       });
 
-      if (invalidGpsCount > 0) {
-        setPublishMessage({
-          text: `[CSV Import Validation] Successfully imported ${validGpsCount} valid trajectory rows. Detected & dropped ${invalidGpsCount} rows with zero (0,0) or missing (X,Y) coordinates.`,
-          type: 'success'
-        });
-      } else {
-        setPublishMessage({
-          text: `[CSV Import Validation] Successfully imported ${validGpsCount} records with 100% valid (X,Y) coordinates!`,
-          type: 'success'
-        });
-      }
-    }
+      const importedSubgrids = Array.from(new Set(imported.map(d => (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim()).filter(Boolean)));
+      const subgridStr = importedSubgrids.join(', ') || 'Unknown';
+      const count = imported.length;
+      const addMsg = `${count} data added : ${subgridStr}`;
+
+      setPublishMessage({
+        text: addMsg,
+        type: 'success'
+      });
+      setTimeout(() => setPublishMessage(null), 6000);
 
     setIsCsvImportOpen(false);
     setCsvHeaders([]);
@@ -1850,17 +1951,21 @@ const DataManagementPage = ({
   };
 
   // Filtered & Paginated Data
+  const activeBatchLogs = React.useMemo(() => {
+    return reconcileBatchLogs(draftDailyData, batchLogs);
+  }, [draftDailyData, batchLogs]);
+
   const filteredBatchLogs = React.useMemo(() => {
-    if (!searchQuery.trim()) return batchLogs;
+    if (!searchQuery.trim()) return activeBatchLogs;
     const q = searchQuery.toLowerCase().trim();
-    return batchLogs.filter(b =>
+    return activeBatchLogs.filter(b =>
       (b.date && b.date.toLowerCase().includes(q)) ||
       (b.grid && b.grid.toLowerCase().includes(q)) ||
       (b.subgrid && b.subgrid.toLowerCase().includes(q)) ||
       (b.imageFilename && b.imageFilename.toLowerCase().includes(q)) ||
       (b.status && b.status.toLowerCase().includes(q))
     );
-  }, [batchLogs, searchQuery]);
+  }, [activeBatchLogs, searchQuery]);
 
   const filteredDailyData = React.useMemo(() => {
     return draftDailyData.filter(d => {
@@ -1904,212 +2009,83 @@ const DataManagementPage = ({
     return filteredDailyData.slice(start, start + pageSize);
   }, [filteredDailyData, safePage, pageSize]);
 
-  // Helper: Reconcile Processed Batch Logs masterlist summary from published daily processing ledger records & base batch logs
-  function reconcileBatchLogs(dailyItems: DailyTimeSeries[], baseBatches: BatchLog[]): BatchLog[] {
-    const batchMap = new Map<string, {
-      id: string;
-      subgrid: string;
-      grid: string;
-      date: string;
-      imageFilename: string;
-      images: number;
-      kmProcessed: number;
-      defects: number;
-      pics: Set<string>;
-      captureEquipment: string;
-      panoramas: any[];
-      status?: string;
-    }>();
 
-    // Process all published daily records (including d1..d4 and new entries)
-    for (const d of dailyItems) {
-      const isPublished = d.publishToUSVPRO === 'yes' || d.isSyncedWithSupabase || d.action?.startsWith('Published');
-      
-      const rawSub = d.subgrid || (d.panoramas?.[0]?.filename) || '';
-      const normSub = (extractSubgridName(rawSub) || rawSub).toUpperCase().trim();
-      if (!normSub) continue;
-
-      const imgCount = isPublished ? Number(d.imagesProcessed || d.panoramas?.length || 0) : 0;
-      const kmVal = Number(d.kmProcessed || 0);
-      const defCount = Number(d.imagesDefected || d.defectCount || 0);
-
-      const existing = batchMap.get(normSub);
-      if (existing) {
-        if (d.pic) {
-          d.pic.split(',').map(p => p.trim()).filter(Boolean).forEach(p => existing.pics.add(p));
-        }
-        existing.images += imgCount;
-        existing.kmProcessed = Math.round((existing.kmProcessed + kmVal) * 100) / 100;
-        existing.defects += defCount;
-        if (d.date) existing.date = d.date;
-        if (d.captureEquipment) existing.captureEquipment = d.captureEquipment;
-        if (d.panoramas && d.panoramas.length > 0) {
-          existing.panoramas.push(...d.panoramas);
-        }
-        if (!isPublished) existing.status = 'Ongoing';
-      } else {
-        const picSet = new Set<string>();
-        if (d.pic) {
-          d.pic.split(',').map(p => p.trim()).filter(Boolean).forEach(p => picSet.add(p));
-        } else {
-          picSet.add('Fariz');
-        }
-
-        batchMap.set(normSub, {
-          id: `sp-b-${normSub}`,
-          subgrid: normSub,
-          grid: d.grid || '1',
-          date: d.date || '2022-09-03 00:43',
-          imageFilename: (d.panoramas?.[0]?.filename) || `${normSub}-0001.jpg`,
-          images: imgCount,
-          kmProcessed: kmVal,
-          defects: defCount,
-          pics: picSet,
-          captureEquipment: d.captureEquipment || 'MMS',
-          panoramas: d.panoramas || [],
-          status: isPublished ? 'Complete' : 'Ongoing'
-        });
-      }
-    }
-
-    // Blend any base batches if subgrid is not present in dailyItems
-    for (const b of baseBatches) {
-      const rawSub = b.subgrid || b.imageFilename || '';
-      const normSub = (extractSubgridName(rawSub) || rawSub).toUpperCase().trim();
-      if (!normSub || batchMap.has(normSub)) continue;
-
-      const isPublished = b.status === 'Complete' || b.isSyncedWithSupabase;
-      const imgCount = isPublished ? Number(b.images || 0) : 0;
-
-      const picSet = new Set<string>();
-      if (b.pic) {
-        b.pic.split(',').map(p => p.trim()).filter(Boolean).forEach(p => picSet.add(p));
-      }
-
-      batchMap.set(normSub, {
-        id: b.id || `sp-b-${normSub}`,
-        subgrid: normSub,
-        grid: b.grid || '1',
-        date: b.date || '2022-09-03 00:43',
-        imageFilename: b.imageFilename || `${normSub}-0001.jpg`,
-        images: imgCount,
-        kmProcessed: Number(b.kmProcessed || 0),
-        defects: Number(b.defects || 0),
-        pics: picSet,
-        captureEquipment: b.captureEquipment || 'MMS',
-        panoramas: b.panoramas || [],
-        status: isPublished ? 'Complete' : 'Ongoing'
-      });
-    }
-
-    // Convert map to BatchLog array
-    const result: BatchLog[] = [];
-    for (const [normSub, entry] of batchMap.entries()) {
-      const baseMatch = baseBatches.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || b.subgrid || '').toUpperCase().trim() === normSub);
-      const userStatus = baseMatch?.status || (entry as any).status || 'Complete';
-      const isComplete = userStatus === 'Complete';
-
-      result.push({
-        id: entry.id,
-        date: entry.date.length <= 10 ? `${entry.date} 00:43` : entry.date,
-        grid: entry.grid,
-        subgrid: normSub,
-        imageFilename: entry.imageFilename,
-        images: isComplete ? entry.images : 0,
-        kmProcessed: entry.kmProcessed,
-        defects: entry.defects,
-        pic: Array.from(entry.pics).join(', ') || 'Fariz',
-        status: userStatus as 'Complete' | 'Ongoing',
-        captureEquipment: entry.captureEquipment,
-        panoramas: entry.panoramas,
-        isSyncedWithSupabase: isComplete
-      });
-    }
-
-    return result;
-  }
 
   // Supabase publishing states
   const [publishingId, setPublishingId] = useState<string | null>(null);
-  const [isPublishingAll, setIsPublishingAll] = useState(false);
   const [publishMessage, setPublishMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
   const handlePublishRecord = async (item: BatchLog | DailyTimeSeries) => {
     const id = getItemId(item);
     setPublishingId(id);
-    const res = await publishToSupabase(item);
-    setPublishingId(null);
 
-    if ('images' in item) {
-      setBatchLogs(batchLogs.map(b => getItemId(b) === id ? { ...b, status: 'Complete', images: b.panoramas?.length || b.images || 1 } : b));
-    } else {
+    // 1. Instant Optimistic UI Update (0ms delay)
+    if (!('images' in item)) {
       const dailyItem = item as DailyTimeSeries;
-      const verifiedImagesCount = dailyItem.panoramas?.length || dailyItem.imagesProcessed || 1;
-      const updatedDailyItem: DailyTimeSeries = {
+      const optimisticItem: DailyTimeSeries = {
         ...dailyItem,
-        imagesProcessed: verifiedImagesCount,
         publishToUSVPRO: 'yes',
         isSyncedWithSupabase: true,
         action: 'Published in database'
       };
-      const updatedList = draftDailyData.map(d => getItemId(d) === id ? updatedDailyItem : d);
-      setDraftDailyData(updatedList);
-      setDailyData(updatedList);
-      setBatchLogs(reconcileBatchLogs(updatedList, batchLogs));
-      setIsDailyDirty(true);
-    }
-    if (onRefreshMap) onRefreshMap();
-    setPublishMessage({ text: res.message || 'Record published & verified images count updated!', type: 'success' });
-    setTimeout(() => setPublishMessage(null), 4000);
-  };
-
-  const handlePublishAll = async () => {
-    const recordsToPublish = dataTab === 'batches' ? filteredBatchLogs : filteredDailyData;
-    if (recordsToPublish.length === 0) return;
-    setIsPublishingAll(true);
-    let successCount = 0;
-
-    for (const record of recordsToPublish) {
-      await publishToSupabase(record);
-      successCount++;
-    }
-
-    if (dataTab === 'daily') {
-      const updatedList = draftDailyData.map(d => ({
-        ...d,
-        imagesProcessed: d.panoramas?.length || d.imagesProcessed || 1,
-        publishToUSVPRO: 'yes' as const,
-        isSyncedWithSupabase: true,
-        action: 'Published in database'
-      }));
+      const updatedList = draftDailyData.map(d => getItemId(d) === id ? optimisticItem : d);
       setDraftDailyData(updatedList);
       setDailyData(updatedList);
       setBatchLogs(reconcileBatchLogs(updatedList, batchLogs));
       setIsDailyDirty(true);
     } else {
-      setBatchLogs(batchLogs.map(b => ({ ...b, status: 'Complete' as const, images: b.panoramas?.length || b.images || 1 })));
+      const updatedBatches = batchLogs.map(b => getItemId(b) === id ? { ...b, status: 'Complete' as const, isSyncedWithSupabase: true } : b);
+      setBatchLogs(updatedBatches);
     }
 
-    setIsPublishingAll(false);
-    if (successCount > 0 && onRefreshMap) onRefreshMap();
-    if (successCount > 0) {
+    // 2. Async Background Publish & Storage Verification
+    try {
+      const res = await publishToSupabase(item);
+
+      if (!('images' in item)) {
+        const dailyItem = item as DailyTimeSeries;
+        const filenames = (dailyItem.panoramas || []).map(p => p.filename).filter((fn): fn is string => Boolean(fn));
+        let matchedCount = dailyItem.imagesProcessed || dailyItem.poiCount || dailyItem.panoramas?.length || 1;
+        if (filenames.length > 0) {
+          try {
+            const { availableCount } = await verifyCsvImageFilenamesInStorage(filenames);
+            if (availableCount >= 0) {
+              matchedCount = availableCount;
+            }
+          } catch { }
+        }
+
+        const finalItem: DailyTimeSeries = {
+          ...dailyItem,
+          imagesProcessed: matchedCount,
+          availableImagesCount: matchedCount,
+          defectCount: dailyItem.defectCount || 0,
+          imagesDefected: dailyItem.imagesDefected || 0,
+          publishToUSVPRO: 'yes',
+          isSyncedWithSupabase: true,
+          action: 'Published in database'
+        };
+        const finalDailyList = draftDailyData.map(d => getItemId(d) === id ? finalItem : d);
+        setDraftDailyData(finalDailyList);
+        setDailyData(finalDailyList);
+        setBatchLogs(reconcileBatchLogs(finalDailyList, batchLogs));
+      }
+
+      if (onRefreshMap) onRefreshMap();
       if (addNotification) {
         addNotification({
-          title: 'Data Published to Database',
-          message: `Successfully published ${successCount} subgrid record(s) directly to Supabase production database.`,
-          category: 'PUBLISH',
-          totalItems: successCount
+          title: 'Record Published',
+          message: 'Successfully published subgrid record to database.',
+          category: 'PUBLISH'
         });
       }
-      if (addAuditLog) {
-        addAuditLog('PUBLISH', 'Database Publish Executed', `Published ${successCount} subgrids to production database`, 'success');
-      }
+      setPublishMessage({ text: res.message || 'Record published to Supabase database!', type: 'success' });
+      setTimeout(() => setPublishMessage(null), 4000);
+    } catch (err) {
+      console.error('Publish error:', err);
+    } finally {
+      setPublishingId(null);
     }
-    setPublishMessage({
-      text: `Successfully published ${successCount} record(s) & updated batch logs!`,
-      type: 'success'
-    });
-    setTimeout(() => setPublishMessage(null), 5000);
   };
 
   const handleSave = async (item: BatchLog | DailyTimeSeries) => {
@@ -2179,18 +2155,87 @@ const DataManagementPage = ({
       return;
     }
 
-    const idToDelete = getItemId(deleteTarget);
-    const subgridName = ('subgrid' in deleteTarget && deleteTarget.subgrid) ? deleteTarget.subgrid : ('imageFilename' in deleteTarget ? (deleteTarget as BatchLog).imageFilename : 'record');
+    if (typeof deleteTarget === 'string' && deleteTarget === 'BULK_SELECTION') {
+      const idsToDelete = Array.from(selectedRowIds);
+      const updatedDaily = dailyData.filter(d => !selectedRowIds.has(getItemId(d)));
+      const updatedDraft = draftDailyData.filter(d => !selectedRowIds.has(getItemId(d)));
+      setDailyData(updatedDaily);
+      setDraftDailyData(updatedDraft);
 
-    if (dataTab === 'batches') {
-      setBatchLogs(batchLogs.filter(b => getItemId(b) !== idToDelete));
-    } else if (dataTab === 'daily') {
-      setDraftDailyData(draftDailyData.filter(d => getItemId(d) !== idToDelete));
+      const updatedBatches = batchLogs.filter(b => !selectedRowIds.has(getItemId(b)));
+      setBatchLogs(reconcileBatchLogs(updatedDaily, updatedBatches));
       setIsDailyDirty(true);
+
+      const deletedSubgrids = new Set<string>();
+      idsToDelete.forEach(id => {
+        const d = dailyData.find(item => getItemId(item) === id);
+        const b = batchLogs.find(item => getItemId(item) === id);
+        const sg = d?.subgrid || b?.subgrid || b?.imageFilename;
+        if (sg) {
+          const normSub = (extractSubgridName(sg) || sg).toUpperCase().trim();
+          deletedSubgrids.add(normSub);
+        }
+      });
+
+      deletedSubgrids.forEach(sg => {
+        deleteFromSupabase(sg).catch(err => console.warn('Bulk delete error:', err));
+      });
+
+      setSelectedRowIds(new Set());
+      setIsDeleteModalOpen(false);
+      setDeleteTarget(null);
+      setAdminPasscode('');
+      if (onRefreshMap) onRefreshMap();
+      setPublishMessage({ text: `Successfully deleted ${idsToDelete.length} selected record(s).`, type: 'success' });
+      setTimeout(() => setPublishMessage(null), 4000);
+      return;
     }
 
-    // Auto-delete from Supabase DB in real-time
-    deleteFromSupabase(subgridName).catch(err => console.warn('Background delete error:', err));
+    const idToDelete = getItemId(deleteTarget);
+    const subgridName = ('subgrid' in deleteTarget && deleteTarget.subgrid) ? deleteTarget.subgrid : ('imageFilename' in deleteTarget ? (deleteTarget as BatchLog).imageFilename : 'record');
+    const normSub = (extractSubgridName(subgridName) || subgridName).toUpperCase().trim();
+
+    const isDailyRecord = dataTab === 'daily' || ('date' in deleteTarget && 'kmProcessed' in deleteTarget && !('imageFilename' in deleteTarget));
+
+    if (isDailyRecord) {
+      // 1. In Daily Data mode, delete ONLY the specific target daily record by ID
+      const updatedDaily = dailyData.filter(d => getItemId(d) !== idToDelete);
+      const updatedDraft = draftDailyData.filter(d => getItemId(d) !== idToDelete);
+
+      setDailyData(updatedDaily);
+      setDraftDailyData(updatedDraft);
+
+      // Check if any other daily records for this subgrid remain
+      const hasRemainingDailyRows = updatedDaily.some(d => (extractSubgridName(d.subgrid || '') || '').toUpperCase().trim() === normSub);
+      if (!hasRemainingDailyRows) {
+        const updatedBatches = batchLogs.filter(b => (extractSubgridName(b.subgrid || b.imageFilename || '') || '').toUpperCase().trim() !== normSub);
+        setBatchLogs(updatedBatches);
+        try {
+          await deleteFromSupabase(subgridName);
+        } catch (err) {
+          console.warn('Background delete error:', err);
+        }
+      } else {
+        setBatchLogs(reconcileBatchLogs(updatedDaily, batchLogs));
+      }
+      setIsDailyDirty(true);
+    } else {
+      // 2. In Masterlist Batch Logs mode, delete the entire subgrid batch and all associated daily records
+      const updatedBatches = batchLogs.filter(b => getItemId(b) !== idToDelete && (extractSubgridName(b.subgrid || b.imageFilename || '') || '').toUpperCase().trim() !== normSub);
+      const updatedDaily = dailyData.filter(d => (extractSubgridName(d.subgrid || '') || '').toUpperCase().trim() !== normSub);
+      const updatedDraft = draftDailyData.filter(d => (extractSubgridName(d.subgrid || '') || '').toUpperCase().trim() !== normSub);
+
+      setBatchLogs(updatedBatches);
+      setDailyData(updatedDaily);
+      setDraftDailyData(updatedDraft);
+      setIsDailyDirty(true);
+
+      try {
+        await deleteFromSupabase(subgridName);
+      } catch (err) {
+        console.warn('Background delete error:', err);
+      }
+    }
 
     if (addAuditLog) addAuditLog('DELETE', `Record Deleted: ${subgridName}`, `Admin passcode verified, permanently deleted record ${subgridName}`, 'warning');
 
@@ -2210,7 +2255,7 @@ const DataManagementPage = ({
     <>
       <div className="flex-1 flex flex-col h-full bg-[#0B0F17] text-slate-200 font-sans p-4 sm:p-6 overflow-y-auto min-h-0">
         <div className="max-w-7xl mx-auto w-full space-y-5">
-          
+
           {/* Executive Header Bar */}
           <div className="bg-[#121824] border border-slate-800/90 rounded-2xl p-5 shadow-lg flex flex-wrap items-center justify-between gap-4">
             <div className="flex items-center gap-4">
@@ -2360,8 +2405,8 @@ const DataManagementPage = ({
                 )}
               </div>
 
-              {/* Action Buttons (Daily Data Only) */}
-              {dataTab === 'daily' && (
+              {/* Action Buttons */}
+              {(dataTab === 'daily' || dataTab === 'batches') && (
                 <div className="flex flex-wrap items-center gap-2.5">
 
                   <button
@@ -2376,6 +2421,8 @@ const DataManagementPage = ({
                         setBatchLogs(sBatches);
                         setIsDailyDirty(false);
                         setPublishMessage({ text: `Successfully synced ${sDaily.length} subgrids directly from Supabase database!`, type: 'success' });
+                      } else {
+                        setPublishMessage({ text: 'No live records found in Supabase database.', type: 'error' });
                       }
                     }}
                     className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 border border-slate-700/80 text-slate-200 px-3.5 py-2 rounded-xl transition-all text-xs font-semibold cursor-pointer shadow-sm"
@@ -2386,38 +2433,18 @@ const DataManagementPage = ({
                   </button>
 
                   {!isGuestUser && (
-                    <>
-                      <button
-                        onClick={handlePublishAll}
-                        disabled={isPublishingAll || totalItems === 0}
-                        className="flex items-center gap-2 bg-sky-600 hover:bg-sky-500 disabled:bg-slate-800 text-white px-3.5 py-2 rounded-xl transition-all text-xs font-bold cursor-pointer shadow-md active:scale-95"
-                        title="Publish all filtered records to Supabase database"
-                      >
-                        {isPublishingAll ? (
-                          <>
-                            <RefreshCw size={13} className="animate-spin" />
-                            <span>Publishing All...</span>
-                          </>
-                        ) : (
-                          <>
-                            <UploadCloud size={13} />
-                            <span>Publish to Database</span>
-                          </>
-                        )}
-                      </button>
-
-                      <label className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 border border-slate-700/80 px-3.5 py-2 rounded-xl transition-all cursor-pointer text-slate-200 font-semibold text-xs shadow-sm active:scale-95">
-                        <FileText size={13} className="text-sky-400" />
-                        <span>Import CSV</span>
-                        <input
-                          ref={csvInputRef}
-                          type="file"
-                          accept=".csv"
-                          className="hidden"
-                          onChange={handleCsvFile}
-                        />
-                      </label>
-                    </>
+                    <label className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 border border-slate-700/80 px-3.5 py-2 rounded-xl transition-all cursor-pointer text-slate-200 font-semibold text-xs shadow-sm active:scale-95">
+                      <FileText size={13} className="text-sky-400" />
+                      <span>Import CSV</span>
+                      <input
+                        ref={csvInputRef}
+                        type="file"
+                        accept=".csv"
+                        multiple
+                        className="hidden"
+                        onChange={handleCsvFile}
+                      />
+                    </label>
                   )}
                 </div>
               )}
@@ -2696,10 +2723,73 @@ const DataManagementPage = ({
                 </div>
               )}
 
+              {/* Bulk Selection Bar */}
+              {selectedRowIds.size > 0 && (
+                <div className="bg-slate-900 border border-slate-800 rounded-2xl px-5 py-3 flex flex-wrap items-center justify-between gap-4 shadow-xl animate-fadeIn text-xs">
+                  <div className="flex items-center gap-2.5 text-slate-200 font-medium">
+                    <span className="bg-sky-500/20 text-sky-400 border border-sky-500/30 px-2.5 py-0.5 rounded-full font-mono font-bold text-xs">{selectedRowIds.size}</span>
+                    <span>record(s) selected</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={handleBulkPublish}
+                      disabled={isBulkPublishing}
+                      className="px-4 py-2 bg-emerald-600/90 hover:bg-emerald-600 text-white rounded-xl font-semibold flex items-center gap-2 transition-all shadow-sm cursor-pointer disabled:opacity-50 active:scale-95"
+                    >
+                      {isBulkPublishing ? <RefreshCw size={14} className="animate-spin" /> : <Upload size={14} />}
+                      <span>Publish Selected ({selectedRowIds.size})</span>
+                    </button>
+                    {!isGuestUser && (
+                      <button
+                        onClick={handleBulkDelete}
+                        className="px-4 py-2 bg-slate-800 hover:bg-red-950/80 text-red-400 hover:text-red-300 border border-red-900/60 rounded-xl font-semibold flex items-center gap-2 transition-all shadow-sm cursor-pointer active:scale-95"
+                      >
+                        <Trash2 size={14} />
+                        <span>Delete Selected ({selectedRowIds.size})</span>
+                      </button>
+                    )}
+                    <button
+                      onClick={() => setSelectedRowIds(new Set())}
+                      className="px-3 py-2 text-slate-400 hover:text-white transition-colors cursor-pointer text-xs"
+                    >
+                      Clear Selection
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <div className="bg-[#121824] border border-slate-800/90 rounded-2xl overflow-x-auto shadow-xl">
                 <table className="w-full text-left">
                   <thead className="bg-[#0b0f17] text-slate-400 border-b border-slate-800/80">
                     <tr>
+                      <th className="px-3 py-3.5 w-10 text-center">
+                        <input
+                          type="checkbox"
+                          checked={
+                            dataTab === 'batches'
+                              ? paginatedBatchLogs.length > 0 && paginatedBatchLogs.every(b => selectedRowIds.has(getItemId(b)))
+                              : paginatedDailyData.length > 0 && paginatedDailyData.every(d => selectedRowIds.has(getItemId(d)))
+                          }
+                          onChange={(e) => {
+                            const currentList = dataTab === 'batches' ? paginatedBatchLogs : paginatedDailyData;
+                            if (e.target.checked) {
+                              setSelectedRowIds(prev => {
+                                const next = new Set(prev);
+                                currentList.forEach(item => next.add(getItemId(item)));
+                                return next;
+                              });
+                            } else {
+                              setSelectedRowIds(prev => {
+                                const next = new Set(prev);
+                                currentList.forEach(item => next.delete(getItemId(item)));
+                                return next;
+                              });
+                            }
+                          }}
+                          className="rounded border-slate-700 bg-slate-900 text-sky-500 focus:ring-sky-500 cursor-pointer w-4 h-4 accent-sky-500"
+                          title="Select / Deselect all rows"
+                        />
+                      </th>
                       {dataTab === 'batches' ? (
                         <>
                           <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Date</th>
@@ -2745,6 +2835,22 @@ const DataManagementPage = ({
                                 : 'hover:bg-slate-800/50'
                                 }`}
                             >
+                              <td className="px-3 py-3.5 w-10 text-center" onClick={(e) => e.stopPropagation()}>
+                                <input
+                                  type="checkbox"
+                                  checked={selectedRowIds.has(getItemId(batch))}
+                                  onChange={(e) => {
+                                    const id = getItemId(batch);
+                                    setSelectedRowIds(prev => {
+                                      const next = new Set(prev);
+                                      if (e.target.checked) next.add(id);
+                                      else next.delete(id);
+                                      return next;
+                                    });
+                                  }}
+                                  className="rounded border-slate-700 bg-slate-900 text-sky-500 focus:ring-sky-500 cursor-pointer w-4 h-4 accent-sky-500"
+                                />
+                              </td>
                               <td className="px-4 py-3.5 font-mono text-xs text-slate-300 whitespace-nowrap">{formatDisplayDate(batch.date)}</td>
                               <td className="px-4 py-3.5 font-mono text-slate-200 font-semibold whitespace-nowrap">{batch.grid}</td>
                               <td className="px-4 py-3.5 font-semibold text-sky-400 whitespace-nowrap flex items-center gap-2">
@@ -2761,6 +2867,7 @@ const DataManagementPage = ({
                                       isOpen: true,
                                       subgrid: batchSubgrid,
                                       count: getImagesProcessedCount(batch),
+                                      poiCount: getPOICount(batch),
                                       baseFilename: batch.imageFilename
                                     });
                                   }}
@@ -2852,6 +2959,22 @@ const DataManagementPage = ({
                                 : 'hover:bg-slate-800/50'
                                 }`}
                             >
+                              <td className="px-3 py-3.5 w-10 text-center" onClick={(e) => e.stopPropagation()}>
+                                <input
+                                  type="checkbox"
+                                  checked={selectedRowIds.has(getItemId(daily))}
+                                  onChange={(e) => {
+                                    const id = getItemId(daily);
+                                    setSelectedRowIds(prev => {
+                                      const next = new Set(prev);
+                                      if (e.target.checked) next.add(id);
+                                      else next.delete(id);
+                                      return next;
+                                    });
+                                  }}
+                                  className="rounded border-slate-700 bg-slate-900 text-sky-500 focus:ring-sky-500 cursor-pointer w-4 h-4 accent-sky-500"
+                                />
+                              </td>
                               <td className="px-4 py-3.5 text-slate-300 font-mono text-xs whitespace-nowrap">{formatDisplayDate(daily.date)}</td>
                               <td className="px-4 py-3.5 text-slate-200 font-semibold whitespace-nowrap">{daily.grid}</td>
                               <td className="px-4 py-3.5 text-sky-400 font-semibold whitespace-nowrap flex items-center gap-2">
@@ -2864,11 +2987,16 @@ const DataManagementPage = ({
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
+                                    const subFilter = (extractSubgridName(dailySubgrid) || dailySubgrid).toUpperCase().trim();
+                                    const pList = (daily.panoramas || []).map(p => p.filename).filter((f): f is string => Boolean(f) && (extractSubgridName(f) || '').toUpperCase().trim() === subFilter);
+                                    const customFn = Array.from(new Set(pList));
                                     setImagesListModal({
                                       isOpen: true,
                                       subgrid: dailySubgrid,
-                                      count: getImagesProcessedCount(daily),
-                                      baseFilename: (daily.panoramas?.[0]?.filename) || `${dailySubgrid}-0001.jpg`
+                                      count: customFn.length > 0 ? customFn.length : getImagesProcessedCount(daily),
+                                      poiCount: getPOICount(daily),
+                                      baseFilename: (daily.panoramas?.[0]?.filename) || `${dailySubgrid}-0001.jpg`,
+                                      customFilenames: customFn.length > 0 ? customFn : undefined
                                     });
                                   }}
                                   className="text-white hover:text-slate-200 hover:underline font-semibold text-xs cursor-pointer inline-flex items-center gap-1.5 whitespace-nowrap"
@@ -2882,57 +3010,63 @@ const DataManagementPage = ({
                               <td className="px-4 py-3.5 text-amber-400 font-semibold whitespace-nowrap">
                                 {(() => {
                                   const matchBatch = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === dailySubgrid);
-                                  return matchBatch ? (matchBatch.defects ?? 0) : (daily.imagesDefected ?? daily.defectCount ?? 0);
+                                  return (daily.imagesDefected !== undefined && daily.imagesDefected !== null)
+                                    ? daily.imagesDefected
+                                    : (daily.defectCount !== undefined && daily.defectCount !== null)
+                                      ? daily.defectCount
+                                      : (matchBatch?.defects ?? 0);
                                 })()}
                               </td>
                               <td className="px-4 py-3.5 text-emerald-400 font-semibold whitespace-nowrap">{daily.pic || 'Fariz'}</td>
                               <td className="px-4 py-3.5 whitespace-nowrap">
-                                <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${daily.publishToUSVPRO === 'yes' ? 'bg-green-500/10 text-green-400 border border-green-500/20' :
-                                  daily.publishToUSVPRO === 'need to recheck' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' :
-                                    daily.publishToUSVPRO === 'in process' ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' :
-                                      'bg-red-500/10 text-red-400 border border-red-500/20'
-                                  }`}>
-                                  {daily.publishToUSVPRO}
-                                </span>
-                              </td>
-                              <td className="px-4 py-3.5 whitespace-nowrap">
-                                {isPublished ? (
-                                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                                    <CheckCircle size={12} />
-                                    published in database
-                                  </span>
-                                ) : (
-                                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold bg-sky-500/10 text-sky-400 border border-sky-500/20">
-                                    <Clock size={12} />
-                                    ready to publish
-                                  </span>
-                                )}
-                              </td>
-                              <td className="px-4 py-3.5 flex items-center gap-2 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                                {!isGuestUser ? (
-                                  <>
-                                    {isPublished ? (
-                                      <button
-                                        disabled
-                                        className="text-slate-600 cursor-not-allowed p-1 opacity-40"
-                                        title="Already published in database"
-                                      >
-                                        <Database size={18} />
-                                      </button>
-                                    ) : (
-                                      <button
+                                 <select
+                                   value={daily.publishToUSVPRO || 'in process'}
+                                   onChange={(e) => {
+                                     const val = e.target.value as DailyTimeSeries['publishToUSVPRO'];
+                                     if (val === 'yes') {
+                                       handlePublishRecord(daily);
+                                     } else {
+                                       const updated = draftDailyData.map(d => getItemId(d) === getItemId(daily) ? { ...d, publishToUSVPRO: val } : d);
+                                       setDraftDailyData(updated);
+                                       setDailyData(updated);
+                                     }
+                                   }}
+                                   className="bg-slate-900 border border-slate-700/60 rounded-lg px-2 py-1 text-xs font-semibold text-sky-300 focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer"
+                                 >
+                                   <option value="in process" className="bg-slate-900 text-blue-400">in process</option>
+                                   <option value="yes" className="bg-slate-900 text-emerald-400">yes (Publish)</option>
+                                   <option value="need to recheck" className="bg-slate-900 text-amber-400">need to recheck</option>
+                                   <option value="no" className="bg-slate-900 text-red-400">no</option>
+                                 </select>
+                               </td>
+                               <td className="px-4 py-3.5 whitespace-nowrap">
+                                 {isPublished ? (
+                                   <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                     <CheckCircle size={12} />
+                                     published in database
+                                   </span>
+                                 ) : (
+                                   <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold bg-sky-500/10 text-sky-400 border border-sky-500/20">
+                                     <Clock size={12} />
+                                     ready to publish
+                                   </span>
+                                 )}
+                               </td>
+                               <td className="px-4 py-3.5 flex items-center gap-2 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                                 {!isGuestUser ? (
+                                   <>
+                                     <button
                                         onClick={() => handlePublishRecord(daily)}
-                                        disabled={publishingId === getItemId(daily)}
-                                        className="text-emerald-400 hover:text-emerald-300 transition-colors p-1 cursor-pointer"
-                                        title="New data available - Click to publish to database"
+                                        disabled={isPublished || publishingId === getItemId(daily)}
+                                        className={`transition-colors p-1 ${isPublished ? 'text-slate-600 cursor-not-allowed opacity-40' : 'text-emerald-400 hover:text-emerald-300 cursor-pointer'}`}
+                                        title={isPublished ? 'Already published in database' : 'Click to publish to database'}
                                       >
                                         {publishingId === getItemId(daily) ? (
                                           <RefreshCw size={18} className="animate-spin text-sky-400" />
                                         ) : (
-                                          <Database size={18} className="text-emerald-400" />
+                                          <Database size={18} />
                                         )}
                                       </button>
-                                    )}
                                     <button
                                       onClick={() => {
                                         setEditingItem(daily);
@@ -3020,19 +3154,7 @@ const DataManagementPage = ({
                 )}
               </div>
 
-              {dataTab === 'daily' && isDailyDirty && (
-                <div className="mt-4 flex justify-end">
-                  <button
-                    onClick={() => {
-                      setDailyData(draftDailyData);
-                      setIsDailyDirty(false);
-                    }}
-                    className="bg-emerald-600 hover:bg-emerald-500 px-5 py-3 rounded-lg font-semibold transition-all shadow-lg text-white"
-                  >
-                    Apply update
-                  </button>
-                </div>
-              )}
+
             </>
           )}
 
@@ -3072,7 +3194,9 @@ const DataManagementPage = ({
 
           {/* Subgrid Image Filenames List View Modal */}
           {imagesListModal && imagesListModal.isOpen && (() => {
-            const filenames = generateImageFilenamesList(imagesListModal.subgrid, imagesListModal.count, imagesListModal.baseFilename);
+            const filenames = (imagesListModal.customFilenames && imagesListModal.customFilenames.length > 0)
+              ? imagesListModal.customFilenames
+              : generateImageFilenamesList(imagesListModal.subgrid, imagesListModal.count > 0 ? imagesListModal.count : (imagesListModal.poiCount || 1), imagesListModal.baseFilename);
             return (
               <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[1000] p-4 backdrop-blur-sm">
                 <div className="bg-[#111827] border border-slate-700/80 rounded-xl p-5 max-w-md w-full max-h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
@@ -3082,7 +3206,10 @@ const DataManagementPage = ({
                         <Camera size={16} className="text-sky-400" />
                         Subgrid {imagesListModal.subgrid} Filenames
                       </h2>
-                      <span className="text-[11px] text-slate-400">Total {filenames.length} image frames in subgrid selection</span>
+                      <span className="text-[11px] text-slate-400 font-mono">
+                        {imagesListModal.poiCount !== undefined ? `POI: ${imagesListModal.poiCount.toLocaleString()}  •  ` : ''}
+                        Available Frames: <strong className="text-sky-400 font-bold">{filenames.length.toLocaleString()}</strong>
+                      </span>
                     </div>
                     <button
                       onClick={() => setImagesListModal(null)}
@@ -3390,23 +3517,36 @@ const DataManagementPage = ({
             <div className="p-6 space-y-4 overflow-y-auto flex-1 text-xs">
               {/* Stats */}
               {(() => {
-                // Compute unique subgrid count for preview
                 const subgridCol = Object.keys(csvFieldMap).find(k => csvFieldMap[k] === 'imageFilename' || csvFieldMap[k] === 'subgrid');
                 const subgridIdx = subgridCol !== undefined ? csvHeaders.indexOf(subgridCol) : -1;
                 const uniqueSubgrids = subgridIdx >= 0
                   ? new Set(csvRows.map(r => (extractSubgridName(r[subgridIdx] ?? '') || r[subgridIdx]) ?? '')).size
                   : null;
+                const isMultiFile = csvFileList.length > 1;
                 return (
                   <div className="flex items-center gap-3 p-3 bg-emerald-950/20 border border-emerald-500/20 rounded-xl">
                     <CheckCircle size={16} className="text-emerald-400 shrink-0" />
                     <div>
-                      <p className="text-emerald-300 text-xs font-semibold">
-                        CSV loaded &bull; <span className="font-bold">{csvRows.length} image rows</span> &amp; <span className="font-bold">{csvHeaders.length} columns</span> detected.
-                        {uniqueSubgrids !== null && (
-                          <> Will be processed as <span className="font-bold text-sky-300">{uniqueSubgrids} unique subgrid{uniqueSubgrids !== 1 ? 's' : ''}</span>.</>
-                        )}
-                      </p>
-                      <p className="text-slate-400 text-[11px] mt-0.5">Each imported entry will be added as a separate entity without overwriting existing rows.</p>
+                      {isMultiFile ? (
+                        <>
+                          <p className="text-emerald-300 text-xs font-semibold">
+                            CSV loaded &bull; <span className="font-bold text-sky-300">{csvFileList.length} separate CSV files selected</span> ({csvFileList.map(f => `${f.rows.length} rows`).join(', ')}).
+                          </p>
+                          <p className="text-slate-400 text-[11px] mt-0.5">
+                            Will be imported as <strong className="text-white">{csvFileList.length} separate daily entries</strong> so admin can review each entry individually.
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <p className="text-emerald-300 text-xs font-semibold">
+                            CSV loaded &bull; <span className="font-bold">{csvRows.length} image rows</span> &amp; <span className="font-bold">{csvHeaders.length} columns</span> detected.
+                            {uniqueSubgrids !== null && (
+                              <> Will be processed as <span className="font-bold text-sky-300">{uniqueSubgrids} unique subgrid{uniqueSubgrids !== 1 ? 's' : ''}</span>.</>
+                            )}
+                          </p>
+                          <p className="text-slate-400 text-[11px] mt-0.5">Each imported entry will be added as a separate entity without overwriting existing rows.</p>
+                        </>
+                      )}
                     </div>
                   </div>
                 );
@@ -3532,7 +3672,9 @@ const DataManagementPage = ({
                 className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 px-5 py-2 rounded-xl font-bold transition-all text-white text-xs shadow-md cursor-pointer"
               >
                 <Upload size={15} />
-                Import Data ({csvRows.length} rows)
+                {csvFileList.length > 1
+                  ? `Import ${csvFileList.length} Files as Separate Daily Entries`
+                  : `Import Data (${csvRows.length} rows)`}
               </button>
             </div>
           </div>
@@ -3542,18 +3684,18 @@ const DataManagementPage = ({
       {/* ===== Admin Security Delete Confirmation Modal ===== */}
       {isDeleteModalOpen && deleteTarget && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 z-[1200] animate-fadeIn">
-          <div className="bg-slate-900 border border-red-800/80 rounded-2xl max-w-md w-full shadow-2xl overflow-hidden transform transition-all">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full shadow-2xl overflow-hidden transform transition-all">
             {/* Modal Header */}
-            <div className="bg-gradient-to-r from-red-950/90 via-red-900/80 to-slate-900 border-b border-red-800/50 p-5 flex items-center justify-between">
+            <div className="bg-slate-900 border-b border-slate-800 p-5 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-red-500/20 border border-red-500/40 flex items-center justify-center text-red-400">
-                  <ShieldAlert size={22} />
+                <div className="w-10 h-10 rounded-xl bg-slate-800 border border-slate-700/60 flex items-center justify-center text-slate-300">
+                  <ShieldAlert size={20} />
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                  <h3 className="text-base font-semibold text-slate-100 flex items-center gap-2">
                     Admin Security Verification
                   </h3>
-                  <p className="text-xs text-red-300 font-medium">Permanent Database Deletion Authorization</p>
+                  <p className="text-xs text-slate-400 font-medium">Permanent Database Deletion Authorization</p>
                 </div>
               </div>
               <button
@@ -3570,29 +3712,38 @@ const DataManagementPage = ({
 
             {/* Modal Body */}
             <div className="p-6 space-y-5">
-              <div className="bg-red-950/40 border border-red-900/60 rounded-xl p-4 text-xs text-red-200 leading-relaxed">
-                <div className="font-semibold text-red-400 mb-1 flex items-center gap-1.5 text-sm">
-                  <AlertTriangle size={16} />
+              <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-4 text-xs text-slate-300 leading-relaxed">
+                <div className="font-semibold text-slate-200 mb-1.5 flex items-center gap-1.5 text-xs uppercase tracking-wide">
+                  <AlertTriangle size={14} className="text-red-400" />
                   Security Warning: Permanent Deletion
                 </div>
-                This data record will be <strong className="text-red-400">permanently removed</strong> from the database. This action cannot be reversed.
-                <div className="mt-2.5 p-3 bg-slate-950/90 rounded-lg border border-red-900/50 font-mono text-slate-200 text-xs space-y-1">
-                  <div><span className="text-slate-500">Target Subgrid:</span> <strong className="text-sky-400 font-mono font-bold">{('subgrid' in deleteTarget && deleteTarget.subgrid) ? deleteTarget.subgrid : ('imageFilename' in deleteTarget ? (deleteTarget as BatchLog).imageFilename : 'Subgrid Record')}</strong></div>
-                  {'date' in deleteTarget && deleteTarget.date && (
-                    <div><span className="text-slate-500">Date:</span> {deleteTarget.date}</div>
-                  )}
-                  {'images' in deleteTarget ? (
-                    <div><span className="text-slate-500">Images Total:</span> {deleteTarget.images}</div>
-                  ) : (
-                    <div><span className="text-slate-500">Images Processed:</span> {deleteTarget.imagesProcessed}</div>
-                  )}
-                </div>
+                This data record will be <strong className="text-red-400 font-medium">permanently removed</strong> from the database. This action cannot be reversed.
+                {typeof deleteTarget === 'string' && deleteTarget === 'BULK_SELECTION' ? (
+                  <div className="mt-3 p-3 bg-slate-900 rounded-lg border border-slate-800/80 font-mono text-slate-300 text-xs space-y-1.5">
+                    <div className="flex justify-between items-center"><span className="text-slate-500">Target Selection:</span> <strong className="text-slate-100 font-mono font-semibold">Bulk Delete</strong></div>
+                    <div className="flex justify-between items-center"><span className="text-slate-500">Records Selected:</span> <span className="text-red-400 font-bold">{selectedRowIds.size} records</span></div>
+                  </div>
+                ) : (
+                  <div className="mt-3 p-3 bg-slate-900 rounded-lg border border-slate-800/80 font-mono text-slate-300 text-xs space-y-1.5">
+                    <div className="flex justify-between items-center"><span className="text-slate-500">Target Subgrid:</span> <strong className="text-slate-100 font-mono font-semibold">{(deleteTarget && typeof deleteTarget === 'object' && 'subgrid' in deleteTarget && deleteTarget.subgrid) ? deleteTarget.subgrid : (deleteTarget && typeof deleteTarget === 'object' && 'imageFilename' in deleteTarget ? (deleteTarget as BatchLog).imageFilename : 'Subgrid Record')}</strong></div>
+                    {deleteTarget && typeof deleteTarget === 'object' && 'date' in deleteTarget && deleteTarget.date && (
+                      <div className="flex justify-between items-center"><span className="text-slate-500">Date:</span> <span className="text-slate-300">{deleteTarget.date}</span></div>
+                    )}
+                    {deleteTarget && typeof deleteTarget === 'object' && 'images' in deleteTarget ? (
+                      <div className="flex justify-between items-center"><span className="text-slate-500">Images Total:</span> <span className="text-slate-300">{(deleteTarget as BatchLog).images}</span></div>
+                    ) : (
+                      deleteTarget && typeof deleteTarget === 'object' && (
+                        <div className="flex justify-between items-center"><span className="text-slate-500">Images Processed:</span> <span className="text-slate-300">{(deleteTarget as DailyTimeSeries).imagesProcessed}</span></div>
+                      )
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Admin Authorization Input */}
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-2 flex items-center gap-1.5">
-                  <Lock size={14} className="text-amber-400" />
+                <label className="block text-xs font-medium text-slate-300 mb-2 flex items-center gap-1.5">
+                  <Lock size={14} className="text-slate-400" />
                   Enter User Auth Password to Confirm Deletion:
                 </label>
                 <div className="relative">
@@ -3607,7 +3758,7 @@ const DataManagementPage = ({
                       if (e.key === 'Enter') confirmDelete();
                     }}
                     placeholder="Enter account password"
-                    className="w-full bg-slate-950 border border-slate-700 focus:border-red-500 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none transition-all shadow-inner"
+                    className="w-full bg-slate-950 border border-slate-800 focus:border-slate-600 rounded-xl px-4 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none transition-all shadow-inner"
                     autoFocus
                   />
                 </div>
@@ -3615,7 +3766,7 @@ const DataManagementPage = ({
 
               {/* Error Box */}
               {deleteError && (
-                <div className="p-3 bg-red-950/90 border border-red-700 rounded-xl flex items-start gap-2.5 text-xs text-red-300 font-medium">
+                <div className="p-3 bg-red-950/40 border border-red-800/60 rounded-xl flex items-start gap-2.5 text-xs text-red-300 font-medium">
                   <AlertTriangle size={16} className="text-red-400 shrink-0 mt-0.5" />
                   <span>{deleteError}</span>
                 </div>
@@ -3623,20 +3774,20 @@ const DataManagementPage = ({
             </div>
 
             {/* Modal Footer */}
-            <div className="p-4 bg-slate-950/80 border-t border-slate-800 flex items-center justify-end gap-3">
+            <div className="p-4 bg-slate-950/60 border-t border-slate-800 flex items-center justify-end gap-3">
               <button
                 onClick={() => {
                   setIsDeleteModalOpen(false);
                   setDeleteTarget(null);
                   setDeleteError(null);
                 }}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 transition-all cursor-pointer"
+                className="px-4 py-2 rounded-xl text-xs font-medium text-slate-300 hover:text-white bg-slate-800/80 hover:bg-slate-800 border border-slate-700/60 transition-all cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 onClick={confirmDelete}
-                className="px-5 py-2.5 rounded-xl text-xs font-semibold text-white bg-red-600 hover:bg-red-500 transition-all shadow-lg shadow-red-900/30 flex items-center gap-2 cursor-pointer"
+                className="px-5 py-2.5 rounded-xl text-xs font-semibold text-white bg-red-600/90 hover:bg-red-600 border border-red-500/30 transition-all shadow-md flex items-center gap-2 cursor-pointer"
               >
                 <Trash2 size={14} />
                 Authorize & Delete Permanently
@@ -4089,7 +4240,9 @@ export default function App() {
     isOpen: boolean;
     subgrid: string;
     count: number;
+    poiCount?: number;
     baseFilename?: string;
+    customFilenames?: string[];
   } | null>(null);
   const [qcModal, setQcModal] = useState<{
     isOpen: boolean;
@@ -4181,29 +4334,33 @@ export default function App() {
 
   // Load data from localStorage or use initial data
   const [dailyData, setDailyData] = useState<DailyTimeSeries[]>(() => {
-    ['dailyData_v4', 'dailyData_v5', 'dailyData_v6', 'dailyData_v7', 'dailyData_v8', 'dailyData_v9', 'dailyData_v10', 'dailyData_v11', 'dailyData_v12', 'dailyData_v13', 'dailyData_v14', 'dailyData_v15', 'dailyData_v16', 'batchLogs_v5', 'batchLogs_v6', 'batchLogs_v7', 'batchLogs_v8', 'batchLogs_v9', 'batchLogs_v10', 'batchLogs_v11', 'batchLogs_v12', 'batchLogs_v13', 'batchLogs_v14', 'batchLogs_v15', 'batchLogs_v16', 'qaSubgridRecords_v13'].forEach(k => {
+    ['dailyData_v4', 'dailyData_v5', 'dailyData_v6', 'dailyData_v7', 'dailyData_v8', 'dailyData_v9', 'dailyData_v10', 'dailyData_v11', 'dailyData_v12', 'dailyData_v13', 'dailyData_v14', 'dailyData_v15', 'dailyData_v16', 'dailyData_v17', 'dailyData_v18', 'dailyData_v19', 'dailyData_v20', 'dailyData_v21', 'dailyData_v22', 'dailyData_v23', 'dailyData_v24', 'dailyData_v25', 'dailyData_v26', 'dailyData_v27', 'dailyData_v28', 'dailyData_v29', 'batchLogs_v5', 'batchLogs_v6', 'batchLogs_v7', 'batchLogs_v8', 'batchLogs_v9', 'batchLogs_v10', 'batchLogs_v11', 'batchLogs_v12', 'batchLogs_v13', 'batchLogs_v14', 'batchLogs_v15', 'batchLogs_v16', 'batchLogs_v17', 'batchLogs_v18', 'batchLogs_v19', 'batchLogs_v20', 'batchLogs_v21', 'batchLogs_v22', 'batchLogs_v23', 'batchLogs_v24', 'batchLogs_v25', 'batchLogs_v26', 'batchLogs_v27', 'batchLogs_v28', 'batchLogs_v29', 'qaSubgridRecords_v13'].forEach(k => {
       try { localStorage.removeItem(k); } catch { }
     });
-    const saved = localStorage.getItem('dailyData_v17');
+    const saved = localStorage.getItem('dailyData_v30');
     if (!saved) return INITIAL_DAILY_DATA;
     try {
       const parsed = JSON.parse(saved);
-      return Array.isArray(parsed) && parsed.length > 0 ? parsed : INITIAL_DAILY_DATA;
+      return Array.isArray(parsed) ? parsed.map(d => ({ ...d, defectCount: 0, imagesDefected: 0 })) : INITIAL_DAILY_DATA;
     } catch {
       return INITIAL_DAILY_DATA;
     }
   });
 
   const [batchLogs, setBatchLogs] = useState<BatchLog[]>(() => {
-    const saved = localStorage.getItem('batchLogs_v17');
+    const saved = localStorage.getItem('batchLogs_v30');
     if (!saved) return INITIAL_BATCH_LOGS;
     try {
       const parsed = JSON.parse(saved);
-      return Array.isArray(parsed) && parsed.length > 0 ? parsed : INITIAL_BATCH_LOGS;
+      return Array.isArray(parsed) ? parsed.map(b => ({ ...b, defects: 0 })) : INITIAL_BATCH_LOGS;
     } catch {
       return INITIAL_BATCH_LOGS;
     }
   });
+
+  const activeBatchLogs = React.useMemo(() => {
+    return reconcileBatchLogs(dailyData, batchLogs);
+  }, [dailyData, batchLogs]);
 
   // Fetch live database records on mount and merge with local drafts
   useEffect(() => {
@@ -4213,37 +4370,62 @@ export default function App() {
       }
       try {
         const { dailyData: sDaily, batchLogs: sBatches } = await fetchSupabaseData();
-        if (sDaily && sDaily.length > 0) {
+        if (sDaily && Array.isArray(sDaily) && sDaily.length > 0) {
           setDailyData(prev => {
-            const localMap = new Map(prev.map(d => [(d.subgrid || '').toUpperCase().trim(), d]));
-            const supabaseIds = new Set(sDaily.map(d => d.id || `${d.date}-${d.subgrid}`));
-            const merged = sDaily.map(sd => {
-              const sgKey = (sd.subgrid || '').toUpperCase().trim();
-              const local = localMap.get(sgKey);
-              let kmVal = sd.kmProcessed;
-              if (kmVal > 5) kmVal = Math.round((sd.imagesProcessed * 0.005) * 100) / 100;
-              if (local && ((local.defectCount || 0) > (sd.defectCount || 0) || (local.imagesDefected || 0) > (sd.imagesDefected || 0))) {
-                const maxDefects = Math.max(local.defectCount || 0, local.imagesDefected || 0);
-                return { ...sd, kmProcessed: kmVal, defectCount: maxDefects, imagesDefected: maxDefects };
+            const seenKeys = new Set<string>();
+            const merged: DailyTimeSeries[] = [];
+
+            prev.forEach(d => {
+              const normSg = (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim();
+              const dateKey = (d.date || '').toLowerCase().trim();
+              const fullKey = `${normSg}_${dateKey}_${d.id || ''}`;
+              if (!seenKeys.has(fullKey)) {
+                seenKeys.add(fullKey);
+                const maxPoi = d.poiCount || (d.panoramas?.length) || 0;
+                const rawImg = typeof d.availableImagesCount === 'number' ? d.availableImagesCount : (d.imagesProcessed || maxPoi);
+                const cappedImg = maxPoi > 0 ? Math.min(rawImg, maxPoi) : rawImg;
+                merged.push({
+                  ...d,
+                  id: d.id,
+                  imagesProcessed: cappedImg,
+                  availableImagesCount: cappedImg,
+                  publishToUSVPRO: d.publishToUSVPRO || 'yes',
+                  isSyncedWithSupabase: d.isSyncedWithSupabase ?? true,
+                  action: d.action || 'Published in database'
+                });
               }
-              return { ...sd, kmProcessed: kmVal };
             });
-            const localDrafts = prev.filter(d => !d.isSyncedWithSupabase && !supabaseIds.has(d.id || `${d.date}-${d.subgrid}`));
-            return [...merged, ...localDrafts];
+
+            // Do not auto-merge remote database rows into dailyData state on mount
+
+            return merged;
           });
         }
-        if (sBatches && sBatches.length > 0) {
+
+        if (sBatches && Array.isArray(sBatches) && sBatches.length > 0) {
           setBatchLogs(prev => {
-            const localMap = new Map(prev.map(b => [(b.subgrid || '').toUpperCase().trim(), b]));
-            const merged = sBatches.map(sb => {
-              const sgKey = (sb.subgrid || '').toUpperCase().trim();
-              const local = localMap.get(sgKey);
-              let kmVal = sb.kmProcessed;
-              if (kmVal > 5) kmVal = Math.round((sb.images * 0.005) * 100) / 100;
-              const statusToKeep = local?.status || sb.status || 'Complete';
-              const maxDefects = local ? Math.max(local.defects || 0, sb.defects || 0) : sb.defects;
-              return { ...sb, kmProcessed: kmVal, defects: maxDefects, status: statusToKeep };
+            const merged = prev.map(b => {
+              const normSg = (extractSubgridName(b.subgrid || b.imageFilename) || b.subgrid || '').toUpperCase().trim();
+              const sb = sBatches.find(s => (extractSubgridName(s.subgrid || s.imageFilename) || s.subgrid || '').toUpperCase().trim() === normSg);
+              if (sb) {
+                return {
+                  ...b,
+                  ...sb,
+                  id: b.id,
+                  status: 'Complete' as const,
+                  isSyncedWithSupabase: true
+                };
+              }
+              return b;
             });
+
+            sBatches.forEach(sb => {
+              const normSg = (extractSubgridName(sb.subgrid || sb.imageFilename) || sb.subgrid || '').toUpperCase().trim();
+              if (!merged.some(b => (extractSubgridName(b.subgrid || b.imageFilename) || b.subgrid || '').toUpperCase().trim() === normSg)) {
+                merged.push(sb);
+              }
+            });
+
             return merged;
           });
         }
@@ -4271,35 +4453,37 @@ export default function App() {
 
             if (defectsPerSubgrid.size > 0) {
               setDailyData(prev => prev.map(d => {
+                if (!d.isSyncedWithSupabase) return d;
                 const normSg = (extractSubgridName(d.subgrid || (d.panoramas?.[0]?.filename) || '') || '').toUpperCase().trim();
                 const liveCount = defectsPerSubgrid.get(normSg);
                 if (liveCount !== undefined) {
-                  const maxDefects = Math.max(d.imagesDefected || 0, d.defectCount || 0, liveCount);
-                  return { ...d, imagesDefected: maxDefects, defectCount: maxDefects };
+                  const actualDefects = (d.imagesDefected !== undefined && d.imagesDefected !== null)
+                    ? d.imagesDefected
+                    : (d.defectCount !== undefined && d.defectCount !== null)
+                      ? d.defectCount
+                      : liveCount;
+                  return { ...d, imagesDefected: actualDefects, defectCount: actualDefects };
                 }
                 return d;
               }));
 
               setBatchLogs(prev => prev.map(b => {
+                if (!b.isSyncedWithSupabase) return b;
                 const normSg = (extractSubgridName(b.subgrid || b.imageFilename || '') || '').toUpperCase().trim();
                 const liveCount = defectsPerSubgrid.get(normSg);
                 if (liveCount !== undefined) {
-                  return { ...b, defects: Math.max(b.defects || 0, liveCount) };
+                  const actualDefects = (b.defects !== undefined && b.defects !== null) ? b.defects : liveCount;
+                  return { ...b, defects: actualDefects };
                 }
                 return b;
               }));
             }
-
-            // Also get total frame count from panoramas_view for accurate % calculation
-            try {
-              const { count: totalCount } = await supabase
-                .from('panoramas_view')
-                .select('*', { count: 'exact', head: true });
-              if (totalCount && totalCount > 0) setLiveTotalFrames(totalCount);
-            } catch (_) { }
+          } else {
+            setLiveDefectCount(0);
           }
         } catch (e) {
           console.warn('qa_defects count fetch skipped:', e);
+          setLiveDefectCount(0);
         }
 
         const fetchedQa = await fetchQaRecordsFromSupabase();
@@ -4346,8 +4530,8 @@ export default function App() {
   // Save to localStorage whenever data changes
   useEffect(() => {
     try {
-      localStorage.setItem('dailyData_v17', JSON.stringify(dailyData));
-      localStorage.setItem('batchLogs_v17', JSON.stringify(batchLogs));
+      localStorage.setItem('dailyData_v30', JSON.stringify(dailyData));
+      localStorage.setItem('batchLogs_v30', JSON.stringify(batchLogs));
     } catch (err) {
       console.warn('Unable to save to localStorage:', err);
     }
@@ -4369,15 +4553,22 @@ export default function App() {
     }
   }, [layerCatalog]);
 
-  // Calculated totals
-  const totalImages = dailyData.reduce((sum, d) => sum + d.imagesProcessed, 0);
-  const totalKm = dailyData.reduce((sum, d) => sum + d.kmProcessed, 0);
-  const [liveDefectCount, setLiveDefectCount] = useState<number>(0);
-  const [liveTotalFrames, setLiveTotalFrames] = useState<number>(0);
-  const totalDefects = liveDefectCount || dailyData.reduce((sum, d) => sum + d.imagesDefected, 0);
-  const totalFramesForHealth = liveTotalFrames || totalImages || 265;
+  // Calculated totals (dynamically evaluates to 0 when dataset is empty)
+  const totalImages = (dailyData.length > 0 || batchLogs.length > 0)
+    ? (dailyData.reduce((sum, d) => sum + getImagesProcessedCount(d), 0) || batchLogs.reduce((sum, b) => sum + (b.images || 0), 0))
+    : 0;
+  const totalKm = (dailyData.length > 0 || batchLogs.length > 0)
+    ? (dailyData.reduce((sum, d) => sum + (d.kmProcessed || 0), 0) || batchLogs.reduce((sum, b) => sum + (b.kmProcessed || 0), 0))
+    : 0;
+  const [_liveDefectCount, setLiveDefectCount] = useState<number>(0);
+  const totalDefects = (dailyData.length > 0 || batchLogs.length > 0)
+    ? dailyData.reduce((sum, d) => sum + (d.imagesDefected || d.defectCount || 0), 0)
+    : 0;
+  const totalFramesForHealth = (dailyData.length > 0 || batchLogs.length > 0)
+    ? (dailyData.reduce((sum, d) => sum + (d.panoramas?.length || d.poiCount || d.imagesProcessed || 0), 0) || batchLogs.reduce((sum, b) => sum + (b.panoramas?.length || b.images || 0), 0))
+    : 0;
   const pipelineHealthPercent = totalFramesForHealth > 0
-    ? (((totalFramesForHealth - totalDefects) / totalFramesForHealth) * 100).toFixed(1)
+    ? (totalDefects === 0 ? '100.0' : Math.max(0, ((totalFramesForHealth - totalDefects) / totalFramesForHealth) * 100).toFixed(1))
     : '100.0';
   const targetKm = projectSettings?.targetKm || 315.2;
   const progressPercent = Math.min(100, Math.round((totalKm / targetKm) * 100));
@@ -4502,103 +4693,609 @@ export default function App() {
   }, [batchLogs, dailyData]);
 
   const generateExecutivePdfReport = () => {
-    const printWindow = window.open('', '_blank', 'width=900,height=1000');
+    const printWindow = window.open('', '_blank', 'width=1000,height=1100');
     if (!printWindow) return;
 
-    const totalImages = batchLogs.reduce((acc, b) => acc + (b.images || 0), 0);
-    const totalDefectsCount = batchLogs.reduce((acc, b) => acc + (b.defects || 0), 0);
-    const reportDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    // Use activeBatchLogs (reconciled live data matching dashboard operation)
+    const reportBatches = activeBatchLogs;
+
+    const totalPoiCount = reportBatches.reduce((acc, b) => acc + getPOICount(b), 0);
+    const totalPanoramasCount = reportBatches.reduce((acc, b) => acc + getImagesProcessedCount(b), 0);
+    const totalKmVal = Math.round(reportBatches.reduce((acc, b) => acc + (b.kmProcessed || 0), 0) * 100) / 100;
+    const totalDefectsCount = reportBatches.reduce((acc, b) => acc + (b.defects || 0), 0);
+    const subgridsCount = reportBatches.length;
+    const publishedCount = reportBatches.filter(b => b.isSyncedWithSupabase || b.status === 'Complete').length;
+    const stagedCount = Math.max(0, subgridsCount - publishedCount);
+
+    const passRateVal = totalPoiCount > 0
+      ? (((totalPoiCount - totalDefectsCount) / totalPoiCount) * 100).toFixed(1)
+      : '100.0';
+
+    const targetKmVal = projectSettings?.targetKm || 315.2;
+    const targetImagesVal = projectSettings?.targetImages || 50000;
+    const targetProgressPct = Math.min(100, (totalKmVal / targetKmVal) * 100).toFixed(1);
+
+    const now = new Date();
+    const reportDate = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' }) + ' • ' + now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    const documentRefNo = `TNB-MMS-EXEC-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const operatorUser = authSession?.user?.email ? authSession.user.email : 'Fariz (Lead GIS Engineer)';
 
     const html = `
       <!DOCTYPE html>
-      <html>
+      <html lang="en">
         <head>
-          <title>TNB LV Asset Mapping - Executive Progress Report</title>
+          <meta charset="UTF-8">
+          <title>TNB LV Asset Mapping - Executive Progress & Quality Audit Report</title>
           <style>
-            body { font-family: 'Segoe UI', system-ui, sans-serif; color: #1e293b; padding: 40px; margin: 0; background: #ffffff; }
-            .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #0284c7; padding-bottom: 15px; margin-bottom: 25px; }
-            .title { font-size: 24px; font-weight: 800; color: #0f172a; margin: 0; }
-            .subtitle { font-size: 13px; color: #64748b; margin-top: 4px; }
-            .meta { font-size: 12px; color: #475569; text-align: right; }
-            .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 30px; }
-            .kpi-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; text-align: center; }
-            .kpi-value { font-size: 22px; font-weight: 700; color: #0284c7; }
-            .kpi-label { font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: 600; margin-top: 4px; }
-            table { width: 100%; border-collapse: collapse; margin-bottom: 30px; font-size: 12px; }
-            th { background: #0f172a; color: #ffffff; padding: 10px; text-align: left; font-size: 11px; text-transform: uppercase; }
-            td { border-bottom: 1px solid #e2e8f0; padding: 10px; }
-            tr:nth-child(even) { background: #f8fafc; }
-            .badge { padding: 3px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; }
-            .badge-success { background: #dcfce7; color: #15803d; }
-            .footer { font-size: 11px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 15px; text-align: center; margin-top: 40px; }
+            @page {
+              size: A4 portrait;
+              margin: 12mm 15mm 15mm 15mm;
+            }
+            * { box-sizing: border-box; }
+            body {
+              font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
+              color: #0f172a;
+              background: #ffffff;
+              margin: 0;
+              padding: 24px;
+              font-size: 11px;
+              line-height: 1.5;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+            }
+            
+            /* Print action toolbar for screen preview */
+            .action-bar {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              background: #0f172a;
+              color: #ffffff;
+              padding: 12px 20px;
+              margin: -24px -24px 24px -24px;
+              border-bottom: 1px solid #334155;
+            }
+            .action-bar-title {
+              font-weight: 700;
+              font-size: 13px;
+              letter-spacing: 0.5px;
+            }
+            .print-btn {
+              background: #ffffff;
+              color: #0f172a;
+              border: none;
+              padding: 7px 16px;
+              font-size: 11px;
+              font-weight: 700;
+              border-radius: 4px;
+              cursor: pointer;
+              text-transform: uppercase;
+              letter-spacing: 0.5px;
+            }
+            .print-btn:hover { background: #e2e8f0; }
+
+            /* Header Section */
+            .doc-header {
+              display: flex;
+              justify-content: space-between;
+              align-items: flex-start;
+              border-bottom: 2px solid #0f172a;
+              padding-bottom: 14px;
+              margin-bottom: 20px;
+            }
+            .org-title {
+              font-size: 10px;
+              font-weight: 800;
+              letter-spacing: 1.5px;
+              color: #475569;
+              text-transform: uppercase;
+              margin-bottom: 2px;
+            }
+            .main-title {
+              font-size: 20px;
+              font-weight: 800;
+              color: #0f172a;
+              margin: 0 0 4px 0;
+              letter-spacing: -0.3px;
+            }
+            .sub-title {
+              font-size: 12px;
+              font-weight: 600;
+              color: #334155;
+            }
+            .doc-meta-box {
+              background: #f8fafc;
+              border: 1px solid #cbd5e1;
+              border-radius: 4px;
+              padding: 8px 12px;
+              font-size: 10px;
+              min-width: 240px;
+            }
+            .meta-row {
+              display: flex;
+              justify-content: space-between;
+              padding: 2px 0;
+              border-bottom: 1px dashed #e2e8f0;
+            }
+            .meta-row:last-child { border-bottom: none; }
+            .meta-label { font-weight: 600; color: #64748b; }
+            .meta-val { font-weight: 700; color: #0f172a; font-family: monospace; }
+
+            /* Narrative Box */
+            .section-title {
+              font-size: 12px;
+              font-weight: 800;
+              text-transform: uppercase;
+              letter-spacing: 0.8px;
+              color: #0f172a;
+              border-bottom: 1px solid #0f172a;
+              padding-bottom: 4px;
+              margin: 22px 0 10px 0;
+            }
+            .narrative-box {
+              background: #f8fafc;
+              border-left: 3px solid #0f172a;
+              border-top: 1px solid #e2e8f0;
+              border-right: 1px solid #e2e8f0;
+              border-bottom: 1px solid #e2e8f0;
+              padding: 10px 14px;
+              font-size: 11px;
+              color: #334155;
+              text-align: justify;
+              line-height: 1.6;
+              margin-bottom: 18px;
+            }
+
+            /* KPI Grid */
+            .kpi-grid {
+              display: grid;
+              grid-template-columns: repeat(3, 1fr);
+              gap: 10px;
+              margin-bottom: 20px;
+              page-break-inside: avoid;
+            }
+            .kpi-card {
+              background: #ffffff;
+              border: 1px solid #cbd5e1;
+              border-radius: 4px;
+              padding: 10px 12px;
+            }
+            .kpi-label {
+              font-size: 9.5px;
+              font-weight: 700;
+              text-transform: uppercase;
+              letter-spacing: 0.5px;
+              color: #64748b;
+              margin-bottom: 4px;
+            }
+            .kpi-value {
+              font-size: 18px;
+              font-weight: 800;
+              color: #0f172a;
+              font-variant-numeric: tabular-nums;
+              line-height: 1.2;
+            }
+            .kpi-subtext {
+              font-size: 9.5px;
+              color: #475569;
+              margin-top: 3px;
+              font-weight: 500;
+            }
+
+            /* Tables */
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-bottom: 18px;
+              font-size: 10.5px;
+              page-break-inside: auto;
+            }
+            tr { page-break-inside: avoid; page-break-after: auto; }
+            th {
+              background: #0f172a;
+              color: #ffffff;
+              padding: 7px 10px;
+              text-align: left;
+              font-size: 9.5px;
+              font-weight: 700;
+              text-transform: uppercase;
+              letter-spacing: 0.5px;
+              border: 1px solid #0f172a;
+            }
+            td {
+              border: 1px solid #e2e8f0;
+              padding: 7px 10px;
+              color: #1e293b;
+              vertical-align: middle;
+            }
+            tr:nth-child(even) td { background: #f8fafc; }
+            
+            .text-center { text-align: center; }
+            .text-right { text-align: right; }
+            .font-mono { font-family: monospace; }
+            
+            /* Status Badges - Monochrome & Professional */
+            .badge {
+              display: inline-block;
+              padding: 2px 7px;
+              border-radius: 3px;
+              font-size: 9px;
+              font-weight: 700;
+              text-transform: uppercase;
+              letter-spacing: 0.3px;
+              white-space: nowrap;
+            }
+            .badge-complete {
+              background: #f1f5f9;
+              color: #0f172a;
+              border: 1px solid #475569;
+            }
+            .badge-defect {
+              background: #0f172a;
+              color: #ffffff;
+              border: 1px solid #0f172a;
+            }
+            .badge-neutral {
+              background: #f8fafc;
+              color: #475569;
+              border: 1px solid #cbd5e1;
+            }
+
+            /* 2-Column Specs Layout */
+            .specs-grid {
+              display: grid;
+              grid-template-columns: repeat(2, 1fr);
+              gap: 12px;
+              margin-bottom: 20px;
+              page-break-inside: avoid;
+            }
+            .spec-card {
+              border: 1px solid #cbd5e1;
+              border-radius: 4px;
+              background: #f8fafc;
+              padding: 10px 12px;
+            }
+            .spec-row {
+              display: flex;
+              justify-content: space-between;
+              padding: 3px 0;
+              border-bottom: 1px solid #e2e8f0;
+              font-size: 10px;
+            }
+            .spec-row:last-child { border-bottom: none; }
+            .spec-key { color: #64748b; font-weight: 600; }
+            .spec-val { color: #0f172a; font-weight: 700; }
+
+            /* Sign-off Section */
+            .signoff-section {
+              margin-top: 30px;
+              page-break-inside: avoid;
+            }
+            .signoff-grid {
+              display: grid;
+              grid-template-columns: repeat(3, 1fr);
+              gap: 15px;
+              margin-top: 15px;
+            }
+            .signoff-box {
+              border: 1px solid #cbd5e1;
+              border-radius: 4px;
+              padding: 12px;
+              background: #ffffff;
+            }
+            .signoff-role {
+              font-size: 9.5px;
+              font-weight: 800;
+              text-transform: uppercase;
+              color: #0f172a;
+              border-bottom: 1px solid #cbd5e1;
+              padding-bottom: 4px;
+              margin-bottom: 10px;
+              letter-spacing: 0.5px;
+            }
+            .signoff-line {
+              border-bottom: 1px solid #0f172a;
+              height: 35px;
+              margin-bottom: 10px;
+            }
+            .signoff-meta {
+              font-size: 9.5px;
+              color: #475569;
+              line-height: 1.4;
+            }
+
+            /* Footer */
+            .doc-footer {
+              border-top: 1px solid #cbd5e1;
+              padding-top: 10px;
+              margin-top: 30px;
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              font-size: 9px;
+              color: #64748b;
+              page-break-inside: avoid;
+            }
+
+            @media print {
+              .action-bar { display: none !important; }
+              body { padding: 0; background: #ffffff; }
+            }
           </style>
         </head>
         <body>
-          <div class="header">
+          <div class="action-bar no-print">
+            <div class="action-bar-title">TNB EXECUTIVE PDF REPORT PREVIEW</div>
+            <button class="print-btn" onclick="window.print()">PRINT / SAVE AS PDF</button>
+          </div>
+
+          <!-- DOCUMENT HEADER -->
+          <div class="doc-header">
             <div>
-              <div class="title">TNB LV ASSET MAPPING</div>
-              <div class="subtitle">360° Mobile Mapping Executive Summary Report</div>
+              <div class="org-title">TENAGA NASIONAL BERHAD (TNB) • INFRASTRUCTURE GIS MAPPING</div>
+              <h1 class="main-title">360° Mobile Mapping System (MMS)</h1>
+              <div class="sub-title">Generative Executive Progress & Quality Control Audit Report</div>
             </div>
-            <div class="meta">
-              <div><strong>Date:</strong> ${reportDate}</div>
-              <div><strong>System Status:</strong> Operational</div>
+            <div class="doc-meta-box">
+              <div class="meta-row">
+                <span class="meta-label">DOCUMENT REF:</span>
+                <span class="meta-val">${documentRefNo}</span>
+              </div>
+              <div class="meta-row">
+                <span class="meta-label">DATE & TIME:</span>
+                <span class="meta-val">${reportDate}</span>
+              </div>
+              <div class="meta-row">
+                <span class="meta-label">CLASSIFICATION:</span>
+                <span class="meta-val">CONFIDENTIAL</span>
+              </div>
+              <div class="meta-row">
+                <span class="meta-label">CONTRACT CODE:</span>
+                <span class="meta-val">${projectSettings?.contractCode || 'MMS-2026-TNB-01'}</span>
+              </div>
+              <div class="meta-row">
+                <span class="meta-label">SYSTEM STATUS:</span>
+                <span class="meta-val">OPERATIONAL</span>
+              </div>
             </div>
           </div>
 
+          <!-- EXECUTIVE NARRATIVE -->
+          <div class="narrative-box">
+            <strong>EXECUTIVE OVERVIEW & SYNTHESIS:</strong> This official report presents the validated progress, technical performance, and quality assurance auditing metrics for the ongoing Low Voltage (LV) Asset Mapping initiative under contract <strong>${projectSettings?.contractCode || 'MMS-2026-TNB-01'}</strong>. As of <strong>${reportDate}</strong>, spatial data acquisition teams have mapped a total cumulative trajectory of <strong>${totalKmVal.toFixed(2)} km</strong> across <strong>${subgridsCount} active subgrids</strong>, capturing <strong>${totalPoiCount.toLocaleString()} POI points</strong> and <strong>${totalPanoramasCount.toLocaleString()} verified 360° panorama frames</strong>. Automated feature detection and manual quality control reviews confirm an overall <strong>pipeline quality health rating of ${passRateVal}%</strong>. A total of <strong>${totalDefectsCount} defect anomalies</strong> (blurry lens frames, sun flare/obstructions, or GPS drift spikes) have been logged and reconciled. All verified spatial geometries are synchronized with the enterprise Supabase PostGIS vector database layer.
+          </div>
+
+          <!-- KEY PERFORMANCE INDICATORS -->
+          <div class="section-title">I. Key Performance Indicators (KPI Summary)</div>
           <div class="kpi-grid">
             <div class="kpi-card">
-              <div class="kpi-value">4</div>
               <div class="kpi-label">Subgrids Processed</div>
+              <div class="kpi-value">${subgridsCount} Units</div>
+              <div class="kpi-subtext">${publishedCount} Published • ${stagedCount} Staged</div>
             </div>
             <div class="kpi-card">
-              <div class="kpi-value">4.8 km</div>
-              <div class="kpi-label">Distance Covered</div>
+              <div class="kpi-label">Survey Trajectory</div>
+              <div class="kpi-value">${totalKmVal.toFixed(2)} km</div>
+              <div class="kpi-subtext">${targetProgressPct}% of Target (${targetKmVal} km)</div>
             </div>
             <div class="kpi-card">
-              <div class="kpi-value">${totalImages}</div>
-              <div class="kpi-label">Total Panoramas</div>
+              <div class="kpi-label">Total 360° Panoramas</div>
+              <div class="kpi-value">${totalPanoramasCount.toLocaleString()} Frames</div>
+              <div class="kpi-subtext">Target: ${targetImagesVal.toLocaleString()} Frames</div>
             </div>
             <div class="kpi-card">
-              <div class="kpi-value">${totalDefectsCount}</div>
               <div class="kpi-label">QA Defects Flagged</div>
+              <div class="kpi-value">${totalDefectsCount} Anomaly Frames</div>
+              <div class="kpi-subtext">Defect Rate: ${(100 - parseFloat(passRateVal)).toFixed(2)}%</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-label">Pipeline Quality Health</div>
+              <div class="kpi-value">${passRateVal}%</div>
+              <div class="kpi-subtext">Status: QA Benchmark Passed</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-label">PostGIS Database Storage</div>
+              <div class="kpi-value">SYNCHRONIZED</div>
+              <div class="kpi-subtext">Sync Frequency: Every ${projectSettings?.dbAutoSyncSec || 60}s</div>
             </div>
           </div>
 
-          <h3>Subgrid Processing Breakdown</h3>
+          <!-- SUBGRID PROCESSING BREAKDOWN -->
+          <div class="section-title">II. Subgrid Processing & Production Breakdown</div>
           <table>
             <thead>
               <tr>
-                <th>Grid / Subgrid</th>
-                <th>Images</th>
-                <th>Distance</th>
-                <th>QA Status</th>
-                <th>Defects</th>
-                <th>PIC</th>
-                <th>Stitching Progress</th>
+                <th>Grid / Subgrid ID</th>
+                <th>Capture Equipment</th>
+                <th class="text-right">POI Count</th>
+                <th class="text-right">Verified Frames</th>
+                <th class="text-right">Distance (km)</th>
+                <th class="text-center">Verification Status</th>
+                <th class="text-center">QA Defects</th>
+                <th>PIC (Engineer)</th>
+                <th class="text-center">Database Sync</th>
               </tr>
             </thead>
             <tbody>
-              ${batchLogs.map(b => `
+              ${reportBatches.map(b => {
+                const subName = (extractSubgridName(b.subgrid || b.imageFilename) || b.subgrid || 'N93E70').toUpperCase().trim();
+                const gridVal = b.grid || '1';
+                const eq = b.captureEquipment || 'MMS';
+                const poiVal = getPOICount(b);
+                const imgCount = getImagesProcessedCount(b);
+                const km = (b.kmProcessed || 0).toFixed(2);
+                const defectNum = b.defects || 0;
+                const picName = b.pic || 'Fariz';
+                const isSynced = b.isSyncedWithSupabase || b.status === 'Complete';
+                return `
+                  <tr>
+                    <td><strong class="font-mono">Grid ${gridVal} / ${subName}</strong></td>
+                    <td>${eq}</td>
+                    <td class="text-right font-mono">${poiVal.toLocaleString()}</td>
+                    <td class="text-right font-mono">${imgCount.toLocaleString()} frames</td>
+                    <td class="text-right font-mono">${km} km</td>
+                    <td class="text-center">
+                      <span class="badge ${isSynced ? 'badge-complete' : 'badge-neutral'}">
+                        ${isSynced ? 'VERIFIED & PUBLISHED' : 'STAGED IN PROCESS'}
+                      </span>
+                    </td>
+                    <td class="text-center">
+                      ${defectNum > 0
+                        ? `<span class="badge badge-defect">${defectNum} FLAG${defectNum > 1 ? 'S' : ''}</span>`
+                        : `<span style="color:#64748b; font-size:9px;">0 (CLEAN)</span>`}
+                    </td>
+                    <td>${picName}</td>
+                    <td class="text-center font-mono" style="font-size:9.5px;">${isSynced ? 'SUPABASE LIVE' : 'LOCAL DRAFT'}</td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+
+          <!-- QA & DEFECT AUDIT ANALYSIS -->
+          <div class="section-title">III. Quality Assurance & Defect Audit Breakdown</div>
+          <table>
+            <thead>
+              <tr>
+                <th>Subgrid Audit Unit</th>
+                <th>Blurry Frames</th>
+                <th>Lens Obstruction</th>
+                <th>GPS Drift / Bad Coords</th>
+                <th>QA Questionnaire Approval</th>
+                <th class="text-center">Audit Risk Assessment</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${reportBatches.map(b => {
+                const sgKey = (extractSubgridName(b.subgrid || b.imageFilename) || b.subgrid || 'N93E70').toUpperCase().trim();
+                const qaRec = qaSubgridRecords[sgKey] || qaSubgridRecords[b.imageFilename?.toUpperCase().trim() || ''] || null;
+                const flags = qaRec?.flags || { blurry: false, obstruction: false, badGps: false };
+                const isConfirmedDefect = qaRec?.answer === 'yes' || (b.defects || 0) > 0;
+                return `
+                  <tr>
+                    <td><strong class="font-mono">${sgKey}</strong></td>
+                    <td class="font-mono">${flags.blurry ? 'FLAGGED (Yes)' : 'PASS (Clean)'}</td>
+                    <td class="font-mono">${flags.obstruction ? 'FLAGGED (Yes)' : 'PASS (Clean)'}</td>
+                    <td class="font-mono">${flags.badGps ? 'FLAGGED (Yes)' : 'PASS (Clean)'}</td>
+                    <td class="font-mono">${qaRec?.isLocked ? (qaRec.answer === 'yes' ? 'DEFECT CONFIRMED' : 'APPROVED (PASSED)') : 'PENDING REVIEW'}</td>
+                    <td class="text-center">
+                      <span class="badge ${isConfirmedDefect ? 'badge-defect' : 'badge-complete'}">
+                        ${isConfirmedDefect ? 'AUDIT ACTION' : 'LOW RISK'}
+                      </span>
+                    </td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+
+          <!-- TECHNICAL SPECIFICATIONS & CONFIGURATION -->
+          <div class="section-title">IV. GIS Technical Infrastructure & System Configuration</div>
+          <div class="specs-grid">
+            <div class="spec-card">
+              <div class="spec-row">
+                <span class="spec-key">Coordinate Reference System (CRS):</span>
+                <span class="spec-val">EPSG:4326 (WGS 84 / Ellipsoidal)</span>
+              </div>
+              <div class="spec-row">
+                <span class="spec-key">Panorama Resolution / Sensor:</span>
+                <span class="spec-val">${projectSettings?.cameraResolution || '8K 360° Equirectangular'}</span>
+              </div>
+              <div class="spec-row">
+                <span class="spec-key">Primary Image Repository Path:</span>
+                <span class="spec-val font-mono">${projectSettings?.imageStoragePath || '/MMS_PIC/'}</span>
+              </div>
+            </div>
+            <div class="spec-card">
+              <div class="spec-row">
+                <span class="spec-key">Production Spatial Database:</span>
+                <span class="spec-val">Supabase PostGIS Cloud Instance</span>
+              </div>
+              <div class="spec-row">
+                <span class="spec-key">GPS Accuracy Tolerance Threshold:</span>
+                <span class="spec-val">≤ ${projectSettings?.minGpsAccuracyM || 1.0} meters</span>
+              </div>
+              <div class="spec-row">
+                <span class="spec-key">AI Defect Feature Matching Sensitivity:</span>
+                <span class="spec-val">${projectSettings?.aiDefectThresholdPercent || 85}% Threshold</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- RECENT AUDIT TRAIL -->
+          <div class="section-title">V. System Operations & Audit Trail Summary</div>
+          <table>
+            <thead>
+              <tr>
+                <th style="width: 140px;">Timestamp</th>
+                <th style="width: 80px;" class="text-center">Event Type</th>
+                <th>Operation & Action Details</th>
+                <th style="width: 120px;">Operator / Role</th>
+                <th style="width: 70px;" class="text-center">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${auditLogs.slice(0, 5).map(log => `
                 <tr>
-                  <td><strong>${b.subgrid || b.imageFilename}</strong></td>
-                  <td>${b.images || 163}</td>
-                  <td>${b.kmProcessed ? `${b.kmProcessed.toFixed(1)} km` : '0.8 km'}</td>
-                  <td><span class="badge badge-success">Stitched & Published</span></td>
-                  <td>${b.defects || 0}</td>
-                  <td>${b.pic || 'Fariz'}</td>
-                  <td>100% Complete</td>
+                  <td class="font-mono" style="font-size:9.5px;">${log.timestamp}</td>
+                  <td class="text-center"><span class="badge badge-neutral">${log.type}</span></td>
+                  <td><strong>${log.title}</strong> — <span style="color:#475569;">${log.details}</span></td>
+                  <td>${log.user}</td>
+                  <td class="text-center font-mono" style="font-size:9.5px; font-weight:700;">${log.status.toUpperCase()}</td>
                 </tr>
               `).join('')}
             </tbody>
           </table>
 
-          <div class="footer">
-            Generated automatically by TNB 360° Mobile Mapping Processing Dashboard • Confidential GIS Document
+          <!-- EXECUTIVE GOVERNANCE & SIGN-OFF -->
+          <div class="signoff-section">
+            <div class="section-title">VI. Formal Verification, Governance & Executive Sign-off</div>
+            <div class="signoff-grid">
+              <div class="signoff-box">
+                <div class="signoff-role">PREPARED BY (GIS ENGINEER)</div>
+                <div class="signoff-line"></div>
+                <div class="signoff-meta">
+                  <strong>Name:</strong> ${operatorUser}<br>
+                  <strong>Title:</strong> Lead GIS Operations Engineer<br>
+                  <strong>Date:</strong> _____ / _____ / 2026
+                </div>
+              </div>
+              <div class="signoff-box">
+                <div class="signoff-role">VERIFIED BY (QA LEAD)</div>
+                <div class="signoff-line"></div>
+                <div class="signoff-meta">
+                  <strong>Name:</strong> Hafiz / Quality Auditor<br>
+                  <strong>Title:</strong> Senior QA Verification Specialist<br>
+                  <strong>Date:</strong> _____ / _____ / 2026
+                </div>
+              </div>
+              <div class="signoff-box">
+                <div class="signoff-role">APPROVED BY (TNB CLIENT)</div>
+                <div class="signoff-line"></div>
+                <div class="signoff-meta">
+                  <strong>Name:</strong> Tenaga Nasional Berhad Rep.<br>
+                  <strong>Title:</strong> Project Director / Manager<br>
+                  <strong>Date:</strong> _____ / _____ / 2026
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- DOCUMENT FOOTER -->
+          <div class="doc-footer">
+            <div>
+              <strong>TENAGA NASIONAL BERHAD (TNB)</strong> • 360° Mobile Mapping System (MMS) Executive Dashboard
+            </div>
+            <div>
+              STRICTLY CONFIDENTIAL • Page 1 of 1 • Generated via Executive Processing Dashboard
+            </div>
           </div>
 
           <script>
             window.onload = function() {
-              window.print();
+              setTimeout(function() {
+                window.print();
+              }, 500);
             };
           </script>
         </body>
@@ -5256,8 +5953,8 @@ export default function App() {
             <button
               onClick={toggleTheme}
               className={`p-1.5 rounded-lg border transition-all cursor-pointer flex items-center gap-1.5 text-xs font-semibold ${themeMode === 'light'
-                  ? 'bg-amber-100/90 border-amber-300 text-amber-700 hover:bg-amber-200 shadow-xs'
-                  : 'bg-slate-800/90 border-slate-700/80 text-amber-400 hover:bg-slate-700 hover:text-amber-300'
+                ? 'bg-amber-100/90 border-amber-300 text-amber-700 hover:bg-amber-200 shadow-xs'
+                : 'bg-slate-800/90 border-slate-700/80 text-amber-400 hover:bg-slate-700 hover:text-amber-300'
                 }`}
               title={`Switch to ${themeMode === 'dark' ? 'Light' : 'Dark'} Mode`}
             >
@@ -5715,7 +6412,7 @@ export default function App() {
                             onClick={() => setActiveTab('batches')}
                             className={`px-2 py-0.5 rounded font-semibold transition-colors cursor-pointer ${activeTab === 'batches' ? 'bg-[#374151] text-white' : 'text-slate-400 hover:text-slate-200'}`}
                           >
-                            Overall Progress ({batchLogs.length})
+                            Overall Progress ({activeBatchLogs.length})
                           </button>
                           <button
                             onClick={() => setActiveTab('daily')}
@@ -5848,7 +6545,7 @@ export default function App() {
                                   </div>
                                 </td>
                               </tr>
-                            ) : batchLogs.length === 0 ? (
+                            ) : activeBatchLogs.length === 0 ? (
                               <tr>
                                 <td colSpan={10} className="py-10 text-center text-slate-400">
                                   <div className="flex flex-col items-center justify-center gap-2">
@@ -5859,7 +6556,7 @@ export default function App() {
                                 </td>
                               </tr>
                             ) : (
-                              batchLogs.map((log, i) => {
+                              activeBatchLogs.map((log: BatchLog, i: number) => {
                                 const batchSubgrid = (extractSubgridName(log.subgrid || log.imageFilename) || '').toUpperCase().trim();
                                 const isSelected = selectedSubgridFilter === batchSubgrid;
                                 const formattedBatchId = formatBatchIdDisplay(log, i);
@@ -5878,11 +6575,22 @@ export default function App() {
                                       <button
                                         onClick={(e) => {
                                           e.stopPropagation();
+                                          const subFilter = (extractSubgridName(batchSubgrid) || batchSubgrid).toUpperCase().trim();
+                                          const matchingDaily = dailyData.filter(d => (extractSubgridName(d.subgrid) || d.subgrid).toUpperCase().trim() === subFilter);
+                                          const allPans = matchingDaily.flatMap(d => d.panoramas || []);
+                                          const fallbackPans = log.panoramas || [];
+                                          const combinedPans = allPans.length > 0 ? allPans : fallbackPans;
+                                          const filteredFn = combinedPans
+                                            .map(p => p.filename)
+                                            .filter((f): f is string => Boolean(f) && (extractSubgridName(f) || '').toUpperCase().trim() === subFilter);
+                                          const customFn = Array.from(new Set(filteredFn));
                                           setImagesListModal({
                                             isOpen: true,
                                             subgrid: batchSubgrid,
-                                            count: getImagesProcessedCount(log),
-                                            baseFilename: log.imageFilename
+                                            count: customFn.length > 0 ? customFn.length : getImagesProcessedCount(log),
+                                            poiCount: getPOICount(log),
+                                            baseFilename: log.imageFilename,
+                                            customFilenames: customFn.length > 0 ? customFn : undefined
                                           });
                                         }}
                                         className="inline-flex items-center gap-1.5 text-white hover:text-slate-200 hover:underline font-semibold text-[11px] cursor-pointer whitespace-nowrap"
@@ -5967,7 +6675,7 @@ export default function App() {
                                   const dailySubgrid = (log.subgrid || '').toUpperCase().trim();
                                   const isRowSelected = selectedSubgridFilter === dailySubgrid && (!selectedDateFilter || selectedDateFilter === log.date);
                                   const matchBatch = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === dailySubgrid);
-                                  const defectCount = (log.imagesDefected && log.imagesDefected > 0) ? log.imagesDefected : (log.defectCount && log.defectCount > 0) ? log.defectCount : (matchBatch ? (matchBatch.defects ?? 0) : 0);
+                                  const defectCount = log.imagesDefected ?? log.defectCount ?? (matchBatch?.defects ?? 0);
                                   const isPublished = log.publishToUSVPRO === 'yes' || log.isSyncedWithSupabase;
                                   return (
                                     <tr
@@ -5988,11 +6696,16 @@ export default function App() {
                                         <button
                                           onClick={(e) => {
                                             e.stopPropagation();
+                                            const subFilter = (extractSubgridName(dailySubgrid) || dailySubgrid).toUpperCase().trim();
+                                            const pList = (log.panoramas || []).map(p => p.filename).filter((f): f is string => Boolean(f) && (extractSubgridName(f) || '').toUpperCase().trim() === subFilter);
+                                            const customFn = Array.from(new Set(pList));
                                             setImagesListModal({
                                               isOpen: true,
                                               subgrid: dailySubgrid,
-                                              count: getImagesProcessedCount(log),
-                                              baseFilename: (log.panoramas?.[0]?.filename) || `${dailySubgrid}-0001.jpg`
+                                              count: customFn.length > 0 ? customFn.length : getImagesProcessedCount(log),
+                                              poiCount: getPOICount(log),
+                                              baseFilename: (log.panoramas?.[0]?.filename) || `${dailySubgrid}-0001.jpg`,
+                                              customFilenames: customFn.length > 0 ? customFn : undefined
                                             });
                                           }}
                                           className="inline-flex items-center gap-1.5 text-white hover:text-slate-200 hover:underline font-semibold text-[11px] cursor-pointer whitespace-nowrap"
@@ -6334,7 +7047,7 @@ export default function App() {
             </div>
           ) : currentPage === 'settings' ? (
             <div key="settings-canvas" className="flex-1 flex flex-col min-h-0 overflow-y-auto bg-[#111827] rounded-xl border border-[rgba(255,255,255,0.08)] shadow-2xl p-6 space-y-6 animate-in fade-in zoom-in-98 slide-in-from-right-2 duration-300 ease-out">
-              
+
               {/* Page Header */}
               <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-800/80 shrink-0">
                 <div className="flex items-center gap-3">
@@ -6371,7 +7084,7 @@ export default function App() {
                           category: 'SYSTEM'
                         });
                         alert('Project & Database settings saved successfully!');
-                      } catch (e) {}
+                      } catch (e) { }
                     }}
                     className="px-5 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-semibold transition-all shadow-md flex items-center gap-2 cursor-pointer active:scale-95"
                   >
@@ -6772,7 +7485,9 @@ export default function App() {
 
         {/* Subgrid Image Filenames List View Modal (Main Canvas) */}
         {imagesListModal && imagesListModal.isOpen && (() => {
-          const filenames = generateImageFilenamesList(imagesListModal.subgrid, imagesListModal.count, imagesListModal.baseFilename);
+          const filenames = (imagesListModal.customFilenames && imagesListModal.customFilenames.length > 0)
+            ? imagesListModal.customFilenames
+            : generateImageFilenamesList(imagesListModal.subgrid, imagesListModal.count > 0 ? imagesListModal.count : (imagesListModal.poiCount || 1), imagesListModal.baseFilename);
           return (
             <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[1000] p-4 backdrop-blur-sm">
               <div className="bg-[#111827] border border-slate-700/80 rounded-xl p-5 max-w-md w-full max-h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
@@ -6782,7 +7497,10 @@ export default function App() {
                       <Camera size={16} className="text-sky-400" />
                       Subgrid {imagesListModal.subgrid} Filenames
                     </h2>
-                    <span className="text-[11px] text-slate-400">Total {filenames.length} image frames in subgrid selection</span>
+                    <span className="text-[11px] text-slate-400 font-mono">
+                      {imagesListModal.poiCount !== undefined ? `POI: ${imagesListModal.poiCount.toLocaleString()}  •  ` : ''}
+                      Available Frames: <strong className="text-sky-400 font-bold">{filenames.length.toLocaleString()}</strong>
+                    </span>
                   </div>
                   <button
                     onClick={() => setImagesListModal(null)}

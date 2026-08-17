@@ -97,7 +97,8 @@ function calculateDistance(points: { lat: number; lon: number }[]): number {
 
 /**
  * Fetch records from Supabase and group into BatchLog[] and DailyTimeSeries[].
- * Deduplicates rows by subgrid key so existing subgrids (N93E70, N94E70, etc.) have no duplicates.
+ * Accurately calculates image count matching Supabase storage & panoramas table.
+ * Deduplicates rows by subgrid so each subgrid has exactly 1 clean record without duplicates or count doubling.
  */
 export async function fetchSupabaseData(): Promise<{
   dailyData: any[];
@@ -121,21 +122,34 @@ export async function fetchSupabaseData(): Promise<{
       throw new Error(error.message);
     }
 
+    // Baseline metadata configuration for standard subgrids
+    const knownMetadata: Record<string, { grid: string; pic: string; equipment: string; date: string; defaultKm: number; defaultCount: number }> = {
+      'N93E70': { grid: '1', pic: 'Fariz', equipment: 'MMS', date: 'Sep 4', defaultKm: 0.82, defaultCount: 163 },
+      'N94E70': { grid: '2', pic: 'Hafiz', equipment: 'Backpack', date: 'Sep 4', defaultKm: 0.70, defaultCount: 96 },
+      'N94E71': { grid: '3', pic: 'Amirul', equipment: 'MMS', date: 'Sep 4', defaultKm: 0.03, defaultCount: 5 },
+      'N90E67': { grid: '4', pic: 'Fariz', equipment: 'Backpack', date: 'Sep 4', defaultKm: 0.01, defaultCount: 1 }
+    };
+
+    // If no records in database at all, return empty data
     if (!data || data.length === 0) {
       return { dailyData: [], batchLogs: [] };
     }
 
-    // Count actual available images in MMS_PIC storage bucket
+    // Count actual available images in MMS_PIC storage bucket if accessible
     const storageImageCounts = new Map<string, number>();
-    let storageQuerySucceeded = false;
 
     try {
-      // 1. Try listing the bucket directly using uppercase 'MMS_PIC'
-      const { data: storageFiles, error: storageError } = await supabase.storage.from('MMS_PIC').list('', { limit: 10000 });
-      console.log('MMS_PIC storage list result:', storageFiles?.length, 'files, error:', storageError?.message);
+      let offset = 0;
+      const limit = 100;
+      let hasMore = true;
+      let totalFetched = 0;
 
-      if (!storageError && storageFiles && storageFiles.length > 0) {
-        storageQuerySucceeded = true;
+      while (hasMore && totalFetched < 10000) {
+        const { data: storageFiles, error: storageError } = await supabase.storage.from('MMS_PIC').list('', { limit, offset });
+        if (storageError || !storageFiles || storageFiles.length === 0) {
+          break;
+        }
+        totalFetched += storageFiles.length;
         storageFiles.forEach(file => {
           if (file.name && file.name.includes('.') && !file.name.startsWith('.')) {
             const sg = extractSubgrid(file.name);
@@ -144,63 +158,17 @@ export async function fetchSupabaseData(): Promise<{
             }
           }
         });
+        if (storageFiles.length < limit) {
+          hasMore = false;
+        } else {
+          offset += limit;
+        }
       }
     } catch (err) {
       console.warn('MMS_PIC storage list exception:', err);
     }
 
-    // 2. Fallback / Verification via public URL (using uppercase MMS_PIC in URL path)
-    if (!storageQuerySucceeded || storageImageCounts.size === 0) {
-      const supabaseStorageBase = `${supabaseUrl}/storage/v1/object/public/MMS_PIC`;
-      const subgridFilenames = new Map<string, string[]>();
-
-      data.forEach(r => {
-        const filename = r.filename || r.image_url || '';
-        if (!filename) return;
-        const cleanName = filename.replace(/^\/+/, '').replace(/^MMS_PIC\//i, '').replace(/^mms_pic\//i, '').trim();
-        if (!cleanName) return;
-        const sg = (extractSubgrid(cleanName) || 'UNKNOWN').toUpperCase().trim();
-        if (!subgridFilenames.has(sg)) subgridFilenames.set(sg, []);
-        const list = subgridFilenames.get(sg)!;
-        if (!list.includes(cleanName)) list.push(cleanName);
-      });
-
-      try {
-        for (const [sg, filenames] of subgridFilenames.entries()) {
-          let existCount = 0;
-          const batchSize = 20;
-          for (let i = 0; i < filenames.length; i += batchSize) {
-            const batch = filenames.slice(i, i + batchSize);
-            const results = await Promise.allSettled(
-              batch.map(fn => 
-                fetch(`${supabaseStorageBase}/${fn}`, { method: 'GET' })
-                  .then(res => res.ok)
-                  .catch(() => false)
-              )
-            );
-            results.forEach(r => {
-              if (r.status === 'fulfilled' && r.value === true) existCount++;
-            });
-          }
-          storageImageCounts.set(sg, existCount);
-          storageQuerySucceeded = true;
-        }
-      } catch (storageErr) {
-        console.warn('MMS_PIC image public URL verification failed:', storageErr);
-      }
-    }
-
-    console.log('MMS_PIC verified storage image counts:', Object.fromEntries(storageImageCounts), 'query succeeded:', storageQuerySucceeded);
-
-    const gridMap: Record<string, string> = {
-      'N93E70': '1',
-      'N94E70': '2',
-      'N94E71': '3',
-      'N90E67': '4'
-    };
-
-    // Grouping map keyed by unique subgrid
-    // Grouping map keyed by batch/entity group key to keep separate runs distinct
+    // Group database records uniquely by subgrid
     const grouped = new Map<string, {
       subgrid: string;
       imageFilenames: string[];
@@ -215,31 +183,48 @@ export async function fetchSupabaseData(): Promise<{
     data.forEach(r => {
       const filename = r.filename || r.image_url || '';
       const sg = (extractSubgrid(filename) || 'UNKNOWN').toUpperCase().trim();
-      const lat = r.latitude ?? r.lat;
-      const lon = r.longitude ?? r.lon;
-      const dateStr = r.captured_at ? new Date(r.captured_at).toISOString().slice(0, 10) : '2022-09-04';
-      
-      // Include subgrid sg in groupKey so records for different subgrids NEVER mix together
-      const groupKey = `${sg}_${r.batch_id || r.description || dateStr}`;
+      if (!sg || sg === 'UNKNOWN' || sg === 'N/A') return;
 
-      if (!grouped.has(groupKey)) {
-        grouped.set(groupKey, {
+      let lat: number | undefined = r.latitude ?? r.lat;
+      let lon: number | undefined = r.longitude ?? r.lon;
+
+      if ((lat === undefined || lon === undefined) && r.geom) {
+        let geomObj = r.geom;
+        if (typeof geomObj === 'string') {
+          const match = geomObj.match(/POINT\(\s*([-\d.]+)\s+([-\d.]+)\s*\)/i);
+          if (match) {
+            lon = parseFloat(match[1]);
+            lat = parseFloat(match[2]);
+          } else {
+            try { geomObj = JSON.parse(geomObj); } catch { }
+          }
+        }
+        if (geomObj && geomObj.coordinates && Array.isArray(geomObj.coordinates) && geomObj.coordinates.length >= 2) {
+          lon = Number(geomObj.coordinates[0]);
+          lat = Number(geomObj.coordinates[1]);
+        }
+      }
+
+      const dateStr = r.captured_at ? new Date(r.captured_at).toISOString().slice(0, 10) : '2022-09-04';
+
+      if (!grouped.has(sg)) {
+        grouped.set(sg, {
           subgrid: sg,
           imageFilenames: [],
           points: [],
           dates: [],
-          grid: gridMap[sg] || '1',
+          grid: knownMetadata[sg]?.grid || '1',
           recordKm: typeof r.km_processed === 'number' ? r.km_processed : typeof r.kmProcessed === 'number' ? r.kmProcessed : undefined,
           recordDefects: typeof r.defects === 'number' ? r.defects : typeof r.defect_count === 'number' ? r.defect_count : undefined,
           recordImages: typeof r.images_processed === 'number' ? r.images_processed : typeof r.imagesProcessed === 'number' ? r.imagesProcessed : typeof r.images === 'number' ? r.images : undefined
         });
       }
 
-      const g = grouped.get(groupKey)!;
+      const g = grouped.get(sg)!;
       if (filename && !g.imageFilenames.includes(filename)) {
         g.imageFilenames.push(filename);
       }
-      if (typeof lat === 'number' && typeof lon === 'number') {
+      if (typeof lat === 'number' && typeof lon === 'number' && !isNaN(lat) && !isNaN(lon) && (lat !== 0 || lon !== 0)) {
         g.points.push({ lat, lon });
       }
       if (dateStr && !g.dates.includes(dateStr)) {
@@ -247,124 +232,78 @@ export async function fetchSupabaseData(): Promise<{
       }
     });
 
+
+    console.log('Verified Supabase MMS_PIC storage counts:', Object.fromEntries(storageImageCounts));
+
     const dailyData: any[] = [];
+    const batchLogs: any[] = [];
 
-    // 2. Initialize baseline Daily Data rows (d1, d2, d3, d4) with availableImagesCount from mms_pic storage
-    // If storage query succeeded, use actual count (0 if subgrid not found in bucket). If failed, show 0 as unknown.
-    const getStorageCount = (sg: string, fallback: number) => storageQuerySucceeded ? (storageImageCounts.get(sg) ?? 0) : fallback;
-    dailyData.push(
-      { id: 'd1', date: 'Sep 4', grid: '1', subgrid: 'N93E70', kmProcessed: 0.82, imagesProcessed: 163, availableImagesCount: getStorageCount('N93E70', 163), defectCount: 6, imagesDefected: 6, captureEquipment: 'MMS', publishToUSVPRO: 'yes', action: 'Published in database', pic: 'Fariz', isSyncedWithSupabase: true },
-      { id: 'd2', date: 'Sep 4', grid: '2', subgrid: 'N94E70', kmProcessed: 0.13, imagesProcessed: 26, availableImagesCount: getStorageCount('N94E70', 26), defectCount: 0, imagesDefected: 0, captureEquipment: 'Backpack', publishToUSVPRO: 'yes', action: 'Published in database', pic: 'Hafiz', isSyncedWithSupabase: true },
-      { id: 'd3', date: 'Sep 4', grid: '3', subgrid: 'N94E71', kmProcessed: 0.03, imagesProcessed: 5, availableImagesCount: getStorageCount('N94E71', 5), defectCount: 0, imagesDefected: 0, captureEquipment: 'MMS', publishToUSVPRO: 'yes', action: 'Published in database', pic: 'Amirul', isSyncedWithSupabase: true },
-      { id: 'd4', date: 'Sep 4', grid: '4', subgrid: 'N90E67', kmProcessed: 0.01, imagesProcessed: 1, availableImagesCount: getStorageCount('N90E67', 1), defectCount: 0, imagesDefected: 0, captureEquipment: 'Backpack', publishToUSVPRO: 'yes', action: 'Published in database', pic: 'Fariz', isSyncedWithSupabase: true }
-    );
+    Array.from(grouped.keys()).forEach((subgrid, idx) => {
+      const g = grouped.get(subgrid);
+      if (!g) return;
+      const countFromDB = g.imageFilenames.length;
+      const storageCount = storageImageCounts.get(subgrid);
 
-    // 3. Process live database records from Supabase
-    let index = 5;
-    grouped.forEach((g) => {
-      const subgrid = g.subgrid.toUpperCase().trim();
-      // poiCount = from CSV metadata (total track points recorded)
-      const poiCount = g.recordImages !== undefined ? g.recordImages : Math.max(1, g.imageFilenames.length);
-      // availableImagesCount = actual files in mms_pic storage bucket
-      // If storage query succeeded: use storageImageCounts (0 if subgrid missing = no files uploaded)
-      // If storage query failed: fall back to panoramas table filename count
-      const availableImagesCount = storageQuerySucceeded ? (storageImageCounts.get(subgrid) ?? 0) : g.imageFilenames.length;
-      const imagesCount = poiCount;
-      const calculatedKm = calculateDistance(g.points);
-      const km = calculatedKm > 0 ? calculatedKm : (g.recordKm !== undefined && g.recordKm > 0 && g.recordKm < 10 ? g.recordKm : Math.round((imagesCount * 0.005) * 100) / 100);
+      const poiCount = countFromDB;
+      const verifiedImagesCount = Math.min(storageCount !== undefined ? storageCount : countFromDB, poiCount);
+
+      const grid = g.grid || String(idx + 1);
+      const pic = 'Fariz';
+      const equipment = 'MMS';
+
+      const calcKm = calculateDistance(g.points);
+      const km = calcKm > 0 ? calcKm : Math.round((poiCount * 0.005) * 100) / 100;
+
       const defects = g.recordDefects !== undefined ? g.recordDefects : 0;
 
       const sortedDates = g.dates.sort();
       const rawDate = sortedDates[0] || new Date().toISOString().slice(0, 10);
-      
-      let dateFormatted = 'Sep 4';
-      if (rawDate) {
-        const d = new Date(rawDate);
-        if (!isNaN(d.getTime())) {
-          dateFormatted = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-        }
+      let dateFormatted = rawDate;
+      const d = new Date(rawDate);
+      if (!isNaN(d.getTime())) {
+        dateFormatted = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
       }
 
-      const equipment = (subgrid === 'N94E70' || subgrid === 'N90E67') ? 'Backpack' : 'MMS';
-      const picList = ['Fariz', 'Hafiz', 'Amirul'];
-      const pic = picList[(index - 1) % picList.length];
+      // 1. Unique Daily Record
+      dailyData.push({
+        id: `sp-d-${subgrid}`,
+        date: dateFormatted,
+        grid: grid,
+        subgrid: subgrid,
+        kmProcessed: km,
+        imagesProcessed: verifiedImagesCount,
+        poiCount: poiCount,
+        availableImagesCount: verifiedImagesCount,
+        defectCount: defects,
+        imagesDefected: defects,
+        captureEquipment: equipment,
+        publishToUSVPRO: 'yes',
+        action: 'Published in database',
+        pic: pic,
+        isSyncedWithSupabase: true
+      });
 
-      // Ignore single-image fragment test artifacts (< 2 images)
-      if (imagesCount < 2) {
-        return;
-      }
-
-      // Check if this DB record belongs to/updates a baseline row (matching subgrid and image count within 5)
-      const matchingBaseline = dailyData.find(b => b.subgrid === subgrid && Math.abs(b.imagesProcessed - imagesCount) <= 5);
-      if (matchingBaseline) {
-        matchingBaseline.imagesProcessed = Math.max(matchingBaseline.imagesProcessed, imagesCount);
-        matchingBaseline.poiCount = matchingBaseline.imagesProcessed;
-        // availableImagesCount: how many files actually exist in mms_pic for this subgrid
-        matchingBaseline.availableImagesCount = availableImagesCount > 0 ? availableImagesCount : matchingBaseline.availableImagesCount;
-        if (km > 0) matchingBaseline.kmProcessed = km;
-        if (defects > 0) matchingBaseline.imagesDefected = defects;
-      } else {
-        // Genuine new dataset (e.g. N94E70 with 70 images) -> Add as new 5th row in Daily Data!
-        dailyData.push({
-          id: `sp-d-${index}-${Date.now()}`,
-          date: dateFormatted,
-          grid: g.grid || '1',
-          subgrid: subgrid,
-          kmProcessed: km > 0 ? km : 0.2,
-          imagesProcessed: imagesCount,
-          poiCount: poiCount,
-          availableImagesCount: availableImagesCount,
-          defectCount: defects,
-          imagesDefected: defects,
-          captureEquipment: equipment,
-          publishToUSVPRO: 'yes',
-          action: 'Published in database',
-          pic: pic,
-          isSyncedWithSupabase: true
-        });
-        index++;
-      }
+      // 2. Unique Batch Masterlist Record
+      const lastFile = g.imageFilenames[g.imageFilenames.length - 1] || `${subgrid}-0001.jpg`;
+      batchLogs.push({
+        id: `sp-b-${subgrid}`,
+        date: `${rawDate} 00:43`,
+        grid: grid,
+        subgrid: subgrid,
+        imageFilename: lastFile,
+        images: verifiedImagesCount,
+        poiCount: poiCount,
+        availableImagesCount: verifiedImagesCount,
+        defects: defects,
+        kmProcessed: km,
+        status: 'Complete',
+        captureEquipment: equipment,
+        pic: pic,
+        isSyncedWithSupabase: true
+      });
     });
 
-    // Consolidate dailyData into batchLogs Masterlist (strictly 1 UNIQUE summary row per subgrid)
-    const masterMap = new Map<string, any>();
-    dailyData.forEach(d => {
-      const sub = d.subgrid.toUpperCase().trim();
-      const existing = masterMap.get(sub);
-      if (!existing) {
-        masterMap.set(sub, {
-          id: `sp-b-${sub}`,
-          date: `${d.date || '2022-09-03'} 00:43`,
-          grid: d.grid || '1',
-          subgrid: sub,
-          imageFilename: (d.panoramas?.[0]?.filename) || `${sub}-0001.jpg`,
-          images: Number(d.imagesProcessed || 0),
-          poiCount: Number(d.poiCount || d.imagesProcessed || 0),
-          availableImagesCount: Number(d.availableImagesCount ?? d.imagesProcessed ?? 0),
-          defects: Number(d.imagesDefected || d.defectCount || 0),
-          kmProcessed: Number(d.kmProcessed || 0),
-          status: 'Complete',
-          captureEquipment: d.captureEquipment || 'MMS',
-          pic: d.pic || 'Fariz',
-          isSyncedWithSupabase: true
-        });
-      } else {
-        existing.images += Number(d.imagesProcessed || 0);
-        existing.poiCount = (existing.poiCount || 0) + Number(d.poiCount || d.imagesProcessed || 0);
-        existing.availableImagesCount = (existing.availableImagesCount || 0) + Number(d.availableImagesCount ?? d.imagesProcessed ?? 0);
-        existing.kmProcessed = Math.round((existing.kmProcessed + Number(d.kmProcessed || 0)) * 100) / 100;
-        existing.defects += Number(d.imagesDefected || d.defectCount || 0);
-        if (d.pic && !existing.pic.includes(d.pic)) {
-          existing.pic = `${existing.pic}, ${d.pic}`;
-        }
-      }
-    });
-
-    masterMap.forEach(entry => {
-      entry.status = entry.status || 'Complete';
-    });
-
-    const batchLogs = Array.from(masterMap.values());
+    console.log('Supabase sync complete. Subgrids processed:', Array.from(grouped.keys()), 'Daily:', dailyData.length, 'Batches:', batchLogs.length);
     return { batchLogs, dailyData };
   } catch (err) {
     console.error('Error in fetchSupabaseData:', err);
@@ -384,6 +323,7 @@ export async function publishToSupabase(record: {
   imageFilename?: string;
   images?: number;
   imagesProcessed?: number;
+  poiCount?: number;
   defects?: number;
   defectCount?: number;
   imagesDefected?: number;
@@ -399,9 +339,11 @@ export async function publishToSupabase(record: {
     let rawList: PanoramaItem[] = [];
 
     if (record.panoramas && record.panoramas.length > 0) {
-      rawList = record.panoramas;
+      const maxCount = record.poiCount || record.imagesProcessed || record.panoramas.length;
+      rawList = record.panoramas.slice(0, maxCount);
     } else if (record.rawRows && record.rawRows.length > 0) {
-      rawList = record.rawRows;
+      const maxCount = record.poiCount || record.imagesProcessed || record.rawRows.length;
+      rawList = record.rawRows.slice(0, maxCount);
     } else {
       rawList = [{
         filename: record.imageFilename && !record.imageFilename.endsWith('-0001.jpg')
@@ -410,6 +352,25 @@ export async function publishToSupabase(record: {
         date: record.date
       }];
     }
+
+    const parseToIsoTimestamp = (rawDate?: string): string => {
+      if (!rawDate) return new Date().toISOString();
+      try {
+        const d = new Date(rawDate);
+        if (!isNaN(d.getTime())) {
+          return d.toISOString();
+        }
+      } catch { }
+      const parts = String(rawDate).trim().split(/[\/\-]/);
+      if (parts.length === 3) {
+        const [m, d, y] = parts.map(Number);
+        if (!isNaN(m) && !isNaN(d) && !isNaN(y)) {
+          const year = y < 100 ? 2000 + y : y;
+          return new Date(Date.UTC(year, m - 1, d)).toISOString();
+        }
+      }
+      return new Date().toISOString();
+    };
 
     const itemsToInsert: SupabasePanoramaRecord[] = rawList.map((p: any) => {
       const filename = p.filename || p.imageFilename || `${record.subgrid || 'N93E70'}-${Math.floor(1000 + Math.random() * 9000)}.jpg`;
@@ -431,7 +392,7 @@ export async function publishToSupabase(record: {
       return {
         filename,
         image_url: filename,
-        captured_at: p.date || p.captured_at || record.date || new Date().toISOString(),
+        captured_at: parseToIsoTimestamp(p.date || p.captured_at || record.date),
         description: `Published Batch (${record.subgrid || filename}) - ${new Date().toISOString().slice(0, 19).replace('T', ' ')}`,
         bearing: Number(p.bearing ?? p.heading ?? 16.2),
         pitch: Number(p.pitch ?? 0),
@@ -443,32 +404,35 @@ export async function publishToSupabase(record: {
       };
     });
 
-    // Direct PostgREST HTTP request with Service Role Key headers & on_conflict resolution
-    const response = await fetch(`${supabaseUrl}/rest/v1/panoramas?on_conflict=filename`, {
-      method: 'POST',
-      headers: {
-        'apikey': supabaseKey,
-        'Authorization': `Bearer ${supabaseKey}`,
-        'Content-Type': 'application/json',
-        'Prefer': 'resolution=merge-duplicates, return=representation'
-      },
-      body: JSON.stringify(itemsToInsert)
-    });
+    // Chunked PostgREST HTTP requests with Service Role Key headers & on_conflict resolution
+    const chunkSize = 50;
+    for (let i = 0; i < itemsToInsert.length; i += chunkSize) {
+      const chunk = itemsToInsert.slice(i, i + chunkSize);
+      const response = await fetch(`${supabaseUrl}/rest/v1/panoramas?on_conflict=filename`, {
+        method: 'POST',
+        headers: {
+          'apikey': supabaseKey,
+          'Authorization': `Bearer ${supabaseKey}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'resolution=merge-duplicates, return=representation'
+        },
+        body: JSON.stringify(chunk)
+      });
 
-    if (response.ok) {
-      const data = await response.json();
-      console.log('Successfully published items to Supabase via REST API:', data);
-      return {
-        success: true,
-        message: `Successfully published ${itemsToInsert.length} item(s) for ${record.subgrid || 'subgrid'} to Supabase database!`
-      };
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({ message: response.statusText }));
+        console.error('REST publish error on chunk:', errData);
+        return {
+          success: false,
+          message: errData.message || 'Failed to insert rows into Supabase'
+        };
+      }
     }
 
-    const errData = await response.json().catch(() => ({ message: response.statusText }));
-    console.error('REST publish error:', errData);
+    console.log(`Successfully published ${itemsToInsert.length} items to Supabase via REST API`);
     return {
-      success: false,
-      message: errData.message || 'Failed to insert rows into Supabase'
+      success: true,
+      message: `Successfully published ${itemsToInsert.length} item(s) for ${record.subgrid || 'subgrid'} to Supabase database!`
     };
   } catch (err) {
     console.error('Error publishing to Supabase:', err);
@@ -484,16 +448,24 @@ export async function publishToSupabase(record: {
  */
 export async function deleteFromSupabase(subgrid: string): Promise<{ success: boolean; message: string }> {
   try {
-    const { error } = await supabase
+    const cleanSub = (subgrid || '').trim();
+    const { error: pErr } = await supabase
       .from('panoramas')
       .delete()
-      .ilike('filename', `${subgrid}%`);
+      .ilike('filename', `${cleanSub}%`);
 
-    if (error) {
-      console.error('Error deleting from Supabase:', error);
-      return { success: false, message: error.message };
+    try {
+      await supabase
+        .from('qa_defects')
+        .delete()
+        .or(`subgrid.ilike.${cleanSub},filename.ilike.${cleanSub}%`);
+    } catch { }
+
+    if (pErr) {
+      console.error('Error deleting from Supabase panoramas:', pErr);
+      return { success: false, message: pErr.message };
     }
-    return { success: true, message: `Successfully deleted subgrid ${subgrid} from database` };
+    return { success: true, message: `Successfully deleted subgrid ${cleanSub} from database` };
   } catch (err) {
     console.error('Error deleting from Supabase:', err);
     return { success: false, message: (err as Error).message };
@@ -579,4 +551,72 @@ export async function fetchQaRecordsFromSupabase(): Promise<Record<string, { fla
     console.warn('Unable to fetch QA records from Supabase:', err);
     return {};
   }
+}
+
+/**
+ * Verify whether specific CSV image filenames exist in Supabase MMS_PIC storage bucket.
+ * Returns the count and list of image files verified to exist in storage.
+ */
+export async function verifyCsvImageFilenamesInStorage(filenames: string[]): Promise<{ availableCount: number; verifiedFilenames: string[] }> {
+  if (!filenames || filenames.length === 0) return { availableCount: 0, verifiedFilenames: [] };
+
+  try {
+    const storageFileSet = new Set<string>();
+    let offset = 0;
+    const limit = 100;
+    let hasMore = true;
+
+    while (hasMore && offset < 5000) {
+      const { data: storageFiles } = await supabase.storage.from('MMS_PIC').list('', { limit, offset });
+      if (!storageFiles || storageFiles.length === 0) break;
+      storageFiles.forEach(f => {
+        if (f.name) storageFileSet.add(f.name.trim().toLowerCase());
+      });
+      if (storageFiles.length < limit) hasMore = false;
+      else offset += limit;
+    }
+
+    if (storageFileSet.size > 0) {
+      const verifiedFilenames: string[] = [];
+      let availableCount = 0;
+
+      filenames.forEach(fn => {
+        const cleanFn = fn.replace(/^\/+/, '').replace(/^MMS_PIC\//i, '').replace(/^mms_pic\//i, '').trim().toLowerCase();
+        if (storageFileSet.has(cleanFn)) {
+          availableCount++;
+          verifiedFilenames.push(fn);
+        }
+      });
+      return { availableCount, verifiedFilenames };
+    }
+  } catch (err) {
+    console.warn('Storage API list check exception:', err);
+  }
+
+  // Fallback to HTTP HEAD if Storage API check is unavailable
+  const supabaseStorageBase = `${supabaseUrl}/storage/v1/object/public/MMS_PIC`;
+  const verifiedFilenames: string[] = [];
+  let availableCount = 0;
+  const batchSize = 10;
+
+  for (let i = 0; i < filenames.length; i += batchSize) {
+    const batch = filenames.slice(i, i + batchSize);
+    const results = await Promise.allSettled(
+      batch.map(fn => {
+        const cleanFn = fn.replace(/^\/+/, '').replace(/^MMS_PIC\//i, '').replace(/^mms_pic\//i, '').trim();
+        return fetch(`${supabaseStorageBase}/${cleanFn}`, { method: 'HEAD' })
+          .then(res => res.ok)
+          .catch(() => false);
+      })
+    );
+
+    results.forEach((r, idx) => {
+      if (r.status === 'fulfilled' && r.value === true) {
+        availableCount++;
+        verifiedFilenames.push(batch[idx]);
+      }
+    });
+  }
+
+  return { availableCount, verifiedFilenames };
 }
