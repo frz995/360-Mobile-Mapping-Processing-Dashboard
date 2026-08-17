@@ -677,6 +677,7 @@ function getFlatFolderList(items: (Layer | Folder)[], path: string = ''): Array<
 // ==============================================
 
 const MapComponent = ({
+  dataManagement = false,
   refreshKey,
   selectedSubgridFilter,
   stagedItems
@@ -761,12 +762,14 @@ const MapComponent = ({
         // 1. Send SET_STAGED_DATA
         iframeRef.current.contentWindow.postMessage({
           type: 'SET_STAGED_DATA',
+          isStagingPreview: Boolean(dataManagement),
           stagedItems: formattedStagedItems
         }, '*');
 
         // 2. Send STAGED_DATA_PREVIEW fallback
         iframeRef.current.contentWindow.postMessage({
           type: 'STAGED_DATA_PREVIEW',
+          isStagingPreview: Boolean(dataManagement),
           stagedItems: formattedStagedItems
         }, '*');
 
@@ -2303,11 +2306,14 @@ const DataManagementPage = ({
     } else {
       const dailyItem = item as DailyTimeSeries;
       const editingId = editingItem ? getItemId(editingItem as DailyTimeSeries) : null;
+      const pubStatus = (dailyItem.publishToWebGIS || (dailyItem as any).publishToUSVPRO || 'in process') as 'yes' | 'need to recheck' | 'no' | 'in process';
+      const isPub = pubStatus === 'yes';
+
       const updatedItem: DailyTimeSeries = {
         ...dailyItem,
-        publishToWebGIS: 'yes',
-        isSyncedWithSupabase: true,
-        action: 'Published in database'
+        publishToWebGIS: pubStatus,
+        isSyncedWithSupabase: isPub,
+        action: isPub ? 'Published in database' : 'Ready to publish'
       };
 
       const updatedDraft = editingId
@@ -2319,8 +2325,10 @@ const DataManagementPage = ({
       setBatchLogs(reconcileBatchLogs(updatedDraft, batchLogs));
       setIsDailyDirty(true);
 
-      // Auto-persist directly to Supabase DB in real-time
-      publishToSupabase(updatedItem).catch(err => console.warn('Background auto-publish error:', err));
+      // Auto-persist directly to Supabase DB in real-time if published
+      if (isPub) {
+        publishToSupabase(updatedItem).catch(err => console.warn('Background auto-publish error:', err));
+      }
     }
 
     const subName = (item as any).subgrid || (item as any).imageFilename || 'record';
@@ -3379,39 +3387,131 @@ const DataManagementPage = ({
             </>
           )}
 
-          {/* Add/Edit Form */}
-          {isFormOpen && (
-            <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[1000] p-4 sm:p-6 backdrop-blur-sm overflow-y-auto">
-              <div className="bg-[#0f172a] border border-slate-800 rounded-xl p-5 max-w-lg w-full max-h-[88vh] flex flex-col shadow-2xl overflow-hidden my-auto border-t border-t-slate-700/50">
-                <div className="flex justify-between items-center pb-3 mb-3 border-b border-slate-800 shrink-0">
-                  <h2 className="text-sm font-bold text-slate-100 tracking-wide">
-                    {editingItem ? 'Edit' : 'Add New'} {dataTab === 'batches' ? 'Batch Record' : 'Daily Record'}
-                  </h2>
-                  <button
-                    onClick={() => {
-                      setIsFormOpen(false);
-                      setEditingItem(null);
-                    }}
-                    className="text-slate-400 hover:text-slate-200 text-base p-1 cursor-pointer transition-colors"
-                    aria-label="Close edit popup dialog"
-                  >
-                    &times;
-                  </button>
-                </div>
-                <div className="flex-1 overflow-y-auto pr-1">
-                  <DataForm
-                    initialData={editingItem as BatchLog | DailyTimeSeries | null}
-                    dataType={dataTab as 'batches' | 'daily'}
-                    onSave={handleSave}
-                    onCancel={() => {
-                      setIsFormOpen(false);
-                      setEditingItem(null);
-                    }}
-                  />
+          {/* Dual-View Add/Edit Record Modal (Left: Form Data, Right: Interactive Map Preview) */}
+          {isFormOpen && (() => {
+            const editSubgrid = editingItem ? (extractSubgridName((editingItem as any).subgrid || (editingItem as any).imageFilename) || (editingItem as any).subgrid || 'N93E70') : 'N93E70';
+            const editGrid = editingItem ? ((editingItem as any).grid || '1') : '1';
+            const isPub = editingItem ? ((editingItem as any).publishToWebGIS === 'yes' || (editingItem as any).publishToUSVPRO === 'yes') : false;
+            const statusVal = isPub ? 'yes' : ((editingItem as any)?.publishToWebGIS || (editingItem as any)?.status || 'in process');
+            const op = isPub ? 1.0 : 0.5;
+            const colorHex = isPub ? '#10b981' : (statusVal === 'need to recheck' || statusVal === 'no' ? '#ef4444' : '#f59e0b');
+
+            const rawPans = editingItem ? ((editingItem as any).panoramas || (editingItem as any).points || []) : [];
+            const pans = rawPans.map((p: any, idx: number) => ({
+              ...p,
+              filename: p.filename || p.image_url || `${editSubgrid}-${String(idx + 1).padStart(4, '0')}.jpg`,
+              subgrid: editSubgrid,
+              grid: editGrid,
+              latitude: p.latitude ?? p.lat,
+              longitude: p.longitude ?? p.lon,
+              lat: p.lat ?? p.latitude,
+              lon: p.lon ?? p.longitude,
+              status: statusVal,
+              publishToWebGIS: statusVal,
+              isPublished: isPub,
+              opacity: op,
+              color: colorHex
+            }));
+
+            const editStagedItems = [{
+              subgrid: editSubgrid,
+              grid: editGrid,
+              status: statusVal,
+              publishToWebGIS: statusVal,
+              isSyncedWithSupabase: isPub,
+              isStagingPreview: true,
+              isPublished: isPub,
+              opacity: op,
+              color: colorHex,
+              statusColor: colorHex,
+              panoramas: pans,
+              points: pans
+            }];
+
+            return (
+              <div className="fixed inset-0 bg-black/85 flex items-center justify-center z-[1000] p-4 sm:p-6 backdrop-blur-sm overflow-y-auto">
+                <div className="bg-[#0f172a] border border-slate-800 rounded-2xl w-[96vw] max-w-[1750px] h-[94vh] max-h-[94vh] flex flex-col shadow-2xl overflow-hidden my-auto border-t border-t-slate-700/50 animate-fadeIn">
+                  
+                  {/* Modal Header */}
+                  <div className="bg-[#0b0f17] px-6 py-4 border-b border-slate-800 flex items-center justify-between shrink-0">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-sky-500/15 border border-sky-500/30 flex items-center justify-center text-sky-400">
+                        <Edit2 size={18} />
+                      </div>
+                      <div>
+                        <h2 className="text-base font-bold text-slate-100 tracking-wide flex items-center gap-2">
+                          <span>{editingItem ? 'Edit Record & Spatial Map Inspector' : 'Add New Record'}</span>
+                          <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono font-normal border border-slate-700">
+                            {dataTab === 'batches' ? 'Batch Logs' : 'Daily Data'}
+                          </span>
+                        </h2>
+                        <p className="text-xs text-slate-400 font-medium">
+                          {editingItem ? `Inspecting subgrid properties & spatial map preview for ${editSubgrid}` : 'Configure record details and preview spatial map coverage'}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setIsFormOpen(false);
+                        setEditingItem(null);
+                      }}
+                      className="text-slate-400 hover:text-white text-xl p-1.5 cursor-pointer transition-colors rounded-lg hover:bg-slate-800/80"
+                      aria-label="Close edit popup dialog"
+                    >
+                      &times;
+                    </button>
+                  </div>
+
+                  {/* Dual Column Layout */}
+                  <div className="flex-1 overflow-y-auto p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+                    
+                    {/* Left Column: Data Form Inputs (5 cols) */}
+                    <div className="lg:col-span-5 bg-[#121824] border border-slate-800 rounded-2xl p-6 shadow-sm space-y-5 flex flex-col justify-between overflow-y-auto">
+                      <div>
+                        <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-4 pb-2.5 border-b border-slate-800 flex items-center justify-between">
+                          <span>Record Configuration</span>
+                          <span className="text-[11px] text-slate-400 font-normal font-mono">ID: {(editingItem as any)?.id || 'NEW'}</span>
+                        </h3>
+                        <DataForm
+                          initialData={editingItem as BatchLog | DailyTimeSeries | null}
+                          dataType={dataTab as 'batches' | 'daily'}
+                          onSave={handleSave}
+                          onCancel={() => {
+                            setIsFormOpen(false);
+                            setEditingItem(null);
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Right Column: Spatial Map Preview (7 cols) */}
+                    <div className="lg:col-span-7 flex flex-col space-y-3">
+                      <div className="bg-[#121824] border border-slate-800 rounded-2xl overflow-hidden shadow-md flex-1 flex flex-col min-h-[580px]">
+                        <div className="bg-[#0b0f17] px-5 py-3 border-b border-slate-800 flex items-center justify-between">
+                          <div className="flex items-center gap-2 text-xs font-bold text-slate-200">
+                            <Globe size={15} className="text-sky-400" />
+                            <span>Record Trajectory & Spatial Map View</span>
+                          </div>
+                          <span className="px-2.5 py-1 rounded-md bg-sky-500/10 text-sky-300 border border-sky-500/20 text-[11px] font-semibold flex items-center gap-1.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-sky-400" /> Live Spatial Preview
+                          </span>
+                        </div>
+                        <div className="flex-1 relative min-h-[550px]">
+                          <MapComponent dataManagement refreshKey={0} stagedItems={editStagedItems} />
+                        </div>
+                      </div>
+                      <div className="p-3.5 bg-[#0d121d] border border-slate-800/80 rounded-xl flex items-center justify-between text-xs text-slate-400">
+                        <span>💡 Click survey points on map preview to open 360° street view imagery.</span>
+                        <span className="font-mono text-slate-200 font-semibold text-xs">Subgrid: {editSubgrid}</span>
+                      </div>
+                    </div>
+
+                  </div>
+
                 </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Subgrid Image Filenames List View Modal */}
           {imagesListModal && imagesListModal.isOpen && (() => {
@@ -4517,8 +4617,16 @@ const DataForm = ({
           <div>
             <label className="block text-xs font-semibold text-slate-300 mb-1">Publish to WEBGIS</label>
             <select
-              value={formData.publishToUSVPRO}
-              onChange={(e) => setFormData({ ...formData, publishToUSVPRO: e.target.value as 'yes' | 'need to recheck' | 'no' | 'in process' })}
+              value={formData.publishToWebGIS || 'in process'}
+              onChange={(e) => {
+                const val = e.target.value as 'yes' | 'need to recheck' | 'no' | 'in process';
+                setFormData({
+                  ...formData,
+                  publishToWebGIS: val,
+                  publishToUSVPRO: val,
+                  isSyncedWithSupabase: val === 'yes'
+                });
+              }}
               className="w-full bg-slate-900 border border-slate-700/80 rounded-lg px-3 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-slate-500"
               required
             >
@@ -4533,7 +4641,7 @@ const DataForm = ({
             <input
               disabled
               type="text"
-              value={formData.publishToUSVPRO === 'yes' || formData.isSyncedWithSupabase ? 'published in database' : 'ready to publish'}
+              value={formData.publishToWebGIS === 'yes' ? 'published in database' : 'ready to publish'}
               className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-400 cursor-not-allowed"
             />
             <p className="text-[10px] text-slate-500 mt-0.5">Status is updated automatically when syncing or publishing to database.</p>
