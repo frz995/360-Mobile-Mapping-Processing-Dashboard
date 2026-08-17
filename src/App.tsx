@@ -1732,6 +1732,9 @@ const DataManagementPage = ({
       });
     });
 
+    const existingSubgridSet = new Set(dailyData.map(d => (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim()).filter(Boolean));
+    const duplicateNames = Array.from(new Set(imported.map(d => (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim()).filter(sg => existingSubgridSet.has(sg))));
+
     const updatedDraft = [...draftDailyData, ...imported];
     const updatedBatchLogs = reconcileBatchLogs(updatedDraft, batchLogs);
 
@@ -1740,6 +1743,20 @@ const DataManagementPage = ({
     setBatchLogs(updatedBatchLogs);
     setIsDailyDirty(true);
     setIsCsvImportOpen(false);
+
+    if (duplicateNames.length > 0) {
+      setPublishMessage({
+        text: `Multiple data detected for subgrid(s) (${duplicateNames.join(', ')}). Merged records cleanly into Staging list.`,
+        type: 'error'
+      });
+      addAuditLog?.('CREATE', 'Multiple Data Detected on CSV Import', `Duplicate subgrid data detected for ${duplicateNames.join(', ')}. Merged into staging list.`, 'info');
+    } else {
+      setPublishMessage({
+        text: `Successfully imported ${imported.length} subgrid record(s) into local Staging mode!`,
+        type: 'success'
+      });
+      addAuditLog?.('CREATE', 'CSV Import Executed', `Imported ${imported.length} subgrid(s) into local staging mode.`, 'success');
+    }
 
     try {
       localStorage.setItem('dailyData_v30', JSON.stringify(updatedDraft));
@@ -3750,8 +3767,31 @@ const DataManagementPage = ({
                     const displaySubgrids = detectedSubgrids.length > 0 ? detectedSubgrids : ['N94E71'];
                     const isMultiFile = csvFileList.length > 1;
 
+                    const existingSubgridSet = new Set(dailyData.map(d => (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim()).filter(Boolean));
+                    const duplicateDetectedSubgrids = detectedSubgrids.filter(sg => existingSubgridSet.has(sg.toUpperCase().trim()));
+                    const hasDuplicates = duplicateDetectedSubgrids.length > 0;
+
                     return (
-                      <div className="p-3 bg-[#111827] border border-slate-800 rounded-xl space-y-2">
+                      <div className="space-y-2">
+                        {/* Duplicate Detection Notice Banner */}
+                        {hasDuplicates && (
+                          <div className="p-3 bg-[#1c140a] border border-amber-500/50 rounded-xl flex items-center justify-between gap-3 text-xs text-amber-200 shadow-md">
+                            <div className="flex items-center gap-2.5">
+                              <AlertTriangle size={16} className="text-amber-400 shrink-0 animate-pulse" />
+                              <div>
+                                <span className="font-bold text-amber-300">Multiple data detected</span>
+                                <span className="text-amber-200/90 ml-2 font-mono text-[11px]">
+                                  Subgrid(s) <strong className="text-amber-100 font-bold font-mono">{duplicateDetectedSubgrids.join(', ')}</strong> already exist in records.
+                                </span>
+                              </div>
+                            </div>
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 shrink-0">
+                              {duplicateDetectedSubgrids.length} Duplicate{duplicateDetectedSubgrids.length > 1 ? 's' : ''} Detected
+                            </span>
+                          </div>
+                        )}
+
+                        <div className="p-3 bg-[#111827] border border-slate-800 rounded-xl space-y-2">
                         <div className="flex items-start gap-3">
                           <CheckCircle size={16} className="text-emerald-400 shrink-0 mt-0.5" />
                           <div className="space-y-1">
@@ -3777,14 +3817,23 @@ const DataManagementPage = ({
                             {/* Detected Subgrids Badge Display */}
                             <div className="pt-1 flex items-center gap-1.5 flex-wrap">
                               <span className="text-[10px] font-bold text-sky-400 uppercase tracking-wider">Detected Subgrid(s):</span>
-                              {displaySubgrids.map(sg => (
-                                <span key={sg} className="px-2 py-0.5 rounded-md bg-sky-500/15 text-sky-300 border border-sky-500/30 text-[11px] font-mono font-bold">
-                                  {sg}
-                                </span>
-                              ))}
+                              {displaySubgrids.map(sg => {
+                                const isSubDup = existingSubgridSet.has(sg.toUpperCase().trim());
+                                return (
+                                  <span key={sg} className={`px-2 py-0.5 rounded-md text-[11px] font-mono font-bold flex items-center gap-1 ${
+                                    isSubDup
+                                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                                      : 'bg-sky-500/15 text-sky-300 border border-sky-500/30'
+                                  }`}>
+                                    {sg}
+                                    {isSubDup && <span className="text-[9px] font-sans font-semibold text-amber-400 ml-1">(multiple data detected)</span>}
+                                  </span>
+                                );
+                              })}
                             </div>
                           </div>
                         </div>
+                      </div>
                       </div>
                     );
                   })()}
