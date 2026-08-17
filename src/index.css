@@ -341,6 +341,13 @@ body {
 }
 
 /* Popovers & Modals */
+.light-mode .fixed.inset-0.bg-black\/80,
+.light-mode .fixed.inset-0.bg-black\/85,
+.light-mode [class*="bg-black/"] {
+  background-color: rgba(15, 23, 42, 0.45) !important;
+  backdrop-filter: blur(4px) !important;
+}
+
 .light-mode .fixed .bg-\[\#0f172a\],
 .light-mode .fixed .bg-\[\#111827\],
 .light-mode .fixed .bg-slate-900,
@@ -352,6 +359,49 @@ body {
   border-color: #cbd5e1 !important;
   color: #0f172a !important;
   box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1) !important;
+}
+
+/* Light Mode Form Buttons (Active vs Inactive States) */
+.light-mode button.bg-slate-700,
+.light-mode .bg-slate-700 {
+  background-color: #0f172a !important;
+  border-color: #0f172a !important;
+  color: #ffffff !important;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1) !important;
+}
+
+.light-mode button.bg-slate-700 *,
+.light-mode .bg-slate-700 * {
+  color: #ffffff !important;
+}
+
+.light-mode button.bg-slate-800,
+.light-mode button.bg-slate-900 {
+  background-color: #f1f5f9 !important;
+  border-color: #cbd5e1 !important;
+  color: #334155 !important;
+}
+
+.light-mode button.bg-slate-800:hover,
+.light-mode button.bg-slate-900:hover {
+  background-color: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+
+/* Light Mode System Metrics Panel Cards */
+.light-mode .bg-slate-900\/90,
+.light-mode .bg-slate-900\/80,
+.light-mode .bg-\[\#131b2e\] {
+  background-color: #f8fafc !important;
+  border-color: #e2e8f0 !important;
+}
+
+.light-mode .bg-slate-950\/80,
+.light-mode .bg-slate-950 {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
+  color: #0f172a !important;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05) !important;
 }
 
 /* ============================================================

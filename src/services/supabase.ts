@@ -277,7 +277,7 @@ export async function fetchSupabaseData(): Promise<{
         defectCount: defects,
         imagesDefected: defects,
         captureEquipment: equipment,
-        publishToUSVPRO: 'yes',
+        publishToWebGIS: 'yes',
         action: 'Published in database',
         pic: pic,
         isSyncedWithSupabase: true
@@ -329,7 +329,7 @@ export async function publishToSupabase(record: {
   imagesDefected?: number;
   kmProcessed?: number;
   captureEquipment?: string;
-  publishToUSVPRO?: string;
+  publishToWebGIS?: string;
   action?: string;
   status?: string;
   panoramas?: PanoramaItem[];
