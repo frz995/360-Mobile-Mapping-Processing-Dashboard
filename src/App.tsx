@@ -43,7 +43,7 @@ import {
   Moon,
   Settings
 } from 'lucide-react';
-import { supabase, publishToSupabase, fetchSupabaseData, deleteFromSupabase, updateDefectStatusInSupabase, fetchQaRecordsFromSupabase, verifyCsvImageFilenamesInStorage } from './services/supabase';
+import { supabase, publishToSupabase, saveToStagingSupabase, deleteFromStagingSupabase, fetchSupabaseData, deleteFromSupabase, updateDefectStatusInSupabase, fetchQaRecordsFromSupabase, verifyCsvImageFilenamesInStorage } from './services/supabase';
 import * as shapefile from 'shapefile';
 import * as toGeoJSON from '@tmcw/togeojson';
 
@@ -178,30 +178,32 @@ export function getPOICount(item?: { poiCount?: number; imagesProcessed?: number
 export function getImagesProcessedCount(item?: { imagesProcessed?: number; images?: number; availableImagesCount?: number; panoramas?: PanoramaItem[]; poiCount?: number; publishToWebGIS?: string; status?: string; isSyncedWithSupabase?: boolean; subgrid?: string }): number {
   if (!item) return 0;
 
-  let count = 0;
-  if (typeof item.availableImagesCount === 'number') {
-    count = item.availableImagesCount;
-  } else if (typeof item.imagesProcessed === 'number') {
-    count = item.imagesProcessed;
-  } else if (typeof item.images === 'number') {
-    count = item.images;
-  } else if (Array.isArray(item.panoramas) && item.panoramas.length > 0) {
+  // 1. Highest priority: Verified available image files in Supabase Storage
+  if (typeof item.availableImagesCount === 'number' && item.availableImagesCount >= 0) {
+    return item.availableImagesCount;
+  }
+
+  // 2. Explicit imagesProcessed property
+  if (typeof item.imagesProcessed === 'number' && item.imagesProcessed >= 0) {
+    return item.imagesProcessed;
+  }
+
+  // 3. Explicit images property
+  if (typeof item.images === 'number' && item.images >= 0) {
+    return item.images;
+  }
+
+  // 4. Panoramas array
+  if (Array.isArray(item.panoramas) && item.panoramas.length > 0) {
     if (item.subgrid) {
       const subFilter = (extractSubgridName(item.subgrid) || item.subgrid).toUpperCase().trim();
       const filtered = item.panoramas.filter(p => (extractSubgridName(p.filename) || '').toUpperCase().trim() === subFilter);
-      count = filtered.length > 0 ? filtered.length : item.panoramas.length;
-    } else {
-      count = item.panoramas.length;
+      return filtered.length > 0 ? filtered.length : item.panoramas.length;
     }
+    return item.panoramas.length;
   }
 
-  // Cap available images count at item POI count to prevent cross-row over-counting
-  const maxPoi = typeof item.poiCount === 'number' && item.poiCount > 0 ? item.poiCount : 0;
-  if (maxPoi > 0 && count > maxPoi) {
-    count = maxPoi;
-  }
-
-  return Math.max(0, count);
+  return 0;
 }
 
 
@@ -1611,13 +1613,14 @@ const DataManagementPage = ({
   };
 
 
-  const handleCsvImport = (directPublish = false) => {
+  const handleCsvImport = async (directPublish = false) => {
     const imported: DailyTimeSeries[] = [];
     const filesToProcess = csvFileList.length > 0
       ? csvFileList
       : [{ fileName: 'imported.csv', headers: csvHeaders, rows: csvRows }];
 
-    filesToProcess.forEach((fileItem, fIdx) => {
+    for (let fIdx = 0; fIdx < filesToProcess.length; fIdx++) {
+      const fileItem = filesToProcess[fIdx];
       const fHeaders = fileItem.headers;
       const fRows = fileItem.rows;
       const fileSpecificGrid = fileGridMap[fileItem.fileName] || selectedGrid || '1';
@@ -1717,14 +1720,33 @@ const DataManagementPage = ({
         }
       });
 
-      groupedInFile.forEach((d, sIdx) => {
+      const subgridsList = Array.from(groupedInFile.keys());
+      for (let sIdx = 0; sIdx < subgridsList.length; sIdx++) {
+        const sgKey = subgridsList[sIdx];
+        const d = groupedInFile.get(sgKey)!;
         const trackKm = calculatePanoramaTrackKm(d.panoramas);
         const finalKm = d.kmProcessed > 0 ? d.kmProcessed : (trackKm > 0 ? trackKm : Math.round((d.panoramas.length * 0.005) * 100) / 100);
+        const panCount = d.panoramas.length;
+
+        // Verify actual image files in MMS_PIC storage bucket
+        const explicitFn = d.panoramas.map(p => p.filename).filter((fn): fn is string => Boolean(fn));
+        const targetFilenames = explicitFn.length > 0
+          ? explicitFn
+          : Array.from({ length: panCount }, (_, i) => `${d.subgrid}-${String(i + 1).padStart(4, '0')}.jpg`);
+
+        let verifiedStorageCount = 0;
+        try {
+          const { availableCount } = await verifyCsvImageFilenamesInStorage(targetFilenames);
+          verifiedStorageCount = availableCount;
+        } catch {
+          verifiedStorageCount = 0;
+        }
+
         imported.push({
           ...d,
-          poiCount: d.panoramas.length > 0 ? d.panoramas.length : (d.imagesProcessed || 1),
-          imagesProcessed: d.panoramas.length > 0 ? d.panoramas.length : (d.imagesProcessed || 1),
-          availableImagesCount: d.panoramas.length > 0 ? d.panoramas.length : (d.imagesProcessed || 1),
+          poiCount: panCount,
+          imagesProcessed: verifiedStorageCount,
+          availableImagesCount: verifiedStorageCount,
           defectCount: d.defectCount || 0,
           imagesDefected: d.imagesDefected || 0,
           publishToWebGIS: directPublish ? 'yes' : d.publishToWebGIS,
@@ -1732,13 +1754,34 @@ const DataManagementPage = ({
           id: `daily-csv-${Date.now()}-${fIdx}-${sIdx}`,
           kmProcessed: Math.round(finalKm * 100) / 100,
         });
-      });
-    });
+      }
+    }
 
     const existingSubgridSet = new Set(dailyData.map(d => (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim()).filter(Boolean));
     const duplicateNames = Array.from(new Set(imported.map(d => (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim()).filter(sg => existingSubgridSet.has(sg))));
 
-    const updatedDraft = [...draftDailyData, ...imported];
+    // Replace matching subgrid entries cleanly to prevent duplicate rows and merge verified image counts
+    const importedMap = new Map(imported.map(imp => [(extractSubgridName(imp.subgrid) || imp.subgrid || '').toUpperCase().trim(), imp]));
+    const updatedDraft: DailyTimeSeries[] = [];
+
+    draftDailyData.forEach(d => {
+      const normSg = (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim();
+      if (importedMap.has(normSg)) {
+        const fresh = importedMap.get(normSg)!;
+        importedMap.delete(normSg);
+        updatedDraft.push({
+          ...d,
+          ...fresh,
+          id: d.id || fresh.id
+        });
+      } else {
+        updatedDraft.push(d);
+      }
+    });
+
+    // Append new subgrids
+    importedMap.forEach(newImp => updatedDraft.push(newImp));
+
     const updatedBatchLogs = reconcileBatchLogs(updatedDraft, batchLogs);
 
     setDraftDailyData(updatedDraft);
@@ -1765,6 +1808,13 @@ const DataManagementPage = ({
       localStorage.setItem('dailyData_v30', JSON.stringify(updatedDraft));
       localStorage.setItem('batchLogs_v30', JSON.stringify(updatedBatchLogs));
     } catch (e) { }
+
+    // Save staged records to Supabase staging_panoramas table for cross-session/cross-device persistence
+    if (!directPublish && imported.length > 0) {
+      Promise.all(imported.map(imp => saveToStagingSupabase(imp)))
+        .then(() => console.log('Successfully persisted CSV records into Supabase staging_panoramas table.'))
+        .catch(err => console.warn('Notice: Supabase staging table sync notice:', err));
+    }
 
     // Broadcast staged data update (with 50% opacity & matching trajectory colors) to WebGIS map iframes
     const iframes = document.querySelectorAll('iframe');
@@ -1795,40 +1845,6 @@ const DataManagementPage = ({
         category: 'PUBLISH'
       });
     }
-
-    // Verify filenames against Supabase MMS_PIC storage bucket in background
-    (async () => {
-      let hasStorageUpdates = false;
-      const verifiedItems = await Promise.all(
-        updatedDraft.map(async item => {
-          if (item.panoramas && item.panoramas.length > 0) {
-            const filenames = item.panoramas.map(p => p.filename).filter((fn): fn is string => Boolean(fn));
-            if (filenames.length > 0) {
-              try {
-                const { availableCount } = await verifyCsvImageFilenamesInStorage(filenames);
-                if (availableCount >= 0 && (availableCount !== item.availableImagesCount || availableCount !== item.imagesProcessed)) {
-                  hasStorageUpdates = true;
-                  return {
-                    ...item,
-                    availableImagesCount: availableCount,
-                    imagesProcessed: availableCount
-                  };
-                }
-              } catch (err) {
-                console.warn('MMS_PIC storage check notice:', err);
-              }
-            }
-          }
-          return item;
-        })
-      );
-
-      if (hasStorageUpdates) {
-        setDraftDailyData(verifiedItems);
-        setDailyData(verifiedItems);
-        setBatchLogs(reconcileBatchLogs(verifiedItems, batchLogs));
-      }
-    })();
     // Count valid vs invalid (0,0 or missing) coordinates
     let invalidGpsCount = 0;
     let validGpsCount = 0;
@@ -2239,8 +2255,12 @@ const DataManagementPage = ({
 
       if (!('images' in item)) {
         const dailyItem = item as DailyTimeSeries;
-        const filenames = (dailyItem.panoramas || []).map(p => p.filename).filter((fn): fn is string => Boolean(fn));
-        let matchedCount = dailyItem.imagesProcessed || dailyItem.poiCount || dailyItem.panoramas?.length || 1;
+        const filenames = (dailyItem.panoramas && dailyItem.panoramas.length > 0)
+          ? dailyItem.panoramas.map((p: any) => p.filename).filter((fn: any): fn is string => Boolean(fn))
+          : Array.from({ length: dailyItem.poiCount || 1 }, (_, i) => `${dailyItem.subgrid}-${String(i + 1).padStart(4, '0')}.jpg`);
+        let matchedCount = typeof dailyItem.availableImagesCount === 'number'
+          ? dailyItem.availableImagesCount
+          : (typeof dailyItem.imagesProcessed === 'number' ? dailyItem.imagesProcessed : 0);
         if (filenames.length > 0) {
           try {
             const { availableCount } = await verifyCsvImageFilenamesInStorage(filenames);
@@ -2460,6 +2480,7 @@ const DataManagementPage = ({
     } catch (e) { }
 
     try {
+      await deleteFromStagingSupabase(normSub || subgridName);
       await deleteFromSupabase(normSub || subgridName);
     } catch (err) {
       console.warn('Background delete error:', err);
@@ -3431,7 +3452,7 @@ const DataManagementPage = ({
             return (
               <div className="fixed inset-0 bg-black/85 flex items-center justify-center z-[1000] p-4 sm:p-6 backdrop-blur-sm overflow-y-auto">
                 <div className="bg-[#0f172a] border border-slate-800 rounded-2xl w-[96vw] max-w-[1750px] h-[94vh] max-h-[94vh] flex flex-col shadow-2xl overflow-hidden my-auto border-t border-t-slate-700/50 animate-fadeIn">
-                  
+
                   {/* Modal Header */}
                   <div className="bg-[#0b0f17] px-6 py-4 border-b border-slate-800 flex items-center justify-between shrink-0">
                     <div className="flex items-center gap-3">
@@ -3464,7 +3485,7 @@ const DataManagementPage = ({
 
                   {/* Dual Column Layout */}
                   <div className="flex-1 overflow-y-auto p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
-                    
+
                     {/* Left Column: Data Form Inputs (5 cols) */}
                     <div className="lg:col-span-5 bg-[#121824] border border-slate-800 rounded-2xl p-6 shadow-sm space-y-5 flex flex-col justify-between overflow-y-auto">
                       <div>
@@ -3892,48 +3913,47 @@ const DataManagementPage = ({
                         )}
 
                         <div className="p-3 bg-[#111827] border border-slate-800 rounded-xl space-y-2">
-                        <div className="flex items-start gap-3">
-                          <CheckCircle size={16} className="text-emerald-400 shrink-0 mt-0.5" />
-                          <div className="space-y-1">
-                            {isMultiFile ? (
-                              <>
-                                <p className="text-slate-200 text-xs font-semibold">
-                                  CSV loaded &bull; <span className="font-bold text-slate-100">{csvFileList.length} separate CSV files selected</span> ({csvFileList.map(f => `${f.rows.length} rows`).join(', ')}).
-                                </p>
-                                <p className="text-slate-400 text-[11px]">
-                                  Will be imported as <strong className="text-slate-200">{csvFileList.length} separate daily entries</strong>.
-                                </p>
-                              </>
-                            ) : (
-                              <>
-                                <p className="text-slate-200 text-xs font-semibold">
-                                  CSV loaded &bull; <span className="font-bold">{csvRows.length} image rows</span> &amp; <span className="font-bold">{csvHeaders.length} columns</span> detected.
-                                  <> Will be processed as <span className="font-bold text-slate-100">{displaySubgrids.length} unique subgrid{displaySubgrids.length !== 1 ? 's' : ''}</span>.</>
-                                </p>
-                                <p className="text-slate-400 text-[11px]">Each imported entry will be added as a separate entity without overwriting existing rows.</p>
-                              </>
-                            )}
+                          <div className="flex items-start gap-3">
+                            <CheckCircle size={16} className="text-emerald-400 shrink-0 mt-0.5" />
+                            <div className="space-y-1">
+                              {isMultiFile ? (
+                                <>
+                                  <p className="text-slate-200 text-xs font-semibold">
+                                    CSV loaded &bull; <span className="font-bold text-slate-100">{csvFileList.length} separate CSV files selected</span> ({csvFileList.map(f => `${f.rows.length} rows`).join(', ')}).
+                                  </p>
+                                  <p className="text-slate-400 text-[11px]">
+                                    Will be imported as <strong className="text-slate-200">{csvFileList.length} separate daily entries</strong>.
+                                  </p>
+                                </>
+                              ) : (
+                                <>
+                                  <p className="text-slate-200 text-xs font-semibold">
+                                    CSV loaded &bull; <span className="font-bold">{csvRows.length} image rows</span> &amp; <span className="font-bold">{csvHeaders.length} columns</span> detected.
+                                    <> Will be processed as <span className="font-bold text-slate-100">{displaySubgrids.length} unique subgrid{displaySubgrids.length !== 1 ? 's' : ''}</span>.</>
+                                  </p>
+                                  <p className="text-slate-400 text-[11px]">Each imported entry will be added as a separate entity without overwriting existing rows.</p>
+                                </>
+                              )}
 
-                            {/* Detected Subgrids Badge Display */}
-                            <div className="pt-1 flex items-center gap-1.5 flex-wrap">
-                              <span className="text-[10px] font-bold text-sky-400 uppercase tracking-wider">Detected Subgrid(s):</span>
-                              {displaySubgrids.map(sg => {
-                                const isSubDup = existingSubgridSet.has(sg.toUpperCase().trim());
-                                return (
-                                  <span key={sg} className={`px-2 py-0.5 rounded-md text-[11px] font-mono font-bold flex items-center gap-1 ${
-                                    isSubDup
-                                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
-                                      : 'bg-sky-500/15 text-sky-300 border border-sky-500/30'
-                                  }`}>
-                                    {sg}
-                                    {isSubDup && <span className="text-[9px] font-sans font-semibold text-amber-400 ml-1">(multiple data detected)</span>}
-                                  </span>
-                                );
-                              })}
+                              {/* Detected Subgrids Badge Display */}
+                              <div className="pt-1 flex items-center gap-1.5 flex-wrap">
+                                <span className="text-[10px] font-bold text-sky-400 uppercase tracking-wider">Detected Subgrid(s):</span>
+                                {displaySubgrids.map(sg => {
+                                  const isSubDup = existingSubgridSet.has(sg.toUpperCase().trim());
+                                  return (
+                                    <span key={sg} className={`px-2 py-0.5 rounded-md text-[11px] font-mono font-bold flex items-center gap-1 ${isSubDup
+                                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                                        : 'bg-sky-500/15 text-sky-300 border border-sky-500/30'
+                                      }`}>
+                                      {sg}
+                                      {isSubDup && <span className="text-[9px] font-sans font-semibold text-amber-400 ml-1">(multiple data detected)</span>}
+                                    </span>
+                                  );
+                                })}
+                              </div>
                             </div>
                           </div>
                         </div>
-                      </div>
                       </div>
                     );
                   })()}
@@ -4890,6 +4910,12 @@ export default function App() {
       }
       try {
         const { dailyData: sDaily, batchLogs: sBatches } = await fetchSupabaseData();
+        const publishedSubgridSet = new Set(
+          (sDaily || [])
+            .filter(d => d.publishToWebGIS === 'yes' || d.isFromSupabase === true)
+            .map(d => (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim())
+            .filter(Boolean)
+        );
         const liveSubgridSet = new Set((sDaily || []).map(d => (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim()).filter(Boolean));
         const liveBatchSet = new Set((sBatches || []).map(b => (extractSubgridName(b.subgrid || b.imageFilename) || b.subgrid || '').toUpperCase().trim()).filter(Boolean));
 
@@ -4900,7 +4926,7 @@ export default function App() {
           prev.forEach(d => {
             const normSg = (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim();
             const isFromRemoteDb = Boolean(d.isFromSupabase || (d.id && String(d.id).startsWith('sp-daily-')));
-            const existsInSupabase = Boolean(normSg && liveSubgridSet.has(normSg));
+            const isStaged = d.publishToWebGIS !== 'yes' && !d.isSyncedWithSupabase;
 
             // If item originated from remote Supabase DB but its subgrid is NO LONGER in liveSubgridSet, it was deleted remotely!
             if (isFromRemoteDb && normSg && liveSubgridSet.size > 0 && !liveSubgridSet.has(normSg)) {
@@ -4912,9 +4938,13 @@ export default function App() {
             if (!seenKeys.has(fullKey)) {
               seenKeys.add(fullKey);
               const maxPoi = d.poiCount || (d.panoramas?.length) || 0;
-              const rawImg = typeof d.availableImagesCount === 'number' ? d.availableImagesCount : (d.imagesProcessed || maxPoi);
+              const rawImg = typeof d.availableImagesCount === 'number'
+                ? d.availableImagesCount
+                : (typeof d.imagesProcessed === 'number' ? d.imagesProcessed : maxPoi);
               const cappedImg = maxPoi > 0 ? Math.min(rawImg, maxPoi) : rawImg;
-              const isPub = existsInSupabase || d.publishToWebGIS === 'yes' || d.isFromSupabase === true;
+              const existsInProductionDb = Boolean(normSg && publishedSubgridSet.has(normSg));
+              const isPub = !isStaged && (existsInProductionDb || d.publishToWebGIS === 'yes' || d.isFromSupabase === true);
+
               merged.push({
                 ...d,
                 id: d.id,
@@ -4924,6 +4954,16 @@ export default function App() {
                 isSyncedWithSupabase: isPub ? true : Boolean(d.isSyncedWithSupabase),
                 action: isPub ? 'Published in database' : (d.action || 'Imported (staging)')
               });
+            }
+          });
+
+          (sDaily || []).forEach(sd => {
+            const normSg = (extractSubgridName(sd.subgrid) || sd.subgrid || '').toUpperCase().trim();
+            const dateKey = (sd.date || '').toLowerCase().trim();
+            const fullKey = `${normSg}_${dateKey}_${sd.id || ''}`;
+            if (!seenKeys.has(fullKey) && !merged.some(m => (extractSubgridName(m.subgrid) || m.subgrid || '').toUpperCase().trim() === normSg)) {
+              seenKeys.add(fullKey);
+              merged.push(sd);
             }
           });
 
@@ -4942,12 +4982,14 @@ export default function App() {
             const normSg = (extractSubgridName(b.subgrid || b.imageFilename) || b.subgrid || '').toUpperCase().trim();
             const sb = (sBatches || []).find(s => (extractSubgridName(s.subgrid || s.imageFilename) || s.subgrid || '').toUpperCase().trim() === normSg);
             if (sb) {
+              const bPub = (b as any).publishToWebGIS;
+              const isStaged = sb.status === 'Ongoing' || sb.isStagingPreview || !sb.isSyncedWithSupabase || bPub === 'in process' || bPub === 'no' || bPub === 'need to recheck';
               return {
                 ...b,
                 ...sb,
                 id: b.id,
-                status: 'Complete' as const,
-                isSyncedWithSupabase: true
+                status: isStaged ? 'Ongoing' as const : 'Complete' as const,
+                isSyncedWithSupabase: !isStaged
               };
             }
             return b;
@@ -5059,6 +5101,41 @@ export default function App() {
       clearInterval(liveInterval);
     };
   }, []);
+
+  // Verify storage image availability for daily items on mount & sync availableImagesCount
+  useEffect(() => {
+    let isMounted = true;
+    (async () => {
+      let updated = false;
+      const verifiedList = await Promise.all(
+        dailyData.map(async d => {
+          // If item is in staging preview, preserve its CSV frame count until published
+          if (d.publishToWebGIS !== 'yes' && !d.isSyncedWithSupabase) {
+            return d;
+          }
+
+          const filenames = (d.panoramas && d.panoramas.length > 0)
+            ? d.panoramas.map(p => p.filename).filter((fn): fn is string => Boolean(fn))
+            : Array.from({ length: d.poiCount || 1 }, (_, i) => `${d.subgrid}-${String(i + 1).padStart(4, '0')}.jpg`);
+
+          if (filenames.length > 0) {
+            try {
+              const { availableCount } = await verifyCsvImageFilenamesInStorage(filenames);
+              if (availableCount >= 0 && (d.availableImagesCount !== availableCount || d.imagesProcessed !== availableCount)) {
+                updated = true;
+                return { ...d, availableImagesCount: availableCount, imagesProcessed: availableCount };
+              }
+            } catch { }
+          }
+          return d;
+        })
+      );
+      if (updated && isMounted) {
+        setDailyData(verifiedList);
+      }
+    })();
+    return () => { isMounted = false; };
+  }, [dailyData.length]);
 
   // Save to localStorage whenever data changes
   useEffect(() => {

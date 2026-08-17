@@ -245,7 +245,9 @@ export async function fetchSupabaseData(): Promise<{
       const storageCount = storageImageCounts.get(subgrid);
 
       const poiCount = countFromDB;
-      const verifiedImagesCount = Math.min(storageCount !== undefined ? storageCount : countFromDB, poiCount);
+      const verifiedImagesCount = (storageCount !== undefined && storageCount > 0)
+        ? Math.min(storageCount, poiCount)
+        : (g.recordImages !== undefined ? g.recordImages : countFromDB);
 
       const grid = g.grid || String(idx + 1);
       const pic = 'Fariz';
@@ -302,6 +304,110 @@ export async function fetchSupabaseData(): Promise<{
         isSyncedWithSupabase: true
       });
     });
+
+    // 3. Query staging_panoramas table for persistent staged records
+    try {
+      const { data: stagingData, error: stagingErr } = await supabase.from('staging_panoramas').select('*');
+      if (!stagingErr && stagingData && stagingData.length > 0) {
+        const stagingGrouped = new Map<string, any>();
+        stagingData.forEach(r => {
+          const filename = r.filename || r.image_url || '';
+          const sg = (r.subgrid || extractSubgrid(filename) || 'UNKNOWN').toUpperCase().trim();
+          if (!sg || sg === 'UNKNOWN' || sg === 'N/A') return;
+          // If subgrid is already in production published panoramas, skip staging item
+          if (grouped.has(sg)) return;
+
+          if (!stagingGrouped.has(sg)) {
+            stagingGrouped.set(sg, {
+              subgrid: sg,
+              grid: r.grid || '1',
+              imageFilenames: [],
+              poiCount: r.poi_count || 0,
+              imagesProcessed: r.images_processed || 0,
+              kmProcessed: typeof r.km_processed === 'number' ? r.km_processed : 0,
+              defectCount: r.defect_count || 0,
+              capturedAt: r.captured_at,
+              equipment: r.capture_equipment || 'MMS',
+              status: r.status || 'in process',
+              points: []
+            });
+          }
+
+          const sgObj = stagingGrouped.get(sg)!;
+          if (filename && !sgObj.imageFilenames.includes(filename)) {
+            sgObj.imageFilenames.push(filename);
+          }
+          if (r.geom) {
+            let geomObj = r.geom;
+            let lat: number | undefined;
+            let lon: number | undefined;
+            if (typeof geomObj === 'string') {
+              const match = geomObj.match(/POINT\(\s*([-\d.]+)\s+([-\d.]+)\s*\)/i);
+              if (match) { lon = parseFloat(match[1]); lat = parseFloat(match[2]); }
+            } else if (geomObj && geomObj.coordinates && Array.isArray(geomObj.coordinates)) {
+              lon = Number(geomObj.coordinates[0]); lat = Number(geomObj.coordinates[1]);
+            }
+            if (typeof lat === 'number' && typeof lon === 'number' && !isNaN(lat) && !isNaN(lon)) {
+              sgObj.points.push({ lat, lon });
+            }
+          }
+        });
+
+        stagingGrouped.forEach((g, sg) => {
+          const count = g.imageFilenames.length || g.poiCount || 1;
+          const calcKm = calculateDistance(g.points);
+          const km = g.kmProcessed > 0 ? g.kmProcessed : (calcKm > 0 ? calcKm : Math.round((count * 0.005) * 100) / 100);
+          const rawDate = g.capturedAt ? new Date(g.capturedAt).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
+          let dateFormatted = rawDate;
+          const dObj = new Date(rawDate);
+          if (!isNaN(dObj.getTime())) {
+            dateFormatted = dObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+          }
+
+          const imgCount = g.imagesProcessed || count;
+
+          dailyData.push({
+            id: `staging-d-${sg}`,
+            date: dateFormatted,
+            grid: g.grid,
+            subgrid: sg,
+            kmProcessed: km,
+            imagesProcessed: imgCount,
+            poiCount: count,
+            availableImagesCount: imgCount,
+            defectCount: g.defectCount,
+            imagesDefected: g.defectCount,
+            captureEquipment: g.equipment,
+            publishToWebGIS: 'in process',
+            action: 'Imported (staging)',
+            pic: 'Fariz',
+            isStagingPreview: true,
+            isSyncedWithSupabase: false,
+            isStagedInSupabase: true
+          });
+
+          batchLogs.push({
+            id: `staging-b-${sg}`,
+            date: `${rawDate} 00:43`,
+            grid: g.grid,
+            subgrid: sg,
+            imageFilename: g.imageFilenames[0] || `${sg}-0001.jpg`,
+            images: imgCount,
+            poiCount: count,
+            availableImagesCount: imgCount,
+            defects: g.defectCount,
+            kmProcessed: km,
+            status: 'Ongoing',
+            captureEquipment: g.equipment,
+            pic: 'Fariz',
+            isSyncedWithSupabase: false,
+            isStagedInSupabase: true
+          });
+        });
+      }
+    } catch (stgErr) {
+      console.warn('staging_panoramas fetch notice (table may be pending creation):', stgErr);
+    }
 
     console.log('Supabase sync complete. Subgrids processed:', Array.from(grouped.keys()), 'Daily:', dailyData.length, 'Batches:', batchLogs.length);
     return { batchLogs, dailyData };
@@ -430,6 +536,16 @@ export async function publishToSupabase(record: {
     }
 
     console.log(`Successfully published ${itemsToInsert.length} items to Supabase via REST API`);
+
+    // Clean up staging_panoramas if subgrid was previously staged
+    if (record.subgrid) {
+      try {
+        await deleteFromStagingSupabase(record.subgrid);
+      } catch (stgCleanErr) {
+        console.warn('Staging cleanup notice:', stgCleanErr);
+      }
+    }
+
     return {
       success: true,
       message: `Successfully published ${itemsToInsert.length} item(s) for ${record.subgrid || 'subgrid'} to Supabase database!`
@@ -444,11 +560,123 @@ export async function publishToSupabase(record: {
 }
 
 /**
+ * Save / Upsert panorama records to staging_panoramas table in Supabase.
+ */
+export async function saveToStagingSupabase(record: {
+  id?: string;
+  date?: string;
+  grid?: string;
+  subgrid?: string;
+  imageFilename?: string;
+  images?: number;
+  imagesProcessed?: number;
+  poiCount?: number;
+  defects?: number;
+  kmProcessed?: number;
+  captureEquipment?: string;
+  publishToWebGIS?: string;
+  panoramas?: PanoramaItem[];
+  rawRows?: PanoramaItem[];
+}): Promise<{ success: boolean; message: string }> {
+  try {
+    let rawList: PanoramaItem[] = [];
+
+    if (record.panoramas && record.panoramas.length > 0) {
+      const maxCount = record.poiCount || record.imagesProcessed || record.panoramas.length;
+      rawList = record.panoramas.slice(0, maxCount);
+    } else if (record.rawRows && record.rawRows.length > 0) {
+      const maxCount = record.poiCount || record.imagesProcessed || record.rawRows.length;
+      rawList = record.rawRows.slice(0, maxCount);
+    } else {
+      rawList = [{
+        filename: record.imageFilename && !record.imageFilename.endsWith('-0001.jpg')
+          ? record.imageFilename
+          : `${record.subgrid || 'N93E70'}-${Math.floor(1000 + Math.random() * 9000)}.jpg`,
+        date: record.date
+      }];
+    }
+
+    const itemsToInsert = rawList.map((p: any) => {
+      const filename = p.filename || p.imageFilename || `${record.subgrid || 'N93E70'}-${Math.floor(1000 + Math.random() * 9000)}.jpg`;
+      const sgKey = record.subgrid ? record.subgrid.toUpperCase() : extractSubgrid(filename);
+      const defaultCoords = SUBGRID_COORDINATES[sgKey] || [102.805000, 2.538900];
+
+      const lon = p.longitude !== undefined && !isNaN(Number(p.longitude)) ? Number(p.longitude) : defaultCoords[0];
+      const lat = p.latitude !== undefined && !isNaN(Number(p.latitude)) ? Number(p.latitude) : defaultCoords[1];
+
+      return {
+        filename,
+        image_url: filename,
+        captured_at: new Date().toISOString(),
+        description: `Staged Batch (${record.subgrid || filename})`,
+        bearing: Number(p.bearing ?? p.heading ?? 0),
+        pitch: Number(p.pitch ?? 0),
+        roll: Number(p.roll ?? 0),
+        subgrid: sgKey,
+        grid: record.grid || '1',
+        km_processed: record.kmProcessed || 0,
+        poi_count: record.poiCount || rawList.length,
+        images_processed: record.imagesProcessed || rawList.length,
+        status: record.publishToWebGIS || 'in process',
+        geom: { type: 'Point', coordinates: [lon, lat] }
+      };
+    });
+
+    const { error } = await supabase.from('staging_panoramas').upsert(itemsToInsert, { onConflict: 'filename' });
+    if (error) {
+      console.warn('Supabase staging_panoramas JS upsert warning, attempting REST fallback:', error.message);
+      const response = await fetch(`${supabaseUrl}/rest/v1/staging_panoramas?on_conflict=filename`, {
+        method: 'POST',
+        headers: {
+          'apikey': supabaseKey,
+          'Authorization': `Bearer ${supabaseKey}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'resolution=merge-duplicates, return=representation'
+        },
+        body: JSON.stringify(itemsToInsert)
+      });
+      if (!response.ok) {
+        return { success: false, message: error.message };
+      }
+    }
+    return { success: true, message: `Staged ${itemsToInsert.length} item(s) for ${record.subgrid || 'subgrid'} in Supabase staging database.` };
+  } catch (err) {
+    console.warn('Error saving to Supabase staging:', err);
+    return { success: false, message: (err as Error).message || 'Failed to save to staging' };
+  }
+}
+
+/**
+ * Delete records from staging_panoramas table for a subgrid.
+ */
+export async function deleteFromStagingSupabase(subgrid: string): Promise<{ success: boolean; message: string }> {
+  try {
+    const cleanSub = (subgrid || '').trim();
+    if (!cleanSub) return { success: true, message: 'No subgrid specified' };
+
+    const { error } = await supabase
+      .from('staging_panoramas')
+      .delete()
+      .or(`subgrid.ilike.${cleanSub},filename.ilike.${cleanSub}%`);
+
+    if (error) {
+      console.warn('deleteFromStagingSupabase error:', error.message);
+    }
+    return { success: true, message: `Removed ${cleanSub} from staging database.` };
+  } catch (err) {
+    console.warn('deleteFromStagingSupabase exception:', err);
+    return { success: false, message: (err as Error).message || 'Failed to delete from staging' };
+  }
+}
+
+/**
  * Permanently delete records for a subgrid from Supabase database.
  */
 export async function deleteFromSupabase(subgrid: string): Promise<{ success: boolean; message: string }> {
   try {
     const cleanSub = (subgrid || '').trim();
+    await deleteFromStagingSupabase(cleanSub).catch(() => {});
+
     const { error: pErr } = await supabase
       .from('panoramas')
       .delete()
@@ -560,58 +788,39 @@ export async function fetchQaRecordsFromSupabase(): Promise<Record<string, { fla
 export async function verifyCsvImageFilenamesInStorage(filenames: string[]): Promise<{ availableCount: number; verifiedFilenames: string[] }> {
   if (!filenames || filenames.length === 0) return { availableCount: 0, verifiedFilenames: [] };
 
-  try {
-    const storageFileSet = new Set<string>();
-    let offset = 0;
-    const limit = 100;
-    let hasMore = true;
-
-    while (hasMore && offset < 5000) {
-      const { data: storageFiles } = await supabase.storage.from('MMS_PIC').list('', { limit, offset });
-      if (!storageFiles || storageFiles.length === 0) break;
-      storageFiles.forEach(f => {
-        if (f.name) storageFileSet.add(f.name.trim().toLowerCase());
-      });
-      if (storageFiles.length < limit) hasMore = false;
-      else offset += limit;
-    }
-
-    if (storageFileSet.size > 0) {
-      const verifiedFilenames: string[] = [];
-      let availableCount = 0;
-
-      filenames.forEach(fn => {
-        const cleanFn = fn.replace(/^\/+/, '').replace(/^MMS_PIC\//i, '').replace(/^mms_pic\//i, '').trim().toLowerCase();
-        if (storageFileSet.has(cleanFn)) {
-          availableCount++;
-          verifiedFilenames.push(fn);
-        }
-      });
-      return { availableCount, verifiedFilenames };
-    }
-  } catch (err) {
-    console.warn('Storage API list check exception:', err);
-  }
-
-  // Fallback to HTTP HEAD if Storage API check is unavailable
   const supabaseStorageBase = `${supabaseUrl}/storage/v1/object/public/MMS_PIC`;
   const verifiedFilenames: string[] = [];
   let availableCount = 0;
-  const batchSize = 10;
 
+  const checkSingleFile = (fn: string): Promise<boolean> => {
+    const cleanFn = fn.replace(/^\/+/, '').replace(/^MMS_PIC\//i, '').replace(/^mms_pic\//i, '').trim();
+    const url = `${supabaseStorageBase}/${cleanFn}`;
+
+    return new Promise(resolve => {
+      fetch(url, { method: 'GET', headers: { Range: 'bytes=0-0' } })
+        .then(res => {
+          if (res.ok || res.status === 200 || res.status === 206) {
+            resolve(true);
+          } else {
+            resolve(false);
+          }
+        })
+        .catch(() => {
+          const img = new Image();
+          img.onload = () => resolve(true);
+          img.onerror = () => resolve(false);
+          img.src = url;
+        });
+    });
+  };
+
+  const batchSize = 10;
   for (let i = 0; i < filenames.length; i += batchSize) {
     const batch = filenames.slice(i, i + batchSize);
-    const results = await Promise.allSettled(
-      batch.map(fn => {
-        const cleanFn = fn.replace(/^\/+/, '').replace(/^MMS_PIC\//i, '').replace(/^mms_pic\//i, '').trim();
-        return fetch(`${supabaseStorageBase}/${cleanFn}`, { method: 'HEAD' })
-          .then(res => res.ok)
-          .catch(() => false);
-      })
-    );
+    const results = await Promise.all(batch.map(fn => checkSingleFile(fn)));
 
-    results.forEach((r, idx) => {
-      if (r.status === 'fulfilled' && r.value === true) {
+    results.forEach((isAvailable, idx) => {
+      if (isAvailable) {
         availableCount++;
         verifiedFilenames.push(batch[idx]);
       }

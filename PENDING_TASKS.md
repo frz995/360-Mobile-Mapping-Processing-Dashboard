@@ -6,19 +6,16 @@
 
 ## 🗺️ Map Engine & GIS Rendering (Future Implementation)
 
-- `[ ]` **Migrate WebGIS Map to MapLibre GL (Mapcn) Only**:
+- `[x]` **Migrate WebGIS Map to MapLibre GL (Mapcn) Only**:
   * Consolidate map engine from Leaflet wrapper to MapLibre GL for GPU-accelerated rendering of 50,000+ panorama points and 3D terrain pitch.
-  * ⚠️ **Known Technical Issue & Solution**:
-    1. Wait for `map.on('style.load')` event before adding vector line sources to prevent silent tile load drops.
-    2. Separate GeoJSON sources into distinct `'line'` (`LineString` trajectory) and `'circle'` (`Point` markers) layers.
-    3. Enforce layer z-index order so line layers render below symbol markers (`paint: { 'line-color': '#38bdf8', 'line-width': 4 }`).
+  * `maplibreHelpers.ts` implemented with `style.load` guards, distinct `LineString` vs `Point` layer separation, and Z-index layer order enforcement.
 
 ---
 
 ## 🚀 Advanced Features
 
-- `[ ]` **Supabase Storage Persistence for Vector Layers**: Move uploaded KML, GPX, GeoJSON, and Shapefile vector catalogs from local storage to Supabase Storage bucket.
-- `[ ]` **Automated CSV Export for Filtered BBOX Points**: Allow exporting spatially-selected subgrid points to CSV from the map viewer.
+- `[x]` **Supabase Storage Persistence for Vector Layers**: Uploaded KML, GPX, GeoJSON, and Shapefile vector catalogs saved to Supabase Storage bucket (`vector_layers`) and metadata table (`vector_layers_meta`).
+- `[x]` **Automated CSV Export for Filtered BBOX Points**: `csvExport.ts` implemented with bounding box spatial filtering (`minLon, minLat, maxLon, maxLat`) and instant browser CSV download triggering.
 
 ---
 
