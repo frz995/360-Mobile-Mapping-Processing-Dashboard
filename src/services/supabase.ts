@@ -309,33 +309,35 @@ export async function fetchSupabaseData(): Promise<{
 
     // 3. Query staging_panoramas table for persistent staged records
     try {
-      const { data: stagingData, error: stagingErr } = await supabase.from('staging_panoramas').select('*');
-      if (!stagingErr && stagingData && stagingData.length > 0) {
+        const { data: stagingData, error: stagingErr } = await supabase.from('staging_panoramas').select('*');
+        if (!stagingErr && stagingData && stagingData.length > 0) {
         const stagingGrouped = new Map<string, any>();
-        stagingData.forEach(r => {
+        stagingData.forEach((r, rIdx) => {
           const filename = r.filename || r.image_url || '';
           const sg = (r.subgrid || extractSubgrid(filename) || 'UNKNOWN').toUpperCase().trim();
           if (!sg || sg === 'UNKNOWN' || sg === 'N/A') return;
-          // If subgrid is already in production published panoramas, skip staging item
-          if (grouped.has(sg)) return;
 
-          if (!stagingGrouped.has(sg)) {
-            stagingGrouped.set(sg, {
+          // Key by unique staged record ID so separated daily rows are preserved
+          const entryKey = r.id ? String(r.id) : `${sg}_row_${rIdx}`;
+
+          if (!stagingGrouped.has(entryKey)) {
+            stagingGrouped.set(entryKey, {
+              id: entryKey,
               subgrid: sg,
-              grid: r.grid || '1',
+              grid: r.grid || knownMetadata[sg]?.grid || '1',
               imageFilenames: [],
-              poiCount: r.poi_count || 0,
+              poiCount: r.poi_count || r.images_processed || 0,
               imagesProcessed: r.images_processed || 0,
               kmProcessed: typeof r.km_processed === 'number' ? r.km_processed : 0,
               defectCount: r.defect_count || 0,
-              capturedAt: r.captured_at,
-              equipment: r.capture_equipment || 'MMS',
+              capturedAt: r.captured_at || r.created_at,
+              equipment: r.capture_equipment || knownMetadata[sg]?.equipment || 'MMS',
               status: r.status || 'in process',
               points: []
             });
           }
 
-          const sgObj = stagingGrouped.get(sg)!;
+          const sgObj = stagingGrouped.get(entryKey)!;
           if (filename && !sgObj.imageFilenames.includes(filename)) {
             sgObj.imageFilenames.push(filename);
           }
@@ -355,7 +357,8 @@ export async function fetchSupabaseData(): Promise<{
           }
         });
 
-        stagingGrouped.forEach((g, sg) => {
+        stagingGrouped.forEach((g, entryKey) => {
+          const sg = g.subgrid;
           const count = g.imageFilenames.length || g.poiCount || 1;
           const calcKm = calculateDistance(g.points);
           const km = g.kmProcessed > 0 ? g.kmProcessed : (calcKm > 0 ? calcKm : Math.round((count * 0.005) * 100) / 100);
@@ -369,7 +372,7 @@ export async function fetchSupabaseData(): Promise<{
           const imgCount = g.imagesProcessed || count;
 
           dailyData.push({
-            id: `staging-d-${sg}`,
+            id: `staging-d-${entryKey}`,
             date: dateFormatted,
             grid: g.grid,
             subgrid: sg,
@@ -382,33 +385,15 @@ export async function fetchSupabaseData(): Promise<{
             captureEquipment: g.equipment,
             publishToWebGIS: 'in process',
             action: 'Imported (staging)',
-            pic: 'Fariz',
+            pic: knownMetadata[sg]?.pic || 'Fariz',
             isStagingPreview: true,
-            isSyncedWithSupabase: false,
-            isStagedInSupabase: true
-          });
-
-          batchLogs.push({
-            id: `staging-b-${sg}`,
-            date: `${rawDate} 00:43`,
-            grid: g.grid,
-            subgrid: sg,
-            imageFilename: g.imageFilenames[0] || `${sg}-0001.jpg`,
-            images: imgCount,
-            poiCount: count,
-            availableImagesCount: imgCount,
-            defects: g.defectCount,
-            kmProcessed: km,
-            status: 'Ongoing',
-            captureEquipment: g.equipment,
-            pic: 'Fariz',
             isSyncedWithSupabase: false,
             isStagedInSupabase: true
           });
         });
       }
-    } catch (stgErr) {
-      console.warn('staging_panoramas fetch notice (table may be pending creation):', stgErr);
+    } catch (err) {
+      console.warn('Error querying staging_panoramas table:', err);
     }
 
     console.log('Supabase sync complete. Subgrids processed:', Array.from(grouped.keys()), 'Daily:', dailyData.length, 'Batches:', batchLogs.length);
