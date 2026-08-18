@@ -2309,16 +2309,14 @@ const DataManagementPage = ({
         const filenames = (dailyItem.panoramas && dailyItem.panoramas.length > 0)
           ? dailyItem.panoramas.map((p: any) => p.filename).filter((fn: any): fn is string => Boolean(fn))
           : Array.from({ length: dailyItem.poiCount || 1 }, (_, i) => `${dailyItem.subgrid}-${String(i + 1).padStart(4, '0')}.jpg`);
-        let matchedCount = typeof dailyItem.availableImagesCount === 'number'
-          ? dailyItem.availableImagesCount
-          : (typeof dailyItem.imagesProcessed === 'number' ? dailyItem.imagesProcessed : 0);
+        let matchedCount = 0;
         if (filenames.length > 0) {
           try {
             const { availableCount } = await verifyCsvImageFilenamesInStorage(filenames);
-            if (availableCount >= 0) {
-              matchedCount = availableCount;
-            }
-          } catch { }
+            matchedCount = availableCount >= 0 ? availableCount : 0;
+          } catch {
+            matchedCount = 0;
+          }
         }
 
         const finalItem: DailyTimeSeries = {
@@ -5027,7 +5025,7 @@ export default function App() {
               const maxPoi = d.poiCount || (d.panoramas?.length) || 0;
               const rawImg = typeof d.availableImagesCount === 'number'
                 ? d.availableImagesCount
-                : (typeof d.imagesProcessed === 'number' ? d.imagesProcessed : maxPoi);
+                : 0;
               const cappedImg = maxPoi > 0 ? Math.min(rawImg, maxPoi) : rawImg;
               const existsInProductionDb = Boolean(normSg && publishedSubgridSet.has(normSg));
               const isPub = d.publishToWebGIS === 'yes' || d.isFromSupabase === true || (!isStaged && existsInProductionDb);
