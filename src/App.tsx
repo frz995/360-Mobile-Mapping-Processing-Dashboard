@@ -1728,25 +1728,11 @@ const DataManagementPage = ({
         const finalKm = d.kmProcessed > 0 ? d.kmProcessed : (trackKm > 0 ? trackKm : Math.round((d.panoramas.length * 0.005) * 100) / 100);
         const panCount = d.panoramas.length;
 
-        // Verify actual image files in MMS_PIC storage bucket
-        const explicitFn = d.panoramas.map(p => p.filename).filter((fn): fn is string => Boolean(fn));
-        const targetFilenames = explicitFn.length > 0
-          ? explicitFn
-          : Array.from({ length: panCount }, (_, i) => `${d.subgrid}-${String(i + 1).padStart(4, '0')}.jpg`);
-
-        let verifiedStorageCount = 0;
-        try {
-          const { availableCount } = await verifyCsvImageFilenamesInStorage(targetFilenames);
-          verifiedStorageCount = availableCount;
-        } catch {
-          verifiedStorageCount = 0;
-        }
-
         imported.push({
           ...d,
           poiCount: panCount,
-          imagesProcessed: verifiedStorageCount,
-          availableImagesCount: verifiedStorageCount,
+          imagesProcessed: panCount,
+          availableImagesCount: panCount,
           defectCount: d.defectCount || 0,
           imagesDefected: d.imagesDefected || 0,
           publishToWebGIS: directPublish ? 'yes' : d.publishToWebGIS,
@@ -1798,16 +1784,21 @@ const DataManagementPage = ({
       addAuditLog?.('CREATE', 'Multiple Data Detected on CSV Import', `Duplicate subgrid data detected for ${duplicateNames.join(', ')}. Merged into staging list.`, 'info');
     } else {
       setPublishMessage({
-        text: `Successfully imported ${imported.length} subgrid record(s) into local Staging mode!`,
+        text: `Successfully imported ${imported.length} subgrid record(s) into Staging list!`,
         type: 'success'
       });
-      addAuditLog?.('CREATE', 'CSV Import Executed', `Imported ${imported.length} subgrid(s) into local staging mode.`, 'success');
+      addAuditLog?.('CREATE', 'CSV Import Executed', `Imported ${imported.length} subgrid(s) into local staging list.`, 'success');
     }
 
     try {
-      localStorage.setItem('dailyData_v30', JSON.stringify(updatedDraft));
-      localStorage.setItem('batchLogs_v30', JSON.stringify(updatedBatchLogs));
+      localStorage.setItem('dailyData_v31', JSON.stringify(updatedDraft));
+      localStorage.setItem('batchLogs_v31', JSON.stringify(updatedBatchLogs));
     } catch (e) { }
+
+    // Persist imported items to staging_panoramas in Supabase asynchronously
+    imported.forEach(item => {
+      saveToStagingSupabase(item).catch(err => console.warn('Background staging insert notice:', err));
+    });
 
     // Save staged records to Supabase staging_panoramas table for cross-session/cross-device persistence
     if (!directPublish && imported.length > 0) {
