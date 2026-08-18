@@ -845,6 +845,44 @@ export async function verifyCsvImageFilenamesInStorage(filenames: string[]): Pro
 }
 
 /**
+ * Count actual uploaded images in MMS_PIC storage bucket grouped by subgrid.
+ */
+export async function getStorageImageCountsFromSupabase(): Promise<Record<string, number>> {
+  const storageCounts: Record<string, number> = {};
+  try {
+    let offset = 0;
+    const limit = 100;
+    let hasMore = true;
+    let totalFetched = 0;
+
+    while (hasMore && totalFetched < 10000) {
+      const { data: storageFiles, error: storageError } = await supabase.storage.from('MMS_PIC').list('', { limit, offset });
+      if (storageError || !storageFiles || storageFiles.length === 0) {
+        break;
+      }
+      totalFetched += storageFiles.length;
+      storageFiles.forEach(file => {
+        if (file.name && file.name.includes('.') && !file.name.startsWith('.')) {
+          const sg = extractSubgrid(file.name);
+          if (sg && sg !== 'N/A') {
+            const normSg = sg.toUpperCase().trim();
+            storageCounts[normSg] = (storageCounts[normSg] || 0) + 1;
+          }
+        }
+      });
+      if (storageFiles.length < limit) {
+        hasMore = false;
+      } else {
+        offset += limit;
+      }
+    }
+  } catch (err) {
+    console.warn('MMS_PIC storage list exception:', err);
+  }
+  return storageCounts;
+}
+
+/**
  * Fetch persisted audit logs from Supabase database.
  */
 export async function fetchAuditLogsFromSupabase(): Promise<any[]> {
