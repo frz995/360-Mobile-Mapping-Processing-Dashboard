@@ -58,13 +58,8 @@ export interface SupabasePanoramaRecord {
   };
 }
 
-// Subgrid default centroid coordinates (longitude, latitude)
-export const SUBGRID_COORDINATES: Record<string, [number, number]> = {
-  'N93E70': [102.826514, 2.558054],
-  'N94E70': [102.805000, 2.538900],
-  'N94E71': [102.810000, 2.540000],
-  'N90E67': [102.750000, 2.500000]
-};
+// Subgrid centroid coordinates (longitude, latitude) populated dynamically
+export const SUBGRID_COORDINATES: Record<string, [number, number]> = {};
 
 // Helper: Extract subgrid name (e.g. 'N93E70-0158.jpg' -> 'N93E70')
 function extractSubgrid(filename: string): string {
@@ -122,7 +117,32 @@ export async function fetchSupabaseData(): Promise<{
       throw new Error(error.message);
     }
 
+    // Query subgrids metadata table dynamically if available
+    const knownMetadata: Record<string, { grid: string; pic: string; equipment: string; date: string; defaultKm: number; defaultCount: number }> = {};
 
+    try {
+      const { data: subgridRows } = await supabase.from('subgrids').select('*');
+      if (subgridRows && subgridRows.length > 0) {
+        subgridRows.forEach(row => {
+          if (row.subgrid_code) {
+            const sgKey = row.subgrid_code.toUpperCase().trim();
+            knownMetadata[sgKey] = {
+              grid: row.grid_id || '1',
+              pic: row.pic || 'Fariz',
+              equipment: row.equipment || 'MMS',
+              date: 'Sep 4',
+              defaultKm: 0,
+              defaultCount: 0
+            };
+            if (typeof row.latitude === 'number' && typeof row.longitude === 'number') {
+              SUBGRID_COORDINATES[sgKey] = [Number(row.longitude), Number(row.latitude)];
+            }
+          }
+        });
+      }
+    } catch (stgErr) {
+      console.warn('Subgrid metadata table query notice:', stgErr);
+    }
 
     // If no records in database at all, return empty data
     if (!data || data.length === 0) {
@@ -172,8 +192,6 @@ export async function fetchSupabaseData(): Promise<{
       recordKm?: number;
       recordDefects?: number;
       recordImages?: number;
-      pic?: string;
-      equipment?: string;
     }>();
 
     data.forEach(r => {
@@ -209,7 +227,7 @@ export async function fetchSupabaseData(): Promise<{
           imageFilenames: [],
           points: [],
           dates: [],
-          grid: r.grid || '1',
+          grid: knownMetadata[sg]?.grid || '1',
           recordKm: typeof r.km_processed === 'number' ? r.km_processed : typeof r.kmProcessed === 'number' ? r.kmProcessed : undefined,
           recordDefects: typeof r.defects === 'number' ? r.defects : typeof r.defect_count === 'number' ? r.defect_count : undefined,
           recordImages: typeof r.images_processed === 'number' ? r.images_processed : typeof r.imagesProcessed === 'number' ? r.imagesProcessed : typeof r.images === 'number' ? r.images : undefined
@@ -246,12 +264,11 @@ export async function fetchSupabaseData(): Promise<{
         : (g.recordImages !== undefined ? g.recordImages : countFromDB);
 
       const grid = g.grid || String(idx + 1);
-      const pic = g.pic || 'Fariz';
-      const equipment = g.equipment || 'MMS';
+      const pic = 'Fariz';
+      const equipment = 'MMS';
+
       const calcKm = calculateDistance(g.points);
-      const km = (typeof g.recordKm === 'number' && g.recordKm > 0)
-        ? g.recordKm
-        : (calcKm > 0 ? calcKm : Math.round((poiCount * 0.005) * 100) / 100);
+      const km = calcKm > 0 ? calcKm : Math.round((poiCount * 0.005) * 100) / 100;
 
       const defects = g.recordDefects !== undefined ? g.recordDefects : 0;
 
@@ -263,7 +280,7 @@ export async function fetchSupabaseData(): Promise<{
         dateFormatted = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
       }
 
-      // 1. Unique Daily Subgrid Record
+      // 1. Unique Daily Record
       dailyData.push({
         id: `sp-d-${subgrid}`,
         date: dateFormatted,
@@ -304,35 +321,33 @@ export async function fetchSupabaseData(): Promise<{
 
     // 3. Query staging_panoramas table for persistent staged records
     try {
-        const { data: stagingData, error: stagingErr } = await supabase.from('staging_panoramas').select('*');
-        if (!stagingErr && stagingData && stagingData.length > 0) {
+      const { data: stagingData, error: stagingErr } = await supabase.from('staging_panoramas').select('*');
+      if (!stagingErr && stagingData && stagingData.length > 0) {
         const stagingGrouped = new Map<string, any>();
-        stagingData.forEach((r, rIdx) => {
+        stagingData.forEach(r => {
           const filename = r.filename || r.image_url || '';
           const sg = (r.subgrid || extractSubgrid(filename) || 'UNKNOWN').toUpperCase().trim();
           if (!sg || sg === 'UNKNOWN' || sg === 'N/A') return;
+          // If subgrid is already in production published panoramas, skip staging item
+          if (grouped.has(sg)) return;
 
-          // Key by unique staged record ID so separated daily rows are preserved
-          const entryKey = r.id ? String(r.id) : `${sg}_row_${rIdx}`;
-
-          if (!stagingGrouped.has(entryKey)) {
-            stagingGrouped.set(entryKey, {
-              id: entryKey,
+          if (!stagingGrouped.has(sg)) {
+            stagingGrouped.set(sg, {
               subgrid: sg,
-              grid: r.grid || String(rIdx + 1),
+              grid: r.grid || '1',
               imageFilenames: [],
-              poiCount: r.poi_count || r.images_processed || 0,
+              poiCount: r.poi_count || 0,
               imagesProcessed: r.images_processed || 0,
               kmProcessed: typeof r.km_processed === 'number' ? r.km_processed : 0,
               defectCount: r.defect_count || 0,
-              capturedAt: r.captured_at || r.created_at,
+              capturedAt: r.captured_at,
               equipment: r.capture_equipment || 'MMS',
               status: r.status || 'in process',
               points: []
             });
           }
 
-          const sgObj = stagingGrouped.get(entryKey)!;
+          const sgObj = stagingGrouped.get(sg)!;
           if (filename && !sgObj.imageFilenames.includes(filename)) {
             sgObj.imageFilenames.push(filename);
           }
@@ -352,8 +367,7 @@ export async function fetchSupabaseData(): Promise<{
           }
         });
 
-        stagingGrouped.forEach((g, entryKey) => {
-          const sg = g.subgrid;
+        stagingGrouped.forEach((g, sg) => {
           const count = g.imageFilenames.length || g.poiCount || 1;
           const calcKm = calculateDistance(g.points);
           const km = g.kmProcessed > 0 ? g.kmProcessed : (calcKm > 0 ? calcKm : Math.round((count * 0.005) * 100) / 100);
@@ -367,7 +381,7 @@ export async function fetchSupabaseData(): Promise<{
           const imgCount = g.imagesProcessed || count;
 
           dailyData.push({
-            id: `staging-d-${entryKey}`,
+            id: `staging-d-${sg}`,
             date: dateFormatted,
             grid: g.grid,
             subgrid: sg,
@@ -380,15 +394,33 @@ export async function fetchSupabaseData(): Promise<{
             captureEquipment: g.equipment,
             publishToWebGIS: 'in process',
             action: 'Imported (staging)',
-            pic: g.pic || 'Fariz',
+            pic: 'Fariz',
             isStagingPreview: true,
+            isSyncedWithSupabase: false,
+            isStagedInSupabase: true
+          });
+
+          batchLogs.push({
+            id: `staging-b-${sg}`,
+            date: `${rawDate} 00:43`,
+            grid: g.grid,
+            subgrid: sg,
+            imageFilename: g.imageFilenames[0] || `${sg}-0001.jpg`,
+            images: imgCount,
+            poiCount: count,
+            availableImagesCount: imgCount,
+            defects: g.defectCount,
+            kmProcessed: km,
+            status: 'Ongoing',
+            captureEquipment: g.equipment,
+            pic: 'Fariz',
             isSyncedWithSupabase: false,
             isStagedInSupabase: true
           });
         });
       }
-    } catch (err) {
-      console.warn('Error querying staging_panoramas table:', err);
+    } catch (stgErr) {
+      console.warn('staging_panoramas fetch notice (table may be pending creation):', stgErr);
     }
 
     console.log('Supabase sync complete. Subgrids processed:', Array.from(grouped.keys()), 'Daily:', dailyData.length, 'Batches:', batchLogs.length);
@@ -657,7 +689,7 @@ export async function deleteFromStagingSupabase(subgrid: string): Promise<{ succ
 export async function deleteFromSupabase(subgrid: string): Promise<{ success: boolean; message: string }> {
   try {
     const cleanSub = (subgrid || '').trim();
-    await deleteFromStagingSupabase(cleanSub).catch(() => {});
+    await deleteFromStagingSupabase(cleanSub).catch(() => { });
 
     const { error: pErr } = await supabase
       .from('panoramas')
@@ -811,3 +843,121 @@ export async function verifyCsvImageFilenamesInStorage(filenames: string[]): Pro
 
   return { availableCount, verifiedFilenames };
 }
+
+/**
+ * Fetch persisted audit logs from Supabase database.
+ */
+export async function fetchAuditLogsFromSupabase(): Promise<any[]> {
+  try {
+    const { data, error } = await supabase
+      .from('audit_logs')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(50);
+
+    if (error || !data || data.length === 0) return [];
+    return data.map(item => ({
+      id: item.id || `audit-${Date.now()}`,
+      timestamp: item.timestamp,
+      type: item.type,
+      title: item.title,
+      details: item.details,
+      user: item.user_name || item.user || 'System',
+      status: item.status || 'info',
+      read: item.read || false
+    }));
+  } catch (err) {
+    console.warn('Unable to fetch audit logs from Supabase:', err);
+    return [];
+  }
+}
+
+/**
+ * Persist new audit log record to Supabase database.
+ */
+export async function saveAuditLogToSupabase(log: {
+  timestamp: string;
+  type: string;
+  title: string;
+  details: string;
+  user: string;
+  status: string;
+}): Promise<boolean> {
+  try {
+    const { error } = await supabase.from('audit_logs').insert([{
+      timestamp: log.timestamp,
+      type: log.type,
+      title: log.title,
+      details: log.details,
+      user_name: log.user,
+      status: log.status
+    }]);
+    if (error) {
+      console.warn('Audit log insert notice:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn('Exception inserting audit log:', err);
+    return false;
+  }
+}
+
+/**
+ * Fetch persisted system notifications from Supabase database.
+ */
+export async function fetchNotificationsFromSupabase(): Promise<any[]> {
+  try {
+    const { data, error } = await supabase
+      .from('notifications')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(50);
+
+    if (error || !data || data.length === 0) return [];
+    return data.map(item => ({
+      id: item.id || `notif-${Date.now()}`,
+      timestamp: item.timestamp,
+      title: item.title,
+      message: item.message,
+      category: item.category,
+      read: item.read || false,
+      totalItems: item.total_items
+    }));
+  } catch (err) {
+    console.warn('Unable to fetch notifications from Supabase:', err);
+    return [];
+  }
+}
+
+/**
+ * Persist new notification to Supabase database.
+ */
+export async function saveNotificationToSupabase(notif: {
+  timestamp: string;
+  title: string;
+  message: string;
+  category: string;
+  read?: boolean;
+  totalItems?: number;
+}): Promise<boolean> {
+  try {
+    const { error } = await supabase.from('notifications').insert([{
+      timestamp: notif.timestamp,
+      title: notif.title,
+      message: notif.message,
+      category: notif.category,
+      read: notif.read || false,
+      total_items: notif.totalItems || 0
+    }]);
+    if (error) {
+      console.warn('Notification insert notice:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn('Exception inserting notification:', err);
+    return false;
+  }
+}
+
