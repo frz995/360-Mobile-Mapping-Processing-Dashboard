@@ -5295,6 +5295,7 @@ export default function App() {
   const handleSaveAllSettings = () => {
     try {
       localStorage.setItem('tnb_project_settings', JSON.stringify(projectSettings));
+      setProjectSettings({ ...projectSettings });
       const sampleUrl = getPanoramaUrl('sample.jpg');
       const tables = getDatabaseTableMapping(projectSettings);
       addAuditLog(
@@ -6445,32 +6446,124 @@ export default function App() {
   // System i18n Translation Dictionary helper
   const TRANSLATIONS: Record<string, Record<string, string>> = {
     en: {
+      appTitle: 'Web Mapping Processing Dashboard',
       dashboard: 'Main Dashboard',
       data: 'Data Management',
       refresh: 'Refresh Map',
       settings: 'Project Settings',
-      about: 'About Dashboard'
+      about: 'About Dashboard',
+      collapsePanel: 'Collapse Panel',
+      totalDistance: 'TOTAL DISTANCE MAPPED',
+      processedPanoramas: 'PROCESSED PANORAMAS',
+      activeJobs: 'ACTIVE PROCESSING JOBS',
+      pipelineHealth: 'PIPELINE QUALITY SLA HEALTH',
+      coverageMapTitle: 'INTERACTIVE COVERAGE MAP',
+      processingControlTitle: 'PROCESSING CONTROL & ADMIN',
+      generatePdfReport: 'GENERATE EXECUTIVE PDF REPORT',
+      spatialFilter: 'SPATIAL FILTER (BBOX)',
+      streetViewInspector: '360° VIEW INSPECTOR & QA',
+      questionnaireTitle: 'QA Defect Verification Questionnaire',
+      batchId: 'BATCH ID',
+      subgrid: 'SUBGRID',
+      date: 'DATE',
+      picOperator: 'PIC / OPERATOR',
+      kmProcessed: 'KM PROCESSED',
+      status: 'STATUS',
+      action: 'ACTION',
+      saveSettings: 'Save All Settings',
+      helpGuide: 'Help & User Guide',
+      auditLogs: 'Audit Logs',
+      notifications: 'Notifications'
     },
     ms: {
+      appTitle: 'Papan Pemuka Pemprosesan Pemetaan Web',
       dashboard: 'Papan Pemuka Utama',
       data: 'Pengurusan Data',
       refresh: 'Muat Semula Peta',
       settings: 'Tetapan Projek',
-      about: 'Perihal Papan Pemuka'
+      about: 'Perihal Papan Pemuka',
+      collapsePanel: 'Katup Panel',
+      totalDistance: 'JUMLAH JARAK DIPETAKAN',
+      processedPanoramas: 'PANORAMA DIPROSES',
+      activeJobs: 'TUGAS PEMPROSESAN AKTIF',
+      pipelineHealth: 'KESIHATAN MUTU SLA SALURAN',
+      coverageMapTitle: 'PETA LIPUTAN INTERAKTIF',
+      processingControlTitle: 'KAWALAN PEMPROSESAN & PENTADBIRAN',
+      generatePdfReport: 'CANA LAPORAN PDF EKSEKUTIF',
+      spatialFilter: 'PENAPIS RUANG (BBOX)',
+      streetViewInspector: 'PEMERIKSA PANDANGAN 360° & QA',
+      questionnaireTitle: 'Soal Selidik Pengesahan Cacat QA',
+      batchId: 'ID KUMPULAN',
+      subgrid: 'SUBGRID',
+      date: 'TARIKH',
+      picOperator: 'OPERATOR PIC',
+      kmProcessed: 'KM DIPROSES',
+      status: 'STATUS',
+      action: 'TINDAKAN',
+      saveSettings: 'Simpan Semua Tetapan',
+      helpGuide: 'Panduan Bantuan & Pengguna',
+      auditLogs: 'Log Audit',
+      notifications: 'Pemberitahuan'
     },
     zh: {
+      appTitle: 'Web映射处理仪表板',
       dashboard: '主仪表板',
       data: '数据管理',
       refresh: '刷新地图',
       settings: '项目设置',
-      about: '关于仪表板'
+      about: '关于仪表板',
+      collapsePanel: '折叠面板',
+      totalDistance: '已绘制总距离',
+      processedPanoramas: '已处理全景图',
+      activeJobs: '活动处理任务',
+      pipelineHealth: '管道SLA质量健康度',
+      coverageMapTitle: '交互式覆盖地图',
+      processingControlTitle: '处理控制与管理',
+      generatePdfReport: '生成执行PDF报告',
+      spatialFilter: '空间过滤 (BBOX)',
+      streetViewInspector: '360°全景检查与质检',
+      questionnaireTitle: 'QA缺陷验证问卷',
+      batchId: '批次ID',
+      subgrid: '子网格',
+      date: '日期',
+      picOperator: '操作员',
+      kmProcessed: '已处理公里',
+      status: '状态',
+      action: '操作',
+      saveSettings: '保存所有设置',
+      helpGuide: '帮助与用户指南',
+      auditLogs: '审计日志',
+      notifications: '通知'
     },
     ja: {
+      appTitle: 'Webマッピング処理ダッシュボード',
       dashboard: 'メインダッシュボード',
       data: 'データ管理',
       refresh: 'マップ更新',
       settings: 'プロジェクト設定',
-      about: 'ダッシュボードについて'
+      about: 'ダッシュボードについて',
+      collapsePanel: 'パネルをたたむ',
+      totalDistance: 'マッピング総距離',
+      processedPanoramas: '処理済み全景写真',
+      activeJobs: 'アクティブ処理ジョブ',
+      pipelineHealth: 'パイプラインSLA品質',
+      coverageMapTitle: 'インタラクティブマップ',
+      processingControlTitle: '処理コントロール＆管理',
+      generatePdfReport: 'PDFレポート生成',
+      spatialFilter: '空間フィルター (BBOX)',
+      streetViewInspector: '360°ビューインスペクター & QA',
+      questionnaireTitle: 'QA欠陥点検問診',
+      batchId: 'バッチID',
+      subgrid: 'サブグリッド',
+      date: '日付',
+      picOperator: '担当者',
+      kmProcessed: '処理キロ数',
+      status: 'ステータス',
+      action: '操作',
+      saveSettings: 'すべての設定を保存',
+      helpGuide: 'ヘルプ＆ユーザーガイド',
+      auditLogs: '監査ログ',
+      notifications: '通知'
     }
   };
 
@@ -6499,7 +6592,7 @@ export default function App() {
         <div className="flex items-center gap-2.5 select-none cursor-pointer group" onClick={() => setCurrentPage('dashboard')}>
           <Globe size={22} className="text-sky-400 shrink-0 transition-transform duration-300 group-hover:scale-110" />
           <h1 className="text-2xl font-extrabold text-white tracking-tight font-sans">
-            Web Mapping Processing Dashboard
+            {t('appTitle')}
           </h1>
         </div>
 
@@ -6947,7 +7040,7 @@ export default function App() {
             <span className={`transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] text-[10px] font-bold text-slate-300 uppercase tracking-wider whitespace-nowrap overflow-hidden origin-left ${
               isSidebarExpanded ? 'opacity-100 max-w-[120px] translate-x-0' : 'opacity-0 max-w-0 -translate-x-3 pointer-events-none'
             }`}>
-              Collapse Panel
+              {t('collapsePanel')}
             </span>
             <div className="p-1 rounded-md bg-slate-800/90 text-sky-400 shrink-0 shadow-sm border border-slate-700/60">
               <ChevronRight size={15} className={`transition-transform duration-300 ease-in-out ${isSidebarExpanded ? 'rotate-180' : 'rotate-0'}`} />
@@ -6983,7 +7076,7 @@ export default function App() {
                 {/* Card 1: Total Distance Mapped */}
                 <div className="bg-[#111827] border border-[rgba(255,255,255,0.08)] backdrop-blur-md rounded-xl p-3.5 flex flex-col justify-between shadow-sm">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-slate-300 uppercase tracking-tight">TOTAL DISTANCE MAPPED</span>
+                    <span className="text-xs font-bold text-slate-300 uppercase tracking-tight">{t('totalDistance')}</span>
                     <Navigation size={15} className="text-sky-400 shrink-0" />
                   </div>
                   <div className="my-1 flex items-baseline gap-2">
@@ -7007,7 +7100,7 @@ export default function App() {
                 {/* Card 2: Processed Panoramas */}
                 <div className="bg-[#111827] border border-[rgba(255,255,255,0.08)] backdrop-blur-md rounded-xl p-3.5 flex flex-col justify-between shadow-sm">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-slate-300 uppercase tracking-tight">PROCESSED PANORAMAS</span>
+                    <span className="text-xs font-bold text-slate-300 uppercase tracking-tight">{t('processedPanoramas')}</span>
                     <Camera size={15} className="text-sky-400 shrink-0" />
                   </div>
                   <div className="my-1">
@@ -7028,7 +7121,7 @@ export default function App() {
                 {/* Card 3: Active Processing Jobs */}
                 <div className="bg-[#111827] border border-[rgba(255,255,255,0.08)] backdrop-blur-md rounded-xl p-3.5 flex flex-col justify-between shadow-sm">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-slate-300 uppercase tracking-tight">ACTIVE PROCESSING JOBS</span>
+                    <span className="text-xs font-bold text-slate-300 uppercase tracking-tight">{t('activeJobs')}</span>
                     <Database size={15} className="text-sky-400 shrink-0" />
                   </div>
                   <div className="my-1">
@@ -7051,7 +7144,7 @@ export default function App() {
                 {/* Card 4: Pipeline Health */}
                 <div className="bg-[#111827] border border-[rgba(255,255,255,0.08)] backdrop-blur-md rounded-xl p-3.5 flex flex-col justify-between shadow-sm">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-slate-300 uppercase tracking-tight">PIPELINE HEALTH</span>
+                    <span className="text-xs font-bold text-slate-300 uppercase tracking-tight">{t('pipelineHealth')}</span>
                     <div className="w-14 h-5">
                       <svg className="w-full h-full text-emerald-400 stroke-current fill-none stroke-2" viewBox="0 0 50 20">
                         <path d="M0,15 L10,12 L20,18 L30,5 L40,10 L50,2" />
@@ -9105,10 +9198,10 @@ export default function App() {
                           className={`w-full rounded-xl px-3 py-2 font-semibold focus:outline-none border ${themeMode === 'light' ? 'bg-slate-50 border-slate-300 text-slate-900 focus:border-sky-500' : 'bg-[#0b0f17] border-slate-800 text-slate-200 focus:border-sky-500/80'
                             }`}
                         >
-                          <option value="en">🇬🇧 English (Executive Enterprise)</option>
-                          <option value="ms">🇲🇾 Bahasa Melayu (Operasi TNB)</option>
-                          <option value="zh">🇨🇳 Simplified Chinese (中文 - 技术操作)</option>
-                          <option value="ja">🇯🇵 Japanese (日本語 - GIS標準)</option>
+                          <option value="en">🇬🇧 UK - English</option>
+                          <option value="ms">🇲🇾 Malaysia - Bahasa Melayu</option>
+                          <option value="zh">🇨🇳 China - Simplified Chinese (中文)</option>
+                          <option value="ja">🇯🇵 Japan - Japanese (日本語)</option>
                         </select>
                         <p className={`text-[10px] mt-1 ${themeMode === 'light' ? 'text-slate-500' : 'text-slate-400'}`}>
                           Updates navigation labels, dashboard cards, and report headers.
