@@ -6689,17 +6689,13 @@ export default function App() {
             )}
           </div>
           <div className="flex items-center gap-2 pl-2 border-l border-slate-800">
-            {/* LIGHT / DARK MODE TOGGLE SWITCH */}
+            {/* LIGHT / DARK MODE TOGGLE SWITCH - ICON ONLY (NEUTRAL SLATE) */}
             <button
               onClick={toggleTheme}
-              className={`p-1.5 rounded-lg border transition-all cursor-pointer flex items-center gap-1.5 text-xs font-semibold ${themeMode === 'light'
-                ? 'bg-amber-100/90 border-amber-300 text-amber-700 hover:bg-amber-200 shadow-xs'
-                : 'bg-slate-800/90 border-slate-700/80 text-amber-400 hover:bg-slate-700 hover:text-amber-300'
-                }`}
+              className="p-1.5 rounded-lg border border-slate-700/80 bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition-all cursor-pointer flex items-center justify-center shadow-xs"
               title={`Switch to ${themeMode === 'dark' ? 'Light' : 'Dark'} Mode`}
             >
-              {themeMode === 'dark' ? <Sun size={15} className="text-amber-400" /> : <Moon size={15} className="text-amber-600" />}
-              <span className="hidden sm:inline text-[11px] font-medium">{themeMode === 'dark' ? 'Light Mode' : 'Dark Mode'}</span>
+              {themeMode === 'dark' ? <Sun size={16} className="text-slate-300" /> : <Moon size={16} className="text-slate-300" />}
             </button>
 
             <div className={`w-7 h-7 rounded-full border flex items-center justify-center text-xs font-bold ${isGuestUser ? 'bg-amber-900/40 border-amber-700 text-amber-400' : 'bg-slate-800 border-slate-700 text-sky-400'
