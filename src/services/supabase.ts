@@ -804,19 +804,57 @@ export async function verifyCsvImageFilenamesInStorage(filenames: string[], sett
 
   const verifiedFilenames: string[] = [];
   let availableCount = 0;
+  const bucketName = settings?.supabaseBucket || import.meta.env.VITE_SUPABASE_BUCKET || 'MMS_PIC';
 
+  // 1. Primary method: Query Supabase Storage bucket for uploaded file list and match explicit row filenames
+  try {
+    const fileSet = new Set<string>();
+    let offset = 0;
+    const limit = 100;
+    let hasMore = true;
+    let totalFetched = 0;
+
+    while (hasMore && totalFetched < 10000) {
+      const { data, error } = await supabase.storage.from(bucketName).list('', { limit, offset });
+      if (error || !data || data.length === 0) break;
+      totalFetched += data.length;
+
+      data.forEach(item => {
+        if (item.name) {
+          fileSet.add(item.name.toLowerCase().trim());
+          const cleanName = item.name.split('/').pop()?.toLowerCase().trim();
+          if (cleanName) fileSet.add(cleanName);
+        }
+      });
+
+      if (data.length < limit) hasMore = false;
+      else offset += limit;
+    }
+
+    if (fileSet.size > 0) {
+      filenames.forEach(fn => {
+        const cleanFn = fn.split('/').pop()?.toLowerCase().trim() || fn.toLowerCase().trim();
+        if (fileSet.has(cleanFn) || fileSet.has(fn.toLowerCase().trim())) {
+          availableCount++;
+          verifiedFilenames.push(fn);
+        }
+      });
+      return { availableCount, verifiedFilenames };
+    }
+  } catch (e) {
+    console.warn('Storage bucket listing notice, falling back to direct URL check:', e);
+  }
+
+  // 2. Fallback method: Direct HTTP HEAD availability checks per filename
   const checkSingleFile = (fn: string): Promise<boolean> => {
     const url = resolvePanoramaUrl(fn, settings);
     if (!url) return Promise.resolve(false);
 
     return new Promise(resolve => {
-      fetch(url, { method: 'GET', headers: { Range: 'bytes=0-0' } })
+      fetch(url, { method: 'HEAD' })
         .then(res => {
-          if (res.ok || res.status === 200 || res.status === 206) {
-            resolve(true);
-          } else {
-            resolve(false);
-          }
+          if (res.ok || res.status === 200 || res.status === 206) resolve(true);
+          else resolve(false);
         })
         .catch(() => {
           const img = new Image();
