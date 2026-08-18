@@ -843,6 +843,32 @@ export async function verifyCsvImageFilenamesInStorage(filenames: string[], sett
   return { availableCount, verifiedFilenames };
 }
 
+export interface DatabaseTableMapping {
+  panoramasTable: string;
+  panoramasSummaryView: string;
+  batchLogsTable: string;
+  qaDefectsTable: string;
+  auditLogsTable: string;
+  stagingPanoramasTable: string;
+  notificationsTable: string;
+}
+
+/**
+ * Get active database table names with smart defaults.
+ * Allows seamless overrides when connecting to enterprise PostGIS databases with custom table names.
+ */
+export function getDatabaseTableMapping(settings?: any): DatabaseTableMapping {
+  return {
+    panoramasTable: settings?.dbPanoramasTable || import.meta.env.VITE_DB_PANORAMAS_TABLE || 'subgrids',
+    panoramasSummaryView: settings?.dbSummaryView || import.meta.env.VITE_DB_SUMMARY_VIEW || 'panoramas_subgrid_summary',
+    batchLogsTable: settings?.dbTableName || import.meta.env.VITE_DB_BATCH_LOGS_TABLE || 'batch_logs',
+    qaDefectsTable: settings?.dbQaDefectsTable || import.meta.env.VITE_DB_QA_DEFECTS_TABLE || 'qa_defects',
+    auditLogsTable: settings?.dbAuditLogsTable || import.meta.env.VITE_DB_AUDIT_LOGS_TABLE || 'audit_logs',
+    stagingPanoramasTable: settings?.dbStagingTable || import.meta.env.VITE_DB_STAGING_TABLE || 'staging_panoramas',
+    notificationsTable: settings?.dbNotificationsTable || import.meta.env.VITE_DB_NOTIFICATIONS_TABLE || 'notifications'
+  };
+}
+
 export type StorageProviderType =
   | 'supabase'
   | 'aws_s3'
