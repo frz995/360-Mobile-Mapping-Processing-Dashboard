@@ -43,7 +43,7 @@ import {
   Moon,
   Settings
 } from 'lucide-react';
-import { supabase, publishToSupabase, saveToStagingSupabase, deleteFromStagingSupabase, fetchSupabaseData, deleteFromSupabase, updateDefectStatusInSupabase, fetchQaRecordsFromSupabase, verifyCsvImageFilenamesInStorage, fetchAuditLogsFromSupabase, saveAuditLogToSupabase, fetchNotificationsFromSupabase, saveNotificationToSupabase } from './services/supabase';
+import { supabase, publishToSupabase, saveToStagingSupabase, deleteFromStagingSupabase, fetchSupabaseData, deleteFromSupabase, updateDefectStatusInSupabase, fetchQaRecordsFromSupabase, verifyCsvImageFilenamesInStorage, fetchAuditLogsFromSupabase, saveAuditLogToSupabase, fetchNotificationsFromSupabase, saveNotificationToSupabase, getStorageImageCountsFromSupabase } from './services/supabase';
 import * as shapefile from 'shapefile';
 import * as toGeoJSON from '@tmcw/togeojson';
 
@@ -5092,36 +5092,34 @@ export default function App() {
     };
   }, []);
 
-  // Verify storage image availability for daily items on mount & sync availableImagesCount
+  // Verify actual 360° image files in MMS_PIC storage bucket for all daily subgrids
   useEffect(() => {
     let isMounted = true;
     (async () => {
-      let updated = false;
-      const verifiedList = await Promise.all(
-        dailyData.map(async d => {
-          // If item is in staging preview, preserve its CSV frame count until published
-          if (d.publishToWebGIS !== 'yes' && !d.isSyncedWithSupabase) {
-            return d;
-          }
+      try {
+        const storageCounts = await getStorageImageCountsFromSupabase();
+        if (!isMounted) return;
 
-          const filenames = (d.panoramas && d.panoramas.length > 0)
-            ? d.panoramas.map(p => p.filename).filter((fn): fn is string => Boolean(fn))
-            : Array.from({ length: d.poiCount || 1 }, (_, i) => `${d.subgrid}-${String(i + 1).padStart(4, '0')}.jpg`);
+        let updated = false;
+        const verifiedList = dailyData.map(d => {
+          const normSg = (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim();
+          const countInStorage = storageCounts[normSg];
 
-          if (filenames.length > 0) {
-            try {
-              const { availableCount } = await verifyCsvImageFilenamesInStorage(filenames);
-              if (availableCount >= 0 && (d.availableImagesCount !== availableCount || d.imagesProcessed !== availableCount)) {
-                updated = true;
-                return { ...d, availableImagesCount: availableCount, imagesProcessed: availableCount };
-              }
-            } catch { }
+          // If MMS_PIC storage bucket has files for this subgrid, use exact storage count; otherwise default to 0 if not uploaded yet
+          const actualImageCount = countInStorage !== undefined ? countInStorage : 0;
+
+          if (d.availableImagesCount !== actualImageCount || d.imagesProcessed !== actualImageCount) {
+            updated = true;
+            return { ...d, availableImagesCount: actualImageCount, imagesProcessed: actualImageCount };
           }
           return d;
-        })
-      );
-      if (updated && isMounted) {
-        setDailyData(verifiedList);
+        });
+
+        if (updated && isMounted) {
+          setDailyData(verifiedList);
+        }
+      } catch (err) {
+        console.warn('Storage image count verification notice:', err);
       }
     })();
     return () => { isMounted = false; };
