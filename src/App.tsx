@@ -6496,15 +6496,11 @@ export default function App() {
 
       {/* TOP GLOBAL NAVBAR */}
       <header className="h-12 bg-[#12161f] border-b border-slate-800/80 px-4 flex items-center justify-between shrink-0 z-20">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-gradient-to-tr from-sky-600 to-emerald-500 rounded-xl shadow-md shadow-emerald-950/40 shrink-0">
-            <Layers size={18} className="text-white" />
-          </div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-sm font-bold text-white tracking-wide">
-              360 Mobile Mapping Processing Dashboard
-            </h1>
-          </div>
+        <div className="flex items-center gap-2.5 select-none cursor-pointer group" onClick={() => setCurrentPage('dashboard')}>
+          <Globe size={22} className="text-sky-400 shrink-0 transition-transform duration-300 group-hover:scale-110" />
+          <h1 className="text-2xl font-extrabold text-white tracking-tight font-sans">
+            Web Mapping Processing Dashboard
+          </h1>
         </div>
 
         {/* Top Right Controls */}
@@ -9494,7 +9490,7 @@ export default function App() {
                   </div>
                   <div>
                     <h2 className="text-base font-bold text-white tracking-wide">
-                      360 Mobile Mapping Processing Dashboard
+                      Web Mapping Processing Dashboard
                     </h2>
                     <p className="text-xs text-slate-400 font-mono">
                       Version 2.4.0 (Executive Enterprise Build)
@@ -9580,7 +9576,7 @@ export default function App() {
 
               {/* Modal Footer */}
               <div className="p-4 bg-[#0b0f17] border-t border-slate-800 flex justify-between items-center text-[11px] text-slate-400 shrink-0 font-mono">
-                <span>© 2026 TNB Mobile Mapping Processing Dashboard</span>
+                <span>© 2026 Web Mapping Processing Dashboard</span>
                 <button
                   onClick={() => setIsAboutModalOpen(false)}
                   className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium rounded-lg border border-slate-700 transition-all cursor-pointer shadow-sm"
