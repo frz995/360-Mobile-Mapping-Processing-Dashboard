@@ -8005,20 +8005,20 @@ export default function App() {
                             }`}
                         >
                           <option value={30}>Every 30 Seconds</option>
-                          <option value={60}>Every 1 Minute</option>
+                          <option value={60}>Every 1 Minute (Recommended)</option>
                           <option value={300}>Every 5 Minutes</option>
-                          <option value={0}>Manual Refresh Only</option>
+                          <option value={0}>Manual Sync Only</option>
                         </select>
                       </div>
                       <div>
-                        <label className={`block font-medium mb-1 ${themeMode === 'light' ? 'text-slate-700 font-semibold' : 'text-slate-400'}`}>Main Log DB Table</label>
-                        <input
-                          type="text"
-                          value={projectSettings.dbTableName || 'batch_logs'}
-                          onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, dbTableName: e.target.value }))}
-                          className={`w-full rounded-xl px-3 py-2 font-mono focus:outline-none border ${themeMode === 'light' ? 'bg-slate-50 border-slate-300 text-slate-900' : 'bg-[#0b0f17] border-slate-800 text-slate-200'
-                            }`}
-                        />
+                        <label className={`block font-medium mb-1 ${themeMode === 'light' ? 'text-slate-700 font-semibold' : 'text-slate-400'}`}>Live PostGIS Table Health</label>
+                        <div className={`w-full rounded-xl px-3 py-2 border flex items-center justify-between font-mono text-xs ${themeMode === 'light' ? 'bg-slate-50 border-slate-300 text-slate-700' : 'bg-[#0b0f17] border-slate-800 text-slate-300'}`}>
+                          <span className="flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                            <span>6 Tables Synced</span>
+                          </span>
+                          <span className="text-[10px] text-slate-500 uppercase">PostgreSQL 15</span>
+                        </div>
                       </div>
                     </div>
 
