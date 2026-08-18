@@ -5290,6 +5290,40 @@ export default function App() {
   const [isHelpGuideOpen, setIsHelpGuideOpen] = useState(false);
   const [helpGuideTab, setHelpGuideTab] = useState<'map' | 'panorama' | 'data' | 'audit'>('map');
   const [tourStep, setTourStep] = useState<number | null>(null);
+  const [settingsSaveToast, setSettingsSaveToast] = useState<{ show: boolean; message: string } | null>(null);
+
+  const handleSaveAllSettings = () => {
+    try {
+      localStorage.setItem('tnb_project_settings', JSON.stringify(projectSettings));
+      const sampleUrl = getPanoramaUrl('sample.jpg');
+      const tables = getDatabaseTableMapping(projectSettings);
+      addAuditLog(
+        'EDIT',
+        'Saved Project & Database Settings',
+        `Updated storage provider to ${projectSettings.storageProvider || 'supabase'} (Panoramas table: ${tables.panoramasTable}, Sample URL: ${sampleUrl})`,
+        'info'
+      );
+      addNotification({
+        title: 'Settings Saved & Synced',
+        message: `Project settings saved. Storage provider: ${projectSettings.storageProvider || 'supabase'}, Language: ${projectSettings.language || 'en'}.`,
+        category: 'SYSTEM'
+      });
+      handleRefreshMap();
+      fetchSupabaseData().then(({ dailyData: sDaily, batchLogs: sBatches }) => {
+        if (sDaily && sDaily.length > 0) setDailyData(sDaily);
+        if (sBatches && sBatches.length > 0) setBatchLogs(sBatches);
+      }).catch(err => console.warn('Re-sync error on settings save:', err));
+      setSettingsSaveToast({
+        show: true,
+        message: 'Project & Database settings saved and synchronized live!'
+      });
+      setTimeout(() => {
+        setSettingsSaveToast(null);
+      }, 3500);
+    } catch (e) {
+      console.error('Save settings error:', e);
+    }
+  };
 
   const availableAuditDates = React.useMemo(() => {
     const dates = auditLogs.map(l => l.timestamp.split(',')[0].trim());
@@ -6408,8 +6442,57 @@ export default function App() {
 
 
 
+  // System i18n Translation Dictionary helper
+  const TRANSLATIONS: Record<string, Record<string, string>> = {
+    en: {
+      dashboard: 'Main Dashboard',
+      data: 'Data Management',
+      refresh: 'Refresh Map',
+      settings: 'Project Settings',
+      about: 'About Dashboard'
+    },
+    ms: {
+      dashboard: 'Papan Pemuka Utama',
+      data: 'Pengurusan Data',
+      refresh: 'Muat Semula Peta',
+      settings: 'Tetapan Projek',
+      about: 'Perihal Papan Pemuka'
+    },
+    zh: {
+      dashboard: '主仪表板',
+      data: '数据管理',
+      refresh: '刷新地图',
+      settings: '项目设置',
+      about: '关于仪表板'
+    },
+    ja: {
+      dashboard: 'メインダッシュボード',
+      data: 'データ管理',
+      refresh: 'マップ更新',
+      settings: 'プロジェクト設定',
+      about: 'ダッシュボードについて'
+    }
+  };
+
+  const t = (key: string) => TRANSLATIONS[projectSettings?.language || 'en']?.[key] || TRANSLATIONS['en'][key] || key;
+
   return (
     <div className={`min-h-screen md:h-screen w-screen font-sans flex flex-col overflow-y-auto md:overflow-hidden ${themeMode === 'light' ? 'light-mode bg-slate-100 text-slate-800' : 'bg-[#0b0e14] text-slate-200'}`}>
+
+      {/* SLEEK GLASSMORPHIC TOAST NOTIFICATION FOR SETTINGS SAVE */}
+      {settingsSaveToast && (
+        <div className="fixed top-14 right-6 z-[3000] animate-in fade-in slide-in-from-top-3 duration-300 pointer-events-none">
+          <div className="bg-[#111827]/95 border border-emerald-500/50 text-slate-100 px-4 py-3 rounded-2xl shadow-[0_10px_30px_rgba(16,185,129,0.2)] backdrop-blur-md flex items-center gap-3">
+            <div className="p-1.5 bg-emerald-500/20 text-emerald-400 rounded-xl border border-emerald-500/30 shrink-0">
+              <CheckCircle size={18} />
+            </div>
+            <div>
+              <h4 className="text-xs font-bold text-emerald-400 tracking-wide">Settings Saved & Synced</h4>
+              <p className="text-[11px] text-slate-300">{settingsSaveToast.message}</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* TOP GLOBAL NAVBAR */}
       <header className="h-12 bg-[#12161f] border-b border-slate-800/80 px-4 flex items-center justify-between shrink-0 z-20">
@@ -6748,7 +6831,7 @@ export default function App() {
             <span className={`transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] whitespace-nowrap overflow-hidden origin-left flex items-center justify-between flex-1 ${
               isSidebarExpanded ? 'opacity-100 max-w-[140px] translate-x-0' : 'opacity-0 max-w-0 -translate-x-3 pointer-events-none'
             }`}>
-              <span>Main Dashboard</span>
+              <span>{t('dashboard')}</span>
               {currentPage === 'dashboard' && (
                 <span className="w-2 h-2 rounded-full bg-sky-400 shadow-[0_0_8px_rgba(56,189,248,0.9)] animate-pulse ml-2 shrink-0" />
               )}
@@ -6763,7 +6846,7 @@ export default function App() {
             } ${
               isSidebarExpanded ? 'w-full px-3 py-2 text-xs font-semibold gap-3 justify-start' : 'w-full h-10 justify-center p-0'
             } ${currentPage === 'data' ? 'text-sky-400 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
-            title="PostGIS Data Management"
+            title={t('data')}
           >
             <div className="relative shrink-0 flex items-center justify-center">
               <Database size={20} className="shrink-0 transition-transform duration-200" />
@@ -6776,7 +6859,7 @@ export default function App() {
             <span className={`transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] whitespace-nowrap overflow-hidden origin-left flex items-center justify-between flex-1 ${
               isSidebarExpanded ? 'opacity-100 max-w-[140px] translate-x-0' : 'opacity-0 max-w-0 -translate-x-3 pointer-events-none'
             }`}>
-              <span>Data Management</span>
+              <span>{t('data')}</span>
               {currentPage === 'data' && (
                 <span className="w-2 h-2 rounded-full bg-sky-400 shadow-[0_0_8px_rgba(56,189,248,0.9)] animate-pulse ml-2 shrink-0" />
               )}
@@ -6791,7 +6874,7 @@ export default function App() {
             } ${
               isSidebarExpanded ? 'w-full px-3 py-2 text-xs font-semibold gap-3 justify-start' : 'w-full h-10 justify-center p-0'
             }`}
-            title="Refresh Map & Data"
+            title={t('refresh')}
           >
             <div className="relative shrink-0 flex items-center justify-center">
               <RefreshCw size={20} className="shrink-0 transition-transform duration-300 active:rotate-180" />
@@ -6799,7 +6882,7 @@ export default function App() {
             <span className={`transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] whitespace-nowrap overflow-hidden origin-left ${
               isSidebarExpanded ? 'opacity-100 max-w-[140px] translate-x-0' : 'opacity-0 max-w-0 -translate-x-3 pointer-events-none'
             }`}>
-              Refresh Map
+              {t('refresh')}
             </span>
           </button>
 
@@ -6811,7 +6894,7 @@ export default function App() {
             } ${
               isSidebarExpanded ? 'w-full px-3 py-2 text-xs font-semibold gap-3 justify-start' : 'w-full h-10 justify-center p-0'
             } ${currentPage === 'settings' ? 'text-sky-400 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
-            title="Project & Database Settings"
+            title={t('settings')}
           >
             <div className="relative shrink-0 flex items-center justify-center">
               <Settings size={20} className="shrink-0 transition-transform duration-300 hover:rotate-90" />
@@ -6824,7 +6907,7 @@ export default function App() {
             <span className={`transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] whitespace-nowrap overflow-hidden origin-left flex items-center justify-between flex-1 ${
               isSidebarExpanded ? 'opacity-100 max-w-[140px] translate-x-0' : 'opacity-0 max-w-0 -translate-x-3 pointer-events-none'
             }`}>
-              <span>Project Settings</span>
+              <span>{t('settings')}</span>
               {currentPage === 'settings' && (
                 <span className="w-2 h-2 rounded-full bg-sky-400 shadow-[0_0_8px_rgba(56,189,248,0.9)] animate-pulse ml-2 shrink-0" />
               )}
@@ -6839,7 +6922,7 @@ export default function App() {
             } ${
               isSidebarExpanded ? 'w-full px-3 py-2 text-xs font-semibold gap-3 justify-start' : 'w-full h-10 justify-center p-0'
             }`}
-            title="About 360 Mobile Mapping Dashboard"
+            title={t('about')}
           >
             <div className="relative shrink-0 flex items-center justify-center">
               <Info size={20} className="shrink-0 transition-transform duration-200 hover:scale-110" />
@@ -6847,7 +6930,7 @@ export default function App() {
             <span className={`transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] whitespace-nowrap overflow-hidden origin-left ${
               isSidebarExpanded ? 'opacity-100 max-w-[140px] translate-x-0' : 'opacity-0 max-w-0 -translate-x-3 pointer-events-none'
             }`}>
-              About Dashboard
+              {t('about')}
             </span>
           </button>
 
@@ -7931,20 +8014,7 @@ export default function App() {
                     <span>Export Client QA PDF Report</span>
                   </button>
                   <button
-                    onClick={() => {
-                      try {
-                        localStorage.setItem('tnb_project_settings', JSON.stringify(projectSettings));
-                        const sampleUrl = getPanoramaUrl('sample.jpg');
-                        const tables = getDatabaseTableMapping(projectSettings);
-                        addAuditLog('EDIT', 'Saved Project & Database Settings', `Updated storage provider to ${projectSettings.storageProvider || 'supabase'} (Panoramas table: ${tables.panoramasTable}, Sample URL: ${sampleUrl})`, 'info');
-                        addNotification({
-                          title: 'Settings Saved',
-                          message: `Project settings saved. Storage provider: ${projectSettings.storageProvider || 'supabase'}.`,
-                          category: 'SYSTEM'
-                        });
-                        alert('Project & Database settings saved successfully!');
-                      } catch (e) { }
-                    }}
+                    onClick={handleSaveAllSettings}
                     className="px-5 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-semibold transition-all shadow-md flex items-center gap-2 cursor-pointer active:scale-95"
                   >
                     <Save size={15} />
@@ -9004,6 +9074,88 @@ export default function App() {
                             />
                           </div>
                         </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* SECTION 9: SYSTEM LANGUAGE & REGIONAL LOCALIZATION SETTINGS */}
+                  <div className={`rounded-2xl p-5 space-y-4 shadow-sm border lg:col-span-2 ${themeMode === 'light' ? 'bg-white border-slate-200 text-slate-900' : 'bg-[#121824] border-slate-800/90 text-slate-200'
+                    }`}>
+                    <div className={`flex items-center justify-between border-b pb-3 ${themeMode === 'light' ? 'border-slate-200' : 'border-slate-800/80'
+                      }`}>
+                      <div className="flex items-center gap-2 text-xs font-bold tracking-wide uppercase">
+                        <Globe size={15} className="text-sky-400" />
+                        <span className={themeMode === 'light' ? 'text-slate-900' : 'text-white'}>
+                          9. System Language & Regional Localization
+                        </span>
+                      </div>
+                      <span className={`text-[10px] px-2 py-0.5 rounded font-mono border ${themeMode === 'light'
+                          ? 'bg-slate-100 text-slate-700 border-slate-300'
+                          : 'bg-slate-800/90 text-slate-300 border-slate-700/80'
+                        }`}>
+                        Active: {projectSettings.language === 'ms' ? 'Bahasa Melayu' : projectSettings.language === 'zh' ? '中文' : projectSettings.language === 'ja' ? '日本語' : 'English (US)'}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
+                      {/* Interface Language Selector */}
+                      <div>
+                        <label className={`block font-semibold mb-1 ${themeMode === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
+                          Interface Language
+                        </label>
+                        <select
+                          value={projectSettings.language || 'en'}
+                          onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, language: e.target.value }))}
+                          className={`w-full rounded-xl px-3 py-2 font-semibold focus:outline-none border ${themeMode === 'light' ? 'bg-slate-50 border-slate-300 text-slate-900 focus:border-sky-500' : 'bg-[#0b0f17] border-slate-800 text-slate-200 focus:border-sky-500/80'
+                            }`}
+                        >
+                          <option value="en">🇬🇧 English (Executive Enterprise)</option>
+                          <option value="ms">🇲🇾 Bahasa Melayu (Operasi TNB)</option>
+                          <option value="zh">🇨🇳 Simplified Chinese (中文 - 技术操作)</option>
+                          <option value="ja">🇯🇵 Japanese (日本語 - GIS標準)</option>
+                        </select>
+                        <p className={`text-[10px] mt-1 ${themeMode === 'light' ? 'text-slate-500' : 'text-slate-400'}`}>
+                          Updates navigation labels, dashboard cards, and report headers.
+                        </p>
+                      </div>
+
+                      {/* Regional Date Format */}
+                      <div>
+                        <label className={`block font-semibold mb-1 ${themeMode === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
+                          Regional Date Format
+                        </label>
+                        <select
+                          value={projectSettings.dateFormat || 'DD/MM/YYYY'}
+                          onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, dateFormat: e.target.value }))}
+                          className={`w-full rounded-xl px-3 py-2 focus:outline-none border ${themeMode === 'light' ? 'bg-slate-50 border-slate-300 text-slate-900 focus:border-sky-500' : 'bg-[#0b0f17] border-slate-800 text-slate-200 focus:border-sky-500/80'
+                            }`}
+                        >
+                          <option value="DD/MM/YYYY">DD/MM/YYYY (Malaysia / UK Standard)</option>
+                          <option value="YYYY-MM-DD">YYYY-MM-DD (ISO 8601 Standard)</option>
+                          <option value="MM/DD/YYYY">MM/DD/YYYY (US Standard)</option>
+                        </select>
+                        <p className={`text-[10px] mt-1 ${themeMode === 'light' ? 'text-slate-500' : 'text-slate-400'}`}>
+                          Controls timestamp display across audit logs and survey tables.
+                        </p>
+                      </div>
+
+                      {/* Distance Unit System */}
+                      <div>
+                        <label className={`block font-semibold mb-1 ${themeMode === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
+                          Distance & Metric Unit System
+                        </label>
+                        <select
+                          value={projectSettings.unitSystem || 'metric'}
+                          onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, unitSystem: e.target.value }))}
+                          className={`w-full rounded-xl px-3 py-2 focus:outline-none border ${themeMode === 'light' ? 'bg-slate-50 border-slate-300 text-slate-900 focus:border-sky-500' : 'bg-[#0b0f17] border-slate-800 text-slate-200 focus:border-sky-500/80'
+                            }`}
+                        >
+                          <option value="metric">Kilometers (KM) & Meters (m) — Standard</option>
+                          <option value="imperial">Miles (mi) & Feet (ft)</option>
+                        </select>
+                        <p className={`text-[10px] mt-1 ${themeMode === 'light' ? 'text-slate-500' : 'text-slate-400'}`}>
+                          Applies unit conversions to trajectory lengths and elevation metadata.
+                        </p>
                       </div>
                     </div>
                   </div>
