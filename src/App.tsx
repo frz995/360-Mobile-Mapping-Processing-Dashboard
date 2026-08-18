@@ -44,7 +44,7 @@ import {
   Info,
   Settings
 } from 'lucide-react';
-import { supabase, publishToSupabase, saveToStagingSupabase, deleteFromStagingSupabase, fetchSupabaseData, deleteFromSupabase, updateDefectStatusInSupabase, fetchQaRecordsFromSupabase, verifyCsvImageFilenamesInStorage, fetchAuditLogsFromSupabase, saveAuditLogToSupabase, fetchNotificationsFromSupabase, saveNotificationToSupabase, getStorageImageCountsFromSupabase, resolvePanoramaUrl, getDatabaseTableMapping } from './services/supabase';
+import { supabase, publishToSupabase, saveToStagingSupabase, deleteFromStagingSupabase, fetchSupabaseData, deleteFromSupabase, updateDefectStatusInSupabase, fetchQaRecordsFromSupabase, verifyCsvImageFilenamesInStorage, fetchAuditLogsFromSupabase, saveAuditLogToSupabase, fetchNotificationsFromSupabase, saveNotificationToSupabase, resolvePanoramaUrl, getDatabaseTableMapping } from './services/supabase';
 import * as shapefile from 'shapefile';
 import * as toGeoJSON from '@tmcw/togeojson';
 
@@ -175,41 +175,36 @@ export function getPOICount(item?: { poiCount?: number; imagesProcessed?: number
   return Number(item.imagesProcessed ?? item.images ?? 0);
 }
 
-// Helper: Get available uploaded image frames count in MMS_PIC
+// Helper: Get available uploaded image frames count in MMS_PIC per row
 export function getImagesProcessedCount(item?: { imagesProcessed?: number; images?: number; availableImagesCount?: number; panoramas?: PanoramaItem[]; poiCount?: number; publishToWebGIS?: string; status?: string; isSyncedWithSupabase?: boolean; subgrid?: string }): number {
   if (!item) return 0;
 
-  // 1. Highest priority: Verified available image files in Supabase Storage (> 0)
-  if (typeof item.availableImagesCount === 'number' && item.availableImagesCount > 0) {
+  // 1. Highest priority: Verified available image files in storage per row
+  if (typeof item.availableImagesCount === 'number') {
     return item.availableImagesCount;
   }
 
-  // 2. Explicit imagesProcessed property (> 0)
-  if (typeof item.imagesProcessed === 'number' && item.imagesProcessed > 0) {
+  // 2. Explicit imagesProcessed property
+  if (typeof item.imagesProcessed === 'number') {
     return item.imagesProcessed;
   }
 
-  // 3. Explicit images property (> 0)
-  if (typeof item.images === 'number' && item.images > 0) {
+  // 3. Explicit images property
+  if (typeof item.images === 'number') {
     return item.images;
   }
 
   // 4. Panoramas array
   if (Array.isArray(item.panoramas) && item.panoramas.length > 0) {
-    if (item.subgrid) {
-      const subFilter = (extractSubgridName(item.subgrid) || item.subgrid).toUpperCase().trim();
-      const filtered = item.panoramas.filter(p => (extractSubgridName(p.filename) || '').toUpperCase().trim() === subFilter);
-      if (filtered.length > 0) return filtered.length;
-    }
     return item.panoramas.length;
   }
 
   // 5. POI count fallback
-  if (typeof item.poiCount === 'number' && item.poiCount > 0) {
+  if (typeof item.poiCount === 'number') {
     return item.poiCount;
   }
 
-  return item.availableImagesCount || item.imagesProcessed || item.images || item.poiCount || 0;
+  return 0;
 }
 
 
@@ -5027,10 +5022,10 @@ export default function App() {
             if (!seenKeys.has(fullKey)) {
               seenKeys.add(fullKey);
               const maxPoi = d.poiCount || (d.panoramas?.length) || 0;
-              const rawImg = (typeof d.availableImagesCount === 'number' && d.availableImagesCount > 0)
+              const rawImg = typeof d.availableImagesCount === 'number'
                 ? d.availableImagesCount
-                : ((typeof d.imagesProcessed === 'number' && d.imagesProcessed > 0) ? d.imagesProcessed : maxPoi);
-              const cappedImg = maxPoi > 0 ? (rawImg > 0 ? Math.min(rawImg, maxPoi) : maxPoi) : rawImg;
+                : (typeof d.imagesProcessed === 'number' ? d.imagesProcessed : maxPoi);
+              const cappedImg = rawImg;
               const existsInProductionDb = Boolean(normSg && publishedSubgridSet.has(normSg));
               const isPub = d.publishToWebGIS === 'yes' || d.isFromSupabase === true || (!isStaged && existsInProductionDb);
 
@@ -5211,39 +5206,26 @@ export default function App() {
     };
   }, []);
 
-  // Verify actual 360° image files in storage asynchronously for all daily subgrids (matching post-publish logic 1:1)
+  // Verify actual 360° image files in storage asynchronously per row using exact filename URL checks
   useEffect(() => {
     let isMounted = true;
     (async () => {
       try {
-        const storageCounts = await getStorageImageCountsFromSupabase(false, projectSettings);
-        if (!isMounted) return;
-
         let updated = false;
         const verifiedList = await Promise.all(dailyData.map(async d => {
-          const normSg = (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim();
-          let countInStorage = storageCounts[normSg];
+          const filenames = (d.panoramas && d.panoramas.length > 0)
+            ? d.panoramas.map((p: any) => p.filename).filter((fn: any): fn is string => Boolean(fn))
+            : generateImageFilenamesList(d.subgrid, d.poiCount || 0, (d.panoramas?.[0]?.filename) || `${d.subgrid}-0001.jpg`);
 
-          if (countInStorage === undefined || countInStorage === 0) {
-            const filenames = (d.panoramas && d.panoramas.length > 0)
-              ? d.panoramas.map((p: any) => p.filename).filter((fn: any): fn is string => Boolean(fn))
-              : Array.from({ length: d.poiCount || 1 }, (_, i) => `${d.subgrid || normSg}-${String(i + 1).padStart(4, '0')}.jpg`);
-            if (filenames.length > 0) {
-              try {
-                const { availableCount } = await verifyCsvImageFilenamesInStorage(filenames, projectSettings);
-                if (availableCount >= 0) {
-                  countInStorage = availableCount;
-                }
-              } catch { }
+          if (filenames.length === 0) return d;
+
+          try {
+            const { availableCount } = await verifyCsvImageFilenamesInStorage(filenames, projectSettings);
+            if (availableCount >= 0 && (d.availableImagesCount !== availableCount || d.imagesProcessed !== availableCount)) {
+              updated = true;
+              return { ...d, availableImagesCount: availableCount, imagesProcessed: availableCount };
             }
-          }
-
-          const finalVerifiedCount = countInStorage !== undefined ? countInStorage : 0;
-
-          if (d.availableImagesCount !== finalVerifiedCount || d.imagesProcessed !== finalVerifiedCount) {
-            updated = true;
-            return { ...d, availableImagesCount: finalVerifiedCount, imagesProcessed: finalVerifiedCount };
-          }
+          } catch { }
           return d;
         }));
 
@@ -5251,7 +5233,7 @@ export default function App() {
           setDailyData(verifiedList);
         }
       } catch (err) {
-        console.warn('Storage image count verification notice:', err);
+        console.warn('Per-row storage image verification notice:', err);
       }
     })();
     return () => { isMounted = false; };
