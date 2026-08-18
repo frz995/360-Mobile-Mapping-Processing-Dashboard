@@ -4868,12 +4868,12 @@ export default function App() {
     }
   });
 
-  // Load data from localStorage or use initial data
+  // Load data from localStorage or default to empty array
   const [dailyData, setDailyData] = useState<DailyTimeSeries[]>(() => {
-    ['dailyData_v4', 'dailyData_v5', 'dailyData_v6', 'dailyData_v7', 'dailyData_v8', 'dailyData_v9', 'dailyData_v10', 'dailyData_v11', 'dailyData_v12', 'dailyData_v13', 'dailyData_v14', 'dailyData_v15', 'dailyData_v16', 'dailyData_v17', 'dailyData_v18', 'dailyData_v19', 'dailyData_v20', 'dailyData_v21', 'dailyData_v22', 'dailyData_v23', 'dailyData_v24', 'dailyData_v25', 'dailyData_v26', 'dailyData_v27', 'dailyData_v28', 'dailyData_v29', 'batchLogs_v5', 'batchLogs_v6', 'batchLogs_v7', 'batchLogs_v8', 'batchLogs_v9', 'batchLogs_v10', 'batchLogs_v11', 'batchLogs_v12', 'batchLogs_v13', 'batchLogs_v14', 'batchLogs_v15', 'batchLogs_v16', 'batchLogs_v17', 'batchLogs_v18', 'batchLogs_v19', 'batchLogs_v20', 'batchLogs_v21', 'batchLogs_v22', 'batchLogs_v23', 'batchLogs_v24', 'batchLogs_v25', 'batchLogs_v26', 'batchLogs_v27', 'batchLogs_v28', 'batchLogs_v29', 'qaSubgridRecords_v13'].forEach(k => {
+    ['dailyData_v4', 'dailyData_v5', 'dailyData_v6', 'dailyData_v7', 'dailyData_v8', 'dailyData_v9', 'dailyData_v10', 'dailyData_v11', 'dailyData_v12', 'dailyData_v13', 'dailyData_v14', 'dailyData_v15', 'dailyData_v16', 'dailyData_v17', 'dailyData_v18', 'dailyData_v19', 'dailyData_v20', 'dailyData_v21', 'dailyData_v22', 'dailyData_v23', 'dailyData_v24', 'dailyData_v25', 'dailyData_v26', 'dailyData_v27', 'dailyData_v28', 'dailyData_v29', 'dailyData_v30', 'batchLogs_v5', 'batchLogs_v6', 'batchLogs_v7', 'batchLogs_v8', 'batchLogs_v9', 'batchLogs_v10', 'batchLogs_v11', 'batchLogs_v12', 'batchLogs_v13', 'batchLogs_v14', 'batchLogs_v15', 'batchLogs_v16', 'batchLogs_v17', 'batchLogs_v18', 'batchLogs_v19', 'batchLogs_v20', 'batchLogs_v21', 'batchLogs_v22', 'batchLogs_v23', 'batchLogs_v24', 'batchLogs_v25', 'batchLogs_v26', 'batchLogs_v27', 'batchLogs_v28', 'batchLogs_v29', 'batchLogs_v30', 'qaSubgridRecords_v13'].forEach(k => {
       try { localStorage.removeItem(k); } catch { }
     });
-    const saved = localStorage.getItem('dailyData_v30');
+    const saved = localStorage.getItem('dailyData_v31');
     if (!saved) return INITIAL_DAILY_DATA;
     try {
       const parsed = JSON.parse(saved);
@@ -4884,7 +4884,7 @@ export default function App() {
   });
 
   const [batchLogs, setBatchLogs] = useState<BatchLog[]>(() => {
-    const saved = localStorage.getItem('batchLogs_v30');
+    const saved = localStorage.getItem('batchLogs_v31');
     if (!saved) return INITIAL_BATCH_LOGS;
     try {
       const parsed = JSON.parse(saved);
@@ -4928,8 +4928,8 @@ export default function App() {
             const isFromRemoteDb = Boolean(d.isFromSupabase || (d.id && String(d.id).startsWith('sp-daily-')));
             const isStaged = d.publishToWebGIS !== 'yes' && !d.isSyncedWithSupabase;
 
-            // If item originated from remote Supabase DB but its subgrid is NO LONGER in liveSubgridSet, it was deleted remotely!
-            if (isFromRemoteDb && normSg && liveSubgridSet.size > 0 && !liveSubgridSet.has(normSg)) {
+            // If item originated from remote Supabase DB but its subgrid is NO LONGER in liveSubgridSet (or live DB is empty), purge it!
+            if (isFromRemoteDb && normSg && !liveSubgridSet.has(normSg)) {
               return;
             }
 
@@ -4973,8 +4973,8 @@ export default function App() {
         setBatchLogs(prev => {
           const merged = prev.filter(b => {
             const normSg = (extractSubgridName(b.subgrid || b.imageFilename) || b.subgrid || '').toUpperCase().trim();
-            // If batch was explicitly synced with Supabase but is no longer in liveBatchSet, purge it
-            if (b.isSyncedWithSupabase === true && normSg && liveBatchSet.size > 0 && !liveBatchSet.has(normSg)) {
+            // If batch was explicitly synced with Supabase but is no longer in liveBatchSet (or live DB is empty), purge it
+            if (b.isSyncedWithSupabase === true && normSg && !liveBatchSet.has(normSg)) {
               return false;
             }
             return true;
@@ -5160,8 +5160,8 @@ export default function App() {
   // Save to localStorage whenever data changes
   useEffect(() => {
     try {
-      localStorage.setItem('dailyData_v30', JSON.stringify(dailyData));
-      localStorage.setItem('batchLogs_v30', JSON.stringify(batchLogs));
+      localStorage.setItem('dailyData_v31', JSON.stringify(dailyData));
+      localStorage.setItem('batchLogs_v31', JSON.stringify(batchLogs));
     } catch (err) {
       console.warn('Unable to save to localStorage:', err);
     }
