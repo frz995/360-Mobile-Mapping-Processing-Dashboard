@@ -41,9 +41,10 @@ import {
   Loader2,
   Sun,
   Moon,
+  Info,
   Settings
 } from 'lucide-react';
-import { supabase, publishToSupabase, saveToStagingSupabase, deleteFromStagingSupabase, fetchSupabaseData, deleteFromSupabase, updateDefectStatusInSupabase, fetchQaRecordsFromSupabase, verifyCsvImageFilenamesInStorage, fetchAuditLogsFromSupabase, saveAuditLogToSupabase, fetchNotificationsFromSupabase, saveNotificationToSupabase, getStorageImageCountsFromSupabase, resolvePanoramaUrl } from './services/supabase';
+import { supabase, publishToSupabase, saveToStagingSupabase, deleteFromStagingSupabase, fetchSupabaseData, deleteFromSupabase, updateDefectStatusInSupabase, fetchQaRecordsFromSupabase, verifyCsvImageFilenamesInStorage, fetchAuditLogsFromSupabase, saveAuditLogToSupabase, fetchNotificationsFromSupabase, saveNotificationToSupabase, getStorageImageCountsFromSupabase, resolvePanoramaUrl, getDatabaseTableMapping } from './services/supabase';
 import * as shapefile from 'shapefile';
 import * as toGeoJSON from '@tmcw/togeojson';
 
@@ -407,32 +408,74 @@ const TOUR_STEPS = [
   {
     step: 1,
     title: '1. Executive KPI Summary Cards',
-    desc: 'Provides real-time tracking of total mapped trajectory distance, 360° panorama frame counts, active batch stitching jobs, and overall quality health.',
-    highlight: 'Top row metrics cards'
+    desc: 'Real-time monitoring of total trajectory distance (KM), 360° panorama frame counts, active survey subgrids, and overall defect SLA pass rates.',
+    highlight: 'Top executive summary cards'
   },
   {
     step: 2,
-    title: '2. Interactive Coverage Map & Subgrid Filters',
-    desc: 'Explore mobile mapping trajectories on Leaflet. Click any subgrid (e.g. N94E70) to inspect data. Click subgrid cards in the daily control table to filter specific dates without hiding concurrent subgrids.',
-    highlight: 'Left column GIS WebMap'
+    title: '2. Interactive WebGIS Map & Layer Controls',
+    desc: 'Spatial trajectory inspection on Leaflet. Click any subgrid (e.g. N94E70) to filter frames. Toggle subgrid bounding boxes, trajectory lines, and high-voltage grid overlays.',
+    highlight: 'Interactive WebGIS Map canvas'
   },
   {
     step: 3,
-    title: '3. 360° Panorama Street-View Inspector',
-    desc: 'Examine high-definition 360° spherical panoramas, step between frames, review AI defect detections, and perform QA validations with YES/NO confirmations.',
-    highlight: 'Right panel Street-View viewer'
+    title: '3. 360° Equirectangular StreetView Inspector',
+    desc: 'High-definition 360° camera inspection. Step along trajectory points, review automated defect flags, and complete YES/NO QA verification questionnaires.',
+    highlight: '360° Panorama StreetView panel'
   },
   {
     step: 4,
-    title: '4. Daily Processing Control & Supabase DB Publishing',
-    desc: 'Filter progress records by column, perform authorized admin edits or deletes, and execute real-time production database publishing directly to Supabase.',
-    highlight: 'Bottom daily progress table'
+    title: '4. Daily Survey Progress & Supabase DB Control',
+    desc: 'Filter daily survey passes by column (Date, PIC, Subgrid), perform passcode-protected record edits or deletions, and publish live records to Supabase PostgreSQL.',
+    highlight: 'Daily progress data table'
   },
   {
     step: 5,
-    title: '5. Audit Logs & System Notifications',
-    desc: 'Use the top header icons to track system activity logs (create, edit, delete, publish, errors) with date track-back filtering and publish notifications.',
-    highlight: 'Top navbar header icons'
+    title: '5. Audit Trail Logs & Real-Time Notifications',
+    desc: 'Inspect chronological system activity logs (create, edit, delete, publish, error) with date-range filters, and monitor live database publish notifications.',
+    highlight: 'Header Audit Log & Notification controls'
+  },
+  {
+    step: 6,
+    title: '6. Navigation Sidebar Panel Overview',
+    desc: 'The central navigation bar provides fast access to all operational canvases, database management tools, system settings, and interactive help controls.',
+    highlight: 'Navigation sidebar strip'
+  },
+  {
+    step: 7,
+    title: '7. Main Dashboard Canvas Switcher',
+    desc: 'Click this button to return instantly to the primary WebGIS view, featuring spatial trajectory maps, 360° StreetView inspectors, and daily progress metrics.',
+    highlight: 'Main Dashboard nav button'
+  },
+  {
+    step: 8,
+    title: '8. PostGIS Data Management & Layer Catalog',
+    desc: 'Access the dedicated PostGIS Data Management canvas to inspect raw trajectory tables, import survey CSVs, and configure subgrid masterlists.',
+    highlight: 'Data Management nav button'
+  },
+  {
+    step: 9,
+    title: '9. Instant Map & Trajectory Cache Refresh',
+    desc: 'Triggers an instant cache purge and re-sync with Supabase PostgreSQL, reloading all trajectory polylines, panorama nodes, and subgrid boundaries.',
+    highlight: 'Refresh Map nav button'
+  },
+  {
+    step: 10,
+    title: '10. Project & Database Settings',
+    desc: 'Open Section 7 & Section 8 settings to configure Masterlist subgrid deduplication rules, daily survey run preservation policies, and QA defect SLA benchmarks.',
+    highlight: 'Project Settings nav button'
+  },
+  {
+    step: 11,
+    title: '11. About Dashboard & System Specifications',
+    desc: 'View comprehensive system specs, including PostGIS mapping engines, Supabase PostgreSQL database architecture, coordinate reference systems (EPSG:4326, 3857, 3375), and versioning.',
+    highlight: 'About Dashboard nav button'
+  },
+  {
+    step: 12,
+    title: '12. Expandable Navigation Panel & Fluid Micro-Animations',
+    desc: 'Click the bottom chevron toggle to expand or collapse the navigation sidebar with silky-smooth cubic-bezier transitions, label sliding animations, and glowing fluid active dots.',
+    highlight: 'Expand / Collapse panel toggle button'
   }
 ];
 
@@ -1344,7 +1387,16 @@ const DataManagementPage = ({
   addAuditLog?: (type: AuditLogItem['type'], title: string, details: string, status?: AuditLogItem['status']) => void,
   isGuestUser?: boolean
 }) => {
-  const [dataTab, setDataTab] = useState<'batches' | 'daily' | 'vector'>('batches');
+  const initialTab = (() => {
+    try {
+      const raw = localStorage.getItem('tnb_project_settings');
+      const parsed = raw ? JSON.parse(raw) : null;
+      return (parsed?.defaultDataTab === 'daily' || parsed?.defaultDataTab === 'vector') ? parsed.defaultDataTab : 'batches';
+    } catch {
+      return 'batches';
+    }
+  })();
+  const [dataTab, setDataTab] = useState<'batches' | 'daily' | 'vector'>(initialTab);
   const [editingItem, setEditingItem] = useState<BatchLog | DailyTimeSeries | Layer | Folder | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isLayerEditModalOpen, setIsLayerEditModalOpen] = useState(false);
@@ -1745,7 +1797,7 @@ const DataManagementPage = ({
 
     // Preserve each imported CSV entry as a separate Daily Data record
     const updatedDraft: DailyTimeSeries[] = [...draftDailyData];
-    
+
     imported.forEach(newImp => {
       const existingIndex = updatedDraft.findIndex(d => d.id === newImp.id);
       if (existingIndex >= 0) {
@@ -4665,6 +4717,8 @@ const DataForm = ({
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState<'dashboard' | 'data' | 'settings'>('dashboard');
+  const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
+  const [isAboutModalOpen, setIsAboutModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'batches' | 'daily'>('batches');
   const [themeMode, setThemeMode] = useState<'dark' | 'light'>(() => {
     try {
@@ -4726,17 +4780,28 @@ export default function App() {
       imageFormatPattern: '{subgrid}-{index:04d}.jpg',
       imagePreloadCount: 3,
       enableImageRetryFallback: true,
-      // Advanced GIS & Spatial Settings Options
+      // GIS Spatial Reference & Bounding Box Settings
+      selectedCrs: 'EPSG:4326',
+      selectedRegionBBox: 'peninsular_malaysia',
+      minLat: 1.2,
+      maxLat: 6.8,
+      minLon: 99.6,
+      maxLon: 104.6,
+      // Advanced GIS & Processing Engine Settings Options
       autoDeduplicateSubgrids: true,
+      deduplicationStrategy: 'clean_merge', // 'clean_merge' | 'keep_latest' | 'preserve_runs'
       enableBBoxFilter: true,
       autoPanOnTrackClick: true,
       defaultBasemapStyle: 'dark',
+      defectThreshold: 85,
       aiDefectThresholdPercent: 85,
       // CSV Column Alias & Normalization Settings
-      csvLatAliases: 'latitude, lat, y',
-      csvLonAliases: 'longitude, lon, lng, x',
-      csvHeadingAliases: 'heading, bearing, dir',
-      csvFilenameAliases: 'filename, imagefilename, image_url, file',
+      csvLatAliases: 'latitude, lat, y, y_coord',
+      csvLonAliases: 'longitude, lon, lng, x, x_coord',
+      csvHeadingAliases: 'heading, bearing, dir, orientation',
+      csvFilenameAliases: 'filename, imagefilename, image_url, file, frame_id',
+      csvSubgridAliases: 'subgrid, grid_id, section, tile',
+      csvDateAliases: 'date, time, captured_at, timestamp',
       dropZeroGpsRows: true,
       csvTimestampFormat: 'auto'
     };
@@ -4757,6 +4822,7 @@ export default function App() {
     availableCount: number;
     baseFilename?: string;
   } | null>(null);
+  const [showAdvancedTableMapping, setShowAdvancedTableMapping] = useState<boolean>(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -4865,8 +4931,28 @@ export default function App() {
   });
 
   const activeBatchLogs = React.useMemo(() => {
+    const strategy = projectSettings?.deduplicationStrategy || 'clean_merge';
+    if (strategy === 'preserve_runs') {
+      // Retain each daily survey run as a distinct batch log row
+      return dailyData.map((d, index) => ({
+        id: d.id || `run-${index}`,
+        grid: (d as any).grid || 'Selangor Grid',
+        date: d.date,
+        subgrid: `${d.subgrid} (Run ${index + 1})`,
+        imageFilename: (d as any).imageFilename || (d as any).filename || `${d.subgrid}.jpg`,
+        images: d.imagesProcessed || d.poiCount || 0,
+        poiCount: d.poiCount || d.imagesProcessed || 0,
+        kmProcessed: d.kmProcessed || 0,
+        captureEquipment: d.captureEquipment || 'MMS',
+        pic: d.pic || 'Fariz',
+        status: ((d as any).status || 'Complete') as 'Complete' | 'Ongoing',
+        isSyncedWithSupabase: d.isSyncedWithSupabase,
+        publishToWebGIS: d.publishToWebGIS || 'yes',
+        defects: d.imagesDefected || d.defectCount || 0
+      }));
+    }
     return reconcileBatchLogs(dailyData, batchLogs);
-  }, [dailyData, batchLogs]);
+  }, [dailyData, batchLogs, projectSettings?.deduplicationStrategy]);
 
   const stagedOnlyItems = React.useMemo(() => {
     return dailyData.filter(d => d.publishToWebGIS !== 'yes' || !d.isSyncedWithSupabase);
@@ -5217,6 +5303,41 @@ export default function App() {
   useEffect(() => {
     try { localStorage.setItem('app_audit_logs_v1', JSON.stringify(auditLogs)); } catch { }
   }, [auditLogs]);
+
+  // LIVE INTERACTIVE TOUR ACTION CONTROLLER
+  // Automatically triggers live canvas transitions, modal popups, and feature highlights as the user steps through the tour
+  useEffect(() => {
+    if (tourStep === null) return;
+
+    if (tourStep === 1 || tourStep === 2 || tourStep === 5 || tourStep === 7) {
+      setCurrentPage('dashboard');
+      setIsAboutModalOpen(false);
+    } else if (tourStep === 3) {
+      setCurrentPage('dashboard');
+      setIsAboutModalOpen(false);
+      if (!selectedSubgridFilter) {
+        setSelectedSubgridFilter('N93E70');
+      }
+    } else if (tourStep === 4) {
+      setCurrentPage('dashboard');
+      setIsAboutModalOpen(false);
+    } else if (tourStep === 8) {
+      setCurrentPage('data');
+      setIsAboutModalOpen(false);
+    } else if (tourStep === 9) {
+      setCurrentPage('dashboard');
+      setIsAboutModalOpen(false);
+      handleRefreshMap();
+    } else if (tourStep === 10) {
+      setCurrentPage('settings');
+      setIsAboutModalOpen(false);
+    } else if (tourStep === 11) {
+      setIsAboutModalOpen(true);
+    } else if (tourStep === 12) {
+      setIsAboutModalOpen(false);
+      setIsSidebarExpanded(true);
+    }
+  }, [tourStep]);
 
   const unreadNotifCount = notifications.filter(n => !n.read).length;
   const unreadAuditCount = auditLogs.filter(a => !a.read).length;
@@ -6604,47 +6725,158 @@ export default function App() {
       {/* MAIN APP BODY WITH LEFT ICON SIDEBAR + CONTENT AREA */}
       <div className="flex-1 flex overflow-hidden">
 
-        {/* FAR LEFT ICON NAVIGATION BAR */}
-        <nav className="w-12 bg-[#12161f] border-r border-slate-800/80 flex flex-col items-center py-3 gap-5 shrink-0 z-10">
+        {/* EXPANDABLE NAVIGATION BAR WITH FLUID ANIMATIONS & BOTTOM TOGGLE BUTTON */}
+        <nav className={`bg-[#12161f] border-r border-slate-800/80 flex flex-col py-3 gap-2 shrink-0 transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] overflow-hidden ${
+          tourStep === 6 ? 'ring-2 ring-slate-400 shadow-[0_0_35px_rgba(255,255,255,0.15)] z-30 relative' : tourStep !== null && tourStep < 7 ? 'opacity-30 blur-[1.5px] pointer-events-none' : ''
+        } ${
+          isSidebarExpanded ? 'w-52 px-2.5 items-stretch' : 'w-14 items-center px-0'
+        }`}>
+          {/* 1. Main Dashboard */}
           <button
             onClick={() => setCurrentPage('dashboard')}
-            className={`p-2 rounded-lg transition-all duration-200 relative cursor-pointer ${currentPage === 'dashboard' ? 'text-sky-400 bg-sky-500/10' : 'text-slate-500 hover:text-slate-300'
-              }`}
-            title="Dashboard Canvas"
+            className={`transition-all duration-300 relative cursor-pointer flex items-center rounded-xl ${
+              tourStep === 7 ? 'ring-2 ring-slate-300 shadow-[0_0_20px_rgba(255,255,255,0.25)] z-30 bg-slate-800/90' : ''
+            } ${
+              isSidebarExpanded ? 'w-full px-3 py-2 text-xs font-semibold gap-3 justify-start' : 'w-full h-10 justify-center p-0'
+            } ${currentPage === 'dashboard' ? 'text-sky-400 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
+            title="Main Dashboard"
           >
-            {currentPage === 'dashboard' && (
-              <span className="absolute left-0 top-1 bottom-1 w-1 bg-sky-400 rounded-r-full shadow-[0_0_8px_rgba(56,189,248,0.6)]" />
-            )}
-            <LayoutDashboard size={20} />
+            <div className="relative shrink-0 flex items-center justify-center">
+              <LayoutDashboard size={20} className="shrink-0 transition-transform duration-200" />
+              {!isSidebarExpanded && (
+                <span className={`absolute -top-1 -right-1 w-2 h-2 rounded-full bg-sky-400 shadow-[0_0_8px_rgba(56,189,248,0.9)] transition-all duration-300 ease-out ${
+                  currentPage === 'dashboard' ? 'opacity-100 scale-100' : 'opacity-0 scale-0'
+                }`} />
+              )}
+            </div>
+            <span className={`transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] whitespace-nowrap overflow-hidden origin-left flex items-center justify-between flex-1 ${
+              isSidebarExpanded ? 'opacity-100 max-w-[140px] translate-x-0' : 'opacity-0 max-w-0 -translate-x-3 pointer-events-none'
+            }`}>
+              <span>Main Dashboard</span>
+              {currentPage === 'dashboard' && (
+                <span className="w-2 h-2 rounded-full bg-sky-400 shadow-[0_0_8px_rgba(56,189,248,0.9)] animate-pulse ml-2 shrink-0" />
+              )}
+            </span>
           </button>
+
+          {/* 2. Data Management */}
           <button
             onClick={() => setCurrentPage('data')}
-            className={`p-2 rounded-lg transition-all duration-200 relative cursor-pointer ${currentPage === 'data' ? 'text-sky-400 bg-sky-500/10' : 'text-slate-500 hover:text-slate-300'
-              }`}
-            title="Data & Layer Management Canvas"
+            className={`transition-all duration-300 relative cursor-pointer flex items-center rounded-xl ${
+              tourStep === 8 ? 'ring-2 ring-slate-300 shadow-[0_0_20px_rgba(255,255,255,0.25)] z-30 bg-slate-800/90' : ''
+            } ${
+              isSidebarExpanded ? 'w-full px-3 py-2 text-xs font-semibold gap-3 justify-start' : 'w-full h-10 justify-center p-0'
+            } ${currentPage === 'data' ? 'text-sky-400 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
+            title="PostGIS Data Management"
           >
-            {currentPage === 'data' && (
-              <span className="absolute left-0 top-1 bottom-1 w-1 bg-sky-400 rounded-r-full shadow-[0_0_8px_rgba(56,189,248,0.6)]" />
-            )}
-            <Database size={20} />
+            <div className="relative shrink-0 flex items-center justify-center">
+              <Database size={20} className="shrink-0 transition-transform duration-200" />
+              {!isSidebarExpanded && (
+                <span className={`absolute -top-1 -right-1 w-2 h-2 rounded-full bg-sky-400 shadow-[0_0_8px_rgba(56,189,248,0.9)] transition-all duration-300 ease-out ${
+                  currentPage === 'data' ? 'opacity-100 scale-100' : 'opacity-0 scale-0'
+                }`} />
+              )}
+            </div>
+            <span className={`transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] whitespace-nowrap overflow-hidden origin-left flex items-center justify-between flex-1 ${
+              isSidebarExpanded ? 'opacity-100 max-w-[140px] translate-x-0' : 'opacity-0 max-w-0 -translate-x-3 pointer-events-none'
+            }`}>
+              <span>Data Management</span>
+              {currentPage === 'data' && (
+                <span className="w-2 h-2 rounded-full bg-sky-400 shadow-[0_0_8px_rgba(56,189,248,0.9)] animate-pulse ml-2 shrink-0" />
+              )}
+            </span>
           </button>
+
+          {/* 3. Refresh Map & Data */}
           <button
             onClick={handleRefreshMap}
-            className="p-2 text-slate-500 hover:text-slate-300 rounded-lg transition-colors cursor-pointer"
+            className={`transition-all duration-200 cursor-pointer flex items-center rounded-xl text-slate-400 hover:text-slate-200 ${
+              tourStep === 9 ? 'ring-2 ring-slate-300 shadow-[0_0_20px_rgba(255,255,255,0.25)] z-30 bg-slate-800/90' : ''
+            } ${
+              isSidebarExpanded ? 'w-full px-3 py-2 text-xs font-semibold gap-3 justify-start' : 'w-full h-10 justify-center p-0'
+            }`}
             title="Refresh Map & Data"
           >
-            <RefreshCw size={20} />
+            <div className="relative shrink-0 flex items-center justify-center">
+              <RefreshCw size={20} className="shrink-0 transition-transform duration-300 active:rotate-180" />
+            </div>
+            <span className={`transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] whitespace-nowrap overflow-hidden origin-left ${
+              isSidebarExpanded ? 'opacity-100 max-w-[140px] translate-x-0' : 'opacity-0 max-w-0 -translate-x-3 pointer-events-none'
+            }`}>
+              Refresh Map
+            </span>
           </button>
+
+          {/* 4. Project Settings */}
           <button
             onClick={() => setCurrentPage('settings')}
-            className={`p-2 rounded-lg transition-all duration-200 relative cursor-pointer ${currentPage === 'settings' ? 'text-sky-400 bg-sky-500/10' : 'text-slate-500 hover:text-slate-300'
-              }`}
-            title="Project & Database Settings Canvas"
+            className={`transition-all duration-300 relative cursor-pointer flex items-center rounded-xl ${
+              tourStep === 10 ? 'ring-2 ring-slate-300 shadow-[0_0_20px_rgba(255,255,255,0.25)] z-30 bg-slate-800/90' : ''
+            } ${
+              isSidebarExpanded ? 'w-full px-3 py-2 text-xs font-semibold gap-3 justify-start' : 'w-full h-10 justify-center p-0'
+            } ${currentPage === 'settings' ? 'text-sky-400 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
+            title="Project & Database Settings"
           >
-            {currentPage === 'settings' && (
-              <span className="absolute left-0 top-1 bottom-1 w-1 bg-sky-400 rounded-r-full shadow-[0_0_8px_rgba(56,189,248,0.6)]" />
-            )}
-            <Settings size={20} />
+            <div className="relative shrink-0 flex items-center justify-center">
+              <Settings size={20} className="shrink-0 transition-transform duration-300 hover:rotate-90" />
+              {!isSidebarExpanded && (
+                <span className={`absolute -top-1 -right-1 w-2 h-2 rounded-full bg-sky-400 shadow-[0_0_8px_rgba(56,189,248,0.9)] transition-all duration-300 ease-out ${
+                  currentPage === 'settings' ? 'opacity-100 scale-100' : 'opacity-0 scale-0'
+                }`} />
+              )}
+            </div>
+            <span className={`transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] whitespace-nowrap overflow-hidden origin-left flex items-center justify-between flex-1 ${
+              isSidebarExpanded ? 'opacity-100 max-w-[140px] translate-x-0' : 'opacity-0 max-w-0 -translate-x-3 pointer-events-none'
+            }`}>
+              <span>Project Settings</span>
+              {currentPage === 'settings' && (
+                <span className="w-2 h-2 rounded-full bg-sky-400 shadow-[0_0_8px_rgba(56,189,248,0.9)] animate-pulse ml-2 shrink-0" />
+              )}
+            </span>
+          </button>
+
+          {/* 5. About Dashboard */}
+          <button
+            onClick={() => setIsAboutModalOpen(true)}
+            className={`transition-all duration-200 cursor-pointer flex items-center rounded-xl text-slate-400 hover:text-slate-200 ${
+              tourStep === 11 ? 'ring-2 ring-slate-300 shadow-[0_0_20px_rgba(255,255,255,0.25)] z-30 bg-slate-800/90' : ''
+            } ${
+              isSidebarExpanded ? 'w-full px-3 py-2 text-xs font-semibold gap-3 justify-start' : 'w-full h-10 justify-center p-0'
+            }`}
+            title="About 360 Mobile Mapping Dashboard"
+          >
+            <div className="relative shrink-0 flex items-center justify-center">
+              <Info size={20} className="shrink-0 transition-transform duration-200 hover:scale-110" />
+            </div>
+            <span className={`transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] whitespace-nowrap overflow-hidden origin-left ${
+              isSidebarExpanded ? 'opacity-100 max-w-[140px] translate-x-0' : 'opacity-0 max-w-0 -translate-x-3 pointer-events-none'
+            }`}>
+              About Dashboard
+            </span>
+          </button>
+
+          {/* Spacer pushing toggle button to bottom */}
+          <div className="mt-auto" />
+          <div className="w-full h-px bg-slate-800/80 shrink-0 my-1 transition-opacity duration-300" />
+
+          {/* Panel Expand / Collapse Toggle Button at Bottom with Fluid Icon Rotation */}
+          <button
+            onClick={() => setIsSidebarExpanded(prev => !prev)}
+            className={`rounded-xl text-slate-400 hover:text-white hover:bg-slate-800/80 transition-all duration-300 cursor-pointer flex items-center overflow-hidden ${
+              tourStep === 12 ? 'ring-2 ring-slate-300 shadow-[0_0_20px_rgba(255,255,255,0.25)] z-30 bg-slate-800/90' : ''
+            } ${
+              isSidebarExpanded ? 'justify-between w-full px-3 py-2 bg-slate-800/40 border border-slate-700/50 shadow-sm' : 'justify-center w-10 h-10'
+            }`}
+            title={isSidebarExpanded ? "Collapse Navigation Panel" : "Expand Navigation Panel"}
+          >
+            <span className={`transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] text-[10px] font-bold text-slate-300 uppercase tracking-wider whitespace-nowrap overflow-hidden origin-left ${
+              isSidebarExpanded ? 'opacity-100 max-w-[120px] translate-x-0' : 'opacity-0 max-w-0 -translate-x-3 pointer-events-none'
+            }`}>
+              Collapse Panel
+            </span>
+            <div className="p-1 rounded-md bg-slate-800/90 text-sky-400 shrink-0 shadow-sm border border-slate-700/60">
+              <ChevronRight size={15} className={`transition-transform duration-300 ease-in-out ${isSidebarExpanded ? 'rotate-180' : 'rotate-0'}`} />
+            </div>
           </button>
         </nav>
 
@@ -7493,9 +7725,9 @@ export default function App() {
                               /* Guest: show flags as view-only, no interaction */
                               <div className="space-y-1.5 pointer-events-none opacity-40 select-none">
                                 {[
-                                  { label: 'Blurry Frame', color: 'red' },
-                                  { label: 'Lens Obstruction', color: 'amber' },
-                                  { label: 'Bad GPS Signal', color: 'sky' },
+                                  { label: projectSettings.qaFlag1 || 'Blurry Frame', color: 'red' },
+                                  { label: projectSettings.qaFlag2 || 'Lens Obstruction', color: 'amber' },
+                                  { label: projectSettings.qaFlag3 || 'Bad GPS Signal', color: 'sky' },
                                 ].map(({ label, color }) => (
                                   <div key={label} className={`w-full py-1.5 px-2 rounded-md text-[10px] font-medium text-left flex items-center justify-between border bg-slate-800/80 border-slate-700/80 text-slate-400 cursor-not-allowed`}>
                                     <span className="flex items-center gap-1.5 truncate">
@@ -7519,7 +7751,7 @@ export default function App() {
                                       const nextFlags = { ...selectedQaFlags, blurry: !selectedQaFlags.blurry };
                                       saveSubgridQa(itemKey, nextFlags, qaQuestionnaireAnswer, false);
                                       const targetLog = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === sg.toUpperCase().trim());
-                                      updateDefectStatusInSupabase(itemKey, targetLog?.defects || 0, 'Reviewing', { selectedQaFlags: nextFlags, flag: 'Blurry Frame', filename: activePanoramaFilename, subgrid: sg });
+                                      updateDefectStatusInSupabase(itemKey, targetLog?.defects || 0, 'Reviewing', { selectedQaFlags: nextFlags, flag: projectSettings.qaFlag1 || 'Blurry Frame', filename: activePanoramaFilename, subgrid: sg });
                                     }}
                                     className={`w-full py-1.5 px-2 rounded-md text-[10px] font-medium text-left flex items-center justify-between transition-all border ${isQaLocked ? 'opacity-90 cursor-default' : 'cursor-pointer active:scale-95'
                                       } ${selectedQaFlags.blurry
@@ -7529,7 +7761,7 @@ export default function App() {
                                   >
                                     <span className="flex items-center gap-1.5 truncate">
                                       <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${selectedQaFlags.blurry ? 'bg-red-300 ring-2 ring-red-400' : 'bg-red-400'}`}></span>
-                                      <span className="truncate">Blurry Frame</span>
+                                      <span className="truncate">{projectSettings.qaFlag1 || 'Blurry Frame'}</span>
                                     </span>
                                     <span className={`text-[9px] font-mono shrink-0 ml-1 ${selectedQaFlags.blurry ? 'text-red-300 font-bold' : 'text-slate-500 group-hover:text-red-400'}`}>Flag</span>
                                   </button>
@@ -7545,7 +7777,7 @@ export default function App() {
                                       const nextFlags = { ...selectedQaFlags, obstruction: !selectedQaFlags.obstruction };
                                       saveSubgridQa(itemKey, nextFlags, qaQuestionnaireAnswer, false);
                                       const targetLog = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === sg.toUpperCase().trim());
-                                      updateDefectStatusInSupabase(itemKey, targetLog?.defects || 0, 'Reviewing', { selectedQaFlags: nextFlags, flag: 'Lens Obstruction', filename: activePanoramaFilename, subgrid: sg });
+                                      updateDefectStatusInSupabase(itemKey, targetLog?.defects || 0, 'Reviewing', { selectedQaFlags: nextFlags, flag: projectSettings.qaFlag2 || 'Lens Obstruction', filename: activePanoramaFilename, subgrid: sg });
                                     }}
                                     className={`w-full py-1.5 px-2 rounded-md text-[10px] font-medium text-left flex items-center justify-between transition-all border ${isQaLocked ? 'opacity-90 cursor-default' : 'cursor-pointer active:scale-95'
                                       } ${selectedQaFlags.obstruction
@@ -7555,7 +7787,7 @@ export default function App() {
                                   >
                                     <span className="flex items-center gap-1.5 truncate">
                                       <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${selectedQaFlags.obstruction ? 'bg-amber-300 ring-2 ring-amber-400' : 'bg-amber-400'}`}></span>
-                                      <span className="truncate">Lens Obstruction</span>
+                                      <span className="truncate">{projectSettings.qaFlag2 || 'Lens Obstruction'}</span>
                                     </span>
                                     <span className={`text-[9px] font-mono shrink-0 ml-1 ${selectedQaFlags.obstruction ? 'text-amber-300 font-bold' : 'text-slate-500 group-hover:text-amber-400'}`}>Flag</span>
                                   </button>
@@ -7571,7 +7803,7 @@ export default function App() {
                                       const nextFlags = { ...selectedQaFlags, badGps: !selectedQaFlags.badGps };
                                       saveSubgridQa(itemKey, nextFlags, qaQuestionnaireAnswer, false);
                                       const targetLog = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === sg.toUpperCase().trim());
-                                      updateDefectStatusInSupabase(itemKey, targetLog?.defects || 0, 'Reviewing', { selectedQaFlags: nextFlags, flag: 'Bad GPS', filename: activePanoramaFilename, subgrid: sg });
+                                      updateDefectStatusInSupabase(itemKey, targetLog?.defects || 0, 'Reviewing', { selectedQaFlags: nextFlags, flag: projectSettings.qaFlag3 || 'Bad GPS Signal', filename: activePanoramaFilename, subgrid: sg });
                                     }}
                                     className={`w-full py-1.5 px-2 rounded-md text-[10px] font-medium text-left flex items-center justify-between transition-all border ${isQaLocked ? 'opacity-90 cursor-default' : 'cursor-pointer active:scale-95'
                                       } ${selectedQaFlags.badGps
@@ -7581,7 +7813,7 @@ export default function App() {
                                   >
                                     <span className="flex items-center gap-1.5 truncate">
                                       <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${selectedQaFlags.badGps ? 'bg-sky-300 ring-2 ring-sky-400' : 'bg-sky-400'}`}></span>
-                                      <span className="truncate">Bad GPS Signal</span>
+                                      <span className="truncate">{projectSettings.qaFlag3 || 'Bad GPS Signal'}</span>
                                     </span>
                                     <span className={`text-[9px] font-mono shrink-0 ml-1 ${selectedQaFlags.badGps ? 'text-sky-300 font-bold' : 'text-slate-500 group-hover:text-sky-400'}`}>Flag</span>
                                   </button>
@@ -7668,19 +7900,23 @@ export default function App() {
               />
             </div>
           ) : currentPage === 'settings' ? (
-            <div key="settings-canvas" className="flex-1 flex flex-col min-h-0 overflow-y-auto bg-[#111827] rounded-xl border border-[rgba(255,255,255,0.08)] shadow-2xl p-6 space-y-6 animate-in fade-in zoom-in-98 slide-in-from-right-2 duration-300 ease-out">
+            <div key="settings-canvas" className={`flex-1 flex flex-col min-h-0 overflow-y-auto rounded-xl border shadow-2xl p-6 space-y-6 animate-in fade-in zoom-in-98 slide-in-from-right-2 duration-300 ease-out ${themeMode === 'light'
+                ? 'bg-slate-50 border-slate-200 text-slate-900'
+                : 'bg-[#111827] border-[rgba(255,255,255,0.08)] text-white'
+              }`}>
 
               {/* Page Header */}
-              <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-800/80 shrink-0">
+              <div className={`flex flex-wrap items-center justify-between gap-4 pb-4 border-b shrink-0 ${themeMode === 'light' ? 'border-slate-200' : 'border-slate-800/80'
+                }`}>
                 <div className="flex items-center gap-3">
                   <div className="p-3 rounded-2xl bg-sky-500/10 border border-sky-500/20 text-sky-400 shadow-sm">
                     <Settings size={22} />
                   </div>
                   <div>
-                    <h2 className="text-base font-bold text-white tracking-wide">
+                    <h2 className={`text-base font-bold tracking-wide ${themeMode === 'light' ? 'text-slate-900' : 'text-white'}`}>
                       Project & Database Settings Administration
                     </h2>
-                    <p className="text-xs text-slate-400">
+                    <p className={`text-xs ${themeMode === 'light' ? 'text-slate-500' : 'text-slate-400'}`}>
                       Configure Supabase PostgreSQL database connections, 360° image storage fetch paths, contract SLA targets, and client QA benchmarks
                     </p>
                   </div>
@@ -7689,7 +7925,10 @@ export default function App() {
                 <div className="flex items-center gap-3">
                   <button
                     onClick={generateExecutivePdfReport}
-                    className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700/70 rounded-xl text-xs font-medium transition-colors flex items-center gap-2 cursor-pointer shadow-sm"
+                    className={`px-4 py-2 rounded-xl text-xs font-medium transition-colors flex items-center gap-2 cursor-pointer shadow-sm border ${themeMode === 'light'
+                        ? 'bg-white hover:bg-slate-100 text-slate-700 border-slate-300'
+                        : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700/70'
+                      }`}
                     title="Export Executive Client QA Summary PDF"
                   >
                     <FileText size={15} className="text-sky-400" />
@@ -7700,7 +7939,8 @@ export default function App() {
                       try {
                         localStorage.setItem('tnb_project_settings', JSON.stringify(projectSettings));
                         const sampleUrl = getPanoramaUrl('sample.jpg');
-                        addAuditLog('EDIT', 'Saved Project & Database Settings', `Updated storage provider to ${projectSettings.storageProvider || 'supabase'} (Sample URL: ${sampleUrl})`, 'info');
+                        const tables = getDatabaseTableMapping(projectSettings);
+                        addAuditLog('EDIT', 'Saved Project & Database Settings', `Updated storage provider to ${projectSettings.storageProvider || 'supabase'} (Panoramas table: ${tables.panoramasTable}, Sample URL: ${sampleUrl})`, 'info');
                         addNotification({
                           title: 'Settings Saved',
                           message: `Project settings saved. Storage provider: ${projectSettings.storageProvider || 'supabase'}.`,
@@ -7721,46 +7961,52 @@ export default function App() {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
 
                 {/* SECTION 1: SUPABASE POSTGRESQL DATABASE SETTINGS */}
-                <div className="bg-[#121824] border border-slate-800/90 rounded-2xl p-5 space-y-4 shadow-sm">
-                  <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
-                    <div className="flex items-center gap-2 text-xs font-bold text-slate-200 tracking-wide uppercase">
+                <div className={`rounded-2xl p-5 space-y-4 shadow-sm border ${themeMode === 'light' ? 'bg-white border-slate-200 text-slate-900' : 'bg-[#121824] border-slate-800/90 text-slate-200'
+                  }`}>
+                  <div className={`flex items-center justify-between border-b pb-3 ${themeMode === 'light' ? 'border-slate-200' : 'border-slate-800/80'
+                    }`}>
+                    <div className="flex items-center gap-2 text-xs font-bold tracking-wide uppercase">
                       <Database size={15} className="text-sky-400" />
-                      <span>1. Supabase & PostGIS Database Connection</span>
+                      <span className={themeMode === 'light' ? 'text-slate-900' : 'text-white'}>1. Supabase & PostGIS Database Connection</span>
                     </div>
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold border ${themeMode === 'light' ? 'bg-slate-100 text-slate-700 border-slate-300' : 'bg-slate-800/90 text-slate-300 border-slate-700/80'
+                      }`}>
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                       Connected (200 OK)
                     </span>
                   </div>
 
                   <div className="space-y-3 text-xs">
                     <div>
-                      <label className="block text-slate-400 font-medium mb-1">Supabase Endpoint URL</label>
+                      <label className={`block font-medium mb-1 ${themeMode === 'light' ? 'text-slate-700 font-semibold' : 'text-slate-400'}`}>Supabase Endpoint URL</label>
                       <input
                         type="text"
                         value={projectSettings.supabaseUrl || ''}
                         onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, supabaseUrl: e.target.value }))}
-                        className="w-full bg-[#0b0f17] border border-slate-800 rounded-xl px-3 py-2 text-slate-200 font-mono focus:outline-none focus:border-sky-500/80 focus:ring-1 focus:ring-sky-500/20"
+                        className={`w-full rounded-xl px-3 py-2 font-mono focus:outline-none border ${themeMode === 'light' ? 'bg-slate-50 border-slate-300 text-slate-900 focus:border-sky-500' : 'bg-[#0b0f17] border-slate-800 text-slate-200 focus:border-sky-500/80'
+                          }`}
                       />
                     </div>
 
                     <div>
-                      <label className="block text-slate-400 font-medium mb-1">Supabase API Key (Anon / Public)</label>
+                      <label className={`block font-medium mb-1 ${themeMode === 'light' ? 'text-slate-700 font-semibold' : 'text-slate-400'}`}>Supabase API Key (Anon / Public)</label>
                       <input
                         type="password"
                         value={projectSettings.supabaseKey || ''}
                         onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, supabaseKey: e.target.value }))}
-                        className="w-full bg-[#0b0f17] border border-slate-800 rounded-xl px-3 py-2 text-slate-200 font-mono focus:outline-none focus:border-sky-500/80 focus:ring-1 focus:ring-sky-500/20"
+                        className={`w-full rounded-xl px-3 py-2 font-mono focus:outline-none border ${themeMode === 'light' ? 'bg-slate-50 border-slate-300 text-slate-900 focus:border-sky-500' : 'bg-[#0b0f17] border-slate-800 text-slate-200 focus:border-sky-500/80'
+                          }`}
                       />
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-slate-400 font-medium mb-1">Auto-Sync Frequency</label>
+                        <label className={`block font-medium mb-1 ${themeMode === 'light' ? 'text-slate-700 font-semibold' : 'text-slate-400'}`}>Auto-Sync Frequency</label>
                         <select
                           value={projectSettings.dbAutoSyncSec || 60}
                           onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, dbAutoSyncSec: parseInt(e.target.value) || 60 }))}
-                          className="w-full bg-[#0b0f17] border border-slate-800 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-sky-500/80"
+                          className={`w-full rounded-xl px-3 py-2 focus:outline-none border ${themeMode === 'light' ? 'bg-slate-50 border-slate-300 text-slate-900' : 'bg-[#0b0f17] border-slate-800 text-slate-200'
+                            }`}
                         >
                           <option value={30}>Every 30 Seconds</option>
                           <option value={60}>Every 1 Minute</option>
@@ -7769,24 +8015,121 @@ export default function App() {
                         </select>
                       </div>
                       <div>
-                        <label className="block text-slate-400 font-medium mb-1">Main Log DB Table</label>
+                        <label className={`block font-medium mb-1 ${themeMode === 'light' ? 'text-slate-700 font-semibold' : 'text-slate-400'}`}>Main Log DB Table</label>
                         <input
                           type="text"
                           value={projectSettings.dbTableName || 'batch_logs'}
                           onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, dbTableName: e.target.value }))}
-                          className="w-full bg-[#0b0f17] border border-slate-800 rounded-xl px-3 py-2 text-slate-200 font-mono focus:outline-none focus:border-sky-500/80"
+                          className={`w-full rounded-xl px-3 py-2 font-mono focus:outline-none border ${themeMode === 'light' ? 'bg-slate-50 border-slate-300 text-slate-900' : 'bg-[#0b0f17] border-slate-800 text-slate-200'
+                            }`}
                         />
                       </div>
                     </div>
 
-                    <div className="pt-2 flex items-center justify-between border-t border-slate-800/60">
-                      <span className="text-[11px] text-slate-400">Database Driver: PostGIS 3.3 / PostgreSQL 15</span>
+                    {/* COLLAPSIBLE ADVANCED POSTGIS TABLE SCHEMA MAPPING CARD */}
+                    <div className={`pt-2 border-t ${themeMode === 'light' ? 'border-slate-200' : 'border-slate-800/60'}`}>
+                      <button
+                        type="button"
+                        onClick={() => setShowAdvancedTableMapping(!showAdvancedTableMapping)}
+                        className={`w-full flex items-center justify-between py-1.5 px-2.5 rounded-lg border text-xs font-semibold transition-all cursor-pointer ${themeMode === 'light' ? 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-800' : 'bg-slate-900/60 hover:bg-slate-800/80 border-slate-800 text-slate-300'
+                          }`}
+                      >
+                        <span className="flex items-center gap-2">
+                          <Settings size={14} className="text-sky-400" />
+                          <span>Advanced PostGIS Table Schema Mapping (Optional)</span>
+                        </span>
+                        <span className="text-[10px] font-mono opacity-80">
+                          {showAdvancedTableMapping ? 'Hide ▲' : 'Expand Options ▼'}
+                        </span>
+                      </button>
+
+                      {showAdvancedTableMapping && (
+                        <div className={`mt-3 p-3 rounded-xl border space-y-3 text-xs animate-in fade-in slide-in-from-top-2 duration-200 ${themeMode === 'light' ? 'bg-slate-50 border-slate-300' : 'bg-slate-900/90 border-slate-800'
+                          }`}>
+                          <p className={`text-[11px] ${themeMode === 'light' ? 'text-slate-600' : 'text-slate-400'}`}>
+                            Pre-configured with smart defaults. Override these table names if connecting to an enterprise PostGIS database with custom schema names.
+                          </p>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                              <label className={`block font-medium mb-1 ${themeMode === 'light' ? 'text-slate-700 font-semibold' : 'text-slate-400'}`}>Main Trajectory Table</label>
+                              <input
+                                type="text"
+                                value={projectSettings.dbPanoramasTable || 'subgrids'}
+                                onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, dbPanoramasTable: e.target.value }))}
+                                placeholder="subgrids"
+                                className={`w-full rounded-xl px-2.5 py-1 font-mono text-xs focus:outline-none border ${themeMode === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-[#0b0f17] border-slate-800 text-slate-200'
+                                  }`}
+                              />
+                            </div>
+                            <div>
+                              <label className={`block font-medium mb-1 ${themeMode === 'light' ? 'text-slate-700 font-semibold' : 'text-slate-400'}`}>Summary View / Materialized</label>
+                              <input
+                                type="text"
+                                value={projectSettings.dbSummaryView || 'panoramas_subgrid_summary'}
+                                onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, dbSummaryView: e.target.value }))}
+                                placeholder="panoramas_subgrid_summary"
+                                className={`w-full rounded-xl px-2.5 py-1 font-mono text-xs focus:outline-none border ${themeMode === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-[#0b0f17] border-slate-800 text-slate-200'
+                                  }`}
+                              />
+                            </div>
+                            <div>
+                              <label className={`block font-medium mb-1 ${themeMode === 'light' ? 'text-slate-700 font-semibold' : 'text-slate-400'}`}>Batch Logs Table</label>
+                              <input
+                                type="text"
+                                value={projectSettings.dbTableName || 'batch_logs'}
+                                onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, dbTableName: e.target.value }))}
+                                placeholder="batch_logs"
+                                className={`w-full rounded-xl px-2.5 py-1 font-mono text-xs focus:outline-none border ${themeMode === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-[#0b0f17] border-slate-800 text-slate-200'
+                                  }`}
+                              />
+                            </div>
+                            <div>
+                              <label className={`block font-medium mb-1 ${themeMode === 'light' ? 'text-slate-700 font-semibold' : 'text-slate-400'}`}>QC Defects Table</label>
+                              <input
+                                type="text"
+                                value={projectSettings.dbQaDefectsTable || 'qa_defects'}
+                                onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, dbQaDefectsTable: e.target.value }))}
+                                placeholder="qa_defects"
+                                className={`w-full rounded-xl px-2.5 py-1 font-mono text-xs focus:outline-none border ${themeMode === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-[#0b0f17] border-slate-800 text-slate-200'
+                                  }`}
+                              />
+                            </div>
+                            <div>
+                              <label className={`block font-medium mb-1 ${themeMode === 'light' ? 'text-slate-700 font-semibold' : 'text-slate-400'}`}>Audit Logs Table</label>
+                              <input
+                                type="text"
+                                value={projectSettings.dbAuditLogsTable || 'audit_logs'}
+                                onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, dbAuditLogsTable: e.target.value }))}
+                                placeholder="audit_logs"
+                                className={`w-full rounded-xl px-2.5 py-1 font-mono text-xs focus:outline-none border ${themeMode === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-[#0b0f17] border-slate-800 text-slate-200'
+                                  }`}
+                              />
+                            </div>
+                            <div>
+                              <label className={`block font-medium mb-1 ${themeMode === 'light' ? 'text-slate-700 font-semibold' : 'text-slate-400'}`}>Staging Panoramas Table</label>
+                              <input
+                                type="text"
+                                value={projectSettings.dbStagingTable || 'staging_panoramas'}
+                                onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, dbStagingTable: e.target.value }))}
+                                placeholder="staging_panoramas"
+                                className={`w-full rounded-xl px-2.5 py-1 font-mono text-xs focus:outline-none border ${themeMode === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-[#0b0f17] border-slate-800 text-slate-200'
+                                  }`}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className={`pt-2 flex items-center justify-between border-t ${themeMode === 'light' ? 'border-slate-200' : 'border-slate-800/60'}`}>
+                      <span className={`text-[11px] ${themeMode === 'light' ? 'text-slate-600' : 'text-slate-400'}`}>Database Driver: PostGIS 3.3 / PostgreSQL 15</span>
                       <button
                         onClick={() => {
                           handleRefreshMap();
                           alert('Database ping test successful! Supabase PostGIS endpoint 200 OK — Latency 38ms.');
                         }}
-                        className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-sky-400 rounded-lg text-xs font-medium border border-slate-700/80 flex items-center gap-1.5 cursor-pointer transition-colors"
+                        className={`px-3 py-1.5 rounded-lg text-xs font-medium border flex items-center gap-1.5 cursor-pointer transition-colors ${themeMode === 'light' ? 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300' : 'bg-slate-800 hover:bg-slate-700 text-sky-400 border-slate-700/80'
+                          }`}
                       >
                         <RefreshCw size={13} /> Test DB Connection
                       </button>
@@ -7795,24 +8138,28 @@ export default function App() {
                 </div>
 
                 {/* SECTION 2: 360° IMAGE STORAGE & FETCH PATH CONFIGURATION */}
-                <div className="bg-[#121824] border border-slate-800/90 rounded-2xl p-5 space-y-4 shadow-sm">
-                  <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
-                    <div className="flex items-center gap-2 text-xs font-bold text-slate-200 tracking-wide uppercase">
+                <div className={`rounded-2xl p-5 space-y-4 shadow-sm border ${themeMode === 'light' ? 'bg-white border-slate-200 text-slate-900' : 'bg-[#121824] border-slate-800/90 text-slate-200'
+                  }`}>
+                  <div className={`flex items-center justify-between border-b pb-3 ${themeMode === 'light' ? 'border-slate-200' : 'border-slate-800/80'
+                    }`}>
+                    <div className="flex items-center gap-2 text-xs font-bold tracking-wide uppercase">
                       <Camera size={15} className="text-sky-400" />
-                      <span>2. 360° Image Storage & MMS_PIC Fetch Configuration</span>
+                      <span className={themeMode === 'light' ? 'text-slate-900' : 'text-white'}>2. 360° Image Storage & MMS_PIC Fetch Configuration</span>
                     </div>
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold bg-sky-500/10 text-sky-400 border border-sky-500/20">
+                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold border ${themeMode === 'light' ? 'bg-slate-100 text-slate-700 border-slate-300' : 'bg-slate-800/90 text-slate-300 border-slate-700/80'
+                      }`}>
                       Active Fetch
                     </span>
                   </div>
 
                   <div className="space-y-3 text-xs">
                     <div>
-                      <label className="block text-slate-400 font-medium mb-1">GIS Industry Storage Provider & Cloud Engine</label>
+                      <label className={`block font-medium mb-1 ${themeMode === 'light' ? 'text-slate-700 font-semibold' : 'text-slate-400'}`}>GIS Industry Storage Provider & Cloud Engine</label>
                       <select
                         value={projectSettings.storageProvider || 'supabase'}
                         onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, storageProvider: e.target.value, imageFetchSource: e.target.value }))}
-                        className="w-full bg-[#0b0f17] border border-slate-800 rounded-xl px-3 py-2 text-slate-200 font-semibold focus:outline-none focus:border-sky-500/80"
+                        className={`w-full rounded-xl px-3 py-2 font-semibold focus:outline-none border ${themeMode === 'light' ? 'bg-slate-50 border-slate-300 text-slate-900' : 'bg-[#0b0f17] border-slate-800 text-slate-200'
+                          }`}
                       >
                         <option value="supabase">Supabase Cloud Storage (PostGIS Native)</option>
                         <option value="aws_s3">Amazon Web Services (AWS S3 Bucket)</option>
@@ -7827,117 +8174,81 @@ export default function App() {
 
                     {/* DYNAMIC STORAGE CONFIGURATION FIELDS BASED ON SELECTED PROVIDER */}
                     {projectSettings.storageProvider === 'aws_s3' ? (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-2.5 rounded-xl bg-slate-900/60 border border-slate-800">
+                      <div className={`grid grid-cols-1 sm:grid-cols-2 gap-3 p-2.5 rounded-xl border ${themeMode === 'light' ? 'bg-slate-50 border-slate-200' : 'bg-slate-900/60 border-slate-800'
+                        }`}>
                         <div>
-                          <label className="block text-slate-400 font-medium mb-1">AWS S3 Bucket Name</label>
+                          <label className={`block font-medium mb-1 ${themeMode === 'light' ? 'text-slate-700' : 'text-slate-400'}`}>AWS S3 Bucket Name</label>
                           <input
                             type="text"
                             value={projectSettings.s3Bucket || 'tnb-mobilemapping-panoramas'}
                             onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, s3Bucket: e.target.value }))}
                             placeholder="my-s3-bucket"
-                            className="w-full bg-[#0b0f17] border border-slate-800 rounded-xl px-3 py-1.5 text-slate-200 font-mono text-xs focus:outline-none focus:border-sky-500/80"
+                            className={`w-full rounded-xl px-3 py-1.5 font-mono text-xs border ${themeMode === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-[#0b0f17] border-slate-800 text-slate-200'
+                              }`}
                           />
                         </div>
                         <div>
-                          <label className="block text-slate-400 font-medium mb-1">AWS S3 Region</label>
+                          <label className={`block font-medium mb-1 ${themeMode === 'light' ? 'text-slate-700' : 'text-slate-400'}`}>AWS S3 Region</label>
                           <input
                             type="text"
                             value={projectSettings.s3Region || 'ap-southeast-1'}
                             onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, s3Region: e.target.value }))}
                             placeholder="ap-southeast-1"
-                            className="w-full bg-[#0b0f17] border border-slate-800 rounded-xl px-3 py-1.5 text-slate-200 font-mono text-xs focus:outline-none focus:border-sky-500/80"
-                          />
-                        </div>
-                      </div>
-                    ) : projectSettings.storageProvider === 'gcs' ? (
-                      <div className="p-2.5 rounded-xl bg-slate-900/60 border border-slate-800">
-                        <label className="block text-slate-400 font-medium mb-1">Google Cloud Storage Bucket</label>
-                        <input
-                          type="text"
-                          value={projectSettings.gcsBucket || 'tnb-gis-360-panoramas'}
-                          onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, gcsBucket: e.target.value }))}
-                          placeholder="my-gcs-bucket"
-                          className="w-full bg-[#0b0f17] border border-slate-800 rounded-xl px-3 py-1.5 text-slate-200 font-mono text-xs focus:outline-none focus:border-sky-500/80"
-                        />
-                      </div>
-                    ) : projectSettings.storageProvider === 'azure_blob' ? (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-2.5 rounded-xl bg-slate-900/60 border border-slate-800">
-                        <div>
-                          <label className="block text-slate-400 font-medium mb-1">Azure Storage Account</label>
-                          <input
-                            type="text"
-                            value={projectSettings.azureAccount || 'tnbgisstorage'}
-                            onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, azureAccount: e.target.value }))}
-                            placeholder="myaccount"
-                            className="w-full bg-[#0b0f17] border border-slate-800 rounded-xl px-3 py-1.5 text-slate-200 font-mono text-xs focus:outline-none focus:border-sky-500/80"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-slate-400 font-medium mb-1">Container Name</label>
-                          <input
-                            type="text"
-                            value={projectSettings.azureContainer || 'panoramas'}
-                            onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, azureContainer: e.target.value }))}
-                            placeholder="panoramas"
-                            className="w-full bg-[#0b0f17] border border-slate-800 rounded-xl px-3 py-1.5 text-slate-200 font-mono text-xs focus:outline-none focus:border-sky-500/80"
+                            className={`w-full rounded-xl px-3 py-1.5 font-mono text-xs border ${themeMode === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-[#0b0f17] border-slate-800 text-slate-200'
+                              }`}
                           />
                         </div>
                       </div>
                     ) : projectSettings.storageProvider === 'nas_local' ? (
-                      <div className="p-2.5 rounded-xl bg-amber-950/20 border border-amber-800/40 space-y-1.5">
-                        <label className="block text-amber-300 font-medium mb-1 flex items-center justify-between">
+                      <div className={`p-2.5 rounded-xl border space-y-1.5 ${themeMode === 'light' ? 'bg-slate-50 border-slate-300' : 'bg-slate-900/60 border-slate-800'
+                        }`}>
+                        <label className={`block font-medium mb-1 flex items-center justify-between ${themeMode === 'light' ? 'text-slate-800 font-semibold' : 'text-slate-200'}`}>
                           <span>Local NAS Server IP / HTTP Share Endpoint</span>
-                          <span className="text-[9px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded font-mono">ON-PREMISE / TNB INTRANET</span>
+                          <span className={`text-[9px] px-1.5 py-0.5 rounded font-mono border ${themeMode === 'light' ? 'bg-slate-200 text-slate-800 border-slate-300' : 'bg-slate-800 text-slate-300 border-slate-700'
+                            }`}>ON-PREMISE / TNB INTRANET</span>
                         </label>
                         <input
                           type="text"
                           value={projectSettings.nasServerUrl || 'http://192.168.1.100/360_images'}
                           onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, nasServerUrl: e.target.value, imageStoragePath: e.target.value }))}
                           placeholder="http://192.168.1.100/360_images"
-                          className="w-full bg-[#0b0f17] border border-slate-800 rounded-xl px-3 py-1.5 text-slate-200 font-mono text-xs focus:outline-none focus:border-amber-500/80"
+                          className={`w-full rounded-xl px-3 py-1.5 font-mono text-xs border ${themeMode === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-[#0b0f17] border-slate-800 text-slate-200'
+                            }`}
                         />
-                        <p className="text-[10px] text-slate-400">Configure your local Synology/QNAP or intranet IIS/Nginx web server hosting 360° panoramas.</p>
-                      </div>
-                    ) : projectSettings.storageProvider === 'cloudflare_r2' ? (
-                      <div className="p-2.5 rounded-xl bg-slate-900/60 border border-slate-800">
-                        <label className="block text-slate-400 font-medium mb-1">Cloudflare R2 Public Domain</label>
-                        <input
-                          type="text"
-                          value={projectSettings.r2Domain || 'pub-360.r2.dev'}
-                          onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, r2Domain: e.target.value }))}
-                          placeholder="pub-xxx.r2.dev"
-                          className="w-full bg-[#0b0f17] border border-slate-800 rounded-xl px-3 py-1.5 text-slate-200 font-mono text-xs focus:outline-none focus:border-sky-500/80"
-                        />
+                        <p className={`text-[10px] ${themeMode === 'light' ? 'text-slate-500' : 'text-slate-400'}`}>Configure your local Synology/QNAP or intranet IIS/Nginx web server hosting 360° panoramas.</p>
                       </div>
                     ) : (
                       <div>
-                        <label className="block text-slate-400 font-medium mb-1">Supabase Storage Bucket Name</label>
+                        <label className={`block font-medium mb-1 ${themeMode === 'light' ? 'text-slate-700 font-semibold' : 'text-slate-400'}`}>Supabase Storage Bucket Name</label>
                         <input
                           type="text"
                           value={projectSettings.supabaseBucket || 'MMS_PIC'}
                           onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, supabaseBucket: e.target.value, imageStoragePath: `/storage/v1/object/public/${e.target.value}/` }))}
                           placeholder="MMS_PIC"
-                          className="w-full bg-[#0b0f17] border border-slate-800 rounded-xl px-3 py-2 text-slate-200 font-mono focus:outline-none focus:border-sky-500/80"
+                          className={`w-full rounded-xl px-3 py-2 font-mono border ${themeMode === 'light' ? 'bg-slate-50 border-slate-300 text-slate-900' : 'bg-[#0b0f17] border-slate-800 text-slate-200'
+                            }`}
                         />
                       </div>
                     )}
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-slate-400 font-medium mb-1">Panorama Naming Pattern</label>
+                        <label className={`block font-medium mb-1 ${themeMode === 'light' ? 'text-slate-700 font-semibold' : 'text-slate-400'}`}>Panorama Naming Pattern</label>
                         <input
                           type="text"
                           value={projectSettings.imageFormatPattern || '{subgrid}-{index:04d}.jpg'}
                           onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, imageFormatPattern: e.target.value }))}
-                          className="w-full bg-[#0b0f17] border border-slate-800 rounded-xl px-3 py-2 text-slate-200 font-mono focus:outline-none focus:border-sky-500/80"
+                          className={`w-full rounded-xl px-3 py-2 font-mono border ${themeMode === 'light' ? 'bg-slate-50 border-slate-300 text-slate-900' : 'bg-[#0b0f17] border-slate-800 text-slate-200'
+                            }`}
                         />
                       </div>
                       <div>
-                        <label className="block text-slate-400 font-medium mb-1">Frame Pre-fetch Cache</label>
+                        <label className={`block font-medium mb-1 ${themeMode === 'light' ? 'text-slate-700 font-semibold' : 'text-slate-400'}`}>Frame Pre-fetch Cache</label>
                         <select
                           value={projectSettings.imagePreloadCount || 3}
                           onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, imagePreloadCount: parseInt(e.target.value) || 3 }))}
-                          className="w-full bg-[#0b0f17] border border-slate-800 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-sky-500/80"
+                          className={`w-full rounded-xl px-3 py-2 border ${themeMode === 'light' ? 'bg-slate-50 border-slate-300 text-slate-900' : 'bg-[#0b0f17] border-slate-800 text-slate-200'
+                            }`}
                         >
                           <option value={1}>1 Frame Ahead</option>
                           <option value={3}>3 Frames (Seamless StreetView)</option>
@@ -7946,243 +8257,586 @@ export default function App() {
                       </div>
                     </div>
 
-                    <div className="pt-2 flex items-center justify-between border-t border-slate-800/60">
-                      <span className="text-[11px] text-slate-400">Supported Formats: Equirectangular JPG / PNG (8K, 4K)</span>
+                    <div className={`pt-2 flex items-center justify-between border-t ${themeMode === 'light' ? 'border-slate-200' : 'border-slate-800/60'}`}>
+                      <span className={`text-[11px] ${themeMode === 'light' ? 'text-slate-600' : 'text-slate-400'}`}>Supported Formats: Equirectangular JPG / PNG (8K, 4K)</span>
                     </div>
                   </div>
                 </div>
 
                 {/* SECTION 3: CONTRACT SLA & MILESTONES */}
-                <div className="bg-[#121824] border border-slate-800/90 rounded-2xl p-5 space-y-4 shadow-sm">
-                  <div className="flex items-center gap-2 text-xs font-bold text-slate-200 tracking-wide uppercase border-b border-slate-800/80 pb-3">
+                <div className={`rounded-2xl p-5 space-y-4 shadow-sm border ${themeMode === 'light' ? 'bg-white border-slate-200 text-slate-900' : 'bg-[#121824] border-slate-800/90 text-slate-200'
+                  }`}>
+                  <div className={`flex items-center gap-2 text-xs font-bold tracking-wide uppercase border-b pb-3 ${themeMode === 'light' ? 'border-slate-200 text-slate-900' : 'border-slate-800/80 text-slate-200'
+                    }`}>
                     <Navigation size={15} className="text-sky-400" />
                     <span>3. Contract Targets & SLA Milestones</span>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                     <div>
-                      <label className="block text-slate-400 font-medium mb-1">Target Distance (km)</label>
+                      <label className={`block font-medium mb-1 ${themeMode === 'light' ? 'text-slate-700 font-semibold' : 'text-slate-400'}`}>Target Distance (km)</label>
                       <input
                         type="number"
                         step="0.1"
                         value={projectSettings.targetKm}
                         onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, targetKm: parseFloat(e.target.value) || 0 }))}
-                        className="w-full bg-[#0b0f17] border border-slate-800 rounded-xl px-3 py-2 text-slate-200 font-mono focus:outline-none focus:border-sky-500/80"
+                        className={`w-full rounded-xl px-3 py-2 font-mono border ${themeMode === 'light' ? 'bg-slate-50 border-slate-300 text-slate-900' : 'bg-[#0b0f17] border-slate-800 text-slate-200'
+                          }`}
                       />
                     </div>
                     <div>
-                      <label className="block text-slate-400 font-medium mb-1">Target Panorama Frames</label>
+                      <label className={`block font-medium mb-1 ${themeMode === 'light' ? 'text-slate-700 font-semibold' : 'text-slate-400'}`}>Target Panorama Frames</label>
                       <input
                         type="number"
                         value={projectSettings.targetImages}
                         onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, targetImages: parseInt(e.target.value) || 0 }))}
-                        className="w-full bg-[#0b0f17] border border-slate-800 rounded-xl px-3 py-2 text-slate-200 font-mono focus:outline-none focus:border-sky-500/80"
+                        className={`w-full rounded-xl px-3 py-2 font-mono border ${themeMode === 'light' ? 'bg-slate-50 border-slate-300 text-slate-900' : 'bg-[#0b0f17] border-slate-800 text-slate-200'
+                          }`}
                       />
                     </div>
                     <div>
-                      <label className="block text-slate-400 font-medium mb-1">Project Target Deadline</label>
+                      <label className={`block font-medium mb-1 ${themeMode === 'light' ? 'text-slate-700 font-semibold' : 'text-slate-400'}`}>Project Target Deadline</label>
                       <input
                         type="date"
                         value={projectSettings.targetDeadline}
                         onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, targetDeadline: e.target.value }))}
-                        className="w-full bg-[#0b0f17] border border-slate-800 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-sky-500/80"
+                        className={`w-full rounded-xl px-3 py-2 border ${themeMode === 'light' ? 'bg-slate-50 border-slate-300 text-slate-900' : 'bg-[#0b0f17] border-slate-800 text-slate-200'
+                          }`}
                       />
                     </div>
                     <div>
-                      <label className="block text-slate-400 font-medium mb-1">Lead PIC / Project Lead</label>
+                      <label className={`block font-medium mb-1 ${themeMode === 'light' ? 'text-slate-700 font-semibold' : 'text-slate-400'}`}>Lead PIC / Project Lead</label>
                       <input
                         type="text"
                         value={projectSettings.leadPic}
                         onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, leadPic: e.target.value }))}
-                        className="w-full bg-[#0b0f17] border border-slate-800 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-sky-500/80"
+                        className={`w-full rounded-xl px-3 py-2 border ${themeMode === 'light' ? 'bg-slate-50 border-slate-300 text-slate-900' : 'bg-[#0b0f17] border-slate-800 text-slate-200'
+                          }`}
                       />
                     </div>
                   </div>
                 </div>
 
                 {/* SECTION 4: QUALITY CONTROL & CLIENT AUDIT BENCHMARKS */}
-                <div className="bg-[#121824] border border-slate-800/90 rounded-2xl p-5 space-y-4 shadow-sm">
-                  <div className="flex items-center gap-2 text-xs font-bold text-slate-200 tracking-wide uppercase border-b border-slate-800/80 pb-3">
+                <div className={`rounded-2xl p-5 space-y-4 shadow-sm border ${themeMode === 'light' ? 'bg-white border-slate-200 text-slate-900' : 'bg-[#121824] border-slate-800/90 text-slate-200'
+                  }`}>
+                  <div className={`flex items-center gap-2 text-xs font-bold tracking-wide uppercase border-b pb-3 ${themeMode === 'light' ? 'border-slate-200 text-slate-900' : 'border-slate-800/80 text-slate-200'
+                    }`}>
                     <ShieldCheck size={15} className="text-sky-400" />
                     <span>4. Quality Control & Client SLA Benchmarks</span>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                     <div>
-                      <label className="block text-slate-400 font-medium mb-1">Max Defect Tolerance (%)</label>
+                      <label className={`block font-medium mb-1 ${themeMode === 'light' ? 'text-slate-700 font-semibold' : 'text-slate-400'}`}>Max Defect Tolerance (%)</label>
                       <input
                         type="number"
                         step="0.1"
                         value={projectSettings.maxDefectRatePercent}
                         onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, maxDefectRatePercent: parseFloat(e.target.value) || 0 }))}
-                        className="w-full bg-[#0b0f17] border border-slate-800 rounded-xl px-3 py-2 text-slate-200 font-mono focus:outline-none focus:border-sky-500/80"
+                        className={`w-full rounded-xl px-3 py-2 font-mono border ${themeMode === 'light' ? 'bg-slate-50 border-slate-300 text-slate-900' : 'bg-[#0b0f17] border-slate-800 text-slate-200'
+                          }`}
                       />
                     </div>
                     <div>
-                      <label className="block text-slate-400 font-medium mb-1">Required GPS Tolerance (m)</label>
+                      <label className={`block font-medium mb-1 ${themeMode === 'light' ? 'text-slate-700 font-semibold' : 'text-slate-400'}`}>Required GPS Tolerance (m)</label>
                       <input
                         type="number"
                         step="0.1"
                         value={projectSettings.minGpsAccuracyM}
                         onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, minGpsAccuracyM: parseFloat(e.target.value) || 0 }))}
-                        className="w-full bg-[#0b0f17] border border-slate-800 rounded-xl px-3 py-2 text-slate-200 font-mono focus:outline-none focus:border-sky-500/80"
+                        className={`w-full rounded-xl px-3 py-2 font-mono border ${themeMode === 'light' ? 'bg-slate-50 border-slate-300 text-slate-900' : 'bg-[#0b0f17] border-slate-800 text-slate-200'
+                          }`}
                       />
                     </div>
                     <div>
-                      <label className="block text-slate-400 font-medium mb-1">Client Organization</label>
+                      <label className={`block font-medium mb-1 ${themeMode === 'light' ? 'text-slate-700 font-semibold' : 'text-slate-400'}`}>Client Organization</label>
                       <input
                         type="text"
                         value={projectSettings.clientName}
                         onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, clientName: e.target.value }))}
-                        className="w-full bg-[#0b0f17] border border-slate-800 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-sky-500/80"
+                        className={`w-full rounded-xl px-3 py-2 border ${themeMode === 'light' ? 'bg-slate-50 border-slate-300 text-slate-900' : 'bg-[#0b0f17] border-slate-800 text-slate-200'
+                          }`}
                       />
                     </div>
                     <div>
-                      <label className="block text-slate-400 font-medium mb-1">Contract Code</label>
+                      <label className={`block font-medium mb-1 ${themeMode === 'light' ? 'text-slate-700 font-semibold' : 'text-slate-400'}`}>Contract Code</label>
                       <input
                         type="text"
                         value={projectSettings.contractCode}
                         onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, contractCode: e.target.value }))}
-                        className="w-full bg-[#0b0f17] border border-slate-800 rounded-xl px-3 py-2 text-slate-200 font-mono focus:outline-none focus:border-sky-500/80"
+                        className={`w-full rounded-xl px-3 py-2 font-mono border ${themeMode === 'light' ? 'bg-slate-50 border-slate-300 text-slate-900' : 'bg-[#0b0f17] border-slate-800 text-slate-200'
+                          }`}
                       />
                     </div>
                   </div>
                 </div>
 
-                {/* SECTION 5: ADVANCED SPATIAL & GIS QUERY OPTIONS */}
-                <div className="bg-[#121824] border border-slate-800/90 rounded-2xl p-5 space-y-4 shadow-sm lg:col-span-2">
-                  <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
-                    <div className="flex items-center gap-2 text-xs font-bold text-slate-200 tracking-wide uppercase">
+                {/* SECTION 5: GIS SPATIAL REFERENCE & REGIONAL BOUNDING BOX */}
+                <div className={`rounded-2xl p-5 space-y-4 shadow-sm border lg:col-span-2 ${themeMode === 'light' ? 'bg-white border-slate-200 text-slate-900' : 'bg-[#121824] border-slate-800/90 text-slate-200'
+                  }`}>
+                  <div className={`flex items-center justify-between border-b pb-3 ${themeMode === 'light' ? 'border-slate-200' : 'border-slate-800/80'
+                    }`}>
+                    <div className="flex items-center gap-2 text-xs font-bold tracking-wide uppercase">
                       <Globe size={15} className="text-sky-400" />
-                      <span>5. Advanced Spatial & GIS Query Options</span>
+                      <span className={themeMode === 'light' ? 'text-slate-900' : 'text-white'}>
+                        5. GIS Spatial Reference, CRS Projections & Regional Bounding Box
+                      </span>
+                    </div>
+                    <span className={`text-[10px] px-2 py-0.5 rounded font-mono border ${themeMode === 'light'
+                        ? 'bg-slate-100 text-slate-700 border-slate-300'
+                        : 'bg-slate-800/90 text-slate-300 border-slate-700/80'
+                      }`}>
+                      EPSG & Spatial Indexing Engine
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-xs">
+                    {/* 1. Coordinate Reference System (CRS) */}
+                    <div className={`p-3 rounded-xl border space-y-2 ${themeMode === 'light' ? 'bg-slate-50 border-slate-200' : 'bg-[#0b0f17] border-slate-800'
+                      }`}>
+                      <label className={`block font-medium ${themeMode === 'light' ? 'text-slate-800 font-semibold' : 'text-slate-200'}`}>
+                        GIS Coordinate Reference System (CRS)
+                      </label>
+                      <select
+                        value={projectSettings.selectedCrs || 'EPSG:4326'}
+                        onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, selectedCrs: e.target.value }))}
+                        className={`w-full rounded-lg px-2.5 py-1.5 text-xs font-semibold focus:outline-none border ${themeMode === 'light'
+                            ? 'bg-white border-slate-300 text-slate-900 focus:border-sky-500'
+                            : 'bg-[#121824] border-slate-800 text-slate-200 focus:border-sky-500'
+                          }`}
+                      >
+                        <option value="EPSG:4326">EPSG:4326 — WGS84 World Geodetic (Default Lat/Lon)</option>
+                        <option value="EPSG:3375">EPSG:3375 — Kertau (RSO) Malaya / Meters (TNB Grid Standard)</option>
+                        <option value="EPSG:3857">EPSG:3857 — Web Mercator (Google Maps / OpenStreetMap)</option>
+                        <option value="EPSG:32647">EPSG:32647 — UTM Zone 47N (Peninsular Malaysia / Thailand)</option>
+                        <option value="EPSG:32648">EPSG:32648 — UTM Zone 48N (East Malaysia / Borneo)</option>
+                        <option value="EPSG:4269">EPSG:4269 — NAD83 (North American Datum)</option>
+                        <option value="EPSG:25832">EPSG:25832 — ETRS89 / UTM Zone 32N (Europe)</option>
+                      </select>
+                      <p className={`text-[10px] ${themeMode === 'light' ? 'text-slate-500' : 'text-slate-400'}`}>
+                        Specifies projection transformations for trajectory points and PostGIS geometry calculations.
+                      </p>
+                    </div>
+
+                    {/* 2. Regional Bounding Box Presets */}
+                    <div className={`p-3 rounded-xl border space-y-2 ${themeMode === 'light' ? 'bg-slate-50 border-slate-200' : 'bg-[#0b0f17] border-slate-800'
+                      }`}>
+                      <label className={`block font-medium ${themeMode === 'light' ? 'text-slate-800 font-semibold' : 'text-slate-200'}`}>
+                        Regional Bounding Box (BBox) Filter
+                      </label>
+                      <select
+                        value={projectSettings.selectedRegionBBox || 'peninsular_malaysia'}
+                        onChange={(e) => {
+                          const region = e.target.value;
+                          let bounds = { minLat: 1.2, maxLat: 6.8, minLon: 99.6, maxLon: 104.6 };
+                          if (region === 'east_malaysia') bounds = { minLat: 0.8, maxLat: 7.4, minLon: 109.5, maxLon: 119.3 };
+                          else if (region === 'klang_valley') bounds = { minLat: 2.8, maxLat: 3.4, minLon: 101.3, maxLon: 101.9 };
+                          else if (region === 'johor_iskandar') bounds = { minLat: 1.2, maxLat: 2.5, minLon: 103.0, maxLon: 104.2 };
+                          else if (region === 'penang_north') bounds = { minLat: 5.1, maxLat: 5.6, minLon: 100.1, maxLon: 100.6 };
+                          else if (region === 'singapore') bounds = { minLat: 1.1, maxLat: 1.5, minLon: 103.6, maxLon: 104.1 };
+                          else if (region === 'asean_sea') bounds = { minLat: -11.0, maxLat: 28.0, minLon: 92.0, maxLon: 141.0 };
+                          else if (region === 'global') bounds = { minLat: -90.0, maxLat: 90.0, minLon: -180.0, maxLon: 180.0 };
+
+                          setProjectSettings((prev: any) => ({
+                            ...prev,
+                            selectedRegionBBox: region,
+                            ...bounds
+                          }));
+                        }}
+                        className={`w-full rounded-lg px-2.5 py-1.5 text-xs font-semibold focus:outline-none border ${themeMode === 'light'
+                            ? 'bg-white border-slate-300 text-slate-900 focus:border-sky-500'
+                            : 'bg-[#121824] border-slate-800 text-slate-200 focus:border-sky-500'
+                          }`}
+                      >
+                        <option value="peninsular_malaysia">Peninsular Malaysia [Lat: 1.2-6.8, Lon: 99.6-104.6]</option>
+                        <option value="east_malaysia">East Malaysia (Sabah & Sarawak) [Lat: 0.8-7.4, Lon: 109.5-119.3]</option>
+                        <option value="klang_valley">Klang Valley & Kuala Lumpur [Lat: 2.8-3.4, Lon: 101.3-101.9]</option>
+                        <option value="johor_iskandar">Johor & Iskandar Malaysia [Lat: 1.2-2.5, Lon: 103.0-104.2]</option>
+                        <option value="penang_north">Penang & Northern Region [Lat: 5.1-5.6, Lon: 100.1-100.6]</option>
+                        <option value="singapore">Singapore & Southern Border [Lat: 1.1-1.5, Lon: 103.6-104.1]</option>
+                        <option value="asean_sea">Southeast Asia (ASEAN Region) [Lat: -11 to 28, Lon: 92 to 141]</option>
+                        <option value="global">Global / Unrestricted Bounds [-90 to 90, -180 to 180]</option>
+                        <option value="custom">Custom Geographic Bounds (Manual Entry)</option>
+                      </select>
+
+                      <div className="flex items-center justify-between pt-1">
+                        <span className={`text-[10px] ${themeMode === 'light' ? 'text-slate-600 font-medium' : 'text-slate-400'}`}>
+                          Filter Out-of-Bounds Trajectory Points
+                        </span>
+                        <input
+                          type="checkbox"
+                          checked={projectSettings.enableBBoxFilter ?? true}
+                          onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, enableBBoxFilter: e.target.checked }))}
+                          className="w-4 h-4 text-sky-600 rounded border-slate-300 bg-white focus:ring-sky-500 cursor-pointer"
+                        />
+                      </div>
+                    </div>
+
+                    {/* 3. Subgrid Deduplication Strategy & Options */}
+                    <div className={`p-3 rounded-xl border space-y-2 ${themeMode === 'light' ? 'bg-slate-50 border-slate-200' : 'bg-[#0b0f17] border-slate-800'
+                      }`}>
+                      <label className={`block font-medium ${themeMode === 'light' ? 'text-slate-800 font-semibold' : 'text-slate-200'}`}>
+                        Subgrid Deduplication Strategy
+                      </label>
+                      <select
+                        value={projectSettings.deduplicationStrategy || 'clean_merge'}
+                        onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, deduplicationStrategy: e.target.value }))}
+                        className={`w-full rounded-lg px-2.5 py-1.5 text-xs font-semibold focus:outline-none border ${themeMode === 'light'
+                            ? 'bg-white border-slate-300 text-slate-900 focus:border-sky-500'
+                            : 'bg-[#121824] border-slate-800 text-slate-200 focus:border-sky-500'
+                          }`}
+                      >
+                        <option value="clean_merge">Clean Merge (Combine trajectory runs per subgrid)</option>
+                        <option value="keep_latest">Keep Latest Import (Overwrite older CSV runs)</option>
+                        <option value="preserve_runs">Preserve Separate Runs (Retain each CSV import row)</option>
+                      </select>
+
+                      <div className="flex items-center justify-between pt-1">
+                        <span className={`text-[10px] ${themeMode === 'light' ? 'text-slate-600 font-medium' : 'text-slate-400'}`}>
+                          Auto-normalize NxxExx subgrid keys
+                        </span>
+                        <input
+                          type="checkbox"
+                          checked={projectSettings.autoDeduplicateSubgrids ?? true}
+                          onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, autoDeduplicateSubgrids: e.target.checked }))}
+                          className="w-4 h-4 text-sky-600 rounded border-slate-300 bg-white focus:ring-sky-500 cursor-pointer"
+                        />
+                      </div>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
-                    <div className="flex items-center justify-between p-3 bg-[#0b0f17] border border-slate-800 rounded-xl">
+                  {/* CUSTOM BBOX LAT/LON INPUTS (VISIBLE IF CUSTOM SELECTED) */}
+                  {projectSettings.selectedRegionBBox === 'custom' && (
+                    <div className={`grid grid-cols-2 sm:grid-cols-4 gap-3 p-3 rounded-xl border animate-in fade-in duration-200 ${themeMode === 'light' ? 'bg-slate-100 border-slate-300' : 'bg-slate-900/80 border-slate-800'
+                      }`}>
                       <div>
-                        <span className="block font-medium text-slate-200">Subgrid Deduplication</span>
-                        <span className="text-[10px] text-slate-500">Auto-group NxxExx rows on fetch</span>
-                      </div>
-                      <input
-                        type="checkbox"
-                        checked={projectSettings.autoDeduplicateSubgrids ?? true}
-                        onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, autoDeduplicateSubgrids: e.target.checked }))}
-                        className="w-4 h-4 text-sky-600 rounded border-slate-700 bg-slate-900 focus:ring-sky-500 cursor-pointer"
-                      />
-                    </div>
-
-                    <div className="flex items-center justify-between p-3 bg-[#0b0f17] border border-slate-800 rounded-xl">
-                      <div>
-                        <span className="block font-medium text-slate-200">Bounding Box Filter</span>
-                        <span className="text-[10px] text-slate-500">Selangor / KL lat-lon bounds</span>
-                      </div>
-                      <input
-                        type="checkbox"
-                        checked={projectSettings.enableBBoxFilter ?? true}
-                        onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, enableBBoxFilter: e.target.checked }))}
-                        className="w-4 h-4 text-sky-600 rounded border-slate-700 bg-slate-900 focus:ring-sky-500 cursor-pointer"
-                      />
-                    </div>
-
-                    <div className="flex items-center justify-between p-3 bg-[#0b0f17] border border-slate-800 rounded-xl">
-                      <div>
-                        <span className="block font-medium text-slate-200">Auto-Pan to Panotrack</span>
-                        <span className="text-[10px] text-slate-500">Zoom map on marker click</span>
-                      </div>
-                      <input
-                        type="checkbox"
-                        checked={projectSettings.autoPanOnTrackClick ?? true}
-                        onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, autoPanOnTrackClick: e.target.checked }))}
-                        className="w-4 h-4 text-sky-600 rounded border-slate-700 bg-slate-900 focus:ring-sky-500 cursor-pointer"
-                      />
-                    </div>
-
-                    <div className="p-3 bg-[#0b0f17] border border-slate-800 rounded-xl space-y-1">
-                      <span className="block font-medium text-slate-200">AI Defect Threshold</span>
-                      <div className="flex items-center gap-2">
+                        <label className={`block text-[11px] font-medium mb-1 ${themeMode === 'light' ? 'text-slate-700' : 'text-slate-400'}`}>Min Latitude (&deg;N)</label>
                         <input
                           type="number"
-                          value={projectSettings.aiDefectThresholdPercent ?? 85}
-                          onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, aiDefectThresholdPercent: parseInt(e.target.value) || 85 }))}
-                          className="w-full bg-[#121824] border border-slate-800 rounded-lg px-2 py-1 text-slate-200 text-xs font-mono"
+                          step="0.0001"
+                          value={projectSettings.minLat ?? 1.2}
+                          onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, minLat: parseFloat(e.target.value) || 0 }))}
+                          className={`w-full rounded-lg px-2.5 py-1 font-mono text-xs border ${themeMode === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-[#0b0f17] border-slate-800 text-slate-200'
+                            }`}
                         />
-                        <span className="text-slate-400 font-bold">%</span>
                       </div>
+                      <div>
+                        <label className={`block text-[11px] font-medium mb-1 ${themeMode === 'light' ? 'text-slate-700' : 'text-slate-400'}`}>Max Latitude (&deg;N)</label>
+                        <input
+                          type="number"
+                          step="0.0001"
+                          value={projectSettings.maxLat ?? 6.8}
+                          onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, maxLat: parseFloat(e.target.value) || 0 }))}
+                          className={`w-full rounded-lg px-2.5 py-1 font-mono text-xs border ${themeMode === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-[#0b0f17] border-slate-800 text-slate-200'
+                            }`}
+                        />
+                      </div>
+                      <div>
+                        <label className={`block text-[11px] font-medium mb-1 ${themeMode === 'light' ? 'text-slate-700' : 'text-slate-400'}`}>Min Longitude (&deg;E)</label>
+                        <input
+                          type="number"
+                          step="0.0001"
+                          value={projectSettings.minLon ?? 99.6}
+                          onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, minLon: parseFloat(e.target.value) || 0 }))}
+                          className={`w-full rounded-lg px-2.5 py-1 font-mono text-xs border ${themeMode === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-[#0b0f17] border-slate-800 text-slate-200'
+                            }`}
+                        />
+                      </div>
+                      <div>
+                        <label className={`block text-[11px] font-medium mb-1 ${themeMode === 'light' ? 'text-slate-700' : 'text-slate-400'}`}>Max Longitude (&deg;E)</label>
+                        <input
+                          type="number"
+                          step="0.0001"
+                          value={projectSettings.maxLon ?? 104.6}
+                          onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, maxLon: parseFloat(e.target.value) || 0 }))}
+                          className={`w-full rounded-lg px-2.5 py-1 font-mono text-xs border ${themeMode === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-[#0b0f17] border-slate-800 text-slate-200'
+                            }`}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* DEFECT THRESHOLD CARDS - PROFESSIONAL LIGHT/DARK GIS DESIGN */}
+                  <div className={`pt-3 border-t space-y-3 ${themeMode === 'light' ? 'border-slate-200' : 'border-slate-800/60'
+                    }`}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide">
+                        <ShieldCheck size={15} className="text-sky-500" />
+                        <span className={themeMode === 'light' ? 'text-slate-900' : 'text-slate-200'}>
+                          Defect Threshold & Quality Benchmark
+                        </span>
+                      </div>
+                      <span className={`text-xs font-bold px-2.5 py-0.5 rounded font-mono border ${themeMode === 'light'
+                          ? 'bg-slate-100 text-slate-800 border-slate-300'
+                          : 'bg-slate-800 text-sky-400 border-slate-700'
+                        }`}>
+                        Active Threshold: {projectSettings.defectThreshold || projectSettings.aiDefectThresholdPercent || 85}%
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+                      {/* Threshold Card 1: Strict QC (95%) */}
+                      <button
+                        type="button"
+                        onClick={() => setProjectSettings((prev: any) => ({ ...prev, defectThreshold: 95, aiDefectThresholdPercent: 95 }))}
+                        className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${(projectSettings.defectThreshold || projectSettings.aiDefectThresholdPercent) === 95
+                            ? themeMode === 'light'
+                              ? 'bg-slate-900 border-sky-600 text-white shadow-md ring-1 ring-sky-500'
+                              : 'bg-[#161F30] border-sky-500 text-white shadow-sm ring-1 ring-sky-500/30'
+                            : themeMode === 'light'
+                              ? 'bg-white border-slate-200 text-slate-800 hover:border-slate-300 hover:bg-slate-50'
+                              : 'bg-[#0b0f17] border-slate-800 text-slate-300 hover:border-slate-700'
+                          }`}
+                      >
+                        <div>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className={`font-semibold text-xs ${(projectSettings.defectThreshold || projectSettings.aiDefectThresholdPercent) === 95
+                                ? 'text-white font-bold'
+                                : themeMode === 'light' ? 'text-slate-900 font-bold' : 'text-slate-200 font-semibold'
+                              }`}>Strict QC</span>
+                            <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${(projectSettings.defectThreshold || projectSettings.aiDefectThresholdPercent) === 95
+                                ? 'bg-sky-500 text-white border-sky-400 font-bold'
+                                : themeMode === 'light'
+                                  ? 'bg-slate-100 text-slate-700 border-slate-300 font-semibold'
+                                  : 'bg-slate-800 text-slate-400 border-slate-700/60 font-semibold'
+                              }`}>95%</span>
+                          </div>
+                          <p className={`text-[10px] leading-relaxed mb-3 ${(projectSettings.defectThreshold || projectSettings.aiDefectThresholdPercent) === 95
+                              ? 'text-slate-300'
+                              : themeMode === 'light' ? 'text-slate-600' : 'text-slate-400'
+                            }`}>Flags only high-certainty defects. Reduces false alarms; requires major image corruption or severe blur.</p>
+                        </div>
+                        <div className="w-full bg-slate-800/80 rounded-full h-1 overflow-hidden">
+                          <div className={`h-full rounded-full ${(projectSettings.defectThreshold || projectSettings.aiDefectThresholdPercent) === 95 ? 'bg-sky-400' : 'bg-slate-600'}`} style={{ width: '95%' }}></div>
+                        </div>
+                      </button>
+
+                      {/* Threshold Card 2: Standard QC (85% - Recommended) */}
+                      <button
+                        type="button"
+                        onClick={() => setProjectSettings((prev: any) => ({ ...prev, defectThreshold: 85, aiDefectThresholdPercent: 85 }))}
+                        className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${(projectSettings.defectThreshold || projectSettings.aiDefectThresholdPercent) === 85
+                            ? themeMode === 'light'
+                              ? 'bg-slate-900 border-sky-600 text-white shadow-md ring-1 ring-sky-500'
+                              : 'bg-[#161F30] border-sky-500 text-white shadow-sm ring-1 ring-sky-500/30'
+                            : themeMode === 'light'
+                              ? 'bg-white border-slate-200 text-slate-800 hover:border-slate-300 hover:bg-slate-50'
+                              : 'bg-[#0b0f17] border-slate-800 text-slate-300 hover:border-slate-700'
+                          }`}
+                      >
+                        <div>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className={`font-semibold text-xs flex items-center gap-1.5 ${(projectSettings.defectThreshold || projectSettings.aiDefectThresholdPercent) === 85
+                                ? 'text-white font-bold'
+                                : themeMode === 'light' ? 'text-slate-900 font-bold' : 'text-slate-200 font-semibold'
+                              }`}>
+                              Standard QC
+                              <span className={`text-[9px] px-1.5 py-0.2 rounded border ${(projectSettings.defectThreshold || projectSettings.aiDefectThresholdPercent) === 85
+                                  ? 'bg-sky-500/30 text-sky-200 border-sky-400 font-medium'
+                                  : themeMode === 'light' ? 'bg-slate-200 text-slate-700 border-slate-300' : 'bg-slate-800 text-slate-400 border-slate-700'
+                                }`}>Default</span>
+                            </span>
+                            <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${(projectSettings.defectThreshold || projectSettings.aiDefectThresholdPercent) === 85
+                                ? 'bg-sky-500 text-white border-sky-400 font-bold'
+                                : themeMode === 'light'
+                                  ? 'bg-slate-100 text-slate-700 border-slate-300 font-semibold'
+                                  : 'bg-slate-800 text-slate-400 border-slate-700/60 font-semibold'
+                              }`}>85%</span>
+                          </div>
+                          <p className={`text-[10px] leading-relaxed mb-3 ${(projectSettings.defectThreshold || projectSettings.aiDefectThresholdPercent) === 85
+                              ? 'text-slate-300'
+                              : themeMode === 'light' ? 'text-slate-600' : 'text-slate-400'
+                            }`}>Optimal operational balance for utility surveying. Detects lens obstructions, bad GPS, and out-of-focus frames.</p>
+                        </div>
+                        <div className="w-full bg-slate-800/80 rounded-full h-1 overflow-hidden">
+                          <div className={`h-full rounded-full ${(projectSettings.defectThreshold || projectSettings.aiDefectThresholdPercent) === 85 ? 'bg-sky-400' : 'bg-slate-600'}`} style={{ width: '85%' }}></div>
+                        </div>
+                      </button>
+
+                      {/* Threshold Card 3: Sensitive QC (75%) */}
+                      <button
+                        type="button"
+                        onClick={() => setProjectSettings((prev: any) => ({ ...prev, defectThreshold: 75, aiDefectThresholdPercent: 75 }))}
+                        className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${(projectSettings.defectThreshold || projectSettings.aiDefectThresholdPercent) === 75
+                            ? themeMode === 'light'
+                              ? 'bg-slate-900 border-sky-600 text-white shadow-md ring-1 ring-sky-500'
+                              : 'bg-[#161F30] border-sky-500 text-white shadow-sm ring-1 ring-sky-500/30'
+                            : themeMode === 'light'
+                              ? 'bg-white border-slate-200 text-slate-800 hover:border-slate-300 hover:bg-slate-50'
+                              : 'bg-[#0b0f17] border-slate-800 text-slate-300 hover:border-slate-700'
+                          }`}
+                      >
+                        <div>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className={`font-semibold text-xs ${(projectSettings.defectThreshold || projectSettings.aiDefectThresholdPercent) === 75
+                                ? 'text-white font-bold'
+                                : themeMode === 'light' ? 'text-slate-900 font-bold' : 'text-slate-200 font-semibold'
+                              }`}>Sensitive Audit</span>
+                            <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${(projectSettings.defectThreshold || projectSettings.aiDefectThresholdPercent) === 75
+                                ? 'bg-sky-500 text-white border-sky-400 font-bold'
+                                : themeMode === 'light'
+                                  ? 'bg-slate-100 text-slate-700 border-slate-300 font-semibold'
+                                  : 'bg-slate-800 text-slate-400 border-slate-700/60 font-semibold'
+                              }`}>75%</span>
+                          </div>
+                          <p className={`text-[10px] leading-relaxed mb-3 ${(projectSettings.defectThreshold || projectSettings.aiDefectThresholdPercent) === 75
+                              ? 'text-slate-300'
+                              : themeMode === 'light' ? 'text-slate-600' : 'text-slate-400'
+                            }`}>High sensitivity audit mode. Flags minor lens smudges, faint glare, and minor trajectory anomalies.</p>
+                        </div>
+                        <div className="w-full bg-slate-800/80 rounded-full h-1 overflow-hidden">
+                          <div className={`h-full rounded-full ${(projectSettings.defectThreshold || projectSettings.aiDefectThresholdPercent) === 75 ? 'bg-sky-400' : 'bg-slate-600'}`} style={{ width: '75%' }}></div>
+                        </div>
+                      </button>
+
+                      {/* Threshold Card 4: Max Inspection (60%) */}
+                      <button
+                        type="button"
+                        onClick={() => setProjectSettings((prev: any) => ({ ...prev, defectThreshold: 60, aiDefectThresholdPercent: 60 }))}
+                        className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${(projectSettings.defectThreshold || projectSettings.aiDefectThresholdPercent) === 60
+                            ? themeMode === 'light'
+                              ? 'bg-slate-900 border-sky-600 text-white shadow-md ring-1 ring-sky-500'
+                              : 'bg-[#161F30] border-sky-500 text-white shadow-sm ring-1 ring-sky-500/30'
+                            : themeMode === 'light'
+                              ? 'bg-white border-slate-200 text-slate-800 hover:border-slate-300 hover:bg-slate-50'
+                              : 'bg-[#0b0f17] border-slate-800 text-slate-300 hover:border-slate-700'
+                          }`}
+                      >
+                        <div>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className={`font-semibold text-xs ${(projectSettings.defectThreshold || projectSettings.aiDefectThresholdPercent) === 60
+                                ? 'text-white font-bold'
+                                : themeMode === 'light' ? 'text-slate-900 font-bold' : 'text-slate-200 font-semibold'
+                              }`}>Maximum Inspection</span>
+                            <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${(projectSettings.defectThreshold || projectSettings.aiDefectThresholdPercent) === 60
+                                ? 'bg-sky-500 text-white border-sky-400 font-bold'
+                                : themeMode === 'light'
+                                  ? 'bg-slate-100 text-slate-700 border-slate-300 font-semibold'
+                                  : 'bg-slate-800 text-slate-400 border-slate-700/60 font-semibold'
+                              }`}>60%</span>
+                          </div>
+                          <p className={`text-[10px] leading-relaxed mb-3 ${(projectSettings.defectThreshold || projectSettings.aiDefectThresholdPercent) === 60
+                              ? 'text-slate-300'
+                              : themeMode === 'light' ? 'text-slate-600' : 'text-slate-400'
+                            }`}>Comprehensive audit mode before final client delivery to guarantee zero defect leakage.</p>
+                        </div>
+                        <div className="w-full bg-slate-800/80 rounded-full h-1 overflow-hidden">
+                          <div className={`h-full rounded-full ${(projectSettings.defectThreshold || projectSettings.aiDefectThresholdPercent) === 60 ? 'bg-sky-400' : 'bg-slate-600'}`} style={{ width: '60%' }}></div>
+                        </div>
+                      </button>
                     </div>
                   </div>
                 </div>
 
-                {/* SECTION 6: CSV FIELD ALIASES & DATA NORMALIZATION RULES */}
-                <div className="bg-[#121824] border border-slate-800/90 rounded-2xl p-5 space-y-4 shadow-sm lg:col-span-2">
-                  <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
-                    <div className="flex items-center gap-2 text-xs font-bold text-slate-200 tracking-wide uppercase">
+                {/* SECTION 6: CSV FIELD ALIASES & INTERACTIVE DATA MAPPING SETTINGS */}
+                <div className={`rounded-2xl p-5 space-y-4 shadow-sm border lg:col-span-2 ${themeMode === 'light' ? 'bg-white border-slate-200 text-slate-900' : 'bg-[#121824] border-slate-800/90 text-slate-200'
+                  }`}>
+                  <div className={`flex items-center justify-between border-b pb-3 ${themeMode === 'light' ? 'border-slate-200' : 'border-slate-800/80'
+                    }`}>
+                    <div className="flex items-center gap-2 text-xs font-bold tracking-wide uppercase">
                       <FileText size={15} className="text-sky-400" />
-                      <span>6. CSV Field Aliases & Data Normalization Rules</span>
+                      <span className={themeMode === 'light' ? 'text-slate-900' : 'text-white'}>
+                        6. Enhanced CSV Field Aliases & Column Normalization Rules
+                      </span>
                     </div>
+                    <span className={`text-[10px] px-2 py-0.5 rounded font-mono border ${themeMode === 'light'
+                        ? 'bg-slate-100 text-slate-700 border-slate-300'
+                        : 'bg-slate-800/90 text-slate-300 border-slate-700/80'
+                      }`}>
+                      Multi-Format CSV Engine
+                    </span>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-xs">
                     <div>
-                      <label className="block text-slate-400 font-medium mb-1">Latitude Header Aliases</label>
+                      <label className={`block font-medium mb-1 ${themeMode === 'light' ? 'text-slate-700 font-semibold' : 'text-slate-400'}`}>Latitude Column Aliases</label>
                       <input
                         type="text"
-                        value={projectSettings.csvLatAliases || 'latitude, lat, y'}
+                        value={projectSettings.csvLatAliases || 'latitude, lat, y, y_coord'}
                         onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, csvLatAliases: e.target.value }))}
-                        className="w-full bg-[#0b0f17] border border-slate-800 rounded-xl px-3 py-2 text-slate-200 font-mono text-xs focus:outline-none focus:border-sky-500/80"
+                        className={`w-full rounded-xl px-3 py-2 font-mono text-xs focus:outline-none border ${themeMode === 'light' ? 'bg-slate-50 border-slate-300 text-slate-900 focus:border-sky-500' : 'bg-[#0b0f17] border-slate-800 text-slate-200 focus:border-sky-500/80'
+                          }`}
                       />
                     </div>
 
                     <div>
-                      <label className="block text-slate-400 font-medium mb-1">Longitude Header Aliases</label>
+                      <label className={`block font-medium mb-1 ${themeMode === 'light' ? 'text-slate-700 font-semibold' : 'text-slate-400'}`}>Longitude Column Aliases</label>
                       <input
                         type="text"
-                        value={projectSettings.csvLonAliases || 'longitude, lon, lng, x'}
+                        value={projectSettings.csvLonAliases || 'longitude, lon, lng, x, x_coord'}
                         onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, csvLonAliases: e.target.value }))}
-                        className="w-full bg-[#0b0f17] border border-slate-800 rounded-xl px-3 py-2 text-slate-200 font-mono text-xs focus:outline-none focus:border-sky-500/80"
+                        className={`w-full rounded-xl px-3 py-2 font-mono text-xs focus:outline-none border ${themeMode === 'light' ? 'bg-slate-50 border-slate-300 text-slate-900 focus:border-sky-500' : 'bg-[#0b0f17] border-slate-800 text-slate-200 focus:border-sky-500/80'
+                          }`}
                       />
                     </div>
 
                     <div>
-                      <label className="block text-slate-400 font-medium mb-1">Heading Header Aliases</label>
+                      <label className={`block font-medium mb-1 ${themeMode === 'light' ? 'text-slate-700 font-semibold' : 'text-slate-400'}`}>Heading / Bearing Aliases</label>
                       <input
                         type="text"
-                        value={projectSettings.csvHeadingAliases || 'heading, bearing, dir'}
+                        value={projectSettings.csvHeadingAliases || 'heading, bearing, dir, orientation'}
                         onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, csvHeadingAliases: e.target.value }))}
-                        className="w-full bg-[#0b0f17] border border-slate-800 rounded-xl px-3 py-2 text-slate-200 font-mono text-xs focus:outline-none focus:border-sky-500/80"
+                        className={`w-full rounded-xl px-3 py-2 font-mono text-xs focus:outline-none border ${themeMode === 'light' ? 'bg-slate-50 border-slate-300 text-slate-900 focus:border-sky-500' : 'bg-[#0b0f17] border-slate-800 text-slate-200 focus:border-sky-500/80'
+                          }`}
                       />
                     </div>
 
                     <div>
-                      <label className="block text-slate-400 font-medium mb-1">Filename Header Aliases</label>
+                      <label className={`block font-medium mb-1 ${themeMode === 'light' ? 'text-slate-700 font-semibold' : 'text-slate-400'}`}>Filename / Image Aliases</label>
                       <input
                         type="text"
-                        value={projectSettings.csvFilenameAliases || 'filename, imagefilename, image_url, file'}
+                        value={projectSettings.csvFilenameAliases || 'filename, imagefilename, image_url, file, frame_id'}
                         onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, csvFilenameAliases: e.target.value }))}
-                        className="w-full bg-[#0b0f17] border border-slate-800 rounded-xl px-3 py-2 text-slate-200 font-mono text-xs focus:outline-none focus:border-sky-500/80"
+                        className={`w-full rounded-xl px-3 py-2 font-mono text-xs focus:outline-none border ${themeMode === 'light' ? 'bg-slate-50 border-slate-300 text-slate-900 focus:border-sky-500' : 'bg-[#0b0f17] border-slate-800 text-slate-200 focus:border-sky-500/80'
+                          }`}
+                      />
+                    </div>
+
+                    <div>
+                      <label className={`block font-medium mb-1 ${themeMode === 'light' ? 'text-slate-700 font-semibold' : 'text-slate-400'}`}>Subgrid Header Aliases</label>
+                      <input
+                        type="text"
+                        value={projectSettings.csvSubgridAliases || 'subgrid, grid_id, section, tile'}
+                        onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, csvSubgridAliases: e.target.value }))}
+                        className={`w-full rounded-xl px-3 py-2 font-mono text-xs focus:outline-none border ${themeMode === 'light' ? 'bg-slate-50 border-slate-300 text-slate-900 focus:border-sky-500' : 'bg-[#0b0f17] border-slate-800 text-slate-200 focus:border-sky-500/80'
+                          }`}
+                      />
+                    </div>
+
+                    <div>
+                      <label className={`block font-medium mb-1 ${themeMode === 'light' ? 'text-slate-700 font-semibold' : 'text-slate-400'}`}>Date / Timestamp Aliases</label>
+                      <input
+                        type="text"
+                        value={projectSettings.csvDateAliases || 'date, time, captured_at, timestamp'}
+                        onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, csvDateAliases: e.target.value }))}
+                        className={`w-full rounded-xl px-3 py-2 font-mono text-xs focus:outline-none border ${themeMode === 'light' ? 'bg-slate-50 border-slate-300 text-slate-900 focus:border-sky-500' : 'bg-[#0b0f17] border-slate-800 text-slate-200 focus:border-sky-500/80'
+                          }`}
                       />
                     </div>
                   </div>
 
-                  <div className="pt-3 border-t border-slate-800/60 flex flex-wrap items-center justify-between gap-4 text-xs">
-                    <div className="flex items-center gap-3">
-                      <label className="flex items-center gap-2 text-slate-300 font-medium cursor-pointer">
+                  <div className={`pt-3 border-t flex flex-wrap items-center justify-between gap-4 text-xs ${themeMode === 'light' ? 'border-slate-200' : 'border-slate-800/60'
+                    }`}>
+                    <div className="flex items-center gap-4">
+                      <label className={`flex items-center gap-2 font-medium cursor-pointer ${themeMode === 'light' ? 'text-slate-800 font-semibold' : 'text-slate-300'}`}>
                         <input
                           type="checkbox"
                           checked={projectSettings.dropZeroGpsRows ?? true}
                           onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, dropZeroGpsRows: e.target.checked }))}
-                          className="w-4 h-4 text-sky-600 rounded border-slate-700 bg-slate-900 focus:ring-sky-500"
+                          className="w-4 h-4 text-sky-600 rounded border-slate-300 bg-white focus:ring-sky-500"
                         />
                         <span>Drop Invalid / Zero (0, 0) GPS Coordinates on Import</span>
                       </label>
                     </div>
 
                     <div className="flex items-center gap-2">
-                      <span className="text-slate-400 font-medium">Timestamp Parser:</span>
+                      <span className={`font-medium ${themeMode === 'light' ? 'text-slate-600' : 'text-slate-400'}`}>Timestamp Parser:</span>
                       <select
                         value={projectSettings.csvTimestampFormat || 'auto'}
                         onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, csvTimestampFormat: e.target.value }))}
-                        className="bg-[#0b0f17] border border-slate-800 rounded-lg px-2.5 py-1 text-slate-200 focus:outline-none focus:border-sky-500/80"
+                        className={`rounded-lg px-2.5 py-1 text-xs focus:outline-none border ${themeMode === 'light' ? 'bg-slate-50 border-slate-300 text-slate-900' : 'bg-[#0b0f17] border-slate-800 text-slate-200'
+                          }`}
                       >
                         <option value="auto">Auto-Detect & Combine (Date + Time)</option>
                         <option value="iso">Single ISO Timestamp Column</option>
@@ -8190,8 +8844,175 @@ export default function App() {
                       </select>
                     </div>
                   </div>
-                </div>
+                  {/* SECTION 7: CSV DATA IMPORTING & TRAJECTORY PROCESSING STRATEGY */}
+                  <div className={`rounded-2xl p-5 space-y-4 shadow-sm border lg:col-span-2 ${themeMode === 'light' ? 'bg-white border-slate-200 text-slate-900' : 'bg-[#121824] border-slate-800/90 text-slate-200'
+                    }`}>
+                    <div className={`flex items-center justify-between border-b pb-3 ${themeMode === 'light' ? 'border-slate-200' : 'border-slate-800/80'
+                      }`}>
+                      <div className="flex items-center gap-2 text-xs font-bold tracking-wide uppercase">
+                        <Database size={15} className="text-sky-400" />
+                        <span className={themeMode === 'light' ? 'text-slate-900' : 'text-white'}>
+                          7. CSV Data Import & Subgrid Processing Strategy
+                        </span>
+                      </div>
+                      <span className={`text-[10px] px-2 py-0.5 rounded font-mono border ${themeMode === 'light'
+                          ? 'bg-slate-100 text-slate-700 border-slate-300'
+                          : 'bg-slate-800/90 text-slate-300 border-slate-700/80'
+                        }`}>
+                        Subgrid Aggregation Engine
+                      </span>
+                    </div>
 
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-xs">
+                      {/* 1. Batch Logs CSV Import Strategy */}
+                      <div className={`p-3 rounded-xl border space-y-2 ${themeMode === 'light' ? 'bg-slate-50 border-slate-200' : 'bg-[#0b0f17] border-slate-800'
+                        }`}>
+                        <label className={`block font-medium ${themeMode === 'light' ? 'text-slate-800 font-semibold' : 'text-slate-200'}`}>
+                          Batch Logs Import Policy (Masterlist)
+                        </label>
+                        <select
+                          value={projectSettings.batchLogsImportPolicy || 'clean_merge'}
+                          onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, batchLogsImportPolicy: e.target.value, deduplicationStrategy: e.target.value }))}
+                          className={`w-full rounded-lg px-2.5 py-1.5 text-xs font-semibold focus:outline-none border ${themeMode === 'light'
+                              ? 'bg-white border-slate-300 text-slate-900 focus:border-sky-500'
+                              : 'bg-[#121824] border-slate-800 text-slate-200 focus:border-sky-500'
+                            }`}
+                        >
+                          <option value="clean_merge">Clean Merge as Masterlist (Aggregates POIs & Distance)</option>
+                          <option value="keep_latest">Keep Latest CSV Import Only (Overwrite Previous)</option>
+                        </select>
+                        <p className={`text-[10px] ${themeMode === 'light' ? 'text-slate-500' : 'text-slate-400'}`}>
+                          Combines matching subgrid (NxxExx) trajectories into a unified, consolidated Masterlist row.
+                        </p>
+                      </div>
+
+                      {/* 2. Daily Data CSV Import Strategy */}
+                      <div className={`p-3 rounded-xl border space-y-2 ${themeMode === 'light' ? 'bg-slate-50 border-slate-200' : 'bg-[#0b0f17] border-slate-800'
+                        }`}>
+                        <label className={`block font-medium ${themeMode === 'light' ? 'text-slate-800 font-semibold' : 'text-slate-200'}`}>
+                          Daily Data Import Policy (Survey Runs)
+                        </label>
+                        <select
+                          value={projectSettings.dailyDataImportPolicy || 'preserve_runs'}
+                          onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, dailyDataImportPolicy: e.target.value }))}
+                          className={`w-full rounded-lg px-2.5 py-1.5 text-xs font-semibold focus:outline-none border ${themeMode === 'light'
+                              ? 'bg-white border-slate-300 text-slate-900 focus:border-sky-500'
+                              : 'bg-[#121824] border-slate-800 text-slate-200 focus:border-sky-500'
+                            }`}
+                        >
+                          <option value="preserve_runs">Preserve Separate Rows (Unique per Survey Pass)</option>
+                          <option value="merge_samedate">Merge Same-Date Runs Only</option>
+                        </select>
+                        <p className={`text-[10px] ${themeMode === 'light' ? 'text-slate-500' : 'text-slate-400'}`}>
+                          Imports every survey pass as an individual, unique row even if subgrid codes match.
+                        </p>
+                      </div>
+
+                      {/* 3. Subgrid Key Deduplication */}
+                      <div className={`p-3 rounded-xl border space-y-2 ${themeMode === 'light' ? 'bg-slate-50 border-slate-200' : 'bg-[#0b0f17] border-slate-800'
+                        }`}>
+                        <label className={`block font-medium ${themeMode === 'light' ? 'text-slate-800 font-semibold' : 'text-slate-200'}`}>
+                          Subgrid Key Auto-Normalization
+                        </label>
+                        <div className="flex items-center justify-between pt-1">
+                          <span className={`text-[11px] ${themeMode === 'light' ? 'text-slate-700 font-medium' : 'text-slate-300'}`}>
+                            Standardize NxxExx subgrid codes
+                          </span>
+                          <input
+                            type="checkbox"
+                            checked={projectSettings.autoDeduplicateSubgrids ?? true}
+                            onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, autoDeduplicateSubgrids: e.target.checked }))}
+                            className="w-4 h-4 text-sky-600 rounded border-slate-300 bg-white focus:ring-sky-500 cursor-pointer"
+                          />
+                        </div>
+                        <p className={`text-[10px] ${themeMode === 'light' ? 'text-slate-500' : 'text-slate-400'}`}>
+                          Strips spaces & hyphens (e.g. N93-E70 &rarr; N93E70) to prevent duplicate key creation.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* SECTION 8: 360° VIEW INSPECTOR & QA DEFECT FLAG BENCHMARKS */}
+                  <div className={`rounded-2xl p-5 space-y-4 shadow-sm border lg:col-span-2 ${themeMode === 'light' ? 'bg-white border-slate-200 text-slate-900' : 'bg-[#121824] border-slate-800/90 text-slate-200'
+                    }`}>
+                    <div className={`flex items-center justify-between border-b pb-3 ${themeMode === 'light' ? 'border-slate-200' : 'border-slate-800/80'
+                      }`}>
+                      <div className="flex items-center gap-2 text-xs font-bold tracking-wide uppercase">
+                        <Camera size={15} className="text-sky-400" />
+                        <span className={themeMode === 'light' ? 'text-slate-900' : 'text-white'}>
+                          8. 360° View Inspector & QA Defect Flag Benchmarks
+                        </span>
+                      </div>
+                      <span className={`text-[10px] px-2 py-0.5 rounded font-mono border ${themeMode === 'light'
+                          ? 'bg-slate-100 text-slate-700 border-slate-300'
+                          : 'bg-slate-800/90 text-slate-300 border-slate-700/80'
+                        }`}>
+                        360° StreetView QA
+                      </span>
+                    </div>
+
+                    <div className="space-y-4 text-xs">
+                      {/* 360° Inspector Panel Behavior Toggle */}
+                      <div className={`p-3.5 rounded-xl border flex items-center justify-between ${themeMode === 'light' ? 'bg-slate-50 border-slate-200' : 'bg-[#0b0f17] border-slate-800'
+                        }`}>
+                        <div>
+                          <label className={`block font-semibold text-xs mb-0.5 ${themeMode === 'light' ? 'text-slate-900' : 'text-slate-200'}`}>
+                            Auto-Open 360° Inspector Panel on Map Trajectory Point Click
+                          </label>
+                          <p className={`text-[10px] ${themeMode === 'light' ? 'text-slate-500' : 'text-slate-400'}`}>
+                            Triggers 360° panorama modal immediately when clicking a trajectory survey point on the main GIS map canvas.
+                          </p>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={projectSettings.autoOpenInspectorOnMapClick ?? true}
+                          onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, autoOpenInspectorOnMapClick: e.target.checked }))}
+                          className="w-4 h-4 text-sky-600 rounded border-slate-300 bg-white focus:ring-sky-500 cursor-pointer ml-4"
+                        />
+                      </div>
+
+                      {/* INSPECTOR QA DEFECT FLAGS PRESETS */}
+                      <div className="space-y-2">
+                        <label className={`block font-semibold text-xs ${themeMode === 'light' ? 'text-slate-800' : 'text-slate-200'}`}>
+                          Inspector QA Defect Flag Labels (Active Flags: Blurry Frame, Lens Obstruction, Bad GPS Signal)
+                        </label>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                          <div>
+                            <span className={`block text-[11px] mb-1 font-medium ${themeMode === 'light' ? 'text-slate-600' : 'text-slate-400'}`}>Flag 1 Label</span>
+                            <input
+                              type="text"
+                              value={projectSettings.qaFlag1 || 'Blurry Frame'}
+                              onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, qaFlag1: e.target.value }))}
+                              className={`w-full rounded-lg px-2.5 py-1.5 font-mono text-xs border ${themeMode === 'light' ? 'bg-slate-50 border-slate-300 text-slate-900' : 'bg-[#0b0f17] border-slate-800 text-slate-200'
+                                }`}
+                            />
+                          </div>
+                          <div>
+                            <span className={`block text-[11px] mb-1 font-medium ${themeMode === 'light' ? 'text-slate-600' : 'text-slate-400'}`}>Flag 2 Label</span>
+                            <input
+                              type="text"
+                              value={projectSettings.qaFlag2 || 'Lens Obstruction'}
+                              onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, qaFlag2: e.target.value }))}
+                              className={`w-full rounded-lg px-2.5 py-1.5 font-mono text-xs border ${themeMode === 'light' ? 'bg-slate-50 border-slate-300 text-slate-900' : 'bg-[#0b0f17] border-slate-800 text-slate-200'
+                                }`}
+                            />
+                          </div>
+                          <div>
+                            <span className={`block text-[11px] mb-1 font-medium ${themeMode === 'light' ? 'text-slate-600' : 'text-slate-400'}`}>Flag 3 Label</span>
+                            <input
+                              type="text"
+                              value={projectSettings.qaFlag3 || 'Bad GPS Signal'}
+                              onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, qaFlag3: e.target.value }))}
+                              className={`w-full rounded-lg px-2.5 py-1.5 font-mono text-xs border ${themeMode === 'light' ? 'bg-slate-50 border-slate-300 text-slate-900' : 'bg-[#0b0f17] border-slate-800 text-slate-200'
+                                }`}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
               </div>
             </div>
           ) : null}
@@ -8259,19 +9080,19 @@ export default function App() {
         {/* INTERACTIVE GUIDED TOUR FLOATING TOOLTIP OVERLAY */}
         {/* ========================================================= */}
         {tourStep !== null && (
-          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[90vw] max-w-lg bg-[#0d121d] border border-sky-500/50 rounded-2xl shadow-2xl z-50 p-4 text-slate-200 backdrop-blur-xl animate-in fade-in slide-in-from-bottom-4 duration-200">
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[90vw] max-w-lg bg-[#111827] border border-slate-700 rounded-2xl shadow-2xl z-[99999] p-4 text-slate-200 backdrop-blur-xl animate-in fade-in slide-in-from-bottom-4 duration-200">
             <div className="flex items-center justify-between border-b border-slate-800 pb-2 mb-3">
               <div className="flex items-center gap-2">
-                <span className="bg-sky-500 text-slate-950 text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider">
-                  Tour Step {tourStep} of {TOUR_STEPS.length}
+                <span className="bg-slate-800 text-slate-200 border border-slate-700 text-[10px] font-mono font-bold px-2 py-0.5 rounded-md uppercase tracking-wider">
+                  Step {tourStep} of {TOUR_STEPS.length}
                 </span>
-                <h3 className="text-sm font-bold text-white">
+                <h3 className="text-xs font-bold text-white tracking-wide">
                   {TOUR_STEPS[tourStep - 1].title}
                 </h3>
               </div>
               <button
                 onClick={() => setTourStep(null)}
-                className="text-slate-400 hover:text-white p-1 cursor-pointer"
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
                 title="End Guided Tour"
               >
                 <X size={16} />
@@ -8282,16 +9103,30 @@ export default function App() {
               {TOUR_STEPS[tourStep - 1].desc}
             </p>
 
+            {/* Step Dots Indicator */}
+            <div className="flex items-center justify-center gap-1.5 mb-3">
+              {TOUR_STEPS.map((s) => (
+                <button
+                  key={s.step}
+                  onClick={() => setTourStep(s.step)}
+                  className={`h-1.5 rounded-full transition-all cursor-pointer ${
+                    tourStep === s.step ? 'w-5 bg-slate-200' : 'w-1.5 bg-slate-700 hover:bg-slate-500'
+                  }`}
+                  title={`Go to step ${s.step}: ${s.title}`}
+                />
+              ))}
+            </div>
+
             <div className="flex items-center justify-between pt-2 border-t border-slate-800/80">
-              <span className="text-[10px] text-slate-500 font-medium">
-                Focus: <strong className="text-sky-400">{TOUR_STEPS[tourStep - 1].highlight}</strong>
+              <span className="text-[10px] text-slate-400 font-mono">
+                Focus: <strong className="text-slate-200">{TOUR_STEPS[tourStep - 1].highlight}</strong>
               </span>
 
               <div className="flex items-center gap-2">
                 {tourStep > 1 && (
                   <button
                     onClick={() => setTourStep(tourStep - 1)}
-                    className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg transition-all cursor-pointer"
+                    className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-medium rounded-lg transition-all cursor-pointer"
                   >
                     Previous
                   </button>
@@ -8299,14 +9134,14 @@ export default function App() {
                 {tourStep < TOUR_STEPS.length ? (
                   <button
                     onClick={() => setTourStep(tourStep + 1)}
-                    className="px-3 py-1 bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold rounded-lg transition-all cursor-pointer shadow-md flex items-center gap-1"
+                    className="px-3.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-600 text-xs font-medium rounded-lg transition-all cursor-pointer flex items-center gap-1 shadow-sm"
                   >
                     Next Step <ChevronRight size={14} />
                   </button>
                 ) : (
                   <button
                     onClick={() => setTourStep(null)}
-                    className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg transition-all cursor-pointer shadow-md"
+                    className="px-3.5 py-1 bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-600 text-xs font-semibold rounded-lg transition-all cursor-pointer shadow-sm"
                   >
                     Complete Tour ✓
                   </button>
@@ -8379,24 +9214,24 @@ export default function App() {
               <div className="p-5 overflow-y-auto space-y-3 flex-1 text-xs text-slate-300 leading-relaxed">
                 {helpGuideTab === 'map' && (
                   <div className="space-y-3">
-                    <div className="bg-[#0b0f17] p-3.5 rounded-lg border border-[rgba(255,255,255,0.06)] space-y-1">
-                      <h4 className="font-semibold text-white text-xs">1. Selecting & Filtering Subgrids</h4>
+                    <div className="bg-[#0b0f17] p-3.5 rounded-lg border border-slate-800 space-y-1">
+                      <h4 className="font-semibold text-slate-100 text-xs">1. Subgrid Selection &amp; Key Normalization</h4>
                       <p className="text-slate-400">
-                        Click on any subgrid feature (e.g. <code className="bg-[#1f2937] px-1.5 py-0.5 rounded text-slate-200">N94E70</code>) on the map or inside the daily progress table to filter trajectories and panorama points.
+                        Clicking any subgrid (e.g. <code className="bg-slate-800 px-1.5 py-0.5 rounded text-slate-200 font-mono">N93E70</code>) on the map or inside the control table isolates all trajectory points for that region. Subgrid keys are automatically normalized (<code className="bg-slate-800 px-1 py-0.5 rounded text-slate-300 font-mono text-[10px]">N93-E70 &rarr; N93E70</code>) across CSV imports and database queries.
                       </p>
                     </div>
 
-                    <div className="bg-[#0b0f17] p-3.5 rounded-lg border border-[rgba(255,255,255,0.06)] space-y-1">
-                      <h4 className="font-semibold text-white text-xs">2. Date Filter Behavior</h4>
+                    <div className="bg-[#0b0f17] p-3.5 rounded-lg border border-slate-800 space-y-1">
+                      <h4 className="font-semibold text-slate-100 text-xs">2. Date Filter Behavior</h4>
                       <p className="text-slate-400">
-                        Selecting a specific date filters trajectory points corresponding to that capture run without hiding concurrent subgrid lists or layer items.
+                        Selecting a capture date filters trajectory frames associated with that specific survey run while preserving concurrent subgrid boundary geometry and vector layer overlays.
                       </p>
                     </div>
 
-                    <div className="bg-[#0b0f17] p-3.5 rounded-lg border border-[rgba(255,255,255,0.06)] space-y-1">
-                      <h4 className="font-semibold text-white text-xs">3. Map Layer Control</h4>
+                    <div className="bg-[#0b0f17] p-3.5 rounded-lg border border-slate-800 space-y-1">
+                      <h4 className="font-semibold text-slate-100 text-xs">3. WebGIS Layer Controls &amp; Base Maps</h4>
                       <p className="text-slate-400">
-                        Use the layer control panel on the map to toggle subgrid boundary overlays, panorama trajectory points, and high-voltage grid lines.
+                        Use the map layer panel to toggle subgrid bounding boxes, trajectory polyline features, 360° panorama capture nodes, and high-voltage electrical grid lines.
                       </p>
                     </div>
                   </div>
@@ -8404,17 +9239,17 @@ export default function App() {
 
                 {helpGuideTab === 'panorama' && (
                   <div className="space-y-3">
-                    <div className="bg-[#0b0f17] p-3.5 rounded-lg border border-[rgba(255,255,255,0.06)] space-y-1">
-                      <h4 className="font-semibold text-white text-xs">1. Navigating Panoramas</h4>
+                    <div className="bg-[#0b0f17] p-3.5 rounded-lg border border-slate-800 space-y-1">
+                      <h4 className="font-semibold text-slate-100 text-xs">1. Equirectangular 360° VR Camera Controls</h4>
                       <p className="text-slate-400">
-                        Click and drag inside the 360° viewer to rotate camera view. Use previous/next buttons to step along trajectory frames.
+                        Click and drag inside the 360° viewer to rotate pitch and yaw. Use the step controls or keyboard arrow keys to navigate forward/backward along vehicle trajectory frames.
                       </p>
                     </div>
 
-                    <div className="bg-[#0b0f17] p-3.5 rounded-lg border border-[rgba(255,255,255,0.06)] space-y-1">
-                      <h4 className="font-semibold text-white text-xs">2. Defect Inspection & QA Validation</h4>
+                    <div className="bg-[#0b0f17] p-3.5 rounded-lg border border-slate-800 space-y-1">
+                      <h4 className="font-semibold text-slate-100 text-xs">2. Defect Inspection &amp; QA Benchmark Verification</h4>
                       <p className="text-slate-400">
-                        When AI defect detection flags a frame, review defect type and answer QA questionnaire (YES/NO) to update database defect status.
+                        Frames with flagged defects (<code className="bg-slate-800 px-1 py-0.5 rounded text-slate-300 font-mono text-[10px]">Blurry Frame, Lens Obstruction, GPS Offset</code>) display automated defect questionnaires. Operator YES/NO validations immediately update defect status in Supabase.
                       </p>
                     </div>
                   </div>
@@ -8422,24 +9257,24 @@ export default function App() {
 
                 {helpGuideTab === 'data' && (
                   <div className="space-y-3">
-                    <div className="bg-[#0b0f17] p-3.5 rounded-lg border border-[rgba(255,255,255,0.06)] space-y-1">
-                      <h4 className="font-semibold text-white text-xs">1. Column Filtering</h4>
+                    <div className="bg-[#0b0f17] p-3.5 rounded-lg border border-slate-800 space-y-1">
+                      <h4 className="font-semibold text-slate-100 text-xs">1. Masterlist Trajectories vs Preserved Daily Passes</h4>
                       <p className="text-slate-400">
-                        Click the filter button on table column headers to filter records by subgrid, date, or PIC.
+                        Toggle between <strong>Masterlist Aggregated Trajectories</strong> (consolidates subgrid survey distance &amp; POIs) and <strong>Preserved Daily Survey Runs</strong> (retains unique survey dates &amp; PIC operator history).
                       </p>
                     </div>
 
-                    <div className="bg-[#0b0f17] p-3.5 rounded-lg border border-[rgba(255,255,255,0.06)] space-y-1">
-                      <h4 className="font-semibold text-white text-xs">2. Authorized Data Editing & Deletion</h4>
+                    <div className="bg-[#0b0f17] p-3.5 rounded-lg border border-slate-800 space-y-1">
+                      <h4 className="font-semibold text-slate-100 text-xs">2. Passcode-Protected Admin Edits &amp; Deletions</h4>
                       <p className="text-slate-400">
-                        Click edit or delete icons to update records. Record deletion requires admin passcode verification for audit security.
+                        Table records can be edited or deleted. Record deletions require security passcode verification to prevent unauthorized data loss and ensure audit trail integrity.
                       </p>
                     </div>
 
-                    <div className="bg-[#0b0f17] p-3.5 rounded-lg border border-[rgba(255,255,255,0.06)] space-y-1">
-                      <h4 className="font-semibold text-white text-xs">3. Real-Time Production DB Publishing</h4>
+                    <div className="bg-[#0b0f17] p-3.5 rounded-lg border border-slate-800 space-y-1">
+                      <h4 className="font-semibold text-slate-100 text-xs">3. Real-Time Supabase PostgreSQL Sync</h4>
                       <p className="text-slate-400">
-                        Click <strong className="text-slate-200">Publish All to Database</strong> to sync processed subgrid trajectories directly to Supabase PostgreSQL database.
+                        Click <strong>Publish All to Database</strong> to synchronize processed subgrid trajectories directly to Supabase production tables with live notifications.
                       </p>
                     </div>
                   </div>
@@ -8447,17 +9282,24 @@ export default function App() {
 
                 {helpGuideTab === 'audit' && (
                   <div className="space-y-3">
-                    <div className="bg-[#0b0f17] p-3.5 rounded-lg border border-[rgba(255,255,255,0.06)] space-y-1">
-                      <h4 className="font-semibold text-white text-xs">1. Batch Audit Logs</h4>
+                    <div className="bg-[#0b0f17] p-3.5 rounded-lg border border-slate-800 space-y-1">
+                      <h4 className="font-semibold text-slate-100 text-xs">1. Chronological Activity Audit Logs</h4>
                       <p className="text-slate-400">
-                        Click the audit log icon in top header to view logged user edits, creates, deletes, publishes, and errors with date track-back filtering.
+                        Click the audit log icon in top header to view logged user actions (create, edit, delete, publish, error) with date track-back filtering and user signatures.
                       </p>
                     </div>
 
-                    <div className="bg-[#0b0f17] p-3.5 rounded-lg border border-[rgba(255,255,255,0.06)] space-y-1">
-                      <h4 className="font-semibold text-white text-xs">2. Publish Notifications</h4>
+                    <div className="bg-[#0b0f17] p-3.5 rounded-lg border border-slate-800 space-y-1">
+                      <h4 className="font-semibold text-slate-100 text-xs">2. Real-Time Publish Notifications</h4>
                       <p className="text-slate-400">
-                        The notification icon alerts you whenever data is published to production, showing total data included and date published.
+                        The notification bell alerts you whenever survey runs or masterlists are published to Supabase, showing total items updated and timestamp.
+                      </p>
+                    </div>
+
+                    <div className="bg-[#0b0f17] p-3.5 rounded-lg border border-slate-800 space-y-1">
+                      <h4 className="font-semibold text-slate-100 text-xs">3. Executive Client PDF Deliverable Generator</h4>
+                      <p className="text-slate-400">
+                        Export one-click PDF QA summary reports containing subgrid defect pass rates, total surveyed kilometers, and client SLA verification sign-offs.
                       </p>
                     </div>
                   </div>
@@ -8482,6 +9324,120 @@ export default function App() {
                   className="px-4 py-2 bg-[#1f2937] hover:bg-slate-700 text-white text-xs font-semibold rounded-lg transition-all cursor-pointer"
                 >
                   Close Manual
+                </button>
+              </div>
+
+            </div>
+          </div>
+        )}
+
+        {/* ========================================================= */}
+        {/* ABOUT DASHBOARD MODAL (Monochromatic Executive System Breakdown) */}
+        {/* ========================================================= */}
+        {isAboutModalOpen && (
+          <div className="fixed inset-0 top-0 left-0 right-0 bottom-0 w-full h-full bg-slate-950/95 backdrop-blur-md z-[99999] flex items-center justify-center p-4 animate-in fade-in duration-150">
+            <div className="bg-[#111827] border border-slate-800 rounded-2xl w-full max-w-3xl shadow-2xl flex flex-col overflow-hidden text-slate-200">
+
+              {/* Modal Header */}
+              <div className="p-5 bg-[#0b0f17] border-b border-slate-800 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-xl bg-slate-800 border border-slate-700 text-slate-300 shadow-sm">
+                    <Info size={20} />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-bold text-white tracking-wide">
+                      360 Mobile Mapping Processing Dashboard
+                    </h2>
+                    <p className="text-xs text-slate-400 font-mono">
+                      Version 2.4.0 (Executive Enterprise Build)
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsAboutModalOpen(false)}
+                  className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Modal Body Content */}
+              <div className="p-6 space-y-5 text-xs text-slate-300 leading-relaxed overflow-y-auto max-h-[75vh]">
+
+                {/* 1. System Purpose & Domain Overview */}
+                <div className="p-4 rounded-xl bg-[#0b0f17] border border-slate-800 space-y-2">
+                  <h3 className="font-bold text-slate-200 text-xs uppercase tracking-wider flex items-center gap-2">
+                    <span>System Purpose &amp; Domain Architecture</span>
+                  </h3>
+                  <p className="text-slate-300 text-[11.5px] leading-relaxed">
+                    Engineered specifically for <strong>TNB 360° Mobile Mapping Operations</strong>, this WebGIS processing platform provides unified spatial trajectory analytics, automated subgrid deduplication, live Supabase PostGIS synchronization, and interactive 360° StreetView quality control inspection.
+                  </p>
+                </div>
+
+                {/* 2. Technical Specifications & GIS Core */}
+                <div className="space-y-2">
+                  <h4 className="font-bold text-slate-300 text-xs uppercase tracking-wider">
+                    Technical Specifications &amp; GIS Core
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 font-mono text-[11px]">
+                    <div className="p-3 rounded-xl bg-[#0b0f17] border border-slate-800/80 space-y-1">
+                      <span className="text-slate-500 block text-[10px] uppercase">GIS Mapping Engine</span>
+                      <span className="text-slate-200 font-bold">PostGIS 3.4 + Leaflet 1.9 + WebGL</span>
+                    </div>
+                    <div className="p-3 rounded-xl bg-[#0b0f17] border border-slate-800/80 space-y-1">
+                      <span className="text-slate-500 block text-[10px] uppercase">Database Architecture</span>
+                      <span className="text-slate-200 font-bold">Supabase PostgreSQL (Realtime Listener)</span>
+                    </div>
+                    <div className="p-3 rounded-xl bg-[#0b0f17] border border-slate-800/80 space-y-1">
+                      <span className="text-slate-500 block text-[10px] uppercase">Coordinate Reference Systems</span>
+                      <span className="text-slate-200 font-bold">EPSG:4326, 3857, 3375 (Kertau RSO)</span>
+                    </div>
+                    <div className="p-3 rounded-xl bg-[#0b0f17] border border-slate-800/80 space-y-1">
+                      <span className="text-slate-500 block text-[10px] uppercase">360° Inspection Engine</span>
+                      <span className="text-slate-200 font-bold">Pannellum Equirectangular VR</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 4. Core Workflow Capabilities */}
+                <div className="space-y-2.5">
+                  <h4 className="font-bold text-slate-300 text-xs uppercase tracking-wider">
+                    Core Workflow Capabilities &amp; Features
+                  </h4>
+                  <div className="space-y-2 text-slate-300 text-[11.5px] leading-relaxed">
+                    <div className="p-3 rounded-xl bg-[#0b0f17] border border-slate-800/80 space-y-1">
+                      <div className="font-bold text-slate-200">1. Subgrid Trajectory Deduplication Strategy</div>
+                      <p className="text-slate-400 text-[11px]">
+                        Auto-normalizes subgrid keys (<code className="bg-slate-800 px-1 py-0.5 rounded text-slate-300 font-mono text-[10px]">N93-E70 &rarr; N93E70</code>). Offers choice between Masterlist clean merge or preserved daily survey runs.
+                      </p>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-[#0b0f17] border border-slate-800/80 space-y-1">
+                      <div className="font-bold text-slate-200">2. Interactive 360° QA Inspector &amp; SLA Benchmarks</div>
+                      <p className="text-slate-400 text-[11px]">
+                        Supports AI defect threshold benchmarks (<code className="bg-slate-800 px-1 py-0.5 rounded text-slate-300 font-mono text-[10px]">95%, 85%, 75%, 60%</code>) with custom flag labels (<code className="bg-slate-800 px-1 py-0.5 rounded text-slate-300 font-mono text-[10px]">Blurry Frame, Lens Obstruction, Bad GPS</code>).
+                      </p>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-[#0b0f17] border border-slate-800/80 space-y-1">
+                      <div className="font-bold text-slate-200">3. Executive PDF Summary Report Generator</div>
+                      <p className="text-slate-400 text-[11px]">
+                        Generates client-ready QA PDF deliverables with automated pass/fail calculations and survey metrics.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Modal Footer */}
+              <div className="p-4 bg-[#0b0f17] border-t border-slate-800 flex justify-between items-center text-[11px] text-slate-400 shrink-0 font-mono">
+                <span>© 2026 TNB Mobile Mapping Processing Dashboard</span>
+                <button
+                  onClick={() => setIsAboutModalOpen(false)}
+                  className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium rounded-lg border border-slate-700 transition-all cursor-pointer shadow-sm"
+                >
+                  Close System Info
                 </button>
               </div>
 
