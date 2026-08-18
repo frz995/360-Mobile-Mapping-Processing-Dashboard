@@ -844,10 +844,18 @@ export async function verifyCsvImageFilenamesInStorage(filenames: string[]): Pro
   return { availableCount, verifiedFilenames };
 }
 
+let storageCountsCache: { data: Record<string, number>; timestamp: number } | null = null;
+
 /**
  * Count actual uploaded images in MMS_PIC storage bucket grouped by subgrid.
+ * Caches results for 10 seconds to prevent unnecessary duplicate network calls.
  */
-export async function getStorageImageCountsFromSupabase(): Promise<Record<string, number>> {
+export async function getStorageImageCountsFromSupabase(forceRefresh: boolean = false): Promise<Record<string, number>> {
+  const now = Date.now();
+  if (!forceRefresh && storageCountsCache && (now - storageCountsCache.timestamp < 10000)) {
+    return storageCountsCache.data;
+  }
+
   const storageCounts: Record<string, number> = {};
   try {
     let offset = 0;
@@ -879,6 +887,8 @@ export async function getStorageImageCountsFromSupabase(): Promise<Record<string
   } catch (err) {
     console.warn('MMS_PIC storage list exception:', err);
   }
+
+  storageCountsCache = { data: storageCounts, timestamp: now };
   return storageCounts;
 }
 
