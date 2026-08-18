@@ -1743,30 +1743,17 @@ const DataManagementPage = ({
       }
     }
 
-    const existingSubgridSet = new Set(dailyData.map(d => (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim()).filter(Boolean));
-    const duplicateNames = Array.from(new Set(imported.map(d => (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim()).filter(sg => existingSubgridSet.has(sg))));
-
-    // Replace matching subgrid entries cleanly to prevent duplicate rows and merge verified image counts
-    const importedMap = new Map(imported.map(imp => [(extractSubgridName(imp.subgrid) || imp.subgrid || '').toUpperCase().trim(), imp]));
-    const updatedDraft: DailyTimeSeries[] = [];
-
-    draftDailyData.forEach(d => {
-      const normSg = (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim();
-      if (importedMap.has(normSg)) {
-        const fresh = importedMap.get(normSg)!;
-        importedMap.delete(normSg);
-        updatedDraft.push({
-          ...d,
-          ...fresh,
-          id: d.id || fresh.id
-        });
+    // Preserve each imported CSV entry as a separate Daily Data record
+    const updatedDraft: DailyTimeSeries[] = [...draftDailyData];
+    
+    imported.forEach(newImp => {
+      const existingIndex = updatedDraft.findIndex(d => d.id === newImp.id);
+      if (existingIndex >= 0) {
+        updatedDraft[existingIndex] = newImp;
       } else {
-        updatedDraft.push(d);
+        updatedDraft.push(newImp);
       }
     });
-
-    // Append new subgrids
-    importedMap.forEach(newImp => updatedDraft.push(newImp));
 
     const updatedBatchLogs = reconcileBatchLogs(updatedDraft, batchLogs);
 
@@ -1776,19 +1763,11 @@ const DataManagementPage = ({
     setIsDailyDirty(true);
     setIsCsvImportOpen(false);
 
-    if (duplicateNames.length > 0) {
-      setPublishMessage({
-        text: `Multiple data detected for subgrid(s) (${duplicateNames.join(', ')}). Merged records cleanly into Staging list.`,
-        type: 'error'
-      });
-      addAuditLog?.('CREATE', 'Multiple Data Detected on CSV Import', `Duplicate subgrid data detected for ${duplicateNames.join(', ')}. Merged into staging list.`, 'info');
-    } else {
-      setPublishMessage({
-        text: `Successfully imported ${imported.length} subgrid record(s) into Staging list!`,
-        type: 'success'
-      });
-      addAuditLog?.('CREATE', 'CSV Import Executed', `Imported ${imported.length} subgrid(s) into local staging list.`, 'success');
-    }
+    setPublishMessage({
+      text: `Successfully imported ${imported.length} record(s) into Daily Data Staging!`,
+      type: 'success'
+    });
+    addAuditLog?.('CREATE', 'CSV Import Executed', `Imported ${imported.length} separate record(s) into Daily Data staging list.`, 'success');
 
     try {
       localStorage.setItem('dailyData_v31', JSON.stringify(updatedDraft));
