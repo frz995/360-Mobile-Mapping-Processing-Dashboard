@@ -2188,7 +2188,9 @@ const DataManagementPage = ({
 
   const getItemId = (item: BatchLog | DailyTimeSeries): string => {
     if (item.id) return item.id;
-    return `${item.date}-${item.subgrid}`;
+    const poi = (item as any).poiCount || (item as any).imagesProcessed || (item as any).images || 0;
+    const km = (item as any).kmProcessed || 0;
+    return `row-${item.date || 'nodate'}-${item.subgrid || 'nosub'}-${poi}-${km}`;
   };
 
   // Filtered & Paginated Data
@@ -5018,7 +5020,8 @@ export default function App() {
             }
 
             const dateKey = (d.date || '').toLowerCase().trim();
-            const fullKey = `${normSg}_${dateKey}_${d.id || ''}`;
+            const poiKey = d.poiCount || d.imagesProcessed || 0;
+            const fullKey = d.id ? d.id : `${normSg}_${dateKey}_${poiKey}`;
             if (!seenKeys.has(fullKey)) {
               seenKeys.add(fullKey);
               const maxPoi = d.poiCount || (d.panoramas?.length) || 0;
