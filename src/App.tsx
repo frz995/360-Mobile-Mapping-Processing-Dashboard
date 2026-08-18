@@ -179,18 +179,18 @@ export function getPOICount(item?: { poiCount?: number; imagesProcessed?: number
 export function getImagesProcessedCount(item?: { imagesProcessed?: number; images?: number; availableImagesCount?: number; panoramas?: PanoramaItem[]; poiCount?: number; publishToWebGIS?: string; status?: string; isSyncedWithSupabase?: boolean; subgrid?: string }): number {
   if (!item) return 0;
 
-  // 1. Highest priority: Verified available image files in Supabase Storage
-  if (typeof item.availableImagesCount === 'number' && item.availableImagesCount >= 0) {
+  // 1. Highest priority: Verified available image files in Supabase Storage (> 0)
+  if (typeof item.availableImagesCount === 'number' && item.availableImagesCount > 0) {
     return item.availableImagesCount;
   }
 
-  // 2. Explicit imagesProcessed property
-  if (typeof item.imagesProcessed === 'number' && item.imagesProcessed >= 0) {
+  // 2. Explicit imagesProcessed property (> 0)
+  if (typeof item.imagesProcessed === 'number' && item.imagesProcessed > 0) {
     return item.imagesProcessed;
   }
 
-  // 3. Explicit images property
-  if (typeof item.images === 'number' && item.images >= 0) {
+  // 3. Explicit images property (> 0)
+  if (typeof item.images === 'number' && item.images > 0) {
     return item.images;
   }
 
@@ -199,12 +199,17 @@ export function getImagesProcessedCount(item?: { imagesProcessed?: number; image
     if (item.subgrid) {
       const subFilter = (extractSubgridName(item.subgrid) || item.subgrid).toUpperCase().trim();
       const filtered = item.panoramas.filter(p => (extractSubgridName(p.filename) || '').toUpperCase().trim() === subFilter);
-      return filtered.length > 0 ? filtered.length : item.panoramas.length;
+      if (filtered.length > 0) return filtered.length;
     }
     return item.panoramas.length;
   }
 
-  return 0;
+  // 5. POI count fallback
+  if (typeof item.poiCount === 'number' && item.poiCount > 0) {
+    return item.poiCount;
+  }
+
+  return item.availableImagesCount || item.imagesProcessed || item.images || item.poiCount || 0;
 }
 
 
@@ -5015,10 +5020,10 @@ export default function App() {
             if (!seenKeys.has(fullKey)) {
               seenKeys.add(fullKey);
               const maxPoi = d.poiCount || (d.panoramas?.length) || 0;
-              const rawImg = typeof d.availableImagesCount === 'number'
+              const rawImg = (typeof d.availableImagesCount === 'number' && d.availableImagesCount > 0)
                 ? d.availableImagesCount
-                : (typeof d.imagesProcessed === 'number' ? d.imagesProcessed : maxPoi);
-              const cappedImg = maxPoi > 0 ? Math.min(rawImg, maxPoi) : rawImg;
+                : ((typeof d.imagesProcessed === 'number' && d.imagesProcessed > 0) ? d.imagesProcessed : maxPoi);
+              const cappedImg = maxPoi > 0 ? (rawImg > 0 ? Math.min(rawImg, maxPoi) : maxPoi) : rawImg;
               const existsInProductionDb = Boolean(normSg && publishedSubgridSet.has(normSg));
               const isPub = d.publishToWebGIS === 'yes' || d.isFromSupabase === true || (!isStaged && existsInProductionDb);
 
@@ -5212,12 +5217,12 @@ export default function App() {
           const normSg = (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim();
           const countInStorage = storageCounts[normSg];
 
-          // If MMS_PIC storage bucket has files for this subgrid, use exact storage count; otherwise default to 0 if not uploaded yet
-          const actualImageCount = countInStorage !== undefined ? countInStorage : 0;
-
-          if (d.availableImagesCount !== actualImageCount || d.imagesProcessed !== actualImageCount) {
-            updated = true;
-            return { ...d, availableImagesCount: actualImageCount, imagesProcessed: actualImageCount };
+          // If MMS_PIC storage bucket has verified files (> 0) for this subgrid, use exact storage count; otherwise preserve existing counts/POI
+          if (countInStorage !== undefined && countInStorage > 0) {
+            if (d.availableImagesCount !== countInStorage || d.imagesProcessed !== countInStorage) {
+              updated = true;
+              return { ...d, availableImagesCount: countInStorage, imagesProcessed: countInStorage };
+            }
           }
           return d;
         });
