@@ -1832,17 +1832,24 @@ const DataManagementPage = ({
       localStorage.setItem('batchLogs_v31', JSON.stringify(updatedBatchLogs));
     } catch (e) { }
 
-    // Persist imported items to staging_panoramas in Supabase asynchronously
-    imported.forEach(item => {
-      saveToStagingSupabase(item).catch(err => console.warn('Background staging insert notice:', err));
+    // Persist imported items to staging_panoramas in Supabase asynchronously & verify actual storage images
+    imported.forEach(async imp => {
+      saveToStagingSupabase(imp).catch(err => console.warn('Background staging insert notice:', err));
+      const filenames = (imp.panoramas && imp.panoramas.length > 0)
+        ? imp.panoramas.map((p: any) => p.filename).filter((fn: any): fn is string => Boolean(fn))
+        : Array.from({ length: imp.poiCount || 1 }, (_, i) => `${imp.subgrid}-${String(i + 1).padStart(4, '0')}.jpg`);
+      if (filenames.length > 0) {
+        try {
+          const { availableCount } = await verifyCsvImageFilenamesInStorage(filenames);
+          if (availableCount >= 0) {
+            const sgFilter = (extractSubgridName(imp.subgrid) || '').toUpperCase().trim();
+            const nextDraft = updatedDraft.map(d => (extractSubgridName(d.subgrid) || '').toUpperCase().trim() === sgFilter ? { ...d, availableImagesCount: availableCount, imagesProcessed: availableCount } : d);
+            setDraftDailyData(nextDraft);
+            setDailyData(nextDraft);
+          }
+        } catch { }
+      }
     });
-
-    // Save staged records to Supabase staging_panoramas table for cross-session/cross-device persistence
-    if (!directPublish && imported.length > 0) {
-      Promise.all(imported.map(imp => saveToStagingSupabase(imp)))
-        .then(() => console.log('Successfully persisted CSV records into Supabase staging_panoramas table.'))
-        .catch(err => console.warn('Notice: Supabase staging table sync notice:', err));
-    }
 
     // Broadcast staged data update (with 50% opacity & matching trajectory colors) to WebGIS map iframes
     const iframes = document.querySelectorAll('iframe');
@@ -5204,7 +5211,7 @@ export default function App() {
     };
   }, []);
 
-  // Verify actual 360° image files in MMS_PIC storage bucket for all daily subgrids
+  // Verify actual 360° image files in storage asynchronously for all daily subgrids (matching post-publish logic 1:1)
   useEffect(() => {
     let isMounted = true;
     (async () => {
@@ -5213,19 +5220,32 @@ export default function App() {
         if (!isMounted) return;
 
         let updated = false;
-        const verifiedList = dailyData.map(d => {
+        const verifiedList = await Promise.all(dailyData.map(async d => {
           const normSg = (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim();
-          const countInStorage = storageCounts[normSg];
+          let countInStorage = storageCounts[normSg];
 
-          // If MMS_PIC storage bucket has verified files (> 0) for this subgrid, use exact storage count; otherwise preserve existing counts/POI
-          if (countInStorage !== undefined && countInStorage > 0) {
-            if (d.availableImagesCount !== countInStorage || d.imagesProcessed !== countInStorage) {
-              updated = true;
-              return { ...d, availableImagesCount: countInStorage, imagesProcessed: countInStorage };
+          if (countInStorage === undefined || countInStorage === 0) {
+            const filenames = (d.panoramas && d.panoramas.length > 0)
+              ? d.panoramas.map((p: any) => p.filename).filter((fn: any): fn is string => Boolean(fn))
+              : Array.from({ length: d.poiCount || 1 }, (_, i) => `${d.subgrid || normSg}-${String(i + 1).padStart(4, '0')}.jpg`);
+            if (filenames.length > 0) {
+              try {
+                const { availableCount } = await verifyCsvImageFilenamesInStorage(filenames, projectSettings);
+                if (availableCount >= 0) {
+                  countInStorage = availableCount;
+                }
+              } catch { }
             }
           }
+
+          const finalVerifiedCount = countInStorage !== undefined ? countInStorage : 0;
+
+          if (d.availableImagesCount !== finalVerifiedCount || d.imagesProcessed !== finalVerifiedCount) {
+            updated = true;
+            return { ...d, availableImagesCount: finalVerifiedCount, imagesProcessed: finalVerifiedCount };
+          }
           return d;
-        });
+        }));
 
         if (updated && isMounted) {
           setDailyData(verifiedList);
