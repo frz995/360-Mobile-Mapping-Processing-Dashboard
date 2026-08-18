@@ -799,16 +799,15 @@ export async function fetchQaRecordsFromSupabase(): Promise<Record<string, { fla
  * Verify whether specific CSV image filenames exist in Supabase MMS_PIC storage bucket.
  * Returns the count and list of image files verified to exist in storage.
  */
-export async function verifyCsvImageFilenamesInStorage(filenames: string[]): Promise<{ availableCount: number; verifiedFilenames: string[] }> {
+export async function verifyCsvImageFilenamesInStorage(filenames: string[], settings?: any): Promise<{ availableCount: number; verifiedFilenames: string[] }> {
   if (!filenames || filenames.length === 0) return { availableCount: 0, verifiedFilenames: [] };
 
-  const supabaseStorageBase = `${supabaseUrl}/storage/v1/object/public/MMS_PIC`;
   const verifiedFilenames: string[] = [];
   let availableCount = 0;
 
   const checkSingleFile = (fn: string): Promise<boolean> => {
-    const cleanFn = fn.replace(/^\/+/, '').replace(/^MMS_PIC\//i, '').replace(/^mms_pic\//i, '').trim();
-    const url = `${supabaseStorageBase}/${cleanFn}`;
+    const url = resolvePanoramaUrl(fn, settings);
+    if (!url) return Promise.resolve(false);
 
     return new Promise(resolve => {
       fetch(url, { method: 'GET', headers: { Range: 'bytes=0-0' } })
@@ -844,19 +843,93 @@ export async function verifyCsvImageFilenamesInStorage(filenames: string[]): Pro
   return { availableCount, verifiedFilenames };
 }
 
+export type StorageProviderType =
+  | 'supabase'
+  | 'aws_s3'
+  | 'gcs'
+  | 'azure_blob'
+  | 'cloudflare_r2'
+  | 'wasabi'
+  | 'nas_local'
+  | 'custom_cdn';
+
+/**
+ * Universal Image URL Resolver for GIS Industry Cloud & NAS Storage Providers.
+ * Resolves 360° panorama image URLs across Supabase, AWS S3, GCS, Azure Blob, Cloudflare R2, Wasabi, and Local NAS.
+ */
+export function resolvePanoramaUrl(filename?: string, settings?: any): string {
+  if (!filename) return '';
+  const cleanFn = filename.replace(/^\/+/, '').replace(/^MMS_PIC\//i, '').trim();
+  if (!cleanFn) return '';
+
+  // 1. Direct absolute URL (e.g. S3/GCS signed URL stored directly in database)
+  if (cleanFn.startsWith('http://') || cleanFn.startsWith('https://')) {
+    return cleanFn;
+  }
+
+  const provider: StorageProviderType = settings?.storageProvider || import.meta.env.VITE_STORAGE_PROVIDER || 'supabase';
+  const customBase: string = settings?.cloudStorageBaseUrl || settings?.imageStoragePath || import.meta.env.VITE_IMAGE_CDN_URL || '';
+
+  // 2. Custom CDN / Direct URL prefix provided in Settings or Env
+  if (customBase && (customBase.startsWith('http://') || customBase.startsWith('https://'))) {
+    return `${customBase.replace(/\/+$/, '')}/${cleanFn}`;
+  }
+
+  switch (provider) {
+    case 'aws_s3': {
+      const bucket = settings?.s3Bucket || import.meta.env.VITE_S3_BUCKET || 'tnb-mobilemapping-panoramas';
+      const region = settings?.s3Region || import.meta.env.VITE_S3_REGION || 'ap-southeast-1';
+      return `https://${bucket}.s3.${region}.amazonaws.com/${cleanFn}`;
+    }
+    case 'gcs': {
+      const bucket = settings?.gcsBucket || import.meta.env.VITE_GCS_BUCKET || 'tnb-gis-360-panoramas';
+      return `https://storage.googleapis.com/${bucket}/${cleanFn}`;
+    }
+    case 'azure_blob': {
+      const account = settings?.azureAccount || import.meta.env.VITE_AZURE_ACCOUNT || 'tnbgisstorage';
+      const container = settings?.azureContainer || import.meta.env.VITE_AZURE_CONTAINER || 'panoramas';
+      return `https://${account}.blob.core.windows.net/${container}/${cleanFn}`;
+    }
+    case 'cloudflare_r2': {
+      const r2Domain = settings?.r2Domain || import.meta.env.VITE_R2_DOMAIN || 'pub-360.r2.dev';
+      return `https://${r2Domain.replace(/\/+$/, '')}/${cleanFn}`;
+    }
+    case 'wasabi': {
+      const bucket = settings?.wasabiBucket || import.meta.env.VITE_WASABI_BUCKET || 'tnb-wasabi-panoramas';
+      const region = settings?.wasabiRegion || import.meta.env.VITE_WASABI_REGION || 'us-east-1';
+      return `https://s3.${region}.wasabisys.com/${bucket}/${cleanFn}`;
+    }
+    case 'nas_local': {
+      const nasUrl = settings?.nasServerUrl || import.meta.env.VITE_NAS_SERVER_URL || 'http://192.168.1.100/360_images';
+      return `${nasUrl.replace(/\/+$/, '')}/${cleanFn}`;
+    }
+    case 'custom_cdn': {
+      const cdnUrl = settings?.customCdnUrl || import.meta.env.VITE_CUSTOM_CDN_URL || '/MMS_PIC';
+      return `${cdnUrl.replace(/\/+$/, '')}/${cleanFn}`;
+    }
+    case 'supabase':
+    default: {
+      const bucket = settings?.supabaseBucket || import.meta.env.VITE_SUPABASE_BUCKET || 'MMS_PIC';
+      return `${supabaseUrl}/storage/v1/object/public/${bucket}/${cleanFn}`;
+    }
+  }
+}
+
 let storageCountsCache: { data: Record<string, number>; timestamp: number } | null = null;
 
 /**
- * Count actual uploaded images in MMS_PIC storage bucket grouped by subgrid.
+ * Count actual uploaded images in storage bucket grouped by subgrid.
  * Caches results for 10 seconds to prevent unnecessary duplicate network calls.
  */
-export async function getStorageImageCountsFromSupabase(forceRefresh: boolean = false): Promise<Record<string, number>> {
+export async function getStorageImageCountsFromSupabase(forceRefresh: boolean = false, settings?: any): Promise<Record<string, number>> {
   const now = Date.now();
   if (!forceRefresh && storageCountsCache && (now - storageCountsCache.timestamp < 10000)) {
     return storageCountsCache.data;
   }
 
+  const bucketName = settings?.supabaseBucket || import.meta.env.VITE_SUPABASE_BUCKET || 'MMS_PIC';
   const storageCounts: Record<string, number> = {};
+
   try {
     let offset = 0;
     const limit = 100;
@@ -864,7 +937,7 @@ export async function getStorageImageCountsFromSupabase(forceRefresh: boolean = 
     let totalFetched = 0;
 
     while (hasMore && totalFetched < 10000) {
-      const { data: storageFiles, error: storageError } = await supabase.storage.from('MMS_PIC').list('', { limit, offset });
+      const { data: storageFiles, error: storageError } = await supabase.storage.from(bucketName).list('', { limit, offset });
       if (storageError || !storageFiles || storageFiles.length === 0) {
         break;
       }
@@ -885,7 +958,7 @@ export async function getStorageImageCountsFromSupabase(forceRefresh: boolean = 
       }
     }
   } catch (err) {
-    console.warn('MMS_PIC storage list exception:', err);
+    console.warn('Storage bucket list exception:', err);
   }
 
   storageCountsCache = { data: storageCounts, timestamp: now };

@@ -43,7 +43,7 @@ import {
   Moon,
   Settings
 } from 'lucide-react';
-import { supabase, publishToSupabase, saveToStagingSupabase, deleteFromStagingSupabase, fetchSupabaseData, deleteFromSupabase, updateDefectStatusInSupabase, fetchQaRecordsFromSupabase, verifyCsvImageFilenamesInStorage, fetchAuditLogsFromSupabase, saveAuditLogToSupabase, fetchNotificationsFromSupabase, saveNotificationToSupabase, getStorageImageCountsFromSupabase } from './services/supabase';
+import { supabase, publishToSupabase, saveToStagingSupabase, deleteFromStagingSupabase, fetchSupabaseData, deleteFromSupabase, updateDefectStatusInSupabase, fetchQaRecordsFromSupabase, verifyCsvImageFilenamesInStorage, fetchAuditLogsFromSupabase, saveAuditLogToSupabase, fetchNotificationsFromSupabase, saveNotificationToSupabase, getStorageImageCountsFromSupabase, resolvePanoramaUrl } from './services/supabase';
 import * as shapefile from 'shapefile';
 import * as toGeoJSON from '@tmcw/togeojson';
 
@@ -5097,7 +5097,7 @@ export default function App() {
     let isMounted = true;
     (async () => {
       try {
-        const storageCounts = await getStorageImageCountsFromSupabase();
+        const storageCounts = await getStorageImageCountsFromSupabase(false, projectSettings);
         if (!isMounted) return;
 
         let updated = false;
@@ -5124,6 +5124,9 @@ export default function App() {
     })();
     return () => { isMounted = false; };
   }, [dailyData.length]);
+
+  // Universal Panorama URL Resolver helper driven by projectSettings
+  const getPanoramaUrl = (filename: string) => resolvePanoramaUrl(filename, projectSettings);
 
   // Save to localStorage whenever data changes
   useEffect(() => {
@@ -7696,10 +7699,11 @@ export default function App() {
                     onClick={() => {
                       try {
                         localStorage.setItem('tnb_project_settings', JSON.stringify(projectSettings));
-                        addAuditLog('EDIT', 'Saved Project & Database Settings', `Updated DB sync interval to ${projectSettings.dbAutoSyncSec}s and storage path to ${projectSettings.imageStoragePath}`, 'info');
+                        const sampleUrl = getPanoramaUrl('sample.jpg');
+                        addAuditLog('EDIT', 'Saved Project & Database Settings', `Updated storage provider to ${projectSettings.storageProvider || 'supabase'} (Sample URL: ${sampleUrl})`, 'info');
                         addNotification({
                           title: 'Settings Saved',
-                          message: 'Project settings and database configurations successfully saved.',
+                          message: `Project settings saved. Storage provider: ${projectSettings.storageProvider || 'supabase'}.`,
                           category: 'SYSTEM'
                         });
                         alert('Project & Database settings saved successfully!');
@@ -7804,27 +7808,119 @@ export default function App() {
 
                   <div className="space-y-3 text-xs">
                     <div>
-                      <label className="block text-slate-400 font-medium mb-1">Image Storage Fetch Source</label>
+                      <label className="block text-slate-400 font-medium mb-1">GIS Industry Storage Provider & Cloud Engine</label>
                       <select
-                        value={projectSettings.imageFetchSource || 'local'}
-                        onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, imageFetchSource: e.target.value }))}
-                        className="w-full bg-[#0b0f17] border border-slate-800 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-sky-500/80"
+                        value={projectSettings.storageProvider || 'supabase'}
+                        onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, storageProvider: e.target.value, imageFetchSource: e.target.value }))}
+                        className="w-full bg-[#0b0f17] border border-slate-800 rounded-xl px-3 py-2 text-slate-200 font-semibold focus:outline-none focus:border-sky-500/80"
                       >
-                        <option value="local">Local WebServer Path (/MMS_PIC/)</option>
-                        <option value="cloud">Supabase Storage Cloud Bucket (360-panoramas)</option>
-                        <option value="proxy">AWS S3 / External CDN Proxy</option>
+                        <option value="supabase">Supabase Cloud Storage (PostGIS Native)</option>
+                        <option value="aws_s3">Amazon Web Services (AWS S3 Bucket)</option>
+                        <option value="gcs">Google Cloud Storage (GCS Bucket)</option>
+                        <option value="azure_blob">Microsoft Azure Blob Storage</option>
+                        <option value="cloudflare_r2">Cloudflare R2 (Zero Egress Cost)</option>
+                        <option value="wasabi">Wasabi Hot Cloud Storage</option>
+                        <option value="nas_local">Local NAS / On-Premise Enterprise Server (SMB/NFS/HTTP)</option>
+                        <option value="custom_cdn">Custom CDN / Reverse Proxy URL</option>
                       </select>
                     </div>
 
-                    <div>
-                      <label className="block text-slate-400 font-medium mb-1">Storage Root Folder Path</label>
-                      <input
-                        type="text"
-                        value={projectSettings.imageStoragePath || '/MMS_PIC/'}
-                        onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, imageStoragePath: e.target.value }))}
-                        className="w-full bg-[#0b0f17] border border-slate-800 rounded-xl px-3 py-2 text-slate-200 font-mono focus:outline-none focus:border-sky-500/80"
-                      />
-                    </div>
+                    {/* DYNAMIC STORAGE CONFIGURATION FIELDS BASED ON SELECTED PROVIDER */}
+                    {projectSettings.storageProvider === 'aws_s3' ? (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-2.5 rounded-xl bg-slate-900/60 border border-slate-800">
+                        <div>
+                          <label className="block text-slate-400 font-medium mb-1">AWS S3 Bucket Name</label>
+                          <input
+                            type="text"
+                            value={projectSettings.s3Bucket || 'tnb-mobilemapping-panoramas'}
+                            onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, s3Bucket: e.target.value }))}
+                            placeholder="my-s3-bucket"
+                            className="w-full bg-[#0b0f17] border border-slate-800 rounded-xl px-3 py-1.5 text-slate-200 font-mono text-xs focus:outline-none focus:border-sky-500/80"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-slate-400 font-medium mb-1">AWS S3 Region</label>
+                          <input
+                            type="text"
+                            value={projectSettings.s3Region || 'ap-southeast-1'}
+                            onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, s3Region: e.target.value }))}
+                            placeholder="ap-southeast-1"
+                            className="w-full bg-[#0b0f17] border border-slate-800 rounded-xl px-3 py-1.5 text-slate-200 font-mono text-xs focus:outline-none focus:border-sky-500/80"
+                          />
+                        </div>
+                      </div>
+                    ) : projectSettings.storageProvider === 'gcs' ? (
+                      <div className="p-2.5 rounded-xl bg-slate-900/60 border border-slate-800">
+                        <label className="block text-slate-400 font-medium mb-1">Google Cloud Storage Bucket</label>
+                        <input
+                          type="text"
+                          value={projectSettings.gcsBucket || 'tnb-gis-360-panoramas'}
+                          onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, gcsBucket: e.target.value }))}
+                          placeholder="my-gcs-bucket"
+                          className="w-full bg-[#0b0f17] border border-slate-800 rounded-xl px-3 py-1.5 text-slate-200 font-mono text-xs focus:outline-none focus:border-sky-500/80"
+                        />
+                      </div>
+                    ) : projectSettings.storageProvider === 'azure_blob' ? (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-2.5 rounded-xl bg-slate-900/60 border border-slate-800">
+                        <div>
+                          <label className="block text-slate-400 font-medium mb-1">Azure Storage Account</label>
+                          <input
+                            type="text"
+                            value={projectSettings.azureAccount || 'tnbgisstorage'}
+                            onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, azureAccount: e.target.value }))}
+                            placeholder="myaccount"
+                            className="w-full bg-[#0b0f17] border border-slate-800 rounded-xl px-3 py-1.5 text-slate-200 font-mono text-xs focus:outline-none focus:border-sky-500/80"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-slate-400 font-medium mb-1">Container Name</label>
+                          <input
+                            type="text"
+                            value={projectSettings.azureContainer || 'panoramas'}
+                            onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, azureContainer: e.target.value }))}
+                            placeholder="panoramas"
+                            className="w-full bg-[#0b0f17] border border-slate-800 rounded-xl px-3 py-1.5 text-slate-200 font-mono text-xs focus:outline-none focus:border-sky-500/80"
+                          />
+                        </div>
+                      </div>
+                    ) : projectSettings.storageProvider === 'nas_local' ? (
+                      <div className="p-2.5 rounded-xl bg-amber-950/20 border border-amber-800/40 space-y-1.5">
+                        <label className="block text-amber-300 font-medium mb-1 flex items-center justify-between">
+                          <span>Local NAS Server IP / HTTP Share Endpoint</span>
+                          <span className="text-[9px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded font-mono">ON-PREMISE / TNB INTRANET</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={projectSettings.nasServerUrl || 'http://192.168.1.100/360_images'}
+                          onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, nasServerUrl: e.target.value, imageStoragePath: e.target.value }))}
+                          placeholder="http://192.168.1.100/360_images"
+                          className="w-full bg-[#0b0f17] border border-slate-800 rounded-xl px-3 py-1.5 text-slate-200 font-mono text-xs focus:outline-none focus:border-amber-500/80"
+                        />
+                        <p className="text-[10px] text-slate-400">Configure your local Synology/QNAP or intranet IIS/Nginx web server hosting 360° panoramas.</p>
+                      </div>
+                    ) : projectSettings.storageProvider === 'cloudflare_r2' ? (
+                      <div className="p-2.5 rounded-xl bg-slate-900/60 border border-slate-800">
+                        <label className="block text-slate-400 font-medium mb-1">Cloudflare R2 Public Domain</label>
+                        <input
+                          type="text"
+                          value={projectSettings.r2Domain || 'pub-360.r2.dev'}
+                          onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, r2Domain: e.target.value }))}
+                          placeholder="pub-xxx.r2.dev"
+                          className="w-full bg-[#0b0f17] border border-slate-800 rounded-xl px-3 py-1.5 text-slate-200 font-mono text-xs focus:outline-none focus:border-sky-500/80"
+                        />
+                      </div>
+                    ) : (
+                      <div>
+                        <label className="block text-slate-400 font-medium mb-1">Supabase Storage Bucket Name</label>
+                        <input
+                          type="text"
+                          value={projectSettings.supabaseBucket || 'MMS_PIC'}
+                          onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, supabaseBucket: e.target.value, imageStoragePath: `/storage/v1/object/public/${e.target.value}/` }))}
+                          placeholder="MMS_PIC"
+                          className="w-full bg-[#0b0f17] border border-slate-800 rounded-xl px-3 py-2 text-slate-200 font-mono focus:outline-none focus:border-sky-500/80"
+                        />
+                      </div>
+                    )}
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
