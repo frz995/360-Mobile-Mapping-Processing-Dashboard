@@ -740,11 +740,11 @@ const MapComponent = ({
   const formattedStagedItems = React.useMemo(() => {
     if (!stagedItems || stagedItems.length === 0) return [];
     return stagedItems.map(item => {
-      const isExplicitlyPublished = item.publishToWebGIS === 'yes';
+      const isExplicitlyPublished = item.publishToWebGIS === 'yes' || item.publishToUSVPRO === 'yes' || Boolean(item.isSyncedWithSupabase) || item.isFromSupabase === true;
       const isPub = item.isStagingPreview ? false : isExplicitlyPublished;
-      const itemStatus = item.publishToWebGIS || 'in process';
+      const itemStatus = isPub ? 'yes' : (item.publishToWebGIS || item.publishToUSVPRO || 'in process');
       const statusVal = isPub ? 'yes' : (itemStatus === 'need to recheck' || itemStatus === 'no' ? itemStatus : 'in process');
-      const op = isPub ? 1.0 : 0.5;
+      const op = isPub ? 1.0 : 0.7;
       const colorHex = isPub
         ? '#10b981'
         : (statusVal === 'need to recheck' || statusVal === 'no' ? '#ef4444' : '#f59e0b');
@@ -1423,6 +1423,7 @@ const DataManagementPage = ({
       if (selectedRowIds.has(getItemId(d))) {
         return {
           ...d,
+          publishToWebGIS: 'yes' as const,
           publishToUSVPRO: 'yes' as const,
           isSyncedWithSupabase: true,
           action: 'Published in database'
@@ -2266,6 +2267,7 @@ const DataManagementPage = ({
       setDailyData(updatedList);
       setBatchLogs(reconcileBatchLogs(updatedList, batchLogs));
       setIsDailyDirty(true);
+      try { localStorage.setItem('dailyData_v31', JSON.stringify(updatedList)); } catch { }
     } else {
       const updatedBatches = batchLogs.map(b => getItemId(b) === id ? { ...b, status: 'Complete' as const, isSyncedWithSupabase: true } : b);
       setBatchLogs(updatedBatches);
@@ -2274,6 +2276,24 @@ const DataManagementPage = ({
     // 2. Async Background Publish & Storage Verification
     try {
       const res = await publishToSupabase(item);
+
+      if (!res.success) {
+        if (!('images' in item)) {
+          const revertedItem: DailyTimeSeries = {
+            ...(item as DailyTimeSeries),
+            publishToWebGIS: 'in process',
+            isSyncedWithSupabase: false,
+            action: 'Publish failed'
+          };
+          const revertedList = draftDailyData.map(d => getItemId(d) === id ? revertedItem : d);
+          setDraftDailyData(revertedList);
+          setDailyData(revertedList);
+          try { localStorage.setItem('dailyData_v31', JSON.stringify(revertedList)); } catch { }
+        }
+        setPublishMessage({ text: res.message || 'Failed to publish record to database.', type: 'error' });
+        setTimeout(() => setPublishMessage(null), 5000);
+        return;
+      }
 
       if (!('images' in item)) {
         const dailyItem = item as DailyTimeSeries;
@@ -2306,6 +2326,7 @@ const DataManagementPage = ({
         setDraftDailyData(finalDailyList);
         setDailyData(finalDailyList);
         setBatchLogs(reconcileBatchLogs(finalDailyList, batchLogs));
+        try { localStorage.setItem('dailyData_v31', JSON.stringify(finalDailyList)); } catch { }
       }
 
       if (onRefreshMap) onRefreshMap();
@@ -2320,6 +2341,8 @@ const DataManagementPage = ({
       setTimeout(() => setPublishMessage(null), 4000);
     } catch (err) {
       console.error('Publish error:', err);
+      setPublishMessage({ text: 'Error publishing record to database.', type: 'error' });
+      setTimeout(() => setPublishMessage(null), 4000);
     } finally {
       setPublishingId(null);
     }
@@ -3298,9 +3321,10 @@ const DataManagementPage = ({
                                     if (val === 'yes') {
                                       handlePublishRecord(daily);
                                     } else {
-                                      const updated = draftDailyData.map(d => getItemId(d) === getItemId(daily) ? { ...d, publishToWebGIS: val } : d);
+                                      const updated = draftDailyData.map(d => getItemId(d) === getItemId(daily) ? { ...d, publishToWebGIS: val, isSyncedWithSupabase: false } : d);
                                       setDraftDailyData(updated);
                                       setDailyData(updated);
+                                      try { localStorage.setItem('dailyData_v31', JSON.stringify(updated)); } catch { }
                                     }
                                   }}
                                   className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs font-semibold text-slate-200 focus:outline-none focus:ring-1 focus:ring-slate-500 cursor-pointer"
@@ -4954,9 +4978,6 @@ export default function App() {
     return reconcileBatchLogs(dailyData, batchLogs);
   }, [dailyData, batchLogs, projectSettings?.deduplicationStrategy]);
 
-  const stagedOnlyItems = React.useMemo(() => {
-    return dailyData.filter(d => d.publishToWebGIS !== 'yes' || !d.isSyncedWithSupabase);
-  }, [dailyData]);
 
   // Fetch live database records on mount and merge with local drafts
   useEffect(() => {
@@ -4999,7 +5020,7 @@ export default function App() {
                 : (typeof d.imagesProcessed === 'number' ? d.imagesProcessed : maxPoi);
               const cappedImg = maxPoi > 0 ? Math.min(rawImg, maxPoi) : rawImg;
               const existsInProductionDb = Boolean(normSg && publishedSubgridSet.has(normSg));
-              const isPub = !isStaged && (existsInProductionDb || d.publishToWebGIS === 'yes' || d.isFromSupabase === true);
+              const isPub = d.publishToWebGIS === 'yes' || d.isFromSupabase === true || (!isStaged && existsInProductionDb);
 
               merged.push({
                 ...d,
@@ -7410,7 +7431,7 @@ export default function App() {
                       refreshKey={mapRefreshKey}
                       onManualRefresh={handleRefreshMap}
                       selectedSubgridFilter={selectedSubgridFilter}
-                      stagedItems={stagedOnlyItems}
+                      stagedItems={dailyData}
                     />
                   </div>
                 </div>
