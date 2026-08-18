@@ -43,7 +43,7 @@ import {
   Moon,
   Settings
 } from 'lucide-react';
-import { supabase, publishToSupabase, saveToStagingSupabase, deleteFromStagingSupabase, fetchSupabaseData, deleteFromSupabase, updateDefectStatusInSupabase, fetchQaRecordsFromSupabase, verifyCsvImageFilenamesInStorage } from './services/supabase';
+import { supabase, publishToSupabase, saveToStagingSupabase, deleteFromStagingSupabase, fetchSupabaseData, deleteFromSupabase, updateDefectStatusInSupabase, fetchQaRecordsFromSupabase, verifyCsvImageFilenamesInStorage, fetchAuditLogsFromSupabase, saveAuditLogToSupabase, fetchNotificationsFromSupabase, saveNotificationToSupabase } from './services/supabase';
 import * as shapefile from 'shapefile';
 import * as toGeoJSON from '@tmcw/togeojson';
 
@@ -1658,7 +1658,7 @@ const DataManagementPage = ({
 
       const fileSubgrid = extractSubgridName(fileItem.fileName);
 
-      fRows.forEach((row, rIdx) => {
+      fRows.forEach(row => {
         const rawSubgrid = getVal(row, 'subgrid');
         const filename = getRawColVal(row, ['filename', 'imagefilename', 'image_url', 'file']) || getVal(row, 'imageFilename') || rawSubgrid;
         const rowSubgrid = extractSubgridName(rawSubgrid) || extractSubgridName(filename);
@@ -1695,17 +1695,15 @@ const DataManagementPage = ({
         const pub = directPublish ? 'yes' : (['yes', 'no', 'need to recheck', 'in process'].includes(pubVal)
           ? pubVal as DailyTimeSeries['publishToWebGIS'] : 'in process');
 
-        // Group per row index / segment so separated CSV data rows remain individual daily entries
-        const rowKey = `${subgrid}_${date}_row${rIdx}`;
-        const existing = groupedInFile.get(rowKey);
+        const existing = groupedInFile.get(subgrid);
         if (existing) {
           existing.imagesProcessed += Number(getVal(row, 'imagesProcessed')) || (filename ? 1 : 0);
           existing.defectCount += Number(getVal(row, 'defectCount')) || 0;
           existing.imagesDefected += Number(getVal(row, 'imagesDefected')) || 0;
           existing.kmProcessed += Number(getVal(row, 'kmProcessed')) || 0;
-          if (pItem.filename) existing.panoramas.push(pItem);
+          existing.panoramas.push(pItem);
         } else {
-          groupedInFile.set(rowKey, {
+          groupedInFile.set(subgrid, {
             date: date,
             grid: getVal(row, 'grid') || fileSpecificGrid,
             subgrid: subgrid,
@@ -1717,33 +1715,31 @@ const DataManagementPage = ({
             pic: pic,
             publishToWebGIS: pub,
             action: getVal(row, 'action') || `Imported (${fileItem.fileName || subgrid})`,
-            panoramas: pItem.filename ? [pItem] : []
+            panoramas: [pItem]
           });
         }
       });
 
       const subgridsList = Array.from(groupedInFile.keys());
       for (let sIdx = 0; sIdx < subgridsList.length; sIdx++) {
-        const rowKey = subgridsList[sIdx];
-        const d = groupedInFile.get(rowKey)!;
+        const sgKey = subgridsList[sIdx];
+        const d = groupedInFile.get(sgKey)!;
         const trackKm = calculatePanoramaTrackKm(d.panoramas);
         const finalKm = d.kmProcessed > 0 ? d.kmProcessed : (trackKm > 0 ? trackKm : Math.round((d.panoramas.length * 0.005) * 100) / 100);
-        const panCount = d.panoramas.length || d.imagesProcessed || 1;
+        const panCount = d.panoramas.length;
 
-        // Verify actual image files in MMS_PIC storage bucket if explicit filenames exist
+        // Verify actual image files in MMS_PIC storage bucket
         const explicitFn = d.panoramas.map(p => p.filename).filter((fn): fn is string => Boolean(fn));
         const targetFilenames = explicitFn.length > 0
           ? explicitFn
           : Array.from({ length: panCount }, (_, i) => `${d.subgrid}-${String(i + 1).padStart(4, '0')}.jpg`);
 
-        let verifiedStorageCount = panCount;
-        if (explicitFn.length > 0) {
-          try {
-            const { availableCount } = await verifyCsvImageFilenamesInStorage(targetFilenames);
-            verifiedStorageCount = availableCount;
-          } catch {
-            verifiedStorageCount = panCount;
-          }
+        let verifiedStorageCount = 0;
+        try {
+          const { availableCount } = await verifyCsvImageFilenamesInStorage(targetFilenames);
+          verifiedStorageCount = availableCount;
+        } catch {
+          verifiedStorageCount = 0;
         }
 
         imported.push({
@@ -1764,9 +1760,27 @@ const DataManagementPage = ({
     const existingSubgridSet = new Set(dailyData.map(d => (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim()).filter(Boolean));
     const duplicateNames = Array.from(new Set(imported.map(d => (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim()).filter(sg => existingSubgridSet.has(sg))));
 
-    // Append all imported separated daily rows to draftDailyData
-    const updatedDraft: DailyTimeSeries[] = [...draftDailyData];
-    imported.forEach(newImp => updatedDraft.push(newImp));
+    // Replace matching subgrid entries cleanly to prevent duplicate rows and merge verified image counts
+    const importedMap = new Map(imported.map(imp => [(extractSubgridName(imp.subgrid) || imp.subgrid || '').toUpperCase().trim(), imp]));
+    const updatedDraft: DailyTimeSeries[] = [];
+
+    draftDailyData.forEach(d => {
+      const normSg = (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim();
+      if (importedMap.has(normSg)) {
+        const fresh = importedMap.get(normSg)!;
+        importedMap.delete(normSg);
+        updatedDraft.push({
+          ...d,
+          ...fresh,
+          id: d.id || fresh.id
+        });
+      } else {
+        updatedDraft.push(d);
+      }
+    });
+
+    // Append new subgrids
+    importedMap.forEach(newImp => updatedDraft.push(newImp));
 
     const updatedBatchLogs = reconcileBatchLogs(updatedDraft, batchLogs);
 
@@ -3928,8 +3942,8 @@ const DataManagementPage = ({
                                   const isSubDup = existingSubgridSet.has(sg.toUpperCase().trim());
                                   return (
                                     <span key={sg} className={`px-2 py-0.5 rounded-md text-[11px] font-mono font-bold flex items-center gap-1 ${isSubDup
-                                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
-                                        : 'bg-sky-500/15 text-sky-300 border border-sky-500/30'
+                                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                                      : 'bg-sky-500/15 text-sky-300 border border-sky-500/30'
                                       }`}>
                                       {sg}
                                       {isSubDup && <span className="text-[9px] font-sans font-semibold text-amber-400 ml-1">(multiple data detected)</span>}
@@ -5051,6 +5065,20 @@ export default function App() {
         if (fetchedQa && Object.keys(fetchedQa).length > 0) {
           setQaSubgridRecords(prev => ({ ...fetchedQa, ...prev }));
         }
+
+        // Fetch dynamic audit logs and notifications from Supabase
+        try {
+          const dbAuditLogs = await fetchAuditLogsFromSupabase();
+          if (dbAuditLogs && dbAuditLogs.length > 0) {
+            setAuditLogs(dbAuditLogs);
+          }
+          const dbNotifications = await fetchNotificationsFromSupabase();
+          if (dbNotifications && dbNotifications.length > 0) {
+            setNotifications(dbNotifications);
+          }
+        } catch (e) {
+          console.warn('Audit logs / Notifications dynamic fetch notice:', e);
+        }
       } catch (err) {
         console.warn('Supabase initial fetch skipped:', err);
         setSupabaseError('Unable to connect to Supabase backend. Operating in offline cached mode.');
@@ -5074,6 +5102,12 @@ export default function App() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'qa_defects' }, () => {
         console.log('Live database change detected in qa_defects. Auto-updating dashboard silently...');
         initLiveSupabaseData(true);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'audit_logs' }, () => {
+        fetchAuditLogsFromSupabase().then(logs => { if (logs.length > 0) setAuditLogs(logs); });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, () => {
+        fetchNotificationsFromSupabase().then(notifs => { if (notifs.length > 0) setNotifications(notifs); });
       })
       .subscribe();
 
@@ -5220,30 +5254,48 @@ export default function App() {
     const now = new Date();
     const dateStr = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
     const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    const timestampStr = `${dateStr}, ${timeStr}`;
     const newNotif: NotificationItem = {
       ...item,
       id: `notif-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-      timestamp: `${dateStr}, ${timeStr}`,
+      timestamp: timestampStr,
       read: false
     };
     setNotifications(prev => [newNotif, ...prev]);
+    saveNotificationToSupabase({
+      timestamp: timestampStr,
+      title: item.title,
+      message: item.message,
+      category: item.category,
+      totalItems: item.totalItems
+    }).catch(err => console.warn('Supabase notification save notice:', err));
   }, []);
 
   const addAuditLog = React.useCallback((type: AuditLogItem['type'], title: string, details: string, status: AuditLogItem['status'] = 'info') => {
     const now = new Date();
     const dateStr = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
     const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    const timestampStr = `${dateStr}, ${timeStr}`;
+    const userName = authSession?.user?.email ? authSession.user.email.split('@')[0] : 'Fariz';
     const newAudit: AuditLogItem = {
       id: `audit-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-      timestamp: `${dateStr}, ${timeStr}`,
+      timestamp: timestampStr,
       type,
       title,
       details,
-      user: authSession?.user?.email ? authSession.user.email.split('@')[0] : 'Fariz',
+      user: userName,
       status,
       read: false
     };
     setAuditLogs(prev => [newAudit, ...prev]);
+    saveAuditLogToSupabase({
+      timestamp: timestampStr,
+      type,
+      title,
+      details,
+      user: userName,
+      status
+    }).catch(err => console.warn('Supabase audit log save notice:', err));
   }, [authSession]);
 
   // Top-level subgrid filter state for Main Dashboard Page interactive row filtering
