@@ -378,7 +378,7 @@ export async function fetchSupabaseData(): Promise<{
             dateFormatted = dObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
           }
 
-          const imgCount = g.imagesProcessed || count;
+          const imgCount = count > 0 ? Math.min(g.imagesProcessed || count, count) : (g.imagesProcessed || count);
 
           dailyData.push({
             id: `staging-d-${sg}`,

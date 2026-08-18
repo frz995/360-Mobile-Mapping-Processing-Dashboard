@@ -5025,7 +5025,7 @@ export default function App() {
               const rawImg = typeof d.availableImagesCount === 'number'
                 ? d.availableImagesCount
                 : (typeof d.imagesProcessed === 'number' ? d.imagesProcessed : maxPoi);
-              const cappedImg = rawImg;
+              const cappedImg = maxPoi > 0 ? Math.min(rawImg, maxPoi) : rawImg;
               const existsInProductionDb = Boolean(normSg && publishedSubgridSet.has(normSg));
               const isPub = d.publishToWebGIS === 'yes' || d.isFromSupabase === true || (!isStaged && existsInProductionDb);
 
@@ -5213,17 +5213,19 @@ export default function App() {
       try {
         let updated = false;
         const verifiedList = await Promise.all(dailyData.map(async d => {
+          const rowPoi = d.poiCount || d.panoramas?.length || 0;
           const filenames = (d.panoramas && d.panoramas.length > 0)
             ? d.panoramas.map((p: any) => p.filename).filter((fn: any): fn is string => Boolean(fn))
-            : generateImageFilenamesList(d.subgrid, d.poiCount || 0, (d.panoramas?.[0]?.filename) || `${d.subgrid}-0001.jpg`);
+            : generateImageFilenamesList(d.subgrid, rowPoi, (d.panoramas?.[0]?.filename) || `${d.subgrid}-0001.jpg`);
 
           if (filenames.length === 0) return d;
 
           try {
             const { availableCount } = await verifyCsvImageFilenamesInStorage(filenames, projectSettings);
-            if (availableCount >= 0 && (d.availableImagesCount !== availableCount || d.imagesProcessed !== availableCount)) {
+            const finalCount = rowPoi > 0 ? Math.min(availableCount, rowPoi) : availableCount;
+            if (finalCount >= 0 && (d.availableImagesCount !== finalCount || d.imagesProcessed !== finalCount)) {
               updated = true;
-              return { ...d, availableImagesCount: availableCount, imagesProcessed: availableCount };
+              return { ...d, availableImagesCount: finalCount, imagesProcessed: finalCount };
             }
           } catch { }
           return d;
