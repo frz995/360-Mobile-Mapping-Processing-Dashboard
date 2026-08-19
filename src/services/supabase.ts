@@ -465,12 +465,17 @@ export async function publishToSupabase(record: {
       const maxCount = record.poiCount || record.imagesProcessed || record.rawRows.length;
       rawList = record.rawRows.slice(0, maxCount);
     } else {
-      rawList = [{
-        filename: record.imageFilename && !record.imageFilename.endsWith('-0001.jpg')
-          ? record.imageFilename
-          : `${record.subgrid || 'N93E70'}-${Math.floor(1000 + Math.random() * 9000)}.jpg`,
-        date: record.date
-      }];
+      const count = record.poiCount || record.imagesProcessed || 1;
+      const baseFn = record.imageFilename || `${record.subgrid || 'N93E70'}-0001.jpg`;
+      const ext = baseFn.includes('.') ? baseFn.slice(baseFn.lastIndexOf('.')) : '.jpg';
+      const prefix = record.subgrid || baseFn.split('-')[0];
+      rawList = [];
+      for (let idx = 1; idx <= count; idx++) {
+        rawList.push({
+          filename: `${prefix}-${String(idx).padStart(4, '0')}${ext}`,
+          date: record.date
+        });
+      }
     }
 
     const parseToIsoTimestamp = (rawDate?: string): string => {
@@ -551,10 +556,11 @@ export async function publishToSupabase(record: {
 
     console.log(`Successfully published ${itemsToInsert.length} items to Supabase via REST API`);
 
-    // Clean up staging_panoramas if subgrid was previously staged
+    // Clean up staging_panoramas for specific published filenames (preventing collateral deletion of sibling rows)
     if (record.subgrid) {
       try {
-        await deleteFromStagingSupabase(record.subgrid);
+        const pubFilenames = itemsToInsert.map(i => i.filename).filter((fn): fn is string => Boolean(fn));
+        await deleteFromStagingSupabase(record.subgrid, pubFilenames);
       } catch (stgCleanErr) {
         console.warn('Staging cleanup notice:', stgCleanErr);
       }
@@ -663,20 +669,31 @@ export async function saveToStagingSupabase(record: {
 /**
  * Delete records from staging_panoramas table for a subgrid.
  */
-export async function deleteFromStagingSupabase(subgrid: string): Promise<{ success: boolean; message: string }> {
+export async function deleteFromStagingSupabase(subgrid: string, filenames?: string[]): Promise<{ success: boolean; message: string }> {
   try {
     const cleanSub = (subgrid || '').trim();
     if (!cleanSub) return { success: true, message: 'No subgrid specified' };
 
-    const { error } = await supabase
-      .from('staging_panoramas')
-      .delete()
-      .or(`subgrid.ilike.${cleanSub},filename.ilike.${cleanSub}%`);
-
-    if (error) {
-      console.warn('deleteFromStagingSupabase error:', error.message);
+    if (filenames && filenames.length > 0) {
+      const cleanFns = filenames.map(f => f.trim()).filter(Boolean);
+      await supabase.from('staging_panoramas').delete().in('filename', cleanFns);
+      try {
+        await fetch(`${supabaseUrl}/rest/v1/staging_panoramas?filename=in.(${cleanFns.join(',')})`, {
+          method: 'DELETE',
+          headers: {
+            'apikey': supabaseKey,
+            'Authorization': `Bearer ${supabaseKey}`
+          }
+        });
+      } catch { }
+    } else {
+      await supabase
+        .from('staging_panoramas')
+        .delete()
+        .or(`subgrid.ilike.${cleanSub},filename.ilike.${cleanSub}%`);
     }
-    return { success: true, message: `Removed ${cleanSub} from staging database.` };
+
+    return { success: true, message: `Removed published items for ${cleanSub} from staging database.` };
   } catch (err) {
     console.warn('deleteFromStagingSupabase exception:', err);
     return { success: false, message: (err as Error).message || 'Failed to delete from staging' };
