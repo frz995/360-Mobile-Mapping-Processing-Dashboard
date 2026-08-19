@@ -128,7 +128,7 @@ export async function fetchSupabaseData(): Promise<{
             const sgKey = row.subgrid_code.toUpperCase().trim();
             knownMetadata[sgKey] = {
               grid: row.grid_id || '1',
-              pic: row.pic || 'Fariz',
+              pic: row.pic || 'Unassigned',
               equipment: row.equipment || 'MMS',
               date: 'Sep 4',
               defaultKm: 0,
@@ -149,8 +149,9 @@ export async function fetchSupabaseData(): Promise<{
       return { dailyData: [], batchLogs: [] };
     }
 
-    // Count actual available images in MMS_PIC storage bucket if accessible
+    // Count actual available images in storage bucket if accessible
     const storageImageCounts = new Map<string, number>();
+    const storageBucketName = import.meta.env.VITE_SUPABASE_BUCKET || import.meta.env.VITE_STORAGE_BUCKET || 'MMS_PIC';
 
     try {
       let offset = 0;
@@ -159,7 +160,7 @@ export async function fetchSupabaseData(): Promise<{
       let totalFetched = 0;
 
       while (hasMore && totalFetched < 10000) {
-        const { data: storageFiles, error: storageError } = await supabase.storage.from('MMS_PIC').list('', { limit, offset });
+        const { data: storageFiles, error: storageError } = await supabase.storage.from(storageBucketName).list('', { limit, offset });
         if (storageError || !storageFiles || storageFiles.length === 0) {
           break;
         }
@@ -314,7 +315,7 @@ export async function fetchSupabaseData(): Promise<{
         kmProcessed: km,
         status: 'Complete',
         captureEquipment: equipment,
-        pic: pic,
+        pic: pic || 'Unassigned',
         isSyncedWithSupabase: true
       });
     });
@@ -413,7 +414,7 @@ export async function fetchSupabaseData(): Promise<{
             kmProcessed: km,
             status: 'Ongoing',
             captureEquipment: g.equipment,
-            pic: 'Fariz',
+            pic: 'Unassigned',
             isSyncedWithSupabase: false,
             isStagedInSupabase: true
           });
