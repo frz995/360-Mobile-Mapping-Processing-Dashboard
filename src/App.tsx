@@ -738,10 +738,8 @@ const MapComponent = ({
   const formattedStagedItems = React.useMemo(() => {
     if (!stagedItems || stagedItems.length === 0) return [];
     return stagedItems.map(item => {
-      const isExplicitlyPublished = item.publishToWebGIS === 'yes' || item.publishToUSVPRO === 'yes' || Boolean(item.isSyncedWithSupabase) || item.isFromSupabase === true;
-      const isPub = item.isStagingPreview ? false : isExplicitlyPublished;
-      const itemStatus = isPub ? 'yes' : (item.publishToWebGIS || item.publishToUSVPRO || 'in process');
-      const statusVal = isPub ? 'yes' : (itemStatus === 'need to recheck' || itemStatus === 'no' ? itemStatus : 'in process');
+      const isPub = item.publishToWebGIS === 'yes' || item.publishToUSVPRO === 'yes' || Boolean(item.isSyncedWithSupabase) || item.isFromSupabase === true;
+      const statusVal = isPub ? 'yes' : (item.publishToWebGIS || item.publishToUSVPRO || 'in process');
       const op = isPub ? 1.0 : 0.7;
       const colorHex = isPub
         ? '#10b981'
