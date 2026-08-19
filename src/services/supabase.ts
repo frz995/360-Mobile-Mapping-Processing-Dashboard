@@ -278,18 +278,80 @@ export async function fetchSupabaseData(): Promise<{
 
     console.log('Verified Supabase MMS_PIC storage counts:', Object.fromEntries(storageImageCounts));
 
+    // Helper to generate sequential filenames from starting filename
+    function generateSequentialFilenames(startFn: string, count: number): string[] {
+      if (!startFn || count <= 0) return [];
+      const clean = startFn.split('/').pop()?.trim() || startFn.trim();
+      const match = clean.match(/^(.*?)-?(\d+)(\.[a-z0-9]+)?$/i);
+      if (!match) {
+        const base = clean.replace(/\.[a-z0-9]+$/i, '');
+        return Array.from({ length: count }, (_, i) => `${base}-${String(i + 1).padStart(4, '0')}.jpg`);
+      }
+      const prefix = match[1];
+      const numStr = match[2];
+      const ext = match[3] || '.jpg';
+      const startNum = parseInt(numStr, 10);
+      const padLen = Math.max(numStr.length, 4);
+
+      const result: string[] = [];
+      for (let i = 0; i < count; i++) {
+        const nextNum = String(startNum + i).padStart(padLen, '0');
+        result.push(`${prefix}-${nextNum}${ext}`);
+      }
+      return result;
+    }
+
+    // Helper to verify image filenames directly against storage (handling both list API and direct public URL access)
+    async function verifyFilenamesAgainstStorage(filenames: string[], subgridKey?: string): Promise<number> {
+      if (!filenames || filenames.length === 0) return 0;
+
+      // 1. If storageFileSet was populated by storage.list()
+      if (storageFileSet.size > 0) {
+        return filenames.filter(fn => {
+          const cleanFn = fn.split('/').pop()?.toLowerCase().trim() || fn.toLowerCase().trim();
+          return storageFileSet.has(cleanFn) || storageFileSet.has(fn.toLowerCase().trim());
+        }).length;
+      }
+
+      // 2. If storageImageCounts has the subgrid count
+      if (subgridKey && storageImageCounts.has(subgridKey)) {
+        return Math.min(storageImageCounts.get(subgridKey) || 0, filenames.length);
+      }
+
+      // 3. Direct fast concurrent HEAD requests to public MMS_PIC bucket
+      const checkOne = async (fn: string): Promise<boolean> => {
+        const clean = fn.split('/').pop()?.trim() || fn.trim();
+        if (!clean) return false;
+        const url = `${supabaseUrl}/storage/v1/object/public/${storageBucketName}/${clean}`;
+        try {
+          const res = await fetch(url, { method: 'HEAD' });
+          return res.ok || res.status === 200 || res.status === 206;
+        } catch {
+          return false;
+        }
+      };
+
+      const results = await Promise.all(filenames.map(checkOne));
+      return results.filter(Boolean).length;
+    }
+
     const dailyData: any[] = [];
 
     // Push published daily records
-    publishedGrouped.forEach((g, runKey) => {
+    const publishedEntries = Array.from(publishedGrouped.entries());
+    for (const [runKey, g] of publishedEntries) {
       const subgrid = g.subgrid;
       const countFromDB = g.imageFilenames.length;
-      const storageCount = storageImageCounts.get(subgrid);
-
       const poiCount = countFromDB;
-      const verifiedImagesCount = (storageCount !== undefined && storageCount > 0)
-        ? Math.min(storageCount, poiCount)
-        : (g.recordImages !== undefined ? g.recordImages : countFromDB);
+
+      let filenamesToVerify = g.imageFilenames;
+      if (filenamesToVerify.length < poiCount && filenamesToVerify.length > 0) {
+        filenamesToVerify = generateSequentialFilenames(filenamesToVerify[0], poiCount);
+      } else if (filenamesToVerify.length === 0) {
+        filenamesToVerify = generateSequentialFilenames(`${subgrid}-0001.jpg`, poiCount);
+      }
+
+      const verifiedImagesCount = await verifyFilenamesAgainstStorage(filenamesToVerify, subgrid);
 
       const grid = g.grid || '1';
       const pic = authenticatedUserPic || '';
@@ -342,7 +404,7 @@ export async function fetchSupabaseData(): Promise<{
           fillColor: '#10b981'
         }))
       });
-    });
+    }
 
     // 2. Query staging_panoramas table for persistent staged records
     try {
@@ -429,7 +491,8 @@ export async function fetchSupabaseData(): Promise<{
           return result;
         }
 
-        stagingGrouped.forEach((g, runKey) => {
+        const stagingEntries = Array.from(stagingGrouped.entries());
+        for (const [runKey, g] of stagingEntries) {
           const sg = g.subgrid;
           const count = g.imageFilenames.length || g.poiCount || 1;
           const calcKm = calculateDistance(g.points);
@@ -441,7 +504,6 @@ export async function fetchSupabaseData(): Promise<{
             dateFormatted = dObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
           }
 
-          let verifiedCount = 0;
           let filenamesToVerify: string[] = g.imageFilenames || [];
           if (filenamesToVerify.length < count && filenamesToVerify.length > 0) {
             filenamesToVerify = generateSequentialFilenames(filenamesToVerify[0], count);
@@ -449,18 +511,8 @@ export async function fetchSupabaseData(): Promise<{
             filenamesToVerify = generateSequentialFilenames(`${sg}-0001.jpg`, count);
           }
 
-          if (filenamesToVerify.length > 0 && storageFileSet.size > 0) {
-            verifiedCount = filenamesToVerify.filter((fn: string) => {
-              const cleanFn = fn.split('/').pop()?.toLowerCase().trim() || fn.toLowerCase().trim();
-              return storageFileSet.has(cleanFn) || storageFileSet.has(fn.toLowerCase().trim());
-            }).length;
-          } else if (storageImageCounts.has(sg)) {
-            verifiedCount = Math.min(storageImageCounts.get(sg) || 0, count);
-          } else {
-            verifiedCount = typeof g.imagesProcessed === 'number' ? Math.min(g.imagesProcessed, count) : 0;
-          }
-
-          const imgCount = g.imagesProcessed > 0 ? g.imagesProcessed : (g.poiCount > 0 ? g.poiCount : (verifiedCount > 0 ? verifiedCount : count));
+          const verifiedCount = await verifyFilenamesAgainstStorage(filenamesToVerify, sg);
+          const imgCount = verifiedCount;
           const picName = g.pic || authenticatedUserPic;
 
           dailyData.push({
@@ -491,7 +543,7 @@ export async function fetchSupabaseData(): Promise<{
               subgrid: sg
             }))
           });
-        });
+        }
       }
     } catch (stgErr) {
       console.warn('staging_panoramas fetch notice (table may be pending creation):', stgErr);
@@ -504,8 +556,8 @@ export async function fetchSupabaseData(): Promise<{
       if (!sg) return;
 
       const isPublished = d.publishToWebGIS === 'yes' || d.isSyncedWithSupabase === true;
-      const singlePoi = d.poiCount || d.imagesProcessed || 0;
-      const singleImg = isPublished ? (d.imagesProcessed || d.poiCount || 0) : 0;
+      const singlePoi = d.poiCount || 0;
+      const singleImg = isPublished ? (d.imagesProcessed || 0) : 0;
       const kmVal = Number(d.kmProcessed || 0);
       const defCount = Number(d.imagesDefected || d.defectCount || 0);
 
@@ -529,8 +581,8 @@ export async function fetchSupabaseData(): Promise<{
         batchMap.set(sg, {
           id: `BATCH-${sg}`,
           subgrid: sg,
-          grid: d.grid || '1',
-          date: d.date || '2022-09-03 00:43',
+          grid: d.grid || '',
+          date: d.date || new Date().toISOString().slice(0, 10),
           imageFilename: (d.panoramas?.[0]?.filename) || `${sg}-0001.jpg`,
           publishedImages: singleImg,
           totalPoi: singlePoi,
@@ -552,7 +604,7 @@ export async function fetchSupabaseData(): Promise<{
       const isComplete = entry.publishedRunsCount > 0 && entry.publishedRunsCount === entry.runsCount && entry.publishedPoi >= entry.totalPoi;
       batchLogs.push({
         id: `BATCH-${sg}`,
-        date: `${entry.date} 00:43`,
+        date: entry.date,
         grid: entry.grid,
         subgrid: sg,
         imageFilename: entry.imageFilename,
@@ -612,9 +664,9 @@ export async function publishToSupabase(record: {
       rawList = record.rawRows.slice(0, maxCount);
     } else {
       const count = record.poiCount || record.imagesProcessed || 1;
-      const baseFn = record.imageFilename || `${record.subgrid || 'N93E70'}-0001.jpg`;
+      const baseFn = record.imageFilename || (record.subgrid ? `${record.subgrid}-0001.jpg` : 'IMG-0001.jpg');
       const ext = baseFn.includes('.') ? baseFn.slice(baseFn.lastIndexOf('.')) : '.jpg';
-      const prefix = record.subgrid || baseFn.split('-')[0];
+      const prefix = record.subgrid || baseFn.split('-')[0] || 'IMG';
       rawList = [];
       for (let idx = 1; idx <= count; idx++) {
         rawList.push({
@@ -644,7 +696,7 @@ export async function publishToSupabase(record: {
     };
 
     const itemsToInsert: SupabasePanoramaRecord[] = rawList.map((p: any) => {
-      const filename = p.filename || p.imageFilename || `${record.subgrid || 'N93E70'}-${Math.floor(1000 + Math.random() * 9000)}.jpg`;
+      const filename = p.filename || p.imageFilename || (record.subgrid ? `${record.subgrid}-${Math.floor(1000 + Math.random() * 9000)}.jpg` : `IMG-${Math.floor(1000 + Math.random() * 9000)}.jpg`);
       const sgKey = record.subgrid ? record.subgrid.toUpperCase() : extractSubgrid(filename);
       const defaultCoords = SUBGRID_COORDINATES[sgKey] || [102.805000, 2.538900];
 
@@ -664,15 +716,13 @@ export async function publishToSupabase(record: {
         filename,
         image_url: filename,
         captured_at: parseToIsoTimestamp(p.date || p.captured_at || record.date),
-        description: `Published Batch (${record.id || record.subgrid || filename}) - ${new Date().toISOString().slice(0, 19).replace('T', ' ')}`,
-        bearing: Number(p.bearing ?? p.heading ?? 16.2),
+        description: `Published Batch (Grid ${record.grid || '1'} / ${sgKey}) - ${new Date().toISOString().slice(0, 19).replace('T', ' ')}`,
+        bearing: Number(p.bearing ?? p.heading ?? 0),
         pitch: Number(p.pitch ?? 0),
         roll: Number(p.roll ?? 0),
-        subgrid: sgKey,
-        grid: record.grid || '1',
-        status: 'yes',
+        defect_count: typeof record.defects === 'number' ? record.defects : typeof record.defectCount === 'number' ? record.defectCount : 0,
         qa_status: 'published',
-        publish_status: 'published',
+        defect_flags: {},
         geom: {
           type: 'Point',
           coordinates: [lon, lat]
@@ -762,13 +812,13 @@ export async function saveToStagingSupabase(record: {
       rawList = [{
         filename: record.imageFilename && !record.imageFilename.endsWith('-0001.jpg')
           ? record.imageFilename
-          : `${record.subgrid || 'N93E70'}-${Math.floor(1000 + Math.random() * 9000)}.jpg`,
+          : (record.subgrid ? `${record.subgrid}-${Math.floor(1000 + Math.random() * 9000)}.jpg` : `IMG-${Math.floor(1000 + Math.random() * 9000)}.jpg`),
         date: record.date
       }];
     }
 
     const itemsToInsert = rawList.map((p: any) => {
-      const filename = p.filename || p.imageFilename || `${record.subgrid || 'N93E70'}-${Math.floor(1000 + Math.random() * 9000)}.jpg`;
+      const filename = p.filename || p.imageFilename || (record.subgrid ? `${record.subgrid}-${Math.floor(1000 + Math.random() * 9000)}.jpg` : `IMG-${Math.floor(1000 + Math.random() * 9000)}.jpg`);
       const sgKey = record.subgrid ? record.subgrid.toUpperCase() : extractSubgrid(filename);
       const defaultCoords = SUBGRID_COORDINATES[sgKey] || [102.805000, 2.538900];
 
@@ -910,7 +960,8 @@ export async function updateDefectStatusInSupabase(
   defectFlags?: any
 ): Promise<{ success: boolean; message: string }> {
   try {
-    const cleanKey = (itemKey || 'N93E70').trim();
+    const cleanKey = (itemKey || '').trim();
+    if (!cleanKey) return { success: false, message: 'No subgrid or image key provided' };
     const isFilename = cleanKey.includes('-') || cleanKey.toLowerCase().endsWith('.jpg');
 
     // 1. Update panoramas table (by exact/matched filename or subgrid prefix)
@@ -1389,7 +1440,7 @@ export async function testDatabaseHealth(): Promise<{
 /**
  * Fetch data deletion approval requests from Supabase / localStorage fallback.
  */
-export async function fetchDeletionRequestsFromSupabase(currentUser?: any): Promise<any[]> {
+export async function fetchDeletionRequestsFromSupabase(_currentUser?: any): Promise<any[]> {
   try {
     const { data, error } = await supabase.from('deletion_requests').select('*').order('date_requested', { ascending: false });
     if (!error && data && data.length > 0) {
@@ -1418,23 +1469,7 @@ export async function fetchDeletionRequestsFromSupabase(currentUser?: any): Prom
     try { return JSON.parse(saved); } catch { }
   }
 
-  const defaultName = currentUser?.user_metadata?.full_name || currentUser?.name || (currentUser?.email ? currentUser.email.split('@')[0] : 'Fariz Farhan');
-  const defaultEmail = currentUser?.email || 'fariz.farhan95@tnb.com.my';
-
-  return [
-    {
-      id: 'DEL-REQ-901',
-      subgrid: 'N94E70',
-      requestedBy: defaultName,
-      userEmail: defaultEmail,
-      reason: 'Recalibrated camera calibration required; re-capturing survey trajectory tomorrow.',
-      poiCount: 70,
-      kmProcessed: 0.2,
-      dateRequested: '18 Aug 2026, 04:30 PM',
-      status: 'Pending',
-      filenames: []
-    }
-  ];
+  return [];
 }
 
 /**

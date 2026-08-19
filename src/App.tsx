@@ -44,7 +44,7 @@ import {
   Info,
   Settings
 } from 'lucide-react';
-import { supabase, publishToSupabase, saveToStagingSupabase, deleteFromStagingSupabase, fetchSupabaseData, deleteFromSupabase, updateDefectStatusInSupabase, fetchQaRecordsFromSupabase, verifyCsvImageFilenamesInStorage, fetchAuditLogsFromSupabase, saveAuditLogToSupabase, fetchNotificationsFromSupabase, saveNotificationToSupabase, resolvePanoramaUrl, getDatabaseTableMapping } from './services/supabase';
+import { supabase, publishToSupabase, saveToStagingSupabase, deleteFromStagingSupabase, fetchSupabaseData, deleteFromSupabase, updateDefectStatusInSupabase, fetchQaRecordsFromSupabase, verifyCsvImageFilenamesInStorage, fetchAuditLogsFromSupabase, saveAuditLogToSupabase, fetchNotificationsFromSupabase, saveNotificationToSupabase, resolvePanoramaUrl, getDatabaseTableMapping, SUBGRID_COORDINATES } from './services/supabase';
 import { AdminSettingsView } from './components/AdminSettingsView';
 import * as shapefile from 'shapefile';
 import * as toGeoJSON from '@tmcw/togeojson';
@@ -195,16 +195,6 @@ export function getImagesProcessedCount(item?: { imagesProcessed?: number; image
     return item.images;
   }
 
-  // 4. Panoramas array
-  if (Array.isArray(item.panoramas) && item.panoramas.length > 0) {
-    return item.panoramas.length;
-  }
-
-  // 5. POI count fallback
-  if (typeof item.poiCount === 'number') {
-    return item.poiCount;
-  }
-
   return 0;
 }
 
@@ -260,11 +250,31 @@ export function toISODateString(dateStr?: string): string {
 // Helper: Generate list of numbered image filenames for subgrid view popup modal
 export function generateImageFilenamesList(subgrid: string, count: number, baseFilename?: string): string[] {
   const total = count > 0 ? count : 1;
-  const prefix = subgrid || (baseFilename ? baseFilename.split('-')[0] : 'N93E70');
-  const ext = baseFilename && baseFilename.includes('.') ? baseFilename.slice(baseFilename.lastIndexOf('.')) : '.jpg';
+  const cleanSubgrid = (subgrid || extractSubgridName(baseFilename) || '').toUpperCase().trim();
+
+  if (!baseFilename) {
+    const prefix = cleanSubgrid || 'SUBGRID';
+    return Array.from({ length: total }, (_, i) => `${prefix}-${String(i + 1).padStart(4, '0')}.jpg`);
+  }
+
+  const clean = baseFilename.split('/').pop()?.trim() || baseFilename.trim();
+  const match = clean.match(/^(.*?)-?(\d+)(\.[a-z0-9]+)?$/i);
+  if (!match) {
+    const prefix = cleanSubgrid || clean.replace(/\.[a-z0-9]+$/i, '');
+    const ext = clean.includes('.') ? clean.slice(clean.lastIndexOf('.')) : '.jpg';
+    return Array.from({ length: total }, (_, i) => `${prefix}-${String(i + 1).padStart(4, '0')}${ext}`);
+  }
+
+  const prefix = match[1] || cleanSubgrid || clean.split('-')[0];
+  const numStr = match[2];
+  const ext = match[3] || '.jpg';
+  const startNum = parseInt(numStr, 10);
+  const padLen = Math.max(numStr.length, 4);
+
   const list: string[] = [];
-  for (let i = 1; i <= total; i++) {
-    list.push(`${prefix}-${String(i).padStart(4, '0')}${ext}`);
+  for (let i = 0; i < total; i++) {
+    const nextNum = String(startNum + i).padStart(padLen, '0');
+    list.push(`${prefix}-${nextNum}${ext}`);
   }
   return list;
 }
@@ -291,119 +301,39 @@ export function calculateSubgridDistanceKm(points: { lat: number; lon: number }[
   return parseFloat(totalKm.toFixed(1));
 }
 
-// Helper: Build a BatchLog from Supabase record or return dummy fallback
+// Helper: Build a BatchLog from Supabase record or return dynamic fallback
 export function createBatchLogFromSupabaseOrDummy(
-  row?: { filename?: string; image_url?: string; captured_at?: string },
-  fallbackSubgrid: string = 'N93E70',
+  row?: { filename?: string; image_url?: string; captured_at?: string; images?: number; defects?: number; km_processed?: number; kmProcessed?: number; grid?: string; subgrid?: string; pic?: string },
+  fallbackSubgrid: string = '',
   gridNum: string = '1'
 ): BatchLog {
-  const imageFilename = row?.image_url || row?.filename || `${fallbackSubgrid}-0001.jpg`;
-  const subgrid = extractSubgridName(imageFilename) || fallbackSubgrid;
+  const imageFilename = row?.image_url || row?.filename || (fallbackSubgrid ? `${fallbackSubgrid}-0001.jpg` : '');
+  const subgrid = (row?.subgrid || extractSubgridName(imageFilename) || fallbackSubgrid || '').toUpperCase().trim();
   const date = row?.captured_at
     ? new Date(row.captured_at).toISOString().replace('T', ' ').slice(0, 16)
-    : '2022-09-04';
+    : new Date().toISOString().replace('T', ' ').slice(0, 16);
 
   return {
     id: String(Date.now()),
     date,
-    grid: gridNum,
+    grid: row?.grid || gridNum,
     subgrid,
     imageFilename,
-    images: 52000,
-    defects: 45,
-    kmProcessed: 150.2,
+    images: Number(row?.images || 0),
+    defects: Number(row?.defects || 0),
+    kmProcessed: Number(row?.km_processed || row?.kmProcessed || 0),
     status: 'Complete',
-    pic: ''
+    pic: row?.pic || ''
   };
 }
 
 // ==============================================
-// Initial Mock Data
+// Initial State (Populated dynamically from Supabase)
 // ==============================================
 
-const INITIAL_NOTIFICATIONS: NotificationItem[] = [
-  {
-    id: 'notif-1',
-    timestamp: '11 Aug 2026, 10:45 AM',
-    title: 'Data Published to Database',
-    message: 'Successfully published 4 subgrids (265 panoramas) to Supabase production database.',
-    category: 'PUBLISH',
-    read: false,
-    totalItems: 4
-  },
-  {
-    id: 'notif-2',
-    timestamp: '11 Aug 2026, 10:30 AM',
-    title: 'Pending Task: Batch Stitching Job',
-    message: 'Subgrid N94E71 batch stitching pipeline in progress (65% completed).',
-    category: 'PENDING',
-    read: false
-  },
-  {
-    id: 'notif-3',
-    timestamp: '11 Aug 2026, 09:15 AM',
-    title: 'Pending Task: WebGIS Sync',
-    message: '1 daily subgrid record (N90E67) awaiting WebGIS database sync.',
-    category: 'PENDING',
-    read: false
-  },
-  {
-    id: 'notif-4',
-    timestamp: '11 Aug 2026, 08:00 AM',
-    title: 'System Health Audit',
-    message: 'All 4 subgrid batch runs reconciled. 6 QA defect frames flagged.',
-    category: 'SYSTEM',
-    read: true
-  }
-];
+const INITIAL_NOTIFICATIONS: NotificationItem[] = [];
 
-const INITIAL_AUDIT_LOGS: AuditLogItem[] = [
-  {
-    id: 'audit-1',
-    timestamp: '11 Aug 2026, 10:45 AM',
-    type: 'PUBLISH',
-    title: 'Database Publish Executed',
-    details: 'Published 4 subgrids (N93E70, N94E70, N94E71, N90E67) to Supabase database',
-    user: 'System',
-    status: 'success'
-  },
-  {
-    id: 'audit-2',
-    timestamp: '11 Aug 2026, 10:20 AM',
-    type: 'EDIT',
-    title: 'Daily Subgrid N94E70 Modified',
-    details: 'Updated distance to 0.6 km, defect count to 6',
-    user: 'System',
-    status: 'info'
-  },
-  {
-    id: 'audit-3',
-    timestamp: '11 Aug 2026, 09:45 AM',
-    type: 'SYNC',
-    title: 'Supabase Database Sync',
-    details: 'Synced 5 daily subgrid records from remote mobilemapping PostGIS store',
-    user: 'System',
-    status: 'success'
-  },
-  {
-    id: 'audit-4',
-    timestamp: '11 Aug 2026, 09:10 AM',
-    type: 'CREATE',
-    title: 'CSV Import Completed',
-    details: 'Imported batch data for subgrids N93E70 & N94E70 via CSV upload',
-    user: 'System',
-    status: 'success'
-  },
-  {
-    id: 'audit-5',
-    timestamp: '10 Aug 2026, 05:30 PM',
-    type: 'ERROR',
-    title: 'Batch Stitching Warning',
-    details: 'Frame N94E71-0005 reported low feature match density (65% completed)',
-    user: 'BatchWorker',
-    status: 'error'
-  }
-];
+const INITIAL_AUDIT_LOGS: AuditLogItem[] = [];
 
 const TOUR_STEPS = [
   {
@@ -415,7 +345,7 @@ const TOUR_STEPS = [
   {
     step: 2,
     title: '2. Interactive WebGIS Map & Layer Controls',
-    desc: 'Spatial trajectory inspection on Leaflet. Click any subgrid (e.g. N94E70) to filter frames. Toggle subgrid bounding boxes, trajectory lines, and high-voltage grid overlays.',
+    desc: 'Spatial trajectory inspection on Leaflet. Click any subgrid to filter frames. Toggle subgrid bounding boxes, trajectory lines, and high-voltage grid overlays.',
     highlight: 'Interactive WebGIS Map canvas'
   },
   {
@@ -577,7 +507,7 @@ export function reconcileBatchLogs(dailyItems: DailyTimeSeries[], _baseBatches?:
         id: `BATCH-${normSub}`,
         subgrid: normSub,
         grid: d.grid || '1',
-        date: d.date || '2022-09-03 00:43',
+        date: d.date || new Date().toISOString().slice(0, 10),
         imageFilename: (d.panoramas?.[0]?.filename) || `${normSub}-0001.jpg`,
         publishedImages: singleImg,
         totalPoi: singlePoi,
@@ -724,7 +654,8 @@ const MapComponent = ({
   dataManagement = false,
   refreshKey,
   selectedSubgridFilter,
-  stagedItems
+  stagedItems,
+  projectSettings: passedSettings
 }: {
   dataManagement?: boolean;
   layerCatalog?: (Layer | Folder)[];
@@ -732,9 +663,21 @@ const MapComponent = ({
   onManualRefresh?: () => void;
   selectedSubgridFilter?: string | null;
   stagedItems?: any[];
+  projectSettings?: any;
 }) => {
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
+
+  const effectiveSettings = React.useMemo(() => {
+    if (passedSettings && typeof passedSettings === 'object' && Object.keys(passedSettings).length > 0) {
+      return passedSettings;
+    }
+    try {
+      const raw = localStorage.getItem('tnb_project_settings');
+      if (raw) return JSON.parse(raw);
+    } catch (e) { }
+    return {};
+  }, [passedSettings, refreshKey]);
 
   const formattedStagedItems = React.useMemo(() => {
     if (!stagedItems || stagedItems.length === 0) return [];
@@ -768,13 +711,8 @@ const MapComponent = ({
       let pans = item.panoramas || item.points || [];
       if (!pans || pans.length === 0) {
         const sg = (item.subgrid || '').toUpperCase();
-        const baseCoord = (sg.includes('N93E70') ? { lat: 2.5389, lng: 102.8050 }
-          : sg.includes('N93E71') ? { lat: 2.5392, lng: 102.8120 }
-          : sg.includes('N93E72') ? { lat: 2.5410, lng: 102.8200 }
-          : sg.includes('N93E73') ? { lat: 2.5435, lng: 102.8280 }
-          : sg.includes('N94E70') ? { lat: 2.5450, lng: 102.8050 }
-          : sg.includes('N94E71') ? { lat: 2.5460, lng: 102.8120 }
-          : { lat: 2.5389, lng: 102.8050 });
+        const sgCoords = SUBGRID_COORDINATES[sg];
+        const baseCoord = sgCoords ? { lat: sgCoords[1], lng: sgCoords[0] } : { lat: 2.5389, lng: 102.8050 };
         const count = item.poiCount || item.imagesProcessed || 14;
         pans = Array.from({ length: count }, (_, idx) => ({
           filename: `${sg}-${String(idx + 1).padStart(4, '0')}.jpg`,
@@ -787,20 +725,6 @@ const MapComponent = ({
           lon: baseCoord.lng + (idx * 0.0002),
           lng: baseCoord.lng + (idx * 0.0002)
         }));
-      }
-
-      // If this item is staging (unpublished), filter out any points that are already published in green
-      if (!isPub && publishedPointKeys.size > 0) {
-        pans = pans.filter((p: any) => {
-          const fn = (p.filename || p.image_url || '').split('/').pop()?.toLowerCase().trim();
-          if (fn && publishedPointKeys.has(fn)) return false;
-          const lat = p.latitude ?? p.lat;
-          const lon = p.longitude ?? p.lon ?? p.lng;
-          if (typeof lat === 'number' && typeof lon === 'number' && publishedPointKeys.has(`${lat.toFixed(5)}_${lon.toFixed(5)}`)) {
-            return false;
-          }
-          return true;
-        });
       }
 
       const formattedPans = pans.map((p: any) => ({
@@ -882,6 +806,36 @@ const MapComponent = ({
     }
   }, [formattedStagedItems, dataManagement]);
 
+  const syncMapSettings = React.useCallback(() => {
+    if (!iframeRef.current || !iframeRef.current.contentWindow) return;
+    try {
+      const s = effectiveSettings || {};
+      // 1. Send Basemap
+      iframeRef.current.contentWindow.postMessage({
+        type: 'SET_BASEMAP',
+        basemap: s.defaultBasemap || 'positron',
+        customUrl: s.customBasemapUrl || '',
+        opacity: (s.basemapOpacity ?? 100) / 100
+      }, '*');
+
+      // 2. Send Map Vector Layer Theme & Styling
+      iframeRef.current.contentWindow.postMessage({
+        type: 'SET_MAP_THEME',
+        settings: {
+          publishedTrackColor: s.publishedTrackColor || '#10B981',
+          stagingTrackColor: s.stagingTrackColor || '#F59E0B',
+          defectTrackColor: s.defectTrackColor || '#EF4444',
+          selectedTrackColor: s.selectedTrackColor || '#38BDF8',
+          gridBoundaryColor: s.gridBoundaryColor || '#6366F1',
+          lineWidth: s.poiTrackLineWidth || 3,
+          enableGlow: s.enableLayerGlow !== false,
+          opacity: (s.layerOpacity ?? 100) / 100,
+          layerOpacity: (s.layerOpacity ?? 100) / 100
+        }
+      }, '*');
+    } catch (e) { }
+  }, [effectiveSettings]);
+
   useEffect(() => {
     const handler = (e: MessageEvent) => {
       if (e.data?.type === 'MAP_COORDS' && typeof e.data.lat === 'number') {
@@ -891,12 +845,13 @@ const MapComponent = ({
         }
       }
       if (e.data?.type === 'MAP_READY' || e.data?.type === 'VIEWER_READY' || e.data?.type === 'WEBGIS_READY' || e.data?.type === 'MAP_LOADED') {
+        syncMapSettings();
         sendStagedData();
       }
     };
     window.addEventListener('message', handler);
     return () => window.removeEventListener('message', handler);
-  }, [sendStagedData]);
+  }, [syncMapSettings, sendStagedData]);
 
   // Send postMessage subgrid filter and staged data updates to embedded WebGIS map iframe
   useEffect(() => {
@@ -909,16 +864,17 @@ const MapComponent = ({
   }, [selectedSubgridFilter]);
 
   useEffect(() => {
+    syncMapSettings();
     sendStagedData();
-    const t1 = setTimeout(sendStagedData, 500);
-    const t2 = setTimeout(sendStagedData, 1500);
-    const t3 = setTimeout(sendStagedData, 3000);
+    const t1 = setTimeout(() => { syncMapSettings(); sendStagedData(); }, 400);
+    const t2 = setTimeout(() => { syncMapSettings(); sendStagedData(); }, 1200);
+    const t3 = setTimeout(() => { syncMapSettings(); sendStagedData(); }, 2500);
     return () => {
       clearTimeout(t1);
       clearTimeout(t2);
       clearTimeout(t3);
     };
-  }, [sendStagedData]);
+  }, [syncMapSettings, sendStagedData, refreshKey]);
 
   return (
     <div className="relative w-full h-full overflow-hidden bg-slate-950">
@@ -961,14 +917,15 @@ const MapComponent = ({
 
       <iframe
         ref={iframeRef}
-        key={refreshKey || 0}
-        src={`${import.meta.env.VITE_MAP_URL || 'https://mobilemapping-nine.vercel.app'}/?embed=true${selectedSubgridFilter ? `&subgrid=${encodeURIComponent(selectedSubgridFilter)}` : ''}${refreshKey ? `&t=${refreshKey}` : ''}`}
+        key={`${refreshKey || 0}-${effectiveSettings?.defaultBasemap || 'positron'}`}
+        src={`${import.meta.env.VITE_MAP_URL || 'https://mobilemapping-nine.vercel.app'}/?embed=true&basemap=${encodeURIComponent(effectiveSettings?.defaultBasemap || 'positron')}${selectedSubgridFilter ? `&subgrid=${encodeURIComponent(selectedSubgridFilter)}` : ''}${refreshKey ? `&t=${refreshKey}` : ''}`}
         onLoad={() => {
           if (iframeRef.current && iframeRef.current.contentWindow) {
             iframeRef.current.contentWindow.postMessage({
               type: 'SET_SUBGRID_FILTER',
               subgrid: selectedSubgridFilter || ''
             }, '*');
+            syncMapSettings();
             sendStagedData();
           }
         }}
@@ -1789,7 +1746,7 @@ const DataManagementPage = ({
         const rawSubgrid = getVal(row, 'subgrid');
         const filename = getRawColVal(row, ['filename', 'imagefilename', 'image_url', 'file']) || getVal(row, 'imageFilename') || rawSubgrid;
         const rowSubgrid = extractSubgridName(rawSubgrid) || extractSubgridName(filename);
-        const subgrid = fileSubgrid || rowSubgrid || rawSubgrid || fileItem.fileName.replace(/\.[^/.]+$/, '') || 'N94E71';
+        const subgrid = fileSubgrid || rowSubgrid || rawSubgrid || fileItem.fileName.replace(/\.[^/.]+$/, '') || '';
         const date = getVal(row, 'date') || getRawColVal(row, ['date', 'time', 'captured_at']) || new Date().toISOString().slice(0, 10);
 
         const latStr = getVal(row, 'latitude') || getRawColVal(row, ['latitude', 'lat', 'y']);
@@ -1858,8 +1815,8 @@ const DataManagementPage = ({
         imported.push({
           ...d,
           poiCount: panCount,
-          imagesProcessed: panCount,
-          availableImagesCount: panCount,
+          imagesProcessed: 0,
+          availableImagesCount: 0,
           defectCount: d.defectCount || 0,
           imagesDefected: d.imagesDefected || 0,
           publishToWebGIS: directPublish ? 'yes' : d.publishToWebGIS,
@@ -3544,7 +3501,7 @@ const DataManagementPage = ({
 
           {/* Dual-View Add/Edit Record Modal (Left: Form Data, Right: Interactive Map Preview) */}
           {isFormOpen && (() => {
-            const editSubgrid = editingItem ? (extractSubgridName((editingItem as any).subgrid || (editingItem as any).imageFilename) || (editingItem as any).subgrid || 'N93E70') : 'N93E70';
+            const editSubgrid = editingItem ? (extractSubgridName((editingItem as any).subgrid || (editingItem as any).imageFilename) || (editingItem as any).subgrid || '') : (selectedSubgridFilter || '');
             const editGrid = editingItem ? ((editingItem as any).grid || '1') : '1';
             const isPub = editingItem ? ((editingItem as any).publishToWebGIS === 'yes' || (editingItem as any).publishToUSVPRO === 'yes') : false;
             const statusVal = isPub ? 'yes' : ((editingItem as any)?.publishToWebGIS || (editingItem as any)?.status || 'in process');
@@ -4019,7 +3976,7 @@ const DataManagementPage = ({
                     }
 
                     const detectedSubgrids = Array.from(new Set(detectedList.filter(Boolean)));
-                    const displaySubgrids = detectedSubgrids.length > 0 ? detectedSubgrids : ['N94E71'];
+                    const displaySubgrids = detectedSubgrids;
                     const isMultiFile = csvFileList.length > 1;
 
                     const existingSubgridSet = new Set(dailyData.map(d => (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim()).filter(Boolean));
@@ -4256,7 +4213,7 @@ const DataManagementPage = ({
                       const subgridCol = Object.keys(csvFieldMap).find(k => csvFieldMap[k] === 'imageFilename' || csvFieldMap[k] === 'subgrid');
                       const subgridIdx = subgridCol !== undefined ? csvHeaders.indexOf(subgridCol) : -1;
                       const rawSubgridVal = (csvRows.length > 0 && subgridIdx >= 0) ? csvRows[0][subgridIdx] : '';
-                      const parsedSubgrid = extractSubgridName(rawSubgridVal) || rawSubgridVal || 'N94E71';
+                      const parsedSubgrid = extractSubgridName(rawSubgridVal) || rawSubgridVal || '';
 
                       const modalStagedItems = [{
                         subgrid: parsedSubgrid,
@@ -4560,11 +4517,11 @@ const DataForm = ({
   const [formData, setFormData] = useState<any>(
     initialData ||
     (dataType === 'batches'
-      ? { date: new Date().toISOString().slice(0, 10), grid: '1', subgrid: 'N94E70', imageFilename: 'N94E70-0001.jpg', images: 0, defects: 0, kmProcessed: 0, status: 'Ongoing' as const, captureEquipment: 'MMS', pic: '' }
+      ? { date: new Date().toISOString().slice(0, 10), grid: '1', subgrid: '', imageFilename: '', images: 0, defects: 0, kmProcessed: 0, status: 'Ongoing' as const, captureEquipment: 'MMS', pic: '' }
       : {
         date: '',
         grid: '1',
-        subgrid: 'N94E70',
+        subgrid: '',
         kmProcessed: 0,
         imagesProcessed: 0,
         defectCount: 0,
@@ -5159,41 +5116,6 @@ export default function App() {
     };
   }, []);
 
-  // Verify actual 360° image files in storage asynchronously per row using exact filename URL checks
-  useEffect(() => {
-    let isMounted = true;
-    (async () => {
-      try {
-        let updated = false;
-        const verifiedList = await Promise.all(dailyData.map(async d => {
-          const rowPoi = d.poiCount || d.panoramas?.length || 0;
-          const filenames = (d.panoramas && d.panoramas.length > 0)
-            ? d.panoramas.map((p: any) => p.filename).filter((fn: any): fn is string => Boolean(fn))
-            : generateImageFilenamesList(d.subgrid, rowPoi, (d.panoramas?.[0]?.filename) || `${d.subgrid}-0001.jpg`);
-
-          if (filenames.length === 0) return d;
-
-          try {
-            const { availableCount } = await verifyCsvImageFilenamesInStorage(filenames, projectSettings);
-            const finalCount = rowPoi > 0 ? Math.min(availableCount, rowPoi) : availableCount;
-            if (finalCount >= 0 && (d.availableImagesCount !== finalCount || d.imagesProcessed !== finalCount)) {
-              updated = true;
-              return { ...d, availableImagesCount: finalCount, imagesProcessed: finalCount };
-            }
-          } catch { }
-          return d;
-        }));
-
-        if (updated && isMounted) {
-          setDailyData(verifiedList);
-        }
-      } catch (err) {
-        console.warn('Per-row storage image verification notice:', err);
-      }
-    })();
-    return () => { isMounted = false; };
-  }, [dailyData.length]);
-
   // Universal Panorama URL Resolver helper driven by projectSettings
   const getPanoramaUrl = (filename: string) => resolvePanoramaUrl(filename, projectSettings);
 
@@ -5334,7 +5256,8 @@ export default function App() {
       setCurrentPage('dashboard');
       setIsAboutModalOpen(false);
       if (!selectedSubgridFilter) {
-        setSelectedSubgridFilter('N93E70');
+        const firstSg = batchLogs[0]?.subgrid || dailyData[0]?.subgrid;
+        if (firstSg) setSelectedSubgridFilter(firstSg);
       }
     } else if (tourStep === 4) {
       setCurrentPage('dashboard');
@@ -5876,7 +5799,7 @@ export default function App() {
             </thead>
             <tbody>
               ${reportBatches.map(b => {
-      const subName = (extractSubgridName(b.subgrid || b.imageFilename) || b.subgrid || 'N93E70').toUpperCase().trim();
+      const subName = (extractSubgridName(b.subgrid || b.imageFilename) || b.subgrid || '').toUpperCase().trim();
       const gridVal = b.grid || '1';
       const eq = b.captureEquipment || 'MMS';
       const poiVal = getPOICount(b);
@@ -5925,7 +5848,7 @@ export default function App() {
             </thead>
             <tbody>
               ${reportBatches.map(b => {
-      const sgKey = (extractSubgridName(b.subgrid || b.imageFilename) || b.subgrid || 'N93E70').toUpperCase().trim();
+      const sgKey = (extractSubgridName(b.subgrid || b.imageFilename) || b.subgrid || '').toUpperCase().trim();
       const qaRec = qaSubgridRecords[sgKey] || qaSubgridRecords[b.imageFilename?.toUpperCase().trim() || ''] || null;
       const flags = qaRec?.flags || { blurry: false, obstruction: false, badGps: false };
       const isConfirmedDefect = qaRec?.answer === 'yes' || (b.defects || 0) > 0;
@@ -6246,11 +6169,14 @@ export default function App() {
       setSelectedDateFilter(nextDate);
 
       const getSubgridDefault = (subgridName: string) => {
-        const s = subgridName.toUpperCase();
-        if (s.includes('N93E70')) return { fn: 'N93E70-0001.jpg', lat: 2.542429, lng: 102.807800 };
-        if (s.includes('N94E70')) return { fn: 'N94E70-0001.jpg', lat: 2.542160, lng: 102.807090 };
-        if (s.includes('N94E71')) return { fn: 'N94E71-0001.jpg', lat: 2.541000, lng: 102.812000 };
-        return { fn: `${s}-0001.jpg`, lat: 2.542429, lng: 102.807800 };
+        const s = subgridName.toUpperCase().trim();
+        const foundDaily = dailyData.find(d => (extractSubgridName(d.subgrid) || '').toUpperCase().trim() === s);
+        const foundBatch = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === s);
+        const firstPan = foundDaily?.panoramas?.[0] || foundBatch?.panoramas?.[0];
+        const fn = firstPan?.filename || (foundBatch?.imageFilename) || `${s}-0001.jpg`;
+        const lat = firstPan?.latitude ?? (firstPan as any)?.lat ?? (foundDaily as any)?.points?.[0]?.lat ?? (SUBGRID_COORDINATES[s]?.[1] ?? 2.542429);
+        const lng = firstPan?.longitude ?? (firstPan as any)?.lon ?? (firstPan as any)?.lng ?? (foundDaily as any)?.points?.[0]?.lon ?? (SUBGRID_COORDINATES[s]?.[0] ?? 102.807800);
+        return { fn, lat, lng };
       };
 
       if (nextSubgrid) {
@@ -7297,17 +7223,18 @@ export default function App() {
                       ) || dailyData.find(d => (d.subgrid || '').toUpperCase().trim() === (selectedSubgridFilter || '').toUpperCase().trim());
 
                       const getSubgridCoords = (subgrid?: string | null) => {
-                        const name = (subgrid || '').toUpperCase();
-                        if (name.includes('N93E70')) return { lat: 2.5389, lng: 102.8050 };
-                        if (name.includes('N93E71')) return { lat: 2.5392, lng: 102.8120 };
-                        if (name.includes('N93E72')) return { lat: 2.5410, lng: 102.8200 };
-                        if (name.includes('N93E73')) return { lat: 2.5435, lng: 102.8280 };
-                        return { lat: 2.5389, lng: 102.8050 };
+                        const name = (subgrid || '').toUpperCase().trim();
+                        const matchDaily = dailyData.find(d => (extractSubgridName(d.subgrid) || '').toUpperCase().trim() === name);
+                        const matchBatch = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === name);
+                        const firstPan = matchDaily?.panoramas?.[0] || matchBatch?.panoramas?.[0];
+                        const lat = firstPan?.latitude ?? (firstPan as any)?.lat ?? (matchDaily as any)?.points?.[0]?.lat ?? (SUBGRID_COORDINATES[name]?.[1] ?? 2.5389);
+                        const lng = firstPan?.longitude ?? (firstPan as any)?.lon ?? (firstPan as any)?.lng ?? (matchDaily as any)?.points?.[0]?.lon ?? (SUBGRID_COORDINATES[name]?.[0] ?? 102.8050);
+                        return { lat, lng };
                       };
 
                       const activeCoords = getSubgridCoords(selectedSubgridFilter);
-                      const activeKm = activeDailyLog?.kmProcessed ? activeDailyLog.kmProcessed.toFixed(1) : activeBatchLog?.kmProcessed ? activeBatchLog.kmProcessed.toFixed(1) : '6.5';
-                      const activeImages = activeDailyLog?.imagesProcessed || activeBatchLog?.images || 265;
+                      const activeKm = activeDailyLog?.kmProcessed ? activeDailyLog.kmProcessed.toFixed(1) : activeBatchLog?.kmProcessed ? activeBatchLog.kmProcessed.toFixed(1) : '0.0';
+                      const activeImages = activeDailyLog?.imagesProcessed || activeBatchLog?.images || 0;
                       const activeDefects = (activeDailyLog?.imagesDefected ?? activeDailyLog?.defectCount) ?? activeBatchLog?.defects ?? 0;
                       const activePic = activeDailyLog?.pic || activeBatchLog?.pic || '';
                       const activeStatus = activeBatchLog?.status === 'Complete' || activeDailyLog?.publishToWebGIS === 'yes' ? 'Published to WebGIS' : 'In Progress';
@@ -7325,7 +7252,7 @@ export default function App() {
                             <span className="text-slate-400">Defect Images:</span>
                             <button
                               onClick={() => {
-                                const validFn = `${selectedSubgridFilter || 'N93E70'}-0002.jpg`;
+                                const validFn = activeDailyLog?.panoramas?.[0]?.filename || activeBatchLog?.imageFilename || `${selectedSubgridFilter || 'SUBGRID'}-0001.jpg`;
                                 const imgUrl = `/MMS_PIC/${validFn}`;
                                 setActivePanoramaUrl(imgUrl);
                                 setHasSelectedPoint(true);
@@ -7356,6 +7283,7 @@ export default function App() {
                       onManualRefresh={handleRefreshMap}
                       selectedSubgridFilter={selectedSubgridFilter}
                       stagedItems={dailyData}
+                      projectSettings={projectSettings}
                     />
                   </div>
                 </div>
@@ -7818,8 +7746,9 @@ export default function App() {
                               ) : isQaLocked ? (
                                 <button
                                   onClick={() => {
-                                    const itemKey = activePanoramaFilename || inspectorSubgrid || selectedSubgridFilter || 'N93E70';
-                                    const sg = inspectorSubgrid || selectedSubgridFilter || 'N93E70';
+                                    const defaultSg = (dailyData[0]?.subgrid) || (batchLogs[0]?.subgrid) || '';
+                                    const itemKey = activePanoramaFilename || inspectorSubgrid || selectedSubgridFilter || defaultSg;
+                                    const sg = inspectorSubgrid || selectedSubgridFilter || defaultSg;
                                     saveSubgridQa(itemKey, selectedQaFlags, qaQuestionnaireAnswer, false);
                                     const targetLog = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === sg.toUpperCase().trim());
                                     updateDefectStatusInSupabase(itemKey, targetLog?.defects || 0, 'Editing QA', { selectedQaFlags, answer: qaQuestionnaireAnswer, action: 'EDIT_QA', filename: activePanoramaFilename, subgrid: sg });
@@ -7859,8 +7788,9 @@ export default function App() {
                                     disabled={isQaLocked}
                                     onClick={() => {
                                       if (isQaLocked) return;
-                                      const itemKey = activePanoramaFilename || inspectorSubgrid || selectedSubgridFilter || 'N93E70';
-                                      const sg = inspectorSubgrid || selectedSubgridFilter || 'N93E70';
+                                      const defaultSg = (dailyData[0]?.subgrid) || (batchLogs[0]?.subgrid) || '';
+                                      const itemKey = activePanoramaFilename || inspectorSubgrid || selectedSubgridFilter || defaultSg;
+                                      const sg = inspectorSubgrid || selectedSubgridFilter || defaultSg;
                                       const nextFlags = { ...selectedQaFlags, blurry: !selectedQaFlags.blurry };
                                       saveSubgridQa(itemKey, nextFlags, qaQuestionnaireAnswer, false);
                                       const targetLog = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === sg.toUpperCase().trim());
@@ -7885,8 +7815,9 @@ export default function App() {
                                     disabled={isQaLocked}
                                     onClick={() => {
                                       if (isQaLocked) return;
-                                      const itemKey = activePanoramaFilename || inspectorSubgrid || selectedSubgridFilter || 'N93E70';
-                                      const sg = inspectorSubgrid || selectedSubgridFilter || 'N93E70';
+                                      const defaultSg = (dailyData[0]?.subgrid) || (batchLogs[0]?.subgrid) || '';
+                                      const itemKey = activePanoramaFilename || inspectorSubgrid || selectedSubgridFilter || defaultSg;
+                                      const sg = inspectorSubgrid || selectedSubgridFilter || defaultSg;
                                       const nextFlags = { ...selectedQaFlags, obstruction: !selectedQaFlags.obstruction };
                                       saveSubgridQa(itemKey, nextFlags, qaQuestionnaireAnswer, false);
                                       const targetLog = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === sg.toUpperCase().trim());
@@ -7911,8 +7842,9 @@ export default function App() {
                                     disabled={isQaLocked}
                                     onClick={() => {
                                       if (isQaLocked) return;
-                                      const itemKey = activePanoramaFilename || inspectorSubgrid || selectedSubgridFilter || 'N93E70';
-                                      const sg = inspectorSubgrid || selectedSubgridFilter || 'N93E70';
+                                      const defaultSg = (dailyData[0]?.subgrid) || (batchLogs[0]?.subgrid) || '';
+                                      const itemKey = activePanoramaFilename || inspectorSubgrid || selectedSubgridFilter || defaultSg;
+                                      const sg = inspectorSubgrid || selectedSubgridFilter || defaultSg;
                                       const nextFlags = { ...selectedQaFlags, badGps: !selectedQaFlags.badGps };
                                       saveSubgridQa(itemKey, nextFlags, qaQuestionnaireAnswer, false);
                                       const targetLog = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === sg.toUpperCase().trim());
@@ -7948,8 +7880,9 @@ export default function App() {
                                 <button
                                   disabled={isQaLocked}
                                   onClick={() => {
-                                    const itemKey = activePanoramaFilename || inspectorSubgrid || selectedSubgridFilter || 'N93E70';
-                                    const sg = inspectorSubgrid || selectedSubgridFilter || 'N93E70';
+                                    const defaultSg = (dailyData[0]?.subgrid) || (batchLogs[0]?.subgrid) || '';
+                                    const itemKey = activePanoramaFilename || inspectorSubgrid || selectedSubgridFilter || defaultSg;
+                                    const sg = inspectorSubgrid || selectedSubgridFilter || defaultSg;
                                     saveSubgridQa(itemKey, selectedQaFlags, 'yes', true);
                                     const targetLog = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === sg.toUpperCase().trim());
                                     const newDefects = (targetLog?.defects || 0) + 1;
@@ -7968,8 +7901,9 @@ export default function App() {
                                 <button
                                   disabled={isQaLocked}
                                   onClick={() => {
-                                    const itemKey = activePanoramaFilename || inspectorSubgrid || selectedSubgridFilter || 'N93E70';
-                                    const sg = inspectorSubgrid || selectedSubgridFilter || 'N93E70';
+                                    const defaultSg = (dailyData[0]?.subgrid) || (batchLogs[0]?.subgrid) || '';
+                                    const itemKey = activePanoramaFilename || inspectorSubgrid || selectedSubgridFilter || defaultSg;
+                                    const sg = inspectorSubgrid || selectedSubgridFilter || defaultSg;
                                     saveSubgridQa(itemKey, selectedQaFlags, 'no', true);
                                     const targetLog = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === sg.toUpperCase().trim());
                                     const currentDefects = targetLog?.defects || 0;
@@ -8228,7 +8162,7 @@ export default function App() {
                     <div className="bg-[#0b0f17] p-3.5 rounded-lg border border-slate-800 space-y-1">
                       <h4 className="font-semibold text-slate-100 text-xs">1. Subgrid Selection &amp; Key Normalization</h4>
                       <p className="text-slate-400">
-                        Clicking any subgrid (e.g. <code className="bg-slate-800 px-1.5 py-0.5 rounded text-slate-200 font-mono">N93E70</code>) on the map or inside the control table isolates all trajectory points for that region. Subgrid keys are automatically normalized (<code className="bg-slate-800 px-1 py-0.5 rounded text-slate-300 font-mono text-[10px]">N93-E70 &rarr; N93E70</code>) across CSV imports and database queries.
+                        Clicking any subgrid on the map or inside the control table isolates all trajectory points for that region. Subgrid keys are automatically normalized (<code className="bg-slate-800 px-1 py-0.5 rounded text-slate-300 font-mono text-[10px]">XX-YY &rarr; XXYY</code>) across CSV imports and database queries.
                       </p>
                     </div>
 
@@ -8419,7 +8353,7 @@ export default function App() {
                     <div className="p-3 rounded-xl bg-[#0b0f17] border border-slate-800/80 space-y-1">
                       <div className="font-bold text-slate-200">1. Subgrid Trajectory Deduplication Strategy</div>
                       <p className="text-slate-400 text-[11px]">
-                        Auto-normalizes subgrid keys (<code className="bg-slate-800 px-1 py-0.5 rounded text-slate-300 font-mono text-[10px]">N93-E70 &rarr; N93E70</code>). Offers choice between Masterlist clean merge or preserved daily survey runs.
+                        Auto-normalizes subgrid keys (<code className="bg-slate-800 px-1 py-0.5 rounded text-slate-300 font-mono text-[10px]">XX-YY &rarr; XXYY</code>). Offers choice between Masterlist clean merge or preserved daily survey runs.
                       </p>
                     </div>
 
