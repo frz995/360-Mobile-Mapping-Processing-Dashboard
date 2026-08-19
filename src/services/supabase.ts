@@ -218,7 +218,15 @@ export async function fetchSupabaseData(): Promise<{
       const filename = r.filename || r.image_url || '';
       const sg = (extractSubgrid(filename) || 'UNKNOWN').toUpperCase().trim();
       if (!sg || sg === 'UNKNOWN' || sg === 'N/A') return;
-      if (filename) publishedFilenamesSet.add(filename.toLowerCase().trim());
+      if (filename) {
+        publishedFilenamesSet.add(filename.toLowerCase().trim());
+        const base = filename.split('/').pop()?.toLowerCase().trim();
+        if (base) {
+          publishedFilenamesSet.add(base);
+          publishedFilenamesSet.add(`/mms_pic/${base}`);
+          publishedFilenamesSet.add(`mms_pic/${base}`);
+        }
+      }
 
       let lat: number | undefined = r.latitude ?? r.lat;
       let lon: number | undefined = r.longitude ?? r.lon;
@@ -320,7 +328,18 @@ export async function fetchSupabaseData(): Promise<{
           longitude: pt.lon,
           lat: pt.lat,
           lon: pt.lon,
-          subgrid: subgrid
+          subgrid: subgrid,
+          status: 'yes',
+          qa_status: 'published',
+          publishToWebGIS: 'yes',
+          publishToUSVPRO: 'yes',
+          isPublished: true,
+          published: true,
+          opacity: 1.0,
+          color: '#10b981',
+          statusColor: '#10b981',
+          strokeColor: '#10b981',
+          fillColor: '#10b981'
         }))
       });
     });
@@ -336,7 +355,14 @@ export async function fetchSupabaseData(): Promise<{
           if (!sg || sg === 'UNKNOWN' || sg === 'N/A') return;
 
           // If this specific image has already been published in production, skip it
-          if (filename && publishedFilenamesSet.has(filename.toLowerCase().trim())) return;
+          if (r.status === 'yes' || r.status === 'published' || r.publish_to_webgis === 'yes' || r.publishToWebGIS === 'yes') return;
+          const baseName = (filename.split('/').pop() || filename).toLowerCase().trim();
+          const cleanNoExt = baseName.replace(/\.[^/.]+$/, '');
+          if (filename && (
+            publishedFilenamesSet.has(filename.toLowerCase().trim()) ||
+            publishedFilenamesSet.has(baseName) ||
+            publishedFilenamesSet.has(cleanNoExt)
+          )) return;
 
           // Unique run key deduplicates identical survey runs per subgrid
           const runKey = r.batch_id || r.run_id || `${sg}_${r.poi_count || r.images_processed || 0}_${r.km_processed || 0}`;
@@ -642,6 +668,11 @@ export async function publishToSupabase(record: {
         bearing: Number(p.bearing ?? p.heading ?? 16.2),
         pitch: Number(p.pitch ?? 0),
         roll: Number(p.roll ?? 0),
+        subgrid: sgKey,
+        grid: record.grid || '1',
+        status: 'yes',
+        qa_status: 'published',
+        publish_status: 'published',
         geom: {
           type: 'Point',
           coordinates: [lon, lat]
@@ -801,10 +832,21 @@ export async function deleteFromStagingSupabase(subgrid: string, filenames?: str
     if (!cleanSub) return { success: true, message: 'No subgrid specified' };
 
     if (filenames && filenames.length > 0) {
-      const cleanFns = filenames.map(f => f.trim()).filter(Boolean);
+      const allVariants = new Set<string>();
+      filenames.forEach(f => {
+        const clean = f.trim();
+        if (clean) {
+          allVariants.add(clean);
+          const base = clean.split('/').pop() || clean;
+          allVariants.add(base);
+          allVariants.add(`/MMS_PIC/${base}`);
+          allVariants.add(`MMS_PIC/${base}`);
+        }
+      });
+      const cleanFns = Array.from(allVariants);
       await supabase.from('staging_panoramas').delete().in('filename', cleanFns);
       try {
-        await fetch(`${supabaseUrl}/rest/v1/staging_panoramas?filename=in.(${cleanFns.join(',')})`, {
+        await fetch(`${supabaseUrl}/rest/v1/staging_panoramas?filename=in.(${cleanFns.map(encodeURIComponent).join(',')})`, {
           method: 'DELETE',
           headers: {
             'apikey': supabaseKey,
