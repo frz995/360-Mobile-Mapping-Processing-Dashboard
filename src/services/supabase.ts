@@ -144,10 +144,8 @@ export async function fetchSupabaseData(): Promise<{
       console.warn('Subgrid metadata table query notice:', stgErr);
     }
 
-    // If no records in database at all, return empty data
-    if (!data || data.length === 0) {
-      return { dailyData: [], batchLogs: [] };
-    }
+    // Process published records if available
+    const publishedRows = data || [];
 
     // Count actual available images in storage bucket if accessible
     const storageImageCounts = new Map<string, number>();
@@ -195,7 +193,7 @@ export async function fetchSupabaseData(): Promise<{
       recordImages?: number;
     }>();
 
-    data.forEach(r => {
+    publishedRows.forEach(r => {
       const filename = r.filename || r.image_url || '';
       const sg = (extractSubgrid(filename) || 'UNKNOWN').toUpperCase().trim();
       if (!sg || sg === 'UNKNOWN' || sg === 'N/A') return;
