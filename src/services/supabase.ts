@@ -387,10 +387,40 @@ export async function fetchSupabaseData(): Promise<{
             dateFormatted = dObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
           }
 
+// Helper to generate sequential filenames from CSV starting filename (e.g., N93E70-0002.jpg -> N93E70-0015.jpg)
+function generateSequentialFilenames(startFn: string, count: number): string[] {
+  if (!startFn || count <= 0) return [];
+  const clean = startFn.split('/').pop()?.trim() || startFn.trim();
+  const match = clean.match(/^(.*?)-?(\d+)(\.[a-z0-9]+)?$/i);
+  if (!match) {
+    const base = clean.replace(/\.[a-z0-9]+$/i, '');
+    return Array.from({ length: count }, (_, i) => `${base}-${String(i + 1).padStart(4, '0')}.jpg`);
+  }
+  const prefix = match[1];
+  const numStr = match[2];
+  const ext = match[3] || '.jpg';
+  const startNum = parseInt(numStr, 10);
+  const padLen = numStr.length;
+
+  const result: string[] = [];
+  for (let i = 0; i < count; i++) {
+    const nextNum = String(startNum + i).padStart(padLen, '0');
+    result.push(`${prefix}-${nextNum}${ext}`);
+  }
+  return result;
+}
+
           // Match CSV image filenames against actual files available in MMS_PIC storage bucket
           let verifiedCount = 0;
-          if (g.imageFilenames && g.imageFilenames.length > 0 && storageFileSet.size > 0) {
-            verifiedCount = g.imageFilenames.filter((fn: string) => {
+          let filenamesToVerify: string[] = g.imageFilenames || [];
+          if (filenamesToVerify.length < count && filenamesToVerify.length > 0) {
+            filenamesToVerify = generateSequentialFilenames(filenamesToVerify[0], count);
+          } else if (filenamesToVerify.length === 0) {
+            filenamesToVerify = generateSequentialFilenames(`${sg}-0001.jpg`, count);
+          }
+
+          if (filenamesToVerify.length > 0 && storageFileSet.size > 0) {
+            verifiedCount = filenamesToVerify.filter((fn: string) => {
               const cleanFn = fn.split('/').pop()?.toLowerCase().trim() || fn.toLowerCase().trim();
               return storageFileSet.has(cleanFn) || storageFileSet.has(fn.toLowerCase().trim());
             }).length;
