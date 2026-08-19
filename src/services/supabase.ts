@@ -330,8 +330,13 @@ export async function fetchSupabaseData(): Promise<{
           // If subgrid is already in production published panoramas, skip staging item
           if (grouped.has(sg)) return;
 
-          if (!stagingGrouped.has(sg)) {
-            stagingGrouped.set(sg, {
+          // Unique run key preserves distinct daily survey runs per subgrid
+          const rawDateStr = r.captured_at ? new Date(r.captured_at).toISOString().slice(0, 10) : '';
+          const runKey = r.batch_id || r.run_id || `${sg}_${rawDateStr}_${r.poi_count || r.images_processed || 0}_${r.km_processed || 0}`;
+
+          if (!stagingGrouped.has(runKey)) {
+            stagingGrouped.set(runKey, {
+              key: runKey,
               subgrid: sg,
               grid: r.grid || '1',
               imageFilenames: [],
@@ -346,7 +351,7 @@ export async function fetchSupabaseData(): Promise<{
             });
           }
 
-          const sgObj = stagingGrouped.get(sg)!;
+          const sgObj = stagingGrouped.get(runKey)!;
           if (filename && !sgObj.imageFilenames.includes(filename)) {
             sgObj.imageFilenames.push(filename);
           }
@@ -366,7 +371,8 @@ export async function fetchSupabaseData(): Promise<{
           }
         });
 
-        stagingGrouped.forEach((g, sg) => {
+        stagingGrouped.forEach((g, runKey) => {
+          const sg = g.subgrid;
           const count = g.imageFilenames.length || g.poiCount || 1;
           const calcKm = calculateDistance(g.points);
           const km = g.kmProcessed > 0 ? g.kmProcessed : (calcKm > 0 ? calcKm : Math.round((count * 0.005) * 100) / 100);
@@ -380,7 +386,7 @@ export async function fetchSupabaseData(): Promise<{
           const imgCount = count > 0 ? Math.min(g.imagesProcessed || count, count) : (g.imagesProcessed || count);
 
           dailyData.push({
-            id: `staging-d-${sg}`,
+            id: `staging-d-${runKey}`,
             date: dateFormatted,
             grid: g.grid,
             subgrid: sg,
@@ -393,14 +399,14 @@ export async function fetchSupabaseData(): Promise<{
             captureEquipment: g.equipment,
             publishToWebGIS: 'in process',
             action: 'Imported (staging)',
-            pic: 'Fariz',
+            pic: 'Unassigned',
             isStagingPreview: true,
             isSyncedWithSupabase: false,
             isStagedInSupabase: true
           });
 
           batchLogs.push({
-            id: `staging-b-${sg}`,
+            id: `staging-b-${runKey}`,
             date: `${rawDate} 00:43`,
             grid: g.grid,
             subgrid: sg,
