@@ -149,6 +149,7 @@ export async function fetchSupabaseData(): Promise<{
 
     // Count actual available images in storage bucket if accessible
     const storageImageCounts = new Map<string, number>();
+    const storageFileSet = new Set<string>();
     const storageBucketName = import.meta.env.VITE_SUPABASE_BUCKET || import.meta.env.VITE_STORAGE_BUCKET || 'MMS_PIC';
 
     try {
@@ -165,6 +166,10 @@ export async function fetchSupabaseData(): Promise<{
         totalFetched += storageFiles.length;
         storageFiles.forEach(file => {
           if (file.name && file.name.includes('.') && !file.name.startsWith('.')) {
+            storageFileSet.add(file.name.toLowerCase().trim());
+            const clean = file.name.split('/').pop()?.toLowerCase().trim();
+            if (clean) storageFileSet.add(clean);
+
             const sg = extractSubgrid(file.name);
             if (sg && sg !== 'N/A') {
               storageImageCounts.set(sg, (storageImageCounts.get(sg) || 0) + 1);
@@ -382,7 +387,20 @@ export async function fetchSupabaseData(): Promise<{
             dateFormatted = dObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
           }
 
-          const imgCount = count > 0 ? Math.min(g.imagesProcessed || count, count) : (g.imagesProcessed || count);
+          // Match CSV image filenames against actual files available in MMS_PIC storage bucket
+          let verifiedCount = 0;
+          if (g.imageFilenames && g.imageFilenames.length > 0 && storageFileSet.size > 0) {
+            verifiedCount = g.imageFilenames.filter((fn: string) => {
+              const cleanFn = fn.split('/').pop()?.toLowerCase().trim() || fn.toLowerCase().trim();
+              return storageFileSet.has(cleanFn) || storageFileSet.has(fn.toLowerCase().trim());
+            }).length;
+          } else if (storageImageCounts.has(sg)) {
+            verifiedCount = Math.min(storageImageCounts.get(sg) || 0, count);
+          } else {
+            verifiedCount = typeof g.imagesProcessed === 'number' ? Math.min(g.imagesProcessed, count) : 0;
+          }
+
+          const imgCount = verifiedCount;
 
           dailyData.push({
             id: `staging-d-${runKey}`,
