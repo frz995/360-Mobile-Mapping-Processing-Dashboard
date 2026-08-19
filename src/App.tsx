@@ -737,6 +737,25 @@ const MapComponent = ({
 
   const formattedStagedItems = React.useMemo(() => {
     if (!stagedItems || stagedItems.length === 0) return [];
+
+    // Track published point keys to prevent orange staging duplicates from overlapping green published points
+    const publishedPointKeys = new Set<string>();
+
+    stagedItems.forEach(item => {
+      const isPub = item.publishToWebGIS === 'yes' || item.publishToUSVPRO === 'yes' || Boolean(item.isSyncedWithSupabase) || item.isFromSupabase === true;
+      if (isPub) {
+        (item.panoramas || item.points || []).forEach((p: any) => {
+          const fn = (p.filename || p.image_url || '').split('/').pop()?.toLowerCase().trim();
+          if (fn) publishedPointKeys.add(fn);
+          const lat = p.latitude ?? p.lat;
+          const lon = p.longitude ?? p.lon ?? p.lng;
+          if (typeof lat === 'number' && typeof lon === 'number') {
+            publishedPointKeys.add(`${lat.toFixed(5)}_${lon.toFixed(5)}`);
+          }
+        });
+      }
+    });
+
     return stagedItems.map(item => {
       const isPub = item.publishToWebGIS === 'yes' || item.publishToUSVPRO === 'yes' || Boolean(item.isSyncedWithSupabase) || item.isFromSupabase === true;
       const statusVal = isPub ? 'yes' : (item.publishToWebGIS || item.publishToUSVPRO || 'in process');
@@ -767,6 +786,20 @@ const MapComponent = ({
           lon: baseCoord.lng + (idx * 0.0002),
           lng: baseCoord.lng + (idx * 0.0002)
         }));
+      }
+
+      // If this item is staging (unpublished), filter out any points that are already published in green
+      if (!isPub && publishedPointKeys.size > 0) {
+        pans = pans.filter((p: any) => {
+          const fn = (p.filename || p.image_url || '').split('/').pop()?.toLowerCase().trim();
+          if (fn && publishedPointKeys.has(fn)) return false;
+          const lat = p.latitude ?? p.lat;
+          const lon = p.longitude ?? p.lon ?? p.lng;
+          if (typeof lat === 'number' && typeof lon === 'number' && publishedPointKeys.has(`${lat.toFixed(5)}_${lon.toFixed(5)}`)) {
+            return false;
+          }
+          return true;
+        });
       }
 
       const formattedPans = pans.map((p: any) => ({
@@ -5310,7 +5343,17 @@ export default function App() {
   const activeJobsCount = batchLogs.filter(b => b.status === 'Ongoing').length + dailyData.filter(d => (d as any).status === 'Ongoing' || (d as any).status === 'In Progress').length;
 
   const [mapRefreshKey, setMapRefreshKey] = useState<number>(Date.now());
-  const handleRefreshMap = () => setMapRefreshKey(Date.now());
+  const handleRefreshMap = () => {
+    setMapRefreshKey(Date.now());
+    fetchSupabaseData().then(({ dailyData: sDaily, batchLogs: sBatches }) => {
+      if (sDaily && sDaily.length > 0) {
+        setDailyData(sDaily);
+      }
+      if (sBatches && sBatches.length > 0) {
+        setBatchLogs(sBatches);
+      }
+    }).catch(err => console.warn('Refresh map live sync notice:', err));
+  };
 
   // Notification & Audit Log State Management
   const [notifications, setNotifications] = useState<NotificationItem[]>(() => {
