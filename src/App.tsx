@@ -1911,9 +1911,20 @@ const DataManagementPage = ({
         const finalKm = d.kmProcessed > 0 ? d.kmProcessed : (trackKm > 0 ? trackKm : Math.round((d.panoramas.length * 0.005) * 100) / 100);
         const panCount = d.panoramas.length;
 
-        // Fast local staging initialization (0ms latency, verified automatically by dashboard sync)
-        const verifiedCount = 0;
-        const verifiedFilenamesList: string[] = [];
+        // Verify CSV filenames against Supabase Storage bucket for accurate available image count
+        const rowFilenames = d.panoramas.map(p => p.filename).filter((fn): fn is string => Boolean(fn));
+        let verifiedCount = 0;
+        let verifiedFilenamesList: string[] = [];
+        if (rowFilenames.length > 0) {
+          try {
+            const verifyRes = await verifyCsvImageFilenamesInStorage(rowFilenames, projectSettings);
+            verifiedCount = verifyRes.availableCount;
+            verifiedFilenamesList = verifyRes.verifiedFilenames;
+          } catch {
+            verifiedCount = 0;
+            verifiedFilenamesList = [];
+          }
+        }
 
         const markedPanoramas = d.panoramas.map(p => ({
           ...p,
