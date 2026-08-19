@@ -98,7 +98,7 @@ export interface ExtendedProjectSettings {
   requireAdminApprovalForDelete?: boolean;
   sessionTimeoutMinutes?: number; // 15, 30, 60, 240, 0 (Never)
   enforceCorporateDomain?: boolean;
-  corporateDomain?: string; // e.g. '@tnb.com.my'
+  corporateDomain?: string; // e.g. '@example.com'
   twoFactorRequired?: boolean;
 
   // Basemap & Layer Management

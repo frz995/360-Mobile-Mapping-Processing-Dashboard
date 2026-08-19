@@ -36,9 +36,9 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
             </p>
             <button
               onClick={this.handleReset}
-              style={{ width: '100%', backgroundColor: '#0284c7', color: '#ffffff', fontWeight: '600', padding: '0.625rem 1rem', borderRadius: '0.5rem', border: 'none', cursor: 'pointer' }}
+              style={{ width: '100%', backgroundColor: '#0284c7', color: '#ffffff', fontWeight: '600', padding: '0.625rem 1rem', borderRadius: '0.5rem', border: 'none', cursor: 'pointer', transition: 'background-color 0.2s' }}
             >
-              Reset Saved Layers & Reload
+              Reload Dashboard
             </button>
           </div>
         </div>
