@@ -327,20 +327,15 @@ export async function fetchSupabaseData(): Promise<{
 
       // For published records: storage-verify actual DB filenames against bucket.
       // Fall back to g.imageFilenames.length only if storage verification is unavailable.
-      let verifiedImagesCount: number;
+      let verifiedImagesCount = 0;
       let verifiedFiles: string[] = [];
       if (g.imageFilenames.length > 0) {
         const verifyRes = await verifyFilenamesAgainstStorage(g.imageFilenames, subgrid);
-        verifiedImagesCount = verifyRes.count;
-        verifiedFiles = verifyRes.verifiedFilenames;
-        // If storage verification failed (returned 0) but we have DB records and storage is empty, use DB count as fallback
-        if (verifiedImagesCount === 0 && storageFileSet.size === 0) {
-          verifiedImagesCount = g.imageFilenames.length;
-          verifiedFiles = [...g.imageFilenames];
-        }
+        verifiedImagesCount = typeof verifyRes.count === 'number' ? verifyRes.count : 0;
+        verifiedFiles = verifyRes.verifiedFilenames || [];
       } else {
-        // No filenames in DB at all — use recordImages or poiCount
-        verifiedImagesCount = g.recordImages && g.recordImages > 0 ? g.recordImages : poiCount;
+        // No filenames in DB - default to 0 frames
+        verifiedImagesCount = 0;
         verifiedFiles = [];
       }
 
