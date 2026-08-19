@@ -113,6 +113,7 @@ export interface ExtendedProjectSettings {
   poiTrackLineWidth?: number;
   poiMarkerRadius?: number;
   enableLayerGlow?: boolean;
+  layerOpacity?: number; // 20 - 100
 
   // SLA & QA Benchmarks
   targetKm?: number;
