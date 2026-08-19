@@ -506,21 +506,15 @@ export async function fetchSupabaseData(): Promise<{
           let verifiedFiles: string[] = [];
           if (g.imageFilenames && g.imageFilenames.length > 0) {
             const verifyRes = await verifyFilenamesAgainstStorage(g.imageFilenames, sg);
-            verifiedCount = verifyRes.count;
-            verifiedFiles = verifyRes.verifiedFilenames;
-            if (verifiedCount === 0 && storageFileSet.size === 0) {
-              verifiedCount = g.imageFilenames.length;
-              verifiedFiles = [...g.imageFilenames];
-            }
-          } else if (g.imagesProcessed !== undefined && g.imagesProcessed > 0) {
-            verifiedCount = g.imagesProcessed;
-            verifiedFiles = [];
+            verifiedCount = typeof verifyRes.count === 'number' ? verifyRes.count : 0;
+            verifiedFiles = verifyRes.verifiedFilenames || [];
           } else {
-            verifiedCount = count;
+            const normSg = (sg || '').toUpperCase().trim();
+            verifiedCount = storageImageCounts.get(normSg) || 0;
             verifiedFiles = [];
           }
 
-          const finalImgCount = count > 0 ? Math.min(count, verifiedCount) : verifiedCount;
+          const finalImgCount = verifiedCount;
           const picName = g.pic || knownMetadata[sg]?.pic || 'Unassigned';
 
           dailyData.push({
