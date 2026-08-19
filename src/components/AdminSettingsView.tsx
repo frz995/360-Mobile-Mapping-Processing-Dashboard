@@ -373,10 +373,10 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
         <div className={`p-4 rounded-xl border flex items-center justify-between shadow-sm ${cardBg}`}>
           <div>
             <p className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">Total System Users</p>
-            <h3 className="text-2xl font-bold text-slate-100 mt-1">{totalUsersCount}</h3>
+            <h3 className={`text-2xl font-bold mt-1 ${themeMode === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>{totalUsersCount}</h3>
             <p className="text-[10px] text-slate-500 mt-0.5 font-mono">Registered dashboard accounts</p>
           </div>
-          <div className="p-2.5 rounded-lg bg-slate-800/80 border border-slate-700/70 text-slate-300">
+          <div className={`p-2.5 rounded-lg border ${themeMode === 'light' ? 'bg-slate-100 border-slate-200 text-slate-700' : 'bg-slate-800/80 border-slate-700/70 text-slate-300'}`}>
             <Users size={18} />
           </div>
         </div>
@@ -384,10 +384,10 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
         <div className={`p-4 rounded-xl border flex items-center justify-between shadow-sm ${cardBg}`}>
           <div>
             <p className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">Active Users</p>
-            <h3 className="text-2xl font-bold text-emerald-400 mt-1">{activeUsersCount}</h3>
+            <h3 className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">{activeUsersCount}</h3>
             <p className="text-[10px] text-slate-500 mt-0.5 font-mono">Granted dashboard access</p>
           </div>
-          <div className="p-2.5 rounded-lg bg-slate-800/80 border border-slate-700/70 text-emerald-400">
+          <div className={`p-2.5 rounded-lg border ${themeMode === 'light' ? 'bg-emerald-50 border-emerald-200 text-emerald-600' : 'bg-slate-800/80 border-slate-700/70 text-emerald-400'}`}>
             <UserCheck size={18} />
           </div>
         </div>
@@ -395,10 +395,10 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
         <div className={`p-4 rounded-xl border flex items-center justify-between shadow-sm ${cardBg}`}>
           <div>
             <p className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">Pending Approvals</p>
-            <h3 className="text-2xl font-bold text-amber-400 mt-1">{pendingApprovalsCount}</h3>
+            <h3 className="text-2xl font-bold text-amber-600 dark:text-amber-400 mt-1">{pendingApprovalsCount}</h3>
             <p className="text-[10px] text-slate-500 mt-0.5 font-mono">CSV deletion requests</p>
           </div>
-          <div className="p-2.5 rounded-lg bg-slate-800/80 border border-slate-700/70 text-amber-400">
+          <div className={`p-2.5 rounded-lg border ${themeMode === 'light' ? 'bg-amber-50 border-amber-200 text-amber-600' : 'bg-slate-800/80 border-slate-700/70 text-amber-400'}`}>
             <CheckSquare size={18} />
           </div>
         </div>
@@ -406,10 +406,10 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
         <div className={`p-4 rounded-xl border flex items-center justify-between shadow-sm ${cardBg}`}>
           <div>
             <p className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">Audit Events Logged</p>
-            <h3 className="text-2xl font-bold text-slate-100 mt-1">{totalAuditEventsCount}</h3>
+            <h3 className={`text-2xl font-bold mt-1 ${themeMode === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>{totalAuditEventsCount}</h3>
             <p className="text-[10px] text-slate-500 mt-0.5 font-mono">Real-time security trail</p>
           </div>
-          <div className="p-2.5 rounded-lg bg-slate-800/80 border border-slate-700/70 text-slate-300">
+          <div className={`p-2.5 rounded-lg border ${themeMode === 'light' ? 'bg-slate-100 border-slate-200 text-slate-700' : 'bg-slate-800/80 border-slate-700/70 text-slate-300'}`}>
             <Activity size={18} />
           </div>
         </div>
@@ -419,29 +419,41 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
       <div className={`flex items-center gap-1.5 p-1 rounded-xl border overflow-x-auto shrink-0 ${cardBg}`}>
         <button
           onClick={() => setActiveTab('settings')}
-          className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${activeTab === 'settings' ? 'bg-slate-800 text-white shadow-sm border border-slate-700' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'}`}
+          className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
+            activeTab === 'settings'
+              ? (themeMode === 'light' ? 'bg-sky-50 text-sky-700 shadow-sm border border-sky-200 font-bold' : 'bg-slate-800 text-white shadow-sm border border-slate-700')
+              : (themeMode === 'light' ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50')
+          }`}
         >
-          <Settings size={14} className={activeTab === 'settings' ? 'text-sky-400' : ''} />
+          <Settings size={14} className={activeTab === 'settings' ? 'text-sky-500' : ''} />
           <span>Project & Security Settings</span>
         </button>
 
         <button
           onClick={() => setActiveTab('users')}
-          className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${activeTab === 'users' ? 'bg-slate-800 text-white shadow-sm border border-slate-700' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'}`}
+          className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
+            activeTab === 'users'
+              ? (themeMode === 'light' ? 'bg-sky-50 text-sky-700 shadow-sm border border-sky-200 font-bold' : 'bg-slate-800 text-white shadow-sm border border-slate-700')
+              : (themeMode === 'light' ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50')
+          }`}
         >
-          <Users size={14} className={activeTab === 'users' ? 'text-sky-400' : ''} />
+          <Users size={14} className={activeTab === 'users' ? 'text-sky-500' : ''} />
           <span>User Management</span>
-          <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-slate-700 text-slate-300">{totalUsersCount}</span>
+          <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-medium ${themeMode === 'light' ? 'bg-slate-200/80 text-slate-700' : 'bg-slate-700 text-slate-300'}`}>{totalUsersCount}</span>
         </button>
 
         <button
           onClick={() => setActiveTab('approvals')}
-          className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${activeTab === 'approvals' ? 'bg-slate-800 text-white shadow-sm border border-slate-700' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'}`}
+          className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
+            activeTab === 'approvals'
+              ? (themeMode === 'light' ? 'bg-amber-50 text-amber-800 shadow-sm border border-amber-200 font-bold' : 'bg-slate-800 text-white shadow-sm border border-slate-700')
+              : (themeMode === 'light' ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50')
+          }`}
         >
-          <CheckSquare size={14} className={activeTab === 'approvals' ? 'text-amber-400' : ''} />
+          <CheckSquare size={14} className={activeTab === 'approvals' ? 'text-amber-500' : ''} />
           <span>Approvals (Data Deletion)</span>
           {pendingApprovalsCount > 0 && (
-            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30">
+            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold border ${themeMode === 'light' ? 'bg-amber-100 text-amber-800 border-amber-300 shadow-sm' : 'bg-amber-500/20 text-amber-300 border-amber-500/30'}`}>
               {pendingApprovalsCount}
             </span>
           )}
@@ -449,25 +461,37 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
 
         <button
           onClick={() => setActiveTab('reports')}
-          className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${activeTab === 'reports' ? 'bg-slate-800 text-white shadow-sm border border-slate-700' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'}`}
+          className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
+            activeTab === 'reports'
+              ? (themeMode === 'light' ? 'bg-sky-50 text-sky-700 shadow-sm border border-sky-200 font-bold' : 'bg-slate-800 text-white shadow-sm border border-slate-700')
+              : (themeMode === 'light' ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50')
+          }`}
         >
-          <FileText size={14} className={activeTab === 'reports' ? 'text-sky-400' : ''} />
+          <FileText size={14} className={activeTab === 'reports' ? 'text-sky-500' : ''} />
           <span>Reports & Analytics</span>
         </button>
 
         <button
           onClick={() => setActiveTab('audit')}
-          className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${activeTab === 'audit' ? 'bg-slate-800 text-white shadow-sm border border-slate-700' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'}`}
+          className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
+            activeTab === 'audit'
+              ? (themeMode === 'light' ? 'bg-sky-50 text-sky-700 shadow-sm border border-sky-200 font-bold' : 'bg-slate-800 text-white shadow-sm border border-slate-700')
+              : (themeMode === 'light' ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50')
+          }`}
         >
-          <Activity size={14} className={activeTab === 'audit' ? 'text-sky-400' : ''} />
+          <Activity size={14} className={activeTab === 'audit' ? 'text-sky-500' : ''} />
           <span>Audit Logs</span>
         </button>
 
         <button
           onClick={() => setActiveTab('health')}
-          className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${activeTab === 'health' ? 'bg-slate-800 text-white shadow-sm border border-slate-700' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'}`}
+          className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
+            activeTab === 'health'
+              ? (themeMode === 'light' ? 'bg-emerald-50 text-emerald-800 shadow-sm border border-emerald-200 font-bold' : 'bg-slate-800 text-white shadow-sm border border-slate-700')
+              : (themeMode === 'light' ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50')
+          }`}
         >
-          <Server size={14} className={activeTab === 'health' ? 'text-emerald-400' : ''} />
+          <Server size={14} className={activeTab === 'health' ? 'text-emerald-500' : ''} />
           <span>System Health</span>
           <span className="w-2 h-2 rounded-full bg-emerald-400" />
         </button>
