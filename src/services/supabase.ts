@@ -276,15 +276,16 @@ export async function fetchSupabaseData(): Promise<{
     console.log('Verified Supabase MMS_PIC storage counts:', Object.fromEntries(storageImageCounts));
 
     // Helper to verify image filenames directly against storage (handling both list API and direct public URL access)
-    async function verifyFilenamesAgainstStorage(filenames: string[], _subgridKey?: string): Promise<number> {
-      if (!filenames || filenames.length === 0) return 0;
+    async function verifyFilenamesAgainstStorage(filenames: string[], _subgridKey?: string): Promise<{ count: number; verifiedFilenames: string[] }> {
+      if (!filenames || filenames.length === 0) return { count: 0, verifiedFilenames: [] };
 
       // 1. If storageFileSet was populated by storage.list()
       if (storageFileSet.size > 0) {
-        return filenames.filter(fn => {
+        const verified = filenames.filter(fn => {
           const cleanFn = fn.split('/').pop()?.toLowerCase().trim() || fn.toLowerCase().trim();
           return storageFileSet.has(cleanFn) || storageFileSet.has(fn.toLowerCase().trim());
-        }).length;
+        });
+        return { count: verified.length, verifiedFilenames: verified };
       }
 
       // 2. Direct concurrent HEAD requests to public MMS_PIC bucket
@@ -303,13 +304,15 @@ export async function fetchSupabaseData(): Promise<{
 
       // Process in batches to avoid flooding
       const batchSize = 20;
-      let totalMatched = 0;
+      const verified: string[] = [];
       for (let i = 0; i < filenames.length; i += batchSize) {
         const batch = filenames.slice(i, i + batchSize);
         const results = await Promise.all(batch.map(checkOne));
-        totalMatched += results.filter(Boolean).length;
+        batch.forEach((fn, idx) => {
+          if (results[idx]) verified.push(fn);
+        });
       }
-      return totalMatched;
+      return { count: verified.length, verifiedFilenames: verified };
     }
 
     const dailyData: any[] = [];
@@ -325,15 +328,20 @@ export async function fetchSupabaseData(): Promise<{
       // For published records: storage-verify actual DB filenames against bucket.
       // Fall back to g.imageFilenames.length only if storage verification is unavailable.
       let verifiedImagesCount: number;
+      let verifiedFiles: string[] = [];
       if (g.imageFilenames.length > 0) {
-        verifiedImagesCount = await verifyFilenamesAgainstStorage(g.imageFilenames, subgrid);
-        // If storage verification failed (returned 0) but we have DB records, use DB count as fallback
-        if (verifiedImagesCount === 0) {
+        const verifyRes = await verifyFilenamesAgainstStorage(g.imageFilenames, subgrid);
+        verifiedImagesCount = verifyRes.count;
+        verifiedFiles = verifyRes.verifiedFilenames;
+        // If storage verification failed (returned 0) but we have DB records and storage is empty, use DB count as fallback
+        if (verifiedImagesCount === 0 && storageFileSet.size === 0) {
           verifiedImagesCount = g.imageFilenames.length;
+          verifiedFiles = [...g.imageFilenames];
         }
       } else {
         // No filenames in DB at all — use recordImages or poiCount
         verifiedImagesCount = g.recordImages && g.recordImages > 0 ? g.recordImages : poiCount;
+        verifiedFiles = [];
       }
 
       const finalImageCount = poiCount > 0 ? Math.min(poiCount, verifiedImagesCount) : verifiedImagesCount;
@@ -361,6 +369,7 @@ export async function fetchSupabaseData(): Promise<{
         imagesProcessed: finalImageCount,
         poiCount: poiCount,
         availableImagesCount: finalImageCount,
+        availableFilenames: verifiedFiles.length > 0 ? verifiedFiles : undefined,
         defectCount: defects,
         imagesDefected: defects,
         captureEquipment: equipment,
@@ -369,25 +378,30 @@ export async function fetchSupabaseData(): Promise<{
         pic: pic,
         isSyncedWithSupabase: true,
         points: g.points,
-        panoramas: g.points.map((pt, pIdx) => ({
-          filename: g.imageFilenames[pIdx] || `${subgrid}-${String(pIdx + 1).padStart(4, '0')}.jpg`,
-          latitude: pt.lat,
-          longitude: pt.lon,
-          lat: pt.lat,
-          lon: pt.lon,
-          subgrid: subgrid,
-          status: 'yes',
-          qa_status: 'published',
-          publishToWebGIS: 'yes',
-          publishToUSVPRO: 'yes',
-          isPublished: true,
-          published: true,
-          opacity: 1.0,
-          color: '#10b981',
-          statusColor: '#10b981',
-          strokeColor: '#10b981',
-          fillColor: '#10b981'
-        }))
+        panoramas: g.points.map((pt, pIdx) => {
+          const fn = g.imageFilenames[pIdx] || `${subgrid}-${String(pIdx + 1).padStart(4, '0')}.jpg`;
+          const isAvail = verifiedFiles.length > 0 ? (verifiedFiles.includes(fn) || verifiedFiles.some(vf => vf.toLowerCase() === fn.toLowerCase())) : true;
+          return {
+            filename: fn,
+            latitude: pt.lat,
+            longitude: pt.lon,
+            lat: pt.lat,
+            lon: pt.lon,
+            subgrid: subgrid,
+            status: 'yes',
+            qa_status: 'published',
+            publishToWebGIS: 'yes',
+            publishToUSVPRO: 'yes',
+            isPublished: true,
+            published: true,
+            isAvailable: isAvail,
+            opacity: 1.0,
+            color: '#10b981',
+            statusColor: '#10b981',
+            strokeColor: '#10b981',
+            fillColor: '#10b981'
+          };
+        })
       });
     }
 
@@ -478,15 +492,21 @@ export async function fetchSupabaseData(): Promise<{
           }
 
           let verifiedCount = 0;
+          let verifiedFiles: string[] = [];
           if (g.imageFilenames && g.imageFilenames.length > 0) {
-            verifiedCount = await verifyFilenamesAgainstStorage(g.imageFilenames, sg);
+            const verifyRes = await verifyFilenamesAgainstStorage(g.imageFilenames, sg);
+            verifiedCount = verifyRes.count;
+            verifiedFiles = verifyRes.verifiedFilenames;
             if (verifiedCount === 0 && storageFileSet.size === 0) {
               verifiedCount = g.imageFilenames.length;
+              verifiedFiles = [...g.imageFilenames];
             }
           } else if (g.imagesProcessed !== undefined && g.imagesProcessed > 0) {
             verifiedCount = g.imagesProcessed;
+            verifiedFiles = [];
           } else {
             verifiedCount = count;
+            verifiedFiles = [];
           }
 
           const finalImgCount = count > 0 ? Math.min(count, verifiedCount) : verifiedCount;
@@ -501,6 +521,7 @@ export async function fetchSupabaseData(): Promise<{
             imagesProcessed: finalImgCount,
             poiCount: count,
             availableImagesCount: finalImgCount,
+            availableFilenames: verifiedFiles.length > 0 ? verifiedFiles : undefined,
             defectCount: g.defectCount,
             imagesDefected: g.defectCount,
             captureEquipment: g.equipment,
@@ -511,14 +532,19 @@ export async function fetchSupabaseData(): Promise<{
             isSyncedWithSupabase: false,
             isStagedInSupabase: true,
             points: g.points,
-            panoramas: g.points.map((pt: any, pIdx: number) => ({
-              filename: g.imageFilenames[pIdx] || `${sg}-${String(pIdx + 1).padStart(4, '0')}.jpg`,
-              latitude: pt.lat,
-              longitude: pt.lon,
-              lat: pt.lat,
-              lon: pt.lon,
-              subgrid: sg
-            }))
+            panoramas: g.points.map((pt: any, pIdx: number) => {
+              const fn = g.imageFilenames[pIdx] || `${sg}-${String(pIdx + 1).padStart(4, '0')}.jpg`;
+              const isAvail = verifiedFiles.length > 0 ? (verifiedFiles.includes(fn) || verifiedFiles.some(vf => vf.toLowerCase() === fn.toLowerCase())) : true;
+              return {
+                filename: fn,
+                latitude: pt.lat,
+                longitude: pt.lon,
+                lat: pt.lat,
+                lon: pt.lon,
+                subgrid: sg,
+                isAvailable: isAvail
+              };
+            })
           });
         }
       }
@@ -551,9 +577,19 @@ export async function fetchSupabaseData(): Promise<{
         existing.defects += defCount;
         existing.runsCount += 1;
         if (d.pic && !existing.pics.has(d.pic)) existing.pics.add(d.pic);
+        if (d.availableFilenames && Array.isArray(d.availableFilenames)) {
+          if (!existing.availableFilenames) existing.availableFilenames = [];
+          d.availableFilenames.forEach((fn: string) => {
+            if (!existing.availableFilenames.includes(fn)) existing.availableFilenames.push(fn);
+          });
+        }
       } else {
         const picSet = new Set<string>();
         if (d.pic) picSet.add(d.pic);
+
+        const initialAvailFiles = d.availableFilenames && Array.isArray(d.availableFilenames)
+          ? [...d.availableFilenames]
+          : (d.panoramas ? d.panoramas.filter((p: any) => p.isAvailable !== false).map((p: any) => p.filename).filter(Boolean) : []);
 
         batchMap.set(sg, {
           id: `BATCH-${sg}`,
@@ -570,6 +606,7 @@ export async function fetchSupabaseData(): Promise<{
           pics: picSet,
           captureEquipment: d.captureEquipment || 'MMS',
           panoramas: d.panoramas || [],
+          availableFilenames: initialAvailFiles,
           runsCount: 1,
           publishedRunsCount: isPublished ? 1 : 0
         });
@@ -588,6 +625,7 @@ export async function fetchSupabaseData(): Promise<{
         images: entry.publishedImages,
         poiCount: entry.totalPoi,
         availableImagesCount: entry.publishedImages,
+        availableFilenames: entry.availableFilenames && entry.availableFilenames.length > 0 ? entry.availableFilenames : undefined,
         defects: entry.defects,
         kmProcessed: entry.publishedKm,
         status: isComplete ? 'Complete' : 'Ongoing',
