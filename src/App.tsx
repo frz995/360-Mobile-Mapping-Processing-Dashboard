@@ -4991,11 +4991,19 @@ export default function App() {
               return;
             }
 
+            // If this is a staging record that has now been published (subgrid appears in live published set), skip it
+            // so the fresh published version from sDaily replaces it below
+            if (isStaged && normSg && publishedSubgridSet.has(normSg)) {
+              return;
+            }
+
             const dateKey = (d.date || '').toLowerCase().trim();
             const poiKey = d.poiCount || d.imagesProcessed || 0;
             const fullKey = d.id ? d.id : `${normSg}_${dateKey}_${poiKey}`;
-            if (!seenKeys.has(fullKey)) {
+            if (!seenKeys.has(fullKey) && !seenKeys.has(normSg)) {
               seenKeys.add(fullKey);
+              // Register subgrid so incoming sDaily for same subgrid is not duplicated
+              if (normSg) seenKeys.add(normSg);
               const maxPoi = d.poiCount || (d.panoramas?.length) || 0;
               const rawImg = typeof d.availableImagesCount === 'number'
                 ? d.availableImagesCount
@@ -5022,9 +5030,11 @@ export default function App() {
             const km = sd.kmProcessed || 0;
             const runKey = `${normSg}_${poi}_${km}`;
             const fullKey = sd.id ? String(sd.id) : runKey;
-            if (!seenKeys.has(fullKey) && !seenKeys.has(runKey)) {
+            // Check by id, runKey, AND subgrid name to prevent cross-id duplicates
+            if (!seenKeys.has(fullKey) && !seenKeys.has(runKey) && !seenKeys.has(normSg)) {
               seenKeys.add(fullKey);
               seenKeys.add(runKey);
+              if (normSg) seenKeys.add(normSg);
               merged.push(sd);
             }
           });
@@ -5303,8 +5313,41 @@ export default function App() {
       });
       handleRefreshMap();
       fetchSupabaseData().then(({ dailyData: sDaily, batchLogs: sBatches }) => {
-        if (sDaily && sDaily.length > 0) setDailyData(sDaily);
-        if (sBatches && sBatches.length > 0) setBatchLogs(sBatches);
+        if (sDaily && sDaily.length > 0) {
+          setDailyData(prev => {
+            const seen = new Set<string>();
+            const merged: DailyTimeSeries[] = [];
+            // Prefer sDaily version when same subgrid exists
+            sDaily.forEach(sd => {
+              const normSg = (extractSubgridName(sd.subgrid) || sd.subgrid || '').toUpperCase().trim();
+              if (normSg && !seen.has(normSg)) { seen.add(normSg); merged.push(sd); }
+            });
+            prev.forEach(d => {
+              const normSg = (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim();
+              if (!normSg || seen.has(normSg)) return;
+              seen.add(normSg);
+              merged.push(d);
+            });
+            return merged;
+          });
+        }
+        if (sBatches && sBatches.length > 0) {
+          setBatchLogs(prev => {
+            const seen = new Set<string>();
+            const merged: BatchLog[] = [];
+            sBatches.forEach(sb => {
+              const normSg = (extractSubgridName(sb.subgrid || sb.imageFilename) || sb.subgrid || '').toUpperCase().trim();
+              if (normSg && !seen.has(normSg)) { seen.add(normSg); merged.push(sb); }
+            });
+            prev.forEach(b => {
+              const normSg = (extractSubgridName(b.subgrid || b.imageFilename) || b.subgrid || '').toUpperCase().trim();
+              if (!normSg || seen.has(normSg)) return;
+              seen.add(normSg);
+              merged.push(b);
+            });
+            return merged;
+          });
+        }
       }).catch(err => console.warn('Re-sync error on settings save:', err));
       setSettingsSaveToast({
         show: true,
