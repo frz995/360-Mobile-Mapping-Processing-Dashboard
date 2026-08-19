@@ -1687,6 +1687,7 @@ const DataManagementPage = ({
   const [selectedPic, setSelectedPic] = useState<string>('');
   const [selectedGrid, setSelectedGrid] = useState<string>('1');
   const [fileGridMap, setFileGridMap] = useState<Record<string, string>>({});
+  const [isImportingCsv, setIsImportingCsv] = useState(false);
 
   // Batch fields for CSV mapping (with alias patterns for auto-match)
   const BATCH_FIELDS: { key: string; label: string; aliases?: string[] }[] = [
@@ -1793,6 +1794,7 @@ const DataManagementPage = ({
 
 
   const handleCsvImport = async (directPublish = false) => {
+    setIsImportingCsv(true);
     const imported: DailyTimeSeries[] = [];
     const filesToProcess = csvFileList.length > 0
       ? csvFileList
@@ -1969,6 +1971,7 @@ const DataManagementPage = ({
     setDailyData(updatedDraft);
     setBatchLogs(updatedBatchLogs);
     setIsDailyDirty(true);
+    setIsImportingCsv(false);
     setIsCsvImportOpen(false);
 
     setPublishMessage({
@@ -2040,6 +2043,7 @@ const DataManagementPage = ({
     setCsvRows([]);
     setCsvPreview([]);
     setCsvFieldMap({});
+    setIsImportingCsv(false);
   };
 
   useEffect(() => {
@@ -4493,11 +4497,21 @@ const DataManagementPage = ({
               </button>
               <button
                 type="button"
+                disabled={isImportingCsv}
                 onClick={() => handleCsvImport(false)}
-                className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 border border-emerald-500/60 px-5 py-2 rounded-xl font-semibold transition-all text-white text-xs shadow-md cursor-pointer active:scale-95"
+                className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-800/60 disabled:opacity-60 disabled:cursor-not-allowed border border-emerald-500/60 px-5 py-2 rounded-xl font-semibold transition-all text-white text-xs shadow-md cursor-pointer active:scale-95"
               >
-                <Upload size={14} className="text-white" />
-                <span>Import Data</span>
+                {isImportingCsv ? (
+                  <>
+                    <RefreshCw size={14} className="animate-spin text-white" />
+                    <span>Importing & Verifying...</span>
+                  </>
+                ) : (
+                  <>
+                    <Upload size={14} className="text-white" />
+                    <span>Import Data</span>
+                  </>
+                )}
               </button>
             </div>
 
