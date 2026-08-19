@@ -241,8 +241,9 @@ export async function fetchSupabaseData(): Promise<{
       }
 
       const rawDate = r.captured_at ? new Date(r.captured_at).toISOString().slice(0, 10) : '2022-09-04';
-      const extractedBatchMatch = r.description ? r.description.match(/daily-csv-[\w-]+/)?.[0] : null;
-      const runKey = r.batch_id || r.run_id || extractedBatchMatch || `${sg}_${rawDate}`;
+      const extractedBatchId = r.description ? (r.description.match(/daily-[\w-]+/)?.[0] || r.description.match(/staging-[\w-]+/)?.[0]) : null;
+      const extractedPublishSignature = r.description ? r.description.match(/Published Batch \([^)]+\) - ([\d\-: ]+)/)?.[0] : null;
+      const runKey = r.batch_id || r.run_id || extractedBatchId || extractedPublishSignature || `${sg}_${rawDate}`;
 
       if (!publishedGrouped.has(runKey)) {
         publishedGrouped.set(runKey, {
