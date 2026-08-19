@@ -4978,43 +4978,53 @@ export default function App() {
         const liveBatchSet = new Set((sBatches || []).map(b => (extractSubgridName(b.subgrid || b.imageFilename) || b.subgrid || '').toUpperCase().trim()).filter(Boolean));
 
         setDailyData(prev => {
-          const seenKeys = new Set<string>();
+          // Composite run key: subgrid + normalized date + poiCount
+          // This uniquely identifies one survey journey without collapsing different runs of the same subgrid
+          const makeRunKey = (d: any): string => {
+            const sg = (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim();
+            const dt = (d.date || '').toLowerCase().trim();
+            const poi = d.poiCount || d.imagesProcessed || 0;
+            return `${sg}||${dt}||${poi}`;
+          };
+
+          const seenRunKeys = new Set<string>();
           const merged: DailyTimeSeries[] = [];
+
+          // First pass: build run-key index from incoming published records
+          // so we can detect which staging entries have already been published
+          const publishedRunKeys = new Set<string>();
+          (sDaily || []).forEach(sd => { publishedRunKeys.add(makeRunKey(sd)); });
 
           prev.forEach(d => {
             const normSg = (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim();
             const isFromRemoteDb = Boolean(d.isFromSupabase || (d.id && String(d.id).startsWith('sp-daily-')));
             const isStaged = d.publishToWebGIS !== 'yes' && !d.isSyncedWithSupabase;
 
-            // If item originated from remote Supabase DB but its subgrid is NO LONGER in liveSubgridSet (or live DB is empty), purge it!
+            // Purge remote-DB items that no longer exist in live data
             if (isFromRemoteDb && normSg && !liveSubgridSet.has(normSg)) {
               return;
             }
 
-            // If this is a staging record that has now been published (subgrid appears in live published set), skip it
-            // so the fresh published version from sDaily replaces it below
-            if (isStaged && normSg && publishedSubgridSet.has(normSg)) {
+            // If this staging record's exact run (same subgrid+date+poi) now exists
+            // as a published record in sDaily, drop the staging copy — the published
+            // version will be added below. This prevents the staging→published duplicate.
+            if (isStaged && publishedRunKeys.has(makeRunKey(d))) {
               return;
             }
 
-            const dateKey = (d.date || '').toLowerCase().trim();
-            const poiKey = d.poiCount || d.imagesProcessed || 0;
-            const fullKey = d.id ? d.id : `${normSg}_${dateKey}_${poiKey}`;
-            if (!seenKeys.has(fullKey) && !seenKeys.has(normSg)) {
-              seenKeys.add(fullKey);
-              // Register subgrid so incoming sDaily for same subgrid is not duplicated
-              if (normSg) seenKeys.add(normSg);
+            const runKey = makeRunKey(d);
+            // Use explicit id as the primary deduplicate signal; fall back to runKey
+            const dedupKey = d.id ? String(d.id) : runKey;
+            if (!seenRunKeys.has(dedupKey) && !seenRunKeys.has(runKey)) {
+              seenRunKeys.add(dedupKey);
+              seenRunKeys.add(runKey);
               const maxPoi = d.poiCount || (d.panoramas?.length) || 0;
-              const rawImg = typeof d.availableImagesCount === 'number'
-                ? d.availableImagesCount
-                : 0;
+              const rawImg = typeof d.availableImagesCount === 'number' ? d.availableImagesCount : 0;
               const cappedImg = maxPoi > 0 ? Math.min(rawImg, maxPoi) : rawImg;
               const existsInProductionDb = Boolean(normSg && publishedSubgridSet.has(normSg));
               const isPub = d.publishToWebGIS === 'yes' || d.isFromSupabase === true || (!isStaged && existsInProductionDb);
-
               merged.push({
                 ...d,
-                id: d.id,
                 imagesProcessed: cappedImg,
                 availableImagesCount: cappedImg,
                 publishToWebGIS: isPub ? 'yes' : (d.publishToWebGIS || 'in process'),
@@ -5024,17 +5034,13 @@ export default function App() {
             }
           });
 
+          // Add published records from Supabase that are not yet in the local list
           (sDaily || []).forEach(sd => {
-            const normSg = (extractSubgridName(sd.subgrid) || sd.subgrid || '').toUpperCase().trim();
-            const poi = sd.poiCount || sd.imagesProcessed || 0;
-            const km = sd.kmProcessed || 0;
-            const runKey = `${normSg}_${poi}_${km}`;
-            const fullKey = sd.id ? String(sd.id) : runKey;
-            // Check by id, runKey, AND subgrid name to prevent cross-id duplicates
-            if (!seenKeys.has(fullKey) && !seenKeys.has(runKey) && !seenKeys.has(normSg)) {
-              seenKeys.add(fullKey);
-              seenKeys.add(runKey);
-              if (normSg) seenKeys.add(normSg);
+            const runKey = makeRunKey(sd);
+            const dedupKey = sd.id ? String(sd.id) : runKey;
+            if (!seenRunKeys.has(dedupKey) && !seenRunKeys.has(runKey)) {
+              seenRunKeys.add(dedupKey);
+              seenRunKeys.add(runKey);
               merged.push(sd);
             }
           });
@@ -5315,35 +5321,44 @@ export default function App() {
       fetchSupabaseData().then(({ dailyData: sDaily, batchLogs: sBatches }) => {
         if (sDaily && sDaily.length > 0) {
           setDailyData(prev => {
+            const makeKey = (d: any) => {
+              const sg = (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim();
+              const dt = (d.date || '').toLowerCase().trim();
+              const poi = d.poiCount || d.imagesProcessed || 0;
+              return `${sg}||${dt}||${poi}`;
+            };
             const seen = new Set<string>();
             const merged: DailyTimeSeries[] = [];
-            // Prefer sDaily version when same subgrid exists
+            // Prefer fresh Supabase version for matching runs
             sDaily.forEach(sd => {
-              const normSg = (extractSubgridName(sd.subgrid) || sd.subgrid || '').toUpperCase().trim();
-              if (normSg && !seen.has(normSg)) { seen.add(normSg); merged.push(sd); }
+              const k = makeKey(sd);
+              if (!seen.has(k)) { seen.add(k); merged.push(sd); }
             });
+            // Keep local staging/non-published runs that are not in sDaily
             prev.forEach(d => {
-              const normSg = (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim();
-              if (!normSg || seen.has(normSg)) return;
-              seen.add(normSg);
-              merged.push(d);
+              const k = makeKey(d);
+              const isStaged = d.publishToWebGIS !== 'yes' && !d.isSyncedWithSupabase;
+              if (!seen.has(k) && isStaged) { seen.add(k); merged.push(d); }
             });
             return merged;
           });
         }
         if (sBatches && sBatches.length > 0) {
           setBatchLogs(prev => {
+            const makeKey = (b: any) => {
+              const sg = (extractSubgridName(b.subgrid || b.imageFilename) || b.subgrid || '').toUpperCase().trim();
+              const poi = b.poiCount || b.images || 0;
+              return `${sg}||${poi}`;
+            };
             const seen = new Set<string>();
             const merged: BatchLog[] = [];
             sBatches.forEach(sb => {
-              const normSg = (extractSubgridName(sb.subgrid || sb.imageFilename) || sb.subgrid || '').toUpperCase().trim();
-              if (normSg && !seen.has(normSg)) { seen.add(normSg); merged.push(sb); }
+              const k = makeKey(sb);
+              if (!seen.has(k)) { seen.add(k); merged.push(sb); }
             });
             prev.forEach(b => {
-              const normSg = (extractSubgridName(b.subgrid || b.imageFilename) || b.subgrid || '').toUpperCase().trim();
-              if (!normSg || seen.has(normSg)) return;
-              seen.add(normSg);
-              merged.push(b);
+              const k = makeKey(b);
+              if (!seen.has(k)) { seen.add(k); merged.push(b); }
             });
             return merged;
           });
