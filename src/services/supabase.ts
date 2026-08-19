@@ -330,9 +330,8 @@ export async function fetchSupabaseData(): Promise<{
           // If subgrid is already in production published panoramas, skip staging item
           if (grouped.has(sg)) return;
 
-          // Unique run key preserves distinct daily survey runs per subgrid
-          const rawDateStr = r.captured_at ? new Date(r.captured_at).toISOString().slice(0, 10) : '';
-          const runKey = r.batch_id || r.run_id || `${sg}_${rawDateStr}_${r.poi_count || r.images_processed || 0}_${r.km_processed || 0}`;
+          // Unique run key deduplicates identical survey runs per subgrid (prevents double storage)
+          const runKey = r.batch_id || r.run_id || `${sg}_${r.poi_count || r.images_processed || 0}_${r.km_processed || 0}`;
 
           if (!stagingGrouped.has(runKey)) {
             stagingGrouped.set(runKey, {
@@ -629,10 +628,15 @@ export async function saveToStagingSupabase(record: {
       const lon = p.longitude !== undefined && !isNaN(Number(p.longitude)) ? Number(p.longitude) : defaultCoords[0];
       const lat = p.latitude !== undefined && !isNaN(Number(p.latitude)) ? Number(p.latitude) : defaultCoords[1];
 
+      const itemDate = p.date || record.date;
+      const capturedAtIso = itemDate && !isNaN(new Date(itemDate).getTime())
+        ? new Date(itemDate).toISOString()
+        : new Date().toISOString();
+
       return {
         filename,
         image_url: filename,
-        captured_at: new Date().toISOString(),
+        captured_at: capturedAtIso,
         description: `Staged Batch (${record.subgrid || filename})`,
         bearing: Number(p.bearing ?? p.heading ?? 0),
         pitch: Number(p.pitch ?? 0),

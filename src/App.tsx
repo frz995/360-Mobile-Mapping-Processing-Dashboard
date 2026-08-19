@@ -5018,10 +5018,13 @@ export default function App() {
 
           (sDaily || []).forEach(sd => {
             const normSg = (extractSubgridName(sd.subgrid) || sd.subgrid || '').toUpperCase().trim();
-            const dateKey = (sd.date || '').toLowerCase().trim();
-            const fullKey = sd.id ? String(sd.id) : `${normSg}_${dateKey}_${sd.poiCount || sd.imagesProcessed || 0}_${sd.kmProcessed || 0}`;
-            if (!seenKeys.has(fullKey)) {
+            const poi = sd.poiCount || sd.imagesProcessed || 0;
+            const km = sd.kmProcessed || 0;
+            const runKey = `${normSg}_${poi}_${km}`;
+            const fullKey = sd.id ? String(sd.id) : runKey;
+            if (!seenKeys.has(fullKey) && !seenKeys.has(runKey)) {
               seenKeys.add(fullKey);
+              seenKeys.add(runKey);
               merged.push(sd);
             }
           });
