@@ -102,7 +102,7 @@ export async function fetchSupabaseData(): Promise<{
 }> {
   try {
     // Resolve authenticated user profile dynamically for PIC status
-    let authenticatedUserPic = 'Fariz';
+    let authenticatedUserPic = '';
     try {
       const { data: authData } = await supabase.auth.getUser();
       if (authData?.user) {
@@ -281,7 +281,7 @@ export async function fetchSupabaseData(): Promise<{
         : (g.recordImages !== undefined ? g.recordImages : countFromDB);
 
       const grid = g.grid || String(idx + 1);
-      const pic = 'Fariz';
+      const pic = authenticatedUserPic || '';
       const equipment = 'MMS';
 
       const calcKm = calculateDistance(g.points);
