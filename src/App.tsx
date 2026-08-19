@@ -180,22 +180,24 @@ export function getPOICount(item?: { poiCount?: number; imagesProcessed?: number
 export function getImagesProcessedCount(item?: { imagesProcessed?: number; images?: number; availableImagesCount?: number; panoramas?: PanoramaItem[]; poiCount?: number; publishToWebGIS?: string; status?: string; isSyncedWithSupabase?: boolean; subgrid?: string }): number {
   if (!item) return 0;
 
+  const rawPoi = Number(item.poiCount ?? (item as any).poi ?? (item.panoramas ? item.panoramas.length : 0));
+
+  let rawCount = 0;
   // 1. Highest priority: Verified available image files in storage per row
   if (typeof item.availableImagesCount === 'number') {
-    return item.availableImagesCount;
+    rawCount = item.availableImagesCount;
+  } else if (typeof item.imagesProcessed === 'number') {
+    rawCount = item.imagesProcessed;
+  } else if (typeof item.images === 'number') {
+    rawCount = item.images;
+  } else if (item.panoramas && item.panoramas.length > 0) {
+    rawCount = item.panoramas.length;
   }
 
-  // 2. Explicit imagesProcessed property
-  if (typeof item.imagesProcessed === 'number') {
-    return item.imagesProcessed;
+  if (rawPoi > 0 && rawCount > rawPoi) {
+    return rawPoi;
   }
-
-  // 3. Explicit images property
-  if (typeof item.images === 'number') {
-    return item.images;
-  }
-
-  return 0;
+  return rawCount;
 }
 
 
@@ -206,39 +208,97 @@ export function extractSubgridName(filenameOrSubgrid?: string): string {
   return match ? match[1].toUpperCase() : filenameOrSubgrid.split('-')[0].split('.')[0].toUpperCase();
 }
 
-// Helper: Format date string into Month Day, Year (e.g. Sep 4, 2022) without time suffix
-export function formatDisplayDate(dateStr?: string): string {
-  if (!dateStr) return 'N/A';
-  let clean = dateStr.trim().replace(/\s+\d{1,2}:\d{2}(:\d{2})?$/, '');
-  if (/^[A-Za-z]{3}\s+\d{1,2}$/.test(clean)) {
-    return `${clean}, 2022`;
+// Helper: Flexible date parser handling ISO, DMY, MDY, timestamps, and word dates
+export function parseFlexibleDate(dateVal?: any): Date | null {
+  if (!dateVal) return null;
+  if (dateVal instanceof Date && !isNaN(dateVal.getTime())) return dateVal;
+  if (typeof dateVal === 'number') {
+    const d = new Date(dateVal);
+    return !isNaN(d.getTime()) ? d : null;
   }
-  if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) {
-    const [y, m, d] = clean.split('-');
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const monthName = months[parseInt(m, 10) - 1] || m;
-    return `${monthName} ${parseInt(d, 10)}, ${y}`;
+  if (typeof dateVal !== 'string') return null;
+
+  const clean = dateVal.trim();
+  if (!clean) return null;
+
+  // 1. Try standard ISO / Date parse
+  const std = new Date(clean);
+  if (!isNaN(std.getTime()) && !/^\d{1,2}[/-]\d{1,2}[/-]\d{4}/.test(clean)) {
+    return std;
   }
-  return clean;
+
+  // 2. Check DD/MM/YYYY or DD-MM-YYYY (e.g. 19/08/2026 or 08/04/2022)
+  const dmyMatch = clean.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
+  if (dmyMatch) {
+    const day = parseInt(dmyMatch[1], 10);
+    const month = parseInt(dmyMatch[2], 10) - 1;
+    const year = parseInt(dmyMatch[3], 10);
+    const hour = dmyMatch[4] ? parseInt(dmyMatch[4], 10) : 0;
+    const min = dmyMatch[5] ? parseInt(dmyMatch[5], 10) : 0;
+    const sec = dmyMatch[6] ? parseInt(dmyMatch[6], 10) : 0;
+    const d = new Date(year, month, day, hour, min, sec);
+    if (!isNaN(d.getTime())) return d;
+  }
+
+  // 3. Check YYYY-MM-DD or YYYY/MM/DD
+  const ymdMatch = clean.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
+  if (ymdMatch) {
+    const year = parseInt(ymdMatch[1], 10);
+    const month = parseInt(ymdMatch[2], 10) - 1;
+    const day = parseInt(ymdMatch[3], 10);
+    const hour = ymdMatch[4] ? parseInt(ymdMatch[4], 10) : 0;
+    const min = ymdMatch[5] ? parseInt(ymdMatch[5], 10) : 0;
+    const sec = ymdMatch[6] ? parseInt(ymdMatch[6], 10) : 0;
+    const d = new Date(year, month, day, hour, min, sec);
+    if (!isNaN(d.getTime())) return d;
+  }
+
+  // 4. Check "Month Day, Year" or "Day Month Year"
+  const wordsMatch = clean.match(/^(?:([A-Za-z]+)\s+(\d{1,2})|(\d{1,2})\s+([A-Za-z]+))(?:,?\s*(\d{4}))?/);
+  if (wordsMatch) {
+    const monthStr = wordsMatch[1] || wordsMatch[4];
+    const dayStr = wordsMatch[2] || wordsMatch[3];
+    const yearStr = wordsMatch[5] || String(new Date().getFullYear());
+    const months: Record<string, number> = {
+      jan: 0, january: 0,
+      feb: 1, february: 1,
+      mar: 2, march: 2,
+      apr: 3, april: 3,
+      may: 4,
+      jun: 5, june: 5,
+      jul: 6, july: 6,
+      aug: 7, august: 7,
+      sep: 8, sept: 8, september: 8,
+      oct: 9, october: 9,
+      nov: 10, november: 10,
+      dec: 11, december: 11
+    };
+    const m = months[monthStr.toLowerCase()];
+    if (m !== undefined) {
+      const d = new Date(parseInt(yearStr, 10), m, parseInt(dayStr, 10));
+      if (!isNaN(d.getTime())) return d;
+    }
+  }
+
+  if (!isNaN(std.getTime())) return std;
+  return null;
 }
 
-// Helper: Convert any date string (e.g. "Sep 4, 2022", "2022-09-04", "Sep 4") to YYYY-MM-DD for input type="date"
+// Helper: Format date string into Month Day, Year without time suffix
+export function formatDisplayDate(dateStr?: string): string {
+  if (!dateStr) return 'N/A';
+  const parsed = parseFlexibleDate(dateStr);
+  if (parsed && !isNaN(parsed.getTime())) {
+    return parsed.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  }
+  return dateStr;
+}
+
+// Helper: Convert any date string to YYYY-MM-DD for input type="date"
 export function toISODateString(dateStr?: string): string {
   if (!dateStr) return new Date().toISOString().slice(0, 10);
-  const clean = dateStr.trim();
-  if (/^\d{4}-\d{2}-\d{2}/.test(clean)) {
-    return clean.slice(0, 10);
-  }
-  const match = clean.match(/^([A-Za-z]{3})\s+(\d{1,2})(?:,?\s*(\d{4}))?/);
-  if (match) {
-    const months: Record<string, string> = { Jan: '01', Feb: '02', Mar: '03', Apr: '04', May: '05', Jun: '06', Jul: '07', Aug: '08', Sep: '09', Oct: '10', Nov: '11', Dec: '12' };
-    const m = months[match[1]] || '09';
-    const d = match[2].padStart(2, '0');
-    const y = match[3] || '2022';
-    return `${y}-${m}-${d}`;
-  }
-  const parsed = new Date(clean);
-  if (!isNaN(parsed.getTime())) {
+  const parsed = parseFlexibleDate(dateStr);
+  if (parsed && !isNaN(parsed.getTime())) {
     const y = parsed.getFullYear();
     const m = String(parsed.getMonth() + 1).padStart(2, '0');
     const d = String(parsed.getDate()).padStart(2, '0');
@@ -878,7 +938,7 @@ const MapComponent = ({
 
   return (
     <div className="relative w-full h-full overflow-hidden bg-slate-950">
-      {/* Top-Left TNB LV Asset Mapping Executive Floating Badge */}
+      {/* Top-Left GeoSphere 360 Operations Hub Executive Floating Badge */}
       <div className="absolute top-3 left-3 z-20 pointer-events-none">
         <div className="bg-[#12161f]/95 backdrop-blur-xl border border-slate-800/90 rounded-2xl px-3.5 py-2 shadow-2xl flex items-center gap-3 shrink-0">
           <div className="p-2 bg-gradient-to-tr from-sky-600 to-emerald-500 rounded-xl shadow-md shadow-emerald-950/40 shrink-0">
@@ -887,7 +947,7 @@ const MapComponent = ({
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-white font-bold text-xs sm:text-sm tracking-tight">
-                TNB LV Asset Mapping
+                GeoSphere 360 Operations Hub
               </h2>
               <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[9px] font-semibold">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
@@ -895,7 +955,7 @@ const MapComponent = ({
               </span>
             </div>
             <p className="text-[10px] text-slate-400 font-medium mt-0.5">
-              360° Mobile Mapping System
+              Mobile Mapping & Spatial Asset Intelligence
             </p>
           </div>
         </div>
@@ -1744,8 +1804,12 @@ const DataManagementPage = ({
 
       fRows.forEach(row => {
         const rawSubgrid = getVal(row, 'subgrid');
-        const filename = getRawColVal(row, ['filename', 'imagefilename', 'image_url', 'file']) || getVal(row, 'imageFilename') || rawSubgrid;
-        const rowSubgrid = extractSubgridName(rawSubgrid) || extractSubgridName(filename);
+        // Read the actual image filename from CSV — do NOT fall back to subgrid code
+        const rawFilename = getRawColVal(row, ['filename', 'imagefilename', 'image_url', 'file', 'image', 'img']) || getVal(row, 'imageFilename');
+        // Only treat it as a valid filename if it looks like a file (has extension or hyphen-number pattern)
+        const isValidFilename = rawFilename && (rawFilename.includes('.') || /[-_]\d{3,}/.test(rawFilename));
+        const filename = isValidFilename ? rawFilename : '';
+        const rowSubgrid = extractSubgridName(rawSubgrid) || (rawFilename ? extractSubgridName(rawFilename) : '');
         const subgrid = fileSubgrid || rowSubgrid || rawSubgrid || fileItem.fileName.replace(/\.[^/.]+$/, '') || '';
         const date = getVal(row, 'date') || getRawColVal(row, ['date', 'time', 'captured_at']) || new Date().toISOString().slice(0, 10);
 
@@ -1827,11 +1891,11 @@ const DataManagementPage = ({
       }
     }
 
-    // Preserve each imported CSV entry as a separate Daily Data record
+    // 1. Preserve each imported CSV entry as a separate Daily Data record
     const updatedDraft: DailyTimeSeries[] = [...draftDailyData];
 
     imported.forEach(newImp => {
-      const existingIndex = updatedDraft.findIndex(d => d.id === newImp.id);
+      const existingIndex = updatedDraft.findIndex(d => d.id === newImp.id || getItemId(d) === getItemId(newImp));
       if (existingIndex >= 0) {
         updatedDraft[existingIndex] = newImp;
       } else {
@@ -1841,6 +1905,7 @@ const DataManagementPage = ({
 
     const updatedBatchLogs = reconcileBatchLogs(updatedDraft, batchLogs);
 
+    // 2. INSTANT UI UPDATE (0ms latency)
     setDraftDailyData(updatedDraft);
     setDailyData(updatedDraft);
     setBatchLogs(updatedBatchLogs);
@@ -1853,25 +1918,9 @@ const DataManagementPage = ({
     });
     addAuditLog?.('CREATE', 'CSV Import Executed', `Imported ${imported.length} separate record(s) into Daily Data staging list.`, 'success');
 
-
-
-    // Persist imported items to staging_panoramas in Supabase asynchronously & verify actual storage images
-    imported.forEach(async imp => {
+    // 3. Persist imported items to staging_panoramas in Supabase asynchronously
+    imported.forEach(imp => {
       saveToStagingSupabase(imp).catch(err => console.warn('Background staging insert notice:', err));
-      const filenames = (imp.panoramas && imp.panoramas.length > 0)
-        ? imp.panoramas.map((p: any) => p.filename).filter((fn: any): fn is string => Boolean(fn))
-        : Array.from({ length: imp.poiCount || 1 }, (_, i) => `${imp.subgrid}-${String(i + 1).padStart(4, '0')}.jpg`);
-      if (filenames.length > 0) {
-        try {
-          const { availableCount } = await verifyCsvImageFilenamesInStorage(filenames);
-          if (availableCount >= 0) {
-            const sgFilter = (extractSubgridName(imp.subgrid) || '').toUpperCase().trim();
-            const nextDraft = updatedDraft.map(d => (extractSubgridName(d.subgrid) || '').toUpperCase().trim() === sgFilter ? { ...d, availableImagesCount: availableCount, imagesProcessed: availableCount } : d);
-            setDraftDailyData(nextDraft);
-            setDailyData(nextDraft);
-          }
-        } catch { }
-      }
     });
 
     // Broadcast staged data update (with 50% opacity & matching trajectory colors) to WebGIS map iframes
@@ -2605,7 +2654,7 @@ const DataManagementPage = ({
               <div className="flex items-center gap-3">
                 <div className="flex items-center gap-2 px-3 py-1.5 bg-[#0b0f17] border border-slate-800 rounded-xl text-xs text-slate-300 shadow-inner">
                   <User size={13} className="text-slate-400" />
-                  <span className="font-semibold text-white">{authSession.user?.email || 'guest@tnb.com.my'}</span>
+                  <span className="font-semibold text-white">{authSession.user?.email || 'guest@example.com'}</span>
                   {isGuestUser ? (
                     <span className="bg-slate-800 text-slate-400 border border-slate-700/60 px-2 py-0.5 rounded-full text-[10px] font-bold">Guest</span>
                   ) : (
@@ -4891,7 +4940,7 @@ export default function App() {
     const guestSession = {
       user: {
         id: 'guest-user-001',
-        email: 'guest@tnb.com.my',
+        email: 'guest@example.com',
         role: 'guest'
       },
       isGuest: true
@@ -4906,17 +4955,8 @@ export default function App() {
     setAuthError(null);
     setIsAuthenticating(true);
 
-    // Master / Admin Quick Demo Fallback for local authorization
-    if ((authEmail.toLowerCase().includes('admin') || authEmail.toLowerCase().includes('fariz') || authEmail.toLowerCase().includes('hafiz') || authEmail.toLowerCase().includes('amirul')) && authPassword === 'admin123') {
-      const mockSession = { user: { email: authEmail, id: 'admin-001', role: 'admin' } };
-      setAuthSession(mockSession);
-      try { localStorage.setItem('tnb_mock_session', JSON.stringify(mockSession)); } catch (e) { }
-      setIsAuthenticating(false);
-      return;
-    }
-
     const { data, error } = await supabase.auth.signInWithPassword({
-      email: authEmail,
+      email: authEmail.trim(),
       password: authPassword
     });
 
@@ -5064,11 +5104,23 @@ export default function App() {
         try {
           const dbAuditLogs = await fetchAuditLogsFromSupabase();
           if (dbAuditLogs && dbAuditLogs.length > 0) {
-            setAuditLogs(dbAuditLogs);
+            setAuditLogs(prev => {
+              const prevReadMap = new Map(prev.map(p => [String(p.id), p.read]));
+              return dbAuditLogs.map(a => ({
+                ...a,
+                read: prevReadMap.has(String(a.id)) ? Boolean(prevReadMap.get(String(a.id))) : Boolean(a.read)
+              }));
+            });
           }
           const dbNotifications = await fetchNotificationsFromSupabase();
           if (dbNotifications && dbNotifications.length > 0) {
-            setNotifications(dbNotifications);
+            setNotifications(prev => {
+              const prevReadMap = new Map(prev.map(p => [String(p.id), p.read]));
+              return dbNotifications.map(n => ({
+                ...n,
+                read: prevReadMap.has(String(n.id)) ? Boolean(prevReadMap.get(String(n.id))) : Boolean(n.read)
+              }));
+            });
           }
         } catch (e) {
           console.warn('Audit logs / Notifications dynamic fetch notice:', e);
@@ -5087,8 +5139,9 @@ export default function App() {
     initLiveSupabaseData(false);
 
     // 1. Supabase Realtime channel subscription for instant live updates (SILENT)
+    const channelName = `live-dashboard-sync-${Date.now()}`;
     const liveChannel = supabase
-      .channel('live-dashboard-sync')
+      .channel(channelName)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'panoramas' }, () => {
         console.log('Live database change detected in panoramas. Auto-updating dashboard silently...');
         initLiveSupabaseData(true);
@@ -5098,12 +5151,37 @@ export default function App() {
         initLiveSupabaseData(true);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'audit_logs' }, () => {
-        fetchAuditLogsFromSupabase().then(logs => { if (logs.length > 0) setAuditLogs(logs); });
+        fetchAuditLogsFromSupabase().then(logs => {
+          if (logs.length > 0) {
+            setAuditLogs(prev => {
+              const prevReadMap = new Map(prev.map(p => [String(p.id), p.read]));
+              return logs.map(a => ({
+                ...a,
+                read: prevReadMap.has(String(a.id)) ? Boolean(prevReadMap.get(String(a.id))) : Boolean(a.read)
+              }));
+            });
+          }
+        });
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, () => {
-        fetchNotificationsFromSupabase().then(notifs => { if (notifs.length > 0) setNotifications(notifs); });
-      })
-      .subscribe();
+        fetchNotificationsFromSupabase().then(notifs => {
+          if (notifs.length > 0) {
+            setNotifications(prev => {
+              const prevReadMap = new Map(prev.map(p => [String(p.id), p.read]));
+              return notifs.map(n => ({
+                ...n,
+                read: prevReadMap.has(String(n.id)) ? Boolean(prevReadMap.get(String(n.id))) : Boolean(n.read)
+              }));
+            });
+          }
+        });
+      });
+
+    try {
+      liveChannel.subscribe();
+    } catch (e) {
+      console.warn('Realtime subscription notice:', e);
+    }
 
     // 2. Background polling fallback every 30 seconds for continuous live updates (SILENT)
     const liveInterval = setInterval(() => {
@@ -5111,7 +5189,9 @@ export default function App() {
     }, 30000);
 
     return () => {
-      supabase.removeChannel(liveChannel);
+      try {
+        supabase.removeChannel(liveChannel);
+      } catch { }
       clearInterval(liveInterval);
     };
   }, []);
@@ -5359,19 +5439,78 @@ export default function App() {
   });
 
   const lastUpdateDate = React.useMemo(() => {
-    const allDates = [
-      ...batchLogs.map(b => b.date),
-      ...dailyData.map(d => d.date)
-    ].filter(Boolean);
-    if (allDates.length > 0) {
-      allDates.sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
-      const latest = new Date(allDates[0]);
+    // Determine the most recent daily operation date dynamically
+    let sourceDaily = dailyData;
+    let sourceBatches = batchLogs;
+
+    if (selectedSubgridFilter) {
+      const filterKey = selectedSubgridFilter.toUpperCase().trim();
+      const filteredD = dailyData.filter(d => (d.subgrid || '').toUpperCase().trim() === filterKey);
+      const filteredB = batchLogs.filter(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === filterKey);
+      if (filteredD.length > 0) sourceDaily = filteredD;
+      if (filteredB.length > 0) sourceBatches = filteredB;
+    }
+
+    const timestamps: number[] = [];
+
+    // 1. Gather all dates from Daily Progress records
+    sourceDaily.forEach((d: any) => {
+      if (d.date) {
+        const parsed = parseFlexibleDate(d.date);
+        if (parsed) timestamps.push(parsed.getTime());
+      }
+      if (d.updated_at || d.updatedAt) {
+        const parsed = parseFlexibleDate(d.updated_at || d.updatedAt);
+        if (parsed) timestamps.push(parsed.getTime());
+      }
+      if (d.created_at || d.createdAt) {
+        const parsed = parseFlexibleDate(d.created_at || d.createdAt);
+        if (parsed) timestamps.push(parsed.getTime());
+      }
+      if (Array.isArray(d.panoramas)) {
+        d.panoramas.forEach((p: any) => {
+          if (p.date || p.captured_at) {
+            const parsed = parseFlexibleDate(p.date || p.captured_at);
+            if (parsed) timestamps.push(parsed.getTime());
+          }
+        });
+      }
+    });
+
+    // 2. Gather dates from Batch Logs
+    sourceBatches.forEach((b: any) => {
+      if (b.date) {
+        const parsed = parseFlexibleDate(b.date);
+        if (parsed) timestamps.push(parsed.getTime());
+      }
+      if (b.updated_at || b.updatedAt) {
+        const parsed = parseFlexibleDate(b.updated_at || b.updatedAt);
+        if (parsed) timestamps.push(parsed.getTime());
+      }
+      if (b.created_at || b.createdAt) {
+        const parsed = parseFlexibleDate(b.created_at || b.createdAt);
+        if (parsed) timestamps.push(parsed.getTime());
+      }
+    });
+
+    // 3. If audit logs have user edits, include them
+    (auditLogs || []).forEach((a: any) => {
+      if (a.timestamp) {
+        const parsed = parseFlexibleDate(a.timestamp);
+        if (parsed) timestamps.push(parsed.getTime());
+      }
+    });
+
+    if (timestamps.length > 0) {
+      timestamps.sort((a, b) => b - a);
+      const latest = new Date(timestamps[0]);
       if (!isNaN(latest.getTime())) {
         return latest.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
       }
     }
+
     return new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-  }, [batchLogs, dailyData]);
+  }, [dailyData, batchLogs, auditLogs, selectedSubgridFilter]);
 
   const generateExecutivePdfReport = () => {
     const printWindow = window.open('', '_blank', 'width=1000,height=1100');
@@ -5406,7 +5545,7 @@ export default function App() {
       <html lang="en">
         <head>
           <meta charset="UTF-8">
-          <title>TNB LV Asset Mapping - Executive Progress & Quality Audit Report</title>
+          <title>GeoSphere 360 - Executive Progress & Quality Audit Report</title>
           <style>
             @page {
               size: A4 portrait;
@@ -5713,9 +5852,9 @@ export default function App() {
           <!-- DOCUMENT HEADER -->
           <div class="doc-header">
             <div>
-              <div class="org-title">TENAGA NASIONAL BERHAD (TNB) • INFRASTRUCTURE GIS MAPPING</div>
-              <h1 class="main-title">360° Mobile Mapping System (MMS)</h1>
-              <div class="sub-title">Generative Executive Progress & Quality Control Audit Report</div>
+              <div class="org-title">GEOSPHERE 360 • SPATIAL ASSET INTELLIGENCE</div>
+              <h1 class="main-title">GeoSphere 360 Operations Hub</h1>
+              <div class="sub-title">Executive Mobile Survey Progress & Quality Control Audit Report</div>
             </div>
             <div class="doc-meta-box">
               <div class="meta-row">
@@ -5965,7 +6104,7 @@ export default function App() {
           <!-- DOCUMENT FOOTER -->
           <div class="doc-footer">
             <div>
-              <strong>TENAGA NASIONAL BERHAD (TNB)</strong> • 360° Mobile Mapping System (MMS) Executive Dashboard
+              <strong>GEOSPHERE 360 OPERATIONS HUB</strong> • Mobile Mapping & Spatial Asset Intelligence
             </div>
             <div>
               STRICTLY CONFIDENTIAL • Page 1 of 1 • Generated via Executive Processing Dashboard
@@ -6235,7 +6374,7 @@ export default function App() {
               Sign in to Dashboard
             </h1>
             <p className="text-xs text-zinc-400 mt-1.5 leading-relaxed">
-              360° Mobile Mapping System &bull; TNB LV Network
+              GeoSphere 360 Operations Hub &bull; Mobile Mapping & Spatial Intelligence
             </p>
           </div>
 
@@ -6249,7 +6388,7 @@ export default function App() {
                 type="email"
                 value={authEmail}
                 onChange={(e) => setAuthEmail(e.target.value)}
-                placeholder="name@tnb.com.my"
+                placeholder="user@example.com"
                 required
                 className="w-full bg-zinc-900/90 border border-zinc-800 focus:border-zinc-500 focus:ring-1 focus:ring-zinc-500/20 rounded-lg px-3.5 py-2.5 text-sm text-zinc-100 placeholder-zinc-500 outline-none transition-all duration-150"
               />
@@ -6340,7 +6479,7 @@ export default function App() {
   // System i18n Translation Dictionary helper
   const TRANSLATIONS: Record<string, Record<string, string>> = {
     en: {
-      appTitle: 'Web Mapping Processing Dashboard',
+      appTitle: 'Mobile Mapping Data Management System',
       dashboard: 'Main Dashboard',
       data: 'Data Management',
       refresh: 'Refresh Map',
@@ -6370,7 +6509,7 @@ export default function App() {
       notifications: 'Notifications'
     },
     ms: {
-      appTitle: 'Papan Pemuka Pemprosesan Pemetaan Web',
+      appTitle: 'Sistem Pengurusan Data Pemetaan Mudah Alih',
       dashboard: 'Papan Pemuka Utama',
       data: 'Pengurusan Data',
       refresh: 'Muat Semula Peta',
@@ -6482,12 +6621,14 @@ export default function App() {
       )}
 
       {/* TOP GLOBAL NAVBAR */}
-      <header className="h-12 bg-[#12161f] border-b border-slate-800/80 px-4 flex items-center justify-between shrink-0 z-20">
-        <div className="flex items-center gap-2.5 select-none cursor-pointer group" onClick={() => setCurrentPage('dashboard')}>
-          <Globe size={22} className="text-sky-400 shrink-0 transition-transform duration-300 group-hover:scale-110" />
-          <h1 className="text-2xl font-extrabold text-white tracking-tight font-sans">
+      <header className="h-14 bg-[#12161f] border-b border-slate-800/80 px-4 flex items-center justify-between shrink-0 z-20">
+        <div className="flex flex-col select-none">
+          <h1 className="text-base sm:text-lg font-bold text-white tracking-tight font-sans leading-tight">
             {t('appTitle')}
           </h1>
+          <span className="text-[11px] text-slate-400 font-normal tracking-normal mt-0.5">
+            Spatial Trajectory Processing &amp; Quality Assurance Pipeline
+          </span>
         </div>
 
         {/* Top Right Controls */}
@@ -6510,13 +6651,20 @@ export default function App() {
           <div className="relative">
             <button
               onClick={() => {
-                setIsAuditLogOpen(prev => {
-                  const next = !prev;
-                  if (next) {
-                    setAuditLogs(old => old.map(a => ({ ...a, read: true })));
-                  }
-                  return next;
-                });
+                const nextState = !isAuditLogOpen;
+                setIsAuditLogOpen(nextState);
+                if (nextState) {
+                  setAuditLogs(old => {
+                    const updated = old.map(a => ({ ...a, read: true }));
+                    try {
+                      localStorage.setItem('app_audit_logs_v1', JSON.stringify(updated));
+                      const ids = updated.map(a => String(a.id));
+                      localStorage.setItem('app_audit_read_ids_v1', JSON.stringify(ids));
+                      localStorage.setItem('app_audit_cleared_at_v1', String(Date.now()));
+                    } catch { }
+                    return updated;
+                  });
+                }
                 setIsNotifOpen(false);
               }}
               className={`p-1.5 transition-colors cursor-pointer relative ${isAuditLogOpen ? 'text-sky-400 bg-slate-800/80 rounded-lg border border-slate-700/60' : 'hover:text-white'
@@ -6632,13 +6780,20 @@ export default function App() {
           <div className="relative">
             <button
               onClick={() => {
-                setIsNotifOpen(prev => {
-                  const next = !prev;
-                  if (next) {
-                    setNotifications(old => old.map(n => ({ ...n, read: true })));
-                  }
-                  return next;
-                });
+                const nextState = !isNotifOpen;
+                setIsNotifOpen(nextState);
+                if (nextState) {
+                  setNotifications(old => {
+                    const updated = old.map(n => ({ ...n, read: true }));
+                    try {
+                      localStorage.setItem('app_notifications_v1', JSON.stringify(updated));
+                      const ids = updated.map(n => String(n.id));
+                      localStorage.setItem('app_notif_read_ids_v1', JSON.stringify(ids));
+                      localStorage.setItem('app_notif_cleared_at_v1', String(Date.now()));
+                    } catch { }
+                    return updated;
+                  });
+                }
                 setIsAuditLogOpen(false);
               }}
               className={`p-1.5 transition-colors cursor-pointer relative ${isNotifOpen ? 'text-sky-400 bg-slate-800/80 rounded-lg border border-slate-700/60' : 'hover:text-white'
@@ -6671,7 +6826,14 @@ export default function App() {
                   <div className="flex items-center gap-2">
                     {notifications.length > 0 && (
                       <button
-                        onClick={() => setNotifications([])}
+                        onClick={() => {
+                          setNotifications([]);
+                          try {
+                            localStorage.setItem('app_notifications_v1', JSON.stringify([]));
+                            localStorage.setItem('app_notif_read_ids_v1', JSON.stringify([]));
+                            localStorage.setItem('app_notif_cleared_at_v1', String(Date.now()));
+                          } catch { }
+                        }}
                         className="text-slate-400 hover:text-rose-400 text-[10px] font-medium transition-colors flex items-center gap-1 cursor-pointer"
                         title="Clear all notifications"
                       >
@@ -6719,7 +6881,17 @@ export default function App() {
                             <div className="flex items-center gap-1.5">
                               <span className="text-[10px] text-slate-500">{notif.timestamp}</span>
                               <button
-                                onClick={() => setNotifications(prev => prev.filter(n => n.id !== notif.id))}
+                                onClick={() => setNotifications(prev => {
+                                  const filtered = prev.filter(n => n.id !== notif.id);
+                                  try {
+                                    localStorage.setItem('app_notifications_v1', JSON.stringify(filtered));
+                                    const saved = localStorage.getItem('app_notif_read_ids_v1');
+                                    const readIds = saved ? JSON.parse(saved) : [];
+                                    readIds.push(String(notif.id));
+                                    localStorage.setItem('app_notif_read_ids_v1', JSON.stringify(readIds));
+                                  } catch { }
+                                  return filtered;
+                                })}
                                 className="text-slate-500 hover:text-rose-400 p-0.5 cursor-pointer opacity-80 hover:opacity-100 transition-opacity"
                                 title="Dismiss notification"
                               >
@@ -6765,7 +6937,7 @@ export default function App() {
             </button>
 
             <div className={`w-7 h-7 rounded-full border flex items-center justify-center text-xs font-bold ${isGuestUser ? 'bg-amber-900/40 border-amber-700 text-amber-400' : 'bg-slate-800 border-slate-700 text-sky-400'
-              }`} title={`Logged in as ${authSession?.user?.email || 'guest@tnb.com.my'}`}>
+              }`} title={`Logged in as ${authSession?.user?.email || 'guest@example.com'}`}>
               {isGuestUser ? 'G' : (authSession?.user?.email?.charAt(0).toUpperCase() || 'F')}
             </div>
             {isGuestUser && (
@@ -8289,11 +8461,14 @@ export default function App() {
                   <div className="p-2.5 rounded-xl bg-slate-800 border border-slate-700 text-slate-300 shadow-sm">
                     <Info size={20} />
                   </div>
-                  <div>
+                    <div>
                     <h2 className="text-base font-bold text-white tracking-wide">
-                      Web Mapping Processing Dashboard
+                      Mobile Mapping Data Management System
                     </h2>
-                    <p className="text-xs text-slate-400 font-mono">
+                    <p className="text-xs text-sky-400 font-medium">
+                      Spatial Trajectory Processing &amp; Quality Assurance Pipeline
+                    </p>
+                    <p className="text-[11px] text-slate-400 font-mono mt-0.5">
                       Version 2.4.0 (Executive Enterprise Build)
                     </p>
                   </div>
@@ -8377,7 +8552,7 @@ export default function App() {
 
               {/* Modal Footer */}
               <div className="p-4 bg-[#0b0f17] border-t border-slate-800 flex justify-between items-center text-[11px] text-slate-400 shrink-0 font-mono">
-                <span>© 2026 Web Mapping Processing Dashboard</span>
+                <span>© 2026 Mobile Mapping Data Management System</span>
                 <button
                   onClick={() => setIsAboutModalOpen(false)}
                   className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium rounded-lg border border-slate-700 transition-all cursor-pointer shadow-sm"

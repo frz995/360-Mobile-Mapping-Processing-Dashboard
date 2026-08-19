@@ -27,7 +27,10 @@ import {
   Layers,
   Palette,
   Navigation,
-  ExternalLink
+  ExternalLink,
+  Lock,
+  Trash2,
+  History
 } from 'lucide-react';
 import { UserAccount, DeletionApprovalRequest, SystemHealthMetrics, ExtendedProjectSettings } from '../types/admin';
 import {
@@ -350,8 +353,38 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
     }
   };
 
-  // User Actions
+  // Authorization RBAC helper: Only Administrator can modify users & settings
+  const currentAuthEmail = (authSession?.user?.email || '').toLowerCase().trim();
+  const currentUserRecord = users.find(u => (u.email || '').toLowerCase().trim() === currentAuthEmail);
+  const isGuest = Boolean(authSession?.isGuest || authSession?.user?.role === 'guest' || currentAuthEmail.includes('guest'));
+
+  // User role is strictly derived from User Management Directory or Supabase auth metadata
+  const userEffectiveRole = currentUserRecord?.role ||
+    authSession?.user?.app_metadata?.role ||
+    authSession?.user?.user_metadata?.role ||
+    (authSession?.user?.role === 'admin' ? 'Administrator' : 'Survey Operator');
+
+  const isAdmin = !isGuest && (
+    userEffectiveRole === 'Administrator' ||
+    authSession?.user?.role === 'admin' ||
+    authSession?.user?.app_metadata?.role === 'admin'
+  );
+
+  // Role Change Confirmation Modal State
+  const [roleChangeModal, setRoleChangeModal] = useState<{
+    userId: string;
+    userName: string;
+    userEmail: string;
+    previousRole: string;
+    targetRole: 'Administrator' | 'Survey Operator' | 'QA Inspector' | 'Viewer';
+  } | null>(null);
+
+  // User Actions (Strict Administrator Enforcement)
   const handleToggleUserStatus = (userId: string) => {
+    if (!isAdmin) {
+      showToast('Access Denied: Only administrators can modify user access.', 'error');
+      return;
+    }
     const updated = users.map(u => {
       if (u.id === userId) {
         const nextStatus = u.status === 'Active' ? 'Disabled' as const : 'Active' as const;
@@ -360,23 +393,64 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
       return u;
     });
     setUsers(updated);
+    try { localStorage.setItem('app_user_accounts_v1', JSON.stringify(updated)); } catch { }
     saveUserAccountToSupabase(updated);
     const targetUser = users.find(u => u.id === userId);
     addAuditLog?.('SECURITY', `User Account ${targetUser?.status === 'Active' ? 'Disabled' : 'Enabled'}`, `Updated status for ${targetUser?.name} (${targetUser?.email})`, 'info');
     showToast(`User ${targetUser?.name} status updated.`);
   };
 
-  const handleChangeUserRole = (userId: string, newRole: any) => {
-    const updated = users.map(u => u.id === userId ? { ...u, role: newRole } : u);
+  const handlePromptChangeUserRole = (user: UserAccount, newRole: any) => {
+    if (!isAdmin) {
+      showToast('Access Denied: Only administrators can change user roles.', 'error');
+      return;
+    }
+    if (user.role === newRole) return;
+    setRoleChangeModal({
+      userId: user.id,
+      userName: user.name,
+      userEmail: user.email,
+      previousRole: user.role,
+      targetRole: newRole
+    });
+  };
+
+  const handleConfirmUserRoleChange = () => {
+    if (!roleChangeModal || !isAdmin) return;
+    const { userId, userName, userEmail, targetRole } = roleChangeModal;
+    const updated = users.map(u => u.id === userId ? { ...u, role: targetRole } : u);
     setUsers(updated);
+    try { localStorage.setItem('app_user_accounts_v1', JSON.stringify(updated)); } catch { }
     saveUserAccountToSupabase(updated);
+    addAuditLog?.('SECURITY', 'User Role Modified', `Assigned ${targetRole} role to ${userName} (${userEmail})`, 'info');
+    showToast(`Role updated to ${targetRole} for ${userName}`);
+    setRoleChangeModal(null);
+  };
+
+  const handleDeleteUser = (userId: string) => {
+    if (!isAdmin) {
+      showToast('Access Denied: Only administrators can delete users.', 'error');
+      return;
+    }
     const targetUser = users.find(u => u.id === userId);
-    addAuditLog?.('SECURITY', 'User Role Modified', `Assigned ${newRole} role to ${targetUser?.name}`, 'info');
-    showToast(`Role updated to ${newRole}`);
+    if (targetUser && targetUser.email.toLowerCase().trim() === currentAuthEmail && currentAuthEmail !== '') {
+      showToast('Cannot delete active administrator session.', 'error');
+      return;
+    }
+    const updated = users.filter(u => u.id !== userId);
+    setUsers(updated);
+    try { localStorage.setItem('app_user_accounts_v1', JSON.stringify(updated)); } catch { }
+    saveUserAccountToSupabase(updated);
+    addAuditLog?.('DELETE', `User Deleted`, `Administrator removed user account ${targetUser?.name} (${targetUser?.email})`, 'info');
+    showToast(`User ${targetUser?.name} removed from directory.`);
   };
 
   const handleCreateUser = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isAdmin) {
+      showToast('Access Denied: Only administrators can add new users.', 'error');
+      return;
+    }
     if (!newUserName.trim() || !newUserEmail.trim()) return;
 
     const newUser: UserAccount = {
@@ -389,8 +463,9 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
       createdAt: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
     };
 
-    const updated = [...users, newUser];
+    const updated = [newUser, ...users.filter(u => u.email.toLowerCase().trim() !== newUser.email.toLowerCase().trim())];
     setUsers(updated);
+    try { localStorage.setItem('app_user_accounts_v1', JSON.stringify(updated)); } catch { }
     saveUserAccountToSupabase(updated);
     addAuditLog?.('CREATE', 'New User Provisioned', `Added user ${newUser.name} with role ${newUser.role}`, 'success');
     addNotification?.({
@@ -472,12 +547,69 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
   const pendingApprovalsCount = deletionRequests.filter(r => r.status === 'Pending').length;
   const totalAuditEventsCount = auditLogs.length;
 
+  // Report & Progress Computations
+  const totalReportDistance = useMemo(() => {
+    if (dailyData.length > 0) {
+      return dailyData.reduce((s, d) => s + (Number(d.kmProcessed) || 0), 0);
+    }
+    return batchLogs.reduce((s, b) => s + (Number(b.kmProcessed) || 0), 0);
+  }, [dailyData, batchLogs]);
+
+  const totalReportFrames = useMemo(() => {
+    if (dailyData.length > 0) {
+      return dailyData.reduce((s, d) => {
+        const count = d.availableImagesCount ?? d.panoramas?.length ?? d.imagesProcessed ?? d.poiCount ?? d.images ?? 0;
+        return s + Number(count || 0);
+      }, 0);
+    }
+    return batchLogs.reduce((s, b) => {
+      const count = b.availableImagesCount ?? b.panoramas?.length ?? b.images ?? b.poiCount ?? 0;
+      return s + Number(count || 0);
+    }, 0);
+  }, [dailyData, batchLogs]);
+
+  const totalReportDefects = useMemo(() => {
+    return dailyData.reduce((s, d) => s + (Number(d.imagesDefected) || Number(d.defectCount) || 0), 0);
+  }, [dailyData]);
+
+  const targetKm = Number(projectSettings?.targetKm) || 315.2;
+  const overallProgressPercent = targetKm > 0 ? Math.min(100, (totalReportDistance / targetKm) * 100) : 0;
+  const compliantPercent = totalReportFrames > 0
+    ? Math.max(0, ((totalReportFrames - totalReportDefects) / totalReportFrames) * 100).toFixed(1)
+    : '100.0';
+
   const cardBg = themeMode === 'light' ? 'bg-white border-slate-200 text-slate-900' : 'bg-[#111622] border-slate-800 text-slate-200';
   const innerCardBg = themeMode === 'light' ? 'bg-slate-50 border-slate-200' : 'bg-[#0b0f17] border-slate-800';
   const inputBg = themeMode === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-[#070a0f] border-slate-800 text-slate-200';
 
   return (
     <div className={`w-full h-full flex flex-col min-h-0 overflow-y-auto space-y-4 p-4 ${themeMode === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>
+
+      {/* RESTRICTED / READ-ONLY MODE BANNER FOR NON-ADMINS (Neutral Monochrome) */}
+      {!isAdmin && (
+        <div className={`p-3.5 rounded-xl border flex flex-wrap items-center justify-between gap-3 shrink-0 shadow-sm animate-in fade-in duration-200 ${
+          themeMode === 'light'
+            ? 'bg-slate-100 border-slate-300 text-slate-700'
+            : 'bg-slate-900/90 border-slate-800 text-slate-300'
+        }`}>
+          <div className="flex items-center gap-2.5">
+            <Lock size={15} className="text-slate-400 shrink-0" />
+            <div>
+              <p className="font-semibold text-slate-200 text-xs">Project Settings &bull; Read-Only Mode</p>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                Current account role: <span className="font-mono font-semibold text-slate-300">{currentUserRecord?.role || (authSession?.user?.role) || 'Survey Operator'}</span>. Configuration controls and user management are restricted to Administrators.
+              </p>
+            </div>
+          </div>
+          <span className={`px-2.5 py-1 rounded-md text-[10px] font-mono font-semibold border ${
+            themeMode === 'light'
+              ? 'bg-slate-200 text-slate-700 border-slate-300'
+              : 'bg-slate-800 text-slate-400 border-slate-700'
+          }`}>
+            Read-Only
+          </span>
+        </div>
+      )}
 
       {/* TOAST STATUS NOTIFICATION */}
       {toastMessage && (
@@ -629,13 +761,26 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
               </h3>
               <p className="text-xs text-slate-400 mt-0.5">Control operator roles, access permissions, and session authorization.</p>
             </div>
-            <button
-              onClick={() => setIsAddUserModalOpen(true)}
-              className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors shadow-sm"
-            >
-              <Plus size={14} className="text-emerald-400" /> Add User
-            </button>
+            {isAdmin ? (
+              <button
+                onClick={() => setIsAddUserModalOpen(true)}
+                className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors shadow-sm"
+              >
+                <Plus size={14} className="text-emerald-400" /> Add User
+              </button>
+            ) : (
+              <span className="px-3 py-1.5 rounded-lg border border-slate-800 bg-slate-900/60 text-slate-500 text-xs font-medium flex items-center gap-1.5">
+                <Lock size={12} /> Admin Only
+              </span>
+            )}
           </div>
+
+          {!isAdmin && (
+            <div className="p-3 bg-slate-900/80 border border-slate-800 rounded-lg text-slate-400 text-xs flex items-center gap-2">
+              <Lock size={14} className="shrink-0 text-slate-400" />
+              <span>Read-Only: Only system administrators can add users, change roles, or modify account access.</span>
+            </div>
+          )}
 
           {/* Search & Role Filter */}
           <div className="flex flex-wrap items-center gap-3">
@@ -702,9 +847,10 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                       <td className="px-3.5 py-2.5 font-mono text-slate-300">{u.email}</td>
                       <td className="px-3.5 py-2.5">
                         <select
+                          disabled={!isAdmin}
                           value={u.role}
-                          onChange={e => handleChangeUserRole(u.id, e.target.value)}
-                          className={`px-2 py-1 rounded text-[11px] font-medium border ${inputBg}`}
+                          onChange={e => handlePromptChangeUserRole(u, e.target.value as any)}
+                          className={`px-2 py-1 rounded text-[11px] font-medium border ${inputBg} ${!isAdmin ? 'opacity-60 cursor-not-allowed' : ''}`}
                         >
                           <option value="Administrator">Administrator</option>
                           <option value="Survey Operator">Survey Operator</option>
@@ -719,12 +865,27 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                       </td>
                       <td className="px-3.5 py-2.5 text-slate-400 font-mono text-[11px]">{u.lastLogin}</td>
                       <td className="px-3.5 py-2.5 text-right">
-                        <button
-                          onClick={() => handleToggleUserStatus(u.id)}
-                          className={`px-2.5 py-1 rounded text-[11px] font-medium border transition-colors cursor-pointer ${u.status === 'Active' ? 'bg-slate-800 hover:bg-rose-900/30 text-rose-300 border-slate-700' : 'bg-slate-800 hover:bg-emerald-900/30 text-emerald-300 border-slate-700'}`}
-                        >
-                          {u.status === 'Active' ? 'Disable Access' : 'Grant Access'}
-                        </button>
+                        {isAdmin ? (
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              onClick={() => handleToggleUserStatus(u.id)}
+                              className={`px-2 py-1 rounded text-[11px] font-medium border transition-colors cursor-pointer ${u.status === 'Active' ? 'bg-slate-800 hover:bg-rose-900/30 text-rose-300 border-slate-700' : 'bg-slate-800 hover:bg-emerald-900/30 text-emerald-300 border-slate-700'}`}
+                            >
+                              {u.status === 'Active' ? 'Disable' : 'Grant'}
+                            </button>
+                            <button
+                              onClick={() => handleDeleteUser(u.id)}
+                              className="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-rose-950/40 border border-transparent hover:border-rose-800/40 transition-colors cursor-pointer"
+                              title="Delete user account"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="text-slate-500 italic text-[10px] flex items-center justify-end gap-1">
+                            <Lock size={10} /> Locked
+                          </span>
+                        )}
                       </td>
                     </tr>
                   ))
@@ -739,7 +900,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
       {/* TAB 2: PROJECT & SECURITY SETTINGS */}
       {/* ========================================================================= */}
       {activeTab === 'settings' && (
-        <div className="space-y-4">
+        <fieldset disabled={!isAdmin} className="space-y-4 border-none p-0 m-0">
           {/* SECTION 1: DATABASE & POSTGIS SPATIAL ENGINE CONNECTION SETUP */}
           <div className={`p-5 rounded-xl border space-y-5 ${cardBg}`}>
             <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800">
@@ -1213,9 +1374,9 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                     <label className="block text-slate-400 font-medium mb-1">Custom CDN Base URL Prefix</label>
                     <input
                       type="text"
-                      value={projectSettings.customCdnUrl || 'https://cdn.mobilemapping.tnb.com.my/panoramas/'}
+                      value={projectSettings.customCdnUrl || 'https://cdn.mobilemapping.example.com/panoramas/'}
                       onChange={e => setProjectSettings(prev => ({ ...prev, customCdnUrl: e.target.value, imageStoragePath: e.target.value }))}
-                      placeholder="https://cdn.mobilemapping.tnb.com.my/panoramas/"
+                      placeholder="https://cdn.mobilemapping.example.com/panoramas/"
                       className={`w-full px-3 py-2 rounded-lg font-mono focus:outline-none border ${inputBg}`}
                     />
                   </div>
@@ -1862,7 +2023,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
 
                   {/* REAL EMBEDDED WEBGIS MAP IFRAME CONTAINER (SPACIOUS & THEME-AWARE) */}
                   <div className={`relative flex-1 min-h-[520px] rounded-xl overflow-hidden border ${themeMode === 'light' ? 'border-slate-200 bg-slate-100' : 'border-slate-700/80 bg-slate-950'} flex flex-col shadow-2xl`}>
-                    {/* Top-Left TNB LV Asset Mapping Floating Badge */}
+                    {/* Top-Left GeoSphere 360 Operations Hub Floating Badge */}
                     <div className="absolute top-3 left-3 z-20 pointer-events-none">
                       <div className={`backdrop-blur-xl border rounded-2xl px-3 py-1.5 shadow-2xl flex items-center gap-2.5 shrink-0 ${themeMode === 'light' ? 'bg-white/95 border-slate-200 text-slate-800' : 'bg-[#12161f]/95 border-slate-800/90 text-white'}`}>
                         <div className="p-1.5 bg-gradient-to-tr from-sky-600 to-emerald-500 rounded-xl shadow-md shadow-emerald-950/40 shrink-0">
@@ -1871,7 +2032,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                         <div>
                           <div className="flex items-center gap-1.5">
                             <h4 className={`font-bold text-xs tracking-tight ${themeMode === 'light' ? 'text-slate-900' : 'text-white'}`}>
-                              TNB LV Asset Mapping
+                              GeoSphere 360 Operations Hub
                             </h4>
                             <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[8px] font-semibold">
                               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
@@ -1879,7 +2040,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                             </span>
                           </div>
                           <p className={`text-[9px] font-medium ${themeMode === 'light' ? 'text-slate-500' : 'text-slate-400'}`}>
-                            360° Mobile Mapping System
+                            Mobile Mapping & Spatial Asset Intelligence
                           </p>
                         </div>
                       </div>
@@ -2209,10 +2370,17 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
             </div>
 
             {/* Save Button */}
-            <div className={`pt-3 border-t flex justify-end ${themeMode === 'light' ? 'border-slate-200' : 'border-slate-800'}`}>
+            <div className={`pt-3 border-t flex flex-wrap justify-end items-center gap-3 ${themeMode === 'light' ? 'border-slate-200' : 'border-slate-800'}`}>
+              {!isAdmin && (
+                <span className="text-xs text-amber-400 font-mono flex items-center gap-1.5">
+                  <Lock size={13} /> Only administrators can save configuration changes.
+                </span>
+              )}
               <button
                 type="button"
+                disabled={!isAdmin}
                 onClick={() => {
+                  if (!isAdmin) return;
                   try {
                     localStorage.setItem('tnb_project_settings', JSON.stringify(projectSettings));
                   } catch (e) { }
@@ -2221,14 +2389,18 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                   addAuditLog?.('SETTINGS', 'Saved Project Settings', 'Updated project parameters, basemap, security and SLA benchmarks.', 'success');
                   showToast('Project & Security Settings saved and synchronized live!');
                 }}
-                className="px-5 py-2.5 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-xs font-bold transition-all shadow-md cursor-pointer flex items-center gap-2 active:scale-95"
+                className={`px-5 py-2.5 rounded-lg text-xs font-bold transition-all shadow-md flex items-center gap-2 ${
+                  isAdmin
+                    ? 'bg-sky-600 hover:bg-sky-500 text-white cursor-pointer active:scale-95'
+                    : 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed'
+                }`}
               >
-                <CheckCircle size={14} />
-                <span>Save All Settings</span>
+                {isAdmin ? <CheckCircle size={14} /> : <Lock size={14} />}
+                <span>{isAdmin ? 'Save All Settings' : 'Admin Only (Read-Only)'}</span>
               </button>
             </div>
           </div>
-        </div>
+        </fieldset>
       )}
 
       {/* ========================================================================= */}
@@ -2278,12 +2450,8 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                   </tr>
                 ) : (
                   filteredApprovals.map(req => {
-                    const requesterName = (req.requestedBy && req.requestedBy !== 'Fariz Farhan')
-                      ? req.requestedBy
-                      : (authSession?.user?.user_metadata?.full_name || authSession?.user?.name || (authSession?.user?.email ? authSession.user.email.split('@')[0] : req.requestedBy) || 'Authenticated User');
-                    const requesterEmail = (req.userEmail && req.userEmail !== 'fariz.farhan95@tnb.com.my')
-                      ? req.userEmail
-                      : (authSession?.user?.email || req.userEmail || 'operator@tnb.com.my');
+                    const requesterName = req.requestedBy || 'Operator';
+                    const requesterEmail = req.userEmail || '-';
 
                     return (
                       <tr key={req.id} className={`transition-colors ${themeMode === 'light' ? 'hover:bg-slate-50' : 'hover:bg-slate-800/30'}`}>
@@ -2310,28 +2478,34 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                         </td>
                         <td className="px-3.5 py-2.5 text-right">
                           {req.status === 'Pending' ? (
-                            <div className="flex items-center justify-end gap-1.5">
-                              <button
-                                onClick={() => handleApproveDeletion(req)}
-                                className={`px-2.5 py-1 rounded text-[11px] font-semibold cursor-pointer transition-colors border ${
-                                  themeMode === 'light'
-                                    ? 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-600'
-                                    : 'bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-300 border-emerald-500/30'
-                                }`}
-                              >
-                                Approve
-                              </button>
-                              <button
-                                onClick={() => setRejectModalReqId(req.id)}
-                                className={`px-2.5 py-1 rounded text-[11px] font-semibold cursor-pointer transition-colors border ${
-                                  themeMode === 'light'
-                                    ? 'bg-white hover:bg-rose-50 text-rose-700 border-rose-200'
-                                    : 'bg-rose-600/20 hover:bg-rose-600/40 text-rose-300 border-rose-500/30'
-                                }`}
-                              >
-                                Reject
-                              </button>
-                            </div>
+                            isAdmin ? (
+                              <div className="flex items-center justify-end gap-1.5">
+                                <button
+                                  onClick={() => handleApproveDeletion(req)}
+                                  className={`px-2.5 py-1 rounded text-[11px] font-semibold cursor-pointer transition-colors border ${
+                                    themeMode === 'light'
+                                      ? 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-600'
+                                      : 'bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-300 border-emerald-500/30'
+                                  }`}
+                                >
+                                  Approve
+                                </button>
+                                <button
+                                  onClick={() => setRejectModalReqId(req.id)}
+                                  className={`px-2.5 py-1 rounded text-[11px] font-semibold cursor-pointer transition-colors border ${
+                                    themeMode === 'light'
+                                      ? 'bg-white hover:bg-rose-50 text-rose-700 border-rose-200'
+                                      : 'bg-rose-600/20 hover:bg-rose-600/40 text-rose-300 border-rose-500/30'
+                                  }`}
+                                >
+                                  Reject
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="text-slate-500 italic text-[10px] flex items-center justify-end gap-1">
+                                <Lock size={10} /> Pending Admin Review
+                              </span>
+                            )
                           ) : (
                             <span className="text-[10px] text-slate-500 font-mono">
                               {req.reviewedBy ? `by ${req.reviewedBy}` : 'Processed'}
@@ -2364,39 +2538,184 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
             <div className="flex items-center gap-2">
               <button
                 onClick={onGeneratePdfReport}
-                className="px-3.5 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-sm"
+                className="px-3.5 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95 transition-all"
               >
                 <Download size={13} /> Export PDF Report
               </button>
             </div>
           </div>
 
+          {/* 1. OVERALL CONTRACT SURVEY PROGRESS BANNER */}
+          <div className={`p-4 rounded-xl border space-y-3 ${innerCardBg}`}>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <span className="text-[10px] font-bold tracking-wider text-slate-400 uppercase">Overall Contract Survey Progress</span>
+                <div className="flex items-baseline gap-2 mt-0.5">
+                  <h4 className="text-2xl font-bold text-slate-100 font-mono">{overallProgressPercent.toFixed(1)}%</h4>
+                  <span className="text-xs text-slate-400">({totalReportDistance.toFixed(1)} km of {targetKm.toFixed(1)} km target)</span>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-4 text-xs font-mono">
+                <div className="text-right">
+                  <span className="text-slate-400 text-[10px] block font-sans">Processed Frames</span>
+                  <strong className="text-slate-200">{totalReportFrames.toLocaleString()} frames <span className="text-[10px] font-normal text-slate-400 font-sans">(incl. staging)</span></strong>
+                </div>
+                <div className="text-right pl-4 border-l border-slate-800">
+                  <span className="text-slate-400 text-[10px] block font-sans">Remaining KM</span>
+                  <strong className="text-slate-200">{Math.max(0, targetKm - totalReportDistance).toFixed(1)} km</strong>
+                </div>
+                <div className="text-right pl-4 border-l border-slate-800">
+                  <span className="text-slate-400 text-[10px] block font-sans">Active Subgrids</span>
+                  <strong className="text-slate-200">{batchLogs.length} subgrids</strong>
+                </div>
+              </div>
+            </div>
+
+            {/* Visual Progress Bar */}
+            <div className="w-full h-2.5 bg-slate-800/90 rounded-full overflow-hidden border border-slate-700/60">
+              <div
+                className="h-full bg-sky-500 rounded-full transition-all duration-500"
+                style={{ width: `${Math.max(1, Math.min(100, overallProgressPercent))}%` }}
+              />
+            </div>
+          </div>
+
+          {/* 2. EXECUTIVE KPI BREAKDOWN CARDS */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
             <div className={`p-4 rounded-xl border space-y-2 ${innerCardBg}`}>
-              <h4 className="font-bold text-slate-200">Survey Coverage Breakdown</h4>
+              <h4 className="font-bold text-slate-200 flex items-center justify-between">
+                <span>Survey Coverage Breakdown</span>
+                <span className="text-[10px] font-mono text-slate-400">Live PostGIS</span>
+              </h4>
               <div className="space-y-1.5 text-slate-400">
-                <div className="flex justify-between"><span>Total Distance:</span> <strong className="text-slate-200">{dailyData.reduce((s, d) => s + (d.kmProcessed || 0), 0).toFixed(1)} km</strong></div>
-                <div className="flex justify-between"><span>Processed Frames:</span> <strong className="text-slate-200">{dailyData.reduce((s, d) => s + (d.imagesProcessed || 0), 0)} frames</strong></div>
-                <div className="flex justify-between"><span>Target Distance:</span> <strong className="text-slate-200">{projectSettings.targetKm || 315.2} km</strong></div>
+                <div className="flex justify-between"><span>Total Distance:</span> <strong className="text-slate-200 font-mono">{totalReportDistance.toFixed(1)} km</strong></div>
+                <div className="flex justify-between"><span>Processed Frames:</span> <strong className="text-slate-200 font-mono">{totalReportFrames.toLocaleString()} frames <span className="text-[10px] font-normal text-slate-400 font-sans">(incl. staging)</span></strong></div>
+                <div className="flex justify-between"><span>Target Distance:</span> <strong className="text-slate-200 font-mono">{targetKm.toFixed(1)} km</strong></div>
+                <div className="flex justify-between pt-1 border-t border-slate-800/80"><span>Remaining to Survey:</span> <strong className="text-sky-400 font-mono">{Math.max(0, targetKm - totalReportDistance).toFixed(1)} km</strong></div>
               </div>
             </div>
 
             <div className={`p-4 rounded-xl border space-y-2 ${innerCardBg}`}>
-              <h4 className="font-bold text-slate-200">QAQC Quality SLA Metrics</h4>
+              <h4 className="font-bold text-slate-200 flex items-center justify-between">
+                <span>QAQC Quality SLA Metrics</span>
+                <span className="text-[10px] font-mono text-emerald-400">Verified</span>
+              </h4>
               <div className="space-y-1.5 text-slate-400">
-                <div className="flex justify-between"><span>Defect Frames:</span> <strong className="text-amber-300">{dailyData.reduce((s, d) => s + (d.defectCount || 0), 0)}</strong></div>
-                <div className="flex justify-between"><span>Allowed Threshold:</span> <strong className="text-slate-200">{projectSettings.maxDefectThresholdPercent || 5.0}%</strong></div>
-                <div className="flex justify-between"><span>Pipeline Status:</span> <strong className="text-emerald-400">100.0% Compliant</strong></div>
+                <div className="flex justify-between"><span>Defect Frames:</span> <strong className="text-amber-300 font-mono">{totalReportDefects}</strong></div>
+                <div className="flex justify-between"><span>Allowed Threshold:</span> <strong className="text-slate-200 font-mono">{projectSettings.maxDefectThresholdPercent || 5.0}%</strong></div>
+                <div className="flex justify-between"><span>Defect Rate:</span> <strong className="text-slate-200 font-mono">{totalReportFrames > 0 ? ((totalReportDefects / totalReportFrames) * 100).toFixed(2) : '0.00'}%</strong></div>
+                <div className="flex justify-between pt-1 border-t border-slate-800/80"><span>Pipeline Quality:</span> <strong className="text-emerald-400 font-mono">{compliantPercent}% Compliant</strong></div>
               </div>
             </div>
 
             <div className={`p-4 rounded-xl border space-y-2 ${innerCardBg}`}>
-              <h4 className="font-bold text-slate-200">Subgrid Masterlist Summary</h4>
+              <h4 className="font-bold text-slate-200 flex items-center justify-between">
+                <span>Subgrid Masterlist Summary</span>
+                <span className="text-[10px] font-mono text-slate-400">{batchLogs.length} Total</span>
+              </h4>
               <div className="space-y-1.5 text-slate-400">
-                <div className="flex justify-between"><span>Total Subgrids:</span> <strong className="text-slate-200">{batchLogs.length}</strong></div>
-                <div className="flex justify-between"><span>Completed Batches:</span> <strong className="text-emerald-400">{batchLogs.filter(b => b.status === 'Complete').length}</strong></div>
-                <div className="flex justify-between"><span>Ongoing Batches:</span> <strong className="text-amber-300">{batchLogs.filter(b => b.status === 'Ongoing').length}</strong></div>
+                <div className="flex justify-between"><span>Total Subgrids:</span> <strong className="text-slate-200 font-mono">{batchLogs.length}</strong></div>
+                <div className="flex justify-between"><span>Completed Batches:</span> <strong className="text-emerald-400 font-mono">{batchLogs.filter(b => b.status === 'Complete').length}</strong></div>
+                <div className="flex justify-between"><span>Ongoing Batches:</span> <strong className="text-amber-300 font-mono">{batchLogs.filter(b => b.status === 'Ongoing').length}</strong></div>
+                <div className="flex justify-between pt-1 border-t border-slate-800/80"><span>Ready for WebGIS:</span> <strong className="text-sky-400 font-mono">{batchLogs.filter(b => (b as any).publishToWebGIS === 'yes' || (b as any).isSyncedWithSupabase).length}</strong></div>
               </div>
+            </div>
+          </div>
+
+          {/* 3. DAILY PROGRESS DATA & SURVEY OPERATION LEDGER */}
+          <div className="space-y-2.5 pt-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h4 className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+                <History size={14} className="text-sky-400" />
+                Daily Operation & Survey Progress Ledger
+              </h4>
+              <span className="text-[11px] text-slate-400 font-mono">
+                {dailyData.length} daily logs recorded
+              </span>
+            </div>
+
+            <div className="border border-slate-800 rounded-xl overflow-hidden shadow-sm">
+              <table className="w-full text-left text-xs">
+                <thead className={`text-[11px] uppercase tracking-wider font-semibold border-b ${
+                  themeMode === 'light' ? 'bg-slate-100 text-slate-700 border-slate-200' : 'bg-[#070a0f] text-slate-400 border-slate-800'
+                }`}>
+                  <tr>
+                    <th className="px-3.5 py-2.5">Date</th>
+                    <th className="px-3.5 py-2.5">Subgrid / Area</th>
+                    <th className="px-3.5 py-2.5">Distance</th>
+                    <th className="px-3.5 py-2.5">Processed Frames</th>
+                    <th className="px-3.5 py-2.5">QC Defects</th>
+                    <th className="px-3.5 py-2.5">PIC / Equipment</th>
+                    <th className="px-3.5 py-2.5 text-right">WebGIS Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60">
+                  {dailyData.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
+                        No daily operation records available.
+                      </td>
+                    </tr>
+                  ) : (
+                    dailyData.map((row, idx) => {
+                      const frameCount = row.availableImagesCount ?? row.panoramas?.length ?? row.imagesProcessed ?? row.poiCount ?? row.images ?? 0;
+                      const km = Number(row.kmProcessed) || 0;
+                      const defects = Number(row.imagesDefected) || Number(row.defectCount) || 0;
+                      const isPublished = row.publishToWebGIS === 'yes' || row.isSyncedWithSupabase === true;
+
+                      return (
+                        <tr
+                          key={row.id || `${row.date}-${row.subgrid}-${idx}`}
+                          className={`hover:bg-slate-800/30 transition-colors ${
+                            themeMode === 'light' ? 'text-slate-800' : 'text-slate-300'
+                          }`}
+                        >
+                          <td className="px-3.5 py-2.5 font-mono text-[11px] font-semibold">{row.date || '—'}</td>
+                          <td className="px-3.5 py-2.5 font-medium">{row.subgrid || '—'}</td>
+                          <td className="px-3.5 py-2.5 font-mono">{km.toFixed(1)} km</td>
+                          <td className="px-3.5 py-2.5 font-mono font-semibold text-slate-200">{Number(frameCount).toLocaleString()} frames</td>
+                          <td className="px-3.5 py-2.5 font-mono">
+                            {defects > 0 ? (
+                              <span className="text-amber-400 font-semibold">{defects}</span>
+                            ) : (
+                              <span className="text-emerald-400">0</span>
+                            )}
+                          </td>
+                          <td className="px-3.5 py-2.5 text-[11px] text-slate-400">
+                            {row.pic || 'Field Operator'} <span className="text-slate-500">({row.captureEquipment || 'MMS'})</span>
+                          </td>
+                          <td className="px-3.5 py-2.5 text-right">
+                            {isPublished ? (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono">
+                                Published
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-800 text-slate-400 border border-slate-700 font-mono">
+                                Staging
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+                {dailyData.length > 0 && (
+                  <tfoot className={`font-semibold border-t ${
+                    themeMode === 'light' ? 'bg-slate-50 text-slate-800 border-slate-200' : 'bg-[#070a0f] text-slate-200 border-slate-800'
+                  }`}>
+                    <tr>
+                      <td colSpan={2} className="px-3.5 py-2.5 text-slate-400 text-[11px]">Total ({dailyData.length} daily logs)</td>
+                      <td className="px-3.5 py-2.5 font-mono text-sky-400">{totalReportDistance.toFixed(1)} km</td>
+                      <td className="px-3.5 py-2.5 font-mono text-slate-100">{totalReportFrames.toLocaleString()} frames <span className="text-[10px] font-normal text-slate-400 font-sans">(incl. staging)</span></td>
+                      <td className="px-3.5 py-2.5 font-mono text-amber-300">{totalReportDefects}</td>
+                      <td colSpan={2} className="px-3.5 py-2.5 text-right text-[11px] text-emerald-400 font-mono">
+                        {compliantPercent}% Quality
+                      </td>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
             </div>
           </div>
         </div>
@@ -2597,7 +2916,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                 <input
                   type="email"
                   required
-                  placeholder="ahmad.razif@tnb.com.my"
+                  placeholder="ahmad.razif@example.com"
                   value={newUserEmail}
                   onChange={e => setNewUserEmail(e.target.value)}
                   className={`w-full px-3 py-2 rounded-lg font-mono focus:outline-none border ${inputBg}`}
@@ -2674,6 +2993,64 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                   className="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-md cursor-pointer"
                 >
                   Confirm Rejection
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL 3: CONFIRM ROLE ASSIGNMENT MODAL */}
+      {/* ========================================================================= */}
+      {roleChangeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className={`w-full max-w-md p-5 rounded-2xl border shadow-2xl space-y-4 ${cardBg}`}>
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2">
+                <Shield size={16} className="text-sky-400" />
+                Confirm Role Assignment
+              </h3>
+              <button onClick={() => setRoleChangeModal(null)} className="text-slate-400 hover:text-white cursor-pointer">✕</button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <p className="text-slate-300 leading-relaxed">
+                Assign user <strong className="text-white">{roleChangeModal.userName}</strong> (<span className="font-mono text-slate-400 text-[11px]">{roleChangeModal.userEmail}</span>) to role <strong className="text-sky-400">{roleChangeModal.targetRole}</strong>?
+              </p>
+
+              <div className={`p-3 rounded-xl border text-[11px] space-y-2 ${innerCardBg}`}>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-400">Current Role:</span>
+                  <span className="font-semibold text-slate-300">{roleChangeModal.previousRole}</span>
+                </div>
+                <div className="flex justify-between items-center pt-1.5 border-t border-slate-800">
+                  <span className="text-slate-400">New Assigned Role:</span>
+                  <span className="font-bold text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded border border-sky-500/20">{roleChangeModal.targetRole}</span>
+                </div>
+              </div>
+
+              <div className="p-2.5 rounded-lg bg-slate-900/60 border border-slate-800 text-[11px] text-slate-400 leading-relaxed">
+                {roleChangeModal.targetRole === 'Administrator' && '• Administrator: Full operational rights, deletion approvals, project settings & user management.'}
+                {roleChangeModal.targetRole === 'Survey Operator' && '• Survey Operator: Trajectory inspection, batch processing & survey editing rights.'}
+                {roleChangeModal.targetRole === 'QA Inspector' && '• QA Inspector: Quality assurance reviews, defect tagging & deletion request submissions.'}
+                {roleChangeModal.targetRole === 'Viewer' && '• Viewer: Read-only spatial viewing mode without data modification privileges.'}
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setRoleChangeModal(null)}
+                  className="px-3.5 py-2 rounded-lg border border-slate-700 bg-slate-800 text-slate-300 hover:text-white text-xs font-semibold cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmUserRoleChange}
+                  className="px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold shadow-md cursor-pointer flex items-center gap-1.5"
+                >
+                  <CheckCircle size={13} /> Confirm & Assign Role
                 </button>
               </div>
             </div>
