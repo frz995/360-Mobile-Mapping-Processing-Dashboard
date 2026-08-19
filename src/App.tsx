@@ -3299,7 +3299,24 @@ const DataManagementPage = ({
                                   <ExternalLink size={11} className="shrink-0 text-slate-400" />
                                 </button>
                               </td>
-                              <td className="px-4 py-3.5 text-slate-300 whitespace-nowrap">{daily.captureEquipment}</td>
+                              <td className="px-4 py-3.5 whitespace-nowrap">
+                                <select
+                                  value={daily.captureEquipment || 'MMS'}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    const updated = draftDailyData.map(d => getItemId(d) === getItemId(daily) ? { ...d, captureEquipment: val } : d);
+                                    setDraftDailyData(updated);
+                                    setDailyData(updated);
+                                    setBatchLogs(reconcileBatchLogs(updated, batchLogs));
+                                  }}
+                                  className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs font-semibold text-slate-200 focus:outline-none focus:ring-1 focus:ring-slate-500 cursor-pointer"
+                                >
+                                  <option value="MMS" className="bg-slate-900 text-slate-200">MMS</option>
+                                  <option value="Backpack" className="bg-slate-900 text-slate-200">Backpack</option>
+                                  <option value="Drone" className="bg-slate-900 text-slate-200">Drone</option>
+                                  <option value="Handheld" className="bg-slate-900 text-slate-200">Handheld</option>
+                                </select>
+                              </td>
                               <td className="px-4 py-3.5 text-slate-300 font-medium whitespace-nowrap">
                                 {(() => {
                                   const matchBatch = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === dailySubgrid);
