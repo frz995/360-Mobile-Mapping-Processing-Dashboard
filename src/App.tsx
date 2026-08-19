@@ -180,21 +180,29 @@ export function getPOICount(item?: { poiCount?: number; imagesProcessed?: number
 }
 
 // Helper: Get available uploaded image frames count in MMS_PIC per row
-export function getImagesProcessedCount(item?: { imagesProcessed?: number; images?: number; availableImagesCount?: number; panoramas?: PanoramaItem[]; poiCount?: number; publishToWebGIS?: string; status?: string; isSyncedWithSupabase?: boolean; subgrid?: string }): number {
+export function getImagesProcessedCount(item?: {
+  imagesProcessed?: number;
+  images?: number;
+  availableImagesCount?: number;
+  availableFilenames?: string[];
+  panoramas?: PanoramaItem[];
+  poiCount?: number;
+}): number {
   if (!item) return 0;
 
   const rawPoi = Number(item.poiCount ?? (item as any).poi ?? (item.panoramas ? item.panoramas.length : 0));
 
   let rawCount = 0;
-  // 1. Highest priority: Verified available image files in storage per row
+
+  // 1. Explicit verified count from Supabase storage verification
   if (typeof item.availableImagesCount === 'number') {
     rawCount = item.availableImagesCount;
-  } else if (typeof item.imagesProcessed === 'number') {
-    rawCount = item.imagesProcessed;
-  } else if (typeof item.images === 'number') {
-    rawCount = item.images;
+  } else if (item.availableFilenames && Array.isArray(item.availableFilenames)) {
+    rawCount = item.availableFilenames.length;
   } else if (item.panoramas && item.panoramas.length > 0) {
-    rawCount = item.panoramas.length;
+    // Count only items explicitly verified as available
+    const availablePans = item.panoramas.filter((p: any) => p.isAvailable === true);
+    rawCount = availablePans.length;
   }
 
   if (rawPoi > 0 && rawCount > rawPoi) {
