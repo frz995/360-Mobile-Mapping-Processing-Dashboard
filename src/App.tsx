@@ -1822,10 +1822,7 @@ const DataManagementPage = ({
     });
     addAuditLog?.('CREATE', 'CSV Import Executed', `Imported ${imported.length} separate record(s) into Daily Data staging list.`, 'success');
 
-    try {
-      localStorage.setItem('dailyData_v31', JSON.stringify(updatedDraft));
-      localStorage.setItem('batchLogs_v31', JSON.stringify(updatedBatchLogs));
-    } catch (e) { }
+
 
     // Persist imported items to staging_panoramas in Supabase asynchronously & verify actual storage images
     imported.forEach(async imp => {
@@ -2276,7 +2273,7 @@ const DataManagementPage = ({
       setDailyData(updatedList);
       setBatchLogs(reconcileBatchLogs(updatedList, batchLogs));
       setIsDailyDirty(true);
-      try { localStorage.setItem('dailyData_v31', JSON.stringify(updatedList)); } catch { }
+
     } else {
       const updatedBatches = batchLogs.map(b => getItemId(b) === id ? { ...b, status: 'Complete' as const, isSyncedWithSupabase: true } : b);
       setBatchLogs(updatedBatches);
@@ -2297,7 +2294,7 @@ const DataManagementPage = ({
           const revertedList = draftDailyData.map(d => getItemId(d) === id ? revertedItem : d);
           setDraftDailyData(revertedList);
           setDailyData(revertedList);
-          try { localStorage.setItem('dailyData_v31', JSON.stringify(revertedList)); } catch { }
+
         }
         setPublishMessage({ text: res.message || 'Failed to publish record to database.', type: 'error' });
         setTimeout(() => setPublishMessage(null), 5000);
@@ -2333,7 +2330,7 @@ const DataManagementPage = ({
         setDraftDailyData(finalDailyList);
         setDailyData(finalDailyList);
         setBatchLogs(reconcileBatchLogs(finalDailyList, batchLogs));
-        try { localStorage.setItem('dailyData_v31', JSON.stringify(finalDailyList)); } catch { }
+
       }
 
       if (onRefreshMap) onRefreshMap();
@@ -2523,13 +2520,7 @@ const DataManagementPage = ({
       setIsDailyDirty(true);
     }
 
-    // 3. Always delete from Supabase DB, update LocalStorage, and refresh map
-    try {
-      localStorage.setItem('dailyData_v30', JSON.stringify(isDailyRecord ? dailyData.filter(d => !isTargetMatch(d)) : dailyData.filter(d => (extractSubgridName(d.subgrid || '') || '').toUpperCase().trim() !== normSub)));
-      const finalBatches = dataTab === 'daily' ? batchLogs : batchLogs.filter(b => !isTargetMatch(b) && (extractSubgridName(b.subgrid || b.imageFilename || '') || '').toUpperCase().trim() !== normSub);
-      localStorage.setItem('batchLogs_v30', JSON.stringify(finalBatches));
-      localStorage.setItem('batchLogs', JSON.stringify(finalBatches));
-    } catch (e) { }
+
 
     try {
       await deleteFromStagingSupabase(normSub || subgridName);
@@ -3331,7 +3322,6 @@ const DataManagementPage = ({
                                       const updated = draftDailyData.map(d => getItemId(d) === getItemId(daily) ? { ...d, publishToWebGIS: val, isSyncedWithSupabase: false } : d);
                                       setDraftDailyData(updated);
                                       setDailyData(updated);
-                                      try { localStorage.setItem('dailyData_v31', JSON.stringify(updated)); } catch { }
                                     }
                                   }}
                                   className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs font-semibold text-slate-200 focus:outline-none focus:ring-1 focus:ring-slate-500 cursor-pointer"
@@ -4935,31 +4925,15 @@ export default function App() {
     }
   });
 
-  // Load data from localStorage or default to empty array
+  // Database-first state initialization (starts empty, fetched live from Supabase on mount)
   const [dailyData, setDailyData] = useState<DailyTimeSeries[]>(() => {
-    ['dailyData_v4', 'dailyData_v5', 'dailyData_v6', 'dailyData_v7', 'dailyData_v8', 'dailyData_v9', 'dailyData_v10', 'dailyData_v11', 'dailyData_v12', 'dailyData_v13', 'dailyData_v14', 'dailyData_v15', 'dailyData_v16', 'dailyData_v17', 'dailyData_v18', 'dailyData_v19', 'dailyData_v20', 'dailyData_v21', 'dailyData_v22', 'dailyData_v23', 'dailyData_v24', 'dailyData_v25', 'dailyData_v26', 'dailyData_v27', 'dailyData_v28', 'dailyData_v29', 'dailyData_v30', 'batchLogs_v5', 'batchLogs_v6', 'batchLogs_v7', 'batchLogs_v8', 'batchLogs_v9', 'batchLogs_v10', 'batchLogs_v11', 'batchLogs_v12', 'batchLogs_v13', 'batchLogs_v14', 'batchLogs_v15', 'batchLogs_v16', 'batchLogs_v17', 'batchLogs_v18', 'batchLogs_v19', 'batchLogs_v20', 'batchLogs_v21', 'batchLogs_v22', 'batchLogs_v23', 'batchLogs_v24', 'batchLogs_v25', 'batchLogs_v26', 'batchLogs_v27', 'batchLogs_v28', 'batchLogs_v29', 'batchLogs_v30', 'qaSubgridRecords_v13'].forEach(k => {
+    ['dailyData_v4', 'dailyData_v5', 'dailyData_v6', 'dailyData_v7', 'dailyData_v8', 'dailyData_v9', 'dailyData_v10', 'dailyData_v11', 'dailyData_v12', 'dailyData_v13', 'dailyData_v14', 'dailyData_v15', 'dailyData_v16', 'dailyData_v17', 'dailyData_v18', 'dailyData_v19', 'dailyData_v20', 'dailyData_v21', 'dailyData_v22', 'dailyData_v23', 'dailyData_v24', 'dailyData_v25', 'dailyData_v26', 'dailyData_v27', 'dailyData_v28', 'dailyData_v29', 'dailyData_v30', 'dailyData_v31', 'batchLogs_v5', 'batchLogs_v6', 'batchLogs_v7', 'batchLogs_v8', 'batchLogs_v9', 'batchLogs_v10', 'batchLogs_v11', 'batchLogs_v12', 'batchLogs_v13', 'batchLogs_v14', 'batchLogs_v15', 'batchLogs_v16', 'batchLogs_v17', 'batchLogs_v18', 'batchLogs_v19', 'batchLogs_v20', 'batchLogs_v21', 'batchLogs_v22', 'batchLogs_v23', 'batchLogs_v24', 'batchLogs_v25', 'batchLogs_v26', 'batchLogs_v27', 'batchLogs_v28', 'batchLogs_v29', 'batchLogs_v30', 'batchLogs_v31', 'qaSubgridRecords_v13'].forEach(k => {
       try { localStorage.removeItem(k); } catch { }
     });
-    const saved = localStorage.getItem('dailyData_v31');
-    if (!saved) return INITIAL_DAILY_DATA;
-    try {
-      const parsed = JSON.parse(saved);
-      return Array.isArray(parsed) ? parsed.map(d => ({ ...d, defectCount: 0, imagesDefected: 0 })) : INITIAL_DAILY_DATA;
-    } catch {
-      return INITIAL_DAILY_DATA;
-    }
+    return INITIAL_DAILY_DATA;
   });
 
-  const [batchLogs, setBatchLogs] = useState<BatchLog[]>(() => {
-    const saved = localStorage.getItem('batchLogs_v31');
-    if (!saved) return INITIAL_BATCH_LOGS;
-    try {
-      const parsed = JSON.parse(saved);
-      return Array.isArray(parsed) ? parsed.map(b => ({ ...b, defects: 0 })) : INITIAL_BATCH_LOGS;
-    } catch {
-      return INITIAL_BATCH_LOGS;
-    }
-  });
+  const [batchLogs, setBatchLogs] = useState<BatchLog[]>(() => INITIAL_BATCH_LOGS);
 
   const activeBatchLogs = React.useMemo(() => {
     const strategy = projectSettings?.deduplicationStrategy || 'clean_merge';
@@ -5245,23 +5219,7 @@ export default function App() {
   // Universal Panorama URL Resolver helper driven by projectSettings
   const getPanoramaUrl = (filename: string) => resolvePanoramaUrl(filename, projectSettings);
 
-  // Save to localStorage whenever data changes
-  useEffect(() => {
-    try {
-      localStorage.setItem('dailyData_v31', JSON.stringify(dailyData));
-      localStorage.setItem('batchLogs_v31', JSON.stringify(batchLogs));
-    } catch (err) {
-      console.warn('Unable to save to localStorage:', err);
-    }
-  }, [dailyData, batchLogs]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('batchLogs', JSON.stringify(batchLogs));
-    } catch (err) {
-      console.warn('Unable to save batchLogs to localStorage:', err);
-    }
-  }, [batchLogs]);
+  // Dynamic state persists directly via Supabase API (no local storage dependency)
 
   useEffect(() => {
     try {
@@ -6132,14 +6090,7 @@ export default function App() {
     flags: { blurry: boolean; obstruction: boolean; badGps: boolean };
     answer: 'yes' | 'no' | null;
     isLocked: boolean;
-  }>>(() => {
-    try {
-      const saved = localStorage.getItem('qaSubgridRecords_v15');
-      return saved ? JSON.parse(saved) : {};
-    } catch {
-      return {};
-    }
-  });
+  }>>({});
   const [selectedQaFlags, setSelectedQaFlags] = useState<{ blurry: boolean; obstruction: boolean; badGps: boolean }>({
     blurry: false,
     obstruction: false,
@@ -6147,14 +6098,6 @@ export default function App() {
   });
   const [qaQuestionnaireAnswer, setQaQuestionnaireAnswer] = useState<'yes' | 'no' | null>(null);
   const [isQaLocked, setIsQaLocked] = useState<boolean>(false);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('qaSubgridRecords_v15', JSON.stringify(qaSubgridRecords));
-    } catch (err) {
-      console.warn('Unable to save qaSubgridRecords to localStorage:', err);
-    }
-  }, [qaSubgridRecords]);
 
   const saveSubgridQa = (
     sgKey: string,
@@ -6925,32 +6868,26 @@ export default function App() {
       <div className="flex-1 flex overflow-hidden">
 
         {/* EXPANDABLE NAVIGATION BAR WITH FLUID ANIMATIONS & BOTTOM TOGGLE BUTTON */}
-        <nav className={`bg-[#12161f] border-r border-slate-800/80 flex flex-col py-3 gap-2 shrink-0 transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] overflow-hidden ${
-          tourStep === 6 ? 'ring-2 ring-slate-400 shadow-[0_0_35px_rgba(255,255,255,0.15)] z-30 relative' : tourStep !== null && tourStep < 7 ? 'opacity-30 blur-[1.5px] pointer-events-none' : ''
-        } ${
-          isSidebarExpanded ? 'w-52 px-2.5 items-stretch' : 'w-14 items-center px-0'
-        }`}>
+        <nav className={`bg-[#12161f] border-r border-slate-800/80 flex flex-col py-3 gap-2 shrink-0 transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] overflow-hidden ${tourStep === 6 ? 'ring-2 ring-slate-400 shadow-[0_0_35px_rgba(255,255,255,0.15)] z-30 relative' : tourStep !== null && tourStep < 7 ? 'opacity-30 blur-[1.5px] pointer-events-none' : ''
+          } ${isSidebarExpanded ? 'w-52 px-2.5 items-stretch' : 'w-14 items-center px-0'
+          }`}>
           {/* 1. Main Dashboard */}
           <button
             onClick={() => setCurrentPage('dashboard')}
-            className={`transition-all duration-300 relative cursor-pointer flex items-center rounded-xl ${
-              tourStep === 7 ? 'ring-2 ring-slate-300 shadow-[0_0_20px_rgba(255,255,255,0.25)] z-30 bg-slate-800/90' : ''
-            } ${
-              isSidebarExpanded ? 'w-full px-3 py-2 text-xs font-semibold gap-3 justify-start' : 'w-full h-10 justify-center p-0'
-            } ${currentPage === 'dashboard' ? 'text-sky-400 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
+            className={`transition-all duration-300 relative cursor-pointer flex items-center rounded-xl ${tourStep === 7 ? 'ring-2 ring-slate-300 shadow-[0_0_20px_rgba(255,255,255,0.25)] z-30 bg-slate-800/90' : ''
+              } ${isSidebarExpanded ? 'w-full px-3 py-2 text-xs font-semibold gap-3 justify-start' : 'w-full h-10 justify-center p-0'
+              } ${currentPage === 'dashboard' ? 'text-sky-400 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
             title="Main Dashboard"
           >
             <div className="relative shrink-0 flex items-center justify-center">
               <LayoutDashboard size={20} className="shrink-0 transition-transform duration-200" />
               {!isSidebarExpanded && (
-                <span className={`absolute -top-1 -right-1 w-2 h-2 rounded-full bg-sky-400 shadow-[0_0_8px_rgba(56,189,248,0.9)] transition-all duration-300 ease-out ${
-                  currentPage === 'dashboard' ? 'opacity-100 scale-100' : 'opacity-0 scale-0'
-                }`} />
+                <span className={`absolute -top-1 -right-1 w-2 h-2 rounded-full bg-sky-400 shadow-[0_0_8px_rgba(56,189,248,0.9)] transition-all duration-300 ease-out ${currentPage === 'dashboard' ? 'opacity-100 scale-100' : 'opacity-0 scale-0'
+                  }`} />
               )}
             </div>
-            <span className={`transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] whitespace-nowrap overflow-hidden origin-left flex items-center justify-between flex-1 ${
-              isSidebarExpanded ? 'opacity-100 max-w-[140px] translate-x-0' : 'opacity-0 max-w-0 -translate-x-3 pointer-events-none'
-            }`}>
+            <span className={`transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] whitespace-nowrap overflow-hidden origin-left flex items-center justify-between flex-1 ${isSidebarExpanded ? 'opacity-100 max-w-[140px] translate-x-0' : 'opacity-0 max-w-0 -translate-x-3 pointer-events-none'
+              }`}>
               <span>{t('dashboard')}</span>
               {currentPage === 'dashboard' && (
                 <span className="w-2 h-2 rounded-full bg-sky-400 shadow-[0_0_8px_rgba(56,189,248,0.9)] animate-pulse ml-2 shrink-0" />
@@ -6961,24 +6898,20 @@ export default function App() {
           {/* 2. Data Management */}
           <button
             onClick={() => setCurrentPage('data')}
-            className={`transition-all duration-300 relative cursor-pointer flex items-center rounded-xl ${
-              tourStep === 8 ? 'ring-2 ring-slate-300 shadow-[0_0_20px_rgba(255,255,255,0.25)] z-30 bg-slate-800/90' : ''
-            } ${
-              isSidebarExpanded ? 'w-full px-3 py-2 text-xs font-semibold gap-3 justify-start' : 'w-full h-10 justify-center p-0'
-            } ${currentPage === 'data' ? 'text-sky-400 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
+            className={`transition-all duration-300 relative cursor-pointer flex items-center rounded-xl ${tourStep === 8 ? 'ring-2 ring-slate-300 shadow-[0_0_20px_rgba(255,255,255,0.25)] z-30 bg-slate-800/90' : ''
+              } ${isSidebarExpanded ? 'w-full px-3 py-2 text-xs font-semibold gap-3 justify-start' : 'w-full h-10 justify-center p-0'
+              } ${currentPage === 'data' ? 'text-sky-400 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
             title={t('data')}
           >
             <div className="relative shrink-0 flex items-center justify-center">
               <Database size={20} className="shrink-0 transition-transform duration-200" />
               {!isSidebarExpanded && (
-                <span className={`absolute -top-1 -right-1 w-2 h-2 rounded-full bg-sky-400 shadow-[0_0_8px_rgba(56,189,248,0.9)] transition-all duration-300 ease-out ${
-                  currentPage === 'data' ? 'opacity-100 scale-100' : 'opacity-0 scale-0'
-                }`} />
+                <span className={`absolute -top-1 -right-1 w-2 h-2 rounded-full bg-sky-400 shadow-[0_0_8px_rgba(56,189,248,0.9)] transition-all duration-300 ease-out ${currentPage === 'data' ? 'opacity-100 scale-100' : 'opacity-0 scale-0'
+                  }`} />
               )}
             </div>
-            <span className={`transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] whitespace-nowrap overflow-hidden origin-left flex items-center justify-between flex-1 ${
-              isSidebarExpanded ? 'opacity-100 max-w-[140px] translate-x-0' : 'opacity-0 max-w-0 -translate-x-3 pointer-events-none'
-            }`}>
+            <span className={`transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] whitespace-nowrap overflow-hidden origin-left flex items-center justify-between flex-1 ${isSidebarExpanded ? 'opacity-100 max-w-[140px] translate-x-0' : 'opacity-0 max-w-0 -translate-x-3 pointer-events-none'
+              }`}>
               <span>{t('data')}</span>
               {currentPage === 'data' && (
                 <span className="w-2 h-2 rounded-full bg-sky-400 shadow-[0_0_8px_rgba(56,189,248,0.9)] animate-pulse ml-2 shrink-0" />
@@ -6989,19 +6922,16 @@ export default function App() {
           {/* 3. Refresh Map & Data */}
           <button
             onClick={handleRefreshMap}
-            className={`transition-all duration-200 cursor-pointer flex items-center rounded-xl text-slate-400 hover:text-slate-200 ${
-              tourStep === 9 ? 'ring-2 ring-slate-300 shadow-[0_0_20px_rgba(255,255,255,0.25)] z-30 bg-slate-800/90' : ''
-            } ${
-              isSidebarExpanded ? 'w-full px-3 py-2 text-xs font-semibold gap-3 justify-start' : 'w-full h-10 justify-center p-0'
-            }`}
+            className={`transition-all duration-200 cursor-pointer flex items-center rounded-xl text-slate-400 hover:text-slate-200 ${tourStep === 9 ? 'ring-2 ring-slate-300 shadow-[0_0_20px_rgba(255,255,255,0.25)] z-30 bg-slate-800/90' : ''
+              } ${isSidebarExpanded ? 'w-full px-3 py-2 text-xs font-semibold gap-3 justify-start' : 'w-full h-10 justify-center p-0'
+              }`}
             title={t('refresh')}
           >
             <div className="relative shrink-0 flex items-center justify-center">
               <RefreshCw size={20} className="shrink-0 transition-transform duration-300 active:rotate-180" />
             </div>
-            <span className={`transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] whitespace-nowrap overflow-hidden origin-left ${
-              isSidebarExpanded ? 'opacity-100 max-w-[140px] translate-x-0' : 'opacity-0 max-w-0 -translate-x-3 pointer-events-none'
-            }`}>
+            <span className={`transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] whitespace-nowrap overflow-hidden origin-left ${isSidebarExpanded ? 'opacity-100 max-w-[140px] translate-x-0' : 'opacity-0 max-w-0 -translate-x-3 pointer-events-none'
+              }`}>
               {t('refresh')}
             </span>
           </button>
@@ -7009,24 +6939,20 @@ export default function App() {
           {/* 4. Project Settings */}
           <button
             onClick={() => setCurrentPage('settings')}
-            className={`transition-all duration-300 relative cursor-pointer flex items-center rounded-xl ${
-              tourStep === 10 ? 'ring-2 ring-slate-300 shadow-[0_0_20px_rgba(255,255,255,0.25)] z-30 bg-slate-800/90' : ''
-            } ${
-              isSidebarExpanded ? 'w-full px-3 py-2 text-xs font-semibold gap-3 justify-start' : 'w-full h-10 justify-center p-0'
-            } ${currentPage === 'settings' ? 'text-sky-400 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
+            className={`transition-all duration-300 relative cursor-pointer flex items-center rounded-xl ${tourStep === 10 ? 'ring-2 ring-slate-300 shadow-[0_0_20px_rgba(255,255,255,0.25)] z-30 bg-slate-800/90' : ''
+              } ${isSidebarExpanded ? 'w-full px-3 py-2 text-xs font-semibold gap-3 justify-start' : 'w-full h-10 justify-center p-0'
+              } ${currentPage === 'settings' ? 'text-sky-400 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
             title={t('settings')}
           >
             <div className="relative shrink-0 flex items-center justify-center">
               <Settings size={20} className="shrink-0 transition-transform duration-300 hover:rotate-90" />
               {!isSidebarExpanded && (
-                <span className={`absolute -top-1 -right-1 w-2 h-2 rounded-full bg-sky-400 shadow-[0_0_8px_rgba(56,189,248,0.9)] transition-all duration-300 ease-out ${
-                  currentPage === 'settings' ? 'opacity-100 scale-100' : 'opacity-0 scale-0'
-                }`} />
+                <span className={`absolute -top-1 -right-1 w-2 h-2 rounded-full bg-sky-400 shadow-[0_0_8px_rgba(56,189,248,0.9)] transition-all duration-300 ease-out ${currentPage === 'settings' ? 'opacity-100 scale-100' : 'opacity-0 scale-0'
+                  }`} />
               )}
             </div>
-            <span className={`transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] whitespace-nowrap overflow-hidden origin-left flex items-center justify-between flex-1 ${
-              isSidebarExpanded ? 'opacity-100 max-w-[140px] translate-x-0' : 'opacity-0 max-w-0 -translate-x-3 pointer-events-none'
-            }`}>
+            <span className={`transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] whitespace-nowrap overflow-hidden origin-left flex items-center justify-between flex-1 ${isSidebarExpanded ? 'opacity-100 max-w-[140px] translate-x-0' : 'opacity-0 max-w-0 -translate-x-3 pointer-events-none'
+              }`}>
               <span>{t('settings')}</span>
               {currentPage === 'settings' && (
                 <span className="w-2 h-2 rounded-full bg-sky-400 shadow-[0_0_8px_rgba(56,189,248,0.9)] animate-pulse ml-2 shrink-0" />
@@ -7037,19 +6963,16 @@ export default function App() {
           {/* 5. About Dashboard */}
           <button
             onClick={() => setIsAboutModalOpen(true)}
-            className={`transition-all duration-200 cursor-pointer flex items-center rounded-xl text-slate-400 hover:text-slate-200 ${
-              tourStep === 11 ? 'ring-2 ring-slate-300 shadow-[0_0_20px_rgba(255,255,255,0.25)] z-30 bg-slate-800/90' : ''
-            } ${
-              isSidebarExpanded ? 'w-full px-3 py-2 text-xs font-semibold gap-3 justify-start' : 'w-full h-10 justify-center p-0'
-            }`}
+            className={`transition-all duration-200 cursor-pointer flex items-center rounded-xl text-slate-400 hover:text-slate-200 ${tourStep === 11 ? 'ring-2 ring-slate-300 shadow-[0_0_20px_rgba(255,255,255,0.25)] z-30 bg-slate-800/90' : ''
+              } ${isSidebarExpanded ? 'w-full px-3 py-2 text-xs font-semibold gap-3 justify-start' : 'w-full h-10 justify-center p-0'
+              }`}
             title={t('about')}
           >
             <div className="relative shrink-0 flex items-center justify-center">
               <Info size={20} className="shrink-0 transition-transform duration-200 hover:scale-110" />
             </div>
-            <span className={`transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] whitespace-nowrap overflow-hidden origin-left ${
-              isSidebarExpanded ? 'opacity-100 max-w-[140px] translate-x-0' : 'opacity-0 max-w-0 -translate-x-3 pointer-events-none'
-            }`}>
+            <span className={`transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] whitespace-nowrap overflow-hidden origin-left ${isSidebarExpanded ? 'opacity-100 max-w-[140px] translate-x-0' : 'opacity-0 max-w-0 -translate-x-3 pointer-events-none'
+              }`}>
               {t('about')}
             </span>
           </button>
@@ -7061,16 +6984,13 @@ export default function App() {
           {/* Panel Expand / Collapse Toggle Button at Bottom with Fluid Icon Rotation */}
           <button
             onClick={() => setIsSidebarExpanded(prev => !prev)}
-            className={`rounded-xl text-slate-400 hover:text-white hover:bg-slate-800/80 transition-all duration-300 cursor-pointer flex items-center overflow-hidden ${
-              tourStep === 12 ? 'ring-2 ring-slate-300 shadow-[0_0_20px_rgba(255,255,255,0.25)] z-30 bg-slate-800/90' : ''
-            } ${
-              isSidebarExpanded ? 'justify-between w-full px-3 py-2 bg-slate-800/40 border border-slate-700/50 shadow-sm' : 'justify-center w-10 h-10'
-            }`}
+            className={`rounded-xl text-slate-400 hover:text-white hover:bg-slate-800/80 transition-all duration-300 cursor-pointer flex items-center overflow-hidden ${tourStep === 12 ? 'ring-2 ring-slate-300 shadow-[0_0_20px_rgba(255,255,255,0.25)] z-30 bg-slate-800/90' : ''
+              } ${isSidebarExpanded ? 'justify-between w-full px-3 py-2 bg-slate-800/40 border border-slate-700/50 shadow-sm' : 'justify-center w-10 h-10'
+              }`}
             title={isSidebarExpanded ? "Collapse Navigation Panel" : "Expand Navigation Panel"}
           >
-            <span className={`transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] text-[10px] font-bold text-slate-300 uppercase tracking-wider whitespace-nowrap overflow-hidden origin-left ${
-              isSidebarExpanded ? 'opacity-100 max-w-[120px] translate-x-0' : 'opacity-0 max-w-0 -translate-x-3 pointer-events-none'
-            }`}>
+            <span className={`transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] text-[10px] font-bold text-slate-300 uppercase tracking-wider whitespace-nowrap overflow-hidden origin-left ${isSidebarExpanded ? 'opacity-100 max-w-[120px] translate-x-0' : 'opacity-0 max-w-0 -translate-x-3 pointer-events-none'
+              }`}>
               {t('collapsePanel')}
             </span>
             <div className="p-1 rounded-md bg-slate-800/90 text-sky-400 shrink-0 shadow-sm border border-slate-700/60">
@@ -8100,8 +8020,8 @@ export default function App() {
             </div>
           ) : currentPage === 'settings' ? (
             <div key="settings-canvas" className={`flex-1 flex flex-col min-h-0 overflow-y-auto rounded-xl border shadow-2xl p-6 space-y-6 animate-in fade-in zoom-in-98 slide-in-from-right-2 duration-300 ease-out ${themeMode === 'light'
-                ? 'bg-slate-50 border-slate-200 text-slate-900'
-                : 'bg-[#111827] border-[rgba(255,255,255,0.08)] text-white'
+              ? 'bg-slate-50 border-slate-200 text-slate-900'
+              : 'bg-[#111827] border-[rgba(255,255,255,0.08)] text-white'
               }`}>
 
               {/* Page Header */}
@@ -8125,8 +8045,8 @@ export default function App() {
                   <button
                     onClick={generateExecutivePdfReport}
                     className={`px-4 py-2 rounded-xl text-xs font-medium transition-colors flex items-center gap-2 cursor-pointer shadow-sm border ${themeMode === 'light'
-                        ? 'bg-white hover:bg-slate-100 text-slate-700 border-slate-300'
-                        : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700/70'
+                      ? 'bg-white hover:bg-slate-100 text-slate-700 border-slate-300'
+                      : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700/70'
                       }`}
                     title="Export Executive Client QA Summary PDF"
                   >
@@ -8570,8 +8490,8 @@ export default function App() {
                       </span>
                     </div>
                     <span className={`text-[10px] px-2 py-0.5 rounded font-mono border ${themeMode === 'light'
-                        ? 'bg-slate-100 text-slate-700 border-slate-300'
-                        : 'bg-slate-800/90 text-slate-300 border-slate-700/80'
+                      ? 'bg-slate-100 text-slate-700 border-slate-300'
+                      : 'bg-slate-800/90 text-slate-300 border-slate-700/80'
                       }`}>
                       EPSG & Spatial Indexing Engine
                     </span>
@@ -8588,8 +8508,8 @@ export default function App() {
                         value={projectSettings.selectedCrs || 'EPSG:4326'}
                         onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, selectedCrs: e.target.value }))}
                         className={`w-full rounded-lg px-2.5 py-1.5 text-xs font-semibold focus:outline-none border ${themeMode === 'light'
-                            ? 'bg-white border-slate-300 text-slate-900 focus:border-sky-500'
-                            : 'bg-[#121824] border-slate-800 text-slate-200 focus:border-sky-500'
+                          ? 'bg-white border-slate-300 text-slate-900 focus:border-sky-500'
+                          : 'bg-[#121824] border-slate-800 text-slate-200 focus:border-sky-500'
                           }`}
                       >
                         <option value="EPSG:4326">EPSG:4326 — WGS84 World Geodetic (Default Lat/Lon)</option>
@@ -8631,8 +8551,8 @@ export default function App() {
                           }));
                         }}
                         className={`w-full rounded-lg px-2.5 py-1.5 text-xs font-semibold focus:outline-none border ${themeMode === 'light'
-                            ? 'bg-white border-slate-300 text-slate-900 focus:border-sky-500'
-                            : 'bg-[#121824] border-slate-800 text-slate-200 focus:border-sky-500'
+                          ? 'bg-white border-slate-300 text-slate-900 focus:border-sky-500'
+                          : 'bg-[#121824] border-slate-800 text-slate-200 focus:border-sky-500'
                           }`}
                       >
                         <option value="peninsular_malaysia">Peninsular Malaysia [Lat: 1.2-6.8, Lon: 99.6-104.6]</option>
@@ -8669,8 +8589,8 @@ export default function App() {
                         value={projectSettings.deduplicationStrategy || 'clean_merge'}
                         onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, deduplicationStrategy: e.target.value }))}
                         className={`w-full rounded-lg px-2.5 py-1.5 text-xs font-semibold focus:outline-none border ${themeMode === 'light'
-                            ? 'bg-white border-slate-300 text-slate-900 focus:border-sky-500'
-                            : 'bg-[#121824] border-slate-800 text-slate-200 focus:border-sky-500'
+                          ? 'bg-white border-slate-300 text-slate-900 focus:border-sky-500'
+                          : 'bg-[#121824] border-slate-800 text-slate-200 focus:border-sky-500'
                           }`}
                       >
                         <option value="clean_merge">Clean Merge (Combine trajectory runs per subgrid)</option>
@@ -8754,8 +8674,8 @@ export default function App() {
                         </span>
                       </div>
                       <span className={`text-xs font-bold px-2.5 py-0.5 rounded font-mono border ${themeMode === 'light'
-                          ? 'bg-slate-100 text-slate-800 border-slate-300'
-                          : 'bg-slate-800 text-sky-400 border-slate-700'
+                        ? 'bg-slate-100 text-slate-800 border-slate-300'
+                        : 'bg-slate-800 text-sky-400 border-slate-700'
                         }`}>
                         Active Threshold: {projectSettings.defectThreshold || projectSettings.aiDefectThresholdPercent || 85}%
                       </span>
@@ -8767,30 +8687,30 @@ export default function App() {
                         type="button"
                         onClick={() => setProjectSettings((prev: any) => ({ ...prev, defectThreshold: 95, aiDefectThresholdPercent: 95 }))}
                         className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${(projectSettings.defectThreshold || projectSettings.aiDefectThresholdPercent) === 95
-                            ? themeMode === 'light'
-                              ? 'bg-slate-900 border-sky-600 text-white shadow-md ring-1 ring-sky-500'
-                              : 'bg-[#161F30] border-sky-500 text-white shadow-sm ring-1 ring-sky-500/30'
-                            : themeMode === 'light'
-                              ? 'bg-white border-slate-200 text-slate-800 hover:border-slate-300 hover:bg-slate-50'
-                              : 'bg-[#0b0f17] border-slate-800 text-slate-300 hover:border-slate-700'
+                          ? themeMode === 'light'
+                            ? 'bg-slate-900 border-sky-600 text-white shadow-md ring-1 ring-sky-500'
+                            : 'bg-[#161F30] border-sky-500 text-white shadow-sm ring-1 ring-sky-500/30'
+                          : themeMode === 'light'
+                            ? 'bg-white border-slate-200 text-slate-800 hover:border-slate-300 hover:bg-slate-50'
+                            : 'bg-[#0b0f17] border-slate-800 text-slate-300 hover:border-slate-700'
                           }`}
                       >
                         <div>
                           <div className="flex items-center justify-between mb-1.5">
                             <span className={`font-semibold text-xs ${(projectSettings.defectThreshold || projectSettings.aiDefectThresholdPercent) === 95
-                                ? 'text-white font-bold'
-                                : themeMode === 'light' ? 'text-slate-900 font-bold' : 'text-slate-200 font-semibold'
+                              ? 'text-white font-bold'
+                              : themeMode === 'light' ? 'text-slate-900 font-bold' : 'text-slate-200 font-semibold'
                               }`}>Strict QC</span>
                             <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${(projectSettings.defectThreshold || projectSettings.aiDefectThresholdPercent) === 95
-                                ? 'bg-sky-500 text-white border-sky-400 font-bold'
-                                : themeMode === 'light'
-                                  ? 'bg-slate-100 text-slate-700 border-slate-300 font-semibold'
-                                  : 'bg-slate-800 text-slate-400 border-slate-700/60 font-semibold'
+                              ? 'bg-sky-500 text-white border-sky-400 font-bold'
+                              : themeMode === 'light'
+                                ? 'bg-slate-100 text-slate-700 border-slate-300 font-semibold'
+                                : 'bg-slate-800 text-slate-400 border-slate-700/60 font-semibold'
                               }`}>95%</span>
                           </div>
                           <p className={`text-[10px] leading-relaxed mb-3 ${(projectSettings.defectThreshold || projectSettings.aiDefectThresholdPercent) === 95
-                              ? 'text-slate-300'
-                              : themeMode === 'light' ? 'text-slate-600' : 'text-slate-400'
+                            ? 'text-slate-300'
+                            : themeMode === 'light' ? 'text-slate-600' : 'text-slate-400'
                             }`}>Flags only high-certainty defects. Reduces false alarms; requires major image corruption or severe blur.</p>
                         </div>
                         <div className="w-full bg-slate-800/80 rounded-full h-1 overflow-hidden">
@@ -8803,36 +8723,36 @@ export default function App() {
                         type="button"
                         onClick={() => setProjectSettings((prev: any) => ({ ...prev, defectThreshold: 85, aiDefectThresholdPercent: 85 }))}
                         className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${(projectSettings.defectThreshold || projectSettings.aiDefectThresholdPercent) === 85
-                            ? themeMode === 'light'
-                              ? 'bg-slate-900 border-sky-600 text-white shadow-md ring-1 ring-sky-500'
-                              : 'bg-[#161F30] border-sky-500 text-white shadow-sm ring-1 ring-sky-500/30'
-                            : themeMode === 'light'
-                              ? 'bg-white border-slate-200 text-slate-800 hover:border-slate-300 hover:bg-slate-50'
-                              : 'bg-[#0b0f17] border-slate-800 text-slate-300 hover:border-slate-700'
+                          ? themeMode === 'light'
+                            ? 'bg-slate-900 border-sky-600 text-white shadow-md ring-1 ring-sky-500'
+                            : 'bg-[#161F30] border-sky-500 text-white shadow-sm ring-1 ring-sky-500/30'
+                          : themeMode === 'light'
+                            ? 'bg-white border-slate-200 text-slate-800 hover:border-slate-300 hover:bg-slate-50'
+                            : 'bg-[#0b0f17] border-slate-800 text-slate-300 hover:border-slate-700'
                           }`}
                       >
                         <div>
                           <div className="flex items-center justify-between mb-1.5">
                             <span className={`font-semibold text-xs flex items-center gap-1.5 ${(projectSettings.defectThreshold || projectSettings.aiDefectThresholdPercent) === 85
-                                ? 'text-white font-bold'
-                                : themeMode === 'light' ? 'text-slate-900 font-bold' : 'text-slate-200 font-semibold'
+                              ? 'text-white font-bold'
+                              : themeMode === 'light' ? 'text-slate-900 font-bold' : 'text-slate-200 font-semibold'
                               }`}>
                               Standard QC
                               <span className={`text-[9px] px-1.5 py-0.2 rounded border ${(projectSettings.defectThreshold || projectSettings.aiDefectThresholdPercent) === 85
-                                  ? 'bg-sky-500/30 text-sky-200 border-sky-400 font-medium'
-                                  : themeMode === 'light' ? 'bg-slate-200 text-slate-700 border-slate-300' : 'bg-slate-800 text-slate-400 border-slate-700'
+                                ? 'bg-sky-500/30 text-sky-200 border-sky-400 font-medium'
+                                : themeMode === 'light' ? 'bg-slate-200 text-slate-700 border-slate-300' : 'bg-slate-800 text-slate-400 border-slate-700'
                                 }`}>Default</span>
                             </span>
                             <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${(projectSettings.defectThreshold || projectSettings.aiDefectThresholdPercent) === 85
-                                ? 'bg-sky-500 text-white border-sky-400 font-bold'
-                                : themeMode === 'light'
-                                  ? 'bg-slate-100 text-slate-700 border-slate-300 font-semibold'
-                                  : 'bg-slate-800 text-slate-400 border-slate-700/60 font-semibold'
+                              ? 'bg-sky-500 text-white border-sky-400 font-bold'
+                              : themeMode === 'light'
+                                ? 'bg-slate-100 text-slate-700 border-slate-300 font-semibold'
+                                : 'bg-slate-800 text-slate-400 border-slate-700/60 font-semibold'
                               }`}>85%</span>
                           </div>
                           <p className={`text-[10px] leading-relaxed mb-3 ${(projectSettings.defectThreshold || projectSettings.aiDefectThresholdPercent) === 85
-                              ? 'text-slate-300'
-                              : themeMode === 'light' ? 'text-slate-600' : 'text-slate-400'
+                            ? 'text-slate-300'
+                            : themeMode === 'light' ? 'text-slate-600' : 'text-slate-400'
                             }`}>Optimal operational balance for utility surveying. Detects lens obstructions, bad GPS, and out-of-focus frames.</p>
                         </div>
                         <div className="w-full bg-slate-800/80 rounded-full h-1 overflow-hidden">
@@ -8845,30 +8765,30 @@ export default function App() {
                         type="button"
                         onClick={() => setProjectSettings((prev: any) => ({ ...prev, defectThreshold: 75, aiDefectThresholdPercent: 75 }))}
                         className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${(projectSettings.defectThreshold || projectSettings.aiDefectThresholdPercent) === 75
-                            ? themeMode === 'light'
-                              ? 'bg-slate-900 border-sky-600 text-white shadow-md ring-1 ring-sky-500'
-                              : 'bg-[#161F30] border-sky-500 text-white shadow-sm ring-1 ring-sky-500/30'
-                            : themeMode === 'light'
-                              ? 'bg-white border-slate-200 text-slate-800 hover:border-slate-300 hover:bg-slate-50'
-                              : 'bg-[#0b0f17] border-slate-800 text-slate-300 hover:border-slate-700'
+                          ? themeMode === 'light'
+                            ? 'bg-slate-900 border-sky-600 text-white shadow-md ring-1 ring-sky-500'
+                            : 'bg-[#161F30] border-sky-500 text-white shadow-sm ring-1 ring-sky-500/30'
+                          : themeMode === 'light'
+                            ? 'bg-white border-slate-200 text-slate-800 hover:border-slate-300 hover:bg-slate-50'
+                            : 'bg-[#0b0f17] border-slate-800 text-slate-300 hover:border-slate-700'
                           }`}
                       >
                         <div>
                           <div className="flex items-center justify-between mb-1.5">
                             <span className={`font-semibold text-xs ${(projectSettings.defectThreshold || projectSettings.aiDefectThresholdPercent) === 75
-                                ? 'text-white font-bold'
-                                : themeMode === 'light' ? 'text-slate-900 font-bold' : 'text-slate-200 font-semibold'
+                              ? 'text-white font-bold'
+                              : themeMode === 'light' ? 'text-slate-900 font-bold' : 'text-slate-200 font-semibold'
                               }`}>Sensitive Audit</span>
                             <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${(projectSettings.defectThreshold || projectSettings.aiDefectThresholdPercent) === 75
-                                ? 'bg-sky-500 text-white border-sky-400 font-bold'
-                                : themeMode === 'light'
-                                  ? 'bg-slate-100 text-slate-700 border-slate-300 font-semibold'
-                                  : 'bg-slate-800 text-slate-400 border-slate-700/60 font-semibold'
+                              ? 'bg-sky-500 text-white border-sky-400 font-bold'
+                              : themeMode === 'light'
+                                ? 'bg-slate-100 text-slate-700 border-slate-300 font-semibold'
+                                : 'bg-slate-800 text-slate-400 border-slate-700/60 font-semibold'
                               }`}>75%</span>
                           </div>
                           <p className={`text-[10px] leading-relaxed mb-3 ${(projectSettings.defectThreshold || projectSettings.aiDefectThresholdPercent) === 75
-                              ? 'text-slate-300'
-                              : themeMode === 'light' ? 'text-slate-600' : 'text-slate-400'
+                            ? 'text-slate-300'
+                            : themeMode === 'light' ? 'text-slate-600' : 'text-slate-400'
                             }`}>High sensitivity audit mode. Flags minor lens smudges, faint glare, and minor trajectory anomalies.</p>
                         </div>
                         <div className="w-full bg-slate-800/80 rounded-full h-1 overflow-hidden">
@@ -8881,30 +8801,30 @@ export default function App() {
                         type="button"
                         onClick={() => setProjectSettings((prev: any) => ({ ...prev, defectThreshold: 60, aiDefectThresholdPercent: 60 }))}
                         className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${(projectSettings.defectThreshold || projectSettings.aiDefectThresholdPercent) === 60
-                            ? themeMode === 'light'
-                              ? 'bg-slate-900 border-sky-600 text-white shadow-md ring-1 ring-sky-500'
-                              : 'bg-[#161F30] border-sky-500 text-white shadow-sm ring-1 ring-sky-500/30'
-                            : themeMode === 'light'
-                              ? 'bg-white border-slate-200 text-slate-800 hover:border-slate-300 hover:bg-slate-50'
-                              : 'bg-[#0b0f17] border-slate-800 text-slate-300 hover:border-slate-700'
+                          ? themeMode === 'light'
+                            ? 'bg-slate-900 border-sky-600 text-white shadow-md ring-1 ring-sky-500'
+                            : 'bg-[#161F30] border-sky-500 text-white shadow-sm ring-1 ring-sky-500/30'
+                          : themeMode === 'light'
+                            ? 'bg-white border-slate-200 text-slate-800 hover:border-slate-300 hover:bg-slate-50'
+                            : 'bg-[#0b0f17] border-slate-800 text-slate-300 hover:border-slate-700'
                           }`}
                       >
                         <div>
                           <div className="flex items-center justify-between mb-1.5">
                             <span className={`font-semibold text-xs ${(projectSettings.defectThreshold || projectSettings.aiDefectThresholdPercent) === 60
-                                ? 'text-white font-bold'
-                                : themeMode === 'light' ? 'text-slate-900 font-bold' : 'text-slate-200 font-semibold'
+                              ? 'text-white font-bold'
+                              : themeMode === 'light' ? 'text-slate-900 font-bold' : 'text-slate-200 font-semibold'
                               }`}>Maximum Inspection</span>
                             <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${(projectSettings.defectThreshold || projectSettings.aiDefectThresholdPercent) === 60
-                                ? 'bg-sky-500 text-white border-sky-400 font-bold'
-                                : themeMode === 'light'
-                                  ? 'bg-slate-100 text-slate-700 border-slate-300 font-semibold'
-                                  : 'bg-slate-800 text-slate-400 border-slate-700/60 font-semibold'
+                              ? 'bg-sky-500 text-white border-sky-400 font-bold'
+                              : themeMode === 'light'
+                                ? 'bg-slate-100 text-slate-700 border-slate-300 font-semibold'
+                                : 'bg-slate-800 text-slate-400 border-slate-700/60 font-semibold'
                               }`}>60%</span>
                           </div>
                           <p className={`text-[10px] leading-relaxed mb-3 ${(projectSettings.defectThreshold || projectSettings.aiDefectThresholdPercent) === 60
-                              ? 'text-slate-300'
-                              : themeMode === 'light' ? 'text-slate-600' : 'text-slate-400'
+                            ? 'text-slate-300'
+                            : themeMode === 'light' ? 'text-slate-600' : 'text-slate-400'
                             }`}>Comprehensive audit mode before final client delivery to guarantee zero defect leakage.</p>
                         </div>
                         <div className="w-full bg-slate-800/80 rounded-full h-1 overflow-hidden">
@@ -8927,8 +8847,8 @@ export default function App() {
                       </span>
                     </div>
                     <span className={`text-[10px] px-2 py-0.5 rounded font-mono border ${themeMode === 'light'
-                        ? 'bg-slate-100 text-slate-700 border-slate-300'
-                        : 'bg-slate-800/90 text-slate-300 border-slate-700/80'
+                      ? 'bg-slate-100 text-slate-700 border-slate-300'
+                      : 'bg-slate-800/90 text-slate-300 border-slate-700/80'
                       }`}>
                       Multi-Format CSV Engine
                     </span>
@@ -9042,8 +8962,8 @@ export default function App() {
                         </span>
                       </div>
                       <span className={`text-[10px] px-2 py-0.5 rounded font-mono border ${themeMode === 'light'
-                          ? 'bg-slate-100 text-slate-700 border-slate-300'
-                          : 'bg-slate-800/90 text-slate-300 border-slate-700/80'
+                        ? 'bg-slate-100 text-slate-700 border-slate-300'
+                        : 'bg-slate-800/90 text-slate-300 border-slate-700/80'
                         }`}>
                         Subgrid Aggregation Engine
                       </span>
@@ -9060,8 +8980,8 @@ export default function App() {
                           value={projectSettings.batchLogsImportPolicy || 'clean_merge'}
                           onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, batchLogsImportPolicy: e.target.value, deduplicationStrategy: e.target.value }))}
                           className={`w-full rounded-lg px-2.5 py-1.5 text-xs font-semibold focus:outline-none border ${themeMode === 'light'
-                              ? 'bg-white border-slate-300 text-slate-900 focus:border-sky-500'
-                              : 'bg-[#121824] border-slate-800 text-slate-200 focus:border-sky-500'
+                            ? 'bg-white border-slate-300 text-slate-900 focus:border-sky-500'
+                            : 'bg-[#121824] border-slate-800 text-slate-200 focus:border-sky-500'
                             }`}
                         >
                           <option value="clean_merge">Clean Merge as Masterlist (Aggregates POIs & Distance)</option>
@@ -9082,8 +9002,8 @@ export default function App() {
                           value={projectSettings.dailyDataImportPolicy || 'preserve_runs'}
                           onChange={(e) => setProjectSettings((prev: any) => ({ ...prev, dailyDataImportPolicy: e.target.value }))}
                           className={`w-full rounded-lg px-2.5 py-1.5 text-xs font-semibold focus:outline-none border ${themeMode === 'light'
-                              ? 'bg-white border-slate-300 text-slate-900 focus:border-sky-500'
-                              : 'bg-[#121824] border-slate-800 text-slate-200 focus:border-sky-500'
+                            ? 'bg-white border-slate-300 text-slate-900 focus:border-sky-500'
+                            : 'bg-[#121824] border-slate-800 text-slate-200 focus:border-sky-500'
                             }`}
                         >
                           <option value="preserve_runs">Preserve Separate Rows (Unique per Survey Pass)</option>
@@ -9130,8 +9050,8 @@ export default function App() {
                         </span>
                       </div>
                       <span className={`text-[10px] px-2 py-0.5 rounded font-mono border ${themeMode === 'light'
-                          ? 'bg-slate-100 text-slate-700 border-slate-300'
-                          : 'bg-slate-800/90 text-slate-300 border-slate-700/80'
+                        ? 'bg-slate-100 text-slate-700 border-slate-300'
+                        : 'bg-slate-800/90 text-slate-300 border-slate-700/80'
                         }`}>
                         360° StreetView QA
                       </span>
@@ -9210,8 +9130,8 @@ export default function App() {
                         </span>
                       </div>
                       <span className={`text-[10px] px-2 py-0.5 rounded font-mono border ${themeMode === 'light'
-                          ? 'bg-slate-100 text-slate-700 border-slate-300'
-                          : 'bg-slate-800/90 text-slate-300 border-slate-700/80'
+                        ? 'bg-slate-100 text-slate-700 border-slate-300'
+                        : 'bg-slate-800/90 text-slate-300 border-slate-700/80'
                         }`}>
                         Active: {projectSettings.language === 'ms' ? 'Bahasa Melayu' : projectSettings.language === 'zh' ? '中文' : projectSettings.language === 'ja' ? '日本語' : 'English (US)'}
                       </span>
@@ -9377,9 +9297,8 @@ export default function App() {
                 <button
                   key={s.step}
                   onClick={() => setTourStep(s.step)}
-                  className={`h-1.5 rounded-full transition-all cursor-pointer ${
-                    tourStep === s.step ? 'w-5 bg-slate-200' : 'w-1.5 bg-slate-700 hover:bg-slate-500'
-                  }`}
+                  className={`h-1.5 rounded-full transition-all cursor-pointer ${tourStep === s.step ? 'w-5 bg-slate-200' : 'w-1.5 bg-slate-700 hover:bg-slate-500'
+                    }`}
                   title={`Go to step ${s.step}: ${s.title}`}
                 />
               ))}
