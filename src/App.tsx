@@ -4941,7 +4941,7 @@ export default function App() {
       // Retain each daily survey run as a distinct batch log row
       return dailyData.map((d, index) => ({
         id: d.id || `run-${index}`,
-        grid: (d as any).grid || 'Selangor Grid',
+        grid: (d as any).grid || 'Grid 1',
         date: d.date,
         subgrid: `${d.subgrid} (Run ${index + 1})`,
         imageFilename: (d as any).imageFilename || (d as any).filename || `${d.subgrid}.jpg`,

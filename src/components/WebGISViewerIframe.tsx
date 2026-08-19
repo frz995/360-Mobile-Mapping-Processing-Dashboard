@@ -10,7 +10,7 @@ interface WebGISViewerIframeProps {
 
 export const WebGISViewerIframe: React.FC<WebGISViewerIframeProps> = ({
   panoramaUrl,
-  subgrid = 'KL_Drive_04',
+  subgrid = '',
   bearing = 0,
   themeMode = 'dark',
   className = 'w-full h-full'
@@ -25,7 +25,7 @@ export const WebGISViewerIframe: React.FC<WebGISViewerIframeProps> = ({
       window.location.hostname.startsWith('10.')
     )
       ? 'http://localhost:5173'
-      : 'https://mobilemapping-nine.vercel.app'
+      : window.location.origin
   );
 
   // Static iframe URL created ONCE on mount so iframe never reloads on prop updates
