@@ -1,0 +1,133 @@
+export type UserRole = 'Administrator' | 'Survey Operator' | 'QA Inspector' | 'Viewer';
+export type UserStatus = 'Active' | 'Disabled' | 'Pending';
+
+export interface UserAccount {
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+  status: UserStatus;
+  lastLogin: string;
+  avatar?: string;
+  createdAt: string;
+  permissions?: string[];
+}
+
+export type ApprovalStatus = 'Pending' | 'Approved' | 'Rejected';
+
+export interface DeletionApprovalRequest {
+  id: string;
+  subgrid: string;
+  requestedBy: string;
+  userEmail: string;
+  reason: string;
+  poiCount: number;
+  kmProcessed: number;
+  dateRequested: string;
+  status: ApprovalStatus;
+  reviewedBy?: string;
+  reviewedAt?: string;
+  rejectionReason?: string;
+  filenames?: string[];
+}
+
+export interface SystemHealthMetrics {
+  postgisStatus: 'operational' | 'degraded' | 'offline';
+  postgisLatencyMs: number;
+  storageStatus: 'operational' | 'degraded' | 'offline';
+  storageTotalFiles: number;
+  realtimeStatus: 'connected' | 'connecting' | 'disconnected';
+  webgisStatus: 'online' | 'degraded' | 'offline';
+  memoryUsageMb: number;
+  lastPingTime: string;
+}
+
+export interface ExtendedProjectSettings {
+  // Database Connection & Endpoint Parameters
+  supabaseUrl?: string;
+  supabaseKey?: string;
+  serviceRoleKey?: string;
+  databaseHost?: string;
+  databasePort?: number;
+  databaseName?: string;
+  databaseSchema?: string;
+  databaseUser?: string;
+  connectionMode?: 'postgrest' | 'direct_tcp' | 'realtime_ws';
+  sslMode?: 'require' | 'verify-ca' | 'verify-full' | 'disable';
+
+  // PostGIS Spatial Engine & Projections
+  spatialSrid?: string; // 'EPSG:4326', 'EPSG:3375', 'EPSG:3168', 'EPSG:3857', 'EPSG:32647', 'EPSG:32648'
+  geomColumnName?: string; // 'geom', 'geometry', 'the_geom', 'location'
+  geomType?: string; // 'ST_Point', 'POINTZ', 'MultiPoint'
+  autoCreateSpatialIndex?: boolean;
+
+  // PostGIS Table & View Mappings
+  panoramasTable?: string;
+  stagingTable?: string;
+  subgridTable?: string;
+  qaDefectsTable?: string;
+  auditLogsTable?: string;
+  deletionRequestsTable?: string;
+  notificationsTable?: string;
+  userAccountsTable?: string;
+  dbSummaryView?: string;
+
+  // Performance & Query Optimization
+  dbAutoSyncSec?: number; // 0, 30, 60, 300
+  enableRealtimePush?: boolean;
+  queryChunkSize?: number; // 25, 50, 100, 250
+  poolTimeoutMs?: number;
+
+  // Storage & MMS
+  storageProvider?: 'supabase' | 'aws_s3' | 'gcs' | 'azure_blob' | 'cloudflare_r2' | 'wasabi' | 'nas_local' | 'custom_cdn';
+  supabaseBucket?: string;
+  s3Bucket?: string;
+  s3Region?: string;
+  nasServerUrl?: string;
+  customCdnUrl?: string;
+  imageStoragePath?: string;
+  imageFormatPattern?: string;
+  imagePreloadCount?: number;
+  defaultFov?: number;
+  arrowColor?: 'sky' | 'emerald' | 'amber' | 'white';
+  syncHeadingWithCar?: boolean;
+  enableImagePreload?: boolean;
+  fallbackPlaceholderEnabled?: boolean;
+
+  // Security & Access Control
+  requireAdminApprovalForDelete?: boolean;
+  sessionTimeoutMinutes?: number; // 15, 30, 60, 240, 0 (Never)
+  enforceCorporateDomain?: boolean;
+  corporateDomain?: string; // e.g. '@tnb.com.my'
+  twoFactorRequired?: boolean;
+
+  // Basemap & Layer Management
+  defaultBasemap?: 'esri_satellite' | 'osm_standard' | 'carto_dark' | 'carto_light' | 'google_hybrid' | 'custom_tile';
+  customBasemapUrl?: string;
+  basemapOpacity?: number; // 0 - 100
+  publishedTrackColor?: string;
+  stagingTrackColor?: string;
+  defectTrackColor?: string;
+  selectedTrackColor?: string;
+  gridBoundaryColor?: string;
+  poiTrackLineWidth?: number;
+  poiMarkerRadius?: number;
+  enableLayerGlow?: boolean;
+
+  // SLA & QA Benchmarks
+  targetKm?: number;
+  targetSubgridsCount?: number;
+  maxDefectThresholdPercent?: number;
+  qaFlag1?: string;
+  qaFlag2?: string;
+  qaFlag3?: string;
+  qaFlag4?: string;
+  deduplicationStrategy?: 'clean_merge' | 'preserve_runs';
+  dailyDataImportPolicy?: 'preserve_runs' | 'merge_samedate';
+  autoDeduplicateSubgrids?: boolean;
+  language?: 'en' | 'ms' | 'zh' | 'ja';
+  defaultDataTab?: 'batches' | 'daily' | 'vector';
+  dateFormat?: string;
+  unitSystem?: 'metric' | 'imperial';
+}
+
