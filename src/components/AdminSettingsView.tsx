@@ -185,6 +185,122 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
     themeMode
   ]);
 
+  // Broadcast basemap settings to all iframes (Dashboard map + Preview map)
+  const broadcastBasemap = React.useCallback((bm?: string, customUrl?: string, op?: number) => {
+    const basemapVal = bm || projectSettings.defaultBasemap || 'positron';
+    const customUrlVal = customUrl !== undefined ? customUrl : (projectSettings.customBasemapUrl || '');
+    const opacityVal = typeof op === 'number' ? op : ((projectSettings.basemapOpacity ?? 100) / 100);
+
+    const iframes = document.querySelectorAll<HTMLIFrameElement>('iframe');
+    iframes.forEach(f => {
+      try {
+        f.contentWindow?.postMessage({
+          type: 'SET_BASEMAP',
+          basemap: basemapVal,
+          customUrl: customUrlVal,
+          opacity: opacityVal
+        }, '*');
+      } catch (e) { }
+    });
+  }, [projectSettings.defaultBasemap, projectSettings.customBasemapUrl, projectSettings.basemapOpacity]);
+
+  // Broadcast layer theme settings to all iframes (Dashboard map + Preview map)
+  const broadcastLayerTheme = React.useCallback((colorsToBroadcast?: any) => {
+    const c = colorsToBroadcast || projectSettings;
+    const settings = {
+      publishedTrackColor: c.publishedTrackColor || '#10B981',
+      stagingTrackColor: c.stagingTrackColor || '#F59E0B',
+      defectTrackColor: c.defectTrackColor || '#EF4444',
+      selectedTrackColor: c.selectedTrackColor || '#38BDF8',
+      gridBoundaryColor: c.gridBoundaryColor || '#6366F1',
+      lineWidth: c.poiTrackLineWidth || 3,
+      enableGlow: c.enableLayerGlow !== false,
+      opacity: (c.layerOpacity ?? 100) / 100,
+      layerOpacity: (c.layerOpacity ?? 100) / 100
+    };
+
+    const formattedStaged = (dailyData || []).map((item: any) => ({
+      ...item,
+      status: item.publishToWebGIS === 'yes' ? 'published' : 'staged',
+      strokeColor: item.publishToWebGIS === 'yes' ? (c.publishedTrackColor || '#10B981') : (c.stagingTrackColor || '#F59E0B'),
+      fillColor: item.publishToWebGIS === 'yes' ? (c.publishedTrackColor || '#10B981') : (c.stagingTrackColor || '#F59E0B'),
+      panoramas: item.panoramas || [],
+      points: item.panoramas || []
+    }));
+
+    const iframes = document.querySelectorAll<HTMLIFrameElement>('iframe');
+    iframes.forEach(f => {
+      try {
+        f.contentWindow?.postMessage({
+          type: 'SET_MAP_THEME',
+          settings
+        }, '*');
+        f.contentWindow?.postMessage({
+          type: 'SET_STAGED_DATA',
+          stagedItems: formattedStaged
+        }, '*');
+      } catch (e) { }
+    });
+  }, [dailyData, projectSettings]);
+
+  // Preview basemap changes ONLY on the preview iframe before user applies
+  const previewBasemapChange = React.useCallback((bm?: string, customUrl?: string, op?: number) => {
+    const basemapVal = bm || projectSettings.defaultBasemap || 'positron';
+    const customUrlVal = customUrl !== undefined ? customUrl : (projectSettings.customBasemapUrl || '');
+    const opacityVal = typeof op === 'number' ? op : ((projectSettings.basemapOpacity ?? 100) / 100);
+
+    if (previewIframeRef.current && previewIframeRef.current.contentWindow) {
+      try {
+        previewIframeRef.current.contentWindow.postMessage({
+          type: 'SET_BASEMAP',
+          basemap: basemapVal,
+          customUrl: customUrlVal,
+          opacity: opacityVal
+        }, '*');
+      } catch (e) { }
+    }
+  }, [projectSettings.defaultBasemap, projectSettings.customBasemapUrl, projectSettings.basemapOpacity]);
+
+  // Preview layer theme changes ONLY on the preview iframe before user applies
+  const previewLayerThemeChange = React.useCallback((colorsToPreview?: any) => {
+    const c = colorsToPreview || projectSettings;
+    const settings = {
+      publishedTrackColor: c.publishedTrackColor || '#10B981',
+      stagingTrackColor: c.stagingTrackColor || '#F59E0B',
+      defectTrackColor: c.defectTrackColor || '#EF4444',
+      selectedTrackColor: c.selectedTrackColor || '#38BDF8',
+      gridBoundaryColor: c.gridBoundaryColor || '#6366F1',
+      lineWidth: c.poiTrackLineWidth || 3,
+      enableGlow: c.enableLayerGlow !== false,
+      opacity: (c.layerOpacity ?? 100) / 100,
+      layerOpacity: (c.layerOpacity ?? 100) / 100
+    };
+
+    const formattedStaged = (dailyData || []).map((item: any) => ({
+      ...item,
+      status: item.publishToWebGIS === 'yes' ? 'published' : 'staged',
+      strokeColor: item.publishToWebGIS === 'yes' ? (c.publishedTrackColor || '#10B981') : (c.stagingTrackColor || '#F59E0B'),
+      fillColor: item.publishToWebGIS === 'yes' ? (c.publishedTrackColor || '#10B981') : (c.stagingTrackColor || '#F59E0B'),
+      panoramas: item.panoramas || [],
+      points: item.panoramas || []
+    }));
+
+    if (previewIframeRef.current && previewIframeRef.current.contentWindow) {
+      try {
+        previewIframeRef.current.contentWindow.postMessage({
+          type: 'SET_MAP_THEME',
+          settings
+        }, '*');
+        previewIframeRef.current.contentWindow.postMessage({
+          type: 'SET_STAGED_DATA',
+          stagedItems: formattedStaged
+        }, '*');
+      } catch (e) { }
+    }
+  }, [dailyData, projectSettings]);
+
+
+
   useEffect(() => {
     const handleMapMessage = (e: MessageEvent) => {
       if (e.data?.type === 'MAP_COORDS' && typeof e.data.lat === 'number') {
@@ -1150,7 +1266,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                     placeholder="{subgrid}-{index:04d}.jpg"
                     className={`w-full px-3 py-2 rounded-lg font-mono focus:outline-none border ${inputBg}`}
                   />
-                  <p className="text-[10px] text-slate-500 mt-1">e.g. N93E70-0001.jpg &bull; {`{subgrid}_{index}.jpg`}</p>
+                  <p className="text-[10px] text-slate-500 mt-1">e.g. {`{subgrid}-{index:04d}.jpg`} &bull; {`{subgrid}_{index}.jpg`}</p>
                 </div>
 
                 <div>
@@ -1271,9 +1387,12 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                   <button
                     type="button"
                     onClick={() => {
-                      const sampleUrl = resolvePanoramaUrl('N93E70-0001.jpg');
+                      const sampleFn = dailyData.find(d => d.panoramas?.length > 0)?.panoramas?.[0]?.filename
+                        || batchLogs.find(b => b.imageFilename)?.imageFilename
+                        || (dailyData[0]?.subgrid ? `${dailyData[0].subgrid}-0001.jpg` : 'sample-0001.jpg');
+                      const sampleUrl = resolvePanoramaUrl(sampleFn, projectSettings);
                       navigator.clipboard.writeText(sampleUrl);
-                      showToast('Copied Sample MMS Panorama URL to clipboard!');
+                      showToast(`Copied Sample 360° URL (${sampleFn}) to clipboard!`);
                     }}
                     className="px-3.5 py-2 bg-slate-800/80 hover:bg-slate-700 border border-slate-700/80 text-sky-400 rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors shadow-sm"
                   >
@@ -1292,13 +1411,13 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                 <Map size={17} className="text-sky-400" />
                 <div>
                   <h3 className={`text-sm font-bold uppercase tracking-wide ${themeMode === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>3. Basemap & Spatial Layer Management</h3>
-                  <p className={`text-[11px] mt-0.5 ${themeMode === 'light' ? 'text-slate-500' : 'text-slate-400'}`}>Configure default GIS basemaps, trajectory theme colors, line widths, and inspect changes on the live map dashboard preview.</p>
+                  <p className={`text-[11px] mt-0.5 ${themeMode === 'light' ? 'text-slate-500' : 'text-slate-400'}`}>Configure default GIS basemaps, trajectory theme colors, line widths, and inspect changes on the live map preview before applying to the dashboard.</p>
                 </div>
               </div>
               <div className="flex items-center gap-1.5">
                 <span className={`px-2.5 py-1 rounded-full text-[10px] font-mono font-bold flex items-center gap-1.5 ${themeMode === 'light' ? 'bg-sky-50 text-sky-700 border border-sky-200' : 'bg-sky-500/10 text-sky-400 border border-sky-500/20'}`}>
                   <Palette size={12} />
-                  Live Theme Engine Active
+                  Live Preview Engine
                 </span>
               </div>
             </div>
@@ -1314,7 +1433,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                       <Layers size={14} className="text-sky-400" />
                       A. Basemap Tile Source & Opacity
                     </h4>
-                    <span className="text-[10px] text-slate-400 font-mono">WebGIS Tiles</span>
+                    <span className="text-[10px] text-slate-400 font-mono">Preview on select</span>
                   </div>
 
                   <div className="space-y-3 text-xs">
@@ -1325,14 +1444,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                         onChange={e => {
                           const val = e.target.value as any;
                           setProjectSettings(prev => ({ ...prev, defaultBasemap: val }));
-                          if (previewIframeRef.current && previewIframeRef.current.contentWindow) {
-                            previewIframeRef.current.contentWindow.postMessage({
-                              type: 'SET_BASEMAP',
-                              basemap: val,
-                              customUrl: projectSettings.customBasemapUrl || '',
-                              opacity: (projectSettings.basemapOpacity ?? 100) / 100
-                            }, '*');
-                          }
+                          previewBasemapChange(val);
                         }}
                         className={`w-full px-3 py-2 rounded-lg font-medium focus:outline-none border ${inputBg}`}
                       >
@@ -1369,14 +1481,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                         onChange={e => {
                           const val = Number(e.target.value);
                           setProjectSettings(prev => ({ ...prev, basemapOpacity: val }));
-                          if (previewIframeRef.current && previewIframeRef.current.contentWindow) {
-                            previewIframeRef.current.contentWindow.postMessage({
-                              type: 'SET_BASEMAP',
-                              basemap: projectSettings.defaultBasemap || 'positron',
-                              customUrl: projectSettings.customBasemapUrl || '',
-                              opacity: val / 100
-                            }, '*');
-                          }
+                          previewBasemapChange(undefined, undefined, val / 100);
                         }}
                         className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-sky-500 mt-2"
                       />
@@ -1391,14 +1496,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                           onChange={e => {
                             const val = e.target.value;
                             setProjectSettings(prev => ({ ...prev, customBasemapUrl: val }));
-                            if (previewIframeRef.current && previewIframeRef.current.contentWindow) {
-                              previewIframeRef.current.contentWindow.postMessage({
-                                type: 'SET_BASEMAP',
-                                basemap: 'custom_tile',
-                                customUrl: val,
-                                opacity: (projectSettings.basemapOpacity ?? 100) / 100
-                              }, '*');
-                            }
+                            previewBasemapChange('custom_tile', val);
                           }}
                           placeholder="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                           className={`w-full px-3 py-2 rounded-lg font-mono focus:outline-none border ${inputBg}`}
@@ -1414,15 +1512,9 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                           try {
                             localStorage.setItem('tnb_project_settings', JSON.stringify(projectSettings));
                           } catch (e) { }
-                          if (previewIframeRef.current && previewIframeRef.current.contentWindow) {
-                            previewIframeRef.current.contentWindow.postMessage({
-                              type: 'SET_BASEMAP',
-                              basemap: projectSettings.defaultBasemap || 'positron',
-                              customUrl: projectSettings.customBasemapUrl || '',
-                              opacity: (projectSettings.basemapOpacity ?? 100) / 100
-                            }, '*');
-                          }
-                          showToast('Basemap & Opacity settings saved!');
+                          broadcastBasemap();
+                          onSaveAllSettings?.();
+                          showToast('Basemap & Opacity settings applied to Dashboard!');
                         }}
                         className="px-3.5 py-1.5 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-xs font-semibold shadow transition-all cursor-pointer flex items-center gap-1.5 active:scale-95"
                       >
@@ -1453,30 +1545,12 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                             selectedTrackColor: '#38BDF8',
                             gridBoundaryColor: '#6366F1'
                           };
-                          setProjectSettings(prev => ({ ...prev, ...newColors }));
-                          if (previewIframeRef.current && previewIframeRef.current.contentWindow) {
-                            previewIframeRef.current.contentWindow.postMessage({
-                              type: 'SET_MAP_THEME',
-                              settings: {
-                                ...newColors,
-                                lineWidth: projectSettings.poiTrackLineWidth || 3,
-                                enableGlow: projectSettings.enableLayerGlow !== false
-                              }
-                            }, '*');
-                            const formattedStaged = (dailyData || []).map((item: any) => ({
-                              ...item,
-                              status: item.publishToWebGIS === 'yes' ? 'published' : 'staged',
-                              strokeColor: item.publishToWebGIS === 'yes' ? newColors.publishedTrackColor : newColors.stagingTrackColor,
-                              fillColor: item.publishToWebGIS === 'yes' ? newColors.publishedTrackColor : newColors.stagingTrackColor,
-                              panoramas: item.panoramas || [],
-                              points: item.panoramas || []
-                            }));
-                            previewIframeRef.current.contentWindow.postMessage({
-                              type: 'SET_STAGED_DATA',
-                              stagedItems: formattedStaged
-                            }, '*');
-                          }
-                          showToast('Loaded Standard Palette to preview map!');
+                          setProjectSettings(prev => {
+                            const updated = { ...prev, ...newColors };
+                            previewLayerThemeChange(updated);
+                            return updated;
+                          });
+                          showToast('Loaded Standard Palette to preview map (click Apply to save)');
                         }}
                         className={`px-2 py-0.5 rounded text-[10px] font-semibold border cursor-pointer ${themeMode === 'light' ? 'bg-white hover:bg-slate-100 text-slate-700 border-slate-300' : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'}`}
                       >
@@ -1492,30 +1566,12 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                             selectedTrackColor: '#ffff00',
                             gridBoundaryColor: '#8b5cf6'
                           };
-                          setProjectSettings(prev => ({ ...prev, ...newColors }));
-                          if (previewIframeRef.current && previewIframeRef.current.contentWindow) {
-                            previewIframeRef.current.contentWindow.postMessage({
-                              type: 'SET_MAP_THEME',
-                              settings: {
-                                ...newColors,
-                                lineWidth: projectSettings.poiTrackLineWidth || 3,
-                                enableGlow: projectSettings.enableLayerGlow !== false
-                              }
-                            }, '*');
-                            const formattedStaged = (dailyData || []).map((item: any) => ({
-                              ...item,
-                              status: item.publishToWebGIS === 'yes' ? 'published' : 'staged',
-                              strokeColor: item.publishToWebGIS === 'yes' ? newColors.publishedTrackColor : newColors.stagingTrackColor,
-                              fillColor: item.publishToWebGIS === 'yes' ? newColors.publishedTrackColor : newColors.stagingTrackColor,
-                              panoramas: item.panoramas || [],
-                              points: item.panoramas || []
-                            }));
-                            previewIframeRef.current.contentWindow.postMessage({
-                              type: 'SET_STAGED_DATA',
-                              stagedItems: formattedStaged
-                            }, '*');
-                          }
-                          showToast('Loaded Neon GIS Palette to preview map!');
+                          setProjectSettings(prev => {
+                            const updated = { ...prev, ...newColors };
+                            previewLayerThemeChange(updated);
+                            return updated;
+                          });
+                          showToast('Loaded Neon GIS Palette to preview map (click Apply to save)');
                         }}
                         className={`px-2 py-0.5 rounded text-[10px] font-semibold border cursor-pointer ${themeMode === 'light' ? 'bg-cyan-50 hover:bg-cyan-100 text-cyan-700 border-cyan-300' : 'bg-slate-800 hover:bg-slate-700 text-cyan-300 border-slate-700'}`}
                       >
@@ -1531,30 +1587,12 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                             selectedTrackColor: '#2dd4bf',
                             gridBoundaryColor: '#818cf8'
                           };
-                          setProjectSettings(prev => ({ ...prev, ...newColors }));
-                          if (previewIframeRef.current && previewIframeRef.current.contentWindow) {
-                            previewIframeRef.current.contentWindow.postMessage({
-                              type: 'SET_MAP_THEME',
-                              settings: {
-                                ...newColors,
-                                lineWidth: projectSettings.poiTrackLineWidth || 3,
-                                enableGlow: projectSettings.enableLayerGlow !== false
-                              }
-                            }, '*');
-                            const formattedStaged = (dailyData || []).map((item: any) => ({
-                              ...item,
-                              status: item.publishToWebGIS === 'yes' ? 'published' : 'staged',
-                              strokeColor: item.publishToWebGIS === 'yes' ? newColors.publishedTrackColor : newColors.stagingTrackColor,
-                              fillColor: item.publishToWebGIS === 'yes' ? newColors.publishedTrackColor : newColors.stagingTrackColor,
-                              panoramas: item.panoramas || [],
-                              points: item.panoramas || []
-                            }));
-                            previewIframeRef.current.contentWindow.postMessage({
-                              type: 'SET_STAGED_DATA',
-                              stagedItems: formattedStaged
-                            }, '*');
-                          }
-                          showToast('Loaded Eco Soft Palette to preview map!');
+                          setProjectSettings(prev => {
+                            const updated = { ...prev, ...newColors };
+                            previewLayerThemeChange(updated);
+                            return updated;
+                          });
+                          showToast('Loaded Eco Soft Palette to preview map (click Apply to save)');
                         }}
                         className={`px-2 py-0.5 rounded text-[10px] font-semibold border cursor-pointer ${themeMode === 'light' ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-300' : 'bg-slate-800 hover:bg-slate-700 text-emerald-300 border-slate-700'}`}
                       >
@@ -1573,13 +1611,11 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                           value={projectSettings.publishedTrackColor || '#10B981'}
                           onChange={e => {
                             const val = e.target.value;
-                            setProjectSettings(prev => ({ ...prev, publishedTrackColor: val }));
-                            if (previewIframeRef.current && previewIframeRef.current.contentWindow) {
-                              previewIframeRef.current.contentWindow.postMessage({
-                                type: 'SET_MAP_THEME',
-                                settings: { publishedTrackColor: val }
-                              }, '*');
-                            }
+                            setProjectSettings(prev => {
+                              const updated = { ...prev, publishedTrackColor: val };
+                              previewLayerThemeChange(updated);
+                              return updated;
+                            });
                           }}
                           className="w-8 h-8 rounded border border-slate-700 cursor-pointer bg-transparent"
                         />
@@ -1588,13 +1624,11 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                           value={projectSettings.publishedTrackColor || '#10B981'}
                           onChange={e => {
                             const val = e.target.value;
-                            setProjectSettings(prev => ({ ...prev, publishedTrackColor: val }));
-                            if (previewIframeRef.current && previewIframeRef.current.contentWindow) {
-                              previewIframeRef.current.contentWindow.postMessage({
-                                type: 'SET_MAP_THEME',
-                                settings: { publishedTrackColor: val }
-                              }, '*');
-                            }
+                            setProjectSettings(prev => {
+                              const updated = { ...prev, publishedTrackColor: val };
+                              previewLayerThemeChange(updated);
+                              return updated;
+                            });
                           }}
                           className={`w-full px-2 py-1.5 rounded font-mono text-[11px] uppercase border ${inputBg}`}
                         />
@@ -1610,13 +1644,11 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                           value={projectSettings.stagingTrackColor || '#F59E0B'}
                           onChange={e => {
                             const val = e.target.value;
-                            setProjectSettings(prev => ({ ...prev, stagingTrackColor: val }));
-                            if (previewIframeRef.current && previewIframeRef.current.contentWindow) {
-                              previewIframeRef.current.contentWindow.postMessage({
-                                type: 'SET_MAP_THEME',
-                                settings: { stagingTrackColor: val }
-                              }, '*');
-                            }
+                            setProjectSettings(prev => {
+                              const updated = { ...prev, stagingTrackColor: val };
+                              previewLayerThemeChange(updated);
+                              return updated;
+                            });
                           }}
                           className="w-8 h-8 rounded border border-slate-700 cursor-pointer bg-transparent"
                         />
@@ -1625,13 +1657,11 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                           value={projectSettings.stagingTrackColor || '#F59E0B'}
                           onChange={e => {
                             const val = e.target.value;
-                            setProjectSettings(prev => ({ ...prev, stagingTrackColor: val }));
-                            if (previewIframeRef.current && previewIframeRef.current.contentWindow) {
-                              previewIframeRef.current.contentWindow.postMessage({
-                                type: 'SET_MAP_THEME',
-                                settings: { stagingTrackColor: val }
-                              }, '*');
-                            }
+                            setProjectSettings(prev => {
+                              const updated = { ...prev, stagingTrackColor: val };
+                              previewLayerThemeChange(updated);
+                              return updated;
+                            });
                           }}
                           className={`w-full px-2 py-1.5 rounded font-mono text-[11px] uppercase border ${inputBg}`}
                         />
@@ -1647,13 +1677,11 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                           value={projectSettings.defectTrackColor || '#EF4444'}
                           onChange={e => {
                             const val = e.target.value;
-                            setProjectSettings(prev => ({ ...prev, defectTrackColor: val }));
-                            if (previewIframeRef.current && previewIframeRef.current.contentWindow) {
-                              previewIframeRef.current.contentWindow.postMessage({
-                                type: 'SET_MAP_THEME',
-                                settings: { defectTrackColor: val }
-                              }, '*');
-                            }
+                            setProjectSettings(prev => {
+                              const updated = { ...prev, defectTrackColor: val };
+                              previewLayerThemeChange(updated);
+                              return updated;
+                            });
                           }}
                           className="w-8 h-8 rounded border border-slate-700 cursor-pointer bg-transparent"
                         />
@@ -1662,13 +1690,11 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                           value={projectSettings.defectTrackColor || '#EF4444'}
                           onChange={e => {
                             const val = e.target.value;
-                            setProjectSettings(prev => ({ ...prev, defectTrackColor: val }));
-                            if (previewIframeRef.current && previewIframeRef.current.contentWindow) {
-                              previewIframeRef.current.contentWindow.postMessage({
-                                type: 'SET_MAP_THEME',
-                                settings: { defectTrackColor: val }
-                              }, '*');
-                            }
+                            setProjectSettings(prev => {
+                              const updated = { ...prev, defectTrackColor: val };
+                              previewLayerThemeChange(updated);
+                              return updated;
+                            });
                           }}
                           className={`w-full px-2 py-1.5 rounded font-mono text-[11px] uppercase border ${inputBg}`}
                         />
@@ -1684,13 +1710,11 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                           value={projectSettings.selectedTrackColor || '#38BDF8'}
                           onChange={e => {
                             const val = e.target.value;
-                            setProjectSettings(prev => ({ ...prev, selectedTrackColor: val }));
-                            if (previewIframeRef.current && previewIframeRef.current.contentWindow) {
-                              previewIframeRef.current.contentWindow.postMessage({
-                                type: 'SET_MAP_THEME',
-                                settings: { selectedTrackColor: val }
-                              }, '*');
-                            }
+                            setProjectSettings(prev => {
+                              const updated = { ...prev, selectedTrackColor: val };
+                              previewLayerThemeChange(updated);
+                              return updated;
+                            });
                           }}
                           className="w-8 h-8 rounded border border-slate-700 cursor-pointer bg-transparent"
                         />
@@ -1699,13 +1723,11 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                           value={projectSettings.selectedTrackColor || '#38BDF8'}
                           onChange={e => {
                             const val = e.target.value;
-                            setProjectSettings(prev => ({ ...prev, selectedTrackColor: val }));
-                            if (previewIframeRef.current && previewIframeRef.current.contentWindow) {
-                              previewIframeRef.current.contentWindow.postMessage({
-                                type: 'SET_MAP_THEME',
-                                settings: { selectedTrackColor: val }
-                              }, '*');
-                            }
+                            setProjectSettings(prev => {
+                              const updated = { ...prev, selectedTrackColor: val };
+                              previewLayerThemeChange(updated);
+                              return updated;
+                            });
                           }}
                           className={`w-full px-2 py-1.5 rounded font-mono text-[11px] uppercase border ${inputBg}`}
                         />
@@ -1721,13 +1743,11 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                           value={projectSettings.gridBoundaryColor || '#6366F1'}
                           onChange={e => {
                             const val = e.target.value;
-                            setProjectSettings(prev => ({ ...prev, gridBoundaryColor: val }));
-                            if (previewIframeRef.current && previewIframeRef.current.contentWindow) {
-                              previewIframeRef.current.contentWindow.postMessage({
-                                type: 'SET_MAP_THEME',
-                                settings: { gridBoundaryColor: val }
-                              }, '*');
-                            }
+                            setProjectSettings(prev => {
+                              const updated = { ...prev, gridBoundaryColor: val };
+                              previewLayerThemeChange(updated);
+                              return updated;
+                            });
                           }}
                           className="w-8 h-8 rounded border border-slate-700 cursor-pointer bg-transparent"
                         />
@@ -1736,13 +1756,11 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                           value={projectSettings.gridBoundaryColor || '#6366F1'}
                           onChange={e => {
                             const val = e.target.value;
-                            setProjectSettings(prev => ({ ...prev, gridBoundaryColor: val }));
-                            if (previewIframeRef.current && previewIframeRef.current.contentWindow) {
-                              previewIframeRef.current.contentWindow.postMessage({
-                                type: 'SET_MAP_THEME',
-                                settings: { gridBoundaryColor: val }
-                              }, '*');
-                            }
+                            setProjectSettings(prev => {
+                              const updated = { ...prev, gridBoundaryColor: val };
+                              previewLayerThemeChange(updated);
+                              return updated;
+                            });
                           }}
                           className={`w-full px-2 py-1.5 rounded font-mono text-[11px] uppercase border ${inputBg}`}
                         />
@@ -1757,13 +1775,11 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                           value={projectSettings.poiTrackLineWidth || 3}
                           onChange={e => {
                             const val = Number(e.target.value);
-                            setProjectSettings(prev => ({ ...prev, poiTrackLineWidth: val }));
-                            if (previewIframeRef.current && previewIframeRef.current.contentWindow) {
-                              previewIframeRef.current.contentWindow.postMessage({
-                                type: 'SET_MAP_THEME',
-                                settings: { lineWidth: val }
-                              }, '*');
-                            }
+                            setProjectSettings(prev => {
+                              const updated = { ...prev, poiTrackLineWidth: val };
+                              previewLayerThemeChange(updated);
+                              return updated;
+                            });
                           }}
                           className={`flex-1 px-2 py-1.5 rounded font-medium focus:outline-none border ${inputBg}`}
                         >
@@ -1776,13 +1792,11 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                           type="button"
                           onClick={() => {
                             const nextGlow = !(projectSettings.enableLayerGlow !== false);
-                            setProjectSettings(prev => ({ ...prev, enableLayerGlow: nextGlow }));
-                            if (previewIframeRef.current && previewIframeRef.current.contentWindow) {
-                              previewIframeRef.current.contentWindow.postMessage({
-                                type: 'SET_MAP_THEME',
-                                settings: { enableGlow: nextGlow }
-                              }, '*');
-                            }
+                            setProjectSettings(prev => {
+                              const updated = { ...prev, enableLayerGlow: nextGlow };
+                              previewLayerThemeChange(updated);
+                              return updated;
+                            });
                           }}
                           className={`px-2 py-1.5 rounded border text-[11px] font-semibold cursor-pointer transition-colors ${projectSettings.enableLayerGlow !== false ? 'bg-sky-500/20 text-sky-300 border-sky-500/40' : 'bg-slate-800 text-slate-400 border-slate-700'}`}
                           title="Toggle High-Contrast Glow"
@@ -1804,16 +1818,11 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                         value={projectSettings.layerOpacity ?? 100}
                         onChange={e => {
                           const val = Number(e.target.value);
-                          setProjectSettings(prev => ({ ...prev, layerOpacity: val }));
-                          if (previewIframeRef.current && previewIframeRef.current.contentWindow) {
-                            previewIframeRef.current.contentWindow.postMessage({
-                              type: 'SET_MAP_THEME',
-                              settings: {
-                                opacity: val / 100,
-                                layerOpacity: val / 100
-                              }
-                            }, '*');
-                          }
+                          setProjectSettings(prev => {
+                            const updated = { ...prev, layerOpacity: val };
+                            previewLayerThemeChange(updated);
+                            return updated;
+                          });
                         }}
                         className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-500 mt-1"
                       />
@@ -1828,38 +1837,9 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                         try {
                           localStorage.setItem('tnb_project_settings', JSON.stringify(projectSettings));
                         } catch (e) { }
-                        if (previewIframeRef.current && previewIframeRef.current.contentWindow) {
-                          // 1. Send Map Vector Layer Theme & Styling
-                          previewIframeRef.current.contentWindow.postMessage({
-                            type: 'SET_MAP_THEME',
-                            settings: {
-                              publishedTrackColor: projectSettings.publishedTrackColor || '#10B981',
-                              stagingTrackColor: projectSettings.stagingTrackColor || '#F59E0B',
-                              defectTrackColor: projectSettings.defectTrackColor || '#EF4444',
-                              selectedTrackColor: projectSettings.selectedTrackColor || '#38BDF8',
-                              gridBoundaryColor: projectSettings.gridBoundaryColor || '#6366F1',
-                              lineWidth: projectSettings.poiTrackLineWidth || 3,
-                              enableGlow: projectSettings.enableLayerGlow !== false,
-                              opacity: (projectSettings.layerOpacity ?? 100) / 100,
-                              layerOpacity: (projectSettings.layerOpacity ?? 100) / 100
-                            }
-                          }, '*');
-
-                          // 2. Send Staged Point Data with new colors
-                          const formattedStaged = (dailyData || []).map((item: any) => ({
-                            ...item,
-                            status: item.publishToWebGIS === 'yes' ? 'published' : 'staged',
-                            strokeColor: item.publishToWebGIS === 'yes' ? (projectSettings.publishedTrackColor || '#10B981') : (projectSettings.stagingTrackColor || '#F59E0B'),
-                            fillColor: item.publishToWebGIS === 'yes' ? (projectSettings.publishedTrackColor || '#10B981') : (projectSettings.stagingTrackColor || '#F59E0B'),
-                            panoramas: item.panoramas || [],
-                            points: item.panoramas || []
-                          }));
-                          previewIframeRef.current.contentWindow.postMessage({
-                            type: 'SET_STAGED_DATA',
-                            stagedItems: formattedStaged
-                          }, '*');
-                        }
-                        showToast('Survey Trajectory Layer theme saved!');
+                        broadcastLayerTheme();
+                        onSaveAllSettings?.();
+                        showToast('Survey Trajectory Layer theme applied to Dashboard!');
                       }}
                       className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold shadow transition-all cursor-pointer flex items-center gap-1.5 active:scale-95"
                     >
@@ -1926,7 +1906,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                         <span className="text-sky-500 font-semibold">{projectSettings.spatialSrid || 'EPSG:4326'}</span>
                         <span className={themeMode === 'light' ? 'text-slate-300' : 'text-slate-600'}>|</span>
                         {previewCoords ? (
-                          <span className={themeMode === 'light' ? 'text-slate-900 font-semibold' : 'text-slate-200'}>
+                          <span className={`font-semibold ${themeMode === 'light' ? 'text-slate-900' : 'text-slate-200'}`}>
                             {previewCoords.lat.toFixed(4)}° N, {previewCoords.lng.toFixed(4)}° E
                           </span>
                         ) : (
