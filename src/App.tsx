@@ -77,7 +77,7 @@ interface DailyTimeSeries {
   imagesDefected: number;
   publishToWebGIS: 'yes' | 'need to recheck' | 'no' | 'in process';
   action: string; // remarks field
-  pic?: 'Fariz' | 'Hafiz' | 'Amirul' | string;
+  pic?: string;
   isSyncedWithSupabase?: boolean;
   isFromSupabase?: boolean;
   _alreadySyncedToBatch?: boolean;
@@ -97,7 +97,7 @@ interface BatchLog {
   kmProcessed: number;
   status: 'Complete' | 'Ongoing';
   captureEquipment?: 'MMS' | 'Backpack' | 'Drone' | string;
-  pic?: 'Fariz' | 'Hafiz' | 'Amirul' | string;
+  pic?: string;
   isSyncedWithSupabase?: boolean;
   isFromSupabase?: boolean;
   panoramas?: PanoramaItem[];
@@ -312,7 +312,7 @@ export function createBatchLogFromSupabaseOrDummy(
     defects: 45,
     kmProcessed: 150.2,
     status: 'Complete',
-    pic: 'Fariz'
+    pic: ''
   };
 }
 
@@ -363,7 +363,7 @@ const INITIAL_AUDIT_LOGS: AuditLogItem[] = [
     type: 'PUBLISH',
     title: 'Database Publish Executed',
     details: 'Published 4 subgrids (N93E70, N94E70, N94E71, N90E67) to Supabase database',
-    user: 'Fariz',
+    user: 'System',
     status: 'success'
   },
   {
@@ -371,8 +371,8 @@ const INITIAL_AUDIT_LOGS: AuditLogItem[] = [
     timestamp: '11 Aug 2026, 10:20 AM',
     type: 'EDIT',
     title: 'Daily Subgrid N94E70 Modified',
-    details: 'Updated distance to 0.6 km, defect count to 6, PIC set to Hafiz',
-    user: 'Hafiz',
+    details: 'Updated distance to 0.6 km, defect count to 6',
+    user: 'System',
     status: 'info'
   },
   {
@@ -390,7 +390,7 @@ const INITIAL_AUDIT_LOGS: AuditLogItem[] = [
     type: 'CREATE',
     title: 'CSV Import Completed',
     details: 'Imported batch data for subgrids N93E70 & N94E70 via CSV upload',
-    user: 'Fariz',
+    user: 'System',
     status: 'success'
   },
   {
@@ -573,8 +573,6 @@ export function reconcileBatchLogs(dailyItems: DailyTimeSeries[], _baseBatches?:
       const picSet = new Set<string>();
       if (d.pic) {
         d.pic.split(',').map(p => p.trim()).filter(Boolean).forEach(p => picSet.add(p));
-      } else {
-        picSet.add('Fariz');
       }
 
       batchMap.set(normSub, {
@@ -612,7 +610,7 @@ export function reconcileBatchLogs(dailyItems: DailyTimeSeries[], _baseBatches?:
       poiCount: entry.poiCount,
       kmProcessed: entry.kmProcessed,
       defects: entry.defects,
-      pic: Array.from(entry.pics).join(', ') || 'Fariz',
+      pic: Array.from(entry.pics).join(', ') || '',
       status: finalStatus,
       captureEquipment: entry.captureEquipment,
       panoramas: entry.panoramas,
@@ -1397,6 +1395,15 @@ const DataManagementPage = ({
     }
   })();
   const [dataTab, setDataTab] = useState<'batches' | 'daily' | 'vector'>(initialTab);
+
+  const activeAuthUserName = React.useMemo(() => {
+    if (!authSession || !authSession.user) return '';
+    const u = authSession.user;
+    const raw = u.user_metadata?.full_name || u.user_metadata?.name || (u.email ? u.email.split('@')[0] : '');
+    if (!raw) return '';
+    return raw.charAt(0).toUpperCase() + raw.slice(1);
+  }, [authSession]);
+
   const [editingItem, setEditingItem] = useState<BatchLog | DailyTimeSeries | Layer | Folder | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isLayerEditModalOpen, setIsLayerEditModalOpen] = useState(false);
@@ -1558,7 +1565,7 @@ const DataManagementPage = ({
   const [csvFieldMap, setCsvFieldMap] = useState<Record<string, string>>({});
   const [csvFileList, setCsvFileList] = useState<{ fileName: string; headers: string[]; rows: string[][] }[]>([]);
   const [selectedEquipment, setSelectedEquipment] = useState<'MMS' | 'Backpack' | 'Drone'>('MMS');
-  const [selectedPic, setSelectedPic] = useState<'Fariz' | 'Hafiz' | 'Amirul'>('Fariz');
+  const [selectedPic, setSelectedPic] = useState<string>('');
   const [selectedGrid, setSelectedGrid] = useState<string>('1');
   const [fileGridMap, setFileGridMap] = useState<Record<string, string>>({});
 
@@ -1743,7 +1750,7 @@ const DataManagementPage = ({
         const eqVal = getVal(row, 'captureEquipment');
         const eq = ['MMS', 'Backpack', 'Drone'].includes(eqVal) ? eqVal : selectedEquipment;
         const picVal = getVal(row, 'pic');
-        const pic = ['Fariz', 'Hafiz', 'Amirul'].includes(picVal) ? picVal : selectedPic;
+        const pic = picVal || selectedPic;
         const pubVal = getVal(row, 'publishToWebGIS') || getVal(row, 'publishToUSVPRO');
         const pub = directPublish ? 'yes' : (['yes', 'no', 'need to recheck', 'in process'].includes(pubVal)
           ? pubVal as DailyTimeSeries['publishToWebGIS'] : 'in process');
@@ -2228,7 +2235,7 @@ const DataManagementPage = ({
       if (dailyColumnFilters.grid && d.grid !== dailyColumnFilters.grid) return false;
       if (dailyColumnFilters.subgrid && (d.subgrid || '').toUpperCase().trim() !== dailyColumnFilters.subgrid.toUpperCase().trim()) return false;
       if (dailyColumnFilters.equipment && d.captureEquipment !== dailyColumnFilters.equipment) return false;
-      if (dailyColumnFilters.pic && (d.pic || 'Fariz') !== dailyColumnFilters.pic) return false;
+      if (dailyColumnFilters.pic && (d.pic || '') !== dailyColumnFilters.pic) return false;
       if (dailyColumnFilters.publishStatus && (d.publishToWebGIS || (d as any).publishToUSVPRO) !== dailyColumnFilters.publishStatus) return false;
 
       return true;
@@ -2818,7 +2825,7 @@ const DataManagementPage = ({
                     className="w-full bg-[#0b0f17] border border-slate-800 text-slate-200 rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-sky-500/80"
                   >
                     <option value="">All PICs</option>
-                    {Array.from(new Set(draftDailyData.map(d => d.pic || 'Fariz').filter(Boolean))).sort().map(p => (
+                    {Array.from(new Set(draftDailyData.map(d => d.pic).filter(Boolean))).sort().map(p => (
                       <option key={p} value={p}>{p}</option>
                     ))}
                   </select>
@@ -3173,7 +3180,7 @@ const DataManagementPage = ({
                                 </button>
                               </td>
                               <td className="px-4 py-3.5 text-slate-300 font-medium whitespace-nowrap">{batch.defects}</td>
-                              <td className="px-4 py-3.5 text-slate-300 font-medium whitespace-nowrap">{batch.pic || 'Fariz'}</td>
+                              <td className="px-4 py-3.5 text-slate-300 font-medium whitespace-nowrap">{batch.pic || activeAuthUserName || 'Unassigned'}</td>
                               <td className="px-4 py-3.5 whitespace-nowrap">
                                 <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${batch.status === 'Complete'
                                   ? 'bg-slate-800 text-slate-200 border border-slate-700'
@@ -3327,7 +3334,7 @@ const DataManagementPage = ({
                                       : (matchBatch?.defects ?? 0);
                                 })()}
                               </td>
-                              <td className="px-4 py-3.5 text-slate-300 font-medium whitespace-nowrap">{daily.pic || 'Fariz'}</td>
+                              <td className="px-4 py-3.5 text-slate-300 font-medium whitespace-nowrap">{daily.pic || activeAuthUserName || 'Unassigned'}</td>
                               <td className="px-4 py-3.5 whitespace-nowrap">
                                 <select
                                   value={daily.publishToWebGIS || 'in process'}
@@ -4102,22 +4109,14 @@ const DataManagementPage = ({
                         </div>
                       </div>
                       <div className="bg-[#131b2e] border border-slate-800 p-3 rounded-xl">
-                        <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Person In Charge (PIC)</label>
-                        <div className="flex items-center gap-1.5">
-                          {(['Fariz', 'Hafiz', 'Amirul'] as const).map(person => (
-                            <button
-                              key={person}
-                              type="button"
-                              onClick={() => setSelectedPic(person)}
-                              className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-medium border transition-all ${selectedPic === person
-                                ? 'bg-slate-700 border-slate-600 text-white shadow-sm font-semibold'
-                                : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
-                                }`}
-                            >
-                              {person}
-                            </button>
-                          ))}
-                        </div>
+                        <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Person In Charge (PIC)</label>
+                        <input
+                          type="text"
+                          value={selectedPic}
+                          onChange={(e) => setSelectedPic(e.target.value)}
+                          placeholder="Enter PIC name (or leave empty for Auth User)"
+                          className="w-full bg-slate-900 border border-slate-700/80 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 font-medium"
+                        />
                       </div>
                     </div>
                   </div>
@@ -4494,7 +4493,7 @@ const DataForm = ({
   const [formData, setFormData] = useState<any>(
     initialData ||
     (dataType === 'batches'
-      ? { date: new Date().toISOString().slice(0, 10), grid: '1', subgrid: 'N94E70', imageFilename: 'N94E70-0001.jpg', images: 0, defects: 0, kmProcessed: 0, status: 'Ongoing' as const, captureEquipment: 'MMS', pic: 'Fariz' }
+      ? { date: new Date().toISOString().slice(0, 10), grid: '1', subgrid: 'N94E70', imageFilename: 'N94E70-0001.jpg', images: 0, defects: 0, kmProcessed: 0, status: 'Ongoing' as const, captureEquipment: 'MMS', pic: '' }
       : {
         date: '',
         grid: '1',
@@ -4504,7 +4503,7 @@ const DataForm = ({
         defectCount: 0,
         imagesDefected: 0,
         captureEquipment: 'MMS',
-        pic: 'Fariz',
+        pic: '',
         publishToUSVPRO: 'in process' as const,
         action: ''
       }
@@ -4590,21 +4589,13 @@ const DataForm = ({
           </div>
           <div>
             <label className="block text-xs font-semibold text-slate-300 mb-1">PIC (Person In Charge)</label>
-            <div className="flex items-center gap-2">
-              {(['Fariz', 'Hafiz', 'Amirul'] as const).map(person => (
-                <button
-                  key={person}
-                  type="button"
-                  onClick={() => setFormData({ ...formData, pic: person })}
-                  className={`flex-1 py-1.5 px-3 rounded-lg font-medium text-xs border transition-all cursor-pointer ${formData.pic === person
-                    ? 'bg-slate-700 border-slate-600 text-white shadow-sm font-semibold'
-                    : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
-                    }`}
-                >
-                  {person}
-                </button>
-              ))}
-            </div>
+            <input
+              type="text"
+              value={formData.pic || ''}
+              onChange={(e) => setFormData({ ...formData, pic: e.target.value })}
+              placeholder="Enter PIC Name"
+              className="w-full bg-slate-900 border border-slate-700/80 rounded-lg px-3 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-slate-500"
+            />
           </div>
           <div>
             <label className="block text-xs font-semibold text-slate-300 mb-1">Status</label>
@@ -4678,21 +4669,13 @@ const DataForm = ({
           </div>
           <div>
             <label className="block text-xs font-semibold text-slate-300 mb-1">PIC (Person In Charge)</label>
-            <div className="flex items-center gap-2">
-              {(['Fariz', 'Hafiz', 'Amirul'] as const).map(person => (
-                <button
-                  key={person}
-                  type="button"
-                  onClick={() => setFormData({ ...formData, pic: person })}
-                  className={`flex-1 py-1.5 px-3 rounded-lg font-medium text-xs border transition-all cursor-pointer ${formData.pic === person
-                    ? 'bg-slate-700 border-slate-600 text-white shadow-sm font-semibold'
-                    : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
-                    }`}
-                >
-                  {person}
-                </button>
-              ))}
-            </div>
+            <input
+              type="text"
+              value={formData.pic || ''}
+              onChange={(e) => setFormData({ ...formData, pic: e.target.value })}
+              placeholder="Enter PIC Name"
+              className="w-full bg-slate-900 border border-slate-700/80 rounded-lg px-3 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-slate-500"
+            />
           </div>
           <div>
             <label className="block text-xs font-semibold text-slate-300 mb-1">Publish to WEBGIS</label>
@@ -4805,7 +4788,7 @@ export default function App() {
       minGpsAccuracyM: 1.0,
       cameraResolution: '8K 360° Equirectangular',
       defaultEquipment: 'MMS',
-      leadPic: 'Fariz',
+      leadPic: '',
       regionZone: 'Selangor & KL Subgrids',
       clientName: 'Tenaga Nasional Berhad (TNB)',
       // Database & Image Fetching Settings
@@ -4966,7 +4949,7 @@ export default function App() {
         poiCount: d.poiCount || d.imagesProcessed || 0,
         kmProcessed: d.kmProcessed || 0,
         captureEquipment: d.captureEquipment || 'MMS',
-        pic: d.pic || 'Fariz',
+        pic: d.pic || '',
         status: ((d as any).status || 'Complete') as 'Complete' | 'Ongoing',
         isSyncedWithSupabase: d.isSyncedWithSupabase,
         publishToWebGIS: d.publishToWebGIS || 'yes',
@@ -5412,7 +5395,7 @@ export default function App() {
     const dateStr = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
     const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
     const timestampStr = `${dateStr}, ${timeStr}`;
-    const userName = authSession?.user?.email ? authSession.user.email.split('@')[0] : 'Fariz';
+    const userName = authSession?.user?.email ? authSession.user.email.split('@')[0] : 'System';
     const newAudit: AuditLogItem = {
       id: `audit-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
       timestamp: timestampStr,
@@ -5502,7 +5485,7 @@ export default function App() {
     const now = new Date();
     const reportDate = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' }) + ' • ' + now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
     const documentRefNo = `TNB-MMS-EXEC-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${Math.floor(1000 + Math.random() * 9000)}`;
-    const operatorUser = authSession?.user?.email ? authSession.user.email : 'Fariz (Lead GIS Engineer)';
+    const operatorUser = authSession?.user?.email ? authSession.user.email : 'GIS Engineer';
 
     const html = `
       <!DOCTYPE html>
@@ -5909,7 +5892,7 @@ export default function App() {
       const imgCount = getImagesProcessedCount(b);
       const km = (b.kmProcessed || 0).toFixed(2);
       const defectNum = b.defects || 0;
-      const picName = b.pic || 'Fariz';
+      const picName = b.pic || '';
       const isSynced = b.isSyncedWithSupabase || b.status === 'Complete';
       return `
                   <tr>
@@ -6048,7 +6031,7 @@ export default function App() {
                 <div class="signoff-role">VERIFIED BY (QA LEAD)</div>
                 <div class="signoff-line"></div>
                 <div class="signoff-meta">
-                  <strong>Name:</strong> Hafiz / Quality Auditor<br>
+                  <strong>Name:</strong> Quality Auditor<br>
                   <strong>Title:</strong> Senior QA Verification Specialist<br>
                   <strong>Date:</strong> _____ / _____ / 2026
                 </div>
@@ -7335,7 +7318,7 @@ export default function App() {
                       const activeKm = activeDailyLog?.kmProcessed ? activeDailyLog.kmProcessed.toFixed(1) : activeBatchLog?.kmProcessed ? activeBatchLog.kmProcessed.toFixed(1) : '6.5';
                       const activeImages = activeDailyLog?.imagesProcessed || activeBatchLog?.images || 265;
                       const activeDefects = (activeDailyLog?.imagesDefected ?? activeDailyLog?.defectCount) ?? activeBatchLog?.defects ?? 0;
-                      const activePic = activeDailyLog?.pic || activeBatchLog?.pic || 'Fariz';
+                      const activePic = activeDailyLog?.pic || activeBatchLog?.pic || '';
                       const activeStatus = activeBatchLog?.status === 'Complete' || activeDailyLog?.publishToWebGIS === 'yes' ? 'Published to WebGIS' : 'In Progress';
 
                       return selectedSubgridFilter ? (
@@ -7475,7 +7458,7 @@ export default function App() {
                               className="bg-[#151d2a] border border-slate-700/70 text-slate-200 rounded px-1.5 py-0.5 focus:outline-none focus:border-sky-500"
                             >
                               <option value="">All</option>
-                              {Array.from(new Set(dailyData.map(d => d.pic || 'Fariz').filter(Boolean))).sort().map(p => (
+                              {Array.from(new Set(dailyData.map(d => d.pic).filter(Boolean))).sort().map(p => (
                                 <option key={p} value={p}>{p}</option>
                               ))}
                             </select>
@@ -7596,7 +7579,7 @@ export default function App() {
                                         {log.defects || 0}
                                       </span>
                                     </td>
-                                    <td className="px-3.5 py-3.5 text-slate-300 font-medium whitespace-nowrap">{log.pic || 'Fariz'}</td>
+                                    <td className="px-3.5 py-3.5 text-slate-300 font-medium whitespace-nowrap">{log.pic || ''}</td>
                                     <td className="px-3.5 py-3.5 whitespace-nowrap">
                                       <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap ${log.status === 'Complete' || (log.status as string) === 'Published'
                                         ? 'bg-slate-800 text-slate-200 border border-slate-700'
@@ -7658,7 +7641,7 @@ export default function App() {
                                 .filter(log => {
                                   if (dashDailyFilters.grid && log.grid !== dashDailyFilters.grid) return false;
                                   if (dashDailyFilters.subgrid && (log.subgrid || '').toUpperCase().trim() !== dashDailyFilters.subgrid.toUpperCase().trim()) return false;
-                                  if (dashDailyFilters.pic && (log.pic || 'Fariz') !== dashDailyFilters.pic) return false;
+                                  if (dashDailyFilters.pic && (log.pic || '') !== dashDailyFilters.pic) return false;
                                   if (dashDailyFilters.equipment && (log.captureEquipment || 'MMS') !== dashDailyFilters.equipment) return false;
                                   return true;
                                 })
@@ -7713,7 +7696,7 @@ export default function App() {
                                           {defectCount}
                                         </span>
                                       </td>
-                                      <td className="px-3.5 py-3.5 text-slate-300 font-medium whitespace-nowrap">{log.pic || 'Fariz'}</td>
+                                      <td className="px-3.5 py-3.5 text-slate-300 font-medium whitespace-nowrap">{log.pic || ''}</td>
                                       <td className="px-3.5 py-3.5 whitespace-nowrap">
                                         {isPublished ? (
                                           <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-slate-800 text-slate-200 border border-slate-700 inline-flex items-center gap-1 whitespace-nowrap">
@@ -7812,7 +7795,7 @@ export default function App() {
                             <div className="flex items-center justify-between text-slate-400 gap-2">
                               <span className="shrink-0">PIC:</span>
                               <span className="font-semibold text-emerald-400 text-right whitespace-nowrap">
-                                {hasSelectedPoint ? (batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === (inspectorSubgrid || selectedSubgridFilter || '').toUpperCase().trim())?.pic || 'Fariz') : '-'}
+                                {hasSelectedPoint ? (batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === (inspectorSubgrid || selectedSubgridFilter || '').toUpperCase().trim())?.pic || '-') : '-'}
                               </span>
                             </div>
                             {isQaLocked && (
