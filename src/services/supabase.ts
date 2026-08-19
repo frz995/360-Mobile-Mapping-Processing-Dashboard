@@ -343,6 +343,7 @@ export async function fetchSupabaseData(): Promise<{
               key: runKey,
               subgrid: sg,
               grid: r.grid || '1',
+              pic: r.pic || r.person_in_charge || 'Fariz',
               imageFilenames: [],
               poiCount: r.poi_count || 0,
               imagesProcessed: r.images_processed || 0,
@@ -430,7 +431,9 @@ function generateSequentialFilenames(startFn: string, count: number): string[] {
             verifiedCount = typeof g.imagesProcessed === 'number' ? Math.min(g.imagesProcessed, count) : 0;
           }
 
-          const imgCount = verifiedCount;
+          // Ensure imagesProcessed accurately reflects CSV frame count and storage availability
+          const imgCount = g.imagesProcessed > 0 ? g.imagesProcessed : (g.poiCount > 0 ? g.poiCount : (verifiedCount > 0 ? verifiedCount : count));
+          const picName = g.pic || 'Fariz';
 
           dailyData.push({
             id: `staging-d-${runKey}`,
@@ -446,7 +449,7 @@ function generateSequentialFilenames(startFn: string, count: number): string[] {
             captureEquipment: g.equipment,
             publishToWebGIS: 'in process',
             action: 'Imported (staging)',
-            pic: 'Unassigned',
+            pic: picName,
             isStagingPreview: true,
             isSyncedWithSupabase: false,
             isStagedInSupabase: true
@@ -465,7 +468,7 @@ function generateSequentialFilenames(startFn: string, count: number): string[] {
             kmProcessed: km,
             status: 'Ongoing',
             captureEquipment: g.equipment,
-            pic: 'Unassigned',
+            pic: picName,
             isSyncedWithSupabase: false,
             isStagedInSupabase: true
           });
