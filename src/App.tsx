@@ -895,7 +895,7 @@ const MapComponent = ({
       <iframe
         ref={iframeRef}
         key={refreshKey || 0}
-        src={`${import.meta.env.VITE_MAP_URL || (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname.startsWith('192.168.') || window.location.hostname.startsWith('10.')) ? 'http://localhost:5173' : 'https://mobilemapping-nine.vercel.app')}/?embed=true${selectedSubgridFilter ? `&subgrid=${encodeURIComponent(selectedSubgridFilter)}` : ''}${refreshKey ? `&t=${refreshKey}` : ''}`}
+        src={`${import.meta.env.VITE_MAP_URL || 'https://mobilemapping-nine.vercel.app'}/?embed=true${selectedSubgridFilter ? `&subgrid=${encodeURIComponent(selectedSubgridFilter)}` : ''}${refreshKey ? `&t=${refreshKey}` : ''}`}
         onLoad={() => {
           if (iframeRef.current && iframeRef.current.contentWindow) {
             iframeRef.current.contentWindow.postMessage({
