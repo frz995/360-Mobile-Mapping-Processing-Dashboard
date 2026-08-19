@@ -275,36 +275,50 @@ export async function fetchSupabaseData(): Promise<{
 
     console.log('Verified Supabase MMS_PIC storage counts:', Object.fromEntries(storageImageCounts));
 
-    // Helper to verify image filenames directly against storage (handling both list API and direct public URL access)
-    async function verifyFilenamesAgainstStorage(filenames: string[], _subgridKey?: string): Promise<{ count: number; verifiedFilenames: string[] }> {
-      if (!filenames || filenames.length === 0) return { count: 0, verifiedFilenames: [] };
+    // Helper to verify image filenames directly against storage
+    async function verifyFilenamesAgainstStorage(
+      filenames: string[],
+      _subgridKey?: string
+    ): Promise<{ count: number; verifiedFilenames: string[] }> {
+      if (!filenames || filenames.length === 0) {
+        return { count: 0, verifiedFilenames: [] };
+      }
 
-      // 1. If storageFileSet was populated by storage.list()
+      // 1. First priority: Check in-memory storage file set from bucket list API
       if (storageFileSet.size > 0) {
-        const verified = filenames.filter(fn => {
+        const verified = filenames.filter((fn) => {
           const cleanFn = fn.split('/').pop()?.toLowerCase().trim() || fn.toLowerCase().trim();
           return storageFileSet.has(cleanFn) || storageFileSet.has(fn.toLowerCase().trim());
         });
         return { count: verified.length, verifiedFilenames: verified };
       }
 
-      // 2. Direct concurrent HEAD requests to public MMS_PIC bucket
-      // Check ALL filenames in batches of 20 to avoid overwhelming the server
+      // 2. Fallback: Asynchronous direct HEAD check if bucket listing was empty or paginated
       const checkOne = async (fn: string): Promise<boolean> => {
         const clean = fn.split('/').pop()?.trim() || fn.trim();
-        if (!clean || !clean.includes('.')) return false; // skip non-file strings like subgrid codes
-        const url = `${supabaseUrl}/storage/v1/object/public/${storageBucketName}/${clean}`;
+        if (!clean || !clean.includes('.')) return false;
+
+        // Build standard public URL for MMS_PIC bucket
+        const targetBucket = storageBucketName || 'MMS_PIC';
+        const url = `${supabaseUrl}/storage/v1/object/public/${targetBucket}/${clean}`;
+
         try {
           const res = await fetch(url, { method: 'HEAD' });
-          return res.ok || res.status === 200 || res.status === 206;
+          // Strictly require exact 200 or 206 and ensure it did not redirect
+          if (res.status === 200 || res.status === 206) {
+            // Extra check: Verify Content-Type is actually an image, not HTML error page
+            const contentType = res.headers.get('content-type') || '';
+            return !contentType.includes('text/html');
+          }
+          return false;
         } catch {
           return false;
         }
       };
 
-      // Process in batches to avoid flooding
       const batchSize = 20;
       const verified: string[] = [];
+
       for (let i = 0; i < filenames.length; i += batchSize) {
         const batch = filenames.slice(i, i + batchSize);
         const results = await Promise.all(batch.map(checkOne));
@@ -312,6 +326,8 @@ export async function fetchSupabaseData(): Promise<{
           if (results[idx]) verified.push(fn);
         });
       }
+
+      // If truly no images exist, count will accurately be 0
       return { count: verified.length, verifiedFilenames: verified };
     }
 
