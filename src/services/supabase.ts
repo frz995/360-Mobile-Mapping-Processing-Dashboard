@@ -313,7 +313,16 @@ export async function fetchSupabaseData(): Promise<{
         publishToWebGIS: 'yes',
         action: 'Published in database',
         pic: pic,
-        isSyncedWithSupabase: true
+        isSyncedWithSupabase: true,
+        points: g.points,
+        panoramas: g.points.map((pt, pIdx) => ({
+          filename: g.imageFilenames[pIdx] || `${subgrid}-${String(pIdx + 1).padStart(4, '0')}.jpg`,
+          latitude: pt.lat,
+          longitude: pt.lon,
+          lat: pt.lat,
+          lon: pt.lon,
+          subgrid: subgrid
+        }))
       });
 
       // 2. Unique Batch Masterlist Record
@@ -332,7 +341,16 @@ export async function fetchSupabaseData(): Promise<{
         status: 'Complete',
         captureEquipment: equipment,
         pic: pic || 'Unassigned',
-        isSyncedWithSupabase: true
+        isSyncedWithSupabase: true,
+        points: g.points,
+        panoramas: g.points.map((pt, pIdx) => ({
+          filename: g.imageFilenames[pIdx] || `${subgrid}-${String(pIdx + 1).padStart(4, '0')}.jpg`,
+          latitude: pt.lat,
+          longitude: pt.lon,
+          lat: pt.lat,
+          lon: pt.lon,
+          subgrid: subgrid
+        }))
       });
     });
 
@@ -373,19 +391,20 @@ export async function fetchSupabaseData(): Promise<{
           if (filename && !sgObj.imageFilenames.includes(filename)) {
             sgObj.imageFilenames.push(filename);
           }
-          if (r.geom) {
+          let lat: number | undefined = r.latitude ?? r.lat;
+          let lon: number | undefined = r.longitude ?? r.lon;
+
+          if ((lat === undefined || lon === undefined) && r.geom) {
             let geomObj = r.geom;
-            let lat: number | undefined;
-            let lon: number | undefined;
             if (typeof geomObj === 'string') {
               const match = geomObj.match(/POINT\(\s*([-\d.]+)\s+([-\d.]+)\s*\)/i);
               if (match) { lon = parseFloat(match[1]); lat = parseFloat(match[2]); }
             } else if (geomObj && geomObj.coordinates && Array.isArray(geomObj.coordinates)) {
               lon = Number(geomObj.coordinates[0]); lat = Number(geomObj.coordinates[1]);
             }
-            if (typeof lat === 'number' && typeof lon === 'number' && !isNaN(lat) && !isNaN(lon)) {
-              sgObj.points.push({ lat, lon });
-            }
+          }
+          if (typeof lat === 'number' && typeof lon === 'number' && !isNaN(lat) && !isNaN(lon) && (lat !== 0 || lon !== 0)) {
+            sgObj.points.push({ lat, lon });
           }
         });
 
@@ -465,7 +484,16 @@ function generateSequentialFilenames(startFn: string, count: number): string[] {
             pic: picName,
             isStagingPreview: true,
             isSyncedWithSupabase: false,
-            isStagedInSupabase: true
+            isStagedInSupabase: true,
+            points: g.points,
+            panoramas: g.points.map((pt: any, pIdx: number) => ({
+              filename: g.imageFilenames[pIdx] || `${sg}-${String(pIdx + 1).padStart(4, '0')}.jpg`,
+              latitude: pt.lat,
+              longitude: pt.lon,
+              lat: pt.lat,
+              lon: pt.lon,
+              subgrid: sg
+            }))
           });
 
           batchLogs.push({
@@ -483,7 +511,16 @@ function generateSequentialFilenames(startFn: string, count: number): string[] {
             captureEquipment: g.equipment,
             pic: picName,
             isSyncedWithSupabase: false,
-            isStagedInSupabase: true
+            isStagedInSupabase: true,
+            points: g.points,
+            panoramas: g.points.map((pt: any, pIdx: number) => ({
+              filename: g.imageFilenames[pIdx] || `${sg}-${String(pIdx + 1).padStart(4, '0')}.jpg`,
+              latitude: pt.lat,
+              longitude: pt.lon,
+              lat: pt.lat,
+              lon: pt.lon,
+              subgrid: sg
+            }))
           });
         });
       }
