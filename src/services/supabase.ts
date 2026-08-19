@@ -1389,7 +1389,7 @@ export async function testDatabaseHealth(): Promise<{
 /**
  * Fetch data deletion approval requests from Supabase / localStorage fallback.
  */
-export async function fetchDeletionRequestsFromSupabase(): Promise<any[]> {
+export async function fetchDeletionRequestsFromSupabase(currentUser?: any): Promise<any[]> {
   try {
     const { data, error } = await supabase.from('deletion_requests').select('*').order('date_requested', { ascending: false });
     if (!error && data && data.length > 0) {
@@ -1418,12 +1418,15 @@ export async function fetchDeletionRequestsFromSupabase(): Promise<any[]> {
     try { return JSON.parse(saved); } catch { }
   }
 
+  const defaultName = currentUser?.user_metadata?.full_name || currentUser?.name || (currentUser?.email ? currentUser.email.split('@')[0] : 'Fariz Farhan');
+  const defaultEmail = currentUser?.email || 'fariz.farhan95@tnb.com.my';
+
   return [
     {
       id: 'DEL-REQ-901',
       subgrid: 'N94E70',
-      requestedBy: 'Fariz Farhan',
-      userEmail: 'fariz.farhan95@tnb.com.my',
+      requestedBy: defaultName,
+      userEmail: defaultEmail,
       reason: 'Recalibrated camera calibration required; re-capturing survey trajectory tomorrow.',
       poiCount: 70,
       kmProcessed: 0.2,

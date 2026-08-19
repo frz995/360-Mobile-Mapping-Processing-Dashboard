@@ -134,7 +134,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
         // 2. Send Basemap Selection
         previewIframeRef.current.contentWindow.postMessage({
           type: 'SET_BASEMAP',
-          basemap: projectSettings.defaultBasemap || 'esri_satellite',
+          basemap: projectSettings.defaultBasemap || 'positron',
           customUrl: projectSettings.customBasemapUrl || '',
           opacity: (projectSettings.basemapOpacity ?? 100) / 100
         }, '*');
@@ -149,7 +149,9 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
             selectedTrackColor: projectSettings.selectedTrackColor || '#38BDF8',
             gridBoundaryColor: projectSettings.gridBoundaryColor || '#6366F1',
             lineWidth: projectSettings.poiTrackLineWidth || 3,
-            enableGlow: projectSettings.enableLayerGlow !== false
+            enableGlow: projectSettings.enableLayerGlow !== false,
+            opacity: (projectSettings.layerOpacity ?? 100) / 100,
+            layerOpacity: (projectSettings.layerOpacity ?? 100) / 100
           }
         }, '*');
 
@@ -179,6 +181,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
     projectSettings.basemapOpacity,
     projectSettings.poiTrackLineWidth,
     projectSettings.enableLayerGlow,
+    projectSettings.layerOpacity,
     themeMode
   ]);
 
@@ -215,7 +218,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
   // Initial Data Fetch
   useEffect(() => {
     fetchUserAccountsFromSupabase(authSession).then(res => setUsers(res));
-    fetchDeletionRequestsFromSupabase().then(res => setDeletionRequests(res));
+    fetchDeletionRequestsFromSupabase(authSession?.user).then(res => setDeletionRequests(res));
   }, [authSession]);
 
   const handleTestHealth = async () => {
@@ -446,14 +449,14 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
           onClick={() => setActiveTab('approvals')}
           className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
             activeTab === 'approvals'
-              ? (themeMode === 'light' ? 'bg-amber-50 text-amber-800 shadow-sm border border-amber-200 font-bold' : 'bg-slate-800 text-white shadow-sm border border-slate-700')
+              ? (themeMode === 'light' ? 'bg-slate-200/80 text-slate-900 shadow-sm border border-slate-300 font-bold' : 'bg-slate-800 text-white shadow-sm border border-slate-700')
               : (themeMode === 'light' ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50')
           }`}
         >
-          <CheckSquare size={14} className={activeTab === 'approvals' ? 'text-amber-500' : ''} />
+          <CheckSquare size={14} className={activeTab === 'approvals' ? (themeMode === 'light' ? 'text-slate-800' : 'text-slate-200') : ''} />
           <span>Approvals (Data Deletion)</span>
           {pendingApprovalsCount > 0 && (
-            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold border ${themeMode === 'light' ? 'bg-amber-100 text-amber-800 border-amber-300 shadow-sm' : 'bg-amber-500/20 text-amber-300 border-amber-500/30'}`}>
+            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold border ${themeMode === 'light' ? 'bg-slate-200 text-slate-800 border-slate-300' : 'bg-slate-800 text-slate-300 border-slate-700'}`}>
               {pendingApprovalsCount}
             </span>
           )}
@@ -1408,6 +1411,9 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                       <button
                         type="button"
                         onClick={() => {
+                          try {
+                            localStorage.setItem('tnb_project_settings', JSON.stringify(projectSettings));
+                          } catch (e) { }
                           if (previewIframeRef.current && previewIframeRef.current.contentWindow) {
                             previewIframeRef.current.contentWindow.postMessage({
                               type: 'SET_BASEMAP',
@@ -1470,11 +1476,11 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                               stagedItems: formattedStaged
                             }, '*');
                           }
-                          showToast('Loaded TNB Standard Palette to preview map!');
+                          showToast('Loaded Standard Palette to preview map!');
                         }}
                         className={`px-2 py-0.5 rounded text-[10px] font-semibold border cursor-pointer ${themeMode === 'light' ? 'bg-white hover:bg-slate-100 text-slate-700 border-slate-300' : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'}`}
                       >
-                        TNB Standard
+                        Standard
                       </button>
                       <button
                         type="button"
@@ -1785,6 +1791,33 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                         </button>
                       </div>
                     </div>
+                    {/* LAYER & TRAJECTORY COLOR OPACITY */}
+                    <div className={`sm:col-span-2 pt-2 border-t ${themeMode === 'light' ? 'border-slate-200' : 'border-slate-700/60'}`}>
+                      <div className="flex justify-between items-center mb-1">
+                        <label className="text-slate-400 font-medium">Layer & Trajectory Color Opacity</label>
+                        <span className="font-mono text-[11px] text-emerald-400 font-bold">{projectSettings.layerOpacity ?? 100}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="20"
+                        max="100"
+                        value={projectSettings.layerOpacity ?? 100}
+                        onChange={e => {
+                          const val = Number(e.target.value);
+                          setProjectSettings(prev => ({ ...prev, layerOpacity: val }));
+                          if (previewIframeRef.current && previewIframeRef.current.contentWindow) {
+                            previewIframeRef.current.contentWindow.postMessage({
+                              type: 'SET_MAP_THEME',
+                              settings: {
+                                opacity: val / 100,
+                                layerOpacity: val / 100
+                              }
+                            }, '*');
+                          }
+                        }}
+                        className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-500 mt-1"
+                      />
+                    </div>
                   </div>
 
                   {/* Apply Layer Theme Button */}
@@ -1792,6 +1825,9 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                     <button
                       type="button"
                       onClick={() => {
+                        try {
+                          localStorage.setItem('tnb_project_settings', JSON.stringify(projectSettings));
+                        } catch (e) { }
                         if (previewIframeRef.current && previewIframeRef.current.contentWindow) {
                           // 1. Send Map Vector Layer Theme & Styling
                           previewIframeRef.current.contentWindow.postMessage({
@@ -1803,7 +1839,9 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                               selectedTrackColor: projectSettings.selectedTrackColor || '#38BDF8',
                               gridBoundaryColor: projectSettings.gridBoundaryColor || '#6366F1',
                               lineWidth: projectSettings.poiTrackLineWidth || 3,
-                              enableGlow: projectSettings.enableLayerGlow !== false
+                              enableGlow: projectSettings.enableLayerGlow !== false,
+                              opacity: (projectSettings.layerOpacity ?? 100) / 100,
+                              layerOpacity: (projectSettings.layerOpacity ?? 100) / 100
                             }
                           }, '*');
 
@@ -1870,8 +1908,8 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                     {/* Embedded WebGIS Map Iframe */}
                     <iframe
                       ref={previewIframeRef}
-                      key={`${previewRefreshKey}-${themeMode}`}
-                      src={`${import.meta.env.VITE_MAP_URL || 'https://mobilemapping-nine.vercel.app'}/?embed=true&preview=true&theme=${themeMode}&t=${previewRefreshKey}`}
+                      key={`${previewRefreshKey}-${themeMode}-${projectSettings.defaultBasemap || 'positron'}`}
+                      src={`${import.meta.env.VITE_MAP_URL || 'https://mobilemapping-nine.vercel.app'}/?embed=true&preview=true&theme=${themeMode}&basemap=${projectSettings.defaultBasemap || 'positron'}&t=${previewRefreshKey}`}
                       onLoad={() => {
                         sendPreviewData();
                         setTimeout(sendPreviewData, 400);
@@ -1952,34 +1990,62 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
 
           {/* SECTION 4: SECURITY, RBAC & ACCESS CONTROL SETTINGS */}
           <div className={`p-5 rounded-xl border space-y-4 ${cardBg}`}>
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+            <div className={`flex flex-wrap items-center justify-between gap-2 pb-3 border-b ${themeMode === 'light' ? 'border-slate-200' : 'border-slate-800'}`}>
               <div className="flex items-center gap-2">
-                <Shield size={16} className="text-sky-400" />
-                <h3 className="text-sm font-bold text-slate-100 uppercase tracking-wide">4. Security, Authentication & Access Control (RBAC)</h3>
+                <Shield size={16} className={themeMode === 'light' ? 'text-slate-700' : 'text-slate-300'} />
+                <div>
+                  <h3 className={`text-sm font-bold uppercase tracking-wide ${themeMode === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>
+                    4. Security, Authentication & Access Control (RBAC)
+                  </h3>
+                  <p className={`text-[11px] mt-0.5 ${themeMode === 'light' ? 'text-slate-500' : 'text-slate-400'}`}>
+                    Configure enterprise authentication policies, session timeouts, authorized email restrictions, and role permissions.
+                  </p>
+                </div>
               </div>
-              <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold">
+              <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-semibold border ${themeMode === 'light' ? 'bg-slate-100 text-slate-700 border-slate-200' : 'bg-slate-800/80 text-slate-300 border-slate-700'}`}>
                 Protected Mode
               </span>
             </div>
 
-            <div className="space-y-3 text-xs">
-              {/* Deletion Guard Toggle */}
-              <div className={`p-3 rounded-lg border flex items-center justify-between ${innerCardBg}`}>
-                <div>
-                  <h4 className="font-semibold text-slate-200">Require Administrator Approval for CSV Deletion</h4>
-                  <p className="text-[11px] text-slate-400 mt-0.5">When enabled, operators requesting CSV deletion submit a ticket to the Approvals queue instead of hard-deleting.</p>
+            <div className="space-y-3.5 text-xs">
+              {/* SUB-SECTION A: SECURITY SAFEGUARDS & 2FA */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Deletion Guard Toggle */}
+                <div className={`p-3 rounded-xl border flex items-center justify-between gap-3 ${innerCardBg}`}>
+                  <div>
+                    <h4 className={`font-semibold ${themeMode === 'light' ? 'text-slate-800' : 'text-slate-200'}`}>Require Administrator Approval for CSV Deletion</h4>
+                    <p className={`text-[11px] mt-0.5 ${themeMode === 'light' ? 'text-slate-500' : 'text-slate-400'}`}>When enabled, field operators submit deletion tickets to the Approvals queue instead of hard-deleting.</p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={projectSettings.requireAdminApprovalForDelete !== false}
+                    onChange={e => setProjectSettings(prev => ({ ...prev, requireAdminApprovalForDelete: e.target.checked }))}
+                    className="w-4 h-4 accent-sky-500 rounded cursor-pointer shrink-0"
+                  />
                 </div>
-                <input
-                  type="checkbox"
-                  checked={projectSettings.requireAdminApprovalForDelete !== false}
-                  onChange={e => setProjectSettings(prev => ({ ...prev, requireAdminApprovalForDelete: e.target.checked }))}
-                  className="w-4 h-4 accent-sky-500 rounded cursor-pointer"
-                />
+
+                {/* 2FA / MFA Toggle */}
+                <div className={`p-3 rounded-xl border flex items-center justify-between gap-3 ${innerCardBg}`}>
+                  <div>
+                    <h4 className={`font-semibold ${themeMode === 'light' ? 'text-slate-800' : 'text-slate-200'}`}>Multi-Factor Authentication (MFA / 2FA)</h4>
+                    <p className={`text-[11px] mt-0.5 ${themeMode === 'light' ? 'text-slate-500' : 'text-slate-400'}`}>Enforce one-time verification codes for Administrator and QA Inspector accounts on login.</p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={projectSettings.twoFactorRequired === true}
+                    onChange={e => setProjectSettings(prev => ({ ...prev, twoFactorRequired: e.target.checked }))}
+                    className="w-4 h-4 accent-sky-500 rounded cursor-pointer shrink-0"
+                  />
+                </div>
               </div>
 
+              {/* SUB-SECTION B: SESSION & EMAIL DOMAIN RESTRICTIONS */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-slate-400 font-medium mb-1">Session Inactivity Auto-Lock</label>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="text-slate-400 font-medium">Session Inactivity Auto-Lock</label>
+                    <span className="text-[10px] text-slate-500">Auto-terminates idle sessions</span>
+                  </div>
                   <select
                     value={projectSettings.sessionTimeoutMinutes || 30}
                     onChange={e => setProjectSettings(prev => ({ ...prev, sessionTimeoutMinutes: Number(e.target.value) }))}
@@ -1989,30 +2055,69 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                     <option value="30">30 Minutes (Recommended)</option>
                     <option value="60">1 Hour</option>
                     <option value="240">4 Hours</option>
+                    <option value="480">8 Hours (Full Shift)</option>
                     <option value="0">Never (Dev Mode Only)</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 font-medium mb-1">Corporate Email Domain Restriction</label>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="text-slate-400 font-medium">Authorized Email / Domain Restriction</label>
+                    <span className="text-[10px] text-slate-500">Whitelist filter</span>
+                  </div>
                   <input
                     type="text"
-                    placeholder="@tnb.com.my"
-                    value={projectSettings.corporateDomain || '@tnb.com.my'}
+                    placeholder="user@example.com, @company.com (email)"
+                    value={projectSettings.corporateDomain || ''}
                     onChange={e => setProjectSettings(prev => ({ ...prev, corporateDomain: e.target.value }))}
                     className={`w-full px-3 py-2 rounded-lg font-mono focus:outline-none border ${inputBg}`}
                   />
+                  <p className="text-[10px] text-slate-500 mt-1">Specify authorized email addresses or domain suffixes (e.g. <code>user@example.com</code> or <code>@company.com</code>).</p>
                 </div>
               </div>
 
-              {/* Masked API Credentials Box */}
-              <div className={`p-3 rounded-lg border space-y-2 ${innerCardBg}`}>
+              {/* SUB-SECTION C: RBAC ROLE PERMISSIONS OVERVIEW */}
+              <div className={`p-3.5 rounded-xl border space-y-2.5 ${innerCardBg}`}>
                 <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-semibold text-slate-300 flex items-center gap-1.5">
-                    <Key size={13} className="text-slate-400" />
+                  <h4 className={`text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 ${themeMode === 'light' ? 'text-slate-800' : 'text-slate-200'}`}>
+                    <Users size={13} className={themeMode === 'light' ? 'text-slate-600' : 'text-slate-400'} />
+                    Role-Based Access Control (RBAC) Policy
+                  </h4>
+                  <span className="text-[10px] text-slate-400 font-mono">4 System Roles</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+                  <div className={`p-2.5 rounded-lg border ${themeMode === 'light' ? 'bg-slate-50 border-slate-200' : 'bg-slate-900/60 border-slate-800'}`}>
+                    <h5 className={`font-bold text-[11px] mb-1 ${themeMode === 'light' ? 'text-slate-800' : 'text-slate-200'}`}>Administrator</h5>
+                    <p className={`text-[10px] leading-tight ${themeMode === 'light' ? 'text-slate-500' : 'text-slate-400'}`}>Full read/write, DB deletion approval, storage probe & security settings.</p>
+                  </div>
+
+                  <div className={`p-2.5 rounded-lg border ${themeMode === 'light' ? 'bg-slate-50 border-slate-200' : 'bg-slate-900/60 border-slate-800'}`}>
+                    <h5 className={`font-bold text-[11px] mb-1 ${themeMode === 'light' ? 'text-slate-800' : 'text-slate-200'}`}>QA Inspector</h5>
+                    <p className={`text-[10px] leading-tight ${themeMode === 'light' ? 'text-slate-500' : 'text-slate-400'}`}>Flag quality defects, inspect 360° panoramas & export audit reports.</p>
+                  </div>
+
+                  <div className={`p-2.5 rounded-lg border ${themeMode === 'light' ? 'bg-slate-50 border-slate-200' : 'bg-slate-900/60 border-slate-800'}`}>
+                    <h5 className={`font-bold text-[11px] mb-1 ${themeMode === 'light' ? 'text-slate-800' : 'text-slate-200'}`}>Survey Operator</h5>
+                    <p className={`text-[10px] leading-tight ${themeMode === 'light' ? 'text-slate-500' : 'text-slate-400'}`}>Upload CSV datasets, view subgrids & submit deletion approval requests.</p>
+                  </div>
+
+                  <div className={`p-2.5 rounded-lg border ${themeMode === 'light' ? 'bg-slate-50 border-slate-200' : 'bg-slate-900/60 border-slate-800'}`}>
+                    <h5 className={`font-bold text-[11px] mb-1 ${themeMode === 'light' ? 'text-slate-800' : 'text-slate-200'}`}>Viewer</h5>
+                    <p className={`text-[10px] leading-tight ${themeMode === 'light' ? 'text-slate-500' : 'text-slate-400'}`}>Read-only access to published GIS map viewer, charts & analytics.</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* SUB-SECTION D: MASKED API CREDENTIALS BOX */}
+              <div className={`p-3 rounded-xl border space-y-2 ${innerCardBg}`}>
+                <div className="flex items-center justify-between">
+                  <span className={`text-[11px] font-semibold flex items-center gap-1.5 ${themeMode === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
+                    <Key size={13} className={themeMode === 'light' ? 'text-slate-600' : 'text-slate-400'} />
                     Supabase Service & Anon API Key Status
                   </span>
                   <button
+                    type="button"
                     onClick={() => setShowApiKey(!showApiKey)}
                     className="text-[10px] text-slate-400 hover:text-slate-200 flex items-center gap-1 cursor-pointer"
                   >
@@ -2028,12 +2133,14 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                     className={`flex-1 px-2.5 py-1.5 rounded font-mono text-[11px] border ${inputBg}`}
                   />
                   <button
+                    type="button"
                     onClick={() => {
                       navigator.clipboard.writeText(import.meta.env.VITE_SUPABASE_ANON_KEY || '');
                       setCopiedKey(true);
                       setTimeout(() => setCopiedKey(false), 2000);
+                      showToast('API key copied to clipboard!');
                     }}
-                    className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 rounded text-xs cursor-pointer flex items-center gap-1"
+                    className={`px-3 py-1.5 rounded text-xs font-semibold cursor-pointer flex items-center gap-1 border transition-colors ${themeMode === 'light' ? 'bg-white hover:bg-slate-100 text-slate-700 border-slate-300' : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'}`}
                   >
                     <Copy size={12} />
                     <span>{copiedKey ? 'Copied' : 'Copy'}</span>
@@ -2122,13 +2229,19 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
             </div>
 
             {/* Save Button */}
-            <div className="pt-3 border-t border-slate-800 flex justify-end">
+            <div className={`pt-3 border-t flex justify-end ${themeMode === 'light' ? 'border-slate-200' : 'border-slate-800'}`}>
               <button
+                type="button"
                 onClick={() => {
+                  try {
+                    localStorage.setItem('tnb_project_settings', JSON.stringify(projectSettings));
+                  } catch (e) { }
+                  sendPreviewData();
                   onSaveAllSettings?.();
+                  addAuditLog?.('SETTINGS', 'Saved Project Settings', 'Updated project parameters, basemap, security and SLA benchmarks.', 'success');
                   showToast('Project & Security Settings saved and synchronized live!');
                 }}
-                className="px-5 py-2.5 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-xs font-bold transition-all shadow-md cursor-pointer flex items-center gap-2"
+                className="px-5 py-2.5 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-xs font-bold transition-all shadow-md cursor-pointer flex items-center gap-2 active:scale-95"
               >
                 <CheckCircle size={14} />
                 <span>Save All Settings</span>
@@ -2143,13 +2256,13 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
       {/* ========================================================================= */}
       {activeTab === 'approvals' && (
         <div className={`p-5 rounded-xl border space-y-4 ${cardBg}`}>
-          <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800">
+          <div className={`flex flex-wrap items-center justify-between gap-3 pb-3 border-b ${themeMode === 'light' ? 'border-slate-200' : 'border-slate-800'}`}>
             <div>
-              <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2">
-                <CheckSquare size={16} className="text-amber-400" />
+              <h3 className={`text-sm font-bold flex items-center gap-2 ${themeMode === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>
+                <CheckSquare size={16} className={themeMode === 'light' ? 'text-slate-700' : 'text-slate-300'} />
                 Data Deletion Review & Approval Queue
               </h3>
-              <p className="text-xs text-slate-400 mt-0.5">Review and authorize data deletion requests submitted by field operators.</p>
+              <p className={`text-xs mt-0.5 ${themeMode === 'light' ? 'text-slate-500' : 'text-slate-400'}`}>Review and authorize data deletion requests submitted by field operators.</p>
             </div>
             <div className="flex items-center gap-2">
               <select
@@ -2165,10 +2278,10 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
             </div>
           </div>
 
-          <div className="border border-slate-800 rounded-lg overflow-x-auto">
+          <div className={`border rounded-lg overflow-x-auto ${themeMode === 'light' ? 'border-slate-200' : 'border-slate-800'}`}>
             <table className="w-full text-xs text-left border-collapse">
               <thead>
-                <tr className="bg-slate-900/80 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800">
+                <tr className={`uppercase text-[10px] tracking-wider border-b ${themeMode === 'light' ? 'bg-slate-100/80 text-slate-600 border-slate-200' : 'bg-slate-900/80 text-slate-400 border-slate-800'}`}>
                   <th className="px-3.5 py-2.5">Request ID</th>
                   <th className="px-3.5 py-2.5">Subgrid</th>
                   <th className="px-3.5 py-2.5">Requester</th>
@@ -2178,53 +2291,76 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                   <th className="px-3.5 py-2.5 text-right">Admin Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/80">
+              <tbody className={`divide-y ${themeMode === 'light' ? 'divide-slate-200' : 'divide-slate-800/80'}`}>
                 {filteredApprovals.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="px-4 py-8 text-center text-slate-500">No deletion approval requests in this filter.</td>
                   </tr>
                 ) : (
-                  filteredApprovals.map(req => (
-                    <tr key={req.id} className="hover:bg-slate-800/30 transition-colors">
-                      <td className="px-3.5 py-2.5 font-mono text-slate-300 font-semibold">{req.id}</td>
-                      <td className="px-3.5 py-2.5 font-mono text-sky-400 font-bold">{req.subgrid}</td>
-                      <td className="px-3.5 py-2.5 text-slate-200">
-                        <div className="font-semibold">{req.requestedBy}</div>
-                        <div className="text-[10px] text-slate-500 font-mono">{req.userEmail}</div>
-                      </td>
-                      <td className="px-3.5 py-2.5 text-slate-300 max-w-xs">{req.reason}</td>
-                      <td className="px-3.5 py-2.5 font-mono text-slate-300">
-                        {req.poiCount} frames ({req.kmProcessed} km)
-                      </td>
-                      <td className="px-3.5 py-2.5">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-semibold border ${req.status === 'Pending' ? 'bg-amber-500/10 text-amber-300 border-amber-500/30' : req.status === 'Approved' ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30' : 'bg-rose-500/10 text-rose-300 border-rose-500/30'}`}>
-                          {req.status}
-                        </span>
-                      </td>
-                      <td className="px-3.5 py-2.5 text-right">
-                        {req.status === 'Pending' ? (
-                          <div className="flex items-center justify-end gap-1.5">
-                            <button
-                              onClick={() => handleApproveDeletion(req)}
-                              className="px-2.5 py-1 bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-300 border border-emerald-500/30 rounded text-[11px] font-semibold cursor-pointer transition-colors"
-                            >
-                              Approve
-                            </button>
-                            <button
-                              onClick={() => setRejectModalReqId(req.id)}
-                              className="px-2.5 py-1 bg-rose-600/20 hover:bg-rose-600/40 text-rose-300 border border-rose-500/30 rounded text-[11px] font-semibold cursor-pointer transition-colors"
-                            >
-                              Reject
-                            </button>
-                          </div>
-                        ) : (
-                          <span className="text-[10px] text-slate-500 font-mono">
-                            {req.reviewedBy ? `by ${req.reviewedBy}` : 'Processed'}
+                  filteredApprovals.map(req => {
+                    const requesterName = (req.requestedBy && req.requestedBy !== 'Fariz Farhan')
+                      ? req.requestedBy
+                      : (authSession?.user?.user_metadata?.full_name || authSession?.user?.name || (authSession?.user?.email ? authSession.user.email.split('@')[0] : req.requestedBy) || 'Authenticated User');
+                    const requesterEmail = (req.userEmail && req.userEmail !== 'fariz.farhan95@tnb.com.my')
+                      ? req.userEmail
+                      : (authSession?.user?.email || req.userEmail || 'operator@tnb.com.my');
+
+                    return (
+                      <tr key={req.id} className={`transition-colors ${themeMode === 'light' ? 'hover:bg-slate-50' : 'hover:bg-slate-800/30'}`}>
+                        <td className={`px-3.5 py-2.5 font-mono font-semibold ${themeMode === 'light' ? 'text-slate-800' : 'text-slate-300'}`}>{req.id}</td>
+                        <td className={`px-3.5 py-2.5 font-mono font-bold ${themeMode === 'light' ? 'text-slate-800' : 'text-slate-200'}`}>{req.subgrid}</td>
+                        <td className="px-3.5 py-2.5">
+                          <div className={`font-semibold ${themeMode === 'light' ? 'text-slate-800' : 'text-slate-200'}`}>{requesterName}</div>
+                          <div className="text-[10px] text-slate-500 font-mono">{requesterEmail}</div>
+                        </td>
+                        <td className={`px-3.5 py-2.5 max-w-xs ${themeMode === 'light' ? 'text-slate-600' : 'text-slate-300'}`}>{req.reason}</td>
+                        <td className={`px-3.5 py-2.5 font-mono ${themeMode === 'light' ? 'text-slate-600' : 'text-slate-300'}`}>
+                          {req.poiCount} frames ({req.kmProcessed} km)
+                        </td>
+                        <td className="px-3.5 py-2.5">
+                          <span className={`font-semibold text-xs ${
+                            req.status === 'Pending'
+                              ? (themeMode === 'light' ? 'text-amber-600' : 'text-amber-400')
+                              : req.status === 'Approved'
+                              ? (themeMode === 'light' ? 'text-emerald-600' : 'text-emerald-400')
+                              : (themeMode === 'light' ? 'text-rose-600' : 'text-rose-400')
+                          }`}>
+                            {req.status}
                           </span>
-                        )}
-                      </td>
-                    </tr>
-                  ))
+                        </td>
+                        <td className="px-3.5 py-2.5 text-right">
+                          {req.status === 'Pending' ? (
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                onClick={() => handleApproveDeletion(req)}
+                                className={`px-2.5 py-1 rounded text-[11px] font-semibold cursor-pointer transition-colors border ${
+                                  themeMode === 'light'
+                                    ? 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-600'
+                                    : 'bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-300 border-emerald-500/30'
+                                }`}
+                              >
+                                Approve
+                              </button>
+                              <button
+                                onClick={() => setRejectModalReqId(req.id)}
+                                className={`px-2.5 py-1 rounded text-[11px] font-semibold cursor-pointer transition-colors border ${
+                                  themeMode === 'light'
+                                    ? 'bg-white hover:bg-rose-50 text-rose-700 border-rose-200'
+                                    : 'bg-rose-600/20 hover:bg-rose-600/40 text-rose-300 border-rose-500/30'
+                                }`}
+                              >
+                                Reject
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="text-[10px] text-slate-500 font-mono">
+                              {req.reviewedBy ? `by ${req.reviewedBy}` : 'Processed'}
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
