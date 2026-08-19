@@ -1221,7 +1221,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
               </div>
             </div>
 
-            {/* SUB-CARD D: STORAGE DIAGNOSTICS & URL RESOLUTION PREVIEW */}
+            {/* SUB-CARD D: STORAGE DIAGNOSTICS */}
             <div className={`p-4 rounded-xl border space-y-3 ${innerCardBg}`}>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
@@ -1253,10 +1253,6 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                     <Copy size={13} />
                     <span>Copy Sample 360° URL</span>
                   </button>
-                </div>
-
-                <div className="text-[11px] text-slate-400 font-mono truncate max-w-md">
-                  Sample: <strong className="text-slate-300">{resolvePanoramaUrl('N93E70-0001.jpg')}</strong>
                 </div>
               </div>
             </div>
