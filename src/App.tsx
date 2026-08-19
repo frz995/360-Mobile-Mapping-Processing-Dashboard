@@ -5034,125 +5034,13 @@ export default function App() {
       }
       try {
         const { dailyData: sDaily, batchLogs: sBatches } = await fetchSupabaseData();
-        const publishedSubgridSet = new Set(
-          (sDaily || [])
-            .filter(d => d.publishToWebGIS === 'yes' || d.isFromSupabase === true)
-            .map(d => (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim())
-            .filter(Boolean)
-        );
-        const liveSubgridSet = new Set((sDaily || []).map(d => (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim()).filter(Boolean));
-        const liveBatchSet = new Set((sBatches || []).map(b => (extractSubgridName(b.subgrid || b.imageFilename) || b.subgrid || '').toUpperCase().trim()).filter(Boolean));
 
-        setDailyData(prev => {
-          // Composite run key: subgrid + normalized date + poiCount
-          // Uniquely identifies one survey journey without collapsing different runs of the same subgrid
-          const makeRunKey = (d: any): string => {
-            const sg = (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim();
-            const dt = (d.date || '').toLowerCase().trim();
-            const poi = d.poiCount || d.imagesProcessed || 0;
-            return `${sg}||${dt}||${poi}`;
-          };
-
-          const seenRunKeys = new Set<string>();
-          const merged: DailyTimeSeries[] = [];
-
-          // Only index TRULY PUBLISHED records for the "staging→published replacement" check.
-          // Staging records from sDaily must NOT evict local staging entries that carry
-          // full panorama coordinate arrays needed for panotrack display on the map.
-          const publishedRunKeys = new Set<string>();
-          (sDaily || []).forEach(sd => {
-            if (sd.publishToWebGIS === 'yes' || sd.isSyncedWithSupabase === true) {
-              publishedRunKeys.add(makeRunKey(sd));
-            }
-          });
-
-          prev.forEach(d => {
-            const normSg = (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim();
-            const isFromRemoteDb = Boolean(d.isFromSupabase || (d.id && String(d.id).startsWith('sp-daily-')));
-            const isStaged = d.publishToWebGIS !== 'yes' && !d.isSyncedWithSupabase;
-
-            // Purge remote-DB items that no longer exist in live published data
-            if (isFromRemoteDb && normSg && !liveSubgridSet.has(normSg)) {
-              return;
-            }
-
-            // Only drop a local staging record if it's been PUBLISHED (exists in publishedRunKeys).
-            // Never drop it just because a staging sDaily version exists — that version lacks coordinates.
-            if (isStaged && publishedRunKeys.has(makeRunKey(d))) {
-              return;
-            }
-
-            const runKey = makeRunKey(d);
-            const dedupKey = d.id ? String(d.id) : runKey;
-            if (!seenRunKeys.has(dedupKey) && !seenRunKeys.has(runKey)) {
-              seenRunKeys.add(dedupKey);
-              seenRunKeys.add(runKey);
-              const maxPoi = d.poiCount || (d.panoramas?.length) || 0;
-              const rawImg = typeof d.availableImagesCount === 'number' ? d.availableImagesCount : 0;
-              const cappedImg = maxPoi > 0 ? Math.min(rawImg, maxPoi) : rawImg;
-              const existsInProductionDb = Boolean(normSg && publishedSubgridSet.has(normSg));
-              const isPub = d.publishToWebGIS === 'yes' || d.isFromSupabase === true || (!isStaged && existsInProductionDb);
-              merged.push({
-                ...d,
-                imagesProcessed: cappedImg,
-                availableImagesCount: cappedImg,
-                publishToWebGIS: isPub ? 'yes' : (d.publishToWebGIS || 'in process'),
-                isSyncedWithSupabase: isPub ? true : Boolean(d.isSyncedWithSupabase),
-                action: isPub ? 'Published in database' : (d.action || 'Imported (staging)')
-              });
-            }
-          });
-
-          // Add records from Supabase that are not already represented locally.
-          // For staging records, only add if no local version (with coordinates) exists.
-          (sDaily || []).forEach(sd => {
-            const runKey = makeRunKey(sd);
-            const dedupKey = sd.id ? String(sd.id) : runKey;
-            if (!seenRunKeys.has(dedupKey) && !seenRunKeys.has(runKey)) {
-              seenRunKeys.add(dedupKey);
-              seenRunKeys.add(runKey);
-              merged.push(sd);
-            }
-          });
-
-          return merged;
-        });
-
-
-        setBatchLogs(prev => {
-          const merged = prev.filter(b => {
-            const normSg = (extractSubgridName(b.subgrid || b.imageFilename) || b.subgrid || '').toUpperCase().trim();
-            // If batch was explicitly synced with Supabase but is no longer in liveBatchSet (or live DB is empty), purge it
-            if (b.isSyncedWithSupabase === true && normSg && !liveBatchSet.has(normSg)) {
-              return false;
-            }
-            return true;
-          }).map(b => {
-            const normSg = (extractSubgridName(b.subgrid || b.imageFilename) || b.subgrid || '').toUpperCase().trim();
-            const sb = (sBatches || []).find(s => (extractSubgridName(s.subgrid || s.imageFilename) || s.subgrid || '').toUpperCase().trim() === normSg);
-            if (sb) {
-              const bPub = (b as any).publishToWebGIS;
-              const isStaged = sb.status === 'Ongoing' || sb.isStagingPreview || !sb.isSyncedWithSupabase || bPub === 'in process' || bPub === 'no' || bPub === 'need to recheck';
-              return {
-                ...b,
-                ...sb,
-                id: b.id,
-                status: isStaged ? 'Ongoing' as const : 'Complete' as const,
-                isSyncedWithSupabase: !isStaged
-              };
-            }
-            return b;
-          });
-
-          (sBatches || []).forEach(sb => {
-            const normSg = (extractSubgridName(sb.subgrid || sb.imageFilename) || sb.subgrid || '').toUpperCase().trim();
-            if (!merged.some(b => (extractSubgridName(b.subgrid || b.imageFilename) || b.subgrid || '').toUpperCase().trim() === normSg)) {
-              merged.push(sb);
-            }
-          });
-
-          return merged;
-        });
+        if (sDaily && sDaily.length > 0) {
+          setDailyData(sDaily);
+        }
+        if (sBatches && sBatches.length > 0) {
+          setBatchLogs(sBatches);
+        }
 
         // Fetch live defect count from qa_defects table & sync per subgrid
         try {
@@ -5403,48 +5291,10 @@ export default function App() {
       handleRefreshMap();
       fetchSupabaseData().then(({ dailyData: sDaily, batchLogs: sBatches }) => {
         if (sDaily && sDaily.length > 0) {
-          setDailyData(prev => {
-            const makeKey = (d: any) => {
-              const sg = (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim();
-              const dt = (d.date || '').toLowerCase().trim();
-              const poi = d.poiCount || d.imagesProcessed || 0;
-              return `${sg}||${dt}||${poi}`;
-            };
-            const seen = new Set<string>();
-            const merged: DailyTimeSeries[] = [];
-            // Prefer fresh Supabase version for matching runs
-            sDaily.forEach(sd => {
-              const k = makeKey(sd);
-              if (!seen.has(k)) { seen.add(k); merged.push(sd); }
-            });
-            // Keep local staging/non-published runs that are not in sDaily
-            prev.forEach(d => {
-              const k = makeKey(d);
-              const isStaged = d.publishToWebGIS !== 'yes' && !d.isSyncedWithSupabase;
-              if (!seen.has(k) && isStaged) { seen.add(k); merged.push(d); }
-            });
-            return merged;
-          });
+          setDailyData(sDaily);
         }
         if (sBatches && sBatches.length > 0) {
-          setBatchLogs(prev => {
-            const makeKey = (b: any) => {
-              const sg = (extractSubgridName(b.subgrid || b.imageFilename) || b.subgrid || '').toUpperCase().trim();
-              const poi = b.poiCount || b.images || 0;
-              return `${sg}||${poi}`;
-            };
-            const seen = new Set<string>();
-            const merged: BatchLog[] = [];
-            sBatches.forEach(sb => {
-              const k = makeKey(sb);
-              if (!seen.has(k)) { seen.add(k); merged.push(sb); }
-            });
-            prev.forEach(b => {
-              const k = makeKey(b);
-              if (!seen.has(k)) { seen.add(k); merged.push(b); }
-            });
-            return merged;
-          });
+          setBatchLogs(sBatches);
         }
       }).catch(err => console.warn('Re-sync error on settings save:', err));
       setSettingsSaveToast({
