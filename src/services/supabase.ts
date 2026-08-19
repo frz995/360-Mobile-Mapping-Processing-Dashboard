@@ -101,6 +101,19 @@ export async function fetchSupabaseData(): Promise<{
   error?: string;
 }> {
   try {
+    // Resolve authenticated user profile dynamically for PIC status
+    let authenticatedUserPic = 'Fariz';
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      if (authData?.user) {
+        const u = authData.user;
+        const rawName = u.user_metadata?.full_name || u.user_metadata?.name || (u.email ? u.email.split('@')[0] : '');
+        if (rawName) {
+          authenticatedUserPic = rawName.charAt(0).toUpperCase() + rawName.slice(1);
+        }
+      }
+    } catch (authErr) { }
+
     // Try fetching from panoramas_view or panoramas table
     let { data, error } = await supabase
       .from('panoramas_view')
@@ -342,15 +355,15 @@ export async function fetchSupabaseData(): Promise<{
             stagingGrouped.set(runKey, {
               key: runKey,
               subgrid: sg,
-              grid: r.grid || '1',
-              pic: r.pic || r.person_in_charge || 'Fariz',
+              grid: r.grid ? String(r.grid) : '',
+              pic: r.pic || r.person_in_charge || authenticatedUserPic,
               imageFilenames: [],
               poiCount: r.poi_count || 0,
               imagesProcessed: r.images_processed || 0,
               kmProcessed: typeof r.km_processed === 'number' ? r.km_processed : 0,
               defectCount: r.defect_count || 0,
               capturedAt: r.captured_at,
-              equipment: r.capture_equipment || 'MMS',
+              equipment: r.capture_equipment || r.equipment || '',
               status: r.status || 'in process',
               points: []
             });
@@ -433,7 +446,7 @@ function generateSequentialFilenames(startFn: string, count: number): string[] {
 
           // Ensure imagesProcessed accurately reflects CSV frame count and storage availability
           const imgCount = g.imagesProcessed > 0 ? g.imagesProcessed : (g.poiCount > 0 ? g.poiCount : (verifiedCount > 0 ? verifiedCount : count));
-          const picName = g.pic || 'Fariz';
+          const picName = g.pic || authenticatedUserPic;
 
           dailyData.push({
             id: `staging-d-${runKey}`,
@@ -697,6 +710,7 @@ export async function saveToStagingSupabase(record: {
         km_processed: record.kmProcessed || 0,
         poi_count: record.poiCount || rawList.length,
         images_processed: record.imagesProcessed || rawList.length,
+        capture_equipment: record.captureEquipment || p.captureEquipment || 'MMS',
         status: record.publishToWebGIS || 'in process',
         geom: { type: 'Point', coordinates: [lon, lat] }
       };
