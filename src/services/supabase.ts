@@ -199,23 +199,26 @@ export async function fetchSupabaseData(): Promise<{
       console.warn('MMS_PIC storage list exception:', err);
     }
 
-    // Group database records uniquely by subgrid
-    const grouped = new Map<string, {
+    // Group published database records by individual survey run (runKey) so daily journeys remain separate
+    const publishedGrouped = new Map<string, {
+      runKey: string;
       subgrid: string;
       imageFilenames: string[];
       points: { lat: number; lon: number }[];
-      dates: string[];
+      dateStr: string;
       grid: string;
       recordKm?: number;
       recordDefects?: number;
       recordImages?: number;
     }>();
+    const publishedFilenamesSet = new Set<string>();
 
     // 1. Process published records
     publishedRows.forEach(r => {
       const filename = r.filename || r.image_url || '';
       const sg = (extractSubgrid(filename) || 'UNKNOWN').toUpperCase().trim();
       if (!sg || sg === 'UNKNOWN' || sg === 'N/A') return;
+      if (filename) publishedFilenamesSet.add(filename.toLowerCase().trim());
 
       let lat: number | undefined = r.latitude ?? r.lat;
       let lon: number | undefined = r.longitude ?? r.lon;
@@ -237,14 +240,17 @@ export async function fetchSupabaseData(): Promise<{
         }
       }
 
-      const dateStr = r.captured_at ? new Date(r.captured_at).toISOString().slice(0, 10) : '2022-09-04';
+      const rawDate = r.captured_at ? new Date(r.captured_at).toISOString().slice(0, 10) : '2022-09-04';
+      const extractedBatchMatch = r.description ? r.description.match(/daily-csv-[\w-]+/)?.[0] : null;
+      const runKey = r.batch_id || r.run_id || extractedBatchMatch || `${sg}_${rawDate}`;
 
-      if (!grouped.has(sg)) {
-        grouped.set(sg, {
+      if (!publishedGrouped.has(runKey)) {
+        publishedGrouped.set(runKey, {
+          runKey: runKey,
           subgrid: sg,
           imageFilenames: [],
           points: [],
-          dates: [],
+          dateStr: rawDate,
           grid: knownMetadata[sg]?.grid || '1',
           recordKm: typeof r.km_processed === 'number' ? r.km_processed : typeof r.kmProcessed === 'number' ? r.kmProcessed : undefined,
           recordDefects: typeof r.defects === 'number' ? r.defects : typeof r.defect_count === 'number' ? r.defect_count : undefined,
@@ -252,15 +258,12 @@ export async function fetchSupabaseData(): Promise<{
         });
       }
 
-      const g = grouped.get(sg)!;
+      const g = publishedGrouped.get(runKey)!;
       if (filename && !g.imageFilenames.includes(filename)) {
         g.imageFilenames.push(filename);
       }
       if (typeof lat === 'number' && typeof lon === 'number' && !isNaN(lat) && !isNaN(lon) && (lat !== 0 || lon !== 0)) {
         g.points.push({ lat, lon });
-      }
-      if (dateStr && !g.dates.includes(dateStr)) {
-        g.dates.push(dateStr);
       }
     });
 
@@ -269,9 +272,8 @@ export async function fetchSupabaseData(): Promise<{
     const dailyData: any[] = [];
 
     // Push published daily records
-    Array.from(grouped.keys()).forEach((subgrid, idx) => {
-      const g = grouped.get(subgrid);
-      if (!g) return;
+    publishedGrouped.forEach((g, runKey) => {
+      const subgrid = g.subgrid;
       const countFromDB = g.imageFilenames.length;
       const storageCount = storageImageCounts.get(subgrid);
 
@@ -280,7 +282,7 @@ export async function fetchSupabaseData(): Promise<{
         ? Math.min(storageCount, poiCount)
         : (g.recordImages !== undefined ? g.recordImages : countFromDB);
 
-      const grid = g.grid || String(idx + 1);
+      const grid = g.grid || '1';
       const pic = authenticatedUserPic || '';
       const equipment = 'MMS';
 
@@ -288,16 +290,14 @@ export async function fetchSupabaseData(): Promise<{
       const km = calcKm > 0 ? calcKm : Math.round((poiCount * 0.005) * 100) / 100;
       const defects = g.recordDefects !== undefined ? g.recordDefects : 0;
 
-      const sortedDates = g.dates.sort();
-      const rawDate = sortedDates[0] || new Date().toISOString().slice(0, 10);
-      let dateFormatted = rawDate;
-      const d = new Date(rawDate);
+      let dateFormatted = g.dateStr;
+      const d = new Date(g.dateStr);
       if (!isNaN(d.getTime())) {
         dateFormatted = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
       }
 
       dailyData.push({
-        id: `sp-d-${subgrid}`,
+        id: `sp-d-${runKey}`,
         date: dateFormatted,
         grid: grid,
         subgrid: subgrid,
@@ -335,7 +335,7 @@ export async function fetchSupabaseData(): Promise<{
           if (!sg || sg === 'UNKNOWN' || sg === 'N/A') return;
 
           // If this specific image has already been published in production, skip it
-          if (filename && grouped.get(sg)?.imageFilenames.includes(filename)) return;
+          if (filename && publishedFilenamesSet.has(filename.toLowerCase().trim())) return;
 
           // Unique run key deduplicates identical survey runs per subgrid
           const runKey = r.batch_id || r.run_id || `${sg}_${r.poi_count || r.images_processed || 0}_${r.km_processed || 0}`;
@@ -542,7 +542,7 @@ export async function fetchSupabaseData(): Promise<{
       });
     });
 
-    console.log('Supabase sync complete. Subgrids processed:', Array.from(grouped.keys()), 'Daily:', dailyData.length, 'Batches:', batchLogs.length);
+    console.log('Supabase sync complete. Subgrids processed:', Array.from(batchMap.keys()), 'Daily:', dailyData.length, 'Batches:', batchLogs.length);
     return { batchLogs, dailyData };
   } catch (err) {
     console.error('Error in fetchSupabaseData:', err);
@@ -637,7 +637,7 @@ export async function publishToSupabase(record: {
         filename,
         image_url: filename,
         captured_at: parseToIsoTimestamp(p.date || p.captured_at || record.date),
-        description: `Published Batch (${record.subgrid || filename}) - ${new Date().toISOString().slice(0, 19).replace('T', ' ')}`,
+        description: `Published Batch (${record.id || record.subgrid || filename}) - ${new Date().toISOString().slice(0, 19).replace('T', ' ')}`,
         bearing: Number(p.bearing ?? p.heading ?? 16.2),
         pitch: Number(p.pitch ?? 0),
         roll: Number(p.roll ?? 0),
