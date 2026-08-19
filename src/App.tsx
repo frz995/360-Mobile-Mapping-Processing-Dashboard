@@ -62,6 +62,7 @@ export interface PanoramaItem {
   pitch?: number;
   roll?: number;
   date?: string;
+  isAvailable?: boolean;
 }
 
 interface DailyTimeSeries {
@@ -73,6 +74,7 @@ interface DailyTimeSeries {
   imagesProcessed: number; // renamed from imagesIngested
   poiCount?: number;
   availableImagesCount?: number;
+  availableFilenames?: string[];
   defectCount: number;
   captureEquipment: 'MMS' | 'Backpack' | 'Drone' | string;
   imagesDefected: number;
@@ -94,6 +96,7 @@ interface BatchLog {
   images: number;
   poiCount?: number;
   availableImagesCount?: number;
+  availableFilenames?: string[];
   defects: number;
   kmProcessed: number;
   status: 'Complete' | 'Ongoing';
@@ -522,6 +525,7 @@ export function reconcileBatchLogs(dailyItems: DailyTimeSeries[], _baseBatches?:
     pics: Set<string>;
     captureEquipment: string;
     panoramas: any[];
+    availableFilenames?: string[];
     runsCount: number;
     publishedRunsCount: number;
   }>();
@@ -557,11 +561,21 @@ export function reconcileBatchLogs(dailyItems: DailyTimeSeries[], _baseBatches?:
       if (d.panoramas && d.panoramas.length > 0) {
         existing.panoramas.push(...d.panoramas);
       }
+      if (d.availableFilenames && Array.isArray(d.availableFilenames)) {
+        if (!existing.availableFilenames) existing.availableFilenames = [];
+        d.availableFilenames.forEach(fn => {
+          if (!existing.availableFilenames!.includes(fn)) existing.availableFilenames!.push(fn);
+        });
+      }
     } else {
       const picSet = new Set<string>();
       if (d.pic) {
         d.pic.split(',').map(p => p.trim()).filter(Boolean).forEach(p => picSet.add(p));
       }
+
+      const initialAvailFiles = d.availableFilenames && Array.isArray(d.availableFilenames)
+        ? [...d.availableFilenames]
+        : (d.panoramas ? d.panoramas.filter((p: any) => p.isAvailable !== false).map((p: any) => p.filename).filter(Boolean) : []);
 
       batchMap.set(normSub, {
         id: `BATCH-${normSub}`,
@@ -578,6 +592,7 @@ export function reconcileBatchLogs(dailyItems: DailyTimeSeries[], _baseBatches?:
         pics: picSet,
         captureEquipment: d.captureEquipment || 'MMS',
         panoramas: d.panoramas || [],
+        availableFilenames: initialAvailFiles.length > 0 ? initialAvailFiles : undefined,
         runsCount: 1,
         publishedRunsCount: isPublished ? 1 : 0
       });
@@ -599,6 +614,7 @@ export function reconcileBatchLogs(dailyItems: DailyTimeSeries[], _baseBatches?:
       images: entry.publishedImages,
       poiCount: entry.totalPoi,
       availableImagesCount: entry.publishedImages,
+      availableFilenames: entry.availableFilenames && entry.availableFilenames.length > 0 ? entry.availableFilenames : undefined,
       kmProcessed: entry.publishedKm,
       defects: entry.defects,
       pic: Array.from(entry.pics).join(', ') || '',
@@ -1006,10 +1022,12 @@ interface QCAuditModalProps {
   poiCount: number;
   availableCount: number;
   baseFilename?: string;
+  availableFilenames?: string[];
+  expectedFilenames?: string[];
   onClose: () => void;
 }
 
-export function QCAuditModal({ subgrid, poiCount, availableCount, baseFilename, onClose }: QCAuditModalProps) {
+export function QCAuditModal({ subgrid, poiCount, availableCount, baseFilename, availableFilenames, expectedFilenames, onClose }: QCAuditModalProps) {
   const expectedTotal = poiCount > 0 ? poiCount : 1;
   const missingCount = Math.max(0, expectedTotal - availableCount);
 
@@ -1026,23 +1044,28 @@ export function QCAuditModal({ subgrid, poiCount, availableCount, baseFilename, 
     setProgress(0);
     setHasAnalyzed(false);
 
-    const allExpected = generateImageFilenamesList(subgrid, expectedTotal, baseFilename);
-    const availableSet = new Set(allExpected.slice(0, availableCount));
+    const allExpected = (expectedFilenames && expectedFilenames.length > 0)
+      ? expectedFilenames
+      : generateImageFilenamesList(subgrid, expectedTotal, baseFilename);
+
+    const availableSet = new Set((availableFilenames && availableFilenames.length > 0)
+      ? availableFilenames.map(f => f.toLowerCase().trim())
+      : allExpected.slice(0, availableCount).map(f => f.toLowerCase().trim()));
 
     let currentStep = 0;
-    const totalSteps = Math.min(100, expectedTotal);
-    const stepIncrement = Math.max(1, Math.floor(expectedTotal / totalSteps));
+    const totalSteps = Math.min(100, allExpected.length);
+    const stepIncrement = Math.max(1, Math.floor(allExpected.length / totalSteps));
 
     const interval = setInterval(() => {
       currentStep += stepIncrement;
-      if (currentStep >= expectedTotal) {
-        currentStep = expectedTotal;
+      if (currentStep >= allExpected.length) {
+        currentStep = allExpected.length;
         clearInterval(interval);
 
         const analyzedList = allExpected.map((fn, idx) => ({
           filename: fn,
           index: idx + 1,
-          isMissing: !availableSet.has(fn)
+          isMissing: !availableSet.has(fn.toLowerCase().trim())
         }));
 
         setResults(analyzedList);
@@ -1050,7 +1073,7 @@ export function QCAuditModal({ subgrid, poiCount, availableCount, baseFilename, 
         setIsAnalyzing(false);
         setHasAnalyzed(true);
       } else {
-        const pct = Math.round((currentStep / expectedTotal) * 100);
+        const pct = Math.round((currentStep / allExpected.length) * 100);
         setProgress(pct);
         setCurrentScanningFilename(allExpected[currentStep - 1] || '');
       }
@@ -1452,7 +1475,8 @@ const DataManagementPage = ({
   onSignOut,
   addNotification,
   addAuditLog,
-  isGuestUser
+  isGuestUser,
+  projectSettings
 }: {
   dailyData: DailyTimeSeries[],
   setDailyData: (data: DailyTimeSeries[]) => void,
@@ -1467,7 +1491,8 @@ const DataManagementPage = ({
   onSignOut?: () => void,
   addNotification?: (item: Omit<NotificationItem, 'id' | 'timestamp' | 'read'>) => void,
   addAuditLog?: (type: AuditLogItem['type'], title: string, details: string, status?: AuditLogItem['status']) => void,
-  isGuestUser?: boolean
+  isGuestUser?: boolean,
+  projectSettings?: any;
 }) => {
   const initialTab = (() => {
     try {
@@ -1595,6 +1620,8 @@ const DataManagementPage = ({
     poiCount: number;
     availableCount: number;
     baseFilename?: string;
+    availableFilenames?: string[];
+    expectedFilenames?: string[];
   } | null>(null);
 
   // Daily Data Column Filters state
@@ -1876,17 +1903,41 @@ const DataManagementPage = ({
         const finalKm = d.kmProcessed > 0 ? d.kmProcessed : (trackKm > 0 ? trackKm : Math.round((d.panoramas.length * 0.005) * 100) / 100);
         const panCount = d.panoramas.length;
 
+        // Verify CSV filenames against Supabase Storage bucket for accurate available image count
+        const rowFilenames = d.panoramas.map(p => p.filename).filter((fn): fn is string => Boolean(fn));
+        let verifiedCount = 0;
+        let verifiedFilenamesList: string[] = [];
+        if (rowFilenames.length > 0) {
+          try {
+            const verifyRes = await verifyCsvImageFilenamesInStorage(rowFilenames, projectSettings);
+            verifiedCount = verifyRes.availableCount;
+            verifiedFilenamesList = verifyRes.verifiedFilenames;
+          } catch {
+            verifiedCount = 0;
+            verifiedFilenamesList = [];
+          }
+        }
+
+        const markedPanoramas = d.panoramas.map(p => ({
+          ...p,
+          isAvailable: verifiedFilenamesList.length > 0
+            ? (p.filename ? (verifiedFilenamesList.includes(p.filename) || verifiedFilenamesList.some(vf => vf.toLowerCase() === p.filename!.toLowerCase())) : false)
+            : true
+        }));
+
         imported.push({
           ...d,
           poiCount: panCount,
-          imagesProcessed: 0,
-          availableImagesCount: 0,
+          imagesProcessed: verifiedCount,
+          availableImagesCount: verifiedCount,
+          availableFilenames: verifiedFilenamesList.length > 0 ? verifiedFilenamesList : undefined,
           defectCount: d.defectCount || 0,
           imagesDefected: d.imagesDefected || 0,
           publishToWebGIS: directPublish ? 'yes' : d.publishToWebGIS,
           isSyncedWithSupabase: directPublish,
           id: `daily-csv-${Date.now()}-${fIdx}-${sIdx}`,
           kmProcessed: Math.round(finalKm * 100) / 100,
+          panoramas: markedPanoramas
         });
       }
     }
@@ -2387,12 +2438,15 @@ const DataManagementPage = ({
           ? dailyItem.panoramas.map((p: any) => p.filename).filter((fn: any): fn is string => Boolean(fn))
           : Array.from({ length: dailyItem.poiCount || 1 }, (_, i) => `${dailyItem.subgrid}-${String(i + 1).padStart(4, '0')}.jpg`);
         let matchedCount = 0;
+        let verifiedFiles: string[] = [];
         if (filenames.length > 0) {
           try {
-            const { availableCount } = await verifyCsvImageFilenamesInStorage(filenames);
+            const { availableCount, verifiedFilenames } = await verifyCsvImageFilenamesInStorage(filenames, projectSettings);
             matchedCount = availableCount >= 0 ? availableCount : 0;
+            verifiedFiles = verifiedFilenames || [];
           } catch {
             matchedCount = 0;
+            verifiedFiles = [];
           }
         }
 
@@ -2400,11 +2454,16 @@ const DataManagementPage = ({
           ...dailyItem,
           imagesProcessed: matchedCount,
           availableImagesCount: matchedCount,
+          availableFilenames: verifiedFiles.length > 0 ? verifiedFiles : dailyItem.availableFilenames,
           defectCount: dailyItem.defectCount || 0,
           imagesDefected: dailyItem.imagesDefected || 0,
           publishToWebGIS: 'yes',
           isSyncedWithSupabase: true,
-          action: 'Published in database'
+          action: 'Published in database',
+          panoramas: dailyItem.panoramas?.map(p => ({
+            ...p,
+            isAvailable: verifiedFiles.length > 0 ? (p.filename ? (verifiedFiles.includes(p.filename) || verifiedFiles.some(vf => vf.toLowerCase() === p.filename!.toLowerCase())) : false) : p.isAvailable
+          }))
         };
         const finalDailyList = draftDailyData.map(d => getItemId(d) === id ? finalItem : d);
         setDraftDailyData(finalDailyList);
@@ -3237,12 +3296,18 @@ const DataManagementPage = ({
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
+                                    const customFn = batch.availableFilenames && batch.availableFilenames.length > 0
+                                      ? batch.availableFilenames
+                                      : (batch.panoramas && batch.panoramas.length > 0
+                                        ? batch.panoramas.filter((p: any) => p.isAvailable !== false).map((p: any) => p.filename).filter((f): f is string => Boolean(f))
+                                        : undefined);
                                     setImagesListModal({
                                       isOpen: true,
                                       subgrid: batchSubgrid,
                                       count: getImagesProcessedCount(batch),
                                       poiCount: getPOICount(batch),
-                                      baseFilename: batch.imageFilename
+                                      baseFilename: batch.imageFilename,
+                                      customFilenames: customFn && customFn.length > 0 ? customFn : undefined
                                     });
                                   }}
                                   className="text-slate-200 hover:text-white hover:underline font-semibold text-xs cursor-pointer inline-flex items-center gap-1.5 whitespace-nowrap"
@@ -3270,7 +3335,9 @@ const DataManagementPage = ({
                                     subgrid: batchSubgrid,
                                     poiCount: getPOICount(batch),
                                     availableCount: getImagesProcessedCount(batch),
-                                    baseFilename: batch.imageFilename
+                                    baseFilename: batch.imageFilename,
+                                    availableFilenames: batch.availableFilenames,
+                                    expectedFilenames: batch.panoramas?.map((p: any) => p.filename).filter(Boolean)
                                   })}
                                   className="px-2.5 py-1 rounded-lg border text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700/80 transition-all cursor-pointer flex items-center gap-1.5 shadow-sm"
                                   title={`Run QC Audit for ${batchSubgrid}`}
@@ -3359,17 +3426,19 @@ const DataManagementPage = ({
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     const subFilter = (extractSubgridName(dailySubgrid) || dailySubgrid).toUpperCase().trim();
-                                    const pList = (daily.panoramas || []).map(p => p.filename).filter((f): f is string => Boolean(f) && (extractSubgridName(f) || '').toUpperCase().trim() === subFilter);
-                                    const uniquePList = Array.from(new Set(pList));
+                                    const customFn = daily.availableFilenames && daily.availableFilenames.length > 0
+                                      ? daily.availableFilenames
+                                      : (daily.panoramas && daily.panoramas.length > 0
+                                        ? daily.panoramas.filter((p: any) => p.isAvailable !== false).map((p: any) => p.filename).filter((f): f is string => Boolean(f) && (extractSubgridName(f) || '').toUpperCase().trim() === subFilter)
+                                        : undefined);
                                     const rowFrameCount = getImagesProcessedCount(daily);
-                                    const slicedFn = rowFrameCount > 0 ? uniquePList.slice(0, rowFrameCount) : [];
                                     setImagesListModal({
                                       isOpen: true,
                                       subgrid: dailySubgrid,
-                                      count: rowFrameCount,
+                                      count: customFn && customFn.length > 0 ? customFn.length : rowFrameCount,
                                       poiCount: getPOICount(daily),
                                       baseFilename: (daily.panoramas?.[0]?.filename) || `${dailySubgrid}-0001.jpg`,
-                                      customFilenames: slicedFn
+                                      customFilenames: customFn && customFn.length > 0 ? customFn : undefined
                                     });
                                   }}
                                   className="text-slate-200 hover:text-white hover:underline font-semibold text-xs cursor-pointer inline-flex items-center gap-1.5 whitespace-nowrap"
@@ -3738,6 +3807,8 @@ const DataManagementPage = ({
               poiCount={qcModal.poiCount}
               availableCount={qcModal.availableCount}
               baseFilename={qcModal.baseFilename}
+              availableFilenames={qcModal.availableFilenames}
+              expectedFilenames={qcModal.expectedFilenames}
               onClose={() => setQcModal(null)}
             />
           )}
@@ -4915,6 +4986,8 @@ export default function App() {
     poiCount: number;
     availableCount: number;
     baseFilename?: string;
+    availableFilenames?: string[];
+    expectedFilenames?: string[];
   } | null>(null);
 
   useEffect(() => {
@@ -7642,20 +7715,21 @@ export default function App() {
                                           e.stopPropagation();
                                           const subFilter = (extractSubgridName(batchSubgrid) || batchSubgrid).toUpperCase().trim();
                                           const matchingDaily = dailyData.filter(d => (extractSubgridName(d.subgrid) || d.subgrid).toUpperCase().trim() === subFilter);
-                                          const allPans = matchingDaily.flatMap(d => d.panoramas || []);
-                                          const fallbackPans = log.panoramas || [];
-                                          const combinedPans = allPans.length > 0 ? allPans : fallbackPans;
-                                          const filteredFn = combinedPans
-                                            .map(p => p.filename)
-                                            .filter((f): f is string => Boolean(f) && (extractSubgridName(f) || '').toUpperCase().trim() === subFilter);
-                                          const customFn = Array.from(new Set(filteredFn));
+                                          const dailyAvailFiles = matchingDaily.flatMap(d => d.availableFilenames || []);
+                                          const customFn = log.availableFilenames && log.availableFilenames.length > 0
+                                            ? log.availableFilenames
+                                            : (dailyAvailFiles.length > 0
+                                              ? Array.from(new Set(dailyAvailFiles))
+                                              : (log.panoramas && log.panoramas.length > 0
+                                                ? log.panoramas.filter((p: any) => p.isAvailable !== false).map((p: any) => p.filename).filter((f): f is string => Boolean(f) && (extractSubgridName(f) || '').toUpperCase().trim() === subFilter)
+                                                : undefined));
                                           setImagesListModal({
                                             isOpen: true,
                                             subgrid: batchSubgrid,
-                                            count: customFn.length > 0 ? customFn.length : getImagesProcessedCount(log),
+                                            count: customFn && customFn.length > 0 ? customFn.length : getImagesProcessedCount(log),
                                             poiCount: getPOICount(log),
                                             baseFilename: log.imageFilename,
-                                            customFilenames: customFn.length > 0 ? customFn : undefined
+                                            customFilenames: customFn && customFn.length > 0 ? customFn : undefined
                                           });
                                         }}
                                         className="inline-flex items-center gap-1.5 text-slate-200 hover:text-white hover:underline font-semibold text-[11px] cursor-pointer whitespace-nowrap"
@@ -7762,17 +7836,19 @@ export default function App() {
                                           onClick={(e) => {
                                             e.stopPropagation();
                                             const subFilter = (extractSubgridName(dailySubgrid) || dailySubgrid).toUpperCase().trim();
-                                            const pList = (log.panoramas || []).map(p => p.filename).filter((f): f is string => Boolean(f) && (extractSubgridName(f) || '').toUpperCase().trim() === subFilter);
-                                            const uniquePList = Array.from(new Set(pList));
+                                            const customFn = log.availableFilenames && log.availableFilenames.length > 0
+                                              ? log.availableFilenames
+                                              : (log.panoramas && log.panoramas.length > 0
+                                                ? log.panoramas.filter((p: any) => p.isAvailable !== false).map((p: any) => p.filename).filter((f): f is string => Boolean(f) && (extractSubgridName(f) || '').toUpperCase().trim() === subFilter)
+                                                : undefined);
                                             const rowFrameCount = getImagesProcessedCount(log);
-                                            const slicedFn = rowFrameCount > 0 ? uniquePList.slice(0, rowFrameCount) : [];
                                             setImagesListModal({
                                               isOpen: true,
                                               subgrid: dailySubgrid,
-                                              count: rowFrameCount,
+                                              count: customFn && customFn.length > 0 ? customFn.length : rowFrameCount,
                                               poiCount: getPOICount(log),
                                               baseFilename: (log.panoramas?.[0]?.filename) || `${dailySubgrid}-0001.jpg`,
-                                              customFilenames: slicedFn
+                                              customFilenames: customFn && customFn.length > 0 ? customFn : undefined
                                             });
                                           }}
                                           className="inline-flex items-center gap-1.5 text-slate-200 hover:text-white hover:underline font-semibold text-[11px] cursor-pointer whitespace-nowrap"
@@ -8116,6 +8192,7 @@ export default function App() {
                 addNotification={addNotification}
                 addAuditLog={addAuditLog}
                 isGuestUser={isGuestUser}
+                projectSettings={projectSettings}
               />
             </div>
           ) : currentPage === 'settings' ? (
@@ -8461,7 +8538,7 @@ export default function App() {
                   <div className="p-2.5 rounded-xl bg-slate-800 border border-slate-700 text-slate-300 shadow-sm">
                     <Info size={20} />
                   </div>
-                    <div>
+                  <div>
                     <h2 className="text-base font-bold text-white tracking-wide">
                       Mobile Mapping Data Management System
                     </h2>
@@ -8572,6 +8649,8 @@ export default function App() {
             poiCount={qcModal.poiCount}
             availableCount={qcModal.availableCount}
             baseFilename={qcModal.baseFilename}
+            availableFilenames={qcModal.availableFilenames}
+            expectedFilenames={qcModal.expectedFilenames}
             onClose={() => setQcModal(null)}
           />
         )}
