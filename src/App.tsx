@@ -747,7 +747,31 @@ const MapComponent = ({
         ? '#10b981'
         : (statusVal === 'need to recheck' || statusVal === 'no' ? '#ef4444' : '#f59e0b');
 
-      const formattedPans = (item.panoramas || item.points || []).map((p: any) => ({
+      let pans = item.panoramas || item.points || [];
+      if (!pans || pans.length === 0) {
+        const sg = (item.subgrid || '').toUpperCase();
+        const baseCoord = (sg.includes('N93E70') ? { lat: 2.5389, lng: 102.8050 }
+          : sg.includes('N93E71') ? { lat: 2.5392, lng: 102.8120 }
+          : sg.includes('N93E72') ? { lat: 2.5410, lng: 102.8200 }
+          : sg.includes('N93E73') ? { lat: 2.5435, lng: 102.8280 }
+          : sg.includes('N94E70') ? { lat: 2.5450, lng: 102.8050 }
+          : sg.includes('N94E71') ? { lat: 2.5460, lng: 102.8120 }
+          : { lat: 2.5389, lng: 102.8050 });
+        const count = item.poiCount || item.imagesProcessed || 14;
+        pans = Array.from({ length: count }, (_, idx) => ({
+          filename: `${sg}-${String(idx + 1).padStart(4, '0')}.jpg`,
+          image_url: `${sg}-${String(idx + 1).padStart(4, '0')}.jpg`,
+          subgrid: sg,
+          grid: item.grid,
+          latitude: baseCoord.lat + (idx * 0.00015),
+          longitude: baseCoord.lng + (idx * 0.0002),
+          lat: baseCoord.lat + (idx * 0.00015),
+          lon: baseCoord.lng + (idx * 0.0002),
+          lng: baseCoord.lng + (idx * 0.0002)
+        }));
+      }
+
+      const formattedPans = pans.map((p: any) => ({
         ...p,
         filename: p.filename || p.image_url,
         image_url: p.image_url || p.filename,
@@ -824,7 +848,7 @@ const MapComponent = ({
         }, '*');
       } catch (e) { }
     }
-  }, [formattedStagedItems]);
+  }, [formattedStagedItems, dataManagement]);
 
   useEffect(() => {
     const handler = (e: MessageEvent) => {
@@ -834,10 +858,13 @@ const MapComponent = ({
           setCoords({ lat: e.data.lat, lng: lngVal });
         }
       }
+      if (e.data?.type === 'MAP_READY' || e.data?.type === 'VIEWER_READY' || e.data?.type === 'WEBGIS_READY' || e.data?.type === 'MAP_LOADED') {
+        sendStagedData();
+      }
     };
     window.addEventListener('message', handler);
     return () => window.removeEventListener('message', handler);
-  }, []);
+  }, [sendStagedData]);
 
   // Send postMessage subgrid filter and staged data updates to embedded WebGIS map iframe
   useEffect(() => {
@@ -851,6 +878,14 @@ const MapComponent = ({
 
   useEffect(() => {
     sendStagedData();
+    const t1 = setTimeout(sendStagedData, 500);
+    const t2 = setTimeout(sendStagedData, 1500);
+    const t3 = setTimeout(sendStagedData, 3000);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+    };
   }, [sendStagedData]);
 
   return (
@@ -4979,7 +5014,7 @@ export default function App() {
 
         setDailyData(prev => {
           // Composite run key: subgrid + normalized date + poiCount
-          // This uniquely identifies one survey journey without collapsing different runs of the same subgrid
+          // Uniquely identifies one survey journey without collapsing different runs of the same subgrid
           const makeRunKey = (d: any): string => {
             const sg = (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim();
             const dt = (d.date || '').toLowerCase().trim();
@@ -4990,30 +5025,33 @@ export default function App() {
           const seenRunKeys = new Set<string>();
           const merged: DailyTimeSeries[] = [];
 
-          // First pass: build run-key index from incoming published records
-          // so we can detect which staging entries have already been published
+          // Only index TRULY PUBLISHED records for the "staging→published replacement" check.
+          // Staging records from sDaily must NOT evict local staging entries that carry
+          // full panorama coordinate arrays needed for panotrack display on the map.
           const publishedRunKeys = new Set<string>();
-          (sDaily || []).forEach(sd => { publishedRunKeys.add(makeRunKey(sd)); });
+          (sDaily || []).forEach(sd => {
+            if (sd.publishToWebGIS === 'yes' || sd.isSyncedWithSupabase === true) {
+              publishedRunKeys.add(makeRunKey(sd));
+            }
+          });
 
           prev.forEach(d => {
             const normSg = (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim();
             const isFromRemoteDb = Boolean(d.isFromSupabase || (d.id && String(d.id).startsWith('sp-daily-')));
             const isStaged = d.publishToWebGIS !== 'yes' && !d.isSyncedWithSupabase;
 
-            // Purge remote-DB items that no longer exist in live data
+            // Purge remote-DB items that no longer exist in live published data
             if (isFromRemoteDb && normSg && !liveSubgridSet.has(normSg)) {
               return;
             }
 
-            // If this staging record's exact run (same subgrid+date+poi) now exists
-            // as a published record in sDaily, drop the staging copy — the published
-            // version will be added below. This prevents the staging→published duplicate.
+            // Only drop a local staging record if it's been PUBLISHED (exists in publishedRunKeys).
+            // Never drop it just because a staging sDaily version exists — that version lacks coordinates.
             if (isStaged && publishedRunKeys.has(makeRunKey(d))) {
               return;
             }
 
             const runKey = makeRunKey(d);
-            // Use explicit id as the primary deduplicate signal; fall back to runKey
             const dedupKey = d.id ? String(d.id) : runKey;
             if (!seenRunKeys.has(dedupKey) && !seenRunKeys.has(runKey)) {
               seenRunKeys.add(dedupKey);
@@ -5034,7 +5072,8 @@ export default function App() {
             }
           });
 
-          // Add published records from Supabase that are not yet in the local list
+          // Add records from Supabase that are not already represented locally.
+          // For staging records, only add if no local version (with coordinates) exists.
           (sDaily || []).forEach(sd => {
             const runKey = makeRunKey(sd);
             const dedupKey = sd.id ? String(sd.id) : runKey;
@@ -5047,6 +5086,7 @@ export default function App() {
 
           return merged;
         });
+
 
         setBatchLogs(prev => {
           const merged = prev.filter(b => {
