@@ -5019,8 +5019,8 @@ export default function App() {
           (sDaily || []).forEach(sd => {
             const normSg = (extractSubgridName(sd.subgrid) || sd.subgrid || '').toUpperCase().trim();
             const dateKey = (sd.date || '').toLowerCase().trim();
-            const fullKey = `${normSg}_${dateKey}_${sd.id || ''}`;
-            if (!seenKeys.has(fullKey) && !merged.some(m => (extractSubgridName(m.subgrid) || m.subgrid || '').toUpperCase().trim() === normSg)) {
+            const fullKey = sd.id ? String(sd.id) : `${normSg}_${dateKey}_${sd.poiCount || sd.imagesProcessed || 0}_${sd.kmProcessed || 0}`;
+            if (!seenKeys.has(fullKey)) {
               seenKeys.add(fullKey);
               merged.push(sd);
             }
