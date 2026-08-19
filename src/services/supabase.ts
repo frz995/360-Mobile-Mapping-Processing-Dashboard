@@ -211,6 +211,7 @@ export async function fetchSupabaseData(): Promise<{
       recordImages?: number;
     }>();
 
+    // 1. Process published records
     publishedRows.forEach(r => {
       const filename = r.filename || r.image_url || '';
       const sg = (extractSubgrid(filename) || 'UNKNOWN').toUpperCase().trim();
@@ -263,12 +264,11 @@ export async function fetchSupabaseData(): Promise<{
       }
     });
 
-
     console.log('Verified Supabase MMS_PIC storage counts:', Object.fromEntries(storageImageCounts));
 
     const dailyData: any[] = [];
-    const batchLogs: any[] = [];
 
+    // Push published daily records
     Array.from(grouped.keys()).forEach((subgrid, idx) => {
       const g = grouped.get(subgrid);
       if (!g) return;
@@ -286,7 +286,6 @@ export async function fetchSupabaseData(): Promise<{
 
       const calcKm = calculateDistance(g.points);
       const km = calcKm > 0 ? calcKm : Math.round((poiCount * 0.005) * 100) / 100;
-
       const defects = g.recordDefects !== undefined ? g.recordDefects : 0;
 
       const sortedDates = g.dates.sort();
@@ -297,7 +296,6 @@ export async function fetchSupabaseData(): Promise<{
         dateFormatted = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
       }
 
-      // 1. Unique Daily Record
       dailyData.push({
         id: `sp-d-${subgrid}`,
         date: dateFormatted,
@@ -324,37 +322,9 @@ export async function fetchSupabaseData(): Promise<{
           subgrid: subgrid
         }))
       });
-
-      // 2. Unique Batch Masterlist Record
-      const lastFile = g.imageFilenames[g.imageFilenames.length - 1] || `${subgrid}-0001.jpg`;
-      batchLogs.push({
-        id: `sp-b-${subgrid}`,
-        date: `${rawDate} 00:43`,
-        grid: grid,
-        subgrid: subgrid,
-        imageFilename: lastFile,
-        images: verifiedImagesCount,
-        poiCount: poiCount,
-        availableImagesCount: verifiedImagesCount,
-        defects: defects,
-        kmProcessed: km,
-        status: 'Complete',
-        captureEquipment: equipment,
-        pic: pic || 'Unassigned',
-        isSyncedWithSupabase: true,
-        points: g.points,
-        panoramas: g.points.map((pt, pIdx) => ({
-          filename: g.imageFilenames[pIdx] || `${subgrid}-${String(pIdx + 1).padStart(4, '0')}.jpg`,
-          latitude: pt.lat,
-          longitude: pt.lon,
-          lat: pt.lat,
-          lon: pt.lon,
-          subgrid: subgrid
-        }))
-      });
     });
 
-    // 3. Query staging_panoramas table for persistent staged records
+    // 2. Query staging_panoramas table for persistent staged records
     try {
       const { data: stagingData, error: stagingErr } = await supabase.from('staging_panoramas').select('*');
       if (!stagingErr && stagingData && stagingData.length > 0) {
@@ -363,10 +333,11 @@ export async function fetchSupabaseData(): Promise<{
           const filename = r.filename || r.image_url || '';
           const sg = (r.subgrid || extractSubgrid(filename) || 'UNKNOWN').toUpperCase().trim();
           if (!sg || sg === 'UNKNOWN' || sg === 'N/A') return;
-          // If subgrid is already in production published panoramas, skip staging item
-          if (grouped.has(sg)) return;
 
-          // Unique run key deduplicates identical survey runs per subgrid (prevents double storage)
+          // If this specific image has already been published in production, skip it
+          if (filename && grouped.get(sg)?.imageFilenames.includes(filename)) return;
+
+          // Unique run key deduplicates identical survey runs per subgrid
           const runKey = r.batch_id || r.run_id || `${sg}_${r.poi_count || r.images_processed || 0}_${r.km_processed || 0}`;
 
           if (!stagingGrouped.has(runKey)) {
@@ -408,6 +379,29 @@ export async function fetchSupabaseData(): Promise<{
           }
         });
 
+        // Helper to generate sequential filenames from CSV starting filename
+        function generateSequentialFilenames(startFn: string, count: number): string[] {
+          if (!startFn || count <= 0) return [];
+          const clean = startFn.split('/').pop()?.trim() || startFn.trim();
+          const match = clean.match(/^(.*?)-?(\d+)(\.[a-z0-9]+)?$/i);
+          if (!match) {
+            const base = clean.replace(/\.[a-z0-9]+$/i, '');
+            return Array.from({ length: count }, (_, i) => `${base}-${String(i + 1).padStart(4, '0')}.jpg`);
+          }
+          const prefix = match[1];
+          const numStr = match[2];
+          const ext = match[3] || '.jpg';
+          const startNum = parseInt(numStr, 10);
+          const padLen = numStr.length;
+
+          const result: string[] = [];
+          for (let i = 0; i < count; i++) {
+            const nextNum = String(startNum + i).padStart(padLen, '0');
+            result.push(`${prefix}-${nextNum}${ext}`);
+          }
+          return result;
+        }
+
         stagingGrouped.forEach((g, runKey) => {
           const sg = g.subgrid;
           const count = g.imageFilenames.length || g.poiCount || 1;
@@ -420,30 +414,6 @@ export async function fetchSupabaseData(): Promise<{
             dateFormatted = dObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
           }
 
-// Helper to generate sequential filenames from CSV starting filename (e.g., N93E70-0002.jpg -> N93E70-0015.jpg)
-function generateSequentialFilenames(startFn: string, count: number): string[] {
-  if (!startFn || count <= 0) return [];
-  const clean = startFn.split('/').pop()?.trim() || startFn.trim();
-  const match = clean.match(/^(.*?)-?(\d+)(\.[a-z0-9]+)?$/i);
-  if (!match) {
-    const base = clean.replace(/\.[a-z0-9]+$/i, '');
-    return Array.from({ length: count }, (_, i) => `${base}-${String(i + 1).padStart(4, '0')}.jpg`);
-  }
-  const prefix = match[1];
-  const numStr = match[2];
-  const ext = match[3] || '.jpg';
-  const startNum = parseInt(numStr, 10);
-  const padLen = numStr.length;
-
-  const result: string[] = [];
-  for (let i = 0; i < count; i++) {
-    const nextNum = String(startNum + i).padStart(padLen, '0');
-    result.push(`${prefix}-${nextNum}${ext}`);
-  }
-  return result;
-}
-
-          // Match CSV image filenames against actual files available in MMS_PIC storage bucket
           let verifiedCount = 0;
           let filenamesToVerify: string[] = g.imageFilenames || [];
           if (filenamesToVerify.length < count && filenamesToVerify.length > 0) {
@@ -463,7 +433,6 @@ function generateSequentialFilenames(startFn: string, count: number): string[] {
             verifiedCount = typeof g.imagesProcessed === 'number' ? Math.min(g.imagesProcessed, count) : 0;
           }
 
-          // Ensure imagesProcessed accurately reflects CSV frame count and storage availability
           const imgCount = g.imagesProcessed > 0 ? g.imagesProcessed : (g.poiCount > 0 ? g.poiCount : (verifiedCount > 0 ? verifiedCount : count));
           const picName = g.pic || authenticatedUserPic;
 
@@ -495,38 +464,83 @@ function generateSequentialFilenames(startFn: string, count: number): string[] {
               subgrid: sg
             }))
           });
-
-          batchLogs.push({
-            id: `staging-b-${runKey}`,
-            date: `${rawDate} 00:43`,
-            grid: g.grid,
-            subgrid: sg,
-            imageFilename: g.imageFilenames[0] || `${sg}-0001.jpg`,
-            images: imgCount,
-            poiCount: count,
-            availableImagesCount: imgCount,
-            defects: g.defectCount,
-            kmProcessed: km,
-            status: 'Ongoing',
-            captureEquipment: g.equipment,
-            pic: picName,
-            isSyncedWithSupabase: false,
-            isStagedInSupabase: true,
-            points: g.points,
-            panoramas: g.points.map((pt: any, pIdx: number) => ({
-              filename: g.imageFilenames[pIdx] || `${sg}-${String(pIdx + 1).padStart(4, '0')}.jpg`,
-              latitude: pt.lat,
-              longitude: pt.lon,
-              lat: pt.lat,
-              lon: pt.lon,
-              subgrid: sg
-            }))
-          });
         });
       }
     } catch (stgErr) {
       console.warn('staging_panoramas fetch notice (table may be pending creation):', stgErr);
     }
+
+    // 3. Build masterlist Batch Logs by aggregating all dailyData runs per subgrid
+    const batchMap = new Map<string, any>();
+    dailyData.forEach(d => {
+      const sg = (extractSubgrid(d.subgrid || d.imageFilename) || d.subgrid || '').toUpperCase().trim();
+      if (!sg) return;
+
+      const isPublished = d.publishToWebGIS === 'yes' || d.isSyncedWithSupabase === true;
+      const singlePoi = d.poiCount || d.imagesProcessed || 0;
+      const singleImg = isPublished ? (d.imagesProcessed || d.poiCount || 0) : 0;
+      const kmVal = Number(d.kmProcessed || 0);
+      const defCount = Number(d.imagesDefected || d.defectCount || 0);
+
+      const existing = batchMap.get(sg);
+      if (existing) {
+        existing.totalPoi += singlePoi;
+        existing.totalKm = Math.round((existing.totalKm + kmVal) * 100) / 100;
+        if (isPublished) {
+          existing.publishedPoi += singlePoi;
+          existing.publishedImages += singleImg;
+          existing.publishedKm = Math.round((existing.publishedKm + kmVal) * 100) / 100;
+          existing.publishedRunsCount += 1;
+        }
+        existing.defects += defCount;
+        existing.runsCount += 1;
+        if (d.pic && !existing.pics.has(d.pic)) existing.pics.add(d.pic);
+      } else {
+        const picSet = new Set<string>();
+        if (d.pic) picSet.add(d.pic);
+
+        batchMap.set(sg, {
+          id: `BATCH-${sg}`,
+          subgrid: sg,
+          grid: d.grid || '1',
+          date: d.date || '2022-09-03 00:43',
+          imageFilename: (d.panoramas?.[0]?.filename) || `${sg}-0001.jpg`,
+          publishedImages: singleImg,
+          totalPoi: singlePoi,
+          publishedPoi: isPublished ? singlePoi : 0,
+          publishedKm: isPublished ? kmVal : 0,
+          totalKm: kmVal,
+          defects: defCount,
+          pics: picSet,
+          captureEquipment: d.captureEquipment || 'MMS',
+          panoramas: d.panoramas || [],
+          runsCount: 1,
+          publishedRunsCount: isPublished ? 1 : 0
+        });
+      }
+    });
+
+    const batchLogs: any[] = [];
+    batchMap.forEach((entry, sg) => {
+      const isComplete = entry.publishedRunsCount > 0 && entry.publishedRunsCount === entry.runsCount && entry.publishedPoi >= entry.totalPoi;
+      batchLogs.push({
+        id: `BATCH-${sg}`,
+        date: `${entry.date} 00:43`,
+        grid: entry.grid,
+        subgrid: sg,
+        imageFilename: entry.imageFilename,
+        images: entry.publishedImages,
+        poiCount: entry.totalPoi,
+        availableImagesCount: entry.publishedImages,
+        defects: entry.defects,
+        kmProcessed: entry.publishedKm,
+        status: isComplete ? 'Complete' : 'Ongoing',
+        captureEquipment: entry.captureEquipment,
+        pic: Array.from(entry.pics).join(', ') || authenticatedUserPic || 'Unassigned',
+        isSyncedWithSupabase: entry.publishedRunsCount > 0,
+        panoramas: entry.panoramas
+      });
+    });
 
     console.log('Supabase sync complete. Subgrids processed:', Array.from(grouped.keys()), 'Daily:', dailyData.length, 'Batches:', batchLogs.length);
     return { batchLogs, dailyData };

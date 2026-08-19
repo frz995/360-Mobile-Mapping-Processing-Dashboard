@@ -515,43 +515,34 @@ export function reconcileBatchLogs(dailyItems: DailyTimeSeries[], _baseBatches?:
     return [];
   }
 
-  // Build a lookup of user-set status from existing batches (key: normalized subgrid)
-  const baseStatusMap = new Map<string, 'Complete' | 'Ongoing'>();
-  const baseIdMap = new Map<string, string>();
-  if (_baseBatches) {
-    for (const b of _baseBatches) {
-      const norm = (extractSubgridName(b.subgrid || b.imageFilename) || b.subgrid || '').toUpperCase().trim();
-      if (norm && b.status) {
-        baseStatusMap.set(norm, b.status as 'Complete' | 'Ongoing');
-        baseIdMap.set(norm, b.id || '');
-      }
-    }
-  }
-
+  // Group all daily records by normalized subgrid
   const batchMap = new Map<string, {
     id: string;
     subgrid: string;
     grid: string;
     date: string;
     imageFilename: string;
-    images: number;
-    poiCount: number;
-    kmProcessed: number;
+    publishedImages: number;
+    totalPoi: number;
+    publishedPoi: number;
+    publishedKm: number;
+    totalKm: number;
     defects: number;
     pics: Set<string>;
     captureEquipment: string;
     panoramas: any[];
-    status?: string;
+    runsCount: number;
+    publishedRunsCount: number;
   }>();
 
-  // Process all daily records
   for (const d of dailyItems) {
     const rawSub = d.subgrid || (d.panoramas?.[0]?.filename) || '';
     const normSub = (extractSubgridName(rawSub) || rawSub).toUpperCase().trim();
     if (!normSub) continue;
 
+    const isPublished = d.publishToWebGIS === 'yes' || d.isSyncedWithSupabase === true;
     const singlePoi = d.poiCount || (d.panoramas?.length) || 0;
-    const singleImg = getImagesProcessedCount(d);
+    const singleImg = isPublished ? getImagesProcessedCount(d) : 0;
     const kmVal = Number(d.kmProcessed || 0);
     const defCount = Number(d.imagesDefected || d.defectCount || 0);
 
@@ -560,10 +551,16 @@ export function reconcileBatchLogs(dailyItems: DailyTimeSeries[], _baseBatches?:
       if (d.pic) {
         d.pic.split(',').map(p => p.trim()).filter(Boolean).forEach(p => existing.pics.add(p));
       }
-      existing.poiCount += singlePoi;
-      existing.images += singleImg;
-      existing.kmProcessed = Math.round((existing.kmProcessed + kmVal) * 100) / 100;
+      existing.totalPoi += singlePoi;
+      existing.totalKm = Math.round((existing.totalKm + kmVal) * 100) / 100;
+      if (isPublished) {
+        existing.publishedPoi += singlePoi;
+        existing.publishedImages += singleImg;
+        existing.publishedKm = Math.round((existing.publishedKm + kmVal) * 100) / 100;
+        existing.publishedRunsCount += 1;
+      }
       existing.defects += defCount;
+      existing.runsCount += 1;
       if (d.date) existing.date = d.date;
       if (d.captureEquipment) existing.captureEquipment = d.captureEquipment;
       if (d.panoramas && d.panoramas.length > 0) {
@@ -576,20 +573,22 @@ export function reconcileBatchLogs(dailyItems: DailyTimeSeries[], _baseBatches?:
       }
 
       batchMap.set(normSub, {
-        id: baseIdMap.get(normSub) || `sp-b-${normSub}`,
+        id: `BATCH-${normSub}`,
         subgrid: normSub,
         grid: d.grid || '1',
         date: d.date || '2022-09-03 00:43',
         imageFilename: (d.panoramas?.[0]?.filename) || `${normSub}-0001.jpg`,
-        images: singleImg,
-        poiCount: singlePoi,
-        kmProcessed: kmVal,
+        publishedImages: singleImg,
+        totalPoi: singlePoi,
+        publishedPoi: isPublished ? singlePoi : 0,
+        publishedKm: isPublished ? kmVal : 0,
+        totalKm: kmVal,
         defects: defCount,
         pics: picSet,
         captureEquipment: d.captureEquipment || 'MMS',
         panoramas: d.panoramas || [],
-        // Preserve user-set status if it exists, otherwise default to Ongoing
-        status: baseStatusMap.get(normSub) || 'Ongoing'
+        runsCount: 1,
+        publishedRunsCount: isPublished ? 1 : 0
       });
     }
   }
@@ -597,24 +596,25 @@ export function reconcileBatchLogs(dailyItems: DailyTimeSeries[], _baseBatches?:
   // Convert map to BatchLog array
   const result: BatchLog[] = [];
   for (const [normSub, entry] of batchMap.entries()) {
-    // User-set status in baseStatusMap wins; fall back to entry.status derived from daily data
-    const finalStatus = (baseStatusMap.get(normSub) || entry.status || 'Ongoing') as 'Complete' | 'Ongoing';
+    const isComplete = entry.publishedRunsCount > 0 && entry.publishedRunsCount === entry.runsCount && entry.publishedPoi >= entry.totalPoi;
+    const finalStatus: 'Complete' | 'Ongoing' = isComplete ? 'Complete' : 'Ongoing';
 
     result.push({
-      id: entry.id,
+      id: `BATCH-${normSub}`,
       date: entry.date.length <= 10 ? `${entry.date} 00:43` : entry.date,
       grid: entry.grid,
       subgrid: normSub,
       imageFilename: entry.imageFilename,
-      images: entry.images,
-      poiCount: entry.poiCount,
-      kmProcessed: entry.kmProcessed,
+      images: entry.publishedImages,
+      poiCount: entry.totalPoi,
+      availableImagesCount: entry.publishedImages,
+      kmProcessed: entry.publishedKm,
       defects: entry.defects,
       pic: Array.from(entry.pics).join(', ') || '',
       status: finalStatus,
       captureEquipment: entry.captureEquipment,
       panoramas: entry.panoramas,
-      isSyncedWithSupabase: finalStatus === 'Complete'
+      isSyncedWithSupabase: entry.publishedRunsCount > 0
     });
   }
 
@@ -5288,13 +5288,15 @@ export default function App() {
     }
   }, [layerCatalog]);
 
-  // Calculated totals (dynamically evaluates to 0 when dataset is empty)
-  const totalImages = (dailyData.length > 0 || batchLogs.length > 0)
-    ? (dailyData.reduce((sum, d) => sum + getImagesProcessedCount(d), 0) || batchLogs.reduce((sum, b) => sum + (b.images || 0), 0))
-    : 0;
-  const totalKm = (dailyData.length > 0 || batchLogs.length > 0)
-    ? (dailyData.reduce((sum, d) => sum + (d.kmProcessed || 0), 0) || batchLogs.reduce((sum, b) => sum + (b.kmProcessed || 0), 0))
-    : 0;
+  // Calculated totals: count only verified, published frames & distance for executive KPIs
+  const totalImages = dailyData.reduce((sum, d) => {
+    const isPub = d.publishToWebGIS === 'yes' || d.isSyncedWithSupabase === true;
+    return isPub ? sum + getImagesProcessedCount(d) : sum;
+  }, 0);
+  const totalKm = dailyData.reduce((sum, d) => {
+    const isPub = d.publishToWebGIS === 'yes' || d.isSyncedWithSupabase === true;
+    return isPub ? sum + (d.kmProcessed || 0) : sum;
+  }, 0);
   const [_liveDefectCount, setLiveDefectCount] = useState<number>(0);
   const totalDefects = (dailyData.length > 0 || batchLogs.length > 0)
     ? dailyData.reduce((sum, d) => sum + (d.imagesDefected || d.defectCount || 0), 0)
