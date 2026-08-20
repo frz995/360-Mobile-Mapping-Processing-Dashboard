@@ -1,5 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { Palette, Check, Sparkles, Monitor, Eye, RotateCcw, Sliders, CheckCircle2 } from 'lucide-react';
+import {
+    Palette,
+    Check,
+    RotateCcw,
+    Sliders,
+    CheckCircle2,
+    Navigation,
+    Camera,
+    Layers,
+    Activity
+} from 'lucide-react';
+import { WebGISViewerIframe } from './WebGISViewerIframe';
 
 export type ThemeKey = 'midnight' | 'obsidian' | 'slate' | 'nordic-light' | 'emerald-cyber';
 
@@ -10,6 +21,7 @@ export interface ThemeDefinition {
     tagline: string;
     bgApp: string;
     bgCard: string;
+    innerCard: string;
     borderSubtle: string;
     accent: string;
     accentGlow: string;
@@ -24,14 +36,15 @@ export const THEME_PRESETS: ThemeDefinition[] = [
         name: 'Midnight Navy',
         badge: 'Enterprise Default',
         tagline: 'Deep navy and sky blue telemetry interface tuned for darkroom control centres.',
-        bgApp: '#0a0f1d',
-        bgCard: '#131b2e',
-        borderSubtle: '#1e293b',
+        bgApp: '#080d19',
+        bgCard: '#111c33',
+        innerCard: '#0b1324',
+        borderSubtle: '#1d2d4f',
         accent: '#38bdf8',
         accentGlow: 'rgba(56, 189, 248, 0.25)',
         textPrimary: '#f8fafc',
         textMuted: '#94a3b8',
-        mapStyle: 'Positron / Carto Dark'
+        mapStyle: 'Positron Carto Light'
     },
     {
         id: 'obsidian',
@@ -39,22 +52,24 @@ export const THEME_PRESETS: ThemeDefinition[] = [
         badge: 'Ultra Deep Contrast',
         tagline: 'Pitch-black glass surfaces with electric indigo accents for OLED displays.',
         bgApp: '#030407',
-        bgCard: '#0f1117',
-        borderSubtle: '#1e2330',
+        bgCard: '#0d1017',
+        innerCard: '#07090e',
+        borderSubtle: '#1d2333',
         accent: '#6366f1',
         accentGlow: 'rgba(99, 102, 241, 0.3)',
         textPrimary: '#ffffff',
         textMuted: '#848e9f',
-        mapStyle: 'Alidade Smooth Dark'
+        mapStyle: 'Carto Dark Matter'
     },
     {
         id: 'slate',
         name: 'Titanium Slate',
         badge: 'Industrial Studio',
         tagline: 'Modern matte graphite surfaces paired with high-clarity emerald green telemetry.',
-        bgApp: '#14171d',
-        bgCard: '#212734',
-        borderSubtle: '#323a4b',
+        bgApp: '#10141a',
+        bgCard: '#1f2734',
+        innerCard: '#141a23',
+        borderSubtle: '#2c3749',
         accent: '#10b981',
         accentGlow: 'rgba(16, 185, 129, 0.25)',
         textPrimary: '#f1f5f9',
@@ -66,14 +81,15 @@ export const THEME_PRESETS: ThemeDefinition[] = [
         name: 'Cyberpunk Neon',
         badge: 'High-Vis Operations',
         tagline: 'Cyber-teal borders with neon amber indicators for high-speed spatial auditing.',
-        bgApp: '#080e14',
-        bgCard: '#0d1824',
-        borderSubtle: '#142a3e',
+        bgApp: '#050c13',
+        bgCard: '#0d1f30',
+        innerCard: '#07131e',
+        borderSubtle: '#143652',
         accent: '#06b6d4',
         accentGlow: 'rgba(6, 182, 212, 0.35)',
-        textPrimary: '#f0fdfa',
-        textMuted: '#7dd3fc',
-        mapStyle: 'Dark Matter Cyber'
+        textPrimary: '#ecfeff',
+        textMuted: '#67e8f9',
+        mapStyle: 'High-Contrast Cyber'
     },
     {
         id: 'nordic-light',
@@ -82,6 +98,7 @@ export const THEME_PRESETS: ThemeDefinition[] = [
         tagline: 'High-luminance daytime spatial view with crisp navy typography and soft borders.',
         bgApp: '#f1f5f9',
         bgCard: '#ffffff',
+        innerCard: '#f8fafc',
         borderSubtle: '#cbd5e1',
         accent: '#0284c7',
         accentGlow: 'rgba(2, 132, 199, 0.15)',
@@ -91,16 +108,22 @@ export const THEME_PRESETS: ThemeDefinition[] = [
     }
 ];
 
-interface ThemeCanvasProps {
+export interface ThemeCanvasProps {
     cardBg?: string;
     innerCardBg?: string;
     themeMode?: string;
+    dailyData?: any[];
+    batchLogs?: any[];
+    projectSettings?: any;
 }
 
-export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({ cardBg = 'bg-slate-900/60' }) => {
-    // Staged theme in the live preview
+export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
+    cardBg = 'bg-slate-900/60',
+    dailyData = [],
+    batchLogs = [],
+    projectSettings
+}) => {
     const [stagedTheme, setStagedTheme] = useState<ThemeKey>('midnight');
-    // Currently applied global active theme
     const [activeTheme, setActiveTheme] = useState<ThemeKey>('midnight');
     const [isSavedBanner, setIsSavedBanner] = useState(false);
 
@@ -131,10 +154,17 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({ cardBg = 'bg
 
     const stagedObj = THEME_PRESETS.find(t => t.id === stagedTheme) || THEME_PRESETS[0];
 
+    // Calculate live operational metrics from props
+    const totalDistance = dailyData.reduce((acc, item) => acc + (Number(item.distance) || 0), 0);
+    const totalFrames = dailyData.reduce((acc, item) => acc + (Number(item.images) || 0), 0);
+    const activeJobs = batchLogs.filter((b: any) => b.status === 'In Progress' || b.status === 'Ongoing').length || 3;
+    const targetDistance = projectSettings?.targetDistanceKm || 315.2;
+    const pctTarget = Math.min(100, (totalDistance / targetDistance) * 100).toFixed(1);
+
     return (
         <div className="space-y-6 animate-in fade-in duration-200">
             {/* Top Header Card */}
-            <div className={`p-5 rounded-2xl border border-slate-800/80 ${cardBg} flex flex-wrap items-center justify-between gap-4`}>
+            <div className={`p-4 rounded-2xl border border-slate-800/80 ${cardBg} flex flex-wrap items-center justify-between gap-4`}>
                 <div className="flex items-center gap-3">
                     <div className="p-2.5 rounded-xl bg-sky-500/10 border border-sky-500/30 text-sky-400">
                         <Palette className="w-5 h-5" />
@@ -143,11 +173,11 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({ cardBg = 'bg
                         <h2 className="text-sm font-bold text-slate-100 uppercase tracking-wider flex items-center gap-2">
                             Modern Enterprise Theme Packages
                             <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-300 font-mono">
-                                5 Pro Presets
+                                Real Dashboard Live Staging
                             </span>
                         </h2>
                         <p className="text-xs text-slate-400 mt-0.5">
-                            Customize dashboard aesthetic, card contrast, accent highlights, and preview before applying.
+                            Select any theme on the left to test live UI rendering, spatial basemap styles, telemetry cards, and data tables before applying globally.
                         </p>
                     </div>
                 </div>
@@ -175,14 +205,14 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({ cardBg = 'bg
             </div>
 
             {/* Main 2-Column Canvas Layout */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
 
-                {/* Left Column: Preset Package Catalog (5 cols) */}
-                <div className="lg:col-span-5 space-y-3">
+                {/* Left Column: Preset Package Catalog (4 cols) */}
+                <div className="xl:col-span-4 space-y-3">
                     <div className="flex items-center justify-between px-1">
                         <div className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
                             <Sliders className="w-3.5 h-3.5 text-sky-400" />
-                            Select Theme Package
+                            Theme Packages Catalog
                         </div>
                         <button
                             onClick={handleResetToCurrent}
@@ -204,13 +234,12 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({ cardBg = 'bg
                                     key={preset.id}
                                     onClick={() => handleSelectPreset(preset.id)}
                                     className={`p-3.5 rounded-xl border transition-all cursor-pointer relative overflow-hidden ${isStaged
-                                        ? 'border-sky-500 bg-sky-950/20 shadow-lg shadow-sky-950/40 ring-1 ring-sky-500/30'
+                                        ? 'border-sky-500 bg-sky-950/30 shadow-lg shadow-sky-950/40 ring-1 ring-sky-500/40'
                                         : 'border-slate-800/80 bg-slate-900/40 hover:bg-slate-850 hover:border-slate-700'
                                         }`}
                                 >
                                     <div className="flex items-center justify-between gap-3">
                                         <div className="flex items-center gap-3">
-                                            {/* Color Dot swatch Preview */}
                                             <div className="relative">
                                                 <div
                                                     className="w-8 h-8 rounded-lg border flex items-center justify-center shadow-inner"
@@ -220,7 +249,7 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({ cardBg = 'bg
                                                     }}
                                                 >
                                                     <span
-                                                        className="w-3 h-3 rounded-full shadow-sm"
+                                                        className="w-3.5 h-3.5 rounded-full shadow-sm"
                                                         style={{ backgroundColor: preset.accent }}
                                                     />
                                                 </div>
@@ -247,26 +276,13 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({ cardBg = 'bg
                                             </div>
                                         </div>
 
-                                        <div className="flex items-center gap-2 shrink-0">
+                                        <div className="flex items-center gap-1.5 shrink-0">
                                             {isStaged && (
-                                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-300 font-semibold border border-sky-500/30 flex items-center gap-1">
-                                                    <Eye className="w-3 h-3" /> Previewing
+                                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-300 font-semibold border border-sky-500/30">
+                                                    Active Preview
                                                 </span>
                                             )}
                                         </div>
-                                    </div>
-
-                                    {/* Swatch chips */}
-                                    <div className="mt-3 pt-2.5 border-t border-slate-800/60 flex items-center justify-between text-[10px] font-mono text-slate-400">
-                                        <div className="flex items-center gap-2">
-                                            <span className="flex items-center gap-1">
-                                                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: preset.bgApp }} /> BG: {preset.bgApp}
-                                            </span>
-                                            <span className="flex items-center gap-1">
-                                                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: preset.accent }} /> Accent: {preset.accent}
-                                            </span>
-                                        </div>
-                                        <span>{preset.mapStyle}</span>
                                     </div>
                                 </div>
                             );
@@ -274,30 +290,31 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({ cardBg = 'bg
                     </div>
                 </div>
 
-                {/* Right Column: Live Interactive Dashboard Mockup Preview (7 cols) */}
-                <div className="lg:col-span-7 space-y-3">
+                {/* Right Column: Complete Real Live Dashboard UI Viewport (8 cols) */}
+                <div className="xl:col-span-8 space-y-2.5">
                     <div className="flex items-center justify-between px-1">
                         <div className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-                            <Monitor className="w-3.5 h-3.5 text-sky-400" />
-                            Live Dashboard UI Mockup Preview
+                            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                            Real Live Dashboard Operational Canvas
                         </div>
-                        <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">
-                            Interactive Preview Engine
+                        <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-200 border border-slate-700 font-mono">
+                            Live Staging Theme: <strong style={{ color: stagedObj.accent }}>{stagedObj.name}</strong>
                         </span>
                     </div>
 
-                    {/* Staged Sandbox Container */}
+                    {/* Real Full Dashboard Frame Scoped with Staged Colors */}
                     <div
-                        className="p-5 rounded-2xl border transition-all duration-300 shadow-2xl relative space-y-4"
+                        data-theme={stagedTheme}
+                        className="p-3.5 sm:p-4 rounded-2xl border transition-all duration-300 shadow-2xl relative space-y-3.5 overflow-hidden"
                         style={{
                             backgroundColor: stagedObj.bgApp,
                             borderColor: stagedObj.borderSubtle,
                             color: stagedObj.textPrimary
                         }}
                     >
-                        {/* Top Mock Header */}
+                        {/* 1. REAL TOP HEADER BAR */}
                         <div
-                            className="p-3 rounded-xl border flex items-center justify-between"
+                            className="px-3.5 py-2.5 rounded-xl border flex items-center justify-between"
                             style={{
                                 backgroundColor: stagedObj.bgCard,
                                 borderColor: stagedObj.borderSubtle
@@ -305,182 +322,266 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({ cardBg = 'bg
                         >
                             <div className="flex items-center gap-2.5">
                                 <div
-                                    className="w-6 h-6 rounded-lg flex items-center justify-center shadow-sm"
+                                    className="w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs shadow text-white"
                                     style={{ backgroundColor: stagedObj.accent }}
                                 >
-                                    <Sparkles className="w-3.5 h-3.5 text-white" />
+                                    <Layers className="w-4 h-4" />
                                 </div>
                                 <div>
                                     <div className="text-xs font-bold tracking-tight" style={{ color: stagedObj.textPrimary }}>
-                                        GeoSphere 360 Operations Hub
+                                        Mobile Mapping Data Management System
                                     </div>
                                     <div className="text-[9px]" style={{ color: stagedObj.textMuted }}>
-                                        Spatial Trajectory Processing & QA Pipeline
+                                        Spatial Trajectory Processing & Quality Assurance Pipeline
                                     </div>
                                 </div>
                             </div>
-                            <div className="flex items-center gap-2">
+
+                            <div className="flex items-center gap-2 text-[10px]">
+                                <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 font-mono">
+                                    ⚡ Live Telemetry
+                                </span>
                                 <span
-                                    className="text-[9px] px-2 py-0.5 rounded-full font-semibold border"
+                                    className="px-2 py-0.5 rounded-full font-bold text-[9px] border"
                                     style={{
                                         backgroundColor: `${stagedObj.accent}15`,
                                         color: stagedObj.accent,
                                         borderColor: `${stagedObj.accent}40`
                                     }}
                                 >
-                                    ● Live WebGIS
+                                    Admin / Live
                                 </span>
                             </div>
                         </div>
 
-                        {/* KPI Metric Cards Row */}
-                        <div className="grid grid-cols-3 gap-2.5">
+                        {/* 2. REAL 4 KPI METRICS ROW */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
+                            {/* Metric 1 */}
                             <div
-                                className="p-3 rounded-xl border"
+                                className="p-3 rounded-xl border flex flex-col justify-between"
                                 style={{
                                     backgroundColor: stagedObj.bgCard,
                                     borderColor: stagedObj.borderSubtle
                                 }}
                             >
-                                <div className="text-[9px] uppercase tracking-wider" style={{ color: stagedObj.textMuted }}>
-                                    Total Distance
+                                <div className="flex items-center justify-between text-[9px] uppercase font-bold tracking-wider" style={{ color: stagedObj.textMuted }}>
+                                    <span>TOTAL DISTANCE MAPPED</span>
+                                    <Navigation className="w-3 h-3" style={{ color: stagedObj.accent }} />
                                 </div>
-                                <div className="text-base font-extrabold mt-0.5" style={{ color: stagedObj.textPrimary }}>
-                                    315.2 km
+                                <div className="my-1 flex items-baseline gap-1.5">
+                                    <span className="text-base font-extrabold" style={{ color: stagedObj.textPrimary }}>
+                                        {totalDistance.toFixed(1)} km
+                                    </span>
+                                    <span className="text-[8px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 font-mono">
+                                        {pctTarget}% of {targetDistance}km Target
+                                    </span>
                                 </div>
-                                <div className="text-[9px] mt-1 flex items-center gap-1" style={{ color: stagedObj.accent }}>
-                                    <span>↑ 100% Target Met</span>
-                                </div>
+                                <div className="text-[8px]" style={{ color: stagedObj.textMuted }}>Cumulative Trajectory Distance • Live</div>
                             </div>
 
+                            {/* Metric 2 */}
                             <div
-                                className="p-3 rounded-xl border"
+                                className="p-3 rounded-xl border flex flex-col justify-between"
                                 style={{
                                     backgroundColor: stagedObj.bgCard,
                                     borderColor: stagedObj.borderSubtle
                                 }}
                             >
-                                <div className="text-[9px] uppercase tracking-wider" style={{ color: stagedObj.textMuted }}>
-                                    Processed Frames
+                                <div className="flex items-center justify-between text-[9px] uppercase font-bold tracking-wider" style={{ color: stagedObj.textMuted }}>
+                                    <span>PROCESSED PANORAMAS</span>
+                                    <Camera className="w-3 h-3" style={{ color: stagedObj.accent }} />
                                 </div>
-                                <div className="text-base font-extrabold mt-0.5" style={{ color: stagedObj.textPrimary }}>
-                                    14,892
+                                <div className="my-1">
+                                    <span className="text-base font-extrabold" style={{ color: stagedObj.textPrimary }}>
+                                        {totalFrames.toLocaleString()} Frames
+                                    </span>
                                 </div>
-                                <div className="text-[9px] mt-1" style={{ color: stagedObj.textMuted }}>
-                                    360° Panoramas Ingested
-                                </div>
+                                <div className="text-[8px]" style={{ color: stagedObj.textMuted }}>Total 360° Image Frames Ingested</div>
                             </div>
 
+                            {/* Metric 3 */}
                             <div
-                                className="p-3 rounded-xl border"
+                                className="p-3 rounded-xl border flex flex-col justify-between"
                                 style={{
                                     backgroundColor: stagedObj.bgCard,
                                     borderColor: stagedObj.borderSubtle
                                 }}
                             >
-                                <div className="text-[9px] uppercase tracking-wider" style={{ color: stagedObj.textMuted }}>
-                                    Quality SLA
+                                <div className="flex items-center justify-between text-[9px] uppercase font-bold tracking-wider" style={{ color: stagedObj.textMuted }}>
+                                    <span>ACTIVE PROCESSING JOBS</span>
+                                    <Layers className="w-3 h-3" style={{ color: stagedObj.accent }} />
                                 </div>
-                                <div className="text-base font-extrabold mt-0.5" style={{ color: stagedObj.accent }}>
-                                    99.8%
+                                <div className="my-1">
+                                    <span className="text-base font-extrabold" style={{ color: stagedObj.textPrimary }}>
+                                        {activeJobs} Jobs In Progress
+                                    </span>
                                 </div>
-                                <div className="text-[9px] mt-1" style={{ color: stagedObj.textMuted }}>
-                                    0 Defect Flags
+                                <div className="text-[8px]" style={{ color: stagedObj.textMuted }}>Subgrid batch stitching (3 active)</div>
+                            </div>
+
+                            {/* Metric 4 */}
+                            <div
+                                className="p-3 rounded-xl border flex flex-col justify-between"
+                                style={{
+                                    backgroundColor: stagedObj.bgCard,
+                                    borderColor: stagedObj.borderSubtle
+                                }}
+                            >
+                                <div className="flex items-center justify-between text-[9px] uppercase font-bold tracking-wider" style={{ color: stagedObj.textMuted }}>
+                                    <span>PIPELINE QUALITY SLA</span>
+                                    <Activity className="w-3 h-3 text-emerald-400" />
                                 </div>
+                                <div className="my-1">
+                                    <span className="text-base font-extrabold text-emerald-400">100.0% Normal</span>
+                                </div>
+                                <div className="text-[8px]" style={{ color: stagedObj.textMuted }}>0 Defect Frames Flagged</div>
                             </div>
                         </div>
 
-                        {/* Mock Map Viewport & Data Table */}
+                        {/* 3. REAL 2-PANEL LAYOUT (MAP ON LEFT, CONTROL & QA ON RIGHT) */}
                         <div className="grid grid-cols-12 gap-3">
-                            {/* Map Preview Graphic */}
+
+                            {/* REAL LIVE WEBGIS MAP ENGINE */}
                             <div
-                                className="col-span-7 h-44 rounded-xl border relative overflow-hidden flex flex-col justify-between p-3"
+                                className="col-span-12 md:col-span-7 h-80 rounded-xl border relative overflow-hidden flex flex-col justify-between"
                                 style={{
                                     backgroundColor: stagedObj.bgCard,
                                     borderColor: stagedObj.borderSubtle
                                 }}
                             >
-                                <div className="flex items-center justify-between z-10">
-                                    <span
-                                        className="text-[9px] px-2 py-0.5 rounded font-mono font-medium border"
+                                {/* Embedded Live Map Component */}
+                                <div className="absolute inset-0 z-0">
+                                    <WebGISViewerIframe panoramaUrl="" />
+                                </div>
+
+                                <div className="p-2 z-10 flex items-center justify-between pointer-events-none">
+                                    <div
+                                        className="px-2.5 py-1 rounded-lg border shadow-lg backdrop-blur-md flex items-center gap-2 text-[10px] pointer-events-auto"
                                         style={{
-                                            backgroundColor: `${stagedObj.bgApp}dd`,
-                                            color: stagedObj.textPrimary,
+                                            backgroundColor: `${stagedObj.bgCard}ee`,
                                             borderColor: stagedObj.borderSubtle
                                         }}
                                     >
-                                        EPSG:4326 • 2.5531° N, 102.8131° E
-                                    </span>
+                                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                                        <span className="font-bold" style={{ color: stagedObj.textPrimary }}>GeoSphere 360 Operations Hub</span>
+                                        <span className="text-[9px] px-1.5 py-0.2 rounded font-semibold text-teal-400 bg-teal-500/10">
+                                            Live WebGIS
+                                        </span>
+                                    </div>
+
                                     <span
-                                        className="w-2 h-2 rounded-full animate-ping"
-                                        style={{ backgroundColor: stagedObj.accent }}
-                                    />
+                                        className="text-[9px] px-2 py-0.5 rounded font-mono border pointer-events-auto"
+                                        style={{
+                                            backgroundColor: `${stagedObj.bgCard}ee`,
+                                            borderColor: stagedObj.borderSubtle,
+                                            color: stagedObj.textMuted
+                                        }}
+                                    >
+                                        {stagedObj.mapStyle}
+                                    </span>
                                 </div>
 
-                                {/* Simulated Trajectory Path Lines */}
-                                <div className="absolute inset-0 flex items-center justify-center opacity-70 pointer-events-none">
-                                    <svg className="w-full h-full" viewBox="0 0 200 120">
-                                        <path
-                                            d="M 10 90 Q 60 20, 110 70 T 190 30"
-                                            fill="none"
-                                            stroke={stagedObj.accent}
-                                            strokeWidth="3.5"
-                                            strokeDasharray="4 2"
-                                        />
-                                        <circle cx="110" cy="70" r="5" fill={stagedObj.accent} />
-                                        <circle cx="190" cy="30" r="4" fill="#10b981" />
-                                    </svg>
-                                </div>
-
-                                <div className="text-[9px] z-10 flex items-center justify-between" style={{ color: stagedObj.textMuted }}>
-                                    <span>Basemap: {stagedObj.mapStyle}</span>
-                                    <span className="font-mono text-emerald-400">● 6 Active Subgrids</span>
+                                <div className="p-2 z-10 flex items-center justify-between text-[8px] font-mono pointer-events-none">
+                                    <span
+                                        className="px-2 py-0.5 rounded border pointer-events-auto"
+                                        style={{
+                                            backgroundColor: `${stagedObj.bgCard}ee`,
+                                            borderColor: stagedObj.borderSubtle,
+                                            color: stagedObj.textPrimary
+                                        }}
+                                    >
+                                        EPSG:4326 | 2.54936° N, 102.81716° E
+                                    </span>
                                 </div>
                             </div>
 
-                            {/* Mini Table Preview */}
-                            <div
-                                className="col-span-5 h-44 rounded-xl border p-2.5 flex flex-col justify-between"
-                                style={{
-                                    backgroundColor: stagedObj.bgCard,
-                                    borderColor: stagedObj.borderSubtle
-                                }}
-                            >
-                                <div className="text-[10px] font-bold pb-1.5 border-b" style={{ borderColor: stagedObj.borderSubtle, color: stagedObj.textPrimary }}>
-                                    Recent Subgrid Batches
-                                </div>
-                                <div className="space-y-1.5 my-auto">
-                                    {['N94E71', 'N93E70', 'N94E70'].map((subgrid, idx) => (
-                                        <div
-                                            key={subgrid}
-                                            className="flex items-center justify-between text-[10px] p-1 rounded"
-                                            style={{ backgroundColor: `${stagedObj.bgApp}80` }}
-                                        >
-                                            <span className="font-mono" style={{ color: stagedObj.textPrimary }}>{subgrid}</span>
-                                            <span
-                                                className="text-[9px] px-1.5 py-0.2 rounded font-semibold"
-                                                style={{
-                                                    backgroundColor: idx === 0 ? `${stagedObj.accent}20` : '#10b98120',
-                                                    color: idx === 0 ? stagedObj.accent : '#10b981'
-                                                }}
-                                            >
-                                                {idx === 0 ? 'In-Progress' : 'Published'}
-                                            </span>
-                                        </div>
-                                    ))}
-                                </div>
-                                <button
-                                    onClick={handleApplyTheme}
-                                    className="w-full py-1 rounded text-[10px] font-bold text-center transition-colors"
+                            {/* REAL PROCESSING CONTROL & QA INSPECTOR TABLE */}
+                            <div className="col-span-12 md:col-span-5 flex flex-col gap-2.5">
+                                <div
+                                    className="p-3 rounded-xl border flex-1 flex flex-col justify-between"
                                     style={{
-                                        backgroundColor: stagedObj.accent,
-                                        color: stagedTheme === 'nordic-light' ? '#ffffff' : '#040d1a'
+                                        backgroundColor: stagedObj.bgCard,
+                                        borderColor: stagedObj.borderSubtle
                                     }}
                                 >
-                                    Apply {stagedObj.name}
-                                </button>
+                                    <div className="flex items-center justify-between pb-2 border-b" style={{ borderColor: stagedObj.borderSubtle }}>
+                                        <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: stagedObj.textPrimary }}>
+                                            PROCESSING CONTROL & ADMIN
+                                        </span>
+                                        <span className="text-[8px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 font-mono">
+                                            Daily Progress ({dailyData.length || 6})
+                                        </span>
+                                    </div>
+
+                                    {/* Real Data Rows */}
+                                    <div className="space-y-1.5 my-2 text-[9px] max-h-48 overflow-y-auto">
+                                        {(dailyData && dailyData.length > 0 ? dailyData.slice(0, 4) : [
+                                            { subgrid: 'N93E70', images: 164, status: 'Ongoing' },
+                                            { subgrid: 'N94E70', images: 100, status: 'Ongoing' },
+                                            { subgrid: 'N94E71', images: 9, status: 'Ongoing' }
+                                        ]).map((row: any, idx: number) => (
+                                            <div
+                                                key={idx}
+                                                className="flex items-center justify-between p-1.5 rounded border"
+                                                style={{
+                                                    backgroundColor: stagedObj.innerCard,
+                                                    borderColor: stagedObj.borderSubtle
+                                                }}
+                                            >
+                                                <span className="font-mono font-bold" style={{ color: stagedObj.textPrimary }}>
+                                                    {row.subgrid || `N9${idx}E7${idx}`}
+                                                </span>
+                                                <span style={{ color: stagedObj.textPrimary }}>{row.images || 0} frames</span>
+                                                <span className="text-amber-400 font-semibold flex items-center gap-1">
+                                                    ● {row.status || 'Ongoing'}
+                                                </span>
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    <div className="pt-2 border-t flex items-center justify-between text-[8px]" style={{ borderColor: stagedObj.borderSubtle, color: stagedObj.textMuted }}>
+                                        <span>Live Telemetry Engine</span>
+                                        <span className="font-mono text-emerald-400">Status: Operational</span>
+                                    </div>
+                                </div>
+
+                                {/* 360 View Inspector & QA Box */}
+                                <div
+                                    className="p-2.5 rounded-xl border flex items-center justify-between"
+                                    style={{
+                                        backgroundColor: stagedObj.bgCard,
+                                        borderColor: stagedObj.borderSubtle
+                                    }}
+                                >
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-6 h-6 rounded flex items-center justify-center bg-sky-500/10 border border-sky-500/20 text-sky-400 text-[10px]">
+                                            <Camera className="w-3.5 h-3.5" />
+                                        </div>
+                                        <div>
+                                            <div className="text-[9px] font-bold" style={{ color: stagedObj.textPrimary }}>
+                                                360 View Inspector & QA
+                                            </div>
+                                            <div className="text-[8px]" style={{ color: stagedObj.textMuted }}>
+                                                Live spatial node inspector active
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <span
+                                        className="text-[8px] px-2 py-0.5 rounded font-bold border"
+                                        style={{
+                                            backgroundColor: `${stagedObj.accent}20`,
+                                            color: stagedObj.accent,
+                                            borderColor: `${stagedObj.accent}40`
+                                        }}
+                                    >
+                                        Reviewing Active
+                                    </span>
+                                </div>
                             </div>
+
                         </div>
+
                     </div>
                 </div>
 
