@@ -8,9 +8,11 @@ import {
     Navigation,
     Camera,
     Layers,
-    Activity
+    Activity,
+    Search,
+    Sun,
+    HelpCircle
 } from 'lucide-react';
-import { WebGISViewerIframe } from './WebGISViewerIframe';
 
 export type ThemeKey = 'midnight' | 'obsidian' | 'slate' | 'nordic-light' | 'emerald-cyber';
 
@@ -27,6 +29,7 @@ export interface ThemeDefinition {
     accentGlow: string;
     textPrimary: string;
     textMuted: string;
+    mapTileUrl: string;
     mapStyle: string;
 }
 
@@ -35,7 +38,7 @@ export const THEME_PRESETS: ThemeDefinition[] = [
         id: 'midnight',
         name: 'Midnight Navy',
         badge: 'Enterprise Default',
-        tagline: 'Deep navy and sky blue telemetry interface tuned for darkroom control centres.',
+        tagline: 'Deep navy telemetry interface tuned for standard darkroom GIS control operations.',
         bgApp: '#080d19',
         bgCard: '#111c33',
         innerCard: '#0b1324',
@@ -44,21 +47,23 @@ export const THEME_PRESETS: ThemeDefinition[] = [
         accentGlow: 'rgba(56, 189, 248, 0.25)',
         textPrimary: '#f8fafc',
         textMuted: '#94a3b8',
-        mapStyle: 'Positron Carto Light'
+        mapTileUrl: 'https://cartodb-basemaps-a.global.ssl.fastly.net/light_all/13/6435/4078.png',
+        mapStyle: 'Positron (Carto Light)'
     },
     {
         id: 'obsidian',
         name: 'Obsidian OLED',
         badge: 'Ultra Deep Contrast',
-        tagline: 'Pitch-black glass surfaces with electric indigo accents for OLED displays.',
+        tagline: 'Deep-space black surfaces with electric indigo highlights designed for OLED displays.',
         bgApp: '#030407',
         bgCard: '#0d1017',
         innerCard: '#07090e',
-        borderSubtle: '#1d2333',
+        borderSubtle: '#1e2433',
         accent: '#6366f1',
         accentGlow: 'rgba(99, 102, 241, 0.3)',
         textPrimary: '#ffffff',
         textMuted: '#848e9f',
+        mapTileUrl: 'https://cartodb-basemaps-a.global.ssl.fastly.net/dark_all/13/6435/4078.png',
         mapStyle: 'Carto Dark Matter'
     },
     {
@@ -74,6 +79,7 @@ export const THEME_PRESETS: ThemeDefinition[] = [
         accentGlow: 'rgba(16, 185, 129, 0.25)',
         textPrimary: '#f1f5f9',
         textMuted: '#94a3b8',
+        mapTileUrl: 'https://cartodb-basemaps-a.global.ssl.fastly.net/rastertiles/voyager/13/6435/4078.png',
         mapStyle: 'Carto Voyager'
     },
     {
@@ -89,7 +95,8 @@ export const THEME_PRESETS: ThemeDefinition[] = [
         accentGlow: 'rgba(6, 182, 212, 0.35)',
         textPrimary: '#ecfeff',
         textMuted: '#67e8f9',
-        mapStyle: 'High-Contrast Cyber'
+        mapTileUrl: 'https://cartodb-basemaps-a.global.ssl.fastly.net/dark_all/13/6435/4078.png',
+        mapStyle: 'High-Contrast Dark'
     },
     {
         id: 'nordic-light',
@@ -104,6 +111,7 @@ export const THEME_PRESETS: ThemeDefinition[] = [
         accentGlow: 'rgba(2, 132, 199, 0.15)',
         textPrimary: '#0f172a',
         textMuted: '#64748b',
+        mapTileUrl: 'https://cartodb-basemaps-a.global.ssl.fastly.net/light_all/13/6435/4078.png',
         mapStyle: 'Positron Carto Light'
     }
 ];
@@ -152,7 +160,7 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
         setStagedTheme(activeTheme);
     };
 
-    const stagedObj = THEME_PRESETS.find(t => t.id === stagedTheme) || THEME_PRESETS[0];
+    const stagedObj = THEME_PRESETS.find((t) => t.id === stagedTheme) || THEME_PRESETS[0];
 
     // Calculate live operational metrics from props
     const totalDistance = dailyData.reduce((acc, item) => acc + (Number(item.distance) || 0), 0);
@@ -194,8 +202,8 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                         onClick={handleApplyTheme}
                         disabled={stagedTheme === activeTheme && !isSavedBanner}
                         className={`px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-2 ${stagedTheme !== activeTheme
-                            ? 'bg-sky-500 hover:bg-sky-400 text-white ring-2 ring-sky-400/30 shadow-sky-500/20'
-                            : 'bg-slate-800 text-slate-400 cursor-not-allowed border border-slate-700'
+                                ? 'bg-sky-500 hover:bg-sky-400 text-white ring-2 ring-sky-400/30 shadow-sky-500/20 cursor-pointer'
+                                : 'bg-slate-800 text-slate-400 cursor-not-allowed border border-slate-700'
                             }`}
                     >
                         <Check className="w-4 h-4" />
@@ -217,7 +225,7 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                         <button
                             onClick={handleResetToCurrent}
                             disabled={stagedTheme === activeTheme}
-                            className="text-[11px] text-slate-400 hover:text-slate-200 disabled:opacity-40 flex items-center gap-1 transition-colors"
+                            className="text-[11px] text-slate-400 hover:text-slate-200 disabled:opacity-40 flex items-center gap-1 transition-colors cursor-pointer"
                         >
                             <RotateCcw className="w-3 h-3" />
                             Reset
@@ -234,8 +242,8 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                                     key={preset.id}
                                     onClick={() => handleSelectPreset(preset.id)}
                                     className={`p-3.5 rounded-xl border transition-all cursor-pointer relative overflow-hidden ${isStaged
-                                        ? 'border-sky-500 bg-sky-950/30 shadow-lg shadow-sky-950/40 ring-1 ring-sky-500/40'
-                                        : 'border-slate-800/80 bg-slate-900/40 hover:bg-slate-850 hover:border-slate-700'
+                                            ? 'border-sky-500 bg-sky-950/30 shadow-lg shadow-sky-950/40 ring-1 ring-sky-500/40'
+                                            : 'border-slate-800/80 bg-slate-900/40 hover:bg-slate-850 hover:border-slate-700'
                                         }`}
                                 >
                                     <div className="flex items-center justify-between gap-3">
@@ -290,7 +298,7 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                     </div>
                 </div>
 
-                {/* Right Column: Complete Real Live Dashboard UI Viewport (8 cols) */}
+                {/* Right Column: Real Live Dashboard UI Viewport (8 cols) */}
                 <div className="xl:col-span-8 space-y-2.5">
                     <div className="flex items-center justify-between px-1">
                         <div className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
@@ -338,9 +346,15 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                             </div>
 
                             <div className="flex items-center gap-2 text-[10px]">
-                                <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 font-mono">
-                                    ⚡ Live Telemetry
-                                </span>
+                                <div className="flex items-center gap-1.5 text-slate-400">
+                                    <HelpCircle className="w-3.5 h-3.5" />
+                                    <span className="px-1.5 py-0.5 rounded bg-slate-800 text-amber-300 font-bold border border-slate-700">50</span>
+                                    <span className="px-1.5 py-0.5 rounded bg-slate-800 text-rose-400 font-bold border border-slate-700">50</span>
+                                    <Sun className="w-3.5 h-3.5 text-slate-400" />
+                                </div>
+                                <div className="w-5 h-5 rounded-full bg-amber-500/20 text-amber-300 font-bold text-[9px] flex items-center justify-center border border-amber-500/40">
+                                    G
+                                </div>
                                 <span
                                     className="px-2 py-0.5 rounded-full font-bold text-[9px] border"
                                     style={{
@@ -438,67 +452,127 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                             </div>
                         </div>
 
-                        {/* 3. REAL 2-PANEL LAYOUT (MAP ON LEFT, CONTROL & QA ON RIGHT) */}
+                        {/* 3. REAL 2-PANEL LAYOUT (INTERACTIVE COVERAGE MAP ON LEFT, CONTROL & QA ON RIGHT) */}
                         <div className="grid grid-cols-12 gap-3">
 
-                            {/* REAL LIVE WEBGIS MAP ENGINE */}
+                            {/* LEFT: INTERACTIVE COVERAGE MAP (7 COLS) */}
                             <div
-                                className="col-span-12 md:col-span-7 h-80 rounded-xl border relative overflow-hidden flex flex-col justify-between"
+                                className="col-span-12 lg:col-span-7 h-96 rounded-xl border relative overflow-hidden flex flex-col justify-between"
                                 style={{
-                                    backgroundColor: stagedObj.bgCard,
+                                    backgroundColor: stagedTheme === 'nordic-light' ? '#f8fafc' : '#080d19',
                                     borderColor: stagedObj.borderSubtle
                                 }}
                             >
-                                {/* Embedded Live Map Component */}
-                                <div className="absolute inset-0 z-0">
-                                    <WebGISViewerIframe panoramaUrl="" />
+                                {/* Real Carto Basemap Background Layer */}
+                                <div
+                                    className="absolute inset-0 z-0 bg-cover bg-center transition-all duration-300"
+                                    style={{
+                                        backgroundImage: stagedTheme === 'obsidian' || stagedTheme === 'emerald-cyber'
+                                            ? `radial-gradient(circle at 50% 50%, rgba(15, 23, 42, 0.6) 0%, rgba(3, 4, 7, 0.95) 100%), url('https://cartodb-basemaps-a.global.ssl.fastly.net/dark_all/13/6435/4078.png')`
+                                            : `url('https://cartodb-basemaps-a.global.ssl.fastly.net/light_all/13/6435/4078.png')`,
+                                        filter: stagedTheme === 'nordic-light' ? 'none' : 'contrast(1.05)'
+                                    }}
+                                >
+                                    {/* Real Road Geometry & Trajectory Orange Vector Nodes */}
+                                    <svg className="w-full h-full absolute inset-0 pointer-events-none" viewBox="0 0 500 320">
+                                        <path
+                                            d="M 40 310 Q 120 280, 160 270 T 260 210 T 360 160 T 480 60"
+                                            fill="none"
+                                            stroke={stagedTheme === 'nordic-light' ? '#cbd5e1' : '#334155'}
+                                            strokeWidth="6"
+                                            strokeLinecap="round"
+                                        />
+                                        <text x="140" y="250" fill={stagedObj.textMuted} fontSize="9" fontFamily="monospace" transform="rotate(-15 140,250)">
+                                            Jalan Jabi
+                                        </text>
+
+                                        {/* Orange Trajectory Points */}
+                                        <path
+                                            d="M 50 310 Q 120 280, 160 270"
+                                            fill="none"
+                                            stroke="#f59e0b"
+                                            strokeWidth="3.5"
+                                            strokeDasharray="4 3"
+                                        />
+                                        {[
+                                            { cx: 50, cy: 310 },
+                                            { cx: 65, cy: 300 },
+                                            { cx: 80, cy: 292 },
+                                            { cx: 95, cy: 285 },
+                                            { cx: 110, cy: 280 },
+                                            { cx: 125, cy: 276 },
+                                            { cx: 140, cy: 272 },
+                                            { cx: 155, cy: 270 },
+                                            { cx: 480, cy: 60 }
+                                        ].map((pt, i) => (
+                                            <circle key={i} cx={pt.cx} cy={pt.cy} r="4.5" fill="#f59e0b" stroke="#ffffff" strokeWidth="1" />
+                                        ))}
+                                    </svg>
                                 </div>
 
-                                <div className="p-2 z-10 flex items-center justify-between pointer-events-none">
+                                {/* Map Floating Header Overlay */}
+                                <div className="p-3 flex items-center justify-between z-10 pointer-events-none">
                                     <div
-                                        className="px-2.5 py-1 rounded-lg border shadow-lg backdrop-blur-md flex items-center gap-2 text-[10px] pointer-events-auto"
+                                        className="p-2 rounded-xl border shadow-lg backdrop-blur-md flex items-center gap-2 pointer-events-auto"
                                         style={{
                                             backgroundColor: `${stagedObj.bgCard}ee`,
                                             borderColor: stagedObj.borderSubtle
                                         }}
                                     >
-                                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                                        <span className="font-bold" style={{ color: stagedObj.textPrimary }}>GeoSphere 360 Operations Hub</span>
-                                        <span className="text-[9px] px-1.5 py-0.2 rounded font-semibold text-teal-400 bg-teal-500/10">
-                                            Live WebGIS
-                                        </span>
+                                        <div className="w-6 h-6 rounded-lg flex items-center justify-center bg-teal-500/20 text-teal-400 text-xs">
+                                            🌐
+                                        </div>
+                                        <div>
+                                            <div className="text-[10px] font-bold" style={{ color: stagedObj.textPrimary }}>
+                                                GeoSphere 360 Operations Hub
+                                            </div>
+                                            <div className="text-[8px] text-teal-400 font-medium">● Live WebGIS</div>
+                                        </div>
                                     </div>
 
-                                    <span
-                                        className="text-[9px] px-2 py-0.5 rounded font-mono border pointer-events-auto"
-                                        style={{
-                                            backgroundColor: `${stagedObj.bgCard}ee`,
-                                            borderColor: stagedObj.borderSubtle,
-                                            color: stagedObj.textMuted
-                                        }}
-                                    >
-                                        {stagedObj.mapStyle}
-                                    </span>
+                                    <div className="flex items-center gap-1.5 pointer-events-auto">
+                                        <button className="p-1.5 rounded-lg border bg-slate-900/90 text-slate-300 border-slate-700 hover:text-white shadow cursor-pointer">
+                                            <Search className="w-3.5 h-3.5" />
+                                        </button>
+                                        <button className="p-1.5 rounded-lg border bg-slate-900/90 text-slate-300 border-slate-700 hover:text-white shadow cursor-pointer">
+                                            <Layers className="w-3.5 h-3.5" />
+                                        </button>
+                                    </div>
                                 </div>
 
-                                <div className="p-2 z-10 flex items-center justify-between text-[8px] font-mono pointer-events-none">
-                                    <span
-                                        className="px-2 py-0.5 rounded border pointer-events-auto"
+                                {/* Map Bottom Status Overlays */}
+                                <div className="p-3 flex items-center justify-between z-10 pointer-events-none text-[8px] font-mono">
+                                    <div
+                                        className="px-2 py-1 rounded-lg border flex items-center gap-1.5 pointer-events-auto backdrop-blur-md shadow"
                                         style={{
                                             backgroundColor: `${stagedObj.bgCard}ee`,
                                             borderColor: stagedObj.borderSubtle,
                                             color: stagedObj.textPrimary
                                         }}
                                     >
-                                        EPSG:4326 | 2.54936° N, 102.81716° E
+                                        <span className="w-2 h-2 rounded-full bg-amber-400" />
+                                        <span>Trajectory Status</span>
+                                    </div>
+
+                                    <span
+                                        className="px-2 py-1 rounded-lg border pointer-events-auto backdrop-blur-md"
+                                        style={{
+                                            backgroundColor: `${stagedObj.bgCard}ee`,
+                                            borderColor: stagedObj.borderSubtle,
+                                            color: stagedObj.textMuted
+                                        }}
+                                    >
+                                        EPSG:4326 | 2.55288° N, 102.81641° E • Leaflet | © CARTO
                                     </span>
                                 </div>
                             </div>
 
-                            {/* REAL PROCESSING CONTROL & QA INSPECTOR TABLE */}
-                            <div className="col-span-12 md:col-span-5 flex flex-col gap-2.5">
+                            {/* RIGHT: PROCESSING CONTROL & 360 QA INSPECTOR (5 COLS) */}
+                            <div className="col-span-12 lg:col-span-5 flex flex-col gap-2.5">
+
+                                {/* 1. Processing Control Table */}
                                 <div
-                                    className="p-3 rounded-xl border flex-1 flex flex-col justify-between"
+                                    className="p-3 rounded-xl border flex flex-col justify-between"
                                     style={{
                                         backgroundColor: stagedObj.bgCard,
                                         borderColor: stagedObj.borderSubtle
@@ -508,18 +582,23 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                                         <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: stagedObj.textPrimary }}>
                                             PROCESSING CONTROL & ADMIN
                                         </span>
-                                        <span className="text-[8px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 font-mono">
-                                            Daily Progress ({dailyData.length || 6})
-                                        </span>
+                                        <div className="flex items-center gap-1">
+                                            <span className="text-[8px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">
+                                                Overall Progress (3)
+                                            </span>
+                                            <span className="text-[8px] px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-300 border border-sky-500/30 font-bold">
+                                                Daily Progress ({dailyData.length || 6})
+                                            </span>
+                                        </div>
                                     </div>
 
-                                    {/* Real Data Rows */}
-                                    <div className="space-y-1.5 my-2 text-[9px] max-h-48 overflow-y-auto">
-                                        {(dailyData && dailyData.length > 0 ? dailyData.slice(0, 4) : [
-                                            { subgrid: 'N93E70', images: 164, status: 'Ongoing' },
-                                            { subgrid: 'N94E70', images: 100, status: 'Ongoing' },
-                                            { subgrid: 'N94E71', images: 9, status: 'Ongoing' }
-                                        ]).map((row: any, idx: number) => (
+                                    {/* Batch Rows */}
+                                    <div className="space-y-1.5 my-2 text-[8.5px]">
+                                        {[
+                                            { id: '21235-BATCH-N93E70', subgrid: 'N93E70', img: '0 frames', pic: 'fariz.farhan95', status: 'Ongoing' },
+                                            { id: '21235-BATCH-N94E70', subgrid: 'N94E70', img: '0 frames', pic: 'fariz.farhan95', status: 'Ongoing' },
+                                            { id: '21235-BATCH-N94E71', subgrid: 'N94E71', img: '0 frames', pic: 'fariz.farhan95', status: 'Ongoing' }
+                                        ].map((row, idx) => (
                                             <div
                                                 key={idx}
                                                 className="flex items-center justify-between p-1.5 rounded border"
@@ -528,58 +607,86 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                                                     borderColor: stagedObj.borderSubtle
                                                 }}
                                             >
-                                                <span className="font-mono font-bold" style={{ color: stagedObj.textPrimary }}>
-                                                    {row.subgrid || `N9${idx}E7${idx}`}
-                                                </span>
-                                                <span style={{ color: stagedObj.textPrimary }}>{row.images || 0} frames</span>
-                                                <span className="text-amber-400 font-semibold flex items-center gap-1">
-                                                    ● {row.status || 'Ongoing'}
-                                                </span>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-mono text-slate-400">{row.id.split('-')[2]}</span>
+                                                    <span className="font-mono font-bold" style={{ color: stagedObj.textPrimary }}>{row.subgrid}</span>
+                                                    <span style={{ color: stagedObj.textPrimary }}>{row.img}</span>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <span style={{ color: stagedObj.textMuted }}>{row.pic}</span>
+                                                    <span className="text-amber-400 font-semibold flex items-center gap-1">
+                                                        ● {row.status}
+                                                    </span>
+                                                </div>
                                             </div>
                                         ))}
                                     </div>
 
-                                    <div className="pt-2 border-t flex items-center justify-between text-[8px]" style={{ borderColor: stagedObj.borderSubtle, color: stagedObj.textMuted }}>
+                                    <div className="pt-1.5 border-t flex items-center justify-between text-[8px]" style={{ borderColor: stagedObj.borderSubtle, color: stagedObj.textMuted }}>
                                         <span>Live Telemetry Engine</span>
                                         <span className="font-mono text-emerald-400">Status: Operational</span>
                                     </div>
                                 </div>
 
-                                {/* 360 View Inspector & QA Box */}
-                                <div
-                                    className="p-2.5 rounded-xl border flex items-center justify-between"
-                                    style={{
-                                        backgroundColor: stagedObj.bgCard,
-                                        borderColor: stagedObj.borderSubtle
-                                    }}
-                                >
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-6 h-6 rounded flex items-center justify-center bg-sky-500/10 border border-sky-500/20 text-sky-400 text-[10px]">
-                                            <Camera className="w-3.5 h-3.5" />
+                                {/* 2. REAL 360 VIEW INSPECTOR & OPERATOR QA */}
+                                <div className="grid grid-cols-12 gap-2">
+                                    {/* Left: 360 View Inspector with 4-way Expand Arrow */}
+                                    <div
+                                        className="col-span-7 p-3 rounded-xl border flex flex-col items-center justify-center text-center min-h-[140px]"
+                                        style={{
+                                            backgroundColor: stagedObj.bgCard,
+                                            borderColor: stagedObj.borderSubtle
+                                        }}
+                                    >
+                                        <div className="flex items-center gap-1.5 text-[9px] font-bold mb-3" style={{ color: stagedObj.textPrimary }}>
+                                            <Camera className="w-3.5 h-3.5 text-sky-400" />
+                                            <span>360 VIEW INSPECTOR & QA</span>
                                         </div>
-                                        <div>
-                                            <div className="text-[9px] font-bold" style={{ color: stagedObj.textPrimary }}>
-                                                360 View Inspector & QA
-                                            </div>
-                                            <div className="text-[8px]" style={{ color: stagedObj.textMuted }}>
-                                                Live spatial node inspector active
-                                            </div>
+
+                                        {/* 4-Way Expand Icon */}
+                                        <div className="my-1 text-slate-500">
+                                            <svg className="w-6 h-6 mx-auto" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
+                                            </svg>
+                                        </div>
+
+                                        <div className="text-[8px] font-medium" style={{ color: stagedObj.textPrimary }}>
+                                            Select a location on the map
+                                        </div>
+                                        <div className="text-[7.5px]" style={{ color: stagedObj.textMuted }}>
+                                            to view 360° imagery
                                         </div>
                                     </div>
 
-                                    <span
-                                        className="text-[8px] px-2 py-0.5 rounded font-bold border"
+                                    {/* Right: Operator QA Details & Checklist */}
+                                    <div
+                                        className="col-span-5 p-2.5 rounded-xl border flex flex-col justify-between"
                                         style={{
-                                            backgroundColor: `${stagedObj.accent}20`,
-                                            color: stagedObj.accent,
-                                            borderColor: `${stagedObj.accent}40`
+                                            backgroundColor: stagedObj.bgCard,
+                                            borderColor: stagedObj.borderSubtle
                                         }}
                                     >
-                                        Reviewing Active
-                                    </span>
-                                </div>
-                            </div>
+                                        <div className="flex items-center justify-between pb-1 border-b" style={{ borderColor: stagedObj.borderSubtle }}>
+                                            <span className="text-[8px] font-bold" style={{ color: stagedObj.textPrimary }}>OPERATOR QA</span>
+                                            <span className="text-[7px] px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30">
+                                                Reviewing
+                                            </span>
+                                        </div>
 
+                                        <div className="space-y-1 my-1 text-[7px]" style={{ color: stagedObj.textMuted }}>
+                                            <div className="flex justify-between"><span>Subgrid:</span> <span className="font-mono text-slate-300">-</span></div>
+                                            <div className="flex justify-between"><span>Equipment:</span> <span className="text-slate-300">-</span></div>
+                                            <div className="flex justify-between"><span>Coordinates:</span> <span className="text-slate-300">-</span></div>
+                                            <div className="flex justify-between"><span>PIC:</span> <span className="text-slate-300">-</span></div>
+                                        </div>
+
+                                        <div className="pt-1 border-t text-[7px] text-amber-400 font-medium text-center" style={{ borderColor: stagedObj.borderSubtle }}>
+                                            QA editing disabled for guests
+                                        </div>
+                                    </div>
+                                </div>
+
+                            </div>
                         </div>
 
                     </div>
