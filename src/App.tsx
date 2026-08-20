@@ -4931,26 +4931,49 @@ export default function App() {
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
   const [isAboutModalOpen, setIsAboutModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'batches' | 'daily'>('batches');
-  const [themeMode, setThemeMode] = useState<'dark' | 'light'>(() => {
-    try {
-      return (localStorage.getItem('tnb_theme') as 'dark' | 'light') || 'dark';
-    } catch (e) {
-      return 'dark';
-    }
-  });
 
-  const toggleTheme = () => {
-    const nextTheme = themeMode === 'dark' ? 'light' : 'dark';
-    setThemeMode(nextTheme);
-    try {
-      localStorage.setItem('tnb_theme', nextTheme);
-    } catch (e) { }
-  };
-
-  // === Theme Package ===
-  const [currentTheme, setCurrentTheme] = useState(() => {
+  // Unified Theme State
+  const [currentTheme, setCurrentTheme] = useState<string>(() => {
     return localStorage.getItem('app_dashboard_theme') || 'midnight';
   });
+
+  // Derived themeMode for backward compatibility
+  const themeMode = currentTheme === 'daylight' ? 'light' : 'dark';
+
+  // Synchronized Toggle Function for Navbar
+  const toggleTheme = () => {
+    const nextTheme = currentTheme === 'daylight'
+      ? (localStorage.getItem('app_last_dark_theme') || 'midnight')
+      : 'daylight';
+
+    if (currentTheme !== 'daylight') {
+      localStorage.setItem('app_last_dark_theme', currentTheme);
+    }
+
+    setCurrentTheme(nextTheme);
+    document.documentElement.setAttribute('data-theme', nextTheme);
+    try {
+      localStorage.setItem('app_dashboard_theme', nextTheme);
+    } catch (e) { }
+    window.dispatchEvent(new CustomEvent('app-theme-changed', { detail: nextTheme }));
+  };
+
+  // Global Theme Listener
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', currentTheme);
+
+    const handleThemeEvent = (e: any) => {
+      if (e.detail) {
+        setCurrentTheme(e.detail);
+        if (e.detail !== 'daylight') {
+          localStorage.setItem('app_last_dark_theme', e.detail);
+        }
+      }
+    };
+
+    window.addEventListener('app-theme-changed', handleThemeEvent);
+    return () => window.removeEventListener('app-theme-changed', handleThemeEvent);
+  }, [currentTheme]);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', currentTheme);
