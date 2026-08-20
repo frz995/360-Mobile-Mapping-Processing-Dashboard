@@ -2889,13 +2889,16 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
       )}
 
       {/* ======================================================== */}
-      {/* TAB 7: MODERN THEME PACKAGES CANVAS & LIVE PREVIEW       */}
+      {/* TAB 7: MODERN THEME PACKAGES CANVAS & REAL LIVE PREVIEW */}
       {/* ======================================================== */}
       {activeTab === 'theme-pack' && (
         <ThemeManagementCanvas
           cardBg={cardBg}
           innerCardBg={innerCardBg}
           themeMode={themeMode}
+          dailyData={dailyData}
+          batchLogs={batchLogs}
+          projectSettings={projectSettings}
         />
       )}
 
