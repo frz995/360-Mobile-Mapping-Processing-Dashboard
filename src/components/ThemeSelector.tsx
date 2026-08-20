@@ -38,10 +38,10 @@ export const THEME_PRESETS: ThemeDefinition[] = [
         name: 'Midnight Navy',
         badge: 'System Default',
         tagline: 'Default production theme with deep navy card layers and clear sky-blue telemetry accents.',
-        bgApp: '#070d18',
-        bgCard: '#0b1329',
-        innerCard: '#090f20',
-        borderSubtle: '#1b253b',
+        bgApp: '#080e1a',
+        bgCard: '#0f172a',
+        innerCard: '#162138',
+        borderSubtle: '#1e2e4a',
         accent: '#38bdf8',
         accentBg: 'rgba(56, 189, 248, 0.12)',
         textPrimary: '#f8fafc',
@@ -54,13 +54,13 @@ export const THEME_PRESETS: ThemeDefinition[] = [
         name: 'Obsidian Pure Dark',
         badge: 'OLED Contrast',
         tagline: 'Monochromatic pitch-black carbon surfaces for darkroom surveying and minimal eye fatigue.',
-        bgApp: '#030407',
-        bgCard: '#0d1117',
-        innerCard: '#07090e',
-        borderSubtle: '#21262d',
-        accent: '#60a5fa',
-        accentBg: 'rgba(96, 165, 250, 0.12)',
-        textPrimary: '#f0f6fc',
+        bgApp: '#030305',
+        bgCard: '#0a0b10',
+        innerCard: '#12131a',
+        borderSubtle: '#1e202c',
+        accent: '#818cf8',
+        accentBg: 'rgba(129, 140, 248, 0.14)',
+        textPrimary: '#f8fafc',
         textMuted: '#8b949e',
         mapTileUrl: 'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
         mapStyle: 'Carto Dark Matter'
@@ -70,10 +70,10 @@ export const THEME_PRESETS: ThemeDefinition[] = [
         name: 'Titanium Graphite',
         badge: 'Neutral Studio',
         tagline: 'Balanced matte charcoal surfaces with soft metallic borders for technical inspection.',
-        bgApp: '#111318',
-        bgCard: '#1a1d24',
-        innerCard: '#13151b',
-        borderSubtle: '#2a2f3b',
+        bgApp: '#121418',
+        bgCard: '#181b22',
+        innerCard: '#21252f',
+        borderSubtle: '#2d3340',
         accent: '#cbd5e1',
         accentBg: 'rgba(203, 213, 225, 0.12)',
         textPrimary: '#f1f5f9',
@@ -86,14 +86,14 @@ export const THEME_PRESETS: ThemeDefinition[] = [
         name: 'Precision Teal',
         badge: 'GIS Telemetry',
         tagline: 'Cool dark maritime slate with muted teal trajectory highlights.',
-        bgApp: '#060f14',
-        bgCard: '#0c1a24',
-        innerCard: '#07121a',
-        borderSubtle: '#163145',
-        accent: '#0d9488',
-        accentBg: 'rgba(13, 148, 136, 0.12)',
+        bgApp: '#030d12',
+        bgCard: '#071924',
+        innerCard: '#0d2737',
+        borderSubtle: '#13394d',
+        accent: '#14b8a6',
+        accentBg: 'rgba(20, 184, 166, 0.14)',
         textPrimary: '#f0fdfa',
-        textMuted: '#7895a7',
+        textMuted: '#7ba4b8',
         mapTileUrl: 'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
         mapStyle: 'Dark Telemetry'
     },
@@ -102,12 +102,12 @@ export const THEME_PRESETS: ThemeDefinition[] = [
         name: 'Daylight Clean',
         badge: 'Clean Light',
         tagline: 'Crisp high-luminance workspace with navy typography and soft borders.',
-        bgApp: '#f8fafc',
+        bgApp: '#f4f6f9',
         bgCard: '#ffffff',
-        innerCard: '#f1f5f9',
+        innerCard: '#f8fafc',
         borderSubtle: '#e2e8f0',
         accent: '#2563eb',
-        accentBg: 'rgba(37, 99, 235, 0.08)',
+        accentBg: '#eff6ff',
         textPrimary: '#0f172a',
         textMuted: '#64748b',
         mapTileUrl: 'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
@@ -187,7 +187,7 @@ const LiveLeafletMapContainer: React.FC<{ tileUrl: string }> = ({ tileUrl }) => 
 };
 
 export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
-    cardBg = 'bg-app',
+    cardBg = 'bg-card',
     dailyData = [],
     batchLogs = [],
     projectSettings
@@ -214,7 +214,6 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
             localStorage.setItem('app_dashboard_theme', stagedTheme);
         } catch { }
 
-        // Dispatch global event so root app listens and updates state immediately
         window.dispatchEvent(new CustomEvent('app-theme-changed', { detail: stagedTheme }));
 
         setIsSavedBanner(true);
@@ -249,22 +248,8 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                         <Palette className="w-4 h-4" />
                     </div>
                     <div>
-                        <div className="flex items-center gap-2">
-                            <h2 className="text-xs font-semibold text-slate-200 uppercase tracking-wider">
-                                Enterprise Theme Packages
-                            </h2>
-                            <span
-                                className="text-[10px] px-2 py-0.5 rounded font-mono border"
-                                style={{
-                                    backgroundColor: stagedObj.accentBg,
-                                    color: stagedObj.accent,
-                                    borderColor: `${stagedObj.accent}30`
-                                }}
-                            >
-                                Live Staging
-                            </span>
-                        </div>
-                        <p className="text-xs text-slate-400 mt-0.5">
+                        <h3 className="text-sm font-semibold text-text-base">Theme System Engine</h3>
+                        <p className="text-xs text-text-muted mt-0.5">
                             Select a palette to inspect typography contrast, basemap rendering, and dashboard density.
                         </p>
                     </div>
@@ -273,8 +258,8 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                 {/* Global Save Action */}
                 <div className="flex items-center gap-3">
                     {isSavedBanner && (
-                        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-medium">
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-medium">
+                            <CheckCircle2 className="w-3.5 h-3.5" />
                             Theme Applied
                         </div>
                     )}
@@ -282,8 +267,8 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                         onClick={handleApplyTheme}
                         disabled={stagedTheme === activeTheme && !isSavedBanner}
                         className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${stagedTheme !== activeTheme
-                            ? 'bg-slate-100 hover:bg-white text-slate-900 shadow-sm cursor-pointer'
-                            : 'bg-inner text-slate-500 cursor-not-allowed border border-subtle'
+                                ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-sm cursor-pointer'
+                                : 'bg-inner text-text-muted cursor-not-allowed border border-subtle'
                             }`}
                     >
                         <Check className="w-3.5 h-3.5" />
@@ -294,18 +279,17 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
 
             {/* 2. Workspace Columns */}
             <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
-
                 {/* Left Column: Subtle Theme Cards */}
                 <div className="xl:col-span-4 space-y-2.5">
                     <div className="flex items-center justify-between px-1">
-                        <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                            <Sliders className="w-3 h-3 text-slate-400" />
+                        <div className="text-[11px] font-semibold text-text-muted uppercase tracking-wider flex items-center gap-1.5">
+                            <Sliders className="w-3 h-3 text-text-muted" />
                             Available Themes
                         </div>
                         <button
                             onClick={handleResetToCurrent}
                             disabled={stagedTheme === activeTheme}
-                            className="text-[11px] text-slate-500 hover:text-slate-300 disabled:opacity-30 flex items-center gap-1 transition-colors cursor-pointer"
+                            className="text-[11px] text-text-muted hover:text-text-base disabled:opacity-30 flex items-center gap-1 transition-colors cursor-pointer"
                         >
                             <RotateCcw className="w-2.5 h-2.5" />
                             Reset
@@ -322,8 +306,8 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                                     key={preset.id}
                                     onClick={() => handleSelectPreset(preset.id)}
                                     className={`p-3 rounded-lg border transition-all cursor-pointer ${isStaged
-                                        ? 'border-slate-400 bg-inner shadow-sm ring-1 ring-slate-400/40'
-                                        : 'border-subtle bg-app hover:bg-slate-850 hover:border-subtle'
+                                            ? 'border-blue-500 bg-inner shadow-sm ring-1 ring-blue-500/40'
+                                            : 'border-subtle bg-card hover:border-slate-500'
                                         }`}
                                 >
                                     <div className="flex items-start justify-between gap-3">
@@ -343,7 +327,7 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
 
                                             <div>
                                                 <div className="flex items-center gap-2">
-                                                    <h4 className="text-xs font-semibold text-slate-200">{preset.name}</h4>
+                                                    <h4 className="text-xs font-semibold text-text-base">{preset.name}</h4>
                                                     <span
                                                         className="text-[9px] px-1.5 py-0.2 rounded font-mono border"
                                                         style={{
@@ -360,7 +344,7 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                                                         </span>
                                                     )}
                                                 </div>
-                                                <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">{preset.tagline}</p>
+                                                <p className="text-[11px] text-text-muted mt-1 leading-relaxed">{preset.tagline}</p>
                                             </div>
                                         </div>
 
@@ -386,7 +370,7 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                 {/* Right Column: Live Dashboard Viewport */}
                 <div className="xl:col-span-8 space-y-2">
                     <div className="flex items-center justify-between px-1">
-                        <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <div className="text-[11px] font-semibold text-text-muted uppercase tracking-wider flex items-center gap-1.5">
                             <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: stagedObj.accent }} />
                             Live Dashboard Preview
                         </div>
@@ -405,14 +389,14 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                     {/* Staged Scope Container */}
                     <div
                         data-theme={stagedTheme}
-                        className="p-3.5 rounded-xl border transition-all duration-200 space-y-3"
+                        className="p-3.5 rounded-xl border transition-all duration-200 space-y-3 shadow-sm"
                         style={{
                             backgroundColor: stagedObj.bgApp,
                             borderColor: stagedObj.borderSubtle,
                             color: stagedObj.textPrimary
                         }}
                     >
-                        {/* App Header */}
+                        {/* 1. App Header */}
                         <div
                             className="px-3 py-2 rounded-lg border flex items-center justify-between"
                             style={{
@@ -436,22 +420,9 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                                     </div>
                                 </div>
                             </div>
-
-                            <div className="flex items-center gap-2 text-[10px]">
-                                <span
-                                    className="px-2 py-0.5 rounded text-[9px] font-medium border"
-                                    style={{
-                                        backgroundColor: stagedObj.accentBg,
-                                        borderColor: `${stagedObj.accent}30`,
-                                        color: stagedObj.accent
-                                    }}
-                                >
-                                    Admin / Live
-                                </span>
-                            </div>
                         </div>
 
-                        {/* 4 KPI Metrics */}
+                        {/* 2. 4 KPI Metrics */}
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                             <div
                                 className="p-2.5 rounded-lg border flex flex-col justify-between"
@@ -533,7 +504,7 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                             </div>
                         </div>
 
-                        {/* Map & Data Columns */}
+                        {/* 3. Map & Data Columns */}
                         <div className="grid grid-cols-12 gap-2.5">
                             {/* Live Leaflet Map */}
                             <div
@@ -561,7 +532,14 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                                     </div>
 
                                     <div className="flex items-center gap-1 pointer-events-auto">
-                                        <button className="p-1 rounded border bg-app text-slate-300 border-subtle">
+                                        <button
+                                            className="p-1 rounded border"
+                                            style={{
+                                                backgroundColor: stagedObj.innerCard,
+                                                borderColor: stagedObj.borderSubtle,
+                                                color: stagedObj.textMuted
+                                            }}
+                                        >
                                             <Search className="w-3.5 h-3.5" />
                                         </button>
                                     </div>
@@ -592,38 +570,40 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                                         borderColor: stagedObj.borderSubtle
                                     }}
                                 >
-                                    <div className="flex items-center justify-between pb-1.5 border-b" style={{ borderColor: stagedObj.borderSubtle }}>
-                                        <span className="text-[9px] font-semibold uppercase tracking-wider" style={{ color: stagedObj.textPrimary }}>
-                                            Processing Admin
-                                        </span>
-                                        <span className="text-[8px] font-mono" style={{ color: stagedObj.textMuted }}>
-                                            {dailyData.length || 3} Batches
-                                        </span>
-                                    </div>
+                                    <div>
+                                        <div className="flex items-center justify-between pb-1.5 border-b" style={{ borderColor: stagedObj.borderSubtle }}>
+                                            <span className="text-[9px] font-semibold uppercase tracking-wider" style={{ color: stagedObj.textPrimary }}>
+                                                Processing Admin
+                                            </span>
+                                            <span className="text-[8px] font-mono" style={{ color: stagedObj.textMuted }}>
+                                                {dailyData.length || 3} Batches
+                                            </span>
+                                        </div>
 
-                                    <div className="space-y-1 my-1 text-[8px]">
-                                        {[
-                                            { subgrid: 'N93E70', img: '0 frames', pic: 'fariz.farhan95', status: 'Ongoing' },
-                                            { subgrid: 'N94E70', img: '0 frames', pic: 'fariz.farhan95', status: 'Ongoing' },
-                                            { subgrid: 'N94E71', img: '0 frames', pic: 'fariz.farhan95', status: 'Ongoing' }
-                                        ].map((row, idx) => (
-                                            <div
-                                                key={idx}
-                                                className="flex items-center justify-between p-1.5 rounded"
-                                                style={{
-                                                    backgroundColor: stagedObj.innerCard
-                                                }}
-                                            >
-                                                <span className="font-mono font-medium" style={{ color: stagedObj.textPrimary }}>{row.subgrid}</span>
-                                                <span style={{ color: stagedObj.textMuted }}>{row.img}</span>
-                                                <span className="font-medium text-amber-400/90">{row.status}</span>
-                                            </div>
-                                        ))}
+                                        <div className="space-y-1 my-1 text-[8px]">
+                                            {[
+                                                { subgrid: 'N93E70', img: '0 frames', status: 'Ongoing' },
+                                                { subgrid: 'N94E70', img: '0 frames', status: 'Ongoing' },
+                                                { subgrid: 'N94E71', img: '0 frames', status: 'Ongoing' }
+                                            ].map((row, idx) => (
+                                                <div
+                                                    key={idx}
+                                                    className="flex items-center justify-between p-1.5 rounded"
+                                                    style={{
+                                                        backgroundColor: stagedObj.innerCard
+                                                    }}
+                                                >
+                                                    <span className="font-mono font-medium" style={{ color: stagedObj.textPrimary }}>{row.subgrid}</span>
+                                                    <span style={{ color: stagedObj.textMuted }}>{row.img}</span>
+                                                    <span className="font-medium text-amber-500">{row.status}</span>
+                                                </div>
+                                            ))}
+                                        </div>
                                     </div>
 
                                     <div className="pt-1 border-t flex items-center justify-between text-[7.5px]" style={{ borderColor: stagedObj.borderSubtle, color: stagedObj.textMuted }}>
                                         <span>Pipeline Status</span>
-                                        <span className="font-mono text-emerald-400">Operational</span>
+                                        <span className="font-mono text-emerald-500">Operational</span>
                                     </div>
                                 </div>
 
@@ -649,12 +629,10 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                                     <Maximize2 className="w-3.5 h-3.5" style={{ color: stagedObj.textMuted }} />
                                 </div>
                             </div>
-
                         </div>
 
                     </div>
                 </div>
-
             </div>
         </div>
     );

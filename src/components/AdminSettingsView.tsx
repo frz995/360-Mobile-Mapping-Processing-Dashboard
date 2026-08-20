@@ -586,12 +586,12 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
     ? Math.max(0, ((totalReportFrames - totalReportDefects) / totalReportFrames) * 100).toFixed(1)
     : '100.0';
 
-  const cardBg = themeMode === 'light' ? 'bg-white border-slate-200 text-slate-900' : 'bg-[#111622] border-subtle text-slate-200';
-  const innerCardBg = themeMode === 'light' ? 'bg-slate-50 border-slate-200' : 'bg-[#0b0f17] border-subtle';
-  const inputBg = themeMode === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-[#070a0f] border-subtle text-slate-200';
+  const cardBg = themeMode === 'light' ? 'bg-white border-slate-200 text-slate-900' : 'bg-card border-subtle text-text-base';
+  const innerCardBg = themeMode === 'light' ? 'bg-slate-50 border-slate-200' : 'bg-card border-subtle';
+  const inputBg = themeMode === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-card border-subtle text-text-base';
 
   return (
-    <div className={`w-full h-full flex flex-col min-h-0 overflow-y-auto space-y-4 p-4 ${themeMode === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>
+    <div className={`w-full h-full flex flex-col min-h-0 overflow-y-auto space-y-4 p-4 ${themeMode === 'light' ? 'text-slate-900' : 'text-text-base'}`}>
 
       {/* RESTRICTED / READ-ONLY MODE BANNER FOR NON-ADMINS (Neutral Monochrome) */}
       {!isAdmin && (
@@ -600,17 +600,17 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
           : 'bg-app border-subtle text-slate-300'
           }`}>
           <div className="flex items-center gap-2.5">
-            <Lock size={15} className="text-slate-400 shrink-0" />
+            <Lock size={15} className="text-text-muted shrink-0" />
             <div>
-              <p className="font-semibold text-slate-200 text-xs">Project Settings &bull; Read-Only Mode</p>
-              <p className="text-[11px] text-slate-400 mt-0.5">
+              <p className="font-semibold text-text-base text-xs">Project Settings &bull; Read-Only Mode</p>
+              <p className="text-[11px] text-text-muted mt-0.5">
                 Current account role: <span className="font-mono font-semibold text-slate-300">{currentUserRecord?.role || (authSession?.user?.role) || 'Survey Operator'}</span>. Configuration controls and user management are restricted to Administrators.
               </p>
             </div>
           </div>
           <span className={`px-2.5 py-1 rounded-md text-[10px] font-mono font-semibold border ${themeMode === 'light'
             ? 'bg-slate-200 text-slate-700 border-slate-300'
-            : 'bg-inner text-slate-400 border-subtle'
+            : 'bg-inner text-text-muted border-subtle'
             }`}>
             Read-Only
           </span>
@@ -629,9 +629,9 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 shrink-0">
         <div className={`p-4 rounded-xl border flex items-center justify-between shadow-sm ${cardBg}`}>
           <div>
-            <p className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">Total System Users</p>
-            <h3 className={`text-2xl font-bold mt-1 ${themeMode === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>{totalUsersCount}</h3>
-            <p className="text-[10px] text-slate-500 mt-0.5 font-mono">Registered dashboard accounts</p>
+            <p className="text-[11px] font-medium text-text-muted uppercase tracking-wider">Total System Users</p>
+            <h3 className={`text-2xl font-bold mt-1 ${themeMode === 'light' ? 'text-slate-900' : 'text-text-base'}`}>{totalUsersCount}</h3>
+            <p className="text-[10px] text-text-muted mt-0.5 font-mono">Registered dashboard accounts</p>
           </div>
           <div className={`p-2.5 rounded-lg border ${themeMode === 'light' ? 'bg-slate-100 border-slate-200 text-slate-700' : 'bg-inner border-subtle text-slate-300'}`}>
             <Users size={18} />
@@ -640,9 +640,9 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
 
         <div className={`p-4 rounded-xl border flex items-center justify-between shadow-sm ${cardBg}`}>
           <div>
-            <p className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">Active Users</p>
+            <p className="text-[11px] font-medium text-text-muted uppercase tracking-wider">Active Users</p>
             <h3 className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">{activeUsersCount}</h3>
-            <p className="text-[10px] text-slate-500 mt-0.5 font-mono">Granted dashboard access</p>
+            <p className="text-[10px] text-text-muted mt-0.5 font-mono">Granted dashboard access</p>
           </div>
           <div className={`p-2.5 rounded-lg border ${themeMode === 'light' ? 'bg-emerald-50 border-emerald-200 text-emerald-600' : 'bg-inner border-subtle text-emerald-400'}`}>
             <UserCheck size={18} />
@@ -651,9 +651,9 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
 
         <div className={`p-4 rounded-xl border flex items-center justify-between shadow-sm ${cardBg}`}>
           <div>
-            <p className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">Pending Approvals</p>
+            <p className="text-[11px] font-medium text-text-muted uppercase tracking-wider">Pending Approvals</p>
             <h3 className="text-2xl font-bold text-amber-600 dark:text-amber-400 mt-1">{pendingApprovalsCount}</h3>
-            <p className="text-[10px] text-slate-500 mt-0.5 font-mono">CSV deletion requests</p>
+            <p className="text-[10px] text-text-muted mt-0.5 font-mono">CSV deletion requests</p>
           </div>
           <div className={`p-2.5 rounded-lg border ${themeMode === 'light' ? 'bg-amber-50 border-amber-200 text-amber-600' : 'bg-inner border-subtle text-amber-400'}`}>
             <CheckSquare size={18} />
@@ -662,9 +662,9 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
 
         <div className={`p-4 rounded-xl border flex items-center justify-between shadow-sm ${cardBg}`}>
           <div>
-            <p className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">Audit Events Logged</p>
-            <h3 className={`text-2xl font-bold mt-1 ${themeMode === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>{totalAuditEventsCount}</h3>
-            <p className="text-[10px] text-slate-500 mt-0.5 font-mono">Real-time security trail</p>
+            <p className="text-[11px] font-medium text-text-muted uppercase tracking-wider">Audit Events Logged</p>
+            <h3 className={`text-2xl font-bold mt-1 ${themeMode === 'light' ? 'text-slate-900' : 'text-text-base'}`}>{totalAuditEventsCount}</h3>
+            <p className="text-[10px] text-text-muted mt-0.5 font-mono">Real-time security trail</p>
           </div>
           <div className={`p-2.5 rounded-lg border ${themeMode === 'light' ? 'bg-slate-100 border-slate-200 text-slate-700' : 'bg-inner border-subtle text-slate-300'}`}>
             <Activity size={18} />
@@ -677,8 +677,8 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
         <button
           onClick={() => setActiveTab('settings')}
           className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${activeTab === 'settings'
-            ? (themeMode === 'light' ? 'bg-sky-50 text-sky-700 shadow-sm border border-sky-200 font-bold' : 'bg-inner text-white shadow-sm border border-subtle')
-            : (themeMode === 'light' ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100' : 'text-slate-400 hover:text-slate-200 hover:bg-inner')
+            ? (themeMode === 'light' ? 'bg-sky-50 text-sky-700 shadow-sm border border-sky-200 font-bold' : 'bg-inner text-text-base shadow-sm border border-subtle')
+            : (themeMode === 'light' ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100' : 'text-text-muted hover:text-text-base hover:bg-inner')
             }`}
         >
           <Settings size={14} className={activeTab === 'settings' ? 'text-sky-500' : ''} />
@@ -688,8 +688,8 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
         <button
           onClick={() => setActiveTab('users')}
           className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${activeTab === 'users'
-            ? (themeMode === 'light' ? 'bg-sky-50 text-sky-700 shadow-sm border border-sky-200 font-bold' : 'bg-inner text-white shadow-sm border border-subtle')
-            : (themeMode === 'light' ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100' : 'text-slate-400 hover:text-slate-200 hover:bg-inner')
+            ? (themeMode === 'light' ? 'bg-sky-50 text-sky-700 shadow-sm border border-sky-200 font-bold' : 'bg-inner text-text-base shadow-sm border border-subtle')
+            : (themeMode === 'light' ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100' : 'text-text-muted hover:text-text-base hover:bg-inner')
             }`}
         >
           <Users size={14} className={activeTab === 'users' ? 'text-sky-500' : ''} />
@@ -700,11 +700,11 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
         <button
           onClick={() => setActiveTab('approvals')}
           className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${activeTab === 'approvals'
-            ? (themeMode === 'light' ? 'bg-slate-200/80 text-slate-900 shadow-sm border border-slate-300 font-bold' : 'bg-inner text-white shadow-sm border border-subtle')
-            : (themeMode === 'light' ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100' : 'text-slate-400 hover:text-slate-200 hover:bg-inner')
+            ? (themeMode === 'light' ? 'bg-slate-200/80 text-slate-900 shadow-sm border border-slate-300 font-bold' : 'bg-inner text-text-base shadow-sm border border-subtle')
+            : (themeMode === 'light' ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100' : 'text-text-muted hover:text-text-base hover:bg-inner')
             }`}
         >
-          <CheckSquare size={14} className={activeTab === 'approvals' ? (themeMode === 'light' ? 'text-slate-800' : 'text-slate-200') : ''} />
+          <CheckSquare size={14} className={activeTab === 'approvals' ? (themeMode === 'light' ? 'text-slate-800' : 'text-text-base') : ''} />
           <span>Approvals (Data Deletion)</span>
           {pendingApprovalsCount > 0 && (
             <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold border ${themeMode === 'light' ? 'bg-slate-200 text-slate-800 border-slate-300' : 'bg-inner text-slate-300 border-subtle'}`}>
@@ -716,8 +716,8 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
         <button
           onClick={() => setActiveTab('reports')}
           className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${activeTab === 'reports'
-            ? (themeMode === 'light' ? 'bg-sky-50 text-sky-700 shadow-sm border border-sky-200 font-bold' : 'bg-inner text-white shadow-sm border border-subtle')
-            : (themeMode === 'light' ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100' : 'text-slate-400 hover:text-slate-200 hover:bg-inner')
+            ? (themeMode === 'light' ? 'bg-sky-50 text-sky-700 shadow-sm border border-sky-200 font-bold' : 'bg-inner text-text-base shadow-sm border border-subtle')
+            : (themeMode === 'light' ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100' : 'text-text-muted hover:text-text-base hover:bg-inner')
             }`}
         >
           <FileText size={14} className={activeTab === 'reports' ? 'text-sky-500' : ''} />
@@ -727,8 +727,8 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
         <button
           onClick={() => setActiveTab('audit')}
           className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${activeTab === 'audit'
-            ? (themeMode === 'light' ? 'bg-sky-50 text-sky-700 shadow-sm border border-sky-200 font-bold' : 'bg-inner text-white shadow-sm border border-subtle')
-            : (themeMode === 'light' ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100' : 'text-slate-400 hover:text-slate-200 hover:bg-inner')
+            ? (themeMode === 'light' ? 'bg-sky-50 text-sky-700 shadow-sm border border-sky-200 font-bold' : 'bg-inner text-text-base shadow-sm border border-subtle')
+            : (themeMode === 'light' ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100' : 'text-text-muted hover:text-text-base hover:bg-inner')
             }`}
         >
           <Activity size={14} className={activeTab === 'audit' ? 'text-sky-500' : ''} />
@@ -738,8 +738,8 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
         <button
           onClick={() => setActiveTab('health')}
           className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${activeTab === 'health'
-            ? (themeMode === 'light' ? 'bg-emerald-50 text-emerald-800 shadow-sm border border-emerald-200 font-bold' : 'bg-inner text-white shadow-sm border border-subtle')
-            : (themeMode === 'light' ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100' : 'text-slate-400 hover:text-slate-200 hover:bg-inner')
+            ? (themeMode === 'light' ? 'bg-emerald-50 text-emerald-800 shadow-sm border border-emerald-200 font-bold' : 'bg-inner text-text-base shadow-sm border border-subtle')
+            : (themeMode === 'light' ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100' : 'text-text-muted hover:text-text-base hover:bg-inner')
             }`}
         >
           <Server size={14} className={activeTab === 'health' ? 'text-emerald-500' : ''} />
@@ -751,7 +751,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
           onClick={() => setActiveTab('theme-pack')}
           className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all ${activeTab === 'theme-pack'
             ? (themeMode === 'light' ? 'bg-sky-50 text-sky-700 shadow-sm border border-sky-200 font-bold' : 'bg-sky-500/20 text-sky-300 shadow-sm border border-sky-500/30')
-            : (themeMode === 'light' ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100' : 'text-slate-400 hover:text-white hover:bg-inner')
+            : (themeMode === 'light' ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100' : 'text-text-muted hover:text-text-base hover:bg-inner')
             }`}
         >
           <Palette size={14} className={activeTab === 'theme-pack' ? 'text-sky-400' : ''} />
@@ -766,29 +766,29 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
         <div className={`p-5 rounded-xl border space-y-4 ${cardBg}`}>
           <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-subtle">
             <div>
-              <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2">
+              <h3 className="text-sm font-bold text-text-base flex items-center gap-2">
                 <Users size={16} className="text-sky-400" />
                 User Management Directory
               </h3>
-              <p className="text-xs text-slate-400 mt-0.5">Control operator roles, access permissions, and session authorization.</p>
+              <p className="text-xs text-text-muted mt-0.5">Control operator roles, access permissions, and session authorization.</p>
             </div>
             {isAdmin ? (
               <button
                 onClick={() => setIsAddUserModalOpen(true)}
-                className="px-3.5 py-2 bg-inner hover:bg-slate-700 border border-subtle text-slate-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors shadow-sm"
+                className="px-3.5 py-2 bg-inner hover:bg-slate-700 border border-subtle text-text-base rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors shadow-sm"
               >
                 <Plus size={14} className="text-emerald-400" /> Add User
               </button>
             ) : (
-              <span className="px-3 py-1.5 rounded-lg border border-subtle bg-app text-slate-500 text-xs font-medium flex items-center gap-1.5">
+              <span className="px-3 py-1.5 rounded-lg border border-subtle bg-app text-text-muted text-xs font-medium flex items-center gap-1.5">
                 <Lock size={12} /> Admin Only
               </span>
             )}
           </div>
 
           {!isAdmin && (
-            <div className="p-3 bg-app border border-subtle rounded-lg text-slate-400 text-xs flex items-center gap-2">
-              <Lock size={14} className="shrink-0 text-slate-400" />
+            <div className="p-3 bg-app border border-subtle rounded-lg text-text-muted text-xs flex items-center gap-2">
+              <Lock size={14} className="shrink-0 text-text-muted" />
               <span>Read-Only: Only system administrators can add users, change roles, or modify account access.</span>
             </div>
           )}
@@ -796,7 +796,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
           {/* Search & Role Filter */}
           <div className="flex flex-wrap items-center gap-3">
             <div className="relative flex-1 min-w-[200px]">
-              <Search size={14} className="absolute left-3 top-2.5 text-slate-500" />
+              <Search size={14} className="absolute left-3 top-2.5 text-text-muted" />
               <input
                 type="text"
                 placeholder="Search user name or email..."
@@ -822,7 +822,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
           <div className="border border-subtle rounded-lg overflow-x-auto">
             <table className="w-full text-xs text-left border-collapse">
               <thead>
-                <tr className="bg-app text-slate-400 uppercase text-[10px] tracking-wider border-b border-subtle">
+                <tr className="bg-app text-text-muted uppercase text-[10px] tracking-wider border-b border-subtle">
                   <th className="px-3.5 py-2.5">User</th>
                   <th className="px-3.5 py-2.5">Email</th>
                   <th className="px-3.5 py-2.5">Role</th>
@@ -834,13 +834,13 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
               <tbody className="divide-y divide-slate-800/80">
                 {filteredUsers.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-10 text-center text-slate-400">
+                    <td colSpan={6} className="px-4 py-10 text-center text-text-muted">
                       <div className="flex flex-col items-center justify-center gap-2">
                         <Users size={24} className="text-slate-600" />
                         <p className="text-xs font-semibold text-slate-300">
                           {userSearch.trim() ? `No users matching "${userSearch}"` : 'No registered users in the database yet.'}
                         </p>
-                        <p className="text-[11px] text-slate-500 max-w-sm">
+                        <p className="text-[11px] text-text-muted max-w-sm">
                           Users who register or authenticate into this system will dynamically appear in this directory, or click <strong>+ Add User</strong> above to provision an operator account.
                         </p>
                       </div>
@@ -849,7 +849,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                 ) : (
                   filteredUsers.map(u => (
                     <tr key={u.id} className="hover:bg-inner transition-colors">
-                      <td className="px-3.5 py-2.5 font-semibold text-slate-200 flex items-center gap-2">
+                      <td className="px-3.5 py-2.5 font-semibold text-text-base flex items-center gap-2">
                         <div className="w-6 h-6 rounded-full bg-inner border border-subtle flex items-center justify-center font-bold text-[10px] text-slate-300">
                           {u.name.charAt(0)}
                         </div>
@@ -870,11 +870,11 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                         </select>
                       </td>
                       <td className="px-3.5 py-2.5">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-semibold border ${u.status === 'Active' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-inner text-slate-400 border-subtle'}`}>
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-semibold border ${u.status === 'Active' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-inner text-text-muted border-subtle'}`}>
                           {u.status}
                         </span>
                       </td>
-                      <td className="px-3.5 py-2.5 text-slate-400 font-mono text-[11px]">{u.lastLogin}</td>
+                      <td className="px-3.5 py-2.5 text-text-muted font-mono text-[11px]">{u.lastLogin}</td>
                       <td className="px-3.5 py-2.5 text-right">
                         {isAdmin ? (
                           <div className="flex items-center justify-end gap-1.5">
@@ -886,14 +886,14 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                             </button>
                             <button
                               onClick={() => handleDeleteUser(u.id)}
-                              className="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-rose-950/40 border border-transparent hover:border-rose-800/40 transition-colors cursor-pointer"
+                              className="p-1 rounded text-text-muted hover:text-rose-400 hover:bg-rose-950/40 border border-transparent hover:border-rose-800/40 transition-colors cursor-pointer"
                               title="Delete user account"
                             >
                               <Trash2 size={13} />
                             </button>
                           </div>
                         ) : (
-                          <span className="text-slate-500 italic text-[10px] flex items-center justify-end gap-1">
+                          <span className="text-text-muted italic text-[10px] flex items-center justify-end gap-1">
                             <Lock size={10} /> Locked
                           </span>
                         )}
@@ -918,8 +918,8 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
               <div className="flex items-center gap-2">
                 <Database size={17} className="text-sky-400" />
                 <div>
-                  <h3 className="text-sm font-bold text-slate-100 uppercase tracking-wide">1. Database & PostGIS Spatial Engine Connection Setup</h3>
-                  <p className="text-[11px] text-slate-400 mt-0.5">Configure Supabase PostgreSQL endpoint, PostGIS 3.3 spatial projections, table mappings, and connection pooling.</p>
+                  <h3 className="text-sm font-bold text-text-base uppercase tracking-wide">1. Database & PostGIS Spatial Engine Connection Setup</h3>
+                  <p className="text-[11px] text-text-muted mt-0.5">Configure Supabase PostgreSQL endpoint, PostGIS 3.3 spatial projections, table mappings, and connection pooling.</p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -933,16 +933,16 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
             {/* SUB-CARD A: CONNECTION CREDENTIALS & API ENDPOINTS */}
             <div className={`p-4 rounded-xl border space-y-3 ${innerCardBg}`}>
               <div className="flex items-center justify-between">
-                <h4 className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+                <h4 className="text-xs font-bold text-text-base uppercase tracking-wider flex items-center gap-1.5">
                   <Server size={14} className="text-sky-400" />
                   A. Connection Endpoints & Access Credentials
                 </h4>
-                <span className="text-[10px] text-slate-500 font-mono">Driver: PostgREST / TCP Pooler</span>
+                <span className="text-[10px] text-text-muted font-mono">Driver: PostgREST / TCP Pooler</span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
                 <div>
-                  <label className="block text-slate-400 font-medium mb-1">Supabase REST Endpoint URL</label>
+                  <label className="block text-text-muted font-medium mb-1">Supabase REST Endpoint URL</label>
                   <input
                     type="text"
                     value={projectSettings.supabaseUrl || import.meta.env.VITE_SUPABASE_URL || 'https://xyzcompany.supabase.co'}
@@ -953,7 +953,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 font-medium mb-1">Public Anon API Key</label>
+                  <label className="block text-text-muted font-medium mb-1">Public Anon API Key</label>
                   <div className="flex items-center gap-1.5">
                     <input
                       type={showApiKey ? 'text' : 'password'}
@@ -965,7 +965,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                     <button
                       type="button"
                       onClick={() => setShowApiKey(!showApiKey)}
-                      className="p-2 rounded-lg bg-inner hover:bg-slate-700 text-slate-400 border border-subtle cursor-pointer"
+                      className="p-2 rounded-lg bg-inner hover:bg-slate-700 text-text-muted border border-subtle cursor-pointer"
                       title={showApiKey ? 'Hide Key' : 'Reveal Key'}
                     >
                       {showApiKey ? <EyeOff size={13} /> : <Eye size={13} />}
@@ -974,7 +974,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 font-medium mb-1">Direct PostgreSQL Host / IP</label>
+                  <label className="block text-text-muted font-medium mb-1">Direct PostgreSQL Host / IP</label>
                   <input
                     type="text"
                     value={projectSettings.databaseHost || 'db.aws-0-ap-southeast-1.supabase.co'}
@@ -985,7 +985,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 font-medium mb-1">Database Port & Pooler</label>
+                  <label className="block text-text-muted font-medium mb-1">Database Port & Pooler</label>
                   <input
                     type="number"
                     value={projectSettings.databasePort || 5432}
@@ -996,7 +996,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 font-medium mb-1">Database Name & Schema</label>
+                  <label className="block text-text-muted font-medium mb-1">Database Name & Schema</label>
                   <div className="grid grid-cols-2 gap-2">
                     <input
                       type="text"
@@ -1016,7 +1016,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 font-medium mb-1">Connection Protocol & SSL</label>
+                  <label className="block text-text-muted font-medium mb-1">Connection Protocol & SSL</label>
                   <div className="grid grid-cols-2 gap-2">
                     <select
                       value={projectSettings.connectionMode || 'postgrest'}
@@ -1044,7 +1044,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
             {/* SUB-CARD B: POSTGIS SPATIAL EXTENSION & GEOMETRY PROJECTIONS */}
             <div className={`p-4 rounded-xl border space-y-3 ${innerCardBg}`}>
               <div className="flex items-center justify-between">
-                <h4 className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+                <h4 className="text-xs font-bold text-text-base uppercase tracking-wider flex items-center gap-1.5">
                   <Globe size={14} className="text-sky-400" />
                   B. PostGIS Spatial Reference (SRID) & Geometry Engine
                 </h4>
@@ -1053,7 +1053,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
                 <div>
-                  <label className="block text-slate-400 font-medium mb-1">Spatial Projection (SRID)</label>
+                  <label className="block text-text-muted font-medium mb-1">Spatial Projection (SRID)</label>
                   <select
                     value={projectSettings.spatialSrid || 'EPSG:4326'}
                     onChange={e => setProjectSettings(prev => ({ ...prev, spatialSrid: e.target.value }))}
@@ -1069,7 +1069,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 font-medium mb-1">Spatial Geometry Column</label>
+                  <label className="block text-text-muted font-medium mb-1">Spatial Geometry Column</label>
                   <input
                     type="text"
                     value={projectSettings.geomColumnName || 'geom'}
@@ -1080,7 +1080,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 font-medium mb-1">Geometry Data Type</label>
+                  <label className="block text-text-muted font-medium mb-1">Geometry Data Type</label>
                   <select
                     value={projectSettings.geomType || 'ST_Point'}
                     onChange={e => setProjectSettings(prev => ({ ...prev, geomType: e.target.value }))}
@@ -1093,7 +1093,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 font-medium mb-1">Auto Spatial Indexing</label>
+                  <label className="block text-text-muted font-medium mb-1">Auto Spatial Indexing</label>
                   <div className={`flex items-center justify-between p-2 rounded-lg border ${inputBg}`}>
                     <span className="text-[11px] text-slate-300 font-medium">GIST (geom) Index</span>
                     <input
@@ -1110,7 +1110,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
             {/* SUB-CARD C: COMPLETE POSTGIS TABLE & VIEW MAPPINGS */}
             <div className={`p-4 rounded-xl border space-y-3 ${innerCardBg}`}>
               <div className="flex items-center justify-between">
-                <h4 className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+                <h4 className="text-xs font-bold text-text-base uppercase tracking-wider flex items-center gap-1.5">
                   <Database size={14} className="text-sky-400" />
                   C. PostGIS Table & Schema Mappings
                 </h4>
@@ -1139,7 +1139,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
                 <div>
-                  <label className="block text-slate-400 font-medium mb-1">Production Panoramas Table</label>
+                  <label className="block text-text-muted font-medium mb-1">Production Panoramas Table</label>
                   <input
                     type="text"
                     value={projectSettings.panoramasTable || 'panoramas'}
@@ -1149,7 +1149,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 font-medium mb-1">Staging Panoramas Table</label>
+                  <label className="block text-text-muted font-medium mb-1">Staging Panoramas Table</label>
                   <input
                     type="text"
                     value={projectSettings.stagingTable || 'staging_panoramas'}
@@ -1159,7 +1159,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 font-medium mb-1">Subgrids Masterlist Table</label>
+                  <label className="block text-text-muted font-medium mb-1">Subgrids Masterlist Table</label>
                   <input
                     type="text"
                     value={projectSettings.subgridTable || 'subgrids'}
@@ -1169,7 +1169,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 font-medium mb-1">QC Defects Table</label>
+                  <label className="block text-text-muted font-medium mb-1">QC Defects Table</label>
                   <input
                     type="text"
                     value={projectSettings.qaDefectsTable || 'qa_defects'}
@@ -1179,7 +1179,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 font-medium mb-1">Audit Trail Logs Table</label>
+                  <label className="block text-text-muted font-medium mb-1">Audit Trail Logs Table</label>
                   <input
                     type="text"
                     value={projectSettings.auditLogsTable || 'audit_logs'}
@@ -1189,7 +1189,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 font-medium mb-1">Deletion Requests Table</label>
+                  <label className="block text-text-muted font-medium mb-1">Deletion Requests Table</label>
                   <input
                     type="text"
                     value={projectSettings.deletionRequestsTable || 'deletion_requests'}
@@ -1207,7 +1207,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                   <button
                     onClick={handleTestHealth}
                     disabled={isTestingHealth}
-                    className="px-4 py-2 bg-inner hover:bg-slate-700 border border-subtle text-slate-200 rounded-lg text-xs font-semibold flex items-center gap-2 cursor-pointer transition-colors shadow-sm"
+                    className="px-4 py-2 bg-inner hover:bg-slate-700 border border-subtle text-text-base rounded-lg text-xs font-semibold flex items-center gap-2 cursor-pointer transition-colors shadow-sm"
                   >
                     <RefreshCw size={13} className={isTestingHealth ? 'animate-spin text-sky-400' : 'text-sky-400'} />
                     <span>Test PostGIS Connection & Latency</span>
@@ -1295,8 +1295,8 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                   </button>
                 </div>
 
-                <div className="text-[11px] text-slate-400 font-mono">
-                  Latency: <strong className="text-emerald-400 font-bold">{healthMetrics.postgisLatencyMs} ms</strong> &bull; Query Chunk: <strong className="text-slate-200">{projectSettings.queryChunkSize || 50} rows</strong>
+                <div className="text-[11px] text-text-muted font-mono">
+                  Latency: <strong className="text-emerald-400 font-bold">{healthMetrics.postgisLatencyMs} ms</strong> &bull; Query Chunk: <strong className="text-text-base">{projectSettings.queryChunkSize || 50} rows</strong>
                 </div>
               </div>
             </div>
@@ -1308,8 +1308,8 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
               <div className="flex items-center gap-2">
                 <Camera size={17} className="text-sky-400" />
                 <div>
-                  <h3 className="text-sm font-bold text-slate-100 uppercase tracking-wide">2. 360° Imagery & MMS Storage Engine</h3>
-                  <p className="text-[11px] text-slate-400 mt-0.5">Configure 360° panoramic image storage providers, CDN paths, filename patterns, StreetView pre-fetch cache, and player calibration.</p>
+                  <h3 className="text-sm font-bold text-text-base uppercase tracking-wide">2. 360° Imagery & MMS Storage Engine</h3>
+                  <p className="text-[11px] text-text-muted mt-0.5">Configure 360° panoramic image storage providers, CDN paths, filename patterns, StreetView pre-fetch cache, and player calibration.</p>
                 </div>
               </div>
               <span className="px-2.5 py-1 rounded-full text-[10px] font-mono bg-inner border border-subtle text-slate-300 font-semibold">
@@ -1320,16 +1320,16 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
             {/* SUB-CARD A: STORAGE INFRASTRUCTURE PROVIDER & CLOUD BACKEND */}
             <div className={`p-4 rounded-xl border space-y-3 ${innerCardBg}`}>
               <div className="flex items-center justify-between">
-                <h4 className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+                <h4 className="text-xs font-bold text-text-base uppercase tracking-wider flex items-center gap-1.5">
                   <Server size={14} className="text-sky-400" />
                   A. Storage Infrastructure Provider & Cloud Engine
                 </h4>
-                <span className="text-[10px] text-slate-500 font-mono">CDN & Object Storage Pipeline</span>
+                <span className="text-[10px] text-text-muted font-mono">CDN & Object Storage Pipeline</span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
                 <div>
-                  <label className="block text-slate-400 font-medium mb-1">GIS Industry Storage Provider</label>
+                  <label className="block text-text-muted font-medium mb-1">GIS Industry Storage Provider</label>
                   <select
                     value={projectSettings.storageProvider || 'supabase'}
                     onChange={e => setProjectSettings(prev => ({ ...prev, storageProvider: e.target.value as any }))}
@@ -1349,7 +1349,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                 {projectSettings.storageProvider === 'aws_s3' ? (
                   <>
                     <div>
-                      <label className="block text-slate-400 font-medium mb-1">AWS S3 Bucket Name</label>
+                      <label className="block text-text-muted font-medium mb-1">AWS S3 Bucket Name</label>
                       <input
                         type="text"
                         value={projectSettings.s3Bucket || 'tnb-mobilemapping-panoramas'}
@@ -1359,7 +1359,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                       />
                     </div>
                     <div>
-                      <label className="block text-slate-400 font-medium mb-1">AWS S3 Region</label>
+                      <label className="block text-text-muted font-medium mb-1">AWS S3 Region</label>
                       <input
                         type="text"
                         value={projectSettings.s3Region || 'ap-southeast-1'}
@@ -1371,7 +1371,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                   </>
                 ) : projectSettings.storageProvider === 'nas_local' ? (
                   <div className="sm:col-span-2">
-                    <label className="block text-slate-400 font-medium mb-1">Local NAS Server IP / HTTP Intranet Share</label>
+                    <label className="block text-text-muted font-medium mb-1">Local NAS Server IP / HTTP Intranet Share</label>
                     <input
                       type="text"
                       value={projectSettings.nasServerUrl || 'http://192.168.1.100/360_images'}
@@ -1382,7 +1382,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                   </div>
                 ) : projectSettings.storageProvider === 'custom_cdn' ? (
                   <div className="sm:col-span-2">
-                    <label className="block text-slate-400 font-medium mb-1">Custom CDN Base URL Prefix</label>
+                    <label className="block text-text-muted font-medium mb-1">Custom CDN Base URL Prefix</label>
                     <input
                       type="text"
                       value={projectSettings.customCdnUrl || 'https://cdn.mobilemapping.example.com/panoramas/'}
@@ -1393,7 +1393,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                   </div>
                 ) : (
                   <div>
-                    <label className="block text-slate-400 font-medium mb-1">Storage Bucket Name</label>
+                    <label className="block text-text-muted font-medium mb-1">Storage Bucket Name</label>
                     <input
                       type="text"
                       value={projectSettings.supabaseBucket || 'MMS_PIC'}
@@ -1405,7 +1405,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                 )}
 
                 <div>
-                  <label className="block text-slate-400 font-medium mb-1">Storage Access Permission</label>
+                  <label className="block text-text-muted font-medium mb-1">Storage Access Permission</label>
                   <select
                     className={`w-full px-3 py-2 rounded-lg font-medium focus:outline-none border ${inputBg}`}
                     defaultValue="public_read"
@@ -1421,16 +1421,16 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
             {/* SUB-CARD B: PANORAMA FILENAME PATTERNS & ASSET PIPELINE */}
             <div className={`p-4 rounded-xl border space-y-3 ${innerCardBg}`}>
               <div className="flex items-center justify-between">
-                <h4 className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+                <h4 className="text-xs font-bold text-text-base uppercase tracking-wider flex items-center gap-1.5">
                   <FileText size={14} className="text-sky-400" />
                   B. Panorama Filename Pattern & Directory Resolution
                 </h4>
-                <span className="text-[10px] text-slate-500 font-mono">Format: Equirectangular JPG/PNG</span>
+                <span className="text-[10px] text-text-muted font-mono">Format: Equirectangular JPG/PNG</span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
                 <div>
-                  <label className="block text-slate-400 font-medium mb-1">Panorama Filename Template</label>
+                  <label className="block text-text-muted font-medium mb-1">Panorama Filename Template</label>
                   <input
                     type="text"
                     value={projectSettings.imageFormatPattern || '{subgrid}-{index:04d}.jpg'}
@@ -1438,11 +1438,11 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                     placeholder="{subgrid}-{index:04d}.jpg"
                     className={`w-full px-3 py-2 rounded-lg font-mono focus:outline-none border ${inputBg}`}
                   />
-                  <p className="text-[10px] text-slate-500 mt-1">e.g. {`{subgrid}-{index:04d}.jpg`} &bull; {`{subgrid}_{index}.jpg`}</p>
+                  <p className="text-[10px] text-text-muted mt-1">e.g. {`{subgrid}-{index:04d}.jpg`} &bull; {`{subgrid}_{index}.jpg`}</p>
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 font-medium mb-1">Directory Folder Hierarchy</label>
+                  <label className="block text-text-muted font-medium mb-1">Directory Folder Hierarchy</label>
                   <select
                     className={`w-full px-3 py-2 rounded-lg font-medium focus:outline-none border ${inputBg}`}
                     defaultValue="flat"
@@ -1454,7 +1454,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 font-medium mb-1">Missing Image Grace Policy</label>
+                  <label className="block text-text-muted font-medium mb-1">Missing Image Grace Policy</label>
                   <div className={`flex items-center justify-between p-2 rounded-lg border ${inputBg}`}>
                     <span className="text-[11px] text-slate-300 font-medium">Render Staging Fallback</span>
                     <input
@@ -1471,7 +1471,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
             {/* SUB-CARD C: 360° STREETVIEW PLAYER & PRELOAD STREAMING ENGINE */}
             <div className={`p-4 rounded-xl border space-y-3 ${innerCardBg}`}>
               <div className="flex items-center justify-between">
-                <h4 className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+                <h4 className="text-xs font-bold text-text-base uppercase tracking-wider flex items-center gap-1.5">
                   <Activity size={14} className="text-sky-400" />
                   C. 360° StreetView Player & Preload Streaming Engine
                 </h4>
@@ -1480,7 +1480,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
                 <div>
-                  <label className="block text-slate-400 font-medium mb-1">Lookahead Frame Preload Cache</label>
+                  <label className="block text-text-muted font-medium mb-1">Lookahead Frame Preload Cache</label>
                   <select
                     value={projectSettings.imagePreloadCount || 3}
                     onChange={e => setProjectSettings(prev => ({ ...prev, imagePreloadCount: Number(e.target.value) }))}
@@ -1494,7 +1494,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 font-medium mb-1">Default Field of View (FOV)</label>
+                  <label className="block text-text-muted font-medium mb-1">Default Field of View (FOV)</label>
                   <select
                     value={projectSettings.defaultFov || 75}
                     onChange={e => setProjectSettings(prev => ({ ...prev, defaultFov: parseInt(e.target.value) || 75 }))}
@@ -1508,7 +1508,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 font-medium mb-1">StreetView Navigation Arrow Color</label>
+                  <label className="block text-text-muted font-medium mb-1">StreetView Navigation Arrow Color</label>
                   <select
                     value={projectSettings.arrowColor || 'sky'}
                     onChange={e => setProjectSettings(prev => ({ ...prev, arrowColor: e.target.value as any }))}
@@ -1522,7 +1522,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 font-medium mb-1">Live Heading Yaw Sync</label>
+                  <label className="block text-text-muted font-medium mb-1">Live Heading Yaw Sync</label>
                   <div className={`flex items-center justify-between p-2 rounded-lg border ${inputBg}`}>
                     <span className="text-[11px] text-slate-300 font-medium">Vehicle Azimuth Alignment</span>
                     <input
@@ -1550,7 +1550,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                         showToast('Storage probe error', 'error');
                       }
                     }}
-                    className="px-4 py-2 bg-inner hover:bg-slate-700 border border-subtle text-slate-200 rounded-lg text-xs font-semibold flex items-center gap-2 cursor-pointer transition-colors shadow-sm"
+                    className="px-4 py-2 bg-inner hover:bg-slate-700 border border-subtle text-text-base rounded-lg text-xs font-semibold flex items-center gap-2 cursor-pointer transition-colors shadow-sm"
                   >
                     <RefreshCw size={13} className="text-sky-400" />
                     <span>Probe Storage Bucket & Read Access</span>
@@ -1582,8 +1582,8 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
               <div className="flex items-center gap-2">
                 <Map size={17} className="text-sky-400" />
                 <div>
-                  <h3 className={`text-sm font-bold uppercase tracking-wide ${themeMode === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>3. Basemap & Spatial Layer Management</h3>
-                  <p className={`text-[11px] mt-0.5 ${themeMode === 'light' ? 'text-slate-500' : 'text-slate-400'}`}>Configure default GIS basemaps, trajectory theme colors, line widths, and inspect changes on the live map preview before applying to the dashboard.</p>
+                  <h3 className={`text-sm font-bold uppercase tracking-wide ${themeMode === 'light' ? 'text-slate-900' : 'text-text-base'}`}>3. Basemap & Spatial Layer Management</h3>
+                  <p className={`text-[11px] mt-0.5 ${themeMode === 'light' ? 'text-text-muted' : 'text-text-muted'}`}>Configure default GIS basemaps, trajectory theme colors, line widths, and inspect changes on the live map preview before applying to the dashboard.</p>
                 </div>
               </div>
               <div className="flex items-center gap-1.5">
@@ -1601,16 +1601,16 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                 {/* SUB-CARD A: BASEMAP TILE PROVIDER & OPACITY */}
                 <div className={`p-4 rounded-xl border space-y-3 ${innerCardBg}`}>
                   <div className="flex items-center justify-between">
-                    <h4 className={`text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 ${themeMode === 'light' ? 'text-slate-800' : 'text-slate-200'}`}>
+                    <h4 className={`text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 ${themeMode === 'light' ? 'text-slate-800' : 'text-text-base'}`}>
                       <Layers size={14} className="text-sky-400" />
                       A. Basemap Tile Source & Opacity
                     </h4>
-                    <span className="text-[10px] text-slate-400 font-mono">Preview on select</span>
+                    <span className="text-[10px] text-text-muted font-mono">Preview on select</span>
                   </div>
 
                   <div className="space-y-3 text-xs">
                     <div>
-                      <label className="block text-slate-400 font-medium mb-1">Default GIS Basemap Provider</label>
+                      <label className="block text-text-muted font-medium mb-1">Default GIS Basemap Provider</label>
                       <select
                         value={projectSettings.defaultBasemap || 'positron'}
                         onChange={e => {
@@ -1642,7 +1642,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
 
                     <div>
                       <div className="flex justify-between items-center mb-1">
-                        <label className="text-slate-400 font-medium">Basemap Opacity</label>
+                        <label className="text-text-muted font-medium">Basemap Opacity</label>
                         <span className="font-mono text-[11px] text-sky-400 font-bold">{projectSettings.basemapOpacity ?? 100}%</span>
                       </div>
                       <input
@@ -1661,7 +1661,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
 
                     {projectSettings.defaultBasemap === 'custom_tile' && (
                       <div>
-                        <label className="block text-slate-400 font-medium mb-1">Custom XYZ Tile URL Template</label>
+                        <label className="block text-text-muted font-medium mb-1">Custom XYZ Tile URL Template</label>
                         <input
                           type="text"
                           value={projectSettings.customBasemapUrl || 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'}
@@ -1688,7 +1688,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                           onSaveAllSettings?.();
                           showToast('Basemap & Opacity settings applied to Dashboard!');
                         }}
-                        className="px-3.5 py-1.5 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-xs font-semibold shadow transition-all cursor-pointer flex items-center gap-1.5 active:scale-95"
+                        className="px-3.5 py-1.5 bg-sky-600 hover:bg-sky-500 text-text-base rounded-lg text-xs font-semibold shadow transition-all cursor-pointer flex items-center gap-1.5 active:scale-95"
                       >
                         <CheckCircle size={13} />
                         <span>Apply Basemap Settings</span>
@@ -1700,7 +1700,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                 {/* SUB-CARD B: LAYER & TRAJECTORY COLORS */}
                 <div className={`p-4 rounded-xl border space-y-3 ${innerCardBg}`}>
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <h4 className={`text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 ${themeMode === 'light' ? 'text-slate-800' : 'text-slate-200'}`}>
+                    <h4 className={`text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 ${themeMode === 'light' ? 'text-slate-800' : 'text-text-base'}`}>
                       <Palette size={14} className="text-sky-400" />
                       B. Survey Trajectory & Quality Layer Colors
                     </h4>
@@ -1776,7 +1776,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
                     {/* PUBLISHED COLOR */}
                     <div>
-                      <label className="block text-slate-400 font-medium mb-1">Published Track Color</label>
+                      <label className="block text-text-muted font-medium mb-1">Published Track Color</label>
                       <div className="flex items-center gap-2">
                         <input
                           type="color"
@@ -1809,7 +1809,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
 
                     {/* STAGING COLOR */}
                     <div>
-                      <label className="block text-slate-400 font-medium mb-1">Staging / In-Process Color</label>
+                      <label className="block text-text-muted font-medium mb-1">Staging / In-Process Color</label>
                       <div className="flex items-center gap-2">
                         <input
                           type="color"
@@ -1842,7 +1842,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
 
                     {/* DEFECT COLOR */}
                     <div>
-                      <label className="block text-slate-400 font-medium mb-1">QA Defect Flagged Color</label>
+                      <label className="block text-text-muted font-medium mb-1">QA Defect Flagged Color</label>
                       <div className="flex items-center gap-2">
                         <input
                           type="color"
@@ -1875,7 +1875,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
 
                     {/* SELECTED SUBGRID COLOR */}
                     <div>
-                      <label className="block text-slate-400 font-medium mb-1">Active Selected Subgrid</label>
+                      <label className="block text-text-muted font-medium mb-1">Active Selected Subgrid</label>
                       <div className="flex items-center gap-2">
                         <input
                           type="color"
@@ -1908,7 +1908,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
 
                     {/* GRID BOUNDARY COLOR */}
                     <div>
-                      <label className="block text-slate-400 font-medium mb-1">Grid Boundary Border</label>
+                      <label className="block text-text-muted font-medium mb-1">Grid Boundary Border</label>
                       <div className="flex items-center gap-2">
                         <input
                           type="color"
@@ -1941,7 +1941,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
 
                     {/* LINE WIDTH & GLOW */}
                     <div>
-                      <label className="block text-slate-400 font-medium mb-1">Track Width & Glow</label>
+                      <label className="block text-text-muted font-medium mb-1">Track Width & Glow</label>
                       <div className="flex items-center gap-2">
                         <select
                           value={projectSettings.poiTrackLineWidth || 3}
@@ -1970,7 +1970,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                               return updated;
                             });
                           }}
-                          className={`px-2 py-1.5 rounded border text-[11px] font-semibold cursor-pointer transition-colors ${projectSettings.enableLayerGlow !== false ? 'bg-sky-500/20 text-sky-300 border-sky-500/40' : 'bg-inner text-slate-400 border-subtle'}`}
+                          className={`px-2 py-1.5 rounded border text-[11px] font-semibold cursor-pointer transition-colors ${projectSettings.enableLayerGlow !== false ? 'bg-sky-500/20 text-sky-300 border-sky-500/40' : 'bg-inner text-text-muted border-subtle'}`}
                           title="Toggle High-Contrast Glow"
                         >
                           Glow
@@ -1980,7 +1980,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                     {/* LAYER & TRAJECTORY COLOR OPACITY */}
                     <div className={`sm:col-span-2 pt-2 border-t ${themeMode === 'light' ? 'border-slate-200' : 'border-subtle'}`}>
                       <div className="flex justify-between items-center mb-1">
-                        <label className="text-slate-400 font-medium">Layer & Trajectory Color Opacity</label>
+                        <label className="text-text-muted font-medium">Layer & Trajectory Color Opacity</label>
                         <span className="font-mono text-[11px] text-emerald-400 font-bold">{projectSettings.layerOpacity ?? 100}%</span>
                       </div>
                       <input
@@ -2013,7 +2013,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                         onSaveAllSettings?.();
                         showToast('Survey Trajectory Layer theme applied to Dashboard!');
                       }}
-                      className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold shadow transition-all cursor-pointer flex items-center gap-1.5 active:scale-95"
+                      className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-text-base rounded-lg text-xs font-semibold shadow transition-all cursor-pointer flex items-center gap-1.5 active:scale-95"
                     >
                       <CheckCircle size={13} />
                       <span>Apply Layer Theme</span>
@@ -2026,7 +2026,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
               <div className="lg:col-span-7 flex flex-col min-h-[580px]">
                 <div className={`p-4 rounded-xl border flex-1 flex flex-col space-y-3 ${innerCardBg}`}>
                   <div className="flex items-center justify-between">
-                    <h4 className={`text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 ${themeMode === 'light' ? 'text-slate-800' : 'text-slate-200'}`}>
+                    <h4 className={`text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 ${themeMode === 'light' ? 'text-slate-800' : 'text-text-base'}`}>
                       <Navigation size={14} className="text-emerald-400" />
                       Live Map Dashboard Preview
                     </h4>
@@ -2036,13 +2036,13 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                   <div className={`relative flex-1 min-h-[520px] rounded-xl overflow-hidden border ${themeMode === 'light' ? 'border-slate-200 bg-slate-100' : 'border-subtle bg-app'} flex flex-col shadow-2xl`}>
                     {/* Top-Left GeoSphere 360 Operations Hub Floating Badge */}
                     <div className="absolute top-3 left-3 z-20 pointer-events-none">
-                      <div className={`backdrop-blur-xl border rounded-2xl px-3 py-1.5 shadow-2xl flex items-center gap-2.5 shrink-0 ${themeMode === 'light' ? 'bg-white/95 border-slate-200 text-slate-800' : 'bg-[#12161f]/95 border-subtle text-white'}`}>
+                      <div className={`backdrop-blur-xl border rounded-2xl px-3 py-1.5 shadow-2xl flex items-center gap-2.5 shrink-0 ${themeMode === 'light' ? 'bg-white/95 border-slate-200 text-slate-800' : 'bg-card border-subtle text-text-base'}`}>
                         <div className="p-1.5 bg-gradient-to-tr from-sky-600 to-emerald-500 rounded-xl shadow-md shadow-emerald-950/40 shrink-0">
-                          <Layers size={14} className="text-white" />
+                          <Layers size={14} className="text-text-base" />
                         </div>
                         <div>
                           <div className="flex items-center gap-1.5">
-                            <h4 className={`font-bold text-xs tracking-tight ${themeMode === 'light' ? 'text-slate-900' : 'text-white'}`}>
+                            <h4 className={`font-bold text-xs tracking-tight ${themeMode === 'light' ? 'text-slate-900' : 'text-text-base'}`}>
                               GeoSphere 360 Operations Hub
                             </h4>
                             <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[8px] font-semibold">
@@ -2050,7 +2050,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                               Live WebGIS
                             </span>
                           </div>
-                          <p className={`text-[9px] font-medium ${themeMode === 'light' ? 'text-slate-500' : 'text-slate-400'}`}>
+                          <p className={`text-[9px] font-medium ${themeMode === 'light' ? 'text-text-muted' : 'text-text-muted'}`}>
                             Mobile Mapping & Spatial Asset Intelligence
                           </p>
                         </div>
@@ -2078,11 +2078,11 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                         <span className="text-sky-500 font-semibold">{projectSettings.spatialSrid || 'EPSG:4326'}</span>
                         <span className={themeMode === 'light' ? 'text-slate-300' : 'text-slate-600'}>|</span>
                         {previewCoords ? (
-                          <span className={`font-semibold ${themeMode === 'light' ? 'text-slate-900' : 'text-slate-200'}`}>
+                          <span className={`font-semibold ${themeMode === 'light' ? 'text-slate-900' : 'text-text-base'}`}>
                             {previewCoords.lat.toFixed(4)}° N, {previewCoords.lng.toFixed(4)}° E
                           </span>
                         ) : (
-                          <span className="text-slate-400 italic">Live GIS Map</span>
+                          <span className="text-text-muted italic">Live GIS Map</span>
                         )}
                       </div>
                     </div>
@@ -2108,7 +2108,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                           target="_blank"
                           rel="noreferrer"
                           title="Open WebGIS in new tab"
-                          className={`p-1.5 rounded-xl backdrop-blur-xl border cursor-pointer shadow-xl transition-all active:scale-95 flex items-center ${themeMode === 'light' ? 'bg-white/95 hover:bg-slate-100 text-slate-700 hover:text-slate-900 border-slate-300' : 'bg-app hover:bg-inner text-slate-300 hover:text-white border-subtle'}`}
+                          className={`p-1.5 rounded-xl backdrop-blur-xl border cursor-pointer shadow-xl transition-all active:scale-95 flex items-center ${themeMode === 'light' ? 'bg-white/95 hover:bg-slate-100 text-slate-700 hover:text-slate-900 border-slate-300' : 'bg-app hover:bg-inner text-slate-300 hover:text-text-base border-subtle'}`}
                         >
                           <ExternalLink size={12} />
                         </a>
@@ -2116,19 +2116,19 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
 
                       {/* Live Legend Chips */}
                       <div className="flex flex-wrap items-center gap-1 pointer-events-auto">
-                        <span className={`px-2 py-0.5 rounded-md text-[9px] font-semibold backdrop-blur-md border flex items-center gap-1.5 shadow-md ${themeMode === 'light' ? 'bg-white/95 border-slate-300 text-slate-800' : 'bg-app border-subtle text-slate-200'}`}>
+                        <span className={`px-2 py-0.5 rounded-md text-[9px] font-semibold backdrop-blur-md border flex items-center gap-1.5 shadow-md ${themeMode === 'light' ? 'bg-white/95 border-slate-300 text-slate-800' : 'bg-app border-subtle text-text-base'}`}>
                           <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: projectSettings.publishedTrackColor || '#10B981' }} />
                           Published
                         </span>
-                        <span className={`px-2 py-0.5 rounded-md text-[9px] font-semibold backdrop-blur-md border flex items-center gap-1.5 shadow-md ${themeMode === 'light' ? 'bg-white/95 border-slate-300 text-slate-800' : 'bg-app border-subtle text-slate-200'}`}>
+                        <span className={`px-2 py-0.5 rounded-md text-[9px] font-semibold backdrop-blur-md border flex items-center gap-1.5 shadow-md ${themeMode === 'light' ? 'bg-white/95 border-slate-300 text-slate-800' : 'bg-app border-subtle text-text-base'}`}>
                           <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: projectSettings.stagingTrackColor || '#F59E0B' }} />
                           Staging
                         </span>
-                        <span className={`px-2 py-0.5 rounded-md text-[9px] font-semibold backdrop-blur-md border flex items-center gap-1.5 shadow-md ${themeMode === 'light' ? 'bg-white/95 border-slate-300 text-slate-800' : 'bg-app border-subtle text-slate-200'}`}>
+                        <span className={`px-2 py-0.5 rounded-md text-[9px] font-semibold backdrop-blur-md border flex items-center gap-1.5 shadow-md ${themeMode === 'light' ? 'bg-white/95 border-slate-300 text-slate-800' : 'bg-app border-subtle text-text-base'}`}>
                           <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: projectSettings.defectTrackColor || '#EF4444' }} />
                           Defect
                         </span>
-                        <span className={`px-2 py-0.5 rounded-md text-[9px] font-semibold backdrop-blur-md border flex items-center gap-1.5 shadow-md ${themeMode === 'light' ? 'bg-white/95 border-slate-300 text-slate-800' : 'bg-app border-subtle text-slate-200'}`}>
+                        <span className={`px-2 py-0.5 rounded-md text-[9px] font-semibold backdrop-blur-md border flex items-center gap-1.5 shadow-md ${themeMode === 'light' ? 'bg-white/95 border-slate-300 text-slate-800' : 'bg-app border-subtle text-text-base'}`}>
                           <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: projectSettings.selectedTrackColor || '#38BDF8' }} />
                           Selected
                         </span>
@@ -2146,10 +2146,10 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
               <div className="flex items-center gap-2">
                 <Shield size={16} className={themeMode === 'light' ? 'text-slate-700' : 'text-slate-300'} />
                 <div>
-                  <h3 className={`text-sm font-bold uppercase tracking-wide ${themeMode === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>
+                  <h3 className={`text-sm font-bold uppercase tracking-wide ${themeMode === 'light' ? 'text-slate-900' : 'text-text-base'}`}>
                     4. Security, Authentication & Access Control (RBAC)
                   </h3>
-                  <p className={`text-[11px] mt-0.5 ${themeMode === 'light' ? 'text-slate-500' : 'text-slate-400'}`}>
+                  <p className={`text-[11px] mt-0.5 ${themeMode === 'light' ? 'text-text-muted' : 'text-text-muted'}`}>
                     Configure enterprise authentication policies, session timeouts, authorized email restrictions, and role permissions.
                   </p>
                 </div>
@@ -2165,8 +2165,8 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                 {/* Deletion Guard Toggle */}
                 <div className={`p-3 rounded-xl border flex items-center justify-between gap-3 ${innerCardBg}`}>
                   <div>
-                    <h4 className={`font-semibold ${themeMode === 'light' ? 'text-slate-800' : 'text-slate-200'}`}>Require Administrator Approval for CSV Deletion</h4>
-                    <p className={`text-[11px] mt-0.5 ${themeMode === 'light' ? 'text-slate-500' : 'text-slate-400'}`}>When enabled, field operators submit deletion tickets to the Approvals queue instead of hard-deleting.</p>
+                    <h4 className={`font-semibold ${themeMode === 'light' ? 'text-slate-800' : 'text-text-base'}`}>Require Administrator Approval for CSV Deletion</h4>
+                    <p className={`text-[11px] mt-0.5 ${themeMode === 'light' ? 'text-text-muted' : 'text-text-muted'}`}>When enabled, field operators submit deletion tickets to the Approvals queue instead of hard-deleting.</p>
                   </div>
                   <input
                     type="checkbox"
@@ -2179,8 +2179,8 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                 {/* 2FA / MFA Toggle */}
                 <div className={`p-3 rounded-xl border flex items-center justify-between gap-3 ${innerCardBg}`}>
                   <div>
-                    <h4 className={`font-semibold ${themeMode === 'light' ? 'text-slate-800' : 'text-slate-200'}`}>Multi-Factor Authentication (MFA / 2FA)</h4>
-                    <p className={`text-[11px] mt-0.5 ${themeMode === 'light' ? 'text-slate-500' : 'text-slate-400'}`}>Enforce one-time verification codes for Administrator and QA Inspector accounts on login.</p>
+                    <h4 className={`font-semibold ${themeMode === 'light' ? 'text-slate-800' : 'text-text-base'}`}>Multi-Factor Authentication (MFA / 2FA)</h4>
+                    <p className={`text-[11px] mt-0.5 ${themeMode === 'light' ? 'text-text-muted' : 'text-text-muted'}`}>Enforce one-time verification codes for Administrator and QA Inspector accounts on login.</p>
                   </div>
                   <input
                     type="checkbox"
@@ -2195,8 +2195,8 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <div className="flex justify-between items-center mb-1">
-                    <label className="text-slate-400 font-medium">Session Inactivity Auto-Lock</label>
-                    <span className="text-[10px] text-slate-500">Auto-terminates idle sessions</span>
+                    <label className="text-text-muted font-medium">Session Inactivity Auto-Lock</label>
+                    <span className="text-[10px] text-text-muted">Auto-terminates idle sessions</span>
                   </div>
                   <select
                     value={projectSettings.sessionTimeoutMinutes || 30}
@@ -2214,8 +2214,8 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
 
                 <div>
                   <div className="flex justify-between items-center mb-1">
-                    <label className="text-slate-400 font-medium">Authorized Email / Domain Restriction</label>
-                    <span className="text-[10px] text-slate-500">Whitelist filter</span>
+                    <label className="text-text-muted font-medium">Authorized Email / Domain Restriction</label>
+                    <span className="text-[10px] text-text-muted">Whitelist filter</span>
                   </div>
                   <input
                     type="text"
@@ -2224,39 +2224,39 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                     onChange={e => setProjectSettings(prev => ({ ...prev, corporateDomain: e.target.value }))}
                     className={`w-full px-3 py-2 rounded-lg font-mono focus:outline-none border ${inputBg}`}
                   />
-                  <p className="text-[10px] text-slate-500 mt-1">Specify authorized email addresses or domain suffixes (e.g. <code>user@example.com</code> or <code>@company.com</code>).</p>
+                  <p className="text-[10px] text-text-muted mt-1">Specify authorized email addresses or domain suffixes (e.g. <code>user@example.com</code> or <code>@company.com</code>).</p>
                 </div>
               </div>
 
               {/* SUB-SECTION C: RBAC ROLE PERMISSIONS OVERVIEW */}
               <div className={`p-3.5 rounded-xl border space-y-2.5 ${innerCardBg}`}>
                 <div className="flex items-center justify-between">
-                  <h4 className={`text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 ${themeMode === 'light' ? 'text-slate-800' : 'text-slate-200'}`}>
-                    <Users size={13} className={themeMode === 'light' ? 'text-slate-600' : 'text-slate-400'} />
+                  <h4 className={`text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 ${themeMode === 'light' ? 'text-slate-800' : 'text-text-base'}`}>
+                    <Users size={13} className={themeMode === 'light' ? 'text-slate-600' : 'text-text-muted'} />
                     Role-Based Access Control (RBAC) Policy
                   </h4>
-                  <span className="text-[10px] text-slate-400 font-mono">4 System Roles</span>
+                  <span className="text-[10px] text-text-muted font-mono">4 System Roles</span>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
                   <div className={`p-2.5 rounded-lg border ${themeMode === 'light' ? 'bg-slate-50 border-slate-200' : 'bg-app border-subtle'}`}>
-                    <h5 className={`font-bold text-[11px] mb-1 ${themeMode === 'light' ? 'text-slate-800' : 'text-slate-200'}`}>Administrator</h5>
-                    <p className={`text-[10px] leading-tight ${themeMode === 'light' ? 'text-slate-500' : 'text-slate-400'}`}>Full read/write, DB deletion approval, storage probe & security settings.</p>
+                    <h5 className={`font-bold text-[11px] mb-1 ${themeMode === 'light' ? 'text-slate-800' : 'text-text-base'}`}>Administrator</h5>
+                    <p className={`text-[10px] leading-tight ${themeMode === 'light' ? 'text-text-muted' : 'text-text-muted'}`}>Full read/write, DB deletion approval, storage probe & security settings.</p>
                   </div>
 
                   <div className={`p-2.5 rounded-lg border ${themeMode === 'light' ? 'bg-slate-50 border-slate-200' : 'bg-app border-subtle'}`}>
-                    <h5 className={`font-bold text-[11px] mb-1 ${themeMode === 'light' ? 'text-slate-800' : 'text-slate-200'}`}>QA Inspector</h5>
-                    <p className={`text-[10px] leading-tight ${themeMode === 'light' ? 'text-slate-500' : 'text-slate-400'}`}>Flag quality defects, inspect 360° panoramas & export audit reports.</p>
+                    <h5 className={`font-bold text-[11px] mb-1 ${themeMode === 'light' ? 'text-slate-800' : 'text-text-base'}`}>QA Inspector</h5>
+                    <p className={`text-[10px] leading-tight ${themeMode === 'light' ? 'text-text-muted' : 'text-text-muted'}`}>Flag quality defects, inspect 360° panoramas & export audit reports.</p>
                   </div>
 
                   <div className={`p-2.5 rounded-lg border ${themeMode === 'light' ? 'bg-slate-50 border-slate-200' : 'bg-app border-subtle'}`}>
-                    <h5 className={`font-bold text-[11px] mb-1 ${themeMode === 'light' ? 'text-slate-800' : 'text-slate-200'}`}>Survey Operator</h5>
-                    <p className={`text-[10px] leading-tight ${themeMode === 'light' ? 'text-slate-500' : 'text-slate-400'}`}>Upload CSV datasets, view subgrids & submit deletion approval requests.</p>
+                    <h5 className={`font-bold text-[11px] mb-1 ${themeMode === 'light' ? 'text-slate-800' : 'text-text-base'}`}>Survey Operator</h5>
+                    <p className={`text-[10px] leading-tight ${themeMode === 'light' ? 'text-text-muted' : 'text-text-muted'}`}>Upload CSV datasets, view subgrids & submit deletion approval requests.</p>
                   </div>
 
                   <div className={`p-2.5 rounded-lg border ${themeMode === 'light' ? 'bg-slate-50 border-slate-200' : 'bg-app border-subtle'}`}>
-                    <h5 className={`font-bold text-[11px] mb-1 ${themeMode === 'light' ? 'text-slate-800' : 'text-slate-200'}`}>Viewer</h5>
-                    <p className={`text-[10px] leading-tight ${themeMode === 'light' ? 'text-slate-500' : 'text-slate-400'}`}>Read-only access to published GIS map viewer, charts & analytics.</p>
+                    <h5 className={`font-bold text-[11px] mb-1 ${themeMode === 'light' ? 'text-slate-800' : 'text-text-base'}`}>Viewer</h5>
+                    <p className={`text-[10px] leading-tight ${themeMode === 'light' ? 'text-text-muted' : 'text-text-muted'}`}>Read-only access to published GIS map viewer, charts & analytics.</p>
                   </div>
                 </div>
               </div>
@@ -2265,13 +2265,13 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
               <div className={`p-3 rounded-xl border space-y-2 ${innerCardBg}`}>
                 <div className="flex items-center justify-between">
                   <span className={`text-[11px] font-semibold flex items-center gap-1.5 ${themeMode === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
-                    <Key size={13} className={themeMode === 'light' ? 'text-slate-600' : 'text-slate-400'} />
+                    <Key size={13} className={themeMode === 'light' ? 'text-slate-600' : 'text-text-muted'} />
                     Supabase Service & Anon API Key Status
                   </span>
                   <button
                     type="button"
                     onClick={() => setShowApiKey(!showApiKey)}
-                    className="text-[10px] text-slate-400 hover:text-slate-200 flex items-center gap-1 cursor-pointer"
+                    className="text-[10px] text-text-muted hover:text-text-base flex items-center gap-1 cursor-pointer"
                   >
                     {showApiKey ? <EyeOff size={12} /> : <Eye size={12} />}
                     <span>{showApiKey ? 'Hide Key' : 'Reveal Key'}</span>
@@ -2307,7 +2307,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
             <div className="flex items-center justify-between pb-3 border-b border-subtle">
               <div className="flex items-center gap-2">
                 <Activity size={16} className="text-sky-400" />
-                <h3 className="text-sm font-bold text-slate-100 uppercase tracking-wide">5. Contract SLA Targets & QA Benchmarks</h3>
+                <h3 className="text-sm font-bold text-text-base uppercase tracking-wide">5. Contract SLA Targets & QA Benchmarks</h3>
               </div>
               <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-inner border border-subtle text-slate-300">
                 Quality SLA Standard
@@ -2316,7 +2316,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
               <div>
-                <label className="block text-slate-400 font-medium mb-1">Contract Target Distance (km)</label>
+                <label className="block text-text-muted font-medium mb-1">Contract Target Distance (km)</label>
                 <input
                   type="number"
                   step="0.1"
@@ -2327,7 +2327,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
               </div>
 
               <div>
-                <label className="block text-slate-400 font-medium mb-1">Max Allowed Defect SLA Rate (%)</label>
+                <label className="block text-text-muted font-medium mb-1">Max Allowed Defect SLA Rate (%)</label>
                 <input
                   type="number"
                   step="0.1"
@@ -2338,7 +2338,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
               </div>
 
               <div>
-                <label className="block text-slate-400 font-medium mb-1">Batch Log Deduplication Strategy</label>
+                <label className="block text-text-muted font-medium mb-1">Batch Log Deduplication Strategy</label>
                 <select
                   value={projectSettings.deduplicationStrategy || 'clean_merge'}
                   onChange={e => setProjectSettings(prev => ({ ...prev, deduplicationStrategy: e.target.value as any }))}
@@ -2350,7 +2350,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
               </div>
 
               <div>
-                <label className="block text-slate-400 font-medium mb-1">QA Flag Category 1</label>
+                <label className="block text-text-muted font-medium mb-1">QA Flag Category 1</label>
                 <input
                   type="text"
                   value={projectSettings.qaFlag1 || 'Blurry Frame'}
@@ -2360,7 +2360,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
               </div>
 
               <div>
-                <label className="block text-slate-400 font-medium mb-1">QA Flag Category 2</label>
+                <label className="block text-text-muted font-medium mb-1">QA Flag Category 2</label>
                 <input
                   type="text"
                   value={projectSettings.qaFlag2 || 'Lens Obstruction'}
@@ -2370,7 +2370,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
               </div>
 
               <div>
-                <label className="block text-slate-400 font-medium mb-1">QA Flag Category 3</label>
+                <label className="block text-text-muted font-medium mb-1">QA Flag Category 3</label>
                 <input
                   type="text"
                   value={projectSettings.qaFlag3 || 'Bad GPS Signal'}
@@ -2401,8 +2401,8 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                   showToast('Project & Security Settings saved and synchronized live!');
                 }}
                 className={`px-5 py-2.5 rounded-lg text-xs font-bold transition-all shadow-md flex items-center gap-2 ${isAdmin
-                  ? 'bg-sky-600 hover:bg-sky-500 text-white cursor-pointer active:scale-95'
-                  : 'bg-inner text-slate-500 border border-subtle cursor-not-allowed'
+                  ? 'bg-sky-600 hover:bg-sky-500 text-text-base cursor-pointer active:scale-95'
+                  : 'bg-inner text-text-muted border border-subtle cursor-not-allowed'
                   }`}
               >
                 {isAdmin ? <CheckCircle size={14} /> : <Lock size={14} />}
@@ -2420,11 +2420,11 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
         <div className={`p-5 rounded-xl border space-y-4 ${cardBg}`}>
           <div className={`flex flex-wrap items-center justify-between gap-3 pb-3 border-b ${themeMode === 'light' ? 'border-slate-200' : 'border-subtle'}`}>
             <div>
-              <h3 className={`text-sm font-bold flex items-center gap-2 ${themeMode === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>
+              <h3 className={`text-sm font-bold flex items-center gap-2 ${themeMode === 'light' ? 'text-slate-900' : 'text-text-base'}`}>
                 <CheckSquare size={16} className={themeMode === 'light' ? 'text-slate-700' : 'text-slate-300'} />
                 Data Deletion Review & Approval Queue
               </h3>
-              <p className={`text-xs mt-0.5 ${themeMode === 'light' ? 'text-slate-500' : 'text-slate-400'}`}>Review and authorize data deletion requests submitted by field operators.</p>
+              <p className={`text-xs mt-0.5 ${themeMode === 'light' ? 'text-text-muted' : 'text-text-muted'}`}>Review and authorize data deletion requests submitted by field operators.</p>
             </div>
             <div className="flex items-center gap-2">
               <select
@@ -2443,7 +2443,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
           <div className={`border rounded-lg overflow-x-auto ${themeMode === 'light' ? 'border-slate-200' : 'border-subtle'}`}>
             <table className="w-full text-xs text-left border-collapse">
               <thead>
-                <tr className={`uppercase text-[10px] tracking-wider border-b ${themeMode === 'light' ? 'bg-slate-100/80 text-slate-600 border-slate-200' : 'bg-app text-slate-400 border-subtle'}`}>
+                <tr className={`uppercase text-[10px] tracking-wider border-b ${themeMode === 'light' ? 'bg-slate-100/80 text-slate-600 border-slate-200' : 'bg-app text-text-muted border-subtle'}`}>
                   <th className="px-3.5 py-2.5">Request ID</th>
                   <th className="px-3.5 py-2.5">Subgrid</th>
                   <th className="px-3.5 py-2.5">Requester</th>
@@ -2456,7 +2456,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
               <tbody className={`divide-y ${themeMode === 'light' ? 'divide-slate-200' : 'divide-slate-800/80'}`}>
                 {filteredApprovals.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-4 py-8 text-center text-slate-500">No deletion approval requests in this filter.</td>
+                    <td colSpan={7} className="px-4 py-8 text-center text-text-muted">No deletion approval requests in this filter.</td>
                   </tr>
                 ) : (
                   filteredApprovals.map(req => {
@@ -2466,10 +2466,10 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                     return (
                       <tr key={req.id} className={`transition-colors ${themeMode === 'light' ? 'hover:bg-slate-50' : 'hover:bg-inner'}`}>
                         <td className={`px-3.5 py-2.5 font-mono font-semibold ${themeMode === 'light' ? 'text-slate-800' : 'text-slate-300'}`}>{req.id}</td>
-                        <td className={`px-3.5 py-2.5 font-mono font-bold ${themeMode === 'light' ? 'text-slate-800' : 'text-slate-200'}`}>{req.subgrid}</td>
+                        <td className={`px-3.5 py-2.5 font-mono font-bold ${themeMode === 'light' ? 'text-slate-800' : 'text-text-base'}`}>{req.subgrid}</td>
                         <td className="px-3.5 py-2.5">
-                          <div className={`font-semibold ${themeMode === 'light' ? 'text-slate-800' : 'text-slate-200'}`}>{requesterName}</div>
-                          <div className="text-[10px] text-slate-500 font-mono">{requesterEmail}</div>
+                          <div className={`font-semibold ${themeMode === 'light' ? 'text-slate-800' : 'text-text-base'}`}>{requesterName}</div>
+                          <div className="text-[10px] text-text-muted font-mono">{requesterEmail}</div>
                         </td>
                         <td className={`px-3.5 py-2.5 max-w-xs ${themeMode === 'light' ? 'text-slate-600' : 'text-slate-300'}`}>{req.reason}</td>
                         <td className={`px-3.5 py-2.5 font-mono ${themeMode === 'light' ? 'text-slate-600' : 'text-slate-300'}`}>
@@ -2492,7 +2492,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                                 <button
                                   onClick={() => handleApproveDeletion(req)}
                                   className={`px-2.5 py-1 rounded text-[11px] font-semibold cursor-pointer transition-colors border ${themeMode === 'light'
-                                    ? 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-600'
+                                    ? 'bg-emerald-600 hover:bg-emerald-500 text-text-base border-emerald-600'
                                     : 'bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-300 border-emerald-500/30'
                                     }`}
                                 >
@@ -2509,12 +2509,12 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                                 </button>
                               </div>
                             ) : (
-                              <span className="text-slate-500 italic text-[10px] flex items-center justify-end gap-1">
+                              <span className="text-text-muted italic text-[10px] flex items-center justify-end gap-1">
                                 <Lock size={10} /> Pending Admin Review
                               </span>
                             )
                           ) : (
-                            <span className="text-[10px] text-slate-500 font-mono">
+                            <span className="text-[10px] text-text-muted font-mono">
                               {req.reviewedBy ? `by ${req.reviewedBy}` : 'Processed'}
                             </span>
                           )}
@@ -2536,16 +2536,16 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
         <div className={`p-5 rounded-xl border space-y-5 ${cardBg}`}>
           <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-subtle">
             <div>
-              <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2">
+              <h3 className="text-sm font-bold text-text-base flex items-center gap-2">
                 <FileText size={16} className="text-sky-400" />
                 Project Survey Reports & Executive Export
               </h3>
-              <p className="text-xs text-slate-400 mt-0.5">Generate contract delivery audits, QC summary reports, and data ledgers.</p>
+              <p className="text-xs text-text-muted mt-0.5">Generate contract delivery audits, QC summary reports, and data ledgers.</p>
             </div>
             <div className="flex items-center gap-2">
               <button
                 onClick={onGeneratePdfReport}
-                className="px-3.5 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95 transition-all"
+                className="px-3.5 py-2 bg-sky-600 hover:bg-sky-500 text-text-base rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95 transition-all"
               >
                 <Download size={13} /> Export PDF Report
               </button>
@@ -2556,24 +2556,24 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
           <div className={`p-4 rounded-xl border space-y-3 ${innerCardBg}`}>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <span className="text-[10px] font-bold tracking-wider text-slate-400 uppercase">Overall Contract Survey Progress</span>
+                <span className="text-[10px] font-bold tracking-wider text-text-muted uppercase">Overall Contract Survey Progress</span>
                 <div className="flex items-baseline gap-2 mt-0.5">
-                  <h4 className="text-2xl font-bold text-slate-100 font-mono">{overallProgressPercent.toFixed(1)}%</h4>
-                  <span className="text-xs text-slate-400">({totalReportDistance.toFixed(1)} km of {targetKm.toFixed(1)} km target)</span>
+                  <h4 className="text-2xl font-bold text-text-base font-mono">{overallProgressPercent.toFixed(1)}%</h4>
+                  <span className="text-xs text-text-muted">({totalReportDistance.toFixed(1)} km of {targetKm.toFixed(1)} km target)</span>
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-4 text-xs font-mono">
                 <div className="text-right">
-                  <span className="text-slate-400 text-[10px] block font-sans">Processed Frames</span>
-                  <strong className="text-slate-200">{totalReportFrames.toLocaleString()} frames <span className="text-[10px] font-normal text-slate-400 font-sans">(incl. staging)</span></strong>
+                  <span className="text-text-muted text-[10px] block font-sans">Processed Frames</span>
+                  <strong className="text-text-base">{totalReportFrames.toLocaleString()} frames <span className="text-[10px] font-normal text-text-muted font-sans">(incl. staging)</span></strong>
                 </div>
                 <div className="text-right pl-4 border-l border-subtle">
-                  <span className="text-slate-400 text-[10px] block font-sans">Remaining KM</span>
-                  <strong className="text-slate-200">{Math.max(0, targetKm - totalReportDistance).toFixed(1)} km</strong>
+                  <span className="text-text-muted text-[10px] block font-sans">Remaining KM</span>
+                  <strong className="text-text-base">{Math.max(0, targetKm - totalReportDistance).toFixed(1)} km</strong>
                 </div>
                 <div className="text-right pl-4 border-l border-subtle">
-                  <span className="text-slate-400 text-[10px] block font-sans">Active Subgrids</span>
-                  <strong className="text-slate-200">{batchLogs.length} subgrids</strong>
+                  <span className="text-text-muted text-[10px] block font-sans">Active Subgrids</span>
+                  <strong className="text-text-base">{batchLogs.length} subgrids</strong>
                 </div>
               </div>
             </div>
@@ -2590,38 +2590,38 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
           {/* 2. EXECUTIVE KPI BREAKDOWN CARDS */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
             <div className={`p-4 rounded-xl border space-y-2 ${innerCardBg}`}>
-              <h4 className="font-bold text-slate-200 flex items-center justify-between">
+              <h4 className="font-bold text-text-base flex items-center justify-between">
                 <span>Survey Coverage Breakdown</span>
-                <span className="text-[10px] font-mono text-slate-400">Live PostGIS</span>
+                <span className="text-[10px] font-mono text-text-muted">Live PostGIS</span>
               </h4>
-              <div className="space-y-1.5 text-slate-400">
-                <div className="flex justify-between"><span>Total Distance:</span> <strong className="text-slate-200 font-mono">{totalReportDistance.toFixed(1)} km</strong></div>
-                <div className="flex justify-between"><span>Processed Frames:</span> <strong className="text-slate-200 font-mono">{totalReportFrames.toLocaleString()} frames <span className="text-[10px] font-normal text-slate-400 font-sans">(incl. staging)</span></strong></div>
-                <div className="flex justify-between"><span>Target Distance:</span> <strong className="text-slate-200 font-mono">{targetKm.toFixed(1)} km</strong></div>
+              <div className="space-y-1.5 text-text-muted">
+                <div className="flex justify-between"><span>Total Distance:</span> <strong className="text-text-base font-mono">{totalReportDistance.toFixed(1)} km</strong></div>
+                <div className="flex justify-between"><span>Processed Frames:</span> <strong className="text-text-base font-mono">{totalReportFrames.toLocaleString()} frames <span className="text-[10px] font-normal text-text-muted font-sans">(incl. staging)</span></strong></div>
+                <div className="flex justify-between"><span>Target Distance:</span> <strong className="text-text-base font-mono">{targetKm.toFixed(1)} km</strong></div>
                 <div className="flex justify-between pt-1 border-t border-subtle"><span>Remaining to Survey:</span> <strong className="text-sky-400 font-mono">{Math.max(0, targetKm - totalReportDistance).toFixed(1)} km</strong></div>
               </div>
             </div>
 
             <div className={`p-4 rounded-xl border space-y-2 ${innerCardBg}`}>
-              <h4 className="font-bold text-slate-200 flex items-center justify-between">
+              <h4 className="font-bold text-text-base flex items-center justify-between">
                 <span>QAQC Quality SLA Metrics</span>
                 <span className="text-[10px] font-mono text-emerald-400">Verified</span>
               </h4>
-              <div className="space-y-1.5 text-slate-400">
+              <div className="space-y-1.5 text-text-muted">
                 <div className="flex justify-between"><span>Defect Frames:</span> <strong className="text-amber-300 font-mono">{totalReportDefects}</strong></div>
-                <div className="flex justify-between"><span>Allowed Threshold:</span> <strong className="text-slate-200 font-mono">{projectSettings.maxDefectThresholdPercent || 5.0}%</strong></div>
-                <div className="flex justify-between"><span>Defect Rate:</span> <strong className="text-slate-200 font-mono">{totalReportFrames > 0 ? ((totalReportDefects / totalReportFrames) * 100).toFixed(2) : '0.00'}%</strong></div>
+                <div className="flex justify-between"><span>Allowed Threshold:</span> <strong className="text-text-base font-mono">{projectSettings.maxDefectThresholdPercent || 5.0}%</strong></div>
+                <div className="flex justify-between"><span>Defect Rate:</span> <strong className="text-text-base font-mono">{totalReportFrames > 0 ? ((totalReportDefects / totalReportFrames) * 100).toFixed(2) : '0.00'}%</strong></div>
                 <div className="flex justify-between pt-1 border-t border-subtle"><span>Pipeline Quality:</span> <strong className="text-emerald-400 font-mono">{compliantPercent}% Compliant</strong></div>
               </div>
             </div>
 
             <div className={`p-4 rounded-xl border space-y-2 ${innerCardBg}`}>
-              <h4 className="font-bold text-slate-200 flex items-center justify-between">
+              <h4 className="font-bold text-text-base flex items-center justify-between">
                 <span>Subgrid Masterlist Summary</span>
-                <span className="text-[10px] font-mono text-slate-400">{batchLogs.length} Total</span>
+                <span className="text-[10px] font-mono text-text-muted">{batchLogs.length} Total</span>
               </h4>
-              <div className="space-y-1.5 text-slate-400">
-                <div className="flex justify-between"><span>Total Subgrids:</span> <strong className="text-slate-200 font-mono">{batchLogs.length}</strong></div>
+              <div className="space-y-1.5 text-text-muted">
+                <div className="flex justify-between"><span>Total Subgrids:</span> <strong className="text-text-base font-mono">{batchLogs.length}</strong></div>
                 <div className="flex justify-between"><span>Completed Batches:</span> <strong className="text-emerald-400 font-mono">{batchLogs.filter(b => b.status === 'Complete').length}</strong></div>
                 <div className="flex justify-between"><span>Ongoing Batches:</span> <strong className="text-amber-300 font-mono">{batchLogs.filter(b => b.status === 'Ongoing').length}</strong></div>
                 <div className="flex justify-between pt-1 border-t border-subtle"><span>Ready for WebGIS:</span> <strong className="text-sky-400 font-mono">{batchLogs.filter(b => (b as any).publishToWebGIS === 'yes' || (b as any).isSyncedWithSupabase).length}</strong></div>
@@ -2632,18 +2632,18 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
           {/* 3. DAILY PROGRESS DATA & SURVEY OPERATION LEDGER */}
           <div className="space-y-2.5 pt-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <h4 className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+              <h4 className="text-xs font-bold text-text-base uppercase tracking-wider flex items-center gap-1.5">
                 <History size={14} className="text-sky-400" />
                 Daily Operation & Survey Progress Ledger
               </h4>
-              <span className="text-[11px] text-slate-400 font-mono">
+              <span className="text-[11px] text-text-muted font-mono">
                 {dailyData.length} daily logs recorded
               </span>
             </div>
 
             <div className="border border-subtle rounded-xl overflow-hidden shadow-sm">
               <table className="w-full text-left text-xs">
-                <thead className={`text-[11px] uppercase tracking-wider font-semibold border-b ${themeMode === 'light' ? 'bg-slate-100 text-slate-700 border-slate-200' : 'bg-[#070a0f] text-slate-400 border-subtle'
+                <thead className={`text-[11px] uppercase tracking-wider font-semibold border-b ${themeMode === 'light' ? 'bg-slate-100 text-slate-700 border-slate-200' : 'bg-card text-text-muted border-subtle'
                   }`}>
                   <tr>
                     <th className="px-3.5 py-2.5">Date</th>
@@ -2658,7 +2658,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                 <tbody className="divide-y divide-slate-800/60">
                   {dailyData.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
+                      <td colSpan={7} className="px-4 py-8 text-center text-text-muted">
                         No daily operation records available.
                       </td>
                     </tr>
@@ -2678,7 +2678,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                           <td className="px-3.5 py-2.5 font-mono text-[11px] font-semibold">{row.date || '—'}</td>
                           <td className="px-3.5 py-2.5 font-medium">{row.subgrid || '—'}</td>
                           <td className="px-3.5 py-2.5 font-mono">{km.toFixed(1)} km</td>
-                          <td className="px-3.5 py-2.5 font-mono font-semibold text-slate-200">{Number(frameCount).toLocaleString()} frames</td>
+                          <td className="px-3.5 py-2.5 font-mono font-semibold text-text-base">{Number(frameCount).toLocaleString()} frames</td>
                           <td className="px-3.5 py-2.5 font-mono">
                             {defects > 0 ? (
                               <span className="text-amber-400 font-semibold">{defects}</span>
@@ -2686,8 +2686,8 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                               <span className="text-emerald-400">0</span>
                             )}
                           </td>
-                          <td className="px-3.5 py-2.5 text-[11px] text-slate-400">
-                            {row.pic || 'Field Operator'} <span className="text-slate-500">({row.captureEquipment || 'MMS'})</span>
+                          <td className="px-3.5 py-2.5 text-[11px] text-text-muted">
+                            {row.pic || 'Field Operator'} <span className="text-text-muted">({row.captureEquipment || 'MMS'})</span>
                           </td>
                           <td className="px-3.5 py-2.5 text-right">
                             {isPublished ? (
@@ -2695,7 +2695,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                                 Published
                               </span>
                             ) : (
-                              <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-inner text-slate-400 border border-subtle font-mono">
+                              <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-inner text-text-muted border border-subtle font-mono">
                                 Staging
                               </span>
                             )}
@@ -2706,12 +2706,12 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                   )}
                 </tbody>
                 {dailyData.length > 0 && (
-                  <tfoot className={`font-semibold border-t ${themeMode === 'light' ? 'bg-slate-50 text-slate-800 border-slate-200' : 'bg-[#070a0f] text-slate-200 border-subtle'
+                  <tfoot className={`font-semibold border-t ${themeMode === 'light' ? 'bg-slate-50 text-slate-800 border-slate-200' : 'bg-card text-text-base border-subtle'
                     }`}>
                     <tr>
-                      <td colSpan={2} className="px-3.5 py-2.5 text-slate-400 text-[11px]">Total ({dailyData.length} daily logs)</td>
+                      <td colSpan={2} className="px-3.5 py-2.5 text-text-muted text-[11px]">Total ({dailyData.length} daily logs)</td>
                       <td className="px-3.5 py-2.5 font-mono text-sky-400">{totalReportDistance.toFixed(1)} km</td>
-                      <td className="px-3.5 py-2.5 font-mono text-slate-100">{totalReportFrames.toLocaleString()} frames <span className="text-[10px] font-normal text-slate-400 font-sans">(incl. staging)</span></td>
+                      <td className="px-3.5 py-2.5 font-mono text-text-base">{totalReportFrames.toLocaleString()} frames <span className="text-[10px] font-normal text-text-muted font-sans">(incl. staging)</span></td>
                       <td className="px-3.5 py-2.5 font-mono text-amber-300">{totalReportDefects}</td>
                       <td colSpan={2} className="px-3.5 py-2.5 text-right text-[11px] text-emerald-400 font-mono">
                         {compliantPercent}% Quality
@@ -2732,17 +2732,17 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
         <div className={`p-5 rounded-xl border space-y-4 ${cardBg}`}>
           <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-subtle">
             <div>
-              <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2">
+              <h3 className="text-sm font-bold text-text-base flex items-center gap-2">
                 <Activity size={16} className="text-sky-400" />
                 Security & Activity Audit Trail
               </h3>
-              <p className="text-xs text-slate-400 mt-0.5">Chronological record of user modifications, published surveys, and system events.</p>
+              <p className="text-xs text-text-muted mt-0.5">Chronological record of user modifications, published surveys, and system events.</p>
             </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
             <div className="relative flex-1 min-w-[200px]">
-              <Search size={14} className="absolute left-3 top-2.5 text-slate-500" />
+              <Search size={14} className="absolute left-3 top-2.5 text-text-muted" />
               <input
                 type="text"
                 placeholder="Search audit trail by title or details..."
@@ -2769,7 +2769,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
           <div className="border border-subtle rounded-lg overflow-x-auto max-h-[450px]">
             <table className="w-full text-xs text-left border-collapse">
               <thead className="sticky top-0 bg-app z-10">
-                <tr className="text-slate-400 uppercase text-[10px] tracking-wider border-b border-subtle">
+                <tr className="text-text-muted uppercase text-[10px] tracking-wider border-b border-subtle">
                   <th className="px-3.5 py-2.5">Timestamp</th>
                   <th className="px-3.5 py-2.5">Action</th>
                   <th className="px-3.5 py-2.5">Event Title</th>
@@ -2780,19 +2780,19 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
               <tbody className="divide-y divide-slate-800/80">
                 {filteredAuditLogs.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-4 py-8 text-center text-slate-500">No audit events recorded for this filter.</td>
+                    <td colSpan={5} className="px-4 py-8 text-center text-text-muted">No audit events recorded for this filter.</td>
                   </tr>
                 ) : (
                   filteredAuditLogs.map(log => (
                     <tr key={log.id} className="hover:bg-inner transition-colors">
-                      <td className="px-3.5 py-2 font-mono text-[11px] text-slate-400 whitespace-nowrap">{log.timestamp}</td>
+                      <td className="px-3.5 py-2 font-mono text-[11px] text-text-muted whitespace-nowrap">{log.timestamp}</td>
                       <td className="px-3.5 py-2">
                         <span className="px-2 py-0.5 rounded text-[9.5px] font-bold font-mono uppercase bg-inner border border-subtle text-slate-300">
                           {log.type}
                         </span>
                       </td>
-                      <td className="px-3.5 py-2 font-semibold text-slate-200 whitespace-nowrap">{log.title}</td>
-                      <td className="px-3.5 py-2 text-slate-400 text-[11px] max-w-md truncate" title={log.details}>{log.details}</td>
+                      <td className="px-3.5 py-2 font-semibold text-text-base whitespace-nowrap">{log.title}</td>
+                      <td className="px-3.5 py-2 text-text-muted text-[11px] max-w-md truncate" title={log.details}>{log.details}</td>
                       <td className="px-3.5 py-2 text-right">
                         <span className={`px-2 py-0.5 rounded text-[10px] font-semibold border ${log.status === 'success' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : log.status === 'error' ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' : 'bg-inner text-slate-300 border-subtle'}`}>
                           {log.status || 'info'}
@@ -2814,16 +2814,16 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
         <div className={`p-5 rounded-xl border space-y-4 ${cardBg}`}>
           <div className="flex items-center justify-between pb-3 border-b border-subtle">
             <div>
-              <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2">
+              <h3 className="text-sm font-bold text-text-base flex items-center gap-2">
                 <Server size={16} className="text-emerald-400" />
                 Live System & Infrastructure Diagnostics
               </h3>
-              <p className="text-xs text-slate-400 mt-0.5">Real-time latency, storage health, and replication diagnostics.</p>
+              <p className="text-xs text-text-muted mt-0.5">Real-time latency, storage health, and replication diagnostics.</p>
             </div>
             <button
               onClick={handleTestHealth}
               disabled={isTestingHealth}
-              className="px-3.5 py-2 bg-inner hover:bg-slate-700 border border-subtle text-slate-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-sm"
+              className="px-3.5 py-2 bg-inner hover:bg-slate-700 border border-subtle text-text-base rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-sm"
             >
               <RefreshCw size={13} className={isTestingHealth ? 'animate-spin text-sky-400' : 'text-sky-400'} />
               <span>Probe Health Now</span>
@@ -2836,8 +2836,8 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                 <span className="font-semibold text-slate-300">PostgreSQL / PostGIS 3.3</span>
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
               </div>
-              <div className="text-2xl font-bold font-mono text-slate-100">{healthMetrics.postgisLatencyMs} ms</div>
-              <p className="text-[10px] text-slate-500 font-mono">Response time &bull; Endpoint 200 OK</p>
+              <div className="text-2xl font-bold font-mono text-text-base">{healthMetrics.postgisLatencyMs} ms</div>
+              <p className="text-[10px] text-text-muted font-mono">Response time &bull; Endpoint 200 OK</p>
             </div>
 
             <div className={`p-4 rounded-xl border space-y-2 ${innerCardBg}`}>
@@ -2845,8 +2845,8 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                 <span className="font-semibold text-slate-300">360° Storage Bucket (MMS_PIC)</span>
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
               </div>
-              <div className="text-2xl font-bold font-mono text-slate-100">{healthMetrics.storageTotalFiles}+ Objects</div>
-              <p className="text-[10px] text-slate-500 font-mono">Public CDN read accessibility OK</p>
+              <div className="text-2xl font-bold font-mono text-text-base">{healthMetrics.storageTotalFiles}+ Objects</div>
+              <p className="text-[10px] text-text-muted font-mono">Public CDN read accessibility OK</p>
             </div>
 
             <div className={`p-4 rounded-xl border space-y-2 ${innerCardBg}`}>
@@ -2855,7 +2855,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
               </div>
               <div className="text-2xl font-bold font-mono text-emerald-400">Connected</div>
-              <p className="text-[10px] text-slate-500 font-mono">WebSocket push replication active</p>
+              <p className="text-[10px] text-text-muted font-mono">WebSocket push replication active</p>
             </div>
 
             <div className={`p-4 rounded-xl border space-y-2 ${innerCardBg}`}>
@@ -2863,8 +2863,8 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                 <span className="font-semibold text-slate-300">WebGIS Viewer Integration</span>
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
               </div>
-              <div className="text-2xl font-bold font-mono text-slate-100">Online (Vercel)</div>
-              <p className="text-[10px] text-slate-500 font-mono">mobilemapping-nine.vercel.app</p>
+              <div className="text-2xl font-bold font-mono text-text-base">Online (Vercel)</div>
+              <p className="text-[10px] text-text-muted font-mono">mobilemapping-nine.vercel.app</p>
             </div>
 
             <div className={`p-4 rounded-xl border space-y-2 ${innerCardBg}`}>
@@ -2872,17 +2872,17 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                 <span className="font-semibold text-slate-300">Client Memory & Cache</span>
                 <span className="w-2.5 h-2.5 rounded-full bg-sky-400" />
               </div>
-              <div className="text-2xl font-bold font-mono text-slate-100">{healthMetrics.memoryUsageMb} MB</div>
-              <p className="text-[10px] text-slate-500 font-mono">Browser heap allocated</p>
+              <div className="text-2xl font-bold font-mono text-text-base">{healthMetrics.memoryUsageMb} MB</div>
+              <p className="text-[10px] text-text-muted font-mono">Browser heap allocated</p>
             </div>
 
             <div className={`p-4 rounded-xl border space-y-2 ${innerCardBg}`}>
               <div className="flex items-center justify-between">
                 <span className="font-semibold text-slate-300">Last Diagnostic Ping</span>
-                <Clock size={14} className="text-slate-400" />
+                <Clock size={14} className="text-text-muted" />
               </div>
-              <div className="text-2xl font-bold font-mono text-slate-100">{healthMetrics.lastPingTime}</div>
-              <p className="text-[10px] text-slate-500 font-mono">Auto-polling every 30s</p>
+              <div className="text-2xl font-bold font-mono text-text-base">{healthMetrics.lastPingTime}</div>
+              <p className="text-[10px] text-text-muted font-mono">Auto-polling every 30s</p>
             </div>
           </div>
         </div>
@@ -2909,16 +2909,16 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-app backdrop-blur-sm p-4 animate-in fade-in duration-200">
           <div className={`w-full max-w-md p-5 rounded-2xl border shadow-2xl space-y-4 ${cardBg}`}>
             <div className="flex items-center justify-between pb-3 border-b border-subtle">
-              <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2">
+              <h3 className="text-sm font-bold text-text-base flex items-center gap-2">
                 <Users size={16} className="text-sky-400" />
                 Add / Provision Dashboard User
               </h3>
-              <button onClick={() => setIsAddUserModalOpen(false)} className="text-slate-400 hover:text-white cursor-pointer">✕</button>
+              <button onClick={() => setIsAddUserModalOpen(false)} className="text-text-muted hover:text-text-base cursor-pointer">✕</button>
             </div>
 
             <form onSubmit={handleCreateUser} className="space-y-3 text-xs">
               <div>
-                <label className="block text-slate-400 font-medium mb-1">Full Name</label>
+                <label className="block text-text-muted font-medium mb-1">Full Name</label>
                 <input
                   type="text"
                   required
@@ -2930,7 +2930,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
               </div>
 
               <div>
-                <label className="block text-slate-400 font-medium mb-1">Corporate Email</label>
+                <label className="block text-text-muted font-medium mb-1">Corporate Email</label>
                 <input
                   type="email"
                   required
@@ -2942,7 +2942,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
               </div>
 
               <div>
-                <label className="block text-slate-400 font-medium mb-1">Assigned Role</label>
+                <label className="block text-text-muted font-medium mb-1">Assigned Role</label>
                 <select
                   value={newUserRole}
                   onChange={e => setNewUserRole(e.target.value as any)}
@@ -2959,13 +2959,13 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                 <button
                   type="button"
                   onClick={() => setIsAddUserModalOpen(false)}
-                  className="px-3.5 py-2 rounded-lg border border-subtle bg-inner text-slate-300 hover:text-white text-xs font-semibold cursor-pointer"
+                  className="px-3.5 py-2 rounded-lg border border-subtle bg-inner text-slate-300 hover:text-text-base text-xs font-semibold cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold shadow-md cursor-pointer"
+                  className="px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-text-base text-xs font-bold shadow-md cursor-pointer"
                 >
                   Create User Account
                 </button>
@@ -2986,7 +2986,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                 <XCircle size={16} className="text-rose-400" />
                 Reject Deletion Request ({rejectModalReqId})
               </h3>
-              <button onClick={() => setRejectModalReqId(null)} className="text-slate-400 hover:text-white cursor-pointer">✕</button>
+              <button onClick={() => setRejectModalReqId(null)} className="text-text-muted hover:text-text-base cursor-pointer">✕</button>
             </div>
 
             <div className="space-y-3 text-xs">
@@ -3002,13 +3002,13 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
               <div className="flex justify-end gap-2 pt-2 border-t border-subtle">
                 <button
                   onClick={() => setRejectModalReqId(null)}
-                  className="px-3.5 py-2 rounded-lg border border-subtle bg-inner text-slate-300 hover:text-white text-xs font-semibold cursor-pointer"
+                  className="px-3.5 py-2 rounded-lg border border-subtle bg-inner text-slate-300 hover:text-text-base text-xs font-semibold cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={() => handleRejectDeletion(rejectModalReqId)}
-                  className="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-md cursor-pointer"
+                  className="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-text-base text-xs font-bold shadow-md cursor-pointer"
                 >
                   Confirm Rejection
                 </button>
@@ -3025,30 +3025,30 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-app backdrop-blur-sm p-4 animate-in fade-in duration-200">
           <div className={`w-full max-w-md p-5 rounded-2xl border shadow-2xl space-y-4 ${cardBg}`}>
             <div className="flex items-center justify-between pb-3 border-b border-subtle">
-              <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2">
+              <h3 className="text-sm font-bold text-text-base flex items-center gap-2">
                 <Shield size={16} className="text-sky-400" />
                 Confirm Role Assignment
               </h3>
-              <button onClick={() => setRoleChangeModal(null)} className="text-slate-400 hover:text-white cursor-pointer">✕</button>
+              <button onClick={() => setRoleChangeModal(null)} className="text-text-muted hover:text-text-base cursor-pointer">✕</button>
             </div>
 
             <div className="space-y-3 text-xs">
               <p className="text-slate-300 leading-relaxed">
-                Assign user <strong className="text-white">{roleChangeModal.userName}</strong> (<span className="font-mono text-slate-400 text-[11px]">{roleChangeModal.userEmail}</span>) to role <strong className="text-sky-400">{roleChangeModal.targetRole}</strong>?
+                Assign user <strong className="text-text-base">{roleChangeModal.userName}</strong> (<span className="font-mono text-text-muted text-[11px]">{roleChangeModal.userEmail}</span>) to role <strong className="text-sky-400">{roleChangeModal.targetRole}</strong>?
               </p>
 
               <div className={`p-3 rounded-xl border text-[11px] space-y-2 ${innerCardBg}`}>
                 <div className="flex justify-between items-center">
-                  <span className="text-slate-400">Current Role:</span>
+                  <span className="text-text-muted">Current Role:</span>
                   <span className="font-semibold text-slate-300">{roleChangeModal.previousRole}</span>
                 </div>
                 <div className="flex justify-between items-center pt-1.5 border-t border-subtle">
-                  <span className="text-slate-400">New Assigned Role:</span>
+                  <span className="text-text-muted">New Assigned Role:</span>
                   <span className="font-bold text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded border border-sky-500/20">{roleChangeModal.targetRole}</span>
                 </div>
               </div>
 
-              <div className="p-2.5 rounded-lg bg-app border border-subtle text-[11px] text-slate-400 leading-relaxed">
+              <div className="p-2.5 rounded-lg bg-app border border-subtle text-[11px] text-text-muted leading-relaxed">
                 {roleChangeModal.targetRole === 'Administrator' && '• Administrator: Full operational rights, deletion approvals, project settings & user management.'}
                 {roleChangeModal.targetRole === 'Survey Operator' && '• Survey Operator: Trajectory inspection, batch processing & survey editing rights.'}
                 {roleChangeModal.targetRole === 'QA Inspector' && '• QA Inspector: Quality assurance reviews, defect tagging & deletion request submissions.'}
@@ -3059,14 +3059,14 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                 <button
                   type="button"
                   onClick={() => setRoleChangeModal(null)}
-                  className="px-3.5 py-2 rounded-lg border border-subtle bg-inner text-slate-300 hover:text-white text-xs font-semibold cursor-pointer"
+                  className="px-3.5 py-2 rounded-lg border border-subtle bg-inner text-slate-300 hover:text-text-base text-xs font-semibold cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
                   onClick={handleConfirmUserRoleChange}
-                  className="px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold shadow-md cursor-pointer flex items-center gap-1.5"
+                  className="px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-text-base text-xs font-bold shadow-md cursor-pointer flex items-center gap-1.5"
                 >
                   <CheckCircle size={13} /> Confirm & Assign Role
                 </button>

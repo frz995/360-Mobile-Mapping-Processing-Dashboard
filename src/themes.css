@@ -1,120 +1,224 @@
 /* ==========================================================================
-   ENTERPRISE MULTI-THEME ENGINE (CLEAN TOKENS)
+   ENTERPRISE MULTI-THEME ENGINE — COMPLETE COLOR & TYPOGRAPHY MATRIX
    ========================================================================== */
 
 /* 1. MIDNIGHT NAVY (System Default) */
 :root,
 [data-theme="midnight"] {
-    --bg-app: #070d18;
-    --bg-card: #0b1329;
-    --bg-inner: #090f20;
-    --border-subtle: #1b253b;
+    --bg-app: #080e1a;
+    --bg-card: #0f172a;
+    --bg-inner: #162138;
+    --border-subtle: #1e2e4a;
     --accent: #38bdf8;
     --accent-bg: rgba(56, 189, 248, 0.12);
     --text-primary: #f8fafc;
     --text-muted: #94a3b8;
-    --table-header-bg: #0e172e;
+    --table-header-bg: #131d33;
     --table-header-text: #94a3b8;
-    --table-row-hover: #101c38;
+    --table-row-hover: #192640;
     --table-text: #e2e8f0;
-    --modal-overlay: rgba(3, 7, 18, 0.8);
-    --input-bg: #070d18;
+    --input-bg: #0b1323;
+    --card-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+    --modal-overlay: rgba(3, 7, 18, 0.85);
 }
 
-/* 2. OBSIDIAN PURE DARK (OLED) */
+/* 2. OBSIDIAN PURE DARK (OLED Minimum Eye Fatigue) */
 [data-theme="obsidian"] {
-    --bg-app: #020408;
-    --bg-card: #0a0d14;
-    --bg-inner: #05070a;
-    --border-subtle: #1f242c;
-    --accent: #60a5fa;
-    --accent-bg: rgba(96, 165, 250, 0.12);
-    --text-primary: #f0f6fc;
+    --bg-app: #030305;
+    --bg-card: #0a0b10;
+    --bg-inner: #12131a;
+    --border-subtle: #1e202c;
+    --accent: #818cf8;
+    --accent-bg: rgba(129, 140, 248, 0.14);
+    --text-primary: #f8fafc;
     --text-muted: #8b949e;
-    --table-header-bg: #11151c;
+    --table-header-bg: #0f1016;
     --table-header-text: #8b949e;
-    --table-row-hover: #161b24;
+    --table-row-hover: #171923;
     --table-text: #f0f6fc;
-    --modal-overlay: rgba(0, 0, 0, 0.88);
-    --input-bg: #020408;
+    --input-bg: #050608;
+    --card-shadow: 0 4px 14px rgba(0, 0, 0, 0.65);
+    --modal-overlay: rgba(0, 0, 0, 0.9);
 }
 
-/* 3. TITANIUM GRAPHITE (Neutral Studio) */
+/* 3. TITANIUM GRAPHITE (Neutral Studio Workspace) */
 [data-theme="graphite"] {
-    --bg-app: #121316;
-    --bg-card: #1c1e24;
-    --bg-inner: #15171c;
-    --border-subtle: #2d313b;
+    --bg-app: #121418;
+    --bg-card: #181b22;
+    --bg-inner: #21252f;
+    --border-subtle: #2d3340;
     --accent: #cbd5e1;
     --accent-bg: rgba(203, 213, 225, 0.12);
     --text-primary: #f1f5f9;
     --text-muted: #94a3b8;
-    --table-header-bg: #22252d;
+    --table-header-bg: #1c2029;
     --table-header-text: #94a3b8;
-    --table-row-hover: #292d37;
+    --table-row-hover: #262b36;
     --table-text: #f1f5f9;
+    --input-bg: #13151a;
+    --card-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
     --modal-overlay: rgba(10, 11, 14, 0.85);
-    --input-bg: #121316;
 }
 
-/* 4. PRECISION TEAL (GIS Telemetry) */
+/* 4. PRECISION TEAL (GIS Telemetry / Ocean Blue) */
 [data-theme="teal-slate"] {
-    --bg-app: #040d12;
-    --bg-card: #0a1922;
-    --bg-inner: #071218;
-    --border-subtle: #132d3d;
-    --accent: #0d9488;
-    --accent-bg: rgba(13, 148, 136, 0.12);
+    --bg-app: #030d12;
+    --bg-card: #071924;
+    --bg-inner: #0d2737;
+    --border-subtle: #13394d;
+    --accent: #14b8a6;
+    --accent-bg: rgba(20, 184, 166, 0.14);
     --text-primary: #f0fdfa;
-    --text-muted: #7895a7;
-    --table-header-bg: #0c202b;
-    --table-header-text: #7895a7;
-    --table-row-hover: #102a3a;
+    --text-muted: #7ba4b8;
+    --table-header-bg: #0a202d;
+    --table-header-text: #7ba4b8;
+    --table-row-hover: #103247;
     --table-text: #ccfbf1;
-    --modal-overlay: rgba(2, 8, 12, 0.85);
-    --input-bg: #040d12;
+    --input-bg: #041018;
+    --card-shadow: 0 4px 12px rgba(2, 10, 15, 0.45);
+    --modal-overlay: rgba(2, 8, 12, 0.88);
 }
 
-/* 5. DAYLIGHT CLEAN (Full High-Luminance Light Mode) */
+/* 5. DAYLIGHT CLEAN (Modern SaaS Crisp Light Canvas) */
 [data-theme="daylight"] {
-    --bg-app: #f1f5f9;
+    --bg-app: #f4f6f9;
     --bg-card: #ffffff;
     --bg-inner: #f8fafc;
     --border-subtle: #e2e8f0;
     --accent: #2563eb;
-    --accent-bg: rgba(37, 99, 235, 0.08);
+    --accent-bg: #eff6ff;
     --text-primary: #0f172a;
     --text-muted: #64748b;
-    --table-header-bg: #e2e8f0;
+    --table-header-bg: #f1f5f9;
     --table-header-text: #334155;
-    --table-row-hover: #f1f5f9;
-    --table-text: #0f172a;
-    --modal-overlay: rgba(15, 23, 42, 0.45);
+    --table-row-hover: #f8fafc;
+    --table-text: #1e293b;
     --input-bg: #ffffff;
+    --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 2px 6px -1px rgba(0, 0, 0, 0.03);
+    --modal-overlay: rgba(15, 23, 42, 0.45);
 }
 
 /* ==========================================================================
-   GLOBAL CANVAS ROOT
+   GLOBAL APP CASCADE & STRUCTURAL INHERITANCE
    ========================================================================== */
 
 html,
 body,
 #root,
 [data-theme] {
-    background-color: var(--bg-app);
-    color: var(--text-primary);
+    background-color: var(--bg-app) !important;
+    color: var(--text-primary) !important;
     transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
 }
 
-/* Table Headers */
-[data-theme] table th,
-[data-theme] .table-header {
-    background-color: var(--table-header-bg);
-    color: var(--table-header-text);
-    border-color: var(--border-subtle);
+[data-theme] div[class*="min-h-screen"],
+[data-theme] main,
+[data-theme] section {
+    background-color: var(--bg-app) !important;
 }
 
-/* Table Body Text */
-[data-theme] table td {
-    color: var(--table-text);
+/* Top Navbar, Header, Sidebar */
+[data-theme] header,
+[data-theme] nav,
+[data-theme] aside,
+[data-theme] .top-navbar,
+[data-theme] div[class*="w-16 bg-"],
+[data-theme] div[class*="w-64 bg-"],
+[data-theme] div[class*="border-b border-subtle"] {
+    background-color: var(--bg-card) !important;
+    border-color: var(--border-subtle) !important;
+}
+
+/* Main Cards, Admin Panels & Widget Containers */
+[data-theme] div[class*="rounded-2xl"],
+[data-theme] div[class*="rounded-3xl"] {
+    background-color: var(--bg-card) !important;
+    border-color: var(--border-subtle) !important;
+    box-shadow: var(--card-shadow);
+}
+
+/* Inner Panels, Tab Contents, Well Boxes */
+[data-theme] div[class*="bg-inner"] {
+    background-color: var(--bg-inner) !important;
+    border-color: var(--border-subtle) !important;
+}
+
+/* Subtle Borders */
+[data-theme] *[class*="border-subtle"],
+[data-theme] *[class*="border-subtle"],
+[data-theme] *[class*="border-subtle"] {
+    border-color: var(--border-subtle) !important;
+}
+
+/* ==========================================================================
+   TABLES & DATA LEDGERS (ALL THEMES)
+   ========================================================================== */
+
+[data-theme] table th,
+[data-theme] div[class*="grid-cols-"][class*="bg-"],
+[data-theme] .table-header {
+    background-color: var(--table-header-bg) !important;
+    color: var(--table-header-text) !important;
+    border-color: var(--border-subtle) !important;
+}
+
+[data-theme] table td,
+[data-theme] div[class*="font-mono"] {
+    color: var(--table-text) !important;
+}
+
+[data-theme] table tr:hover,
+[data-theme] div[class*="hover:bg-card"]:hover,
+[data-theme] div[class*="hover:bg-card"]:hover {
+    background-color: var(--table-row-hover) !important;
+}
+
+/* ==========================================================================
+   DAYLIGHT CLEAN SPECIFIC OVERRIDES (HIGH-CONTRAST LIGHT MODE)
+   ========================================================================== */
+
+/* 1. Force Outer Canvas & Missed Hex Backgrounds */
+[data-theme="daylight"],
+[data-theme="daylight"] body,
+[data-theme="daylight"] #root,
+[data-theme="daylight"] div[class*="bg-card"],
+[data-theme="daylight"] div[class*="bg-card"],
+[data-theme="daylight"] div[class*="bg-card"],
+[data-theme="daylight"] div[class*="bg-card"] {
+    background-color: var(--bg-app) !important;
+}
+
+/* 2. Force KPI Cards, Map Hub & Admin Panels */
+[data-theme="daylight"] div[class*="bg-card"],
+[data-theme="daylight"] div[class*="bg-card"],
+[data-theme="daylight"] div[class*="bg-card"] {
+    background-color: var(--bg-card) !important;
+    border-color: var(--border-subtle) !important;
+}
+
+/* 3. Force 360 Viewer, Inner Wells & Tab Bars */
+[data-theme="daylight"] div[class*="bg-card"],
+[data-theme="daylight"] div[class*="bg-card"],
+[data-theme="daylight"] div[class*="bg-card"],
+[data-theme="daylight"] div[class*="bg-card"] {
+    background-color: var(--bg-inner) !important;
+    border-color: var(--border-subtle) !important;
+}
+
+/* 4. Force High-Contrast Text Overrides */
+[data-theme="daylight"] [class*="text-text-base"],
+[data-theme="daylight"] [class*="text-text-base"],
+[data-theme="daylight"] [class*="text-text-base"] {
+    color: #0f172a !important;
+}
+
+[data-theme="daylight"] [class*="text-text-muted"],
+[data-theme="daylight"] [class*="text-slate-300"] {
+    color: #64748b !important;
+}
+
+/* 5. Force Soft Borders */
+[data-theme="daylight"] [class*="border-subtle"],
+[data-theme="daylight"] [class*="border-subtle"] {
+    border-color: var(--border-subtle) !important;
 }
