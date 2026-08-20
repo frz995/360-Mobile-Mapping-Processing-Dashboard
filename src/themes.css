@@ -1,4 +1,8 @@
-/* src/themes.css */
+/* =========================================================
+   GLOBAL ENTERPRISE THEME ENGINE CASCADE
+   ========================================================= */
+
+/* 1. MIDNIGHT NAVY (DEFAULT) */
 :root,
 [data-theme="midnight"] {
     --bg-app: #070d18;
@@ -10,16 +14,18 @@
     --text-muted: #94a3b8;
 }
 
+/* 2. OBSIDIAN PURE DARK (OLED) */
 [data-theme="obsidian"] {
     --bg-app: #030407;
     --bg-card: #0d1117;
-    --bg-inner: #07090e;
+    --bg-inner: #06080c;
     --border-subtle: #21262d;
     --accent: #60a5fa;
     --text-primary: #f0f6fc;
     --text-muted: #8b949e;
 }
 
+/* 3. TITANIUM GRAPHITE */
 [data-theme="graphite"] {
     --bg-app: #111318;
     --bg-card: #1a1d24;
@@ -30,6 +36,7 @@
     --text-muted: #94a3b8;
 }
 
+/* 4. PRECISION TEAL */
 [data-theme="teal-slate"] {
     --bg-app: #060f14;
     --bg-card: #0c1a24;
@@ -40,6 +47,7 @@
     --text-muted: #7895a7;
 }
 
+/* 5. DAYLIGHT CLEAN */
 [data-theme="daylight"] {
     --bg-app: #f8fafc;
     --bg-card: #ffffff;
@@ -50,20 +58,49 @@
     --text-muted: #64748b;
 }
 
-/* Global utility bindings */
-body {
-    background-color: var(--bg-app);
-    color: var(--text-primary);
-    transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
-}
+/* =========================================================
+   GLOBAL OVERRIDES (APPLIES TO ALL HARDCODED TAILWIND NODES)
+   ========================================================= */
 
-.theme-card {
-    background-color: var(--bg-card) !important;
-    border-color: var(--border-subtle) !important;
+/* Main Canvas & Body */
+html,
+body,
+[data-theme] {
+    background-color: var(--bg-app) !important;
     color: var(--text-primary) !important;
 }
 
-.theme-inner-card {
+/* Header & Navigation */
+[data-theme] header,
+[data-theme] nav,
+[data-theme] aside {
+    background-color: var(--bg-card) !important;
+    border-color: var(--border-subtle) !important;
+}
+
+/* Cards & Containers across Admin Settings and Main Dashboard */
+[data-theme] div[class*="bg-slate-900"],
+[data-theme] div[class*="bg-slate-950"],
+[data-theme] div[class*="bg-[#0b1329]"],
+[data-theme] div[class*="bg-[#070d18]"],
+[data-theme] div[class*="bg-[#12161f]"],
+[data-theme] div[class*="bg-[#111827]"],
+[data-theme] div[class*="bg-[#0f172a]"] {
+    background-color: var(--bg-card) !important;
+    border-color: var(--border-subtle) !important;
+}
+
+/* Inner Panels & Sub-Cards */
+[data-theme] div[class*="bg-slate-800/"],
+[data-theme] div[class*="bg-slate-850"],
+[data-theme] div[class*="bg-[#090f20]"],
+[data-theme] div[class*="bg-[#080a0f]"] {
     background-color: var(--bg-inner) !important;
+    border-color: var(--border-subtle) !important;
+}
+
+/* Global Subtle Borders */
+[data-theme] *[class*="border-slate-800"],
+[data-theme] *[class*="border-slate-700/"] {
     border-color: var(--border-subtle) !important;
 }
