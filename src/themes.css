@@ -1,7 +1,8 @@
-/* =========================================================
-   ENTERPRISE THEME PALETTES
-   ========================================================= */
+/* ==========================================================================
+   ENTERPRISE MULTI-THEME ENGINE & HIGH-SPECIFICITY CASCADE
+   ========================================================================== */
 
+/* 1. MIDNIGHT NAVY (System Default) */
 :root,
 [data-theme="midnight"] {
     --bg-app: #070d18;
@@ -12,21 +13,27 @@
     --accent-bg: rgba(56, 189, 248, 0.12);
     --text-primary: #f8fafc;
     --text-muted: #94a3b8;
+    --table-header: #94a3b8;
+    --table-text: #e2e8f0;
     --input-bg: #070d18;
 }
 
+/* 2. OBSIDIAN PURE DARK (OLED) */
 [data-theme="obsidian"] {
     --bg-app: #030407;
     --bg-card: #0d1117;
-    --bg-inner: #07090e;
+    --bg-inner: #06080c;
     --border-subtle: #21262d;
     --accent: #60a5fa;
     --accent-bg: rgba(96, 165, 250, 0.12);
     --text-primary: #f0f6fc;
     --text-muted: #8b949e;
+    --table-header: #8b949e;
+    --table-text: #f0f6fc;
     --input-bg: #030407;
 }
 
+/* 3. TITANIUM GRAPHITE (Studio Neutral) */
 [data-theme="graphite"] {
     --bg-app: #111318;
     --bg-card: #1a1d24;
@@ -36,9 +43,12 @@
     --accent-bg: rgba(203, 213, 225, 0.12);
     --text-primary: #f1f5f9;
     --text-muted: #94a3b8;
+    --table-header: #94a3b8;
+    --table-text: #f1f5f9;
     --input-bg: #111318;
 }
 
+/* 4. PRECISION TEAL (GIS Telemetry) */
 [data-theme="teal-slate"] {
     --bg-app: #060f14;
     --bg-card: #0c1a24;
@@ -48,73 +58,127 @@
     --accent-bg: rgba(13, 148, 136, 0.12);
     --text-primary: #f0fdfa;
     --text-muted: #7895a7;
+    --table-header: #7895a7;
+    --table-text: #ccfbf1;
     --input-bg: #060f14;
 }
 
+/* 5. DAYLIGHT CLEAN (Complete High-Luminance Light Canvas) */
 [data-theme="daylight"] {
     --bg-app: #f1f5f9;
     --bg-card: #ffffff;
     --bg-inner: #f8fafc;
-    --border-subtle: #cbd5e1;
+    --border-subtle: #e2e8f0;
     --accent: #2563eb;
     --accent-bg: rgba(37, 99, 235, 0.08);
     --text-primary: #0f172a;
-    --text-muted: #475569;
+    --text-muted: #64748b;
+    --table-header: #475569;
+    --table-text: #0f172a;
     --input-bg: #ffffff;
 }
 
-/* =========================================================
-   UNIVERSAL INHERITANCE OVERRIDES
-   ========================================================= */
+/* ==========================================================================
+   GLOBAL APP CASCADE (OVERRIDES HARDCODED TAILWIND COLORS)
+   ========================================================================== */
 
+/* Universal Canvas */
 html,
-body {
-    background-color: var(--bg-app) !important;
-    color: var(--text-primary) !important;
-}
-
-/* Force App Wrapper to Match System Background */
+body,
+#root,
 [data-theme] {
     background-color: var(--bg-app) !important;
+    color: var(--text-primary) !important;
+    transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
 }
 
-/* Navigation, Sidebar, Top Headers */
+/* Global Top Header, Navigation & Sidebars */
 [data-theme] header,
 [data-theme] nav,
-[data-theme] aside {
+[data-theme] aside,
+[data-theme] .top-navbar,
+[data-theme] div[class*="border-b border-slate-800"] {
     background-color: var(--bg-card) !important;
     border-color: var(--border-subtle) !important;
 }
 
-/* Data Tables: Ensure Headings and Data Cells are Always Visible */
+/* Outer Containers, Metric Cards & Modules */
+[data-theme] div[class*="bg-slate-900"],
+[data-theme] div[class*="bg-slate-950"],
+[data-theme] div[class*="bg-[#0b1329]"],
+[data-theme] div[class*="bg-[#070d18]"],
+[data-theme] div[class*="bg-[#12161f]"],
+[data-theme] div[class*="bg-[#111827]"],
+[data-theme] div[class*="bg-[#0f172a]"] {
+    background-color: var(--bg-card) !important;
+    border-color: var(--border-subtle) !important;
+}
+
+/* Inner Panels, Tab Bars, Preview Boxes, Form Wells */
+[data-theme] div[class*="bg-slate-800/"],
+[data-theme] div[class*="bg-slate-850"],
+[data-theme] div[class*="bg-[#090f20]"],
+[data-theme] div[class*="bg-[#080a0f]"],
+[data-theme] div[class*="bg-[#07090e]"] {
+    background-color: var(--bg-inner) !important;
+    border-color: var(--border-subtle) !important;
+}
+
+/* Universal Borders */
+[data-theme] *[class*="border-slate-800"],
+[data-theme] *[class*="border-slate-700/"],
+[data-theme] *[class*="border-[#1b253b]"] {
+    border-color: var(--border-subtle) !important;
+}
+
+/* ==========================================================================
+   DATA TABLE CONTRAST & TYPOGRAPHY FIXES (ALL THEMES)
+   ========================================================================== */
+
 [data-theme] table th,
-[data-theme] .table-header,
-[data-theme] span[class*="text-slate-400"],
-[data-theme] span[class*="text-slate-500"] {
-    color: var(--text-muted) !important;
+[data-theme] div[class*="text-[11px] font-bold text-slate-400"],
+[data-theme] div[class*="text-[11px] font-semibold text-slate-400"],
+[data-theme] .table-header {
+    color: var(--table-header) !important;
 }
 
 [data-theme] table td,
+[data-theme] div[class*="font-mono text-slate-300"],
+[data-theme] div[class*="text-slate-200"],
 [data-theme] span[class*="text-slate-200"],
-[data-theme] span[class*="text-slate-300"],
-[data-theme] span[class*="text-white"] {
-    color: var(--text-primary) !important;
+[data-theme] span[class*="text-slate-300"] {
+    color: var(--table-text) !important;
 }
 
-/* Daylight Light-Mode Text Contrast Correction */
+/* ==========================================================================
+   DAYLIGHT CLEAN SPECIFIC OVERRIDES
+   ========================================================================== */
+
 [data-theme="daylight"] h1,
 [data-theme="daylight"] h2,
 [data-theme="daylight"] h3,
 [data-theme="daylight"] h4,
-[data-theme="daylight"] p,
-[data-theme="daylight"] label,
-[data-theme="daylight"] input,
-[data-theme="daylight"] select {
+[data-theme="daylight"] .text-white,
+[data-theme="daylight"] .text-slate-100,
+[data-theme="daylight"] .text-slate-200 {
     color: #0f172a !important;
 }
 
+[data-theme="daylight"] p,
+[data-theme="daylight"] .text-slate-400,
+[data-theme="daylight"] .text-slate-500 {
+    color: #64748b !important;
+}
+
 [data-theme="daylight"] input,
-[data-theme="daylight"] select {
+[data-theme="daylight"] select,
+[data-theme="daylight"] textarea {
     background-color: #ffffff !important;
+    color: #0f172a !important;
     border-color: #cbd5e1 !important;
+}
+
+[data-theme="daylight"] .theme-card-option {
+    background-color: #ffffff !important;
+    border-color: #e2e8f0 !important;
 }
