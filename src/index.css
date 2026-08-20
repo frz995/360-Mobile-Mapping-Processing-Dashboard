@@ -195,19 +195,19 @@ body {
 }
 
 /* Text Colors in Light Mode */
-.light-mode .text-white,
-.light-mode .text-slate-100,
-.light-mode .text-slate-200,
+.light-mode .text-text-base,
+.light-mode .text-text-base,
+.light-mode .text-text-base,
 .light-mode .text-zinc-100 {
   color: #0f172a !important;
 }
 
 .light-mode .text-slate-300,
-.light-mode .text-slate-400 {
+.light-mode .text-text-muted {
   color: #334155 !important;
 }
 
-.light-mode .text-slate-500 {
+.light-mode .text-text-muted {
   color: #64748b !important;
 }
 
@@ -437,16 +437,16 @@ body {
   border-color: #e2e8f0 !important;
 }
 
-.light-mode .custom-panotrack-popup .text-slate-100,
-.light-mode .custom-panotrack-popup .text-slate-200 {
+.light-mode .custom-panotrack-popup .text-text-base,
+.light-mode .custom-panotrack-popup .text-text-base {
   color: #0f172a !important;
 }
 
-.light-mode .custom-panotrack-popup .text-slate-400 {
+.light-mode .custom-panotrack-popup .text-text-muted {
   color: #475569 !important;
 }
 
-.light-mode .custom-panotrack-popup .text-slate-500 {
+.light-mode .custom-panotrack-popup .text-text-muted {
   color: #64748b !important;
 }
 
