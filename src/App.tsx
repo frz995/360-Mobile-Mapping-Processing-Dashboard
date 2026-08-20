@@ -1684,7 +1684,16 @@ const DataManagementPage = ({
   const [csvFieldMap, setCsvFieldMap] = useState<Record<string, string>>({});
   const [csvFileList, setCsvFileList] = useState<{ fileName: string; headers: string[]; rows: string[][] }[]>([]);
   const [selectedEquipment, setSelectedEquipment] = useState<'MMS' | 'Backpack' | 'Drone'>('MMS');
-  const [selectedPic, setSelectedPic] = useState<string>('');
+  const [selectedPic, setSelectedPic] = useState<string>(() => {
+    if (!authSession?.user) return '';
+    return (
+      authSession.user.user_metadata?.full_name ||
+      authSession.user.user_metadata?.name ||
+      authSession.user.email?.split('@')[0] ||
+      authSession.user.email ||
+      ''
+    );
+  });
   const [selectedGrid, setSelectedGrid] = useState<string>('1');
   const [fileGridMap, setFileGridMap] = useState<Record<string, string>>({});
   const [isImportingCsv, setIsImportingCsv] = useState(false);
@@ -1875,7 +1884,17 @@ const DataManagementPage = ({
         const eqVal = getVal(row, 'captureEquipment');
         const eq = ['MMS', 'Backpack', 'Drone'].includes(eqVal) ? eqVal : selectedEquipment;
         const picVal = getVal(row, 'pic');
-        const pic = picVal || selectedPic;
+
+        const fallbackPic =
+          selectedPic ||
+          authSession?.user?.user_metadata?.full_name ||
+          authSession?.user?.user_metadata?.name ||
+          authSession?.user?.email?.split('@')[0] ||
+          authSession?.user?.email ||
+          '';
+
+        const pic = picVal && picVal.trim() ? picVal.trim() : fallbackPic;
+
         const pubVal = getVal(row, 'publishToWebGIS') || getVal(row, 'publishToUSVPRO');
         const pub = directPublish ? 'yes' : (['yes', 'no', 'need to recheck', 'in process'].includes(pubVal)
           ? pubVal as DailyTimeSeries['publishToWebGIS'] : 'in process');
