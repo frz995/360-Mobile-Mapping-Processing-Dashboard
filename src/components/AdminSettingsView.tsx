@@ -42,6 +42,7 @@ import {
   deleteFromSupabase,
   resolvePanoramaUrl
 } from '../services/supabase';
+import { ThemeManagementCanvas } from './ThemeSelector';
 
 interface AdminSettingsViewProps {
   projectSettings: ExtendedProjectSettings;
@@ -72,7 +73,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
   addNotification,
   addAuditLog
 }) => {
-  const [activeTab, setActiveTab] = useState<'users' | 'settings' | 'approvals' | 'reports' | 'audit' | 'health'>('settings');
+  const [activeTab, setActiveTab] = useState<'users' | 'settings' | 'approvals' | 'reports' | 'audit' | 'health' | 'theme-pack'>('settings');
 
   // User Management State
   const [users, setUsers] = useState<UserAccount[]>([]);
@@ -744,6 +745,17 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
           <Server size={14} className={activeTab === 'health' ? 'text-emerald-500' : ''} />
           <span>System Health</span>
           <span className="w-2 h-2 rounded-full bg-emerald-400" />
+        </button>
+
+        <button
+          onClick={() => setActiveTab('theme-pack')}
+          className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all ${activeTab === 'theme-pack'
+            ? (themeMode === 'light' ? 'bg-sky-50 text-sky-700 shadow-sm border border-sky-200 font-bold' : 'bg-sky-500/20 text-sky-300 shadow-sm border border-sky-500/30')
+            : (themeMode === 'light' ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100' : 'text-slate-400 hover:text-white hover:bg-slate-800/60')
+            }`}
+        >
+          <Palette size={14} className={activeTab === 'theme-pack' ? 'text-sky-400' : ''} />
+          <span>Theme Packages</span>
         </button>
       </div>
 
@@ -2874,6 +2886,17 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
             </div>
           </div>
         </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* TAB 7: MODERN THEME PACKAGES CANVAS & LIVE PREVIEW       */}
+      {/* ======================================================== */}
+      {activeTab === 'theme-pack' && (
+        <ThemeManagementCanvas
+          cardBg={cardBg}
+          innerCardBg={innerCardBg}
+          themeMode={themeMode}
+        />
       )}
 
       {/* ========================================================================= */}
