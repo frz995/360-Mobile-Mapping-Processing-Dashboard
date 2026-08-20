@@ -213,6 +213,10 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
         try {
             localStorage.setItem('app_dashboard_theme', stagedTheme);
         } catch { }
+
+        // Dispatch global event so root app listens and updates state immediately
+        window.dispatchEvent(new CustomEvent('app-theme-changed', { detail: stagedTheme }));
+
         setIsSavedBanner(true);
         setTimeout(() => setIsSavedBanner(false), 3500);
     };
@@ -278,8 +282,8 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                         onClick={handleApplyTheme}
                         disabled={stagedTheme === activeTheme && !isSavedBanner}
                         className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${stagedTheme !== activeTheme
-                                ? 'bg-slate-100 hover:bg-white text-slate-900 shadow-sm cursor-pointer'
-                                : 'bg-slate-800/80 text-slate-500 cursor-not-allowed border border-slate-800'
+                            ? 'bg-slate-100 hover:bg-white text-slate-900 shadow-sm cursor-pointer'
+                            : 'bg-slate-800/80 text-slate-500 cursor-not-allowed border border-slate-800'
                             }`}
                     >
                         <Check className="w-3.5 h-3.5" />
@@ -318,8 +322,8 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                                     key={preset.id}
                                     onClick={() => handleSelectPreset(preset.id)}
                                     className={`p-3 rounded-lg border transition-all cursor-pointer ${isStaged
-                                            ? 'border-slate-400 bg-slate-800/90 shadow-sm ring-1 ring-slate-400/40'
-                                            : 'border-slate-800/90 bg-slate-900/40 hover:bg-slate-850 hover:border-slate-700'
+                                        ? 'border-slate-400 bg-slate-800/90 shadow-sm ring-1 ring-slate-400/40'
+                                        : 'border-slate-800/90 bg-slate-900/40 hover:bg-slate-850 hover:border-slate-700'
                                         }`}
                                 >
                                     <div className="flex items-start justify-between gap-3">
