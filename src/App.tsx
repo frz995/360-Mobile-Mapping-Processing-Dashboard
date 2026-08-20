@@ -960,10 +960,10 @@ const MapComponent = ({
   }, [syncMapSettings, sendStagedData, refreshKey]);
 
   return (
-    <div className="relative w-full h-full overflow-hidden bg-slate-950">
+    <div className="relative w-full h-full overflow-hidden bg-app">
       {/* Top-Left GeoSphere 360 Operations Hub Executive Floating Badge */}
       <div className="absolute top-3 left-3 z-20 pointer-events-none">
-        <div className="bg-[#12161f]/95 backdrop-blur-xl border border-slate-800/90 rounded-2xl px-3.5 py-2 shadow-2xl flex items-center gap-3 shrink-0">
+        <div className="bg-[#12161f]/95 backdrop-blur-xl border border-subtle rounded-2xl px-3.5 py-2 shadow-2xl flex items-center gap-3 shrink-0">
           <div className="p-2 bg-gradient-to-tr from-sky-600 to-emerald-500 rounded-xl shadow-md shadow-emerald-950/40 shrink-0">
             <Layers size={16} className="text-white" />
           </div>
@@ -985,7 +985,7 @@ const MapComponent = ({
       </div>
       {/* Live Cursor Coordinate Badge (bottom-right) — non-overlapping position */}
       <div className="absolute bottom-3 right-3 z-20 pointer-events-none">
-        <div className="bg-slate-900/90 backdrop-blur-md border border-slate-700/80 rounded-lg px-2.5 py-1 text-[11px] text-slate-300 shadow-xl flex items-center gap-2 font-mono">
+        <div className="bg-app backdrop-blur-md border border-subtle rounded-lg px-2.5 py-1 text-[11px] text-slate-300 shadow-xl flex items-center gap-2 font-mono">
           <span className="text-sky-400 font-semibold">EPSG:4326</span>
           <span className="text-slate-600">|</span>
           {coords ? (
@@ -1138,13 +1138,13 @@ ${missingFilenames.length > 0 ? missingFilenames.join('\n') : 'None - All images
 
   return (
     <div className="fixed inset-0 bg-black/85 flex items-center justify-center z-[1000] p-4 backdrop-blur-md">
-      <div className="bg-[#0f172a] border border-slate-800 rounded-2xl p-6 max-w-2xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+      <div className="bg-[#0f172a] border border-subtle rounded-2xl p-6 max-w-2xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
 
         {/* Header */}
-        <div className="flex justify-between items-start pb-4 mb-4 border-b border-slate-800 shrink-0">
+        <div className="flex justify-between items-start pb-4 mb-4 border-b border-subtle shrink-0">
           <div>
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-xl bg-slate-800/80 border border-slate-700/60 text-slate-300">
+              <div className="p-2 rounded-xl bg-inner border border-subtle text-slate-300">
                 {missingCount > 0 ? <ShieldAlert size={20} className="text-rose-400" /> : <ShieldCheck size={20} className="text-emerald-400" />}
               </div>
               <div>
@@ -1157,7 +1157,7 @@ ${missingFilenames.length > 0 ? missingFilenames.join('\n') : 'None - All images
           </div>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors"
+            className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-inner transition-colors"
           >
             <X size={18} />
           </button>
@@ -1165,17 +1165,17 @@ ${missingFilenames.length > 0 ? missingFilenames.join('\n') : 'None - All images
 
         {/* Audit Metrics Summary Grid */}
         <div className="grid grid-cols-3 gap-3 mb-4 shrink-0">
-          <div className="bg-[#131b2e] border border-slate-800/90 p-3 rounded-xl">
+          <div className="bg-[#131b2e] border border-subtle p-3 rounded-xl">
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">POI Metadata Points</span>
             <span className="text-xl font-extrabold text-white font-mono mt-0.5 block">{expectedTotal.toLocaleString()}</span>
             <span className="text-[10px] text-slate-500">Expected survey track</span>
           </div>
-          <div className="bg-[#131b2e] border border-slate-800/90 p-3 rounded-xl">
+          <div className="bg-[#131b2e] border border-subtle p-3 rounded-xl">
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Available in MMS_PIC</span>
             <span className="text-xl font-extrabold text-emerald-400 font-mono mt-0.5 block">{availableCount.toLocaleString()}</span>
             <span className="text-[10px] text-slate-500">Uploaded image frames</span>
           </div>
-          <div className="bg-[#131b2e] border border-slate-800/90 p-3 rounded-xl">
+          <div className="bg-[#131b2e] border border-subtle p-3 rounded-xl">
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Missing Images</span>
             <span className={`text-xl font-extrabold font-mono mt-0.5 block ${missingCount > 0 ? 'text-rose-400' : 'text-slate-300'}`}>{missingCount.toLocaleString()}</span>
             <span className={`text-[10px] ${missingCount > 0 ? 'text-rose-400/80' : 'text-slate-500'}`}>{missingCount > 0 ? 'Upload required' : '100% Matched'}</span>
@@ -1184,7 +1184,7 @@ ${missingFilenames.length > 0 ? missingFilenames.join('\n') : 'None - All images
 
         {/* Progress Bar during Analysis */}
         {isAnalyzing ? (
-          <div className="bg-[#131b2e] border border-slate-800 p-5 rounded-xl mb-4 shrink-0 space-y-3">
+          <div className="bg-[#131b2e] border border-subtle p-5 rounded-xl mb-4 shrink-0 space-y-3">
             <div className="flex items-center justify-between text-xs font-semibold">
               <span className="text-sky-400 flex items-center gap-2">
                 <Loader2 size={15} className="animate-spin text-sky-400" />
@@ -1192,7 +1192,7 @@ ${missingFilenames.length > 0 ? missingFilenames.join('\n') : 'None - All images
               </span>
               <span className="text-white font-mono">{progress}%</span>
             </div>
-            <div className="w-full bg-slate-800/80 h-2 rounded-full overflow-hidden p-0.5">
+            <div className="w-full bg-inner h-2 rounded-full overflow-hidden p-0.5">
               <div
                 className="bg-gradient-to-r from-sky-500 to-emerald-400 h-full rounded-full transition-all duration-75 shadow-[0_0_8px_rgba(56,189,248,0.4)]"
                 style={{ width: `${progress}%` }}
@@ -1205,24 +1205,24 @@ ${missingFilenames.length > 0 ? missingFilenames.join('\n') : 'None - All images
         ) : (
           <div className="flex items-center justify-between gap-3 mb-4 shrink-0">
             {/* Filter Tabs */}
-            <div className="flex bg-[#131b2e] p-1 rounded-xl border border-slate-800 text-xs font-medium">
+            <div className="flex bg-[#131b2e] p-1 rounded-xl border border-subtle text-xs font-medium">
               <button
                 onClick={() => setActiveTab('missing')}
-                className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${activeTab === 'missing' ? 'bg-slate-800 text-rose-400 border border-slate-700/60 font-semibold shadow-sm' : 'text-slate-400 hover:text-white'}`}
+                className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${activeTab === 'missing' ? 'bg-inner text-rose-400 border border-subtle font-semibold shadow-sm' : 'text-slate-400 hover:text-white'}`}
               >
                 <AlertTriangle size={13} className="text-rose-400" />
                 Missing Only ({missingCount})
               </button>
               <button
                 onClick={() => setActiveTab('available')}
-                className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${activeTab === 'available' ? 'bg-slate-800 text-emerald-400 border border-slate-700/60 font-semibold shadow-sm' : 'text-slate-400 hover:text-white'}`}
+                className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${activeTab === 'available' ? 'bg-inner text-emerald-400 border border-subtle font-semibold shadow-sm' : 'text-slate-400 hover:text-white'}`}
               >
                 <CheckCircle size={13} className="text-emerald-400" />
                 Available ({availableCount})
               </button>
               <button
                 onClick={() => setActiveTab('all')}
-                className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${activeTab === 'all' ? 'bg-slate-800 text-white border border-slate-700/60 font-semibold shadow-sm' : 'text-slate-400 hover:text-white'}`}
+                className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${activeTab === 'all' ? 'bg-inner text-white border border-subtle font-semibold shadow-sm' : 'text-slate-400 hover:text-white'}`}
               >
                 All ({expectedTotal})
               </button>
@@ -1237,12 +1237,12 @@ ${missingFilenames.length > 0 ? missingFilenames.join('\n') : 'None - All images
                   placeholder="Filter filenames..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-8 pr-3 py-1.5 bg-[#131b2e] border border-slate-800 rounded-lg text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-slate-700"
+                  className="pl-8 pr-3 py-1.5 bg-[#131b2e] border border-subtle rounded-lg text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-subtle"
                 />
               </div>
               <button
                 onClick={runIntegrityAudit}
-                className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700/60 transition-colors cursor-pointer"
+                className="p-2 bg-inner hover:bg-slate-700 text-slate-300 rounded-lg border border-subtle transition-colors cursor-pointer"
                 title="Re-run QC Audit"
               >
                 <RefreshCw size={14} />
@@ -1252,7 +1252,7 @@ ${missingFilenames.length > 0 ? missingFilenames.join('\n') : 'None - All images
         )}
 
         {/* Results List View */}
-        <div className="flex-1 overflow-y-auto font-mono text-xs space-y-1 p-2.5 bg-[#0b0f17] rounded-xl border border-slate-800/80 min-h-[220px]">
+        <div className="flex-1 overflow-y-auto font-mono text-xs space-y-1 p-2.5 bg-[#0b0f17] rounded-xl border border-subtle min-h-[220px]">
           {filteredResults.length === 0 ? (
             <div className="py-12 text-center text-slate-500">
               <CheckCircle size={24} className="mx-auto text-emerald-400 mb-2 opacity-70" />
@@ -1267,7 +1267,7 @@ ${missingFilenames.length > 0 ? missingFilenames.join('\n') : 'None - All images
             filteredResults.map((item) => (
               <div
                 key={item.index}
-                className="flex items-center justify-between px-3 py-2 bg-[#111827]/60 hover:bg-[#1e293b]/50 border border-slate-800/40 hover:border-slate-700/60 rounded-lg transition-colors"
+                className="flex items-center justify-between px-3 py-2 bg-[#111827]/60 hover:bg-[#1e293b]/50 border border-subtle hover:border-subtle rounded-lg transition-colors"
               >
                 <div className="flex items-center gap-3">
                   <span className="text-slate-500 text-[10px] w-10 font-mono">#{String(item.index).padStart(4, '0')}</span>
@@ -1296,18 +1296,18 @@ ${missingFilenames.length > 0 ? missingFilenames.join('\n') : 'None - All images
         </div>
 
         {/* Footer Utility Toolbar */}
-        <div className="pt-4 border-t border-slate-800 flex items-center justify-between shrink-0 mt-4">
+        <div className="pt-4 border-t border-subtle flex items-center justify-between shrink-0 mt-4">
           <div className="flex items-center gap-2">
             <button
               onClick={copyMissingList}
               disabled={missingCount === 0}
-              className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-slate-200 border border-slate-700/60 rounded-xl text-xs font-medium transition-colors flex items-center gap-2 cursor-pointer"
+              className="px-3.5 py-2 bg-inner hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-slate-200 border border-subtle rounded-xl text-xs font-medium transition-colors flex items-center gap-2 cursor-pointer"
             >
               <Copy size={13} /> Copy Missing List ({missingCount})
             </button>
             <button
               onClick={exportQCReport}
-              className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700/60 rounded-xl text-xs font-medium transition-colors flex items-center gap-2 cursor-pointer"
+              className="px-3.5 py-2 bg-inner hover:bg-slate-700 text-slate-200 border border-subtle rounded-xl text-xs font-medium transition-colors flex items-center gap-2 cursor-pointer"
             >
               <FileText size={13} /> Export QC Report (.txt)
             </button>
@@ -1354,7 +1354,7 @@ const CatalogItem = ({
     return (
       <div>
         <div
-          className="bg-slate-800 border border-slate-700 rounded-lg p-4"
+          className="bg-inner border border-subtle rounded-lg p-4"
           style={{ marginLeft: `${depth * 16}px` }}
         >
           <div className="flex items-center justify-between mb-2">
@@ -1415,7 +1415,7 @@ const CatalogItem = ({
   } else {
     return (
       <div
-        className="bg-slate-800 border border-slate-700 rounded-lg p-4"
+        className="bg-inner border border-subtle rounded-lg p-4"
         style={{ marginLeft: `${depth * 16}px` }}
       >
         <div className="flex items-center justify-between mb-2">
@@ -2720,11 +2720,11 @@ const DataManagementPage = ({
         <div className="max-w-7xl mx-auto w-full space-y-5">
 
           {/* Executive Header Bar */}
-          <div className="bg-[#121824] border border-slate-800/90 rounded-2xl p-5 shadow-lg flex flex-wrap items-center justify-between gap-4">
+          <div className="bg-[#121824] border border-subtle rounded-2xl p-5 shadow-lg flex flex-wrap items-center justify-between gap-4">
             <div className="flex items-center gap-4">
               <button
                 onClick={onBackToDashboard}
-                className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700/80 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer shadow-sm hover:scale-[1.02] active:scale-95"
+                className="flex items-center gap-2 bg-inner hover:bg-slate-700 text-slate-200 border border-subtle px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer shadow-sm hover:scale-[1.02] active:scale-95"
               >
                 <LayoutDashboard size={16} className="text-sky-400" />
                 <span>Back to Dashboard</span>
@@ -2741,11 +2741,11 @@ const DataManagementPage = ({
 
             {authSession && (
               <div className="flex items-center gap-3">
-                <div className="flex items-center gap-2 px-3 py-1.5 bg-[#0b0f17] border border-slate-800 rounded-xl text-xs text-slate-300 shadow-inner">
+                <div className="flex items-center gap-2 px-3 py-1.5 bg-[#0b0f17] border border-subtle rounded-xl text-xs text-slate-300 shadow-inner">
                   <User size={13} className="text-slate-400" />
                   <span className="font-semibold text-white">{authSession.user?.email || 'guest@example.com'}</span>
                   {isGuestUser ? (
-                    <span className="bg-slate-800 text-slate-400 border border-slate-700/60 px-2 py-0.5 rounded-full text-[10px] font-bold">Guest</span>
+                    <span className="bg-inner text-slate-400 border border-subtle px-2 py-0.5 rounded-full text-[10px] font-bold">Guest</span>
                   ) : (
                     <span className="bg-sky-500/10 text-sky-400 border border-sky-500/20 px-2 py-0.5 rounded-full text-[10px] font-bold">Authorized</span>
                   )}
@@ -2753,7 +2753,7 @@ const DataManagementPage = ({
                 {onSignOut && (
                   <button
                     onClick={onSignOut}
-                    className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700/70 text-slate-300 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer shadow-sm"
+                    className="flex items-center gap-1.5 bg-inner hover:bg-slate-700 border border-subtle text-slate-300 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer shadow-sm"
                     title="Sign out of Dashboard"
                   >
                     <LogOut size={13} />
@@ -2766,7 +2766,7 @@ const DataManagementPage = ({
 
           {/* Guest Read-Only Banner */}
           {isGuestUser && (
-            <div className="p-3 bg-[#121824] border border-slate-800/90 rounded-xl flex items-center gap-3 text-xs text-slate-300 shadow-sm">
+            <div className="p-3 bg-[#121824] border border-subtle rounded-xl flex items-center gap-3 text-xs text-slate-300 shadow-sm">
               <AlertTriangle size={15} className="text-sky-400 shrink-0" />
               <span><strong className="text-white font-semibold">Guest Mode — Read Only.</strong> You can view all data but editing, uploading, deleting, and publishing are disabled. Sign in with an authorized account to make changes.</span>
             </div>
@@ -2774,7 +2774,7 @@ const DataManagementPage = ({
 
           {/* Banner notification */}
           {publishMessage && (
-            <div className="p-4 rounded-xl flex items-center justify-between text-xs border font-semibold transition-all shadow-md bg-[#121824] border-slate-800/90 text-slate-200">
+            <div className="p-4 rounded-xl flex items-center justify-between text-xs border font-semibold transition-all shadow-md bg-[#121824] border-subtle text-slate-200">
               <div className="flex items-center gap-3">
                 {publishMessage.type === 'success' ? <CheckCircle size={16} className="text-sky-400 shrink-0" /> : <AlertTriangle size={16} className="text-slate-400 shrink-0" />}
                 <span>{publishMessage.text}</span>
@@ -2786,16 +2786,16 @@ const DataManagementPage = ({
           )}
 
           {/* Segmented Pill Tabs Navigation */}
-          <div className="bg-[#121824] border border-slate-800/90 p-1.5 rounded-xl flex items-center gap-1 shadow-sm w-fit">
+          <div className="bg-[#121824] border border-subtle p-1.5 rounded-xl flex items-center gap-1 shadow-sm w-fit">
             <button
               onClick={() => setDataTab('batches')}
               className={`px-4 py-2 rounded-lg font-bold transition-all flex items-center gap-2 text-xs cursor-pointer ${dataTab === 'batches'
                 ? 'bg-sky-600 text-white shadow-md'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-inner'
                 }`}
             >
               <span>Batch Logs</span>
-              <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full ${dataTab === 'batches' ? 'bg-sky-700/80 text-white' : 'bg-[#0b0f17] text-slate-400 border border-slate-800'}`}>
+              <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full ${dataTab === 'batches' ? 'bg-sky-700/80 text-white' : 'bg-[#0b0f17] text-slate-400 border border-subtle'}`}>
                 {batchLogs.length}
               </span>
             </button>
@@ -2803,11 +2803,11 @@ const DataManagementPage = ({
               onClick={() => setDataTab('daily')}
               className={`px-4 py-2 rounded-lg font-bold transition-all flex items-center gap-2 text-xs cursor-pointer ${dataTab === 'daily'
                 ? 'bg-sky-600 text-white shadow-md'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-inner'
                 }`}
             >
               <span>Daily Data</span>
-              <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full ${dataTab === 'daily' ? 'bg-sky-700/80 text-white' : 'bg-[#0b0f17] text-slate-400 border border-slate-800'}`}>
+              <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full ${dataTab === 'daily' ? 'bg-sky-700/80 text-white' : 'bg-[#0b0f17] text-slate-400 border border-subtle'}`}>
                 {draftDailyData.length}
               </span>
             </button>
@@ -2815,7 +2815,7 @@ const DataManagementPage = ({
               onClick={() => setDataTab('vector')}
               className={`px-4 py-2 rounded-lg font-bold transition-all text-xs cursor-pointer ${dataTab === 'vector'
                 ? 'bg-sky-600 text-white shadow-md'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-inner'
                 }`}
             >
               <span>Vector Layers</span>
@@ -2824,7 +2824,7 @@ const DataManagementPage = ({
 
           {/* Action Toolbar Row */}
           {(dataTab === 'batches' || dataTab === 'daily') && (
-            <div className="flex flex-wrap items-center justify-between gap-4 bg-[#121824] border border-slate-800/90 p-3.5 rounded-2xl shadow-md">
+            <div className="flex flex-wrap items-center justify-between gap-4 bg-[#121824] border border-subtle p-3.5 rounded-2xl shadow-md">
               {/* Search Bar & Filter Toggle Button */}
               <div className="flex items-center gap-3 flex-1 max-w-md">
                 <div className="relative flex-1 min-w-[200px]">
@@ -2834,7 +2834,7 @@ const DataManagementPage = ({
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="Search subgrid, grid, date, or PIC..."
-                    className="w-full bg-[#0b0f17] border border-slate-800 rounded-xl pl-9 pr-8 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-sky-500/80 focus:ring-1 focus:ring-sky-500/20 transition-all"
+                    className="w-full bg-[#0b0f17] border border-subtle rounded-xl pl-9 pr-8 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-sky-500/80 focus:ring-1 focus:ring-sky-500/20 transition-all"
                   />
                   {searchQuery && (
                     <button
@@ -2852,8 +2852,8 @@ const DataManagementPage = ({
                     className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer border shrink-0 ${activeDailyFilterCount > 0
                       ? 'bg-sky-600 border-sky-500 text-white shadow-md'
                       : isColumnFilterOpen
-                        ? 'bg-slate-800 border-sky-500 text-sky-400'
-                        : 'bg-[#0b0f17] border-slate-800 text-slate-300 hover:bg-slate-800 hover:text-white'
+                        ? 'bg-inner border-sky-500 text-sky-400'
+                        : 'bg-[#0b0f17] border-subtle text-slate-300 hover:bg-inner hover:text-white'
                       }`}
                     title="Filter Daily Data by specific columns"
                   >
@@ -2888,7 +2888,7 @@ const DataManagementPage = ({
                         setPublishMessage({ text: 'No live records found in Supabase database.', type: 'error' });
                       }
                     }}
-                    className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 border border-slate-700/80 text-slate-200 px-3.5 py-2 rounded-xl transition-all text-xs font-semibold cursor-pointer shadow-sm"
+                    className="flex items-center gap-2 bg-inner hover:bg-slate-700 border border-subtle text-slate-200 px-3.5 py-2 rounded-xl transition-all text-xs font-semibold cursor-pointer shadow-sm"
                     title="Sync latest live records from Supabase mobilemapping database"
                   >
                     <RefreshCw size={13} className="text-sky-400" />
@@ -2896,7 +2896,7 @@ const DataManagementPage = ({
                   </button>
 
                   {!isGuestUser && (
-                    <label className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 border border-slate-700/80 px-3.5 py-2 rounded-xl transition-all cursor-pointer text-slate-200 font-semibold text-xs shadow-sm active:scale-95">
+                    <label className="flex items-center gap-2 bg-inner hover:bg-slate-700 border border-subtle px-3.5 py-2 rounded-xl transition-all cursor-pointer text-slate-200 font-semibold text-xs shadow-sm active:scale-95">
                       <FileText size={13} className="text-emerald-400" />
                       <span>Import CSV</span>
                       <input
@@ -2916,8 +2916,8 @@ const DataManagementPage = ({
 
           {/* Expandable Column Filter Panel (Daily Data) */}
           {isColumnFilterOpen && dataTab === 'daily' && (
-            <div className="p-4 bg-[#121824] border border-slate-800/90 rounded-2xl shadow-xl space-y-3 animate-in fade-in duration-200">
-              <div className="flex items-center justify-between pb-2 border-b border-slate-800 text-xs text-slate-300 font-bold uppercase tracking-wider">
+            <div className="p-4 bg-[#121824] border border-subtle rounded-2xl shadow-xl space-y-3 animate-in fade-in duration-200">
+              <div className="flex items-center justify-between pb-2 border-b border-subtle text-xs text-slate-300 font-bold uppercase tracking-wider">
                 <div className="flex items-center gap-2">
                   <Filter size={14} className="text-sky-400" />
                   <span>Daily Data Column Filters</span>
@@ -2939,7 +2939,7 @@ const DataManagementPage = ({
                   <select
                     value={dailyColumnFilters.grid}
                     onChange={(e) => setDailyColumnFilters(prev => ({ ...prev, grid: e.target.value }))}
-                    className="w-full bg-[#0b0f17] border border-slate-800 text-slate-200 rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-sky-500/80"
+                    className="w-full bg-[#0b0f17] border border-subtle text-slate-200 rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-sky-500/80"
                   >
                     <option value="">All Grids</option>
                     {Array.from(new Set(draftDailyData.map(d => d.grid).filter(Boolean))).sort().map(g => (
@@ -2954,7 +2954,7 @@ const DataManagementPage = ({
                   <select
                     value={dailyColumnFilters.subgrid}
                     onChange={(e) => setDailyColumnFilters(prev => ({ ...prev, subgrid: e.target.value }))}
-                    className="w-full bg-[#0b0f17] border border-slate-800 text-slate-200 rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-sky-500/80"
+                    className="w-full bg-[#0b0f17] border border-subtle text-slate-200 rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-sky-500/80"
                   >
                     <option value="">All Subgrids</option>
                     {Array.from(new Set(draftDailyData.map(d => (d.subgrid || '').toUpperCase().trim()).filter(Boolean))).sort().map(sg => (
@@ -2969,7 +2969,7 @@ const DataManagementPage = ({
                   <select
                     value={dailyColumnFilters.equipment}
                     onChange={(e) => setDailyColumnFilters(prev => ({ ...prev, equipment: e.target.value }))}
-                    className="w-full bg-[#0b0f17] border border-slate-800 text-slate-200 rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-sky-500/80"
+                    className="w-full bg-[#0b0f17] border border-subtle text-slate-200 rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-sky-500/80"
                   >
                     <option value="">All Equipment</option>
                     {Array.from(new Set(draftDailyData.map(d => d.captureEquipment).filter(Boolean))).sort().map(eq => (
@@ -2984,7 +2984,7 @@ const DataManagementPage = ({
                   <select
                     value={dailyColumnFilters.pic}
                     onChange={(e) => setDailyColumnFilters(prev => ({ ...prev, pic: e.target.value }))}
-                    className="w-full bg-[#0b0f17] border border-slate-800 text-slate-200 rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-sky-500/80"
+                    className="w-full bg-[#0b0f17] border border-subtle text-slate-200 rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-sky-500/80"
                   >
                     <option value="">All PICs</option>
                     {Array.from(new Set(draftDailyData.map(d => d.pic).filter(Boolean))).sort().map(p => (
@@ -2999,7 +2999,7 @@ const DataManagementPage = ({
                   <select
                     value={dailyColumnFilters.publishStatus}
                     onChange={(e) => setDailyColumnFilters(prev => ({ ...prev, publishStatus: e.target.value }))}
-                    className="w-full bg-[#0b0f17] border border-slate-800 text-slate-200 rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-sky-500/80"
+                    className="w-full bg-[#0b0f17] border border-subtle text-slate-200 rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-sky-500/80"
                   >
                     <option value="">All Statuses</option>
                     {Array.from(new Set(draftDailyData.map(d => d.publishToWebGIS).filter(Boolean))).sort().map(st => (
@@ -3019,7 +3019,7 @@ const DataManagementPage = ({
                 {/* Left Column: Upload & Catalog */}
                 <div className="lg:col-span-1 space-y-6">
                   {/* Upload Area */}
-                  <div className="bg-[#121824] border border-slate-800/90 rounded-2xl p-6 shadow-sm">
+                  <div className="bg-[#121824] border border-subtle rounded-2xl p-6 shadow-sm">
                     <h2 className="text-base font-bold text-white mb-2">Upload Vector Data</h2>
                     <p className="text-xs text-slate-400 mb-5">Supported formats: GeoJSON, KML, GPX, Shapefile, CSV</p>
 
@@ -3039,7 +3039,7 @@ const DataManagementPage = ({
 
                       <button
                         onClick={() => setIsFolderCreateModalOpen(true)}
-                        className="flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700/80 px-5 py-2.5 rounded-xl transition-all text-xs font-semibold cursor-pointer"
+                        className="flex items-center justify-center gap-2 bg-inner hover:bg-slate-700 text-slate-200 border border-subtle px-5 py-2.5 rounded-xl transition-all text-xs font-semibold cursor-pointer"
                       >
                         <Folder size={16} className="text-amber-400" />
                         <span>Create Folder</span>
@@ -3079,7 +3079,7 @@ const DataManagementPage = ({
                   </div>
 
                   {/* Layer Catalog */}
-                  <div className="bg-[#121824] border border-slate-800/90 rounded-2xl p-6 shadow-sm">
+                  <div className="bg-[#121824] border border-subtle rounded-2xl p-6 shadow-sm">
                     <div className="flex items-center justify-between mb-4">
                       <h2 className="text-base font-bold text-white">Layer Catalog</h2>
                       <span className="text-slate-400 text-xs">
@@ -3153,8 +3153,8 @@ const DataManagementPage = ({
 
                 {/* Right Column: Map Preview */}
                 <div className="lg:col-span-2">
-                  <div className="bg-[#121824] border border-slate-800/90 rounded-2xl overflow-hidden shadow-xl">
-                    <h2 className="text-sm font-bold text-white p-4 border-b border-slate-800 flex items-center gap-2">
+                  <div className="bg-[#121824] border border-subtle rounded-2xl overflow-hidden shadow-xl">
+                    <h2 className="text-sm font-bold text-white p-4 border-b border-subtle flex items-center gap-2">
                       <Globe size={16} className="text-sky-400" />
                       <span>Basemap Preview</span>
                     </h2>
@@ -3188,7 +3188,7 @@ const DataManagementPage = ({
 
               {/* Bulk Selection Bar */}
               {selectedRowIds.size > 0 && (
-                <div className="bg-slate-900 border border-slate-800 rounded-2xl px-5 py-3 flex flex-wrap items-center justify-between gap-4 shadow-xl animate-fadeIn text-xs">
+                <div className="bg-app border border-subtle rounded-2xl px-5 py-3 flex flex-wrap items-center justify-between gap-4 shadow-xl animate-fadeIn text-xs">
                   <div className="flex items-center gap-2.5 text-slate-200 font-medium">
                     <span className="bg-sky-500/20 text-sky-400 border border-sky-500/30 px-2.5 py-0.5 rounded-full font-mono font-bold text-xs">{selectedRowIds.size}</span>
                     <span>record(s) selected</span>
@@ -3205,7 +3205,7 @@ const DataManagementPage = ({
                     {!isGuestUser && (
                       <button
                         onClick={handleBulkDelete}
-                        className="px-4 py-2 bg-slate-800 hover:bg-red-950/80 text-red-400 hover:text-red-300 border border-red-900/60 rounded-xl font-semibold flex items-center gap-2 transition-all shadow-sm cursor-pointer active:scale-95"
+                        className="px-4 py-2 bg-inner hover:bg-red-950/80 text-red-400 hover:text-red-300 border border-red-900/60 rounded-xl font-semibold flex items-center gap-2 transition-all shadow-sm cursor-pointer active:scale-95"
                       >
                         <Trash2 size={14} />
                         <span>Delete Selected ({selectedRowIds.size})</span>
@@ -3221,9 +3221,9 @@ const DataManagementPage = ({
                 </div>
               )}
 
-              <div className="bg-[#121824] border border-slate-800/90 rounded-2xl overflow-x-auto shadow-xl">
+              <div className="bg-[#121824] border border-subtle rounded-2xl overflow-x-auto shadow-xl">
                 <table className="w-full text-left">
-                  <thead className="bg-[#0b0f17] text-slate-400 border-b border-slate-800/80">
+                  <thead className="bg-[#0b0f17] text-slate-400 border-b border-subtle">
                     <tr>
                       <th className="px-3 py-3.5 w-10 text-center">
                         <input
@@ -3249,7 +3249,7 @@ const DataManagementPage = ({
                               });
                             }
                           }}
-                          className="rounded border-slate-700 bg-slate-900 text-sky-500 focus:ring-sky-500 cursor-pointer w-4 h-4 accent-sky-500"
+                          className="rounded border-subtle bg-app text-sky-500 focus:ring-sky-500 cursor-pointer w-4 h-4 accent-sky-500"
                           title="Select / Deselect all rows"
                         />
                       </th>
@@ -3295,7 +3295,7 @@ const DataManagementPage = ({
                               key={batch.id || `b-${index}`}
                               className={`transition-all ${isSelected
                                 ? 'bg-sky-950/90 border-l-4 border-sky-400 font-bold text-white shadow-lg shadow-sky-950/50 ring-1 ring-sky-500/30'
-                                : 'hover:bg-slate-800/50'
+                                : 'hover:bg-inner'
                                 }`}
                             >
                               <td className="px-3 py-3.5 w-10 text-center" onClick={(e) => e.stopPropagation()}>
@@ -3311,7 +3311,7 @@ const DataManagementPage = ({
                                       return next;
                                     });
                                   }}
-                                  className="rounded border-slate-700 bg-slate-900 text-sky-500 focus:ring-sky-500 cursor-pointer w-4 h-4 accent-sky-500"
+                                  className="rounded border-subtle bg-app text-sky-500 focus:ring-sky-500 cursor-pointer w-4 h-4 accent-sky-500"
                                 />
                               </td>
                               <td className="px-4 py-3.5 font-mono text-xs text-slate-300 whitespace-nowrap">{formatDisplayDate(batch.date)}</td>
@@ -3353,8 +3353,8 @@ const DataManagementPage = ({
                               </td>
                               <td className="px-4 py-3.5 whitespace-nowrap">
                                 <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${batch.status === 'Complete'
-                                  ? 'bg-slate-800 text-slate-200 border border-slate-700'
-                                  : 'bg-slate-900 text-slate-400 border border-slate-800'
+                                  ? 'bg-inner text-slate-200 border border-subtle'
+                                  : 'bg-app text-slate-400 border border-subtle'
                                   }`}>
                                   {batch.status === 'Complete' ? <CheckCircle size={10} className="text-emerald-400" /> : <Clock size={10} className="text-amber-400" />}
                                   {batch.status}
@@ -3371,7 +3371,7 @@ const DataManagementPage = ({
                                     availableFilenames: batch.availableFilenames,
                                     expectedFilenames: batch.panoramas?.map((p: any) => p.filename).filter(Boolean)
                                   })}
-                                  className="px-2.5 py-1 rounded-lg border text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700/80 transition-all cursor-pointer flex items-center gap-1.5 shadow-sm"
+                                  className="px-2.5 py-1 rounded-lg border text-xs font-medium bg-inner hover:bg-slate-700 text-slate-200 border-subtle transition-all cursor-pointer flex items-center gap-1.5 shadow-sm"
                                   title={`Run QC Audit for ${batchSubgrid}`}
                                 >
                                   {getPOICount(batch) > getImagesProcessedCount(batch) ? (
@@ -3426,7 +3426,7 @@ const DataManagementPage = ({
                               key={daily.id || `d-${daily.date}-${daily.subgrid}-${index}`}
                               className={`transition-all ${isSelected
                                 ? 'bg-sky-950/90 border-l-4 border-sky-400 font-bold text-white shadow-lg shadow-sky-950/50 ring-1 ring-sky-500/30'
-                                : 'hover:bg-slate-800/50'
+                                : 'hover:bg-inner'
                                 }`}
                             >
                               <td className="px-3 py-3.5 w-10 text-center" onClick={(e) => e.stopPropagation()}>
@@ -3442,7 +3442,7 @@ const DataManagementPage = ({
                                       return next;
                                     });
                                   }}
-                                  className="rounded border-slate-700 bg-slate-900 text-sky-500 focus:ring-sky-500 cursor-pointer w-4 h-4 accent-sky-500"
+                                  className="rounded border-subtle bg-app text-sky-500 focus:ring-sky-500 cursor-pointer w-4 h-4 accent-sky-500"
                                 />
                               </td>
                               <td className="px-4 py-3.5 text-slate-300 font-mono text-xs whitespace-nowrap">{formatDisplayDate(daily.date)}</td>
@@ -3490,12 +3490,12 @@ const DataManagementPage = ({
                                     setDailyData(updated);
                                     setBatchLogs(reconcileBatchLogs(updated, batchLogs));
                                   }}
-                                  className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs font-semibold text-slate-200 focus:outline-none focus:ring-1 focus:ring-slate-500 cursor-pointer"
+                                  className="bg-app border border-subtle rounded-lg px-2 py-1 text-xs font-semibold text-slate-200 focus:outline-none focus:ring-1 focus:ring-slate-500 cursor-pointer"
                                 >
-                                  <option value="MMS" className="bg-slate-900 text-slate-200">MMS</option>
-                                  <option value="Backpack" className="bg-slate-900 text-slate-200">Backpack</option>
-                                  <option value="Drone" className="bg-slate-900 text-slate-200">Drone</option>
-                                  <option value="Handheld" className="bg-slate-900 text-slate-200">Handheld</option>
+                                  <option value="MMS" className="bg-app text-slate-200">MMS</option>
+                                  <option value="Backpack" className="bg-app text-slate-200">Backpack</option>
+                                  <option value="Drone" className="bg-app text-slate-200">Drone</option>
+                                  <option value="Handheld" className="bg-app text-slate-200">Handheld</option>
                                 </select>
                               </td>
                               <td className="px-4 py-3.5 text-slate-300 font-medium whitespace-nowrap">
@@ -3524,22 +3524,22 @@ const DataManagementPage = ({
                                       setDailyData(updated);
                                     }
                                   }}
-                                  className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs font-semibold text-slate-200 focus:outline-none focus:ring-1 focus:ring-slate-500 cursor-pointer"
+                                  className="bg-app border border-subtle rounded-lg px-2 py-1 text-xs font-semibold text-slate-200 focus:outline-none focus:ring-1 focus:ring-slate-500 cursor-pointer"
                                 >
-                                  <option value="in process" className="bg-slate-900 text-slate-300">in process</option>
-                                  <option value="yes" className="bg-slate-900 text-slate-200">yes (Publish)</option>
-                                  <option value="need to recheck" className="bg-slate-900 text-slate-300">need to recheck</option>
-                                  <option value="no" className="bg-slate-900 text-slate-400">no</option>
+                                  <option value="in process" className="bg-app text-slate-300">in process</option>
+                                  <option value="yes" className="bg-app text-slate-200">yes (Publish)</option>
+                                  <option value="need to recheck" className="bg-app text-slate-300">need to recheck</option>
+                                  <option value="no" className="bg-app text-slate-400">no</option>
                                 </select>
                               </td>
                               <td className="px-4 py-3.5 whitespace-nowrap">
                                 {isPublished ? (
-                                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold bg-slate-800 text-slate-200 border border-slate-700">
+                                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold bg-inner text-slate-200 border border-subtle">
                                     <CheckCircle size={12} className="text-emerald-400" />
                                     published in database
                                   </span>
                                 ) : (
-                                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold bg-slate-900 text-slate-400 border border-slate-800">
+                                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold bg-app text-slate-400 border border-subtle">
                                     <Clock size={12} className="text-amber-400" />
                                     ready to publish
                                   </span>
@@ -3598,7 +3598,7 @@ const DataManagementPage = ({
 
                 {/* Pagination Controls Footer */}
                 {totalItems > 0 && (
-                  <div className="px-6 py-4 bg-slate-900 border-t border-slate-800 flex flex-wrap items-center justify-between gap-4 text-xs text-slate-400">
+                  <div className="px-6 py-4 bg-app border-t border-subtle flex flex-wrap items-center justify-between gap-4 text-xs text-slate-400">
                     <div className="flex items-center gap-4">
                       <span>
                         Showing <strong className="text-slate-200">{(safePage - 1) * pageSize + 1}</strong> to{' '}
@@ -3610,7 +3610,7 @@ const DataManagementPage = ({
                         <select
                           value={pageSize}
                           onChange={(e) => setPageSize(Number(e.target.value))}
-                          className="bg-slate-800 border border-slate-700 text-slate-200 rounded px-2 py-1 focus:outline-none focus:border-sky-500"
+                          className="bg-inner border border-subtle text-slate-200 rounded px-2 py-1 focus:outline-none focus:border-sky-500"
                         >
                           <option value={10}>10</option>
                           <option value={25}>25</option>
@@ -3624,20 +3624,20 @@ const DataManagementPage = ({
                       <button
                         onClick={() => setPage(p => Math.max(1, p - 1))}
                         disabled={safePage === 1}
-                        className="flex items-center gap-1 px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:hover:bg-slate-800 text-slate-300 font-medium transition-colors"
+                        className="flex items-center gap-1 px-3 py-1.5 rounded bg-inner hover:bg-slate-700 disabled:opacity-40 disabled:hover:bg-inner text-slate-300 font-medium transition-colors"
                       >
                         <ChevronLeft size={14} />
                         Previous
                       </button>
 
-                      <span className="px-3 py-1 bg-slate-800 rounded text-slate-200 font-semibold">
+                      <span className="px-3 py-1 bg-inner rounded text-slate-200 font-semibold">
                         Page {safePage} of {totalPages}
                       </span>
 
                       <button
                         onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                         disabled={safePage === totalPages}
-                        className="flex items-center gap-1 px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:hover:bg-slate-800 text-slate-300 font-medium transition-colors"
+                        className="flex items-center gap-1 px-3 py-1.5 rounded bg-inner hover:bg-slate-700 disabled:opacity-40 disabled:hover:bg-inner text-slate-300 font-medium transition-colors"
                       >
                         Next
                         <ChevronRight size={14} />
@@ -3694,10 +3694,10 @@ const DataManagementPage = ({
 
             return (
               <div className="fixed inset-0 bg-black/85 flex items-center justify-center z-[1000] p-4 sm:p-6 backdrop-blur-sm overflow-y-auto">
-                <div className="bg-[#0f172a] border border-slate-800 rounded-2xl w-[96vw] max-w-[1750px] h-[94vh] max-h-[94vh] flex flex-col shadow-2xl overflow-hidden my-auto border-t border-t-slate-700/50 animate-fadeIn">
+                <div className="bg-[#0f172a] border border-subtle rounded-2xl w-[96vw] max-w-[1750px] h-[94vh] max-h-[94vh] flex flex-col shadow-2xl overflow-hidden my-auto border-t border-t-slate-700/50 animate-fadeIn">
 
                   {/* Modal Header */}
-                  <div className="bg-[#0b0f17] px-6 py-4 border-b border-slate-800 flex items-center justify-between shrink-0">
+                  <div className="bg-[#0b0f17] px-6 py-4 border-b border-subtle flex items-center justify-between shrink-0">
                     <div className="flex items-center gap-3">
                       <div className="w-9 h-9 rounded-xl bg-sky-500/15 border border-sky-500/30 flex items-center justify-center text-sky-400">
                         <Edit2 size={18} />
@@ -3705,7 +3705,7 @@ const DataManagementPage = ({
                       <div>
                         <h2 className="text-base font-bold text-slate-100 tracking-wide flex items-center gap-2">
                           <span>{editingItem ? 'Edit Record & Spatial Map Inspector' : 'Add New Record'}</span>
-                          <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono font-normal border border-slate-700">
+                          <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-inner text-slate-300 font-mono font-normal border border-subtle">
                             {dataTab === 'batches' ? 'Batch Logs' : 'Daily Data'}
                           </span>
                         </h2>
@@ -3719,7 +3719,7 @@ const DataManagementPage = ({
                         setIsFormOpen(false);
                         setEditingItem(null);
                       }}
-                      className="text-slate-400 hover:text-white text-xl p-1.5 cursor-pointer transition-colors rounded-lg hover:bg-slate-800/80"
+                      className="text-slate-400 hover:text-white text-xl p-1.5 cursor-pointer transition-colors rounded-lg hover:bg-inner"
                       aria-label="Close edit popup dialog"
                     >
                       &times;
@@ -3730,9 +3730,9 @@ const DataManagementPage = ({
                   <div className="flex-1 overflow-y-auto p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
 
                     {/* Left Column: Data Form Inputs (5 cols) */}
-                    <div className="lg:col-span-5 bg-[#121824] border border-slate-800 rounded-2xl p-6 shadow-sm space-y-5 flex flex-col justify-between overflow-y-auto">
+                    <div className="lg:col-span-5 bg-[#121824] border border-subtle rounded-2xl p-6 shadow-sm space-y-5 flex flex-col justify-between overflow-y-auto">
                       <div>
-                        <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-4 pb-2.5 border-b border-slate-800 flex items-center justify-between">
+                        <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-4 pb-2.5 border-b border-subtle flex items-center justify-between">
                           <span>Record Configuration</span>
                           <span className="text-[11px] text-slate-400 font-normal font-mono">ID: {(editingItem as any)?.id || 'NEW'}</span>
                         </h3>
@@ -3750,8 +3750,8 @@ const DataManagementPage = ({
 
                     {/* Right Column: Spatial Map Preview (7 cols) */}
                     <div className="lg:col-span-7 flex flex-col space-y-3">
-                      <div className="bg-[#121824] border border-slate-800 rounded-2xl overflow-hidden shadow-md flex-1 flex flex-col min-h-[580px]">
-                        <div className="bg-[#0b0f17] px-5 py-3 border-b border-slate-800 flex items-center justify-between">
+                      <div className="bg-[#121824] border border-subtle rounded-2xl overflow-hidden shadow-md flex-1 flex flex-col min-h-[580px]">
+                        <div className="bg-[#0b0f17] px-5 py-3 border-b border-subtle flex items-center justify-between">
                           <div className="flex items-center gap-2 text-xs font-bold text-slate-200">
                             <Globe size={15} className="text-sky-400" />
                             <span>Record Trajectory & Spatial Map View</span>
@@ -3764,7 +3764,7 @@ const DataManagementPage = ({
                           <MapComponent dataManagement refreshKey={0} stagedItems={editStagedItems} />
                         </div>
                       </div>
-                      <div className="p-3.5 bg-[#0d121d] border border-slate-800/80 rounded-xl flex items-center justify-between text-xs text-slate-400">
+                      <div className="p-3.5 bg-[#0d121d] border border-subtle rounded-xl flex items-center justify-between text-xs text-slate-400">
                         <span>💡 Click survey points on map preview to open 360° street view imagery.</span>
                         <span className="font-mono text-slate-200 font-semibold text-xs">Subgrid: {editSubgrid}</span>
                       </div>
@@ -3784,8 +3784,8 @@ const DataManagementPage = ({
               : generateImageFilenamesList(imagesListModal.subgrid, imagesListModal.count > 0 ? imagesListModal.count : (imagesListModal.poiCount || 1), imagesListModal.baseFilename);
             return (
               <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[1000] p-4 backdrop-blur-sm">
-                <div className="bg-[#111827] border border-slate-700/80 rounded-xl p-5 max-w-md w-full max-h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-                  <div className="flex justify-between items-center pb-3 mb-3 border-b border-slate-800 shrink-0">
+                <div className="bg-[#111827] border border-subtle rounded-xl p-5 max-w-md w-full max-h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+                  <div className="flex justify-between items-center pb-3 mb-3 border-b border-subtle shrink-0">
                     <div>
                       <h2 className="text-sm font-bold text-white tracking-wide flex items-center gap-2">
                         <Camera size={16} className="text-sky-400" />
@@ -3804,21 +3804,21 @@ const DataManagementPage = ({
                       &times;
                     </button>
                   </div>
-                  <div className="flex-1 overflow-y-auto font-mono text-xs text-slate-300 space-y-1 p-2 bg-[#0b0f17] rounded-lg border border-slate-800/80 max-h-96">
+                  <div className="flex-1 overflow-y-auto font-mono text-xs text-slate-300 space-y-1 p-2 bg-[#0b0f17] rounded-lg border border-subtle max-h-96">
                     {filenames.map((name, idx) => (
-                      <div key={idx} className="flex items-center justify-between px-2.5 py-1 hover:bg-slate-800/60 rounded transition-colors">
+                      <div key={idx} className="flex items-center justify-between px-2.5 py-1 hover:bg-inner rounded transition-colors">
                         <span className="text-slate-500 text-[10px] w-10 shrink-0">{idx + 1}.</span>
                         <span className="text-white font-semibold flex-1 truncate">{name}</span>
                       </div>
                     ))}
                   </div>
-                  <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between shrink-0">
+                  <div className="pt-3 border-t border-subtle flex items-center justify-between shrink-0">
                     <button
                       onClick={() => {
                         navigator.clipboard.writeText(filenames.join('\n'));
                         alert(`Copied ${filenames.length} image filenames to clipboard!`);
                       }}
-                      className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700/60 rounded-lg text-xs font-medium cursor-pointer transition-colors flex items-center gap-1.5"
+                      className="px-3 py-1.5 bg-inner hover:bg-slate-700 text-slate-200 border border-subtle rounded-lg text-xs font-medium cursor-pointer transition-colors flex items-center gap-1.5"
                     >
                       <Copy size={13} /> Copy List ({filenames.length})
                     </button>
@@ -3852,7 +3852,7 @@ const DataManagementPage = ({
             const layer = editingItem as Layer;
             return (
               <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[1000]">
-                <div className="bg-slate-900 border border-slate-800 rounded-xl p-8 max-w-md w-full mx-4">
+                <div className="bg-app border border-subtle rounded-xl p-8 max-w-md w-full mx-4">
                   <div className="flex justify-between items-center mb-6">
                     <h2 className="text-2xl font-bold text-white">Edit Layer</h2>
                     <button
@@ -3872,7 +3872,7 @@ const DataManagementPage = ({
                         type="text"
                         value={layer.name}
                         onChange={(e) => setEditingItem({ ...layer, name: e.target.value })}
-                        className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-white"
+                        className="w-full bg-inner border border-subtle rounded-lg px-4 py-3 text-white"
                       />
                     </div>
                     <div>
@@ -3882,7 +3882,7 @@ const DataManagementPage = ({
                           type="color"
                           value={layer.color}
                           onChange={(e) => setEditingItem({ ...layer, color: e.target.value })}
-                          className="w-12 h-12 cursor-pointer rounded-lg border border-slate-700"
+                          className="w-12 h-12 cursor-pointer rounded-lg border border-subtle"
                         />
                         <span className="text-slate-400 text-sm font-mono">{layer.color}</span>
                       </div>
@@ -3913,7 +3913,7 @@ const DataManagementPage = ({
           {/* Folder Create Modal */}
           {isFolderCreateModalOpen && (
             <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[1000]">
-              <div className="bg-slate-900 border border-slate-800 rounded-xl p-8 max-w-md w-full mx-4">
+              <div className="bg-app border border-subtle rounded-xl p-8 max-w-md w-full mx-4">
                 <div className="flex justify-between items-center mb-6">
                   <h2 className="text-2xl font-bold text-white">Create Folder</h2>
                   <button
@@ -3934,7 +3934,7 @@ const DataManagementPage = ({
                       value={newFolderName}
                       onChange={(e) => setNewFolderName(e.target.value)}
                       placeholder="Enter folder name"
-                      className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-white"
+                      className="w-full bg-inner border border-subtle rounded-lg px-4 py-3 text-white"
                     />
                   </div>
                   <div className="flex gap-3 pt-4">
@@ -3968,7 +3968,7 @@ const DataManagementPage = ({
           {/* Folder Edit Modal */}
           {isFolderEditModalOpen && editingItem && 'id' in editingItem && 'type' in editingItem && (editingItem as any).type === 'folder' && (
             <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[1000]">
-              <div className="bg-slate-900 border border-slate-800 rounded-xl p-8 max-w-md w-full mx-4">
+              <div className="bg-app border border-subtle rounded-xl p-8 max-w-md w-full mx-4">
                 <div className="flex justify-between items-center mb-6">
                   <h2 className="text-2xl font-bold text-white">Edit Folder</h2>
                   <button
@@ -3989,7 +3989,7 @@ const DataManagementPage = ({
                       type="text"
                       value={newFolderName}
                       onChange={(e) => setNewFolderName(e.target.value)}
-                      className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-white"
+                      className="w-full bg-inner border border-subtle rounded-lg px-4 py-3 text-white"
                     />
                   </div>
                   <div className="flex gap-3 pt-4">
@@ -4022,7 +4022,7 @@ const DataManagementPage = ({
             const availableFolders = getFlatFolderList(currentCatalogItems).filter(f => f.id !== movingItem.item.id);
             return (
               <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[1000]">
-                <div className="bg-slate-900 border border-slate-800 rounded-xl p-8 max-w-md w-full mx-4">
+                <div className="bg-app border border-subtle rounded-xl p-8 max-w-md w-full mx-4">
                   <div className="flex justify-between items-center mb-6">
                     <h2 className="text-2xl font-bold text-white">
                       Move {movingItem.item.type === 'folder' ? 'Folder' : 'Layer'}
@@ -4044,7 +4044,7 @@ const DataManagementPage = ({
                       <select
                         value={targetFolderId || ''}
                         onChange={(e) => setTargetFolderId(e.target.value || null)}
-                        className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-white"
+                        className="w-full bg-inner border border-subtle rounded-lg px-4 py-3 text-white"
                       >
                         <option value="">Root</option>
                         {availableFolders.map(folder => (
@@ -4083,12 +4083,12 @@ const DataManagementPage = ({
       {/* Import CSV Modal */}
       {isCsvImportOpen && (
         <div className="fixed inset-0 bg-black/85 flex items-center justify-center z-[1100] p-4 sm:p-6 backdrop-blur-sm overflow-y-auto">
-          <div className="bg-[#0f172a] border border-slate-800 rounded-2xl w-[96vw] max-w-[1750px] h-[94vh] max-h-[94vh] flex flex-col shadow-2xl overflow-hidden my-auto border-t border-t-slate-700/50">
+          <div className="bg-[#0f172a] border border-subtle rounded-2xl w-[96vw] max-w-[1750px] h-[94vh] max-h-[94vh] flex flex-col shadow-2xl overflow-hidden my-auto border-t border-t-slate-700/50">
 
             {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 shrink-0 bg-[#0d121d]">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-subtle shrink-0 bg-[#0d121d]">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center">
+                <div className="w-9 h-9 rounded-xl bg-inner border border-subtle flex items-center justify-center">
                   <FileText size={18} className="text-emerald-400" />
                 </div>
                 <div>
@@ -4097,7 +4097,7 @@ const DataManagementPage = ({
                 </div>
               </div>
 
-              <button onClick={() => setIsCsvImportOpen(false)} className="text-slate-400 hover:text-slate-200 transition-colors p-1.5 rounded-lg hover:bg-slate-800">
+              <button onClick={() => setIsCsvImportOpen(false)} className="text-slate-400 hover:text-slate-200 transition-colors p-1.5 rounded-lg hover:bg-inner">
                 <X size={18} />
               </button>
             </div>
@@ -4157,7 +4157,7 @@ const DataManagementPage = ({
                           </div>
                         )}
 
-                        <div className="p-3 bg-[#111827] border border-slate-800 rounded-xl space-y-2">
+                        <div className="p-3 bg-[#111827] border border-subtle rounded-xl space-y-2">
                           <div className="flex items-start gap-3">
                             <CheckCircle size={16} className="text-emerald-400 shrink-0 mt-0.5" />
                             <div className="space-y-1">
@@ -4207,7 +4207,7 @@ const DataManagementPage = ({
                   <div className="grid grid-cols-1 gap-3">
                     {/* 1. Grid selector */}
                     {csvFileList.length > 1 ? (
-                      <div className="bg-[#131b2e] border border-slate-800 p-3 rounded-xl space-y-2">
+                      <div className="bg-[#131b2e] border border-subtle p-3 rounded-xl space-y-2">
                         <div className="flex items-center justify-between">
                           <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                             Grid Number Per CSV File ({csvFileList.length} files selected)
@@ -4224,7 +4224,7 @@ const DataManagementPage = ({
                                 csvFileList.forEach(f => { updated[f.fileName] = val; });
                                 setFileGridMap(updated);
                               }}
-                              className="bg-slate-900 border border-slate-700 rounded px-2 py-0.5 text-xs text-white focus:outline-none focus:border-slate-500"
+                              className="bg-app border border-subtle rounded px-2 py-0.5 text-xs text-white focus:outline-none focus:border-slate-500"
                             >
                               <option value="">Apply to all...</option>
                               {GRIDS.map(g => <option key={g} value={g}>Grid {g}</option>)}
@@ -4233,14 +4233,14 @@ const DataManagementPage = ({
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-36 overflow-y-auto pr-1">
                           {csvFileList.map((file) => (
-                            <div key={file.fileName} className="flex items-center justify-between gap-2 p-2 bg-slate-900 border border-slate-800 rounded-lg">
+                            <div key={file.fileName} className="flex items-center justify-between gap-2 p-2 bg-app border border-subtle rounded-lg">
                               <span className="text-xs text-slate-200 truncate font-mono flex-1" title={file.fileName}>
                                 {file.fileName}
                               </span>
                               <select
                                 value={fileGridMap[file.fileName] || selectedGrid || '1'}
                                 onChange={(e) => setFileGridMap({ ...fileGridMap, [file.fileName]: e.target.value })}
-                                className="bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-slate-500 shrink-0"
+                                className="bg-app border border-subtle rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-slate-500 shrink-0"
                               >
                                 {GRIDS.map(g => <option key={g} value={g}>Grid {g}</option>)}
                               </select>
@@ -4249,7 +4249,7 @@ const DataManagementPage = ({
                         </div>
                       </div>
                     ) : (
-                      <div className="bg-[#131b2e] border border-slate-800 p-3 rounded-xl">
+                      <div className="bg-[#131b2e] border border-subtle p-3 rounded-xl">
                         <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Grid Number</label>
                         <select
                           value={selectedGrid}
@@ -4259,7 +4259,7 @@ const DataManagementPage = ({
                               setFileGridMap({ [csvFileList[0].fileName]: e.target.value });
                             }
                           }}
-                          className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-slate-500"
+                          className="w-full bg-app border border-subtle rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-slate-500"
                         >
                           {GRIDS.map(g => <option key={g} value={g}>{g}</option>)}
                         </select>
@@ -4268,7 +4268,7 @@ const DataManagementPage = ({
 
                     {/* 2. Capture Equipment & PIC */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div className="bg-[#131b2e] border border-slate-800 p-3 rounded-xl">
+                      <div className="bg-[#131b2e] border border-subtle p-3 rounded-xl">
                         <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Capture Equipment</label>
                         <div className="flex items-center gap-1.5">
                           {(['MMS', 'Backpack', 'Drone'] as const).map(eq => (
@@ -4278,7 +4278,7 @@ const DataManagementPage = ({
                               onClick={() => setSelectedEquipment(eq)}
                               className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-medium border transition-all ${selectedEquipment === eq
                                 ? 'bg-slate-700 border-slate-600 text-white shadow-sm font-semibold'
-                                : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+                                : 'bg-app border-subtle text-slate-400 hover:text-slate-200'
                                 }`}
                             >
                               {eq}
@@ -4286,14 +4286,14 @@ const DataManagementPage = ({
                           ))}
                         </div>
                       </div>
-                      <div className="bg-[#131b2e] border border-slate-800 p-3 rounded-xl">
+                      <div className="bg-[#131b2e] border border-subtle p-3 rounded-xl">
                         <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Person In Charge (PIC)</label>
                         <input
                           type="text"
                           value={selectedPic}
                           onChange={(e) => setSelectedPic(e.target.value)}
                           placeholder="Enter PIC name (or leave empty for Auth User)"
-                          className="w-full bg-slate-900 border border-slate-700/80 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 font-medium"
+                          className="w-full bg-app border border-subtle rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 font-medium"
                         />
                       </div>
                     </div>
@@ -4304,7 +4304,7 @@ const DataManagementPage = ({
                     <h3 className="text-xs font-bold text-slate-300 mb-2 uppercase tracking-wider">Column Field Mapping</h3>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-72 overflow-y-auto pr-1">
                       {csvHeaders.map(header => (
-                        <div key={header} className={`flex items-center gap-2 p-2.5 rounded-xl border transition-all ${csvFieldMap[header] ? 'bg-slate-900 border-slate-700/80' : 'bg-[#131b2e] border-slate-800'
+                        <div key={header} className={`flex items-center gap-2 p-2.5 rounded-xl border transition-all ${csvFieldMap[header] ? 'bg-app border-subtle' : 'bg-[#131b2e] border-subtle'
                           }`}>
                           <div className="flex-1 min-w-0">
                             <p className="text-[10px] text-slate-500">CSV column</p>
@@ -4316,7 +4316,7 @@ const DataManagementPage = ({
                             <select
                               value={csvFieldMap[header] || ''}
                               onChange={e => setCsvFieldMap(prev => ({ ...prev, [header]: e.target.value }))}
-                              className={`w-full text-xs bg-slate-900 border rounded-lg px-2 py-1 transition-colors ${csvFieldMap[header] ? 'border-slate-600 text-slate-200 font-medium' : 'border-slate-700 text-slate-400'
+                              className={`w-full text-xs bg-app border rounded-lg px-2 py-1 transition-colors ${csvFieldMap[header] ? 'border-slate-600 text-slate-200 font-medium' : 'border-subtle text-slate-400'
                                 }`}
                             >
                               <option value="">— skip —</option>
@@ -4336,8 +4336,8 @@ const DataManagementPage = ({
                 <div className="lg:col-span-7 space-y-4">
 
                   {/* Interactive Trajectory Map Preview Box (Expanded Height) */}
-                  <div className="bg-[#121824] border border-slate-800 rounded-xl overflow-hidden shadow-md">
-                    <div className="bg-[#0b0f17] px-4 py-2 border-b border-slate-800 flex items-center justify-between">
+                  <div className="bg-[#121824] border border-subtle rounded-xl overflow-hidden shadow-md">
+                    <div className="bg-[#0b0f17] px-4 py-2 border-b border-subtle flex items-center justify-between">
                       <div className="flex items-center gap-2 text-xs font-bold text-slate-200">
                         <Globe size={14} className="text-sky-400" />
                         <span>Interactive Trajectory Map Preview</span>
@@ -4439,7 +4439,7 @@ const DataManagementPage = ({
                         <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Sample Data Preview (First 5 Rows)</h3>
                         <span className="text-[11px] text-slate-500 font-mono">{csvRows.length} total records</span>
                       </div>
-                      <div className="overflow-x-auto rounded-xl border border-slate-800 max-h-40">
+                      <div className="overflow-x-auto rounded-xl border border-subtle max-h-40">
                         <table className="w-full text-[11px] text-left">
                           <thead className="bg-[#131b2e] text-slate-400 sticky top-0">
                             <tr>
@@ -4455,7 +4455,7 @@ const DataManagementPage = ({
                           </thead>
                           <tbody className="divide-y divide-slate-800/60 font-mono">
                             {csvPreview.map((row, i) => (
-                              <tr key={i} className="hover:bg-slate-800/40 transition-colors">
+                              <tr key={i} className="hover:bg-inner transition-colors">
                                 {csvHeaders.map(h => (
                                   <td key={h} className="px-3 py-1.5 text-slate-300 whitespace-nowrap">{row[h] || '—'}</td>
                                 ))}
@@ -4472,7 +4472,7 @@ const DataManagementPage = ({
                     <h3 className="text-xs font-bold text-slate-300 mb-2 uppercase tracking-wider">
                       Staging Subgrids Summary ({csvFileList.length > 0 ? csvFileList.length : 1} file(s))
                     </h3>
-                    <div className="overflow-x-auto rounded-xl border border-slate-800 max-h-32">
+                    <div className="overflow-x-auto rounded-xl border border-subtle max-h-32">
                       <table className="w-full text-[11px] text-left">
                         <thead className="bg-[#131b2e] text-slate-400 sticky top-0">
                           <tr>
@@ -4486,7 +4486,7 @@ const DataManagementPage = ({
                         </thead>
                         <tbody className="divide-y divide-slate-800/60 font-mono">
                           {csvFileList.map((file, idx) => (
-                            <tr key={file.fileName || idx} className="hover:bg-slate-800/40">
+                            <tr key={file.fileName || idx} className="hover:bg-inner">
                               <td className="px-3 py-2 font-bold text-slate-200">{extractSubgridName(file.fileName) || `Subgrid ${idx + 1}`}</td>
                               <td className="px-3 py-2 text-slate-300">Grid {fileGridMap[file.fileName] || selectedGrid || '1'}</td>
                               <td className="px-3 py-2 text-slate-300">{file.rows.length}</td>
@@ -4510,10 +4510,10 @@ const DataManagementPage = ({
             </div>
 
             {/* Actions Footer */}
-            <div className="p-4 border-t border-slate-800 flex items-center justify-between shrink-0 bg-[#0d121d] gap-3">
+            <div className="p-4 border-t border-subtle flex items-center justify-between shrink-0 bg-[#0d121d] gap-3">
               <button
                 onClick={() => setIsCsvImportOpen(false)}
-                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition-all cursor-pointer border border-slate-700/60"
+                className="px-4 py-2 rounded-xl bg-inner hover:bg-slate-700 text-slate-300 text-xs font-medium transition-all cursor-pointer border border-subtle"
               >
                 Cancel
               </button>
@@ -4543,12 +4543,12 @@ const DataManagementPage = ({
 
       {/* ===== Admin Security Delete Confirmation Modal ===== */}
       {isDeleteModalOpen && deleteTarget && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 z-[1200] animate-fadeIn">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full shadow-2xl overflow-hidden transform transition-all">
+        <div className="fixed inset-0 bg-app backdrop-blur-md flex items-center justify-center p-4 z-[1200] animate-fadeIn">
+          <div className="bg-app border border-subtle rounded-2xl max-w-md w-full shadow-2xl overflow-hidden transform transition-all">
             {/* Modal Header */}
-            <div className="bg-slate-900 border-b border-slate-800 p-5 flex items-center justify-between">
+            <div className="bg-app border-b border-subtle p-5 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-slate-800 border border-slate-700/60 flex items-center justify-center text-slate-300">
+                <div className="w-10 h-10 rounded-xl bg-inner border border-subtle flex items-center justify-center text-slate-300">
                   <ShieldAlert size={20} />
                 </div>
                 <div>
@@ -4564,7 +4564,7 @@ const DataManagementPage = ({
                   setDeleteTarget(null);
                   setDeleteError(null);
                 }}
-                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors"
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-inner transition-colors"
               >
                 <X size={18} />
               </button>
@@ -4572,19 +4572,19 @@ const DataManagementPage = ({
 
             {/* Modal Body */}
             <div className="p-6 space-y-5">
-              <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-4 text-xs text-slate-300 leading-relaxed">
+              <div className="bg-app border border-subtle rounded-xl p-4 text-xs text-slate-300 leading-relaxed">
                 <div className="font-semibold text-slate-200 mb-1.5 flex items-center gap-1.5 text-xs uppercase tracking-wide">
                   <AlertTriangle size={14} className="text-red-400" />
                   Security Warning: Permanent Deletion
                 </div>
                 This data record will be <strong className="text-red-400 font-medium">permanently removed</strong> from the database. This action cannot be reversed.
                 {typeof deleteTarget === 'string' && deleteTarget === 'BULK_SELECTION' ? (
-                  <div className="mt-3 p-3 bg-slate-900 rounded-lg border border-slate-800/80 font-mono text-slate-300 text-xs space-y-1.5">
+                  <div className="mt-3 p-3 bg-app rounded-lg border border-subtle font-mono text-slate-300 text-xs space-y-1.5">
                     <div className="flex justify-between items-center"><span className="text-slate-500">Target Selection:</span> <strong className="text-slate-100 font-mono font-semibold">Bulk Delete</strong></div>
                     <div className="flex justify-between items-center"><span className="text-slate-500">Records Selected:</span> <span className="text-red-400 font-bold">{selectedRowIds.size} records</span></div>
                   </div>
                 ) : (
-                  <div className="mt-3 p-3 bg-slate-900 rounded-lg border border-slate-800/80 font-mono text-slate-300 text-xs space-y-1.5">
+                  <div className="mt-3 p-3 bg-app rounded-lg border border-subtle font-mono text-slate-300 text-xs space-y-1.5">
                     <div className="flex justify-between items-center"><span className="text-slate-500">Target Subgrid:</span> <strong className="text-slate-100 font-mono font-semibold">{(deleteTarget && typeof deleteTarget === 'object' && 'subgrid' in deleteTarget && deleteTarget.subgrid) ? deleteTarget.subgrid : (deleteTarget && typeof deleteTarget === 'object' && 'imageFilename' in deleteTarget ? (deleteTarget as BatchLog).imageFilename : 'Subgrid Record')}</strong></div>
                     {deleteTarget && typeof deleteTarget === 'object' && 'date' in deleteTarget && deleteTarget.date && (
                       <div className="flex justify-between items-center"><span className="text-slate-500">Date:</span> <span className="text-slate-300">{deleteTarget.date}</span></div>
@@ -4618,7 +4618,7 @@ const DataManagementPage = ({
                       if (e.key === 'Enter') confirmDelete();
                     }}
                     placeholder="Enter account password"
-                    className="w-full bg-slate-950 border border-slate-800 focus:border-slate-600 rounded-xl px-4 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none transition-all shadow-inner"
+                    className="w-full bg-app border border-subtle focus:border-slate-600 rounded-xl px-4 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none transition-all shadow-inner"
                     autoFocus
                   />
                 </div>
@@ -4634,14 +4634,14 @@ const DataManagementPage = ({
             </div>
 
             {/* Modal Footer */}
-            <div className="p-4 bg-slate-950/60 border-t border-slate-800 flex items-center justify-end gap-3">
+            <div className="p-4 bg-app border-t border-subtle flex items-center justify-end gap-3">
               <button
                 onClick={() => {
                   setIsDeleteModalOpen(false);
                   setDeleteTarget(null);
                   setDeleteError(null);
                 }}
-                className="px-4 py-2 rounded-xl text-xs font-medium text-slate-300 hover:text-white bg-slate-800/80 hover:bg-slate-800 border border-slate-700/60 transition-all cursor-pointer"
+                className="px-4 py-2 rounded-xl text-xs font-medium text-slate-300 hover:text-white bg-inner hover:bg-inner border border-subtle transition-all cursor-pointer"
               >
                 Cancel
               </button>
@@ -4718,39 +4718,39 @@ const DataForm = ({
               type="date"
               value={toISODateString(formData.date)}
               onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-              className="w-full bg-slate-900 border border-slate-700/80 rounded-lg px-3 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-slate-500"
+              className="w-full bg-app border border-subtle rounded-lg px-3 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-slate-500"
               required
             />
           </div>
 
           {/* System Calculated Metrics Panel */}
-          <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-3 space-y-2">
-            <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-800 pb-1.5">
+          <div className="bg-app border border-subtle rounded-xl p-3 space-y-2">
+            <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-subtle pb-1.5">
               <span>System Metrics</span>
-              <span className="text-[9px] text-slate-500 bg-slate-800 border border-slate-700/60 px-1.5 py-0.5 rounded font-normal">System Generated</span>
+              <span className="text-[9px] text-slate-500 bg-inner border border-subtle px-1.5 py-0.5 rounded font-normal">System Generated</span>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
-              <div className="bg-slate-950/80 p-2 rounded-lg border border-slate-800/80">
+              <div className="bg-app p-2 rounded-lg border border-subtle">
                 <span className="text-[10px] text-slate-400 block font-medium">Grid / Subgrid</span>
                 <strong className="text-slate-200 font-semibold">{formData.grid || '—'} / {formData.subgrid || '—'}</strong>
               </div>
-              <div className="bg-slate-950/80 p-2 rounded-lg border border-slate-800/80">
+              <div className="bg-app p-2 rounded-lg border border-subtle">
                 <span className="text-[10px] text-slate-400 block font-medium">POI Count</span>
                 <strong className="text-slate-200 font-semibold">{formData.poiCount ?? 0}</strong>
               </div>
-              <div className="bg-slate-950/80 p-2 rounded-lg border border-slate-800/80">
+              <div className="bg-app p-2 rounded-lg border border-subtle">
                 <span className="text-[10px] text-slate-400 block font-medium">Images</span>
                 <strong className="text-slate-200 font-semibold">{formData.images ?? 0} frames</strong>
               </div>
-              <div className="bg-slate-950/80 p-2 rounded-lg border border-slate-800/80">
+              <div className="bg-app p-2 rounded-lg border border-subtle">
                 <span className="text-[10px] text-slate-400 block font-medium">Distance</span>
                 <strong className="text-slate-200 font-semibold">{formData.kmProcessed ?? 0} km</strong>
               </div>
-              <div className="bg-slate-950/80 p-2 rounded-lg border border-slate-800/80">
+              <div className="bg-app p-2 rounded-lg border border-subtle">
                 <span className="text-[10px] text-slate-400 block font-medium">Defects</span>
                 <strong className="text-slate-200 font-semibold">{formData.defects ?? 0}</strong>
               </div>
-              <div className="bg-slate-950/80 p-2 rounded-lg border border-slate-800/80 truncate">
+              <div className="bg-app p-2 rounded-lg border border-subtle truncate">
                 <span className="text-[10px] text-slate-400 block font-medium">First Image</span>
                 <strong className="text-slate-300 font-mono text-[11px] truncate block" title={formData.imageFilename}>{formData.imageFilename || '—'}</strong>
               </div>
@@ -4767,7 +4767,7 @@ const DataForm = ({
                   onClick={() => setFormData({ ...formData, captureEquipment: eq })}
                   className={`flex-1 py-1.5 px-3 rounded-lg font-medium text-xs border transition-all cursor-pointer ${formData.captureEquipment === eq
                     ? 'bg-slate-700 border-slate-600 text-white shadow-sm font-semibold'
-                    : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+                    : 'bg-app border-subtle text-slate-400 hover:text-slate-200'
                     }`}
                 >
                   {eq}
@@ -4782,7 +4782,7 @@ const DataForm = ({
               value={formData.pic || ''}
               onChange={(e) => setFormData({ ...formData, pic: e.target.value })}
               placeholder="Enter PIC Name"
-              className="w-full bg-slate-900 border border-slate-700/80 rounded-lg px-3 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-slate-500"
+              className="w-full bg-app border border-subtle rounded-lg px-3 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-slate-500"
             />
           </div>
           <div>
@@ -4790,7 +4790,7 @@ const DataForm = ({
             <select
               value={formData.status}
               onChange={(e) => setFormData({ ...formData, status: e.target.value as 'Complete' | 'Ongoing' })}
-              className="w-full bg-slate-900 border border-slate-700/80 rounded-lg px-3 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-slate-500"
+              className="w-full bg-app border border-subtle rounded-lg px-3 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-slate-500"
               required
             >
               <option value="Ongoing">Ongoing</option>
@@ -4806,31 +4806,31 @@ const DataForm = ({
               type="date"
               value={toISODateString(formData.date)}
               onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-              className="w-full bg-slate-900 border border-slate-700/80 rounded-lg px-3 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-slate-500"
+              className="w-full bg-app border border-subtle rounded-lg px-3 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-slate-500"
               required
             />
           </div>
 
           {/* System Calculated Metrics Panel */}
-          <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-3 space-y-2">
-            <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-800 pb-1.5">
+          <div className="bg-app border border-subtle rounded-xl p-3 space-y-2">
+            <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-subtle pb-1.5">
               <span>System Metrics</span>
-              <span className="text-[9px] text-slate-500 bg-slate-800 border border-slate-700/60 px-1.5 py-0.5 rounded font-normal">System Generated</span>
+              <span className="text-[9px] text-slate-500 bg-inner border border-subtle px-1.5 py-0.5 rounded font-normal">System Generated</span>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
-              <div className="bg-slate-950/80 p-2 rounded-lg border border-slate-800/80">
+              <div className="bg-app p-2 rounded-lg border border-subtle">
                 <span className="text-[10px] text-slate-400 block font-medium">Grid / Subgrid</span>
                 <strong className="text-slate-200 font-semibold">{formData.grid || '—'} / {formData.subgrid || '—'}</strong>
               </div>
-              <div className="bg-slate-950/80 p-2 rounded-lg border border-slate-800/80">
+              <div className="bg-app p-2 rounded-lg border border-subtle">
                 <span className="text-[10px] text-slate-400 block font-medium">Images Processed</span>
                 <strong className="text-slate-200 font-semibold">{formData.imagesProcessed ?? 0} frames</strong>
               </div>
-              <div className="bg-slate-950/80 p-2 rounded-lg border border-slate-800/80">
+              <div className="bg-app p-2 rounded-lg border border-subtle">
                 <span className="text-[10px] text-slate-400 block font-medium">Distance</span>
                 <strong className="text-slate-200 font-semibold">{formData.kmProcessed ?? 0} km</strong>
               </div>
-              <div className="bg-slate-950/80 p-2 rounded-lg border border-slate-800/80 col-span-2 sm:col-span-3">
+              <div className="bg-app p-2 rounded-lg border border-subtle col-span-2 sm:col-span-3">
                 <span className="text-[10px] text-slate-400 block font-medium">Defects</span>
                 <strong className="text-slate-200 font-semibold">{formData.imagesDefected ?? 0}</strong>
               </div>
@@ -4847,7 +4847,7 @@ const DataForm = ({
                   onClick={() => setFormData({ ...formData, captureEquipment: eq })}
                   className={`flex-1 py-1.5 px-3 rounded-lg font-medium text-xs border transition-all cursor-pointer ${formData.captureEquipment === eq
                     ? 'bg-slate-700 border-slate-600 text-white shadow-sm font-semibold'
-                    : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+                    : 'bg-app border-subtle text-slate-400 hover:text-slate-200'
                     }`}
                 >
                   {eq}
@@ -4862,7 +4862,7 @@ const DataForm = ({
               value={formData.pic || ''}
               onChange={(e) => setFormData({ ...formData, pic: e.target.value })}
               placeholder="Enter PIC Name"
-              className="w-full bg-slate-900 border border-slate-700/80 rounded-lg px-3 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-slate-500"
+              className="w-full bg-app border border-subtle rounded-lg px-3 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-slate-500"
             />
           </div>
           <div>
@@ -4878,7 +4878,7 @@ const DataForm = ({
                   isSyncedWithSupabase: val === 'yes'
                 });
               }}
-              className="w-full bg-slate-900 border border-slate-700/80 rounded-lg px-3 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-slate-500"
+              className="w-full bg-app border border-subtle rounded-lg px-3 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-slate-500"
               required
             >
               <option value="yes">yes</option>
@@ -4893,18 +4893,18 @@ const DataForm = ({
               disabled
               type="text"
               value={formData.publishToWebGIS === 'yes' ? 'published in database' : 'ready to publish'}
-              className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-400 cursor-not-allowed"
+              className="w-full bg-app border border-subtle rounded-lg px-3 py-1.5 text-xs text-slate-400 cursor-not-allowed"
             />
             <p className="text-[10px] text-slate-500 mt-0.5">Status is updated automatically when syncing or publishing to database.</p>
           </div>
         </>
       )}
 
-      <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-800">
+      <div className="flex justify-end gap-2.5 pt-3 border-t border-subtle">
         <button
           type="button"
           onClick={onCancel}
-          className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg font-medium text-xs transition-all cursor-pointer border border-slate-700/60"
+          className="px-4 py-1.5 bg-inner hover:bg-slate-700 text-slate-300 rounded-lg font-medium text-xs transition-all cursor-pointer border border-subtle"
         >
           Cancel
         </button>
@@ -6769,7 +6769,7 @@ export default function App() {
       )}
 
       {/* TOP GLOBAL NAVBAR */}
-      <header className="h-14 bg-[#12161f] border-b border-slate-800/80 px-4 flex items-center justify-between shrink-0 z-20">
+      <header className="h-14 bg-[#12161f] border-b border-subtle px-4 flex items-center justify-between shrink-0 z-20">
         <div className="flex flex-col select-none">
           <h1 className="text-base sm:text-lg font-bold text-white tracking-tight font-sans leading-tight">
             {t('appTitle')}
@@ -6780,7 +6780,7 @@ export default function App() {
         </div>
 
         {/* Top Right Controls */}
-        <div className={`flex items-center gap-3 text-slate-400 relative transition-all duration-300 ${tourStep === 5 ? 'ring-2 ring-sky-400/90 shadow-[0_0_35px_rgba(56,189,248,0.4)] z-30 relative bg-slate-900/90 px-2 py-1 rounded-xl' : tourStep !== null ? 'opacity-30 blur-[1.5px] pointer-events-none' : ''
+        <div className={`flex items-center gap-3 text-slate-400 relative transition-all duration-300 ${tourStep === 5 ? 'ring-2 ring-sky-400/90 shadow-[0_0_35px_rgba(56,189,248,0.4)] z-30 relative bg-app px-2 py-1 rounded-xl' : tourStep !== null ? 'opacity-30 blur-[1.5px] pointer-events-none' : ''
           }`}>
           {/* HELP & USER GUIDE ICON (Interactive Tour & Webmap Manual) */}
           <button
@@ -6815,7 +6815,7 @@ export default function App() {
                 }
                 setIsNotifOpen(false);
               }}
-              className={`p-1.5 transition-colors cursor-pointer relative ${isAuditLogOpen ? 'text-sky-400 bg-slate-800/80 rounded-lg border border-slate-700/60' : 'hover:text-white'
+              className={`p-1.5 transition-colors cursor-pointer relative ${isAuditLogOpen ? 'text-sky-400 bg-inner rounded-lg border border-subtle' : 'hover:text-white'
                 }`}
               title="Batch & System Audit Logs (Track user edits, creates, deletes, errors)"
             >
@@ -6839,7 +6839,7 @@ export default function App() {
                   </div>
                   <div className="flex items-center gap-2">
                     {/* Date Track-Back Filter */}
-                    <div className="flex items-center gap-1 bg-[#151d2a] border border-slate-700/60 rounded px-2 py-0.5 text-[10px]">
+                    <div className="flex items-center gap-1 bg-[#151d2a] border border-subtle rounded px-2 py-0.5 text-[10px]">
                       <Calendar size={11} className="text-sky-400 shrink-0" />
                       <select
                         value={auditDateFilter}
@@ -6870,7 +6870,7 @@ export default function App() {
                       onClick={() => setAuditFilterTab(tab)}
                       className={`px-2 py-0.5 rounded font-medium transition-all cursor-pointer whitespace-nowrap border ${auditFilterTab === tab
                         ? 'bg-[#1f2937] text-white border-slate-600'
-                        : 'text-slate-400 border-transparent hover:text-slate-200 hover:bg-slate-800/50'
+                        : 'text-slate-400 border-transparent hover:text-slate-200 hover:bg-inner'
                         }`}
                     >
                       {tab}
@@ -6893,15 +6893,15 @@ export default function App() {
                       })
                       .map(log => {
                         const badgeColor =
-                          log.type === 'CREATE' ? 'bg-slate-800/80 text-sky-300 border-slate-700/60' :
-                            log.type === 'EDIT' ? 'bg-slate-800/80 text-slate-300 border-slate-700/60' :
-                              log.type === 'DELETE' ? 'bg-slate-800/80 text-rose-300 border-slate-700/60' :
+                          log.type === 'CREATE' ? 'bg-inner text-sky-300 border-subtle' :
+                            log.type === 'EDIT' ? 'bg-inner text-slate-300 border-subtle' :
+                              log.type === 'DELETE' ? 'bg-inner text-rose-300 border-subtle' :
                                 log.type === 'PUBLISH' ? 'bg-sky-950/60 text-sky-300 border-sky-800/60' :
                                   log.type === 'ERROR' ? 'bg-rose-950/60 text-rose-300 border-rose-900/60' :
-                                    'bg-slate-800/80 text-slate-300 border-slate-700/60';
+                                    'bg-inner text-slate-300 border-subtle';
 
                         return (
-                          <div key={log.id} className="p-2.5 hover:bg-slate-800/30 transition-colors rounded-lg space-y-1">
+                          <div key={log.id} className="p-2.5 hover:bg-inner transition-colors rounded-lg space-y-1">
                             <div className="flex items-center justify-between text-[10px]">
                               <span className={`px-1.5 py-0.2 rounded font-semibold uppercase border ${badgeColor}`}>
                                 {log.type}
@@ -6944,7 +6944,7 @@ export default function App() {
                 }
                 setIsAuditLogOpen(false);
               }}
-              className={`p-1.5 transition-colors cursor-pointer relative ${isNotifOpen ? 'text-sky-400 bg-slate-800/80 rounded-lg border border-slate-700/60' : 'hover:text-white'
+              className={`p-1.5 transition-colors cursor-pointer relative ${isNotifOpen ? 'text-sky-400 bg-inner rounded-lg border border-subtle' : 'hover:text-white'
                 }`}
               title="Notifications (Publish Progress & Pending Tasks)"
             >
@@ -6966,7 +6966,7 @@ export default function App() {
                       Notifications
                     </span>
                     {unreadNotifCount > 0 && (
-                      <span className="bg-slate-800 text-sky-400 border border-slate-700 text-[10px] font-medium px-1.5 py-0.2 rounded-full">
+                      <span className="bg-inner text-sky-400 border border-subtle text-[10px] font-medium px-1.5 py-0.2 rounded-full">
                         {unreadNotifCount} new
                       </span>
                     )}
@@ -7007,7 +7007,7 @@ export default function App() {
                       return (
                         <div
                           key={notif.id}
-                          className={`p-3 transition-colors rounded-lg space-y-1.5 relative group ${!notif.read ? 'bg-[#151d2a] border-l-2 border-sky-400' : 'hover:bg-slate-800/30'
+                          className={`p-3 transition-colors rounded-lg space-y-1.5 relative group ${!notif.read ? 'bg-[#151d2a] border-l-2 border-sky-400' : 'hover:bg-inner'
                             }`}
                         >
                           <div className="flex items-center justify-between">
@@ -7017,11 +7017,11 @@ export default function App() {
                                   PUBLISH SUCCESS
                                 </span>
                               ) : isPending ? (
-                                <span className="bg-slate-800/80 text-slate-300 border border-slate-700/60 px-1.5 py-0.2 rounded text-[9px] font-medium">
+                                <span className="bg-inner text-slate-300 border border-subtle px-1.5 py-0.2 rounded text-[9px] font-medium">
                                   PENDING TASK
                                 </span>
                               ) : (
-                                <span className="bg-slate-800/80 text-slate-400 border border-slate-700/60 px-1.5 py-0.2 rounded text-[9px] font-medium">
+                                <span className="bg-inner text-slate-400 border border-subtle px-1.5 py-0.2 rounded text-[9px] font-medium">
                                   {notif.category}
                                 </span>
                               )}
@@ -7074,10 +7074,10 @@ export default function App() {
               </div>
             )}
           </div>
-          <div className="flex items-center gap-2 pl-2 border-l border-slate-800">
+          <div className="flex items-center gap-2 pl-2 border-l border-subtle">
 
             {/* Guest user */}
-            <div className={`w-7 h-7 rounded-full border flex items-center justify-center text-xs font-bold ${isGuestUser ? 'bg-amber-900/40 border-amber-700 text-amber-400' : 'bg-slate-800 border-slate-700 text-sky-400'
+            <div className={`w-7 h-7 rounded-full border flex items-center justify-center text-xs font-bold ${isGuestUser ? 'bg-amber-900/40 border-amber-700 text-amber-400' : 'bg-inner border-subtle text-sky-400'
               }`} title={`Logged in as ${authSession?.user?.email || 'guest@example.com'}`}>
               {isGuestUser ? 'G' : (authSession?.user?.email?.charAt(0).toUpperCase() || 'F')}
             </div>
@@ -7101,13 +7101,13 @@ export default function App() {
       <div className="flex-1 flex overflow-hidden">
 
         {/* EXPANDABLE NAVIGATION BAR WITH FLUID ANIMATIONS & BOTTOM TOGGLE BUTTON */}
-        <nav className={`bg-[#12161f] border-r border-slate-800/80 flex flex-col py-3 gap-2 shrink-0 transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] overflow-hidden ${tourStep === 6 ? 'ring-2 ring-slate-400 shadow-[0_0_35px_rgba(255,255,255,0.15)] z-30 relative' : tourStep !== null && tourStep < 7 ? 'opacity-30 blur-[1.5px] pointer-events-none' : ''
+        <nav className={`bg-[#12161f] border-r border-subtle flex flex-col py-3 gap-2 shrink-0 transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] overflow-hidden ${tourStep === 6 ? 'ring-2 ring-slate-400 shadow-[0_0_35px_rgba(255,255,255,0.15)] z-30 relative' : tourStep !== null && tourStep < 7 ? 'opacity-30 blur-[1.5px] pointer-events-none' : ''
           } ${isSidebarExpanded ? 'w-52 px-2.5 items-stretch' : 'w-14 items-center px-0'
           }`}>
           {/* 1. Main Dashboard */}
           <button
             onClick={() => setCurrentPage('dashboard')}
-            className={`transition-all duration-300 relative cursor-pointer flex items-center rounded-xl ${tourStep === 7 ? 'ring-2 ring-slate-300 shadow-[0_0_20px_rgba(255,255,255,0.25)] z-30 bg-slate-800/90' : ''
+            className={`transition-all duration-300 relative cursor-pointer flex items-center rounded-xl ${tourStep === 7 ? 'ring-2 ring-slate-300 shadow-[0_0_20px_rgba(255,255,255,0.25)] z-30 bg-inner' : ''
               } ${isSidebarExpanded ? 'w-full px-3 py-2 text-xs font-semibold gap-3 justify-start' : 'w-full h-10 justify-center p-0'
               } ${currentPage === 'dashboard' ? 'text-sky-400 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
             title="Main Dashboard"
@@ -7131,7 +7131,7 @@ export default function App() {
           {/* 2. Data Management */}
           <button
             onClick={() => setCurrentPage('data')}
-            className={`transition-all duration-300 relative cursor-pointer flex items-center rounded-xl ${tourStep === 8 ? 'ring-2 ring-slate-300 shadow-[0_0_20px_rgba(255,255,255,0.25)] z-30 bg-slate-800/90' : ''
+            className={`transition-all duration-300 relative cursor-pointer flex items-center rounded-xl ${tourStep === 8 ? 'ring-2 ring-slate-300 shadow-[0_0_20px_rgba(255,255,255,0.25)] z-30 bg-inner' : ''
               } ${isSidebarExpanded ? 'w-full px-3 py-2 text-xs font-semibold gap-3 justify-start' : 'w-full h-10 justify-center p-0'
               } ${currentPage === 'data' ? 'text-sky-400 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
             title={t('data')}
@@ -7155,7 +7155,7 @@ export default function App() {
           {/* 3. Refresh Map & Data */}
           <button
             onClick={handleRefreshMap}
-            className={`transition-all duration-200 cursor-pointer flex items-center rounded-xl text-slate-400 hover:text-slate-200 ${tourStep === 9 ? 'ring-2 ring-slate-300 shadow-[0_0_20px_rgba(255,255,255,0.25)] z-30 bg-slate-800/90' : ''
+            className={`transition-all duration-200 cursor-pointer flex items-center rounded-xl text-slate-400 hover:text-slate-200 ${tourStep === 9 ? 'ring-2 ring-slate-300 shadow-[0_0_20px_rgba(255,255,255,0.25)] z-30 bg-inner' : ''
               } ${isSidebarExpanded ? 'w-full px-3 py-2 text-xs font-semibold gap-3 justify-start' : 'w-full h-10 justify-center p-0'
               }`}
             title={t('refresh')}
@@ -7172,7 +7172,7 @@ export default function App() {
           {/* 4. Project Settings */}
           <button
             onClick={() => setCurrentPage('settings')}
-            className={`transition-all duration-300 relative cursor-pointer flex items-center rounded-xl ${tourStep === 10 ? 'ring-2 ring-slate-300 shadow-[0_0_20px_rgba(255,255,255,0.25)] z-30 bg-slate-800/90' : ''
+            className={`transition-all duration-300 relative cursor-pointer flex items-center rounded-xl ${tourStep === 10 ? 'ring-2 ring-slate-300 shadow-[0_0_20px_rgba(255,255,255,0.25)] z-30 bg-inner' : ''
               } ${isSidebarExpanded ? 'w-full px-3 py-2 text-xs font-semibold gap-3 justify-start' : 'w-full h-10 justify-center p-0'
               } ${currentPage === 'settings' ? 'text-sky-400 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
             title={t('settings')}
@@ -7196,7 +7196,7 @@ export default function App() {
           {/* 5. About Dashboard */}
           <button
             onClick={() => setIsAboutModalOpen(true)}
-            className={`transition-all duration-200 cursor-pointer flex items-center rounded-xl text-slate-400 hover:text-slate-200 ${tourStep === 11 ? 'ring-2 ring-slate-300 shadow-[0_0_20px_rgba(255,255,255,0.25)] z-30 bg-slate-800/90' : ''
+            className={`transition-all duration-200 cursor-pointer flex items-center rounded-xl text-slate-400 hover:text-slate-200 ${tourStep === 11 ? 'ring-2 ring-slate-300 shadow-[0_0_20px_rgba(255,255,255,0.25)] z-30 bg-inner' : ''
               } ${isSidebarExpanded ? 'w-full px-3 py-2 text-xs font-semibold gap-3 justify-start' : 'w-full h-10 justify-center p-0'
               }`}
             title={t('about')}
@@ -7212,13 +7212,13 @@ export default function App() {
 
           {/* Spacer pushing toggle button to bottom */}
           <div className="mt-auto" />
-          <div className="w-full h-px bg-slate-800/80 shrink-0 my-1 transition-opacity duration-300" />
+          <div className="w-full h-px bg-inner shrink-0 my-1 transition-opacity duration-300" />
 
           {/* Panel Expand / Collapse Toggle Button at Bottom with Fluid Icon Rotation */}
           <button
             onClick={() => setIsSidebarExpanded(prev => !prev)}
-            className={`rounded-xl text-slate-400 hover:text-white hover:bg-slate-800/80 transition-all duration-300 cursor-pointer flex items-center overflow-hidden ${tourStep === 12 ? 'ring-2 ring-slate-300 shadow-[0_0_20px_rgba(255,255,255,0.25)] z-30 bg-slate-800/90' : ''
-              } ${isSidebarExpanded ? 'justify-between w-full px-3 py-2 bg-slate-800/40 border border-slate-700/50 shadow-sm' : 'justify-center w-10 h-10'
+            className={`rounded-xl text-slate-400 hover:text-white hover:bg-inner transition-all duration-300 cursor-pointer flex items-center overflow-hidden ${tourStep === 12 ? 'ring-2 ring-slate-300 shadow-[0_0_20px_rgba(255,255,255,0.25)] z-30 bg-inner' : ''
+              } ${isSidebarExpanded ? 'justify-between w-full px-3 py-2 bg-inner border border-subtle shadow-sm' : 'justify-center w-10 h-10'
               }`}
             title={isSidebarExpanded ? "Collapse Navigation Panel" : "Expand Navigation Panel"}
           >
@@ -7226,7 +7226,7 @@ export default function App() {
               }`}>
               {t('collapsePanel')}
             </span>
-            <div className="p-1 rounded-md bg-slate-800/90 text-sky-400 shrink-0 shadow-sm border border-slate-700/60">
+            <div className="p-1 rounded-md bg-inner text-sky-400 shrink-0 shadow-sm border border-subtle">
               <ChevronRight size={15} className={`transition-transform duration-300 ease-in-out ${isSidebarExpanded ? 'rotate-180' : 'rotate-0'}`} />
             </div>
           </button>
@@ -7272,7 +7272,7 @@ export default function App() {
                     ) : (
                       <span className="text-2xl font-extrabold text-white tracking-tight">{totalKm.toFixed(1)} km</span>
                     )}
-                    <span className="text-[10px] text-white bg-slate-800/80 border border-slate-700/60 px-1.5 py-0.5 rounded font-medium">
+                    <span className="text-[10px] text-white bg-inner border border-subtle px-1.5 py-0.5 rounded font-medium">
                       {progressPercent}% of {targetKm} km Target
                     </span>
                   </div>
@@ -7397,13 +7397,13 @@ export default function App() {
                   </div>
 
                   {/* Embedded WebGIS Map */}
-                  <div className="flex-1 relative overflow-hidden bg-slate-950">
+                  <div className="flex-1 relative overflow-hidden bg-app">
                     {/* Minimalist Trajectory Filter Button & Popup Menu (bottom-left) */}
                     <div className="absolute bottom-3 left-3 z-10 pointer-events-auto flex flex-col items-start gap-2">
                       {/* Popup Panel (shown when isStatusFilterOpen === true) */}
                       {isStatusFilterOpen && (
-                        <div className="bg-slate-900/95 backdrop-blur-xl border border-slate-800/90 rounded-xl p-2.5 text-[11px] space-y-1.5 shadow-2xl min-w-[200px] animate-in fade-in slide-in-from-bottom-2 duration-150">
-                          <div className="flex items-center justify-between border-b border-slate-800/80 pb-1.5 mb-1 px-1">
+                        <div className="bg-app backdrop-blur-xl border border-subtle rounded-xl p-2.5 text-[11px] space-y-1.5 shadow-2xl min-w-[200px] animate-in fade-in slide-in-from-bottom-2 duration-150">
+                          <div className="flex items-center justify-between border-b border-subtle pb-1.5 mb-1 px-1">
                             <span className="font-semibold text-[10px] text-sky-400 uppercase tracking-wider flex items-center gap-1.5">
                               <Filter size={12} />
                               Trajectory Status
@@ -7416,7 +7416,7 @@ export default function App() {
                             </button>
                           </div>
 
-                          <label className="flex items-center justify-between px-2 py-1 rounded-md hover:bg-slate-800/60 text-slate-200 hover:text-white cursor-pointer select-none transition-colors">
+                          <label className="flex items-center justify-between px-2 py-1 rounded-md hover:bg-inner text-slate-200 hover:text-white cursor-pointer select-none transition-colors">
                             <span className="text-[11px] font-medium text-slate-300">Show Panotrack Layer</span>
                             <input
                               type="checkbox"
@@ -7435,8 +7435,8 @@ export default function App() {
                             />
                           </label>
 
-                          <div className="border-t border-slate-800/60 pt-1 space-y-0.5">
-                            <label className="flex items-center justify-between px-2 py-1 rounded-md hover:bg-slate-800/60 text-slate-200 hover:text-white cursor-pointer select-none transition-colors">
+                          <div className="border-t border-subtle pt-1 space-y-0.5">
+                            <label className="flex items-center justify-between px-2 py-1 rounded-md hover:bg-inner text-slate-200 hover:text-white cursor-pointer select-none transition-colors">
                               <div className="flex items-center gap-2">
                                 <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
                                 <span className="text-[11px]">Published to WebGIS</span>
@@ -7459,7 +7459,7 @@ export default function App() {
                               />
                             </label>
 
-                            <label className="flex items-center justify-between px-2 py-1 rounded-md hover:bg-slate-800/60 text-slate-200 hover:text-white cursor-pointer select-none transition-colors">
+                            <label className="flex items-center justify-between px-2 py-1 rounded-md hover:bg-inner text-slate-200 hover:text-white cursor-pointer select-none transition-colors">
                               <div className="flex items-center gap-2">
                                 <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" />
                                 <span className="text-[11px]">Defect / Flags</span>
@@ -7482,7 +7482,7 @@ export default function App() {
                               />
                             </label>
 
-                            <label className="flex items-center justify-between px-2 py-1 rounded-md hover:bg-slate-800/60 text-slate-200 hover:text-white cursor-pointer select-none transition-colors">
+                            <label className="flex items-center justify-between px-2 py-1 rounded-md hover:bg-inner text-slate-200 hover:text-white cursor-pointer select-none transition-colors">
                               <div className="flex items-center gap-2">
                                 <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
                                 <span className="text-[11px]">In Progress / Stitching</span>
@@ -7513,7 +7513,7 @@ export default function App() {
                         onClick={() => setIsStatusFilterOpen(prev => !prev)}
                         className={`px-2.5 py-1.5 rounded-xl border shadow-lg flex items-center gap-2 text-[11px] font-semibold transition-all duration-200 cursor-pointer select-none relative active:scale-95 ${isStatusFilterOpen
                           ? 'bg-sky-600 text-white border-sky-400 shadow-sky-950/50'
-                          : 'bg-slate-900/90 hover:bg-slate-800 text-slate-200 border-slate-800 hover:border-slate-700'
+                          : 'bg-app hover:bg-inner text-slate-200 border-subtle hover:border-subtle'
                           }`}
                         title="Filter Trajectory Status"
                       >
@@ -7553,8 +7553,8 @@ export default function App() {
                       const activeStatus = activeBatchLog?.status === 'Complete' || activeDailyLog?.publishToWebGIS === 'yes' ? 'Published to WebGIS' : 'In Progress';
 
                       return selectedSubgridFilter ? (
-                        <div className="absolute top-3 right-3 z-20 bg-[#12161f]/95 backdrop-blur-md border border-slate-800 rounded-xl p-3 text-xs text-slate-200 shadow-2xl max-w-xs space-y-1.5 animate-in fade-in zoom-in-95 duration-200">
-                          <div className="flex items-center justify-between font-bold pb-1 border-b border-slate-800">
+                        <div className="absolute top-3 right-3 z-20 bg-[#12161f]/95 backdrop-blur-md border border-subtle rounded-xl p-3 text-xs text-slate-200 shadow-2xl max-w-xs space-y-1.5 animate-in fade-in zoom-in-95 duration-200">
+                          <div className="flex items-center justify-between font-bold pb-1 border-b border-subtle">
                             <span className="text-sky-400 font-mono text-xs">Subgrid ID: {selectedSubgridFilter} {selectedDateFilter ? `(${selectedDateFilter})` : ''}</span>
                             <button onClick={() => toggleSubgridFilter(selectedSubgridFilter)} className="text-slate-400 hover:text-white p-0.5 rounded cursor-pointer transition-colors" title="Close filter">✕</button>
                           </div>
@@ -7585,7 +7585,7 @@ export default function App() {
                             </button>
                           </div>
                           <div className="text-slate-300 text-[11px] flex justify-between gap-4"><span className="text-slate-400">PIC:</span> <span className="font-semibold text-emerald-400">{activePic}</span></div>
-                          <div className="text-slate-300 text-[11px] flex justify-between items-center pt-1 border-t border-slate-800/60"><span className="text-slate-400">Processing Status:</span> <span className="font-semibold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 text-[10px]">{activeStatus}</span></div>
+                          <div className="text-slate-300 text-[11px] flex justify-between items-center pt-1 border-t border-subtle"><span className="text-slate-400">Processing Status:</span> <span className="font-semibold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 text-[10px]">{activeStatus}</span></div>
                         </div>
                       ) : null;
                     })()}
@@ -7659,7 +7659,7 @@ export default function App() {
                             <select
                               value={dashDailyFilters.grid}
                               onChange={(e) => setDashDailyFilters(prev => ({ ...prev, grid: e.target.value }))}
-                              className="bg-[#151d2a] border border-slate-700/70 text-slate-200 rounded px-1.5 py-0.5 focus:outline-none focus:border-sky-500"
+                              className="bg-[#151d2a] border border-subtle text-slate-200 rounded px-1.5 py-0.5 focus:outline-none focus:border-sky-500"
                             >
                               <option value="">All</option>
                               {Array.from(new Set(dailyData.map(d => d.grid).filter(Boolean))).sort().map(g => (
@@ -7673,7 +7673,7 @@ export default function App() {
                             <select
                               value={dashDailyFilters.subgrid}
                               onChange={(e) => setDashDailyFilters(prev => ({ ...prev, subgrid: e.target.value }))}
-                              className="bg-[#151d2a] border border-slate-700/70 text-slate-200 rounded px-1.5 py-0.5 focus:outline-none focus:border-sky-500"
+                              className="bg-[#151d2a] border border-subtle text-slate-200 rounded px-1.5 py-0.5 focus:outline-none focus:border-sky-500"
                             >
                               <option value="">All</option>
                               {Array.from(new Set(dailyData.map(d => (d.subgrid || '').toUpperCase().trim()).filter(Boolean))).sort().map(sg => (
@@ -7687,7 +7687,7 @@ export default function App() {
                             <select
                               value={dashDailyFilters.pic}
                               onChange={(e) => setDashDailyFilters(prev => ({ ...prev, pic: e.target.value }))}
-                              className="bg-[#151d2a] border border-slate-700/70 text-slate-200 rounded px-1.5 py-0.5 focus:outline-none focus:border-sky-500"
+                              className="bg-[#151d2a] border border-subtle text-slate-200 rounded px-1.5 py-0.5 focus:outline-none focus:border-sky-500"
                             >
                               <option value="">All</option>
                               {Array.from(new Set(dailyData.map(d => d.pic).filter(Boolean))).sort().map(p => (
@@ -7701,7 +7701,7 @@ export default function App() {
                             <select
                               value={dashDailyFilters.equipment}
                               onChange={(e) => setDashDailyFilters(prev => ({ ...prev, equipment: e.target.value }))}
-                              className="bg-[#151d2a] border border-slate-700/70 text-slate-200 rounded px-1.5 py-0.5 focus:outline-none focus:border-sky-500"
+                              className="bg-[#151d2a] border border-subtle text-slate-200 rounded px-1.5 py-0.5 focus:outline-none focus:border-sky-500"
                             >
                               <option value="">All</option>
                               {Array.from(new Set(dailyData.map(d => d.captureEquipment || 'MMS').filter(Boolean))).sort().map(eq => (
@@ -7770,7 +7770,7 @@ export default function App() {
                                   <tr
                                     key={log.id || i}
                                     onClick={() => toggleSubgridFilter(batchSubgrid)}
-                                    className={`cursor-pointer transition-all ${isSelected ? 'bg-sky-950/70 text-white font-medium' : 'hover:bg-slate-800/40 text-slate-300'}`}
+                                    className={`cursor-pointer transition-all ${isSelected ? 'bg-sky-950/70 text-white font-medium' : 'hover:bg-inner text-slate-300'}`}
                                   >
                                     <td className="px-3.5 py-3.5 font-mono text-[11px] text-slate-300 font-semibold whitespace-nowrap">{formattedBatchId}</td>
                                     <td className="px-3.5 py-3.5 font-medium text-slate-200 whitespace-nowrap">{log.grid || '1'}</td>
@@ -7815,15 +7815,15 @@ export default function App() {
                                     <td className="px-3.5 py-3.5 text-slate-300 font-medium whitespace-nowrap">{log.pic || ''}</td>
                                     <td className="px-3.5 py-3.5 whitespace-nowrap">
                                       <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap ${log.status === 'Complete' || (log.status as string) === 'Published'
-                                        ? 'bg-slate-800 text-slate-200 border border-slate-700'
-                                        : 'bg-slate-900 text-slate-400 border border-slate-800'
+                                        ? 'bg-inner text-slate-200 border border-subtle'
+                                        : 'bg-app text-slate-400 border border-subtle'
                                         }`}>
                                         {log.status === 'Complete' || (log.status as string) === 'Published' ? <CheckCircle size={10} className="text-emerald-400" /> : <Clock size={10} className="text-amber-400" />}
                                         {log.status || 'Complete'}
                                       </span>
                                     </td>
                                     <td className="px-3.5 py-3.5 text-right whitespace-nowrap">
-                                      <button onClick={(e) => { e.stopPropagation(); toggleSubgridFilter(batchSubgrid); }} className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 rounded-md text-[10px] font-medium cursor-pointer transition-colors whitespace-nowrap" aria-label={`View logs for subgrid ${batchSubgrid}`}>
+                                      <button onClick={(e) => { e.stopPropagation(); toggleSubgridFilter(batchSubgrid); }} className="px-2.5 py-1 bg-inner hover:bg-slate-700 text-slate-200 hover:text-white border border-subtle rounded-md text-[10px] font-medium cursor-pointer transition-colors whitespace-nowrap" aria-label={`View logs for subgrid ${batchSubgrid}`}>
                                         View Logs
                                       </button>
                                     </td>
@@ -7888,7 +7888,7 @@ export default function App() {
                                     <tr
                                       key={log.id || `dash-d-${log.date}-${log.subgrid}-${i}`}
                                       onClick={() => toggleSubgridFilter(dailySubgrid, log.date)}
-                                      className={`cursor-pointer transition-all ${isRowSelected ? 'bg-sky-950/80 text-white font-medium border-l-2 border-sky-400' : 'hover:bg-slate-800/40 text-slate-300'}`}
+                                      className={`cursor-pointer transition-all ${isRowSelected ? 'bg-sky-950/80 text-white font-medium border-l-2 border-sky-400' : 'hover:bg-inner text-slate-300'}`}
                                     >
                                       <td className="px-3.5 py-3.5 font-mono text-[10px] text-slate-400 whitespace-nowrap">
                                         <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
@@ -7934,11 +7934,11 @@ export default function App() {
                                       <td className="px-3.5 py-3.5 text-slate-300 font-medium whitespace-nowrap">{log.pic || ''}</td>
                                       <td className="px-3.5 py-3.5 whitespace-nowrap">
                                         {isPublished ? (
-                                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-slate-800 text-slate-200 border border-slate-700 inline-flex items-center gap-1 whitespace-nowrap">
+                                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-inner text-slate-200 border border-subtle inline-flex items-center gap-1 whitespace-nowrap">
                                             <CheckCircle size={10} className="text-emerald-400" /> Published
                                           </span>
                                         ) : (
-                                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-slate-900 text-slate-400 border border-slate-800 inline-flex items-center gap-1 whitespace-nowrap">
+                                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-app text-slate-400 border border-subtle inline-flex items-center gap-1 whitespace-nowrap">
                                             <Clock size={10} className="text-amber-400" /> In Progress
                                           </span>
                                         )}
@@ -7966,7 +7966,7 @@ export default function App() {
 
                     <div className="flex-1 flex gap-2.5 p-2.5 min-h-0">
                       {/* Embedded WebGIS 360 Viewer directly from 360 web mapping (Gives maximum space to left) */}
-                      <div className="flex-1 bg-slate-950 rounded-lg border border-slate-800 relative overflow-hidden group flex flex-col min-w-0">
+                      <div className="flex-1 bg-app rounded-lg border border-subtle relative overflow-hidden group flex flex-col min-w-0">
                         {hasSelectedPoint ? (
                           <>
                             <WebGISViewerIframe
@@ -7976,7 +7976,7 @@ export default function App() {
                               themeMode={themeMode}
                               className="w-full h-full"
                             />
-                            <div className="absolute top-2 left-2 bg-slate-900/90 backdrop-blur-md px-2 py-1 rounded-md text-[10px] text-slate-200 font-mono z-10 pointer-events-none border border-slate-700/80 shadow-lg flex items-center gap-2">
+                            <div className="absolute top-2 left-2 bg-app backdrop-blur-md px-2 py-1 rounded-md text-[10px] text-slate-200 font-mono z-10 pointer-events-none border border-subtle shadow-lg flex items-center gap-2">
                               <span className="w-2 h-2 rounded-full bg-sky-400"></span>
                               Telemetry: Pitch: {panoramaTelemetry.pitch > 0 ? `+${panoramaTelemetry.pitch}` : panoramaTelemetry.pitch}° | Yaw: {panoramaTelemetry.yaw}°
                             </div>
@@ -7995,9 +7995,9 @@ export default function App() {
                       </div>
 
                       {/* OPERATOR QA panel block */}
-                      <div className="w-52 sm:w-56 shrink-0 bg-[#11151c] rounded-lg border border-slate-800/90 p-3 flex flex-col justify-between overflow-y-auto">
+                      <div className="w-52 sm:w-56 shrink-0 bg-[#11151c] rounded-lg border border-subtle p-3 flex flex-col justify-between overflow-y-auto">
                         <div>
-                          <div className="flex items-center justify-between gap-1 pb-2 border-b border-slate-800/80 mb-2.5">
+                          <div className="flex items-center justify-between gap-1 pb-2 border-b border-subtle mb-2.5">
                             <span className="text-[11px] font-bold text-slate-300 uppercase tracking-tight flex items-center gap-1.5 whitespace-nowrap">
                               <ShieldCheck size={14} className="text-sky-400 shrink-0" />
                               <span>OPERATOR QA</span>
@@ -8008,7 +8008,7 @@ export default function App() {
                           </div>
 
                           {/* Info Card */}
-                          <div className="bg-slate-900/90 rounded-md p-2 border border-slate-800 space-y-1.5 text-[10px] mb-3">
+                          <div className="bg-app rounded-md p-2 border border-subtle space-y-1.5 text-[10px] mb-3">
                             <div className="flex items-center justify-between text-slate-400 gap-2">
                               <span className="shrink-0">Subgrid:</span>
                               <span className="font-semibold text-sky-400 truncate text-right">
@@ -8034,7 +8034,7 @@ export default function App() {
                               </span>
                             </div>
                             {isQaLocked && (
-                              <div className="flex flex-col gap-0.5 pt-1 border-t border-slate-800/80">
+                              <div className="flex flex-col gap-0.5 pt-1 border-t border-subtle">
                                 <div className="flex items-center justify-between text-[9.5px]">
                                   <span className="text-slate-400 font-medium">QA Status:</span>
                                   <span className={`font-bold font-mono ${qaQuestionnaireAnswer === 'yes' ? 'text-amber-400' : 'text-emerald-400'}`}>
@@ -8087,7 +8087,7 @@ export default function App() {
                                   { label: projectSettings.qaFlag2 || 'Lens Obstruction', color: 'amber' },
                                   { label: projectSettings.qaFlag3 || 'Bad GPS Signal', color: 'sky' },
                                 ].map(({ label, color }) => (
-                                  <div key={label} className={`w-full py-1.5 px-2 rounded-md text-[10px] font-medium text-left flex items-center justify-between border bg-slate-800/80 border-slate-700/80 text-slate-400 cursor-not-allowed`}>
+                                  <div key={label} className={`w-full py-1.5 px-2 rounded-md text-[10px] font-medium text-left flex items-center justify-between border bg-inner border-subtle text-slate-400 cursor-not-allowed`}>
                                     <span className="flex items-center gap-1.5 truncate">
                                       <span className={`w-1.5 h-1.5 rounded-full shrink-0 bg-${color}-400`}></span>
                                       <span className="truncate">{label}</span>
@@ -8115,7 +8115,7 @@ export default function App() {
                                     className={`w-full py-1.5 px-2 rounded-md text-[10px] font-medium text-left flex items-center justify-between transition-all border ${isQaLocked ? 'opacity-90 cursor-default' : 'cursor-pointer active:scale-95'
                                       } ${selectedQaFlags.blurry
                                         ? 'bg-red-500/25 border-red-500 text-red-300 ring-1 ring-red-500/50 shadow-md'
-                                        : 'bg-slate-800/80 hover:bg-red-500/10 hover:border-red-500/50 border-slate-700/80 text-slate-300 hover:text-red-400'
+                                        : 'bg-inner hover:bg-red-500/10 hover:border-red-500/50 border-subtle text-slate-300 hover:text-red-400'
                                       }`}
                                   >
                                     <span className="flex items-center gap-1.5 truncate">
@@ -8142,7 +8142,7 @@ export default function App() {
                                     className={`w-full py-1.5 px-2 rounded-md text-[10px] font-medium text-left flex items-center justify-between transition-all border ${isQaLocked ? 'opacity-90 cursor-default' : 'cursor-pointer active:scale-95'
                                       } ${selectedQaFlags.obstruction
                                         ? 'bg-amber-500/25 border-amber-500 text-amber-300 ring-1 ring-amber-500/50 shadow-md'
-                                        : 'bg-slate-800/80 hover:bg-amber-500/10 hover:border-amber-500/50 border-slate-700/80 text-slate-300 hover:text-amber-400'
+                                        : 'bg-inner hover:bg-amber-500/10 hover:border-amber-500/50 border-subtle text-slate-300 hover:text-amber-400'
                                       }`}
                                   >
                                     <span className="flex items-center gap-1.5 truncate">
@@ -8169,7 +8169,7 @@ export default function App() {
                                     className={`w-full py-1.5 px-2 rounded-md text-[10px] font-medium text-left flex items-center justify-between transition-all border ${isQaLocked ? 'opacity-90 cursor-default' : 'cursor-pointer active:scale-95'
                                       } ${selectedQaFlags.badGps
                                         ? 'bg-sky-500/25 border-sky-500 text-sky-300 ring-1 ring-sky-500/50 shadow-md'
-                                        : 'bg-slate-800/80 hover:bg-sky-500/10 hover:border-sky-500/50 border-slate-700/80 text-slate-300 hover:text-sky-400'
+                                        : 'bg-inner hover:bg-sky-500/10 hover:border-sky-500/50 border-subtle text-slate-300 hover:text-sky-400'
                                       }`}
                                   >
                                     <span className="flex items-center gap-1.5 truncate">
@@ -8185,7 +8185,7 @@ export default function App() {
 
                           {/* QA Questionnaire Box: Update Status? (Hidden after status confirmation and for guests) */}
                           {!isGuestUser && !isQaLocked && (selectedQaFlags.blurry || selectedQaFlags.obstruction || selectedQaFlags.badGps) && (
-                            <div className="bg-slate-900/90 rounded-md p-2 border border-slate-800 space-y-1.5 text-[10px] mt-2.5 animate-in fade-in slide-in-from-top-2 duration-200">
+                            <div className="bg-app rounded-md p-2 border border-subtle space-y-1.5 text-[10px] mt-2.5 animate-in fade-in slide-in-from-top-2 duration-200">
                               <div className="flex items-center justify-between text-slate-300 font-medium">
                                 <span>Update Status?</span>
                                 <span className="text-[9px] text-slate-400 font-mono">
@@ -8289,8 +8289,8 @@ export default function App() {
             : generateImageFilenamesList(imagesListModal.subgrid, imagesListModal.count > 0 ? imagesListModal.count : (imagesListModal.poiCount || 1), imagesListModal.baseFilename);
           return (
             <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[1000] p-4 backdrop-blur-sm">
-              <div className="bg-[#111827] border border-slate-700/80 rounded-xl p-5 max-w-md w-full max-h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-                <div className="flex justify-between items-center pb-3 mb-3 border-b border-slate-800 shrink-0">
+              <div className="bg-[#111827] border border-subtle rounded-xl p-5 max-w-md w-full max-h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+                <div className="flex justify-between items-center pb-3 mb-3 border-b border-subtle shrink-0">
                   <div>
                     <h2 className="text-sm font-bold text-white tracking-wide flex items-center gap-2">
                       <Camera size={16} className="text-sky-400" />
@@ -8309,21 +8309,21 @@ export default function App() {
                     &times;
                   </button>
                 </div>
-                <div className="flex-1 overflow-y-auto font-mono text-xs text-slate-300 space-y-1 p-2 bg-[#0b0f17] rounded-lg border border-slate-800/80 max-h-96">
+                <div className="flex-1 overflow-y-auto font-mono text-xs text-slate-300 space-y-1 p-2 bg-[#0b0f17] rounded-lg border border-subtle max-h-96">
                   {filenames.map((name, idx) => (
-                    <div key={idx} className="flex items-center justify-between px-2.5 py-1 hover:bg-slate-800/60 rounded transition-colors">
+                    <div key={idx} className="flex items-center justify-between px-2.5 py-1 hover:bg-inner rounded transition-colors">
                       <span className="text-slate-500 text-[10px] w-10 shrink-0">{idx + 1}.</span>
                       <span className="text-white font-semibold flex-1 truncate">{name}</span>
                     </div>
                   ))}
                 </div>
-                <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between shrink-0">
+                <div className="pt-3 border-t border-subtle flex items-center justify-between shrink-0">
                   <button
                     onClick={() => {
                       navigator.clipboard.writeText(filenames.join('\n'));
                       alert(`Copied ${filenames.length} image filenames to clipboard!`);
                     }}
-                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700/60 rounded-lg text-xs font-medium cursor-pointer transition-colors flex items-center gap-1.5"
+                    className="px-3 py-1.5 bg-inner hover:bg-slate-700 text-slate-200 border border-subtle rounded-lg text-xs font-medium cursor-pointer transition-colors flex items-center gap-1.5"
                   >
                     <Copy size={13} /> Copy List ({filenames.length})
                   </button>
@@ -8343,10 +8343,10 @@ export default function App() {
         {/* INTERACTIVE GUIDED TOUR FLOATING TOOLTIP OVERLAY */}
         {/* ========================================================= */}
         {tourStep !== null && (
-          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[90vw] max-w-lg bg-[#111827] border border-slate-700 rounded-2xl shadow-2xl z-[99999] p-4 text-slate-200 backdrop-blur-xl animate-in fade-in slide-in-from-bottom-4 duration-200">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-2 mb-3">
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[90vw] max-w-lg bg-[#111827] border border-subtle rounded-2xl shadow-2xl z-[99999] p-4 text-slate-200 backdrop-blur-xl animate-in fade-in slide-in-from-bottom-4 duration-200">
+            <div className="flex items-center justify-between border-b border-subtle pb-2 mb-3">
               <div className="flex items-center gap-2">
-                <span className="bg-slate-800 text-slate-200 border border-slate-700 text-[10px] font-mono font-bold px-2 py-0.5 rounded-md uppercase tracking-wider">
+                <span className="bg-inner text-slate-200 border border-subtle text-[10px] font-mono font-bold px-2 py-0.5 rounded-md uppercase tracking-wider">
                   Step {tourStep} of {TOUR_STEPS.length}
                 </span>
                 <h3 className="text-xs font-bold text-white tracking-wide">
@@ -8355,7 +8355,7 @@ export default function App() {
               </div>
               <button
                 onClick={() => setTourStep(null)}
-                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-inner transition-colors cursor-pointer"
                 title="End Guided Tour"
               >
                 <X size={16} />
@@ -8379,7 +8379,7 @@ export default function App() {
               ))}
             </div>
 
-            <div className="flex items-center justify-between pt-2 border-t border-slate-800/80">
+            <div className="flex items-center justify-between pt-2 border-t border-subtle">
               <span className="text-[10px] text-slate-400 font-mono">
                 Focus: <strong className="text-slate-200">{TOUR_STEPS[tourStep - 1].highlight}</strong>
               </span>
@@ -8388,7 +8388,7 @@ export default function App() {
                 {tourStep > 1 && (
                   <button
                     onClick={() => setTourStep(tourStep - 1)}
-                    className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-medium rounded-lg transition-all cursor-pointer"
+                    className="px-3 py-1 bg-inner hover:bg-slate-700 text-slate-300 border border-subtle text-xs font-medium rounded-lg transition-all cursor-pointer"
                   >
                     Previous
                   </button>
@@ -8396,14 +8396,14 @@ export default function App() {
                 {tourStep < TOUR_STEPS.length ? (
                   <button
                     onClick={() => setTourStep(tourStep + 1)}
-                    className="px-3.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-600 text-xs font-medium rounded-lg transition-all cursor-pointer flex items-center gap-1 shadow-sm"
+                    className="px-3.5 py-1 bg-inner hover:bg-slate-700 text-slate-100 border border-slate-600 text-xs font-medium rounded-lg transition-all cursor-pointer flex items-center gap-1 shadow-sm"
                   >
                     Next Step <ChevronRight size={14} />
                   </button>
                 ) : (
                   <button
                     onClick={() => setTourStep(null)}
-                    className="px-3.5 py-1 bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-600 text-xs font-semibold rounded-lg transition-all cursor-pointer shadow-sm"
+                    className="px-3.5 py-1 bg-inner hover:bg-slate-700 text-emerald-400 border border-slate-600 text-xs font-semibold rounded-lg transition-all cursor-pointer shadow-sm"
                   >
                     Complete Tour ✓
                   </button>
@@ -8417,7 +8417,7 @@ export default function App() {
         {/* HELP & USER GUIDE MODAL (Clean Minimalist Enterprise Design) */}
         {/* ========================================================= */}
         {isHelpGuideOpen && (
-          <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="fixed inset-0 bg-app backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-150">
             <div className="bg-[#111827] border border-[rgba(255,255,255,0.08)] rounded-xl w-full max-w-3xl max-h-[85vh] shadow-2xl flex flex-col overflow-hidden text-slate-200">
 
               {/* Modal Header */}
@@ -8437,7 +8437,7 @@ export default function App() {
                       setIsHelpGuideOpen(false);
                       setTourStep(1);
                     }}
-                    className="px-3 py-1.5 bg-[#1f2937] hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 text-xs font-semibold rounded-lg transition-all cursor-pointer"
+                    className="px-3 py-1.5 bg-[#1f2937] hover:bg-slate-700 text-slate-200 hover:text-white border border-subtle text-xs font-semibold rounded-lg transition-all cursor-pointer"
                     title="Start guided step-by-step tour"
                   >
                     Start Interactive Tour
@@ -8464,7 +8464,7 @@ export default function App() {
                     onClick={() => setHelpGuideTab(tab.id as any)}
                     className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer whitespace-nowrap border font-medium ${helpGuideTab === tab.id
                       ? 'bg-[#1f2937] text-white border-slate-600'
-                      : 'text-slate-400 border-transparent hover:text-slate-200 hover:bg-slate-800/40'
+                      : 'text-slate-400 border-transparent hover:text-slate-200 hover:bg-inner'
                       }`}
                   >
                     {tab.label}
@@ -8476,21 +8476,21 @@ export default function App() {
               <div className="p-5 overflow-y-auto space-y-3 flex-1 text-xs text-slate-300 leading-relaxed">
                 {helpGuideTab === 'map' && (
                   <div className="space-y-3">
-                    <div className="bg-[#0b0f17] p-3.5 rounded-lg border border-slate-800 space-y-1">
+                    <div className="bg-[#0b0f17] p-3.5 rounded-lg border border-subtle space-y-1">
                       <h4 className="font-semibold text-slate-100 text-xs">1. Subgrid Selection &amp; Key Normalization</h4>
                       <p className="text-slate-400">
-                        Clicking any subgrid on the map or inside the control table isolates all trajectory points for that region. Subgrid keys are automatically normalized (<code className="bg-slate-800 px-1 py-0.5 rounded text-slate-300 font-mono text-[10px]">XX-YY &rarr; XXYY</code>) across CSV imports and database queries.
+                        Clicking any subgrid on the map or inside the control table isolates all trajectory points for that region. Subgrid keys are automatically normalized (<code className="bg-inner px-1 py-0.5 rounded text-slate-300 font-mono text-[10px]">XX-YY &rarr; XXYY</code>) across CSV imports and database queries.
                       </p>
                     </div>
 
-                    <div className="bg-[#0b0f17] p-3.5 rounded-lg border border-slate-800 space-y-1">
+                    <div className="bg-[#0b0f17] p-3.5 rounded-lg border border-subtle space-y-1">
                       <h4 className="font-semibold text-slate-100 text-xs">2. Date Filter Behavior</h4>
                       <p className="text-slate-400">
                         Selecting a capture date filters trajectory frames associated with that specific survey run while preserving concurrent subgrid boundary geometry and vector layer overlays.
                       </p>
                     </div>
 
-                    <div className="bg-[#0b0f17] p-3.5 rounded-lg border border-slate-800 space-y-1">
+                    <div className="bg-[#0b0f17] p-3.5 rounded-lg border border-subtle space-y-1">
                       <h4 className="font-semibold text-slate-100 text-xs">3. WebGIS Layer Controls &amp; Base Maps</h4>
                       <p className="text-slate-400">
                         Use the map layer panel to toggle subgrid bounding boxes, trajectory polyline features, 360° panorama capture nodes, and high-voltage electrical grid lines.
@@ -8501,17 +8501,17 @@ export default function App() {
 
                 {helpGuideTab === 'panorama' && (
                   <div className="space-y-3">
-                    <div className="bg-[#0b0f17] p-3.5 rounded-lg border border-slate-800 space-y-1">
+                    <div className="bg-[#0b0f17] p-3.5 rounded-lg border border-subtle space-y-1">
                       <h4 className="font-semibold text-slate-100 text-xs">1. Equirectangular 360° VR Camera Controls</h4>
                       <p className="text-slate-400">
                         Click and drag inside the 360° viewer to rotate pitch and yaw. Use the step controls or keyboard arrow keys to navigate forward/backward along vehicle trajectory frames.
                       </p>
                     </div>
 
-                    <div className="bg-[#0b0f17] p-3.5 rounded-lg border border-slate-800 space-y-1">
+                    <div className="bg-[#0b0f17] p-3.5 rounded-lg border border-subtle space-y-1">
                       <h4 className="font-semibold text-slate-100 text-xs">2. Defect Inspection &amp; QA Benchmark Verification</h4>
                       <p className="text-slate-400">
-                        Frames with flagged defects (<code className="bg-slate-800 px-1 py-0.5 rounded text-slate-300 font-mono text-[10px]">Blurry Frame, Lens Obstruction, GPS Offset</code>) display automated defect questionnaires. Operator YES/NO validations immediately update defect status in Supabase.
+                        Frames with flagged defects (<code className="bg-inner px-1 py-0.5 rounded text-slate-300 font-mono text-[10px]">Blurry Frame, Lens Obstruction, GPS Offset</code>) display automated defect questionnaires. Operator YES/NO validations immediately update defect status in Supabase.
                       </p>
                     </div>
                   </div>
@@ -8519,21 +8519,21 @@ export default function App() {
 
                 {helpGuideTab === 'data' && (
                   <div className="space-y-3">
-                    <div className="bg-[#0b0f17] p-3.5 rounded-lg border border-slate-800 space-y-1">
+                    <div className="bg-[#0b0f17] p-3.5 rounded-lg border border-subtle space-y-1">
                       <h4 className="font-semibold text-slate-100 text-xs">1. Masterlist Trajectories vs Preserved Daily Passes</h4>
                       <p className="text-slate-400">
                         Toggle between <strong>Masterlist Aggregated Trajectories</strong> (consolidates subgrid survey distance &amp; POIs) and <strong>Preserved Daily Survey Runs</strong> (retains unique survey dates &amp; PIC operator history).
                       </p>
                     </div>
 
-                    <div className="bg-[#0b0f17] p-3.5 rounded-lg border border-slate-800 space-y-1">
+                    <div className="bg-[#0b0f17] p-3.5 rounded-lg border border-subtle space-y-1">
                       <h4 className="font-semibold text-slate-100 text-xs">2. Passcode-Protected Admin Edits &amp; Deletions</h4>
                       <p className="text-slate-400">
                         Table records can be edited or deleted. Record deletions require security passcode verification to prevent unauthorized data loss and ensure audit trail integrity.
                       </p>
                     </div>
 
-                    <div className="bg-[#0b0f17] p-3.5 rounded-lg border border-slate-800 space-y-1">
+                    <div className="bg-[#0b0f17] p-3.5 rounded-lg border border-subtle space-y-1">
                       <h4 className="font-semibold text-slate-100 text-xs">3. Real-Time Supabase PostgreSQL Sync</h4>
                       <p className="text-slate-400">
                         Click <strong>Publish All to Database</strong> to synchronize processed subgrid trajectories directly to Supabase production tables with live notifications.
@@ -8544,21 +8544,21 @@ export default function App() {
 
                 {helpGuideTab === 'audit' && (
                   <div className="space-y-3">
-                    <div className="bg-[#0b0f17] p-3.5 rounded-lg border border-slate-800 space-y-1">
+                    <div className="bg-[#0b0f17] p-3.5 rounded-lg border border-subtle space-y-1">
                       <h4 className="font-semibold text-slate-100 text-xs">1. Chronological Activity Audit Logs</h4>
                       <p className="text-slate-400">
                         Click the audit log icon in top header to view logged user actions (create, edit, delete, publish, error) with date track-back filtering and user signatures.
                       </p>
                     </div>
 
-                    <div className="bg-[#0b0f17] p-3.5 rounded-lg border border-slate-800 space-y-1">
+                    <div className="bg-[#0b0f17] p-3.5 rounded-lg border border-subtle space-y-1">
                       <h4 className="font-semibold text-slate-100 text-xs">2. Real-Time Publish Notifications</h4>
                       <p className="text-slate-400">
                         The notification bell alerts you whenever survey runs or masterlists are published to Supabase, showing total items updated and timestamp.
                       </p>
                     </div>
 
-                    <div className="bg-[#0b0f17] p-3.5 rounded-lg border border-slate-800 space-y-1">
+                    <div className="bg-[#0b0f17] p-3.5 rounded-lg border border-subtle space-y-1">
                       <h4 className="font-semibold text-slate-100 text-xs">3. Executive Client PDF Deliverable Generator</h4>
                       <p className="text-slate-400">
                         Export one-click PDF QA summary reports containing subgrid defect pass rates, total surveyed kilometers, and client SLA verification sign-offs.
@@ -8575,7 +8575,7 @@ export default function App() {
                     setIsHelpGuideOpen(false);
                     setCurrentPage('data');
                   }}
-                  className="px-3.5 py-2 bg-[#1f2937] hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 text-xs font-semibold rounded-lg transition-all cursor-pointer"
+                  className="px-3.5 py-2 bg-[#1f2937] hover:bg-slate-700 text-slate-300 hover:text-white border border-subtle text-xs font-semibold rounded-lg transition-all cursor-pointer"
                   title="Open Layer Catalog & Data Management Page"
                 >
                   Open Layer Catalog & Data Management Page
@@ -8597,13 +8597,13 @@ export default function App() {
         {/* ABOUT DASHBOARD MODAL (Monochromatic Executive System Breakdown) */}
         {/* ========================================================= */}
         {isAboutModalOpen && (
-          <div className="fixed inset-0 top-0 left-0 right-0 bottom-0 w-full h-full bg-slate-950/95 backdrop-blur-md z-[99999] flex items-center justify-center p-4 animate-in fade-in duration-150">
-            <div className="bg-[#111827] border border-slate-800 rounded-2xl w-full max-w-3xl shadow-2xl flex flex-col overflow-hidden text-slate-200">
+          <div className="fixed inset-0 top-0 left-0 right-0 bottom-0 w-full h-full bg-app backdrop-blur-md z-[99999] flex items-center justify-center p-4 animate-in fade-in duration-150">
+            <div className="bg-[#111827] border border-subtle rounded-2xl w-full max-w-3xl shadow-2xl flex flex-col overflow-hidden text-slate-200">
 
               {/* Modal Header */}
-              <div className="p-5 bg-[#0b0f17] border-b border-slate-800 flex items-center justify-between">
+              <div className="p-5 bg-[#0b0f17] border-b border-subtle flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="p-2.5 rounded-xl bg-slate-800 border border-slate-700 text-slate-300 shadow-sm">
+                  <div className="p-2.5 rounded-xl bg-inner border border-subtle text-slate-300 shadow-sm">
                     <Info size={20} />
                   </div>
                   <div>
@@ -8620,7 +8620,7 @@ export default function App() {
                 </div>
                 <button
                   onClick={() => setIsAboutModalOpen(false)}
-                  className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+                  className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-inner transition-colors cursor-pointer"
                 >
                   <X size={18} />
                 </button>
@@ -8630,7 +8630,7 @@ export default function App() {
               <div className="p-6 space-y-5 text-xs text-slate-300 leading-relaxed overflow-y-auto max-h-[75vh]">
 
                 {/* 1. System Purpose & Domain Overview */}
-                <div className="p-4 rounded-xl bg-[#0b0f17] border border-slate-800 space-y-2">
+                <div className="p-4 rounded-xl bg-[#0b0f17] border border-subtle space-y-2">
                   <h3 className="font-bold text-slate-200 text-xs uppercase tracking-wider flex items-center gap-2">
                     <span>System Purpose &amp; Domain Architecture</span>
                   </h3>
@@ -8645,19 +8645,19 @@ export default function App() {
                     Technical Specifications &amp; GIS Core
                   </h4>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 font-mono text-[11px]">
-                    <div className="p-3 rounded-xl bg-[#0b0f17] border border-slate-800/80 space-y-1">
+                    <div className="p-3 rounded-xl bg-[#0b0f17] border border-subtle space-y-1">
                       <span className="text-slate-500 block text-[10px] uppercase">GIS Mapping Engine</span>
                       <span className="text-slate-200 font-bold">PostGIS 3.4 + Leaflet 1.9 + WebGL</span>
                     </div>
-                    <div className="p-3 rounded-xl bg-[#0b0f17] border border-slate-800/80 space-y-1">
+                    <div className="p-3 rounded-xl bg-[#0b0f17] border border-subtle space-y-1">
                       <span className="text-slate-500 block text-[10px] uppercase">Database Architecture</span>
                       <span className="text-slate-200 font-bold">Supabase PostgreSQL (Realtime Listener)</span>
                     </div>
-                    <div className="p-3 rounded-xl bg-[#0b0f17] border border-slate-800/80 space-y-1">
+                    <div className="p-3 rounded-xl bg-[#0b0f17] border border-subtle space-y-1">
                       <span className="text-slate-500 block text-[10px] uppercase">Coordinate Reference Systems</span>
                       <span className="text-slate-200 font-bold">EPSG:4326, 3857, 3375 (Kertau RSO)</span>
                     </div>
-                    <div className="p-3 rounded-xl bg-[#0b0f17] border border-slate-800/80 space-y-1">
+                    <div className="p-3 rounded-xl bg-[#0b0f17] border border-subtle space-y-1">
                       <span className="text-slate-500 block text-[10px] uppercase">360° Inspection Engine</span>
                       <span className="text-slate-200 font-bold">Pannellum Equirectangular VR</span>
                     </div>
@@ -8670,21 +8670,21 @@ export default function App() {
                     Core Workflow Capabilities &amp; Features
                   </h4>
                   <div className="space-y-2 text-slate-300 text-[11.5px] leading-relaxed">
-                    <div className="p-3 rounded-xl bg-[#0b0f17] border border-slate-800/80 space-y-1">
+                    <div className="p-3 rounded-xl bg-[#0b0f17] border border-subtle space-y-1">
                       <div className="font-bold text-slate-200">1. Subgrid Trajectory Deduplication Strategy</div>
                       <p className="text-slate-400 text-[11px]">
-                        Auto-normalizes subgrid keys (<code className="bg-slate-800 px-1 py-0.5 rounded text-slate-300 font-mono text-[10px]">XX-YY &rarr; XXYY</code>). Offers choice between Masterlist clean merge or preserved daily survey runs.
+                        Auto-normalizes subgrid keys (<code className="bg-inner px-1 py-0.5 rounded text-slate-300 font-mono text-[10px]">XX-YY &rarr; XXYY</code>). Offers choice between Masterlist clean merge or preserved daily survey runs.
                       </p>
                     </div>
 
-                    <div className="p-3 rounded-xl bg-[#0b0f17] border border-slate-800/80 space-y-1">
+                    <div className="p-3 rounded-xl bg-[#0b0f17] border border-subtle space-y-1">
                       <div className="font-bold text-slate-200">2. Interactive 360° QA Inspector &amp; SLA Benchmarks</div>
                       <p className="text-slate-400 text-[11px]">
-                        Supports AI defect threshold benchmarks (<code className="bg-slate-800 px-1 py-0.5 rounded text-slate-300 font-mono text-[10px]">95%, 85%, 75%, 60%</code>) with custom flag labels (<code className="bg-slate-800 px-1 py-0.5 rounded text-slate-300 font-mono text-[10px]">Blurry Frame, Lens Obstruction, Bad GPS</code>).
+                        Supports AI defect threshold benchmarks (<code className="bg-inner px-1 py-0.5 rounded text-slate-300 font-mono text-[10px]">95%, 85%, 75%, 60%</code>) with custom flag labels (<code className="bg-inner px-1 py-0.5 rounded text-slate-300 font-mono text-[10px]">Blurry Frame, Lens Obstruction, Bad GPS</code>).
                       </p>
                     </div>
 
-                    <div className="p-3 rounded-xl bg-[#0b0f17] border border-slate-800/80 space-y-1">
+                    <div className="p-3 rounded-xl bg-[#0b0f17] border border-subtle space-y-1">
                       <div className="font-bold text-slate-200">3. Executive PDF Summary Report Generator</div>
                       <p className="text-slate-400 text-[11px]">
                         Generates client-ready QA PDF deliverables with automated pass/fail calculations and survey metrics.
@@ -8696,11 +8696,11 @@ export default function App() {
               </div>
 
               {/* Modal Footer */}
-              <div className="p-4 bg-[#0b0f17] border-t border-slate-800 flex justify-between items-center text-[11px] text-slate-400 shrink-0 font-mono">
+              <div className="p-4 bg-[#0b0f17] border-t border-subtle flex justify-between items-center text-[11px] text-slate-400 shrink-0 font-mono">
                 <span>© 2026 Mobile Mapping Data Management System</span>
                 <button
                   onClick={() => setIsAboutModalOpen(false)}
-                  className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium rounded-lg border border-slate-700 transition-all cursor-pointer shadow-sm"
+                  className="px-4 py-1.5 bg-inner hover:bg-slate-700 text-slate-200 font-medium rounded-lg border border-subtle transition-all cursor-pointer shadow-sm"
                 >
                   Close System Info
                 </button>

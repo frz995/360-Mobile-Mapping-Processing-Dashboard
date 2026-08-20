@@ -187,7 +187,7 @@ const LiveLeafletMapContainer: React.FC<{ tileUrl: string }> = ({ tileUrl }) => 
 };
 
 export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
-    cardBg = 'bg-slate-900/60',
+    cardBg = 'bg-app',
     dailyData = [],
     batchLogs = [],
     projectSettings
@@ -236,7 +236,7 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
     return (
         <div className="space-y-5">
             {/* 1. Header Toolbar */}
-            <div className={`p-4 rounded-xl border border-slate-800 ${cardBg} flex flex-wrap items-center justify-between gap-4`}>
+            <div className={`p-4 rounded-xl border border-subtle ${cardBg} flex flex-wrap items-center justify-between gap-4`}>
                 <div className="flex items-center gap-3">
                     <div
                         className="p-2 rounded-lg border flex items-center justify-center transition-colors"
@@ -283,7 +283,7 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                         disabled={stagedTheme === activeTheme && !isSavedBanner}
                         className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${stagedTheme !== activeTheme
                             ? 'bg-slate-100 hover:bg-white text-slate-900 shadow-sm cursor-pointer'
-                            : 'bg-slate-800/80 text-slate-500 cursor-not-allowed border border-slate-800'
+                            : 'bg-inner text-slate-500 cursor-not-allowed border border-subtle'
                             }`}
                     >
                         <Check className="w-3.5 h-3.5" />
@@ -322,8 +322,8 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                                     key={preset.id}
                                     onClick={() => handleSelectPreset(preset.id)}
                                     className={`p-3 rounded-lg border transition-all cursor-pointer ${isStaged
-                                        ? 'border-slate-400 bg-slate-800/90 shadow-sm ring-1 ring-slate-400/40'
-                                        : 'border-slate-800/90 bg-slate-900/40 hover:bg-slate-850 hover:border-slate-700'
+                                        ? 'border-slate-400 bg-inner shadow-sm ring-1 ring-slate-400/40'
+                                        : 'border-subtle bg-app hover:bg-slate-850 hover:border-subtle'
                                         }`}
                                 >
                                     <div className="flex items-start justify-between gap-3">
@@ -561,7 +561,7 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                                     </div>
 
                                     <div className="flex items-center gap-1 pointer-events-auto">
-                                        <button className="p-1 rounded border bg-slate-900/80 text-slate-300 border-slate-700">
+                                        <button className="p-1 rounded border bg-app text-slate-300 border-subtle">
                                             <Search className="w-3.5 h-3.5" />
                                         </button>
                                     </div>
