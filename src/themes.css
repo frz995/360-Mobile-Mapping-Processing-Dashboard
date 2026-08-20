@@ -1,8 +1,7 @@
 /* =========================================================
-   ENTERPRISE THEME COLOR DEFINITIONS
+   ENTERPRISE THEME PALETTES
    ========================================================= */
 
-/* 1. MIDNIGHT NAVY (System Default) */
 :root,
 [data-theme="midnight"] {
     --bg-app: #070d18;
@@ -13,21 +12,21 @@
     --accent-bg: rgba(56, 189, 248, 0.12);
     --text-primary: #f8fafc;
     --text-muted: #94a3b8;
+    --input-bg: #070d18;
 }
 
-/* 2. OBSIDIAN PURE DARK (OLED) */
 [data-theme="obsidian"] {
     --bg-app: #030407;
     --bg-card: #0d1117;
-    --bg-inner: #06080c;
+    --bg-inner: #07090e;
     --border-subtle: #21262d;
     --accent: #60a5fa;
     --accent-bg: rgba(96, 165, 250, 0.12);
     --text-primary: #f0f6fc;
     --text-muted: #8b949e;
+    --input-bg: #030407;
 }
 
-/* 3. TITANIUM GRAPHITE */
 [data-theme="graphite"] {
     --bg-app: #111318;
     --bg-card: #1a1d24;
@@ -37,9 +36,9 @@
     --accent-bg: rgba(203, 213, 225, 0.12);
     --text-primary: #f1f5f9;
     --text-muted: #94a3b8;
+    --input-bg: #111318;
 }
 
-/* 4. PRECISION TEAL */
 [data-theme="teal-slate"] {
     --bg-app: #060f14;
     --bg-card: #0c1a24;
@@ -49,9 +48,9 @@
     --accent-bg: rgba(13, 148, 136, 0.12);
     --text-primary: #f0fdfa;
     --text-muted: #7895a7;
+    --input-bg: #060f14;
 }
 
-/* 5. DAYLIGHT CLEAN (Light Mode) */
 [data-theme="daylight"] {
     --bg-app: #f1f5f9;
     --bg-card: #ffffff;
@@ -61,71 +60,61 @@
     --accent-bg: rgba(37, 99, 235, 0.08);
     --text-primary: #0f172a;
     --text-muted: #475569;
+    --input-bg: #ffffff;
 }
 
 /* =========================================================
-   GLOBAL OVERRIDES & THEME CASCADE
+   UNIVERSAL INHERITANCE OVERRIDES
    ========================================================= */
 
-/* Root and Base Containers */
 html,
-body,
-[data-theme] {
+body {
     background-color: var(--bg-app) !important;
     color: var(--text-primary) !important;
-    transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
 }
 
-/* Top Navbar, Header, Sidebar, Bottom Dock */
+/* Force App Wrapper to Match System Background */
+[data-theme] {
+    background-color: var(--bg-app) !important;
+}
+
+/* Navigation, Sidebar, Top Headers */
 [data-theme] header,
 [data-theme] nav,
-[data-theme] aside,
-[data-theme] .top-navbar {
+[data-theme] aside {
     background-color: var(--bg-card) !important;
     border-color: var(--border-subtle) !important;
 }
 
-/* All Outer Dashboard Cards & Admin Blocks */
-[data-theme] div[class*="bg-slate-900"],
-[data-theme] div[class*="bg-slate-950"],
-[data-theme] div[class*="bg-[#0b1329]"],
-[data-theme] div[class*="bg-[#070d18]"],
-[data-theme] div[class*="bg-[#12161f]"],
-[data-theme] div[class*="bg-[#111827]"],
-[data-theme] div[class*="bg-[#0f172a]"] {
-    background-color: var(--bg-card) !important;
-    border-color: var(--border-subtle) !important;
+/* Data Tables: Ensure Headings and Data Cells are Always Visible */
+[data-theme] table th,
+[data-theme] .table-header,
+[data-theme] span[class*="text-slate-400"],
+[data-theme] span[class*="text-slate-500"] {
+    color: var(--text-muted) !important;
 }
 
-/* All Inner Sub-panels, Table Rows, and Form Wells */
-[data-theme] div[class*="bg-slate-800/"],
-[data-theme] div[class*="bg-slate-850"],
-[data-theme] div[class*="bg-[#090f20]"],
-[data-theme] div[class*="bg-[#080a0f]"],
-[data-theme] div[class*="bg-[#07090e]"] {
-    background-color: var(--bg-inner) !important;
-    border-color: var(--border-subtle) !important;
+[data-theme] table td,
+[data-theme] span[class*="text-slate-200"],
+[data-theme] span[class*="text-slate-300"],
+[data-theme] span[class*="text-white"] {
+    color: var(--text-primary) !important;
 }
 
-/* Universal Border Override */
-[data-theme] *[class*="border-slate-800"],
-[data-theme] *[class*="border-slate-700/"],
-[data-theme] *[class*="border-[#1b253b]"] {
-    border-color: var(--border-subtle) !important;
-}
-
-/* Primary Text Adjustments for Daylight vs Dark Themes */
+/* Daylight Light-Mode Text Contrast Correction */
 [data-theme="daylight"] h1,
 [data-theme="daylight"] h2,
 [data-theme="daylight"] h3,
 [data-theme="daylight"] h4,
-[data-theme="daylight"] .text-slate-100,
-[data-theme="daylight"] .text-slate-200,
-[data-theme="daylight"] .text-white {
+[data-theme="daylight"] p,
+[data-theme="daylight"] label,
+[data-theme="daylight"] input,
+[data-theme="daylight"] select {
     color: #0f172a !important;
 }
 
-[data-theme="daylight"] .text-slate-400,
-[data-theme="daylight"] .text-slate-500 {
-    color: #64748b !important;
+[data-theme="daylight"] input,
+[data-theme="daylight"] select {
+    background-color: #ffffff !important;
+    border-color: #cbd5e1 !important;
 }
