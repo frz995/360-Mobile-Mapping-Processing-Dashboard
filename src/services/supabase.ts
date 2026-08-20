@@ -1613,81 +1613,82 @@ export async function updateDeletionRequestStatusInSupabase(
 export async function fetchUserAccountsFromSupabase(currentSession?: any): Promise<any[]> {
   const userMap = new Map<string, any>();
 
-  // 1. Load from localStorage (preserves all newly added users and custom roles)
-  try {
-    const saved = localStorage.getItem('app_user_accounts_v1');
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed)) {
-        parsed.forEach(u => {
-          if (u && (u.email || u.id) && !['usr-1', 'usr-2', 'usr-3', 'usr-4'].includes(u.id)) {
-            const key = (u.email || u.id).toLowerCase().trim();
-            userMap.set(key, u);
-          }
-        });
-      }
-    }
-  } catch { }
-
-  // 2. Fetch from Supabase table `user_accounts` if available and merge
+  // 1. Fetch live records from Supabase `user_accounts` table
   try {
     const { data, error } = await supabase.from('user_accounts').select('*');
     if (!error && Array.isArray(data) && data.length > 0) {
       data.forEach(u => {
         if (u && (u.email || u.id)) {
           const key = (u.email || u.id).toLowerCase().trim();
-          const existing = userMap.get(key);
-          userMap.set(key, { ...existing, ...u });
+          userMap.set(key, u);
         }
       });
     }
-  } catch { }
+  } catch (err) {
+    console.warn('Could not query user_accounts table:', err);
+  }
 
-  // 3. Dynamically capture the currently authenticated user from session or Supabase Auth
+  // 2. Dynamically capture the authenticated user or guest from live session / Auth
   try {
     let authUser = currentSession?.user;
-    if (!authUser) {
+    if (!authUser && !currentSession?.isGuest) {
       const { data } = await supabase.auth.getUser();
       if (data?.user) authUser = data.user;
     }
 
-    if (authUser && authUser.email) {
+    // Guest Mode
+    if (currentSession?.isGuest || authUser?.role === 'guest' || (authUser?.email || '').toLowerCase().includes('guest')) {
+      const guestEmail = (authUser?.email || 'guest@example.com').toLowerCase().trim();
+      userMap.set(guestEmail, {
+        id: 'guest-user-001',
+        name: 'Guest',
+        email: guestEmail,
+        role: 'Viewer',
+        status: 'Active',
+        lastLogin: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
+        createdAt: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+      });
+    }
+    // Real Authenticated User
+    else if (authUser && authUser.email) {
       const email = authUser.email.toLowerCase().trim();
+      const existing = userMap.get(email);
+
       const name = authUser.user_metadata?.full_name ||
         authUser.user_metadata?.name ||
+        existing?.name ||
         email.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
 
-      // Check dynamic Supabase auth metadata for administrator role
-      const isAuthAdmin = authUser.role === 'admin' ||
-        authUser.app_metadata?.role === 'admin' ||
-        authUser.app_metadata?.role === 'Administrator' ||
-        authUser.user_metadata?.role === 'admin' ||
-        authUser.user_metadata?.role === 'Administrator';
-
-      const existing = userMap.get(email);
-      // Existing directory role takes precedence; otherwise metadata or standard Operator default
-      const assignedRole = existing?.role || (isAuthAdmin ? 'Administrator' : (authUser.user_metadata?.role || 'Survey Operator'));
+      // Live Supabase Metadata takes strict priority over fallback
+      const liveRole =
+        authUser.user_metadata?.role ||
+        authUser.raw_user_meta_data?.role ||
+        authUser.app_metadata?.role ||
+        authUser.raw_app_meta_data?.role ||
+        (authUser.role === 'admin' ? 'Administrator' : null) ||
+        existing?.role ||
+        'Viewer';
 
       const nowFormatted = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
       const createdFormatted = authUser.created_at
         ? new Date(authUser.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
-        : new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+        : (existing?.createdAt || new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }));
 
       userMap.set(email, {
         id: existing?.id || authUser.id || `usr-${Date.now()}`,
-        name: existing?.name || name,
+        name,
         email: authUser.email,
-        role: assignedRole,
+        role: liveRole,
         status: existing?.status || 'Active',
         lastLogin: nowFormatted,
-        createdAt: existing?.createdAt || createdFormatted
+        createdAt: createdFormatted
       });
     }
-  } catch { }
+  } catch (err) {
+    console.warn('Error evaluating dynamic session user:', err);
+  }
 
-  const list = Array.from(userMap.values());
-  try { localStorage.setItem('app_user_accounts_v1', JSON.stringify(list)); } catch { }
-  return list;
+  return Array.from(userMap.values());
 }
 
 /**
