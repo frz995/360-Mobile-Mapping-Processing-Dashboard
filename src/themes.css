@@ -1,8 +1,8 @@
 /* =========================================================
-   GLOBAL ENTERPRISE THEME ENGINE CASCADE
+   ENTERPRISE THEME COLOR DEFINITIONS
    ========================================================= */
 
-/* 1. MIDNIGHT NAVY (DEFAULT) */
+/* 1. MIDNIGHT NAVY (System Default) */
 :root,
 [data-theme="midnight"] {
     --bg-app: #070d18;
@@ -10,6 +10,7 @@
     --bg-inner: #090f20;
     --border-subtle: #1b253b;
     --accent: #38bdf8;
+    --accent-bg: rgba(56, 189, 248, 0.12);
     --text-primary: #f8fafc;
     --text-muted: #94a3b8;
 }
@@ -21,6 +22,7 @@
     --bg-inner: #06080c;
     --border-subtle: #21262d;
     --accent: #60a5fa;
+    --accent-bg: rgba(96, 165, 250, 0.12);
     --text-primary: #f0f6fc;
     --text-muted: #8b949e;
 }
@@ -32,6 +34,7 @@
     --bg-inner: #13151b;
     --border-subtle: #2a2f3b;
     --accent: #cbd5e1;
+    --accent-bg: rgba(203, 213, 225, 0.12);
     --text-primary: #f1f5f9;
     --text-muted: #94a3b8;
 }
@@ -43,42 +46,46 @@
     --bg-inner: #07121a;
     --border-subtle: #163145;
     --accent: #0d9488;
+    --accent-bg: rgba(13, 148, 136, 0.12);
     --text-primary: #f0fdfa;
     --text-muted: #7895a7;
 }
 
-/* 5. DAYLIGHT CLEAN */
+/* 5. DAYLIGHT CLEAN (Light Mode) */
 [data-theme="daylight"] {
-    --bg-app: #f8fafc;
+    --bg-app: #f1f5f9;
     --bg-card: #ffffff;
-    --bg-inner: #f1f5f9;
-    --border-subtle: #e2e8f0;
+    --bg-inner: #f8fafc;
+    --border-subtle: #cbd5e1;
     --accent: #2563eb;
+    --accent-bg: rgba(37, 99, 235, 0.08);
     --text-primary: #0f172a;
-    --text-muted: #64748b;
+    --text-muted: #475569;
 }
 
 /* =========================================================
-   GLOBAL OVERRIDES (APPLIES TO ALL HARDCODED TAILWIND NODES)
+   GLOBAL OVERRIDES & THEME CASCADE
    ========================================================= */
 
-/* Main Canvas & Body */
+/* Root and Base Containers */
 html,
 body,
 [data-theme] {
     background-color: var(--bg-app) !important;
     color: var(--text-primary) !important;
+    transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
 }
 
-/* Header & Navigation */
+/* Top Navbar, Header, Sidebar, Bottom Dock */
 [data-theme] header,
 [data-theme] nav,
-[data-theme] aside {
+[data-theme] aside,
+[data-theme] .top-navbar {
     background-color: var(--bg-card) !important;
     border-color: var(--border-subtle) !important;
 }
 
-/* Cards & Containers across Admin Settings and Main Dashboard */
+/* All Outer Dashboard Cards & Admin Blocks */
 [data-theme] div[class*="bg-slate-900"],
 [data-theme] div[class*="bg-slate-950"],
 [data-theme] div[class*="bg-[#0b1329]"],
@@ -90,17 +97,35 @@ body,
     border-color: var(--border-subtle) !important;
 }
 
-/* Inner Panels & Sub-Cards */
+/* All Inner Sub-panels, Table Rows, and Form Wells */
 [data-theme] div[class*="bg-slate-800/"],
 [data-theme] div[class*="bg-slate-850"],
 [data-theme] div[class*="bg-[#090f20]"],
-[data-theme] div[class*="bg-[#080a0f]"] {
+[data-theme] div[class*="bg-[#080a0f]"],
+[data-theme] div[class*="bg-[#07090e]"] {
     background-color: var(--bg-inner) !important;
     border-color: var(--border-subtle) !important;
 }
 
-/* Global Subtle Borders */
+/* Universal Border Override */
 [data-theme] *[class*="border-slate-800"],
-[data-theme] *[class*="border-slate-700/"] {
+[data-theme] *[class*="border-slate-700/"],
+[data-theme] *[class*="border-[#1b253b]"] {
     border-color: var(--border-subtle) !important;
+}
+
+/* Primary Text Adjustments for Daylight vs Dark Themes */
+[data-theme="daylight"] h1,
+[data-theme="daylight"] h2,
+[data-theme="daylight"] h3,
+[data-theme="daylight"] h4,
+[data-theme="daylight"] .text-slate-100,
+[data-theme="daylight"] .text-slate-200,
+[data-theme="daylight"] .text-white {
+    color: #0f172a !important;
+}
+
+[data-theme="daylight"] .text-slate-400,
+[data-theme="daylight"] .text-slate-500 {
+    color: #64748b !important;
 }
