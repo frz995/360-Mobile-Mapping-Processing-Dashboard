@@ -48,6 +48,7 @@ import { supabase, publishToSupabase, saveToStagingSupabase, deleteFromStagingSu
 import { AdminSettingsView } from './components/AdminSettingsView';
 import * as shapefile from 'shapefile';
 import * as toGeoJSON from '@tmcw/togeojson';
+import './themes.css';
 
 // ==============================================
 // Data Interfaces & Types
@@ -577,7 +578,7 @@ export function reconcileBatchLogs(dailyItems: DailyTimeSeries[], _baseBatches?:
       }
     } else {
       const picSet = new Set<string>();
-      if (d.pic) {
+      if (d.pic && d.pic.trim()) {
         d.pic.split(',').map(p => p.trim()).filter(Boolean).forEach(p => picSet.add(p));
       }
 
@@ -3349,7 +3350,9 @@ const DataManagementPage = ({
                                 </button>
                               </td>
                               <td className="px-4 py-3.5 text-slate-300 font-medium whitespace-nowrap">{batch.defects}</td>
-                              <td className="px-4 py-3.5 text-slate-300 font-medium whitespace-nowrap">{batch.pic || activeAuthUserName || 'Unassigned'}</td>
+                              <td className="px-4 py-3.5 text-slate-300 font-medium whitespace-nowrap">
+                                {batch.pic && batch.pic.trim() ? batch.pic : (activeAuthUserName || authSession?.user?.email || 'Unassigned')}
+                              </td>
                               <td className="px-4 py-3.5 whitespace-nowrap">
                                 <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${batch.status === 'Complete'
                                   ? 'bg-slate-800 text-slate-200 border border-slate-700'
@@ -3507,7 +3510,9 @@ const DataManagementPage = ({
                                       : (matchBatch?.defects ?? 0);
                                 })()}
                               </td>
-                              <td className="px-4 py-3.5 text-slate-300 font-medium whitespace-nowrap">{daily.pic || activeAuthUserName || 'Unassigned'}</td>
+                              <td className="px-4 py-3.5 text-slate-300 font-medium whitespace-nowrap">
+                                {daily.pic && daily.pic.trim() ? daily.pic : (activeAuthUserName || authSession?.user?.email || 'Unassigned')}
+                              </td>
                               <td className="px-4 py-3.5 whitespace-nowrap">
                                 <select
                                   value={daily.publishToWebGIS || 'in process'}
@@ -4942,6 +4947,25 @@ export default function App() {
     } catch (e) { }
   };
 
+  // === Theme Package ===
+  const [currentTheme, setCurrentTheme] = useState(() => {
+    return localStorage.getItem('app_dashboard_theme') || 'midnight';
+  });
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', currentTheme);
+
+    const handleThemeEvent = (e: any) => {
+      if (e.detail) {
+        setCurrentTheme(e.detail);
+      }
+    };
+
+    window.addEventListener('app-theme-changed', handleThemeEvent);
+    return () => window.removeEventListener('app-theme-changed', handleThemeEvent);
+  }, [currentTheme]);
+
+
   // ===== Supabase Auth Protection State =====
   const [authSession, setAuthSession] = useState<any>(() => {
     try {
@@ -5055,7 +5079,11 @@ export default function App() {
       user: {
         id: 'guest-user-001',
         email: 'guest@example.com',
-        role: 'guest'
+        role: 'guest',
+        user_metadata: {
+          role: 'Viewer',
+          full_name: 'Guest'
+        }
       },
       isGuest: true
     };
@@ -6717,8 +6745,11 @@ export default function App() {
   const t = (key: string) => TRANSLATIONS[projectSettings?.language || 'en']?.[key] || TRANSLATIONS['en'][key] || key;
 
   return (
-    <div className={`min-h-screen md:h-screen w-screen font-sans flex flex-col overflow-y-auto md:overflow-hidden ${themeMode === 'light' ? 'light-mode bg-slate-100 text-slate-800' : 'bg-[#0b0e14] text-slate-200'}`}>
-
+    <div
+      data-theme={currentTheme}
+      style={{ backgroundColor: 'var(--bg-app)', color: 'var(--text-primary)' }}
+      className="min-h-screen md:h-screen w-screen font-sans flex flex-col overflow-y-auto md:overflow-hidden transition-colors duration-200"
+    >
       {/* SLEEK GLASSMORPHIC TOAST NOTIFICATION FOR SETTINGS SAVE */}
       {settingsSaveToast && (
         <div className="fixed top-14 right-6 z-[3000] animate-in fade-in slide-in-from-top-3 duration-300 pointer-events-none">
