@@ -25,6 +25,7 @@ export interface ThemeDefinition {
     innerCard: string;
     borderSubtle: string;
     accent: string;
+    accentBg: string;
     textPrimary: string;
     textMuted: string;
     mapTileUrl: string;
@@ -34,14 +35,15 @@ export interface ThemeDefinition {
 export const THEME_PRESETS: ThemeDefinition[] = [
     {
         id: 'midnight',
-        name: 'Midnight Slate',
-        badge: 'Standard Dark',
-        tagline: 'Balanced deep slate with subtle steel blue telemetry highlights for operational centers.',
-        bgApp: '#090d16',
-        bgCard: '#0f172a',
-        innerCard: '#090e1a',
-        borderSubtle: '#1e293b',
+        name: 'Midnight Navy',
+        badge: 'System Default',
+        tagline: 'Default production theme with deep navy card layers and clear sky-blue telemetry accents.',
+        bgApp: '#070d18',
+        bgCard: '#0b1329',
+        innerCard: '#090f20',
+        borderSubtle: '#1b253b',
         accent: '#38bdf8',
+        accentBg: 'rgba(56, 189, 248, 0.12)',
         textPrimary: '#f8fafc',
         textMuted: '#94a3b8',
         mapTileUrl: 'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
@@ -49,14 +51,15 @@ export const THEME_PRESETS: ThemeDefinition[] = [
     },
     {
         id: 'obsidian',
-        name: 'Obsidian Minimal',
-        badge: 'OLED Pure Dark',
-        tagline: 'Deep monochromatic carbon surfaces designed for low eye-strain and maximum contrast.',
-        bgApp: '#040507',
+        name: 'Obsidian Pure Dark',
+        badge: 'OLED Contrast',
+        tagline: 'Monochromatic pitch-black carbon surfaces for darkroom surveying and minimal eye fatigue.',
+        bgApp: '#030407',
         bgCard: '#0d1117',
-        innerCard: '#06080c',
+        innerCard: '#07090e',
         borderSubtle: '#21262d',
         accent: '#60a5fa',
+        accentBg: 'rgba(96, 165, 250, 0.12)',
         textPrimary: '#f0f6fc',
         textMuted: '#8b949e',
         mapTileUrl: 'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
@@ -64,14 +67,15 @@ export const THEME_PRESETS: ThemeDefinition[] = [
     },
     {
         id: 'graphite',
-        name: 'Graphite Studio',
-        badge: 'Industrial Neutral',
-        tagline: 'Matte neutral grays paired with clean white typography for technical inspection.',
-        bgApp: '#121316',
-        bgCard: '#1c1e24',
-        innerCard: '#141519',
-        borderSubtle: '#2e323b',
-        accent: '#94a3b8',
+        name: 'Titanium Graphite',
+        badge: 'Neutral Studio',
+        tagline: 'Balanced matte charcoal surfaces with soft metallic borders for technical inspection.',
+        bgApp: '#111318',
+        bgCard: '#1a1d24',
+        innerCard: '#13151b',
+        borderSubtle: '#2a2f3b',
+        accent: '#cbd5e1',
+        accentBg: 'rgba(203, 213, 225, 0.12)',
         textPrimary: '#f1f5f9',
         textMuted: '#94a3b8',
         mapTileUrl: 'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
@@ -81,27 +85,29 @@ export const THEME_PRESETS: ThemeDefinition[] = [
         id: 'teal-slate',
         name: 'Precision Teal',
         badge: 'GIS Telemetry',
-        tagline: 'Cool dark slate with desaturated marine accents for spatial analytics dashboards.',
+        tagline: 'Cool dark maritime slate with muted teal trajectory highlights.',
         bgApp: '#060f14',
-        bgCard: '#0c1922',
-        innerCard: '#071219',
-        borderSubtle: '#172d3d',
-        accent: '#2dd4bf',
+        bgCard: '#0c1a24',
+        innerCard: '#07121a',
+        borderSubtle: '#163145',
+        accent: '#0d9488',
+        accentBg: 'rgba(13, 148, 136, 0.12)',
         textPrimary: '#f0fdfa',
-        textMuted: '#7994a6',
+        textMuted: '#7895a7',
         mapTileUrl: 'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
         mapStyle: 'Dark Telemetry'
     },
     {
         id: 'daylight',
-        name: 'Daylight Enterprise',
+        name: 'Daylight Clean',
         badge: 'Clean Light',
-        tagline: 'High-clarity bright workspace with crisp slate typography and soft border dividers.',
+        tagline: 'Crisp high-luminance workspace with navy typography and soft borders.',
         bgApp: '#f8fafc',
         bgCard: '#ffffff',
         innerCard: '#f1f5f9',
         borderSubtle: '#e2e8f0',
         accent: '#2563eb',
+        accentBg: 'rgba(37, 99, 235, 0.08)',
         textPrimary: '#0f172a',
         textMuted: '#64748b',
         mapTileUrl: 'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
@@ -118,7 +124,7 @@ export interface ThemeCanvasProps {
     projectSettings?: any;
 }
 
-// Leaflet Map Component with working basemap tiles
+// Leaflet Map Component
 const LiveLeafletMapContainer: React.FC<{ tileUrl: string }> = ({ tileUrl }) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const mapRef = useRef<any>(null);
@@ -139,7 +145,6 @@ const LiveLeafletMapContainer: React.FC<{ tileUrl: string }> = ({ tileUrl }) => 
             const layer = L.tileLayer(tileUrl, { maxZoom: 19 }).addTo(map);
             tileLayerRef.current = layer;
 
-            // Real survey trajectory line
             const points: [number, number][] = [
                 [2.5492, 102.8120],
                 [2.5501, 102.8135],
@@ -226,10 +231,17 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
 
     return (
         <div className="space-y-5">
-            {/* 1. CLEAN PROFESSIONAL HEADER (NO LOUD COLORS) */}
+            {/* 1. Header Toolbar */}
             <div className={`p-4 rounded-xl border border-slate-800 ${cardBg} flex flex-wrap items-center justify-between gap-4`}>
                 <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-300">
+                    <div
+                        className="p-2 rounded-lg border flex items-center justify-center transition-colors"
+                        style={{
+                            backgroundColor: stagedObj.accentBg,
+                            borderColor: `${stagedObj.accent}40`,
+                            color: stagedObj.accent
+                        }}
+                    >
                         <Palette className="w-4 h-4" />
                     </div>
                     <div>
@@ -237,7 +249,14 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                             <h2 className="text-xs font-semibold text-slate-200 uppercase tracking-wider">
                                 Enterprise Theme Packages
                             </h2>
-                            <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700 font-mono">
+                            <span
+                                className="text-[10px] px-2 py-0.5 rounded font-mono border"
+                                style={{
+                                    backgroundColor: stagedObj.accentBg,
+                                    color: stagedObj.accent,
+                                    borderColor: `${stagedObj.accent}30`
+                                }}
+                            >
                                 Live Staging
                             </span>
                         </div>
@@ -250,7 +269,7 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                 {/* Global Save Action */}
                 <div className="flex items-center gap-3">
                     {isSavedBanner && (
-                        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800 border border-slate-700 text-slate-200 text-xs font-medium">
+                        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-medium">
                             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
                             Theme Applied
                         </div>
@@ -269,10 +288,10 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                 </div>
             </div>
 
-            {/* 2. MAIN 2-COLUMN STAGING WORKSPACE */}
+            {/* 2. Workspace Columns */}
             <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
 
-                {/* Left Column: Subtle Presets Catalog (4 cols) */}
+                {/* Left Column: Subtle Theme Cards */}
                 <div className="xl:col-span-4 space-y-2.5">
                     <div className="flex items-center justify-between px-1">
                         <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
@@ -299,18 +318,17 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                                     key={preset.id}
                                     onClick={() => handleSelectPreset(preset.id)}
                                     className={`p-3 rounded-lg border transition-all cursor-pointer ${isStaged
-                                            ? 'border-slate-400 bg-slate-800/80 shadow-sm ring-1 ring-slate-400/40'
+                                            ? 'border-slate-400 bg-slate-800/90 shadow-sm ring-1 ring-slate-400/40'
                                             : 'border-slate-800/90 bg-slate-900/40 hover:bg-slate-850 hover:border-slate-700'
                                         }`}
                                 >
                                     <div className="flex items-start justify-between gap-3">
                                         <div className="flex items-start gap-2.5">
-                                            {/* Clean Swatch Tile */}
                                             <div
                                                 className="w-5 h-5 rounded border mt-0.5 shrink-0 flex items-center justify-center"
                                                 style={{
                                                     backgroundColor: preset.bgCard,
-                                                    borderColor: preset.borderSubtle
+                                                    borderColor: isStaged ? preset.accent : preset.borderSubtle
                                                 }}
                                             >
                                                 <span
@@ -322,7 +340,14 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                                             <div>
                                                 <div className="flex items-center gap-2">
                                                     <h4 className="text-xs font-semibold text-slate-200">{preset.name}</h4>
-                                                    <span className="text-[9px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 border border-slate-700 font-mono">
+                                                    <span
+                                                        className="text-[9px] px-1.5 py-0.2 rounded font-mono border"
+                                                        style={{
+                                                            backgroundColor: preset.accentBg,
+                                                            color: preset.accent,
+                                                            borderColor: `${preset.accent}30`
+                                                        }}
+                                                    >
                                                         {preset.badge}
                                                     </span>
                                                     {isCurrentlyActive && (
@@ -336,7 +361,14 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                                         </div>
 
                                         {isStaged && (
-                                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-700/60 text-slate-200 border border-slate-600 font-medium shrink-0">
+                                            <span
+                                                className="text-[9px] px-1.5 py-0.5 rounded border font-medium shrink-0"
+                                                style={{
+                                                    backgroundColor: preset.accentBg,
+                                                    color: preset.accent,
+                                                    borderColor: `${preset.accent}40`
+                                                }}
+                                            >
                                                 Previewing
                                             </span>
                                         )}
@@ -347,19 +379,26 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                     </div>
                 </div>
 
-                {/* Right Column: Real Live Dashboard Operational Canvas (8 cols) */}
+                {/* Right Column: Live Dashboard Viewport */}
                 <div className="xl:col-span-8 space-y-2">
                     <div className="flex items-center justify-between px-1">
                         <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                            <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+                            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: stagedObj.accent }} />
                             Live Dashboard Preview
                         </div>
-                        <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700 font-mono">
+                        <span
+                            className="text-[10px] px-2 py-0.5 rounded border font-mono"
+                            style={{
+                                backgroundColor: stagedObj.accentBg,
+                                color: stagedObj.accent,
+                                borderColor: `${stagedObj.accent}30`
+                            }}
+                        >
                             Theme: {stagedObj.name}
                         </span>
                     </div>
 
-                    {/* Staged Dashboard Scope */}
+                    {/* Staged Scope Container */}
                     <div
                         data-theme={stagedTheme}
                         className="p-3.5 rounded-xl border transition-all duration-200 space-y-3"
@@ -369,7 +408,7 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                             color: stagedObj.textPrimary
                         }}
                     >
-                        {/* Top Bar */}
+                        {/* App Header */}
                         <div
                             className="px-3 py-2 rounded-lg border flex items-center justify-between"
                             style={{
@@ -398,9 +437,9 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                                 <span
                                     className="px-2 py-0.5 rounded text-[9px] font-medium border"
                                     style={{
-                                        backgroundColor: stagedObj.innerCard,
-                                        borderColor: stagedObj.borderSubtle,
-                                        color: stagedObj.textPrimary
+                                        backgroundColor: stagedObj.accentBg,
+                                        borderColor: `${stagedObj.accent}30`,
+                                        color: stagedObj.accent
                                     }}
                                 >
                                     Admin / Live
@@ -419,13 +458,13 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                             >
                                 <div className="flex items-center justify-between text-[8.5px] uppercase font-semibold tracking-wider" style={{ color: stagedObj.textMuted }}>
                                     <span>DISTANCE MAPPED</span>
-                                    <Navigation className="w-3 h-3" style={{ color: stagedObj.textMuted }} />
+                                    <Navigation className="w-3 h-3" style={{ color: stagedObj.accent }} />
                                 </div>
                                 <div className="my-0.5 flex items-baseline gap-1">
                                     <span className="text-sm font-bold" style={{ color: stagedObj.textPrimary }}>
                                         {totalDistance.toFixed(1)} km
                                     </span>
-                                    <span className="text-[8px] font-mono" style={{ color: stagedObj.textMuted }}>
+                                    <span className="text-[8px] font-mono" style={{ color: stagedObj.accent }}>
                                         ({pctTarget}%)
                                     </span>
                                 </div>
@@ -441,7 +480,7 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                             >
                                 <div className="flex items-center justify-between text-[8.5px] uppercase font-semibold tracking-wider" style={{ color: stagedObj.textMuted }}>
                                     <span>PROCESSED FRAMES</span>
-                                    <Camera className="w-3 h-3" style={{ color: stagedObj.textMuted }} />
+                                    <Camera className="w-3 h-3" style={{ color: stagedObj.accent }} />
                                 </div>
                                 <div className="my-0.5">
                                     <span className="text-sm font-bold" style={{ color: stagedObj.textPrimary }}>
@@ -460,7 +499,7 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                             >
                                 <div className="flex items-center justify-between text-[8.5px] uppercase font-semibold tracking-wider" style={{ color: stagedObj.textMuted }}>
                                     <span>ACTIVE JOBS</span>
-                                    <Layers className="w-3 h-3" style={{ color: stagedObj.textMuted }} />
+                                    <Layers className="w-3 h-3" style={{ color: stagedObj.accent }} />
                                 </div>
                                 <div className="my-0.5">
                                     <span className="text-sm font-bold" style={{ color: stagedObj.textPrimary }}>
@@ -479,10 +518,10 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                             >
                                 <div className="flex items-center justify-between text-[8.5px] uppercase font-semibold tracking-wider" style={{ color: stagedObj.textMuted }}>
                                     <span>QUALITY SLA</span>
-                                    <Activity className="w-3 h-3" style={{ color: stagedObj.textMuted }} />
+                                    <Activity className="w-3 h-3 text-emerald-400" />
                                 </div>
                                 <div className="my-0.5">
-                                    <span className="text-sm font-bold" style={{ color: stagedObj.textPrimary }}>
+                                    <span className="text-sm font-bold text-emerald-400">
                                         100.0%
                                     </span>
                                 </div>
@@ -490,9 +529,9 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                             </div>
                         </div>
 
-                        {/* Map & Tables */}
+                        {/* Map & Data Columns */}
                         <div className="grid grid-cols-12 gap-2.5">
-                            {/* Coverage Map */}
+                            {/* Live Leaflet Map */}
                             <div
                                 className="col-span-12 lg:col-span-7 h-80 rounded-lg border relative overflow-hidden flex flex-col justify-between"
                                 style={{
@@ -514,12 +553,12 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                                         <div className="text-[9px] font-semibold" style={{ color: stagedObj.textPrimary }}>
                                             GeoSphere 360 Hub
                                         </div>
-                                        <span className="text-[8px]" style={{ color: stagedObj.textMuted }}>• WebGIS</span>
+                                        <span className="text-[8px] font-medium" style={{ color: stagedObj.accent }}>• WebGIS</span>
                                     </div>
 
                                     <div className="flex items-center gap-1 pointer-events-auto">
                                         <button className="p-1 rounded border bg-slate-900/80 text-slate-300 border-slate-700">
-                                            <Search className="w-3 h-3" />
+                                            <Search className="w-3.5 h-3.5" />
                                         </button>
                                     </div>
                                 </div>
@@ -566,21 +605,21 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                                         ].map((row, idx) => (
                                             <div
                                                 key={idx}
-                                                className="flex items-center justify-between p-1 rounded"
+                                                className="flex items-center justify-between p-1.5 rounded"
                                                 style={{
                                                     backgroundColor: stagedObj.innerCard
                                                 }}
                                             >
                                                 <span className="font-mono font-medium" style={{ color: stagedObj.textPrimary }}>{row.subgrid}</span>
                                                 <span style={{ color: stagedObj.textMuted }}>{row.img}</span>
-                                                <span style={{ color: stagedObj.textMuted }}>{row.status}</span>
+                                                <span className="font-medium text-amber-400/90">{row.status}</span>
                                             </div>
                                         ))}
                                     </div>
 
                                     <div className="pt-1 border-t flex items-center justify-between text-[7.5px]" style={{ borderColor: stagedObj.borderSubtle, color: stagedObj.textMuted }}>
                                         <span>Pipeline Status</span>
-                                        <span className="font-mono">Operational</span>
+                                        <span className="font-mono text-emerald-400">Operational</span>
                                     </div>
                                 </div>
 
@@ -593,7 +632,7 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                                     }}
                                 >
                                     <div className="flex items-center gap-2">
-                                        <Camera className="w-3.5 h-3.5" style={{ color: stagedObj.textMuted }} />
+                                        <Camera className="w-3.5 h-3.5" style={{ color: stagedObj.accent }} />
                                         <div>
                                             <div className="text-[8.5px] font-semibold" style={{ color: stagedObj.textPrimary }}>
                                                 360 View & QA Inspector
