@@ -359,13 +359,20 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
   const isGuest = Boolean(authSession?.isGuest || authSession?.user?.role === 'guest' || currentAuthEmail.includes('guest'));
 
   // User role is strictly derived from User Management Directory or Supabase auth metadata
-  const userEffectiveRole = currentUserRecord?.role ||
-    authSession?.user?.app_metadata?.role ||
-    authSession?.user?.user_metadata?.role ||
-    (authSession?.user?.role === 'admin' ? 'Administrator' : 'Survey Operator');
+  const userEffectiveRole = isGuest
+    ? 'Viewer'
+    : (
+      currentUserRecord?.role ||
+      authSession?.user?.user_metadata?.role ||
+      authSession?.user?.raw_user_meta_data?.role ||
+      authSession?.user?.app_metadata?.role ||
+      authSession?.user?.raw_app_meta_data?.role ||
+      (authSession?.user?.role === 'admin' ? 'Administrator' : 'Viewer')
+    );
 
   const isAdmin = !isGuest && (
     userEffectiveRole === 'Administrator' ||
+    userEffectiveRole === 'admin' ||
     authSession?.user?.role === 'admin' ||
     authSession?.user?.app_metadata?.role === 'admin'
   );
@@ -587,11 +594,10 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
 
       {/* RESTRICTED / READ-ONLY MODE BANNER FOR NON-ADMINS (Neutral Monochrome) */}
       {!isAdmin && (
-        <div className={`p-3.5 rounded-xl border flex flex-wrap items-center justify-between gap-3 shrink-0 shadow-sm animate-in fade-in duration-200 ${
-          themeMode === 'light'
-            ? 'bg-slate-100 border-slate-300 text-slate-700'
-            : 'bg-slate-900/90 border-slate-800 text-slate-300'
-        }`}>
+        <div className={`p-3.5 rounded-xl border flex flex-wrap items-center justify-between gap-3 shrink-0 shadow-sm animate-in fade-in duration-200 ${themeMode === 'light'
+          ? 'bg-slate-100 border-slate-300 text-slate-700'
+          : 'bg-slate-900/90 border-slate-800 text-slate-300'
+          }`}>
           <div className="flex items-center gap-2.5">
             <Lock size={15} className="text-slate-400 shrink-0" />
             <div>
@@ -601,11 +607,10 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
               </p>
             </div>
           </div>
-          <span className={`px-2.5 py-1 rounded-md text-[10px] font-mono font-semibold border ${
-            themeMode === 'light'
-              ? 'bg-slate-200 text-slate-700 border-slate-300'
-              : 'bg-slate-800 text-slate-400 border-slate-700'
-          }`}>
+          <span className={`px-2.5 py-1 rounded-md text-[10px] font-mono font-semibold border ${themeMode === 'light'
+            ? 'bg-slate-200 text-slate-700 border-slate-300'
+            : 'bg-slate-800 text-slate-400 border-slate-700'
+            }`}>
             Read-Only
           </span>
         </div>
@@ -670,11 +675,10 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
       <div className={`flex items-center gap-1.5 p-1 rounded-xl border overflow-x-auto shrink-0 ${cardBg}`}>
         <button
           onClick={() => setActiveTab('settings')}
-          className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
-            activeTab === 'settings'
-              ? (themeMode === 'light' ? 'bg-sky-50 text-sky-700 shadow-sm border border-sky-200 font-bold' : 'bg-slate-800 text-white shadow-sm border border-slate-700')
-              : (themeMode === 'light' ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50')
-          }`}
+          className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${activeTab === 'settings'
+            ? (themeMode === 'light' ? 'bg-sky-50 text-sky-700 shadow-sm border border-sky-200 font-bold' : 'bg-slate-800 text-white shadow-sm border border-slate-700')
+            : (themeMode === 'light' ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50')
+            }`}
         >
           <Settings size={14} className={activeTab === 'settings' ? 'text-sky-500' : ''} />
           <span>Project & Security Settings</span>
@@ -682,11 +686,10 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
 
         <button
           onClick={() => setActiveTab('users')}
-          className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
-            activeTab === 'users'
-              ? (themeMode === 'light' ? 'bg-sky-50 text-sky-700 shadow-sm border border-sky-200 font-bold' : 'bg-slate-800 text-white shadow-sm border border-slate-700')
-              : (themeMode === 'light' ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50')
-          }`}
+          className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${activeTab === 'users'
+            ? (themeMode === 'light' ? 'bg-sky-50 text-sky-700 shadow-sm border border-sky-200 font-bold' : 'bg-slate-800 text-white shadow-sm border border-slate-700')
+            : (themeMode === 'light' ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50')
+            }`}
         >
           <Users size={14} className={activeTab === 'users' ? 'text-sky-500' : ''} />
           <span>User Management</span>
@@ -695,11 +698,10 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
 
         <button
           onClick={() => setActiveTab('approvals')}
-          className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
-            activeTab === 'approvals'
-              ? (themeMode === 'light' ? 'bg-slate-200/80 text-slate-900 shadow-sm border border-slate-300 font-bold' : 'bg-slate-800 text-white shadow-sm border border-slate-700')
-              : (themeMode === 'light' ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50')
-          }`}
+          className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${activeTab === 'approvals'
+            ? (themeMode === 'light' ? 'bg-slate-200/80 text-slate-900 shadow-sm border border-slate-300 font-bold' : 'bg-slate-800 text-white shadow-sm border border-slate-700')
+            : (themeMode === 'light' ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50')
+            }`}
         >
           <CheckSquare size={14} className={activeTab === 'approvals' ? (themeMode === 'light' ? 'text-slate-800' : 'text-slate-200') : ''} />
           <span>Approvals (Data Deletion)</span>
@@ -712,11 +714,10 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
 
         <button
           onClick={() => setActiveTab('reports')}
-          className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
-            activeTab === 'reports'
-              ? (themeMode === 'light' ? 'bg-sky-50 text-sky-700 shadow-sm border border-sky-200 font-bold' : 'bg-slate-800 text-white shadow-sm border border-slate-700')
-              : (themeMode === 'light' ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50')
-          }`}
+          className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${activeTab === 'reports'
+            ? (themeMode === 'light' ? 'bg-sky-50 text-sky-700 shadow-sm border border-sky-200 font-bold' : 'bg-slate-800 text-white shadow-sm border border-slate-700')
+            : (themeMode === 'light' ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50')
+            }`}
         >
           <FileText size={14} className={activeTab === 'reports' ? 'text-sky-500' : ''} />
           <span>Reports & Analytics</span>
@@ -724,11 +725,10 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
 
         <button
           onClick={() => setActiveTab('audit')}
-          className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
-            activeTab === 'audit'
-              ? (themeMode === 'light' ? 'bg-sky-50 text-sky-700 shadow-sm border border-sky-200 font-bold' : 'bg-slate-800 text-white shadow-sm border border-slate-700')
-              : (themeMode === 'light' ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50')
-          }`}
+          className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${activeTab === 'audit'
+            ? (themeMode === 'light' ? 'bg-sky-50 text-sky-700 shadow-sm border border-sky-200 font-bold' : 'bg-slate-800 text-white shadow-sm border border-slate-700')
+            : (themeMode === 'light' ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50')
+            }`}
         >
           <Activity size={14} className={activeTab === 'audit' ? 'text-sky-500' : ''} />
           <span>Audit Logs</span>
@@ -736,11 +736,10 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
 
         <button
           onClick={() => setActiveTab('health')}
-          className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
-            activeTab === 'health'
-              ? (themeMode === 'light' ? 'bg-emerald-50 text-emerald-800 shadow-sm border border-emerald-200 font-bold' : 'bg-slate-800 text-white shadow-sm border border-slate-700')
-              : (themeMode === 'light' ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50')
-          }`}
+          className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${activeTab === 'health'
+            ? (themeMode === 'light' ? 'bg-emerald-50 text-emerald-800 shadow-sm border border-emerald-200 font-bold' : 'bg-slate-800 text-white shadow-sm border border-slate-700')
+            : (themeMode === 'light' ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50')
+            }`}
         >
           <Server size={14} className={activeTab === 'health' ? 'text-emerald-500' : ''} />
           <span>System Health</span>
@@ -2389,11 +2388,10 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                   addAuditLog?.('SETTINGS', 'Saved Project Settings', 'Updated project parameters, basemap, security and SLA benchmarks.', 'success');
                   showToast('Project & Security Settings saved and synchronized live!');
                 }}
-                className={`px-5 py-2.5 rounded-lg text-xs font-bold transition-all shadow-md flex items-center gap-2 ${
-                  isAdmin
-                    ? 'bg-sky-600 hover:bg-sky-500 text-white cursor-pointer active:scale-95'
-                    : 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed'
-                }`}
+                className={`px-5 py-2.5 rounded-lg text-xs font-bold transition-all shadow-md flex items-center gap-2 ${isAdmin
+                  ? 'bg-sky-600 hover:bg-sky-500 text-white cursor-pointer active:scale-95'
+                  : 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed'
+                  }`}
               >
                 {isAdmin ? <CheckCircle size={14} /> : <Lock size={14} />}
                 <span>{isAdmin ? 'Save All Settings' : 'Admin Only (Read-Only)'}</span>
@@ -2466,13 +2464,12 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                           {req.poiCount} frames ({req.kmProcessed} km)
                         </td>
                         <td className="px-3.5 py-2.5">
-                          <span className={`font-semibold text-xs ${
-                            req.status === 'Pending'
-                              ? (themeMode === 'light' ? 'text-amber-600' : 'text-amber-400')
-                              : req.status === 'Approved'
+                          <span className={`font-semibold text-xs ${req.status === 'Pending'
+                            ? (themeMode === 'light' ? 'text-amber-600' : 'text-amber-400')
+                            : req.status === 'Approved'
                               ? (themeMode === 'light' ? 'text-emerald-600' : 'text-emerald-400')
                               : (themeMode === 'light' ? 'text-rose-600' : 'text-rose-400')
-                          }`}>
+                            }`}>
                             {req.status}
                           </span>
                         </td>
@@ -2482,21 +2479,19 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                               <div className="flex items-center justify-end gap-1.5">
                                 <button
                                   onClick={() => handleApproveDeletion(req)}
-                                  className={`px-2.5 py-1 rounded text-[11px] font-semibold cursor-pointer transition-colors border ${
-                                    themeMode === 'light'
-                                      ? 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-600'
-                                      : 'bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-300 border-emerald-500/30'
-                                  }`}
+                                  className={`px-2.5 py-1 rounded text-[11px] font-semibold cursor-pointer transition-colors border ${themeMode === 'light'
+                                    ? 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-600'
+                                    : 'bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-300 border-emerald-500/30'
+                                    }`}
                                 >
                                   Approve
                                 </button>
                                 <button
                                   onClick={() => setRejectModalReqId(req.id)}
-                                  className={`px-2.5 py-1 rounded text-[11px] font-semibold cursor-pointer transition-colors border ${
-                                    themeMode === 'light'
-                                      ? 'bg-white hover:bg-rose-50 text-rose-700 border-rose-200'
-                                      : 'bg-rose-600/20 hover:bg-rose-600/40 text-rose-300 border-rose-500/30'
-                                  }`}
+                                  className={`px-2.5 py-1 rounded text-[11px] font-semibold cursor-pointer transition-colors border ${themeMode === 'light'
+                                    ? 'bg-white hover:bg-rose-50 text-rose-700 border-rose-200'
+                                    : 'bg-rose-600/20 hover:bg-rose-600/40 text-rose-300 border-rose-500/30'
+                                    }`}
                                 >
                                   Reject
                                 </button>
@@ -2636,9 +2631,8 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
 
             <div className="border border-slate-800 rounded-xl overflow-hidden shadow-sm">
               <table className="w-full text-left text-xs">
-                <thead className={`text-[11px] uppercase tracking-wider font-semibold border-b ${
-                  themeMode === 'light' ? 'bg-slate-100 text-slate-700 border-slate-200' : 'bg-[#070a0f] text-slate-400 border-slate-800'
-                }`}>
+                <thead className={`text-[11px] uppercase tracking-wider font-semibold border-b ${themeMode === 'light' ? 'bg-slate-100 text-slate-700 border-slate-200' : 'bg-[#070a0f] text-slate-400 border-slate-800'
+                  }`}>
                   <tr>
                     <th className="px-3.5 py-2.5">Date</th>
                     <th className="px-3.5 py-2.5">Subgrid / Area</th>
@@ -2666,9 +2660,8 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                       return (
                         <tr
                           key={row.id || `${row.date}-${row.subgrid}-${idx}`}
-                          className={`hover:bg-slate-800/30 transition-colors ${
-                            themeMode === 'light' ? 'text-slate-800' : 'text-slate-300'
-                          }`}
+                          className={`hover:bg-slate-800/30 transition-colors ${themeMode === 'light' ? 'text-slate-800' : 'text-slate-300'
+                            }`}
                         >
                           <td className="px-3.5 py-2.5 font-mono text-[11px] font-semibold">{row.date || '—'}</td>
                           <td className="px-3.5 py-2.5 font-medium">{row.subgrid || '—'}</td>
@@ -2701,9 +2694,8 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                   )}
                 </tbody>
                 {dailyData.length > 0 && (
-                  <tfoot className={`font-semibold border-t ${
-                    themeMode === 'light' ? 'bg-slate-50 text-slate-800 border-slate-200' : 'bg-[#070a0f] text-slate-200 border-slate-800'
-                  }`}>
+                  <tfoot className={`font-semibold border-t ${themeMode === 'light' ? 'bg-slate-50 text-slate-800 border-slate-200' : 'bg-[#070a0f] text-slate-200 border-slate-800'
+                    }`}>
                     <tr>
                       <td colSpan={2} className="px-3.5 py-2.5 text-slate-400 text-[11px]">Total ({dailyData.length} daily logs)</td>
                       <td className="px-3.5 py-2.5 font-mono text-sky-400">{totalReportDistance.toFixed(1)} km</td>
