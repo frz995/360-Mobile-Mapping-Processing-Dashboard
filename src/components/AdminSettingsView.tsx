@@ -586,9 +586,9 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
     ? Math.max(0, ((totalReportFrames - totalReportDefects) / totalReportFrames) * 100).toFixed(1)
     : '100.0';
 
-  const cardBg = themeMode === 'light' ? 'bg-white border-slate-200 text-slate-900' : 'bg-[#111622] border-slate-800 text-slate-200';
-  const innerCardBg = themeMode === 'light' ? 'bg-slate-50 border-slate-200' : 'bg-[#0b0f17] border-slate-800';
-  const inputBg = themeMode === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-[#070a0f] border-slate-800 text-slate-200';
+  const cardBg = themeMode === 'light' ? 'bg-white border-slate-200 text-slate-900' : 'bg-[#111622] border-subtle text-slate-200';
+  const innerCardBg = themeMode === 'light' ? 'bg-slate-50 border-slate-200' : 'bg-[#0b0f17] border-subtle';
+  const inputBg = themeMode === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-[#070a0f] border-subtle text-slate-200';
 
   return (
     <div className={`w-full h-full flex flex-col min-h-0 overflow-y-auto space-y-4 p-4 ${themeMode === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>
@@ -597,7 +597,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
       {!isAdmin && (
         <div className={`p-3.5 rounded-xl border flex flex-wrap items-center justify-between gap-3 shrink-0 shadow-sm animate-in fade-in duration-200 ${themeMode === 'light'
           ? 'bg-slate-100 border-slate-300 text-slate-700'
-          : 'bg-slate-900/90 border-slate-800 text-slate-300'
+          : 'bg-app border-subtle text-slate-300'
           }`}>
           <div className="flex items-center gap-2.5">
             <Lock size={15} className="text-slate-400 shrink-0" />
@@ -610,7 +610,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
           </div>
           <span className={`px-2.5 py-1 rounded-md text-[10px] font-mono font-semibold border ${themeMode === 'light'
             ? 'bg-slate-200 text-slate-700 border-slate-300'
-            : 'bg-slate-800 text-slate-400 border-slate-700'
+            : 'bg-inner text-slate-400 border-subtle'
             }`}>
             Read-Only
           </span>
@@ -633,7 +633,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
             <h3 className={`text-2xl font-bold mt-1 ${themeMode === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>{totalUsersCount}</h3>
             <p className="text-[10px] text-slate-500 mt-0.5 font-mono">Registered dashboard accounts</p>
           </div>
-          <div className={`p-2.5 rounded-lg border ${themeMode === 'light' ? 'bg-slate-100 border-slate-200 text-slate-700' : 'bg-slate-800/80 border-slate-700/70 text-slate-300'}`}>
+          <div className={`p-2.5 rounded-lg border ${themeMode === 'light' ? 'bg-slate-100 border-slate-200 text-slate-700' : 'bg-inner border-subtle text-slate-300'}`}>
             <Users size={18} />
           </div>
         </div>
@@ -644,7 +644,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
             <h3 className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">{activeUsersCount}</h3>
             <p className="text-[10px] text-slate-500 mt-0.5 font-mono">Granted dashboard access</p>
           </div>
-          <div className={`p-2.5 rounded-lg border ${themeMode === 'light' ? 'bg-emerald-50 border-emerald-200 text-emerald-600' : 'bg-slate-800/80 border-slate-700/70 text-emerald-400'}`}>
+          <div className={`p-2.5 rounded-lg border ${themeMode === 'light' ? 'bg-emerald-50 border-emerald-200 text-emerald-600' : 'bg-inner border-subtle text-emerald-400'}`}>
             <UserCheck size={18} />
           </div>
         </div>
@@ -655,7 +655,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
             <h3 className="text-2xl font-bold text-amber-600 dark:text-amber-400 mt-1">{pendingApprovalsCount}</h3>
             <p className="text-[10px] text-slate-500 mt-0.5 font-mono">CSV deletion requests</p>
           </div>
-          <div className={`p-2.5 rounded-lg border ${themeMode === 'light' ? 'bg-amber-50 border-amber-200 text-amber-600' : 'bg-slate-800/80 border-slate-700/70 text-amber-400'}`}>
+          <div className={`p-2.5 rounded-lg border ${themeMode === 'light' ? 'bg-amber-50 border-amber-200 text-amber-600' : 'bg-inner border-subtle text-amber-400'}`}>
             <CheckSquare size={18} />
           </div>
         </div>
@@ -666,7 +666,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
             <h3 className={`text-2xl font-bold mt-1 ${themeMode === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>{totalAuditEventsCount}</h3>
             <p className="text-[10px] text-slate-500 mt-0.5 font-mono">Real-time security trail</p>
           </div>
-          <div className={`p-2.5 rounded-lg border ${themeMode === 'light' ? 'bg-slate-100 border-slate-200 text-slate-700' : 'bg-slate-800/80 border-slate-700/70 text-slate-300'}`}>
+          <div className={`p-2.5 rounded-lg border ${themeMode === 'light' ? 'bg-slate-100 border-slate-200 text-slate-700' : 'bg-inner border-subtle text-slate-300'}`}>
             <Activity size={18} />
           </div>
         </div>
@@ -677,8 +677,8 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
         <button
           onClick={() => setActiveTab('settings')}
           className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${activeTab === 'settings'
-            ? (themeMode === 'light' ? 'bg-sky-50 text-sky-700 shadow-sm border border-sky-200 font-bold' : 'bg-slate-800 text-white shadow-sm border border-slate-700')
-            : (themeMode === 'light' ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50')
+            ? (themeMode === 'light' ? 'bg-sky-50 text-sky-700 shadow-sm border border-sky-200 font-bold' : 'bg-inner text-white shadow-sm border border-subtle')
+            : (themeMode === 'light' ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100' : 'text-slate-400 hover:text-slate-200 hover:bg-inner')
             }`}
         >
           <Settings size={14} className={activeTab === 'settings' ? 'text-sky-500' : ''} />
@@ -688,8 +688,8 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
         <button
           onClick={() => setActiveTab('users')}
           className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${activeTab === 'users'
-            ? (themeMode === 'light' ? 'bg-sky-50 text-sky-700 shadow-sm border border-sky-200 font-bold' : 'bg-slate-800 text-white shadow-sm border border-slate-700')
-            : (themeMode === 'light' ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50')
+            ? (themeMode === 'light' ? 'bg-sky-50 text-sky-700 shadow-sm border border-sky-200 font-bold' : 'bg-inner text-white shadow-sm border border-subtle')
+            : (themeMode === 'light' ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100' : 'text-slate-400 hover:text-slate-200 hover:bg-inner')
             }`}
         >
           <Users size={14} className={activeTab === 'users' ? 'text-sky-500' : ''} />
@@ -700,14 +700,14 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
         <button
           onClick={() => setActiveTab('approvals')}
           className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${activeTab === 'approvals'
-            ? (themeMode === 'light' ? 'bg-slate-200/80 text-slate-900 shadow-sm border border-slate-300 font-bold' : 'bg-slate-800 text-white shadow-sm border border-slate-700')
-            : (themeMode === 'light' ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50')
+            ? (themeMode === 'light' ? 'bg-slate-200/80 text-slate-900 shadow-sm border border-slate-300 font-bold' : 'bg-inner text-white shadow-sm border border-subtle')
+            : (themeMode === 'light' ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100' : 'text-slate-400 hover:text-slate-200 hover:bg-inner')
             }`}
         >
           <CheckSquare size={14} className={activeTab === 'approvals' ? (themeMode === 'light' ? 'text-slate-800' : 'text-slate-200') : ''} />
           <span>Approvals (Data Deletion)</span>
           {pendingApprovalsCount > 0 && (
-            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold border ${themeMode === 'light' ? 'bg-slate-200 text-slate-800 border-slate-300' : 'bg-slate-800 text-slate-300 border-slate-700'}`}>
+            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold border ${themeMode === 'light' ? 'bg-slate-200 text-slate-800 border-slate-300' : 'bg-inner text-slate-300 border-subtle'}`}>
               {pendingApprovalsCount}
             </span>
           )}
@@ -716,8 +716,8 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
         <button
           onClick={() => setActiveTab('reports')}
           className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${activeTab === 'reports'
-            ? (themeMode === 'light' ? 'bg-sky-50 text-sky-700 shadow-sm border border-sky-200 font-bold' : 'bg-slate-800 text-white shadow-sm border border-slate-700')
-            : (themeMode === 'light' ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50')
+            ? (themeMode === 'light' ? 'bg-sky-50 text-sky-700 shadow-sm border border-sky-200 font-bold' : 'bg-inner text-white shadow-sm border border-subtle')
+            : (themeMode === 'light' ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100' : 'text-slate-400 hover:text-slate-200 hover:bg-inner')
             }`}
         >
           <FileText size={14} className={activeTab === 'reports' ? 'text-sky-500' : ''} />
@@ -727,8 +727,8 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
         <button
           onClick={() => setActiveTab('audit')}
           className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${activeTab === 'audit'
-            ? (themeMode === 'light' ? 'bg-sky-50 text-sky-700 shadow-sm border border-sky-200 font-bold' : 'bg-slate-800 text-white shadow-sm border border-slate-700')
-            : (themeMode === 'light' ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50')
+            ? (themeMode === 'light' ? 'bg-sky-50 text-sky-700 shadow-sm border border-sky-200 font-bold' : 'bg-inner text-white shadow-sm border border-subtle')
+            : (themeMode === 'light' ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100' : 'text-slate-400 hover:text-slate-200 hover:bg-inner')
             }`}
         >
           <Activity size={14} className={activeTab === 'audit' ? 'text-sky-500' : ''} />
@@ -738,8 +738,8 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
         <button
           onClick={() => setActiveTab('health')}
           className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${activeTab === 'health'
-            ? (themeMode === 'light' ? 'bg-emerald-50 text-emerald-800 shadow-sm border border-emerald-200 font-bold' : 'bg-slate-800 text-white shadow-sm border border-slate-700')
-            : (themeMode === 'light' ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50')
+            ? (themeMode === 'light' ? 'bg-emerald-50 text-emerald-800 shadow-sm border border-emerald-200 font-bold' : 'bg-inner text-white shadow-sm border border-subtle')
+            : (themeMode === 'light' ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100' : 'text-slate-400 hover:text-slate-200 hover:bg-inner')
             }`}
         >
           <Server size={14} className={activeTab === 'health' ? 'text-emerald-500' : ''} />
@@ -751,7 +751,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
           onClick={() => setActiveTab('theme-pack')}
           className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all ${activeTab === 'theme-pack'
             ? (themeMode === 'light' ? 'bg-sky-50 text-sky-700 shadow-sm border border-sky-200 font-bold' : 'bg-sky-500/20 text-sky-300 shadow-sm border border-sky-500/30')
-            : (themeMode === 'light' ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100' : 'text-slate-400 hover:text-white hover:bg-slate-800/60')
+            : (themeMode === 'light' ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100' : 'text-slate-400 hover:text-white hover:bg-inner')
             }`}
         >
           <Palette size={14} className={activeTab === 'theme-pack' ? 'text-sky-400' : ''} />
@@ -764,7 +764,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
       {/* ========================================================================= */}
       {activeTab === 'users' && (
         <div className={`p-5 rounded-xl border space-y-4 ${cardBg}`}>
-          <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800">
+          <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-subtle">
             <div>
               <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2">
                 <Users size={16} className="text-sky-400" />
@@ -775,19 +775,19 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
             {isAdmin ? (
               <button
                 onClick={() => setIsAddUserModalOpen(true)}
-                className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors shadow-sm"
+                className="px-3.5 py-2 bg-inner hover:bg-slate-700 border border-subtle text-slate-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors shadow-sm"
               >
                 <Plus size={14} className="text-emerald-400" /> Add User
               </button>
             ) : (
-              <span className="px-3 py-1.5 rounded-lg border border-slate-800 bg-slate-900/60 text-slate-500 text-xs font-medium flex items-center gap-1.5">
+              <span className="px-3 py-1.5 rounded-lg border border-subtle bg-app text-slate-500 text-xs font-medium flex items-center gap-1.5">
                 <Lock size={12} /> Admin Only
               </span>
             )}
           </div>
 
           {!isAdmin && (
-            <div className="p-3 bg-slate-900/80 border border-slate-800 rounded-lg text-slate-400 text-xs flex items-center gap-2">
+            <div className="p-3 bg-app border border-subtle rounded-lg text-slate-400 text-xs flex items-center gap-2">
               <Lock size={14} className="shrink-0 text-slate-400" />
               <span>Read-Only: Only system administrators can add users, change roles, or modify account access.</span>
             </div>
@@ -819,10 +819,10 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
           </div>
 
           {/* Users Table */}
-          <div className="border border-slate-800 rounded-lg overflow-x-auto">
+          <div className="border border-subtle rounded-lg overflow-x-auto">
             <table className="w-full text-xs text-left border-collapse">
               <thead>
-                <tr className="bg-slate-900/80 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800">
+                <tr className="bg-app text-slate-400 uppercase text-[10px] tracking-wider border-b border-subtle">
                   <th className="px-3.5 py-2.5">User</th>
                   <th className="px-3.5 py-2.5">Email</th>
                   <th className="px-3.5 py-2.5">Role</th>
@@ -848,9 +848,9 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                   </tr>
                 ) : (
                   filteredUsers.map(u => (
-                    <tr key={u.id} className="hover:bg-slate-800/30 transition-colors">
+                    <tr key={u.id} className="hover:bg-inner transition-colors">
                       <td className="px-3.5 py-2.5 font-semibold text-slate-200 flex items-center gap-2">
-                        <div className="w-6 h-6 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center font-bold text-[10px] text-slate-300">
+                        <div className="w-6 h-6 rounded-full bg-inner border border-subtle flex items-center justify-center font-bold text-[10px] text-slate-300">
                           {u.name.charAt(0)}
                         </div>
                         <span>{u.name}</span>
@@ -870,7 +870,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                         </select>
                       </td>
                       <td className="px-3.5 py-2.5">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-semibold border ${u.status === 'Active' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-slate-800 text-slate-400 border-slate-700'}`}>
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-semibold border ${u.status === 'Active' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-inner text-slate-400 border-subtle'}`}>
                           {u.status}
                         </span>
                       </td>
@@ -880,7 +880,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                           <div className="flex items-center justify-end gap-1.5">
                             <button
                               onClick={() => handleToggleUserStatus(u.id)}
-                              className={`px-2 py-1 rounded text-[11px] font-medium border transition-colors cursor-pointer ${u.status === 'Active' ? 'bg-slate-800 hover:bg-rose-900/30 text-rose-300 border-slate-700' : 'bg-slate-800 hover:bg-emerald-900/30 text-emerald-300 border-slate-700'}`}
+                              className={`px-2 py-1 rounded text-[11px] font-medium border transition-colors cursor-pointer ${u.status === 'Active' ? 'bg-inner hover:bg-rose-900/30 text-rose-300 border-subtle' : 'bg-inner hover:bg-emerald-900/30 text-emerald-300 border-subtle'}`}
                             >
                               {u.status === 'Active' ? 'Disable' : 'Grant'}
                             </button>
@@ -914,7 +914,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
         <fieldset disabled={!isAdmin} className="space-y-4 border-none p-0 m-0">
           {/* SECTION 1: DATABASE & POSTGIS SPATIAL ENGINE CONNECTION SETUP */}
           <div className={`p-5 rounded-xl border space-y-5 ${cardBg}`}>
-            <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800">
+            <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-subtle">
               <div className="flex items-center gap-2">
                 <Database size={17} className="text-sky-400" />
                 <div>
@@ -965,7 +965,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                     <button
                       type="button"
                       onClick={() => setShowApiKey(!showApiKey)}
-                      className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 border border-slate-700 cursor-pointer"
+                      className="p-2 rounded-lg bg-inner hover:bg-slate-700 text-slate-400 border border-subtle cursor-pointer"
                       title={showApiKey ? 'Hide Key' : 'Reveal Key'}
                     >
                       {showApiKey ? <EyeOff size={13} /> : <Eye size={13} />}
@@ -1207,7 +1207,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                   <button
                     onClick={handleTestHealth}
                     disabled={isTestingHealth}
-                    className="px-4 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 rounded-lg text-xs font-semibold flex items-center gap-2 cursor-pointer transition-colors shadow-sm"
+                    className="px-4 py-2 bg-inner hover:bg-slate-700 border border-subtle text-slate-200 rounded-lg text-xs font-semibold flex items-center gap-2 cursor-pointer transition-colors shadow-sm"
                   >
                     <RefreshCw size={13} className={isTestingHealth ? 'animate-spin text-sky-400' : 'text-sky-400'} />
                     <span>Test PostGIS Connection & Latency</span>
@@ -1288,7 +1288,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                       navigator.clipboard.writeText(sqlScript);
                       showToast('Copied PostGIS Database SQL DDL Script to clipboard!');
                     }}
-                    className="px-3.5 py-2 bg-slate-800/80 hover:bg-slate-700 border border-slate-700/80 text-sky-400 rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors shadow-sm"
+                    className="px-3.5 py-2 bg-inner hover:bg-slate-700 border border-subtle text-sky-400 rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors shadow-sm"
                   >
                     <Copy size={13} />
                     <span>Copy PostGIS SQL Schema Script</span>
@@ -1304,7 +1304,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
 
           {/* SECTION 2: 360° IMAGERY & MMS STORAGE ENGINE */}
           <div className={`p-5 rounded-xl border space-y-5 ${cardBg}`}>
-            <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800">
+            <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-subtle">
               <div className="flex items-center gap-2">
                 <Camera size={17} className="text-sky-400" />
                 <div>
@@ -1312,7 +1312,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                   <p className="text-[11px] text-slate-400 mt-0.5">Configure 360° panoramic image storage providers, CDN paths, filename patterns, StreetView pre-fetch cache, and player calibration.</p>
                 </div>
               </div>
-              <span className="px-2.5 py-1 rounded-full text-[10px] font-mono bg-slate-800 border border-slate-700 text-slate-300 font-semibold">
+              <span className="px-2.5 py-1 rounded-full text-[10px] font-mono bg-inner border border-subtle text-slate-300 font-semibold">
                 Storage: {projectSettings.storageProvider ? projectSettings.storageProvider.toUpperCase() : 'SUPABASE'}
               </span>
             </div>
@@ -1550,7 +1550,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                         showToast('Storage probe error', 'error');
                       }
                     }}
-                    className="px-4 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 rounded-lg text-xs font-semibold flex items-center gap-2 cursor-pointer transition-colors shadow-sm"
+                    className="px-4 py-2 bg-inner hover:bg-slate-700 border border-subtle text-slate-200 rounded-lg text-xs font-semibold flex items-center gap-2 cursor-pointer transition-colors shadow-sm"
                   >
                     <RefreshCw size={13} className="text-sky-400" />
                     <span>Probe Storage Bucket & Read Access</span>
@@ -1566,7 +1566,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                       navigator.clipboard.writeText(sampleUrl);
                       showToast(`Copied Sample 360° URL (${sampleFn}) to clipboard!`);
                     }}
-                    className="px-3.5 py-2 bg-slate-800/80 hover:bg-slate-700 border border-slate-700/80 text-sky-400 rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors shadow-sm"
+                    className="px-3.5 py-2 bg-inner hover:bg-slate-700 border border-subtle text-sky-400 rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors shadow-sm"
                   >
                     <Copy size={13} />
                     <span>Copy Sample 360° URL</span>
@@ -1578,7 +1578,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
 
           {/* SECTION 3: BASEMAP & SPATIAL LAYER MANAGEMENT WITH LIVE PREVIEW */}
           <div className={`p-5 rounded-xl border space-y-5 ${cardBg}`}>
-            <div className={`flex flex-wrap items-center justify-between gap-3 pb-3 border-b ${themeMode === 'light' ? 'border-slate-200' : 'border-slate-800'}`}>
+            <div className={`flex flex-wrap items-center justify-between gap-3 pb-3 border-b ${themeMode === 'light' ? 'border-slate-200' : 'border-subtle'}`}>
               <div className="flex items-center gap-2">
                 <Map size={17} className="text-sky-400" />
                 <div>
@@ -1677,7 +1677,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                     )}
 
                     {/* Apply Basemap Settings Button */}
-                    <div className={`pt-2 border-t flex justify-end ${themeMode === 'light' ? 'border-slate-200' : 'border-slate-800/80'}`}>
+                    <div className={`pt-2 border-t flex justify-end ${themeMode === 'light' ? 'border-slate-200' : 'border-subtle'}`}>
                       <button
                         type="button"
                         onClick={() => {
@@ -1724,7 +1724,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                           });
                           showToast('Loaded Standard Palette to preview map (click Apply to save)');
                         }}
-                        className={`px-2 py-0.5 rounded text-[10px] font-semibold border cursor-pointer ${themeMode === 'light' ? 'bg-white hover:bg-slate-100 text-slate-700 border-slate-300' : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'}`}
+                        className={`px-2 py-0.5 rounded text-[10px] font-semibold border cursor-pointer ${themeMode === 'light' ? 'bg-white hover:bg-slate-100 text-slate-700 border-slate-300' : 'bg-inner hover:bg-slate-700 text-slate-300 border-subtle'}`}
                       >
                         Standard
                       </button>
@@ -1745,7 +1745,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                           });
                           showToast('Loaded Neon GIS Palette to preview map (click Apply to save)');
                         }}
-                        className={`px-2 py-0.5 rounded text-[10px] font-semibold border cursor-pointer ${themeMode === 'light' ? 'bg-cyan-50 hover:bg-cyan-100 text-cyan-700 border-cyan-300' : 'bg-slate-800 hover:bg-slate-700 text-cyan-300 border-slate-700'}`}
+                        className={`px-2 py-0.5 rounded text-[10px] font-semibold border cursor-pointer ${themeMode === 'light' ? 'bg-cyan-50 hover:bg-cyan-100 text-cyan-700 border-cyan-300' : 'bg-inner hover:bg-slate-700 text-cyan-300 border-subtle'}`}
                       >
                         Neon GIS
                       </button>
@@ -1766,7 +1766,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                           });
                           showToast('Loaded Eco Soft Palette to preview map (click Apply to save)');
                         }}
-                        className={`px-2 py-0.5 rounded text-[10px] font-semibold border cursor-pointer ${themeMode === 'light' ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-300' : 'bg-slate-800 hover:bg-slate-700 text-emerald-300 border-slate-700'}`}
+                        className={`px-2 py-0.5 rounded text-[10px] font-semibold border cursor-pointer ${themeMode === 'light' ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-300' : 'bg-inner hover:bg-slate-700 text-emerald-300 border-subtle'}`}
                       >
                         Eco Soft
                       </button>
@@ -1789,7 +1789,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                               return updated;
                             });
                           }}
-                          className="w-8 h-8 rounded border border-slate-700 cursor-pointer bg-transparent"
+                          className="w-8 h-8 rounded border border-subtle cursor-pointer bg-transparent"
                         />
                         <input
                           type="text"
@@ -1822,7 +1822,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                               return updated;
                             });
                           }}
-                          className="w-8 h-8 rounded border border-slate-700 cursor-pointer bg-transparent"
+                          className="w-8 h-8 rounded border border-subtle cursor-pointer bg-transparent"
                         />
                         <input
                           type="text"
@@ -1855,7 +1855,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                               return updated;
                             });
                           }}
-                          className="w-8 h-8 rounded border border-slate-700 cursor-pointer bg-transparent"
+                          className="w-8 h-8 rounded border border-subtle cursor-pointer bg-transparent"
                         />
                         <input
                           type="text"
@@ -1888,7 +1888,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                               return updated;
                             });
                           }}
-                          className="w-8 h-8 rounded border border-slate-700 cursor-pointer bg-transparent"
+                          className="w-8 h-8 rounded border border-subtle cursor-pointer bg-transparent"
                         />
                         <input
                           type="text"
@@ -1921,7 +1921,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                               return updated;
                             });
                           }}
-                          className="w-8 h-8 rounded border border-slate-700 cursor-pointer bg-transparent"
+                          className="w-8 h-8 rounded border border-subtle cursor-pointer bg-transparent"
                         />
                         <input
                           type="text"
@@ -1970,7 +1970,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                               return updated;
                             });
                           }}
-                          className={`px-2 py-1.5 rounded border text-[11px] font-semibold cursor-pointer transition-colors ${projectSettings.enableLayerGlow !== false ? 'bg-sky-500/20 text-sky-300 border-sky-500/40' : 'bg-slate-800 text-slate-400 border-slate-700'}`}
+                          className={`px-2 py-1.5 rounded border text-[11px] font-semibold cursor-pointer transition-colors ${projectSettings.enableLayerGlow !== false ? 'bg-sky-500/20 text-sky-300 border-sky-500/40' : 'bg-inner text-slate-400 border-subtle'}`}
                           title="Toggle High-Contrast Glow"
                         >
                           Glow
@@ -1978,7 +1978,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                       </div>
                     </div>
                     {/* LAYER & TRAJECTORY COLOR OPACITY */}
-                    <div className={`sm:col-span-2 pt-2 border-t ${themeMode === 'light' ? 'border-slate-200' : 'border-slate-700/60'}`}>
+                    <div className={`sm:col-span-2 pt-2 border-t ${themeMode === 'light' ? 'border-slate-200' : 'border-subtle'}`}>
                       <div className="flex justify-between items-center mb-1">
                         <label className="text-slate-400 font-medium">Layer & Trajectory Color Opacity</label>
                         <span className="font-mono text-[11px] text-emerald-400 font-bold">{projectSettings.layerOpacity ?? 100}%</span>
@@ -2002,7 +2002,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                   </div>
 
                   {/* Apply Layer Theme Button */}
-                  <div className={`pt-2 border-t flex justify-end ${themeMode === 'light' ? 'border-slate-200' : 'border-slate-800/80'}`}>
+                  <div className={`pt-2 border-t flex justify-end ${themeMode === 'light' ? 'border-slate-200' : 'border-subtle'}`}>
                     <button
                       type="button"
                       onClick={() => {
@@ -2033,10 +2033,10 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                   </div>
 
                   {/* REAL EMBEDDED WEBGIS MAP IFRAME CONTAINER (SPACIOUS & THEME-AWARE) */}
-                  <div className={`relative flex-1 min-h-[520px] rounded-xl overflow-hidden border ${themeMode === 'light' ? 'border-slate-200 bg-slate-100' : 'border-slate-700/80 bg-slate-950'} flex flex-col shadow-2xl`}>
+                  <div className={`relative flex-1 min-h-[520px] rounded-xl overflow-hidden border ${themeMode === 'light' ? 'border-slate-200 bg-slate-100' : 'border-subtle bg-app'} flex flex-col shadow-2xl`}>
                     {/* Top-Left GeoSphere 360 Operations Hub Floating Badge */}
                     <div className="absolute top-3 left-3 z-20 pointer-events-none">
-                      <div className={`backdrop-blur-xl border rounded-2xl px-3 py-1.5 shadow-2xl flex items-center gap-2.5 shrink-0 ${themeMode === 'light' ? 'bg-white/95 border-slate-200 text-slate-800' : 'bg-[#12161f]/95 border-slate-800/90 text-white'}`}>
+                      <div className={`backdrop-blur-xl border rounded-2xl px-3 py-1.5 shadow-2xl flex items-center gap-2.5 shrink-0 ${themeMode === 'light' ? 'bg-white/95 border-slate-200 text-slate-800' : 'bg-[#12161f]/95 border-subtle text-white'}`}>
                         <div className="p-1.5 bg-gradient-to-tr from-sky-600 to-emerald-500 rounded-xl shadow-md shadow-emerald-950/40 shrink-0">
                           <Layers size={14} className="text-white" />
                         </div>
@@ -2074,7 +2074,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
 
                     {/* Bottom-Right Live Cursor Coordinate Badge */}
                     <div className="absolute bottom-3 right-3 z-20 pointer-events-none">
-                      <div className={`backdrop-blur-md border rounded-lg px-2.5 py-1 text-[10px] shadow-xl flex items-center gap-1.5 font-mono ${themeMode === 'light' ? 'bg-white/95 border-slate-200 text-slate-800' : 'bg-slate-900/90 border-slate-700/80 text-slate-300'}`}>
+                      <div className={`backdrop-blur-md border rounded-lg px-2.5 py-1 text-[10px] shadow-xl flex items-center gap-1.5 font-mono ${themeMode === 'light' ? 'bg-white/95 border-slate-200 text-slate-800' : 'bg-app border-subtle text-slate-300'}`}>
                         <span className="text-sky-500 font-semibold">{projectSettings.spatialSrid || 'EPSG:4326'}</span>
                         <span className={themeMode === 'light' ? 'text-slate-300' : 'text-slate-600'}>|</span>
                         {previewCoords ? (
@@ -2098,7 +2098,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                             showToast('Refreshing Live Map Preview...');
                           }}
                           title="Refresh WebGIS Map Preview"
-                          className={`px-2.5 py-1 rounded-xl backdrop-blur-xl border cursor-pointer shadow-xl transition-all active:scale-95 flex items-center gap-1.5 text-[10px] font-semibold ${themeMode === 'light' ? 'bg-white/95 hover:bg-slate-100 text-sky-600 border-slate-300' : 'bg-slate-900/95 hover:bg-slate-800 text-sky-400 border-slate-700/80'}`}
+                          className={`px-2.5 py-1 rounded-xl backdrop-blur-xl border cursor-pointer shadow-xl transition-all active:scale-95 flex items-center gap-1.5 text-[10px] font-semibold ${themeMode === 'light' ? 'bg-white/95 hover:bg-slate-100 text-sky-600 border-slate-300' : 'bg-app hover:bg-inner text-sky-400 border-subtle'}`}
                         >
                           <RefreshCw size={11} />
                           <span>Refresh</span>
@@ -2108,7 +2108,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                           target="_blank"
                           rel="noreferrer"
                           title="Open WebGIS in new tab"
-                          className={`p-1.5 rounded-xl backdrop-blur-xl border cursor-pointer shadow-xl transition-all active:scale-95 flex items-center ${themeMode === 'light' ? 'bg-white/95 hover:bg-slate-100 text-slate-700 hover:text-slate-900 border-slate-300' : 'bg-slate-900/95 hover:bg-slate-800 text-slate-300 hover:text-white border-slate-700/80'}`}
+                          className={`p-1.5 rounded-xl backdrop-blur-xl border cursor-pointer shadow-xl transition-all active:scale-95 flex items-center ${themeMode === 'light' ? 'bg-white/95 hover:bg-slate-100 text-slate-700 hover:text-slate-900 border-slate-300' : 'bg-app hover:bg-inner text-slate-300 hover:text-white border-subtle'}`}
                         >
                           <ExternalLink size={12} />
                         </a>
@@ -2116,19 +2116,19 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
 
                       {/* Live Legend Chips */}
                       <div className="flex flex-wrap items-center gap-1 pointer-events-auto">
-                        <span className={`px-2 py-0.5 rounded-md text-[9px] font-semibold backdrop-blur-md border flex items-center gap-1.5 shadow-md ${themeMode === 'light' ? 'bg-white/95 border-slate-300 text-slate-800' : 'bg-slate-900/90 border-slate-700/80 text-slate-200'}`}>
+                        <span className={`px-2 py-0.5 rounded-md text-[9px] font-semibold backdrop-blur-md border flex items-center gap-1.5 shadow-md ${themeMode === 'light' ? 'bg-white/95 border-slate-300 text-slate-800' : 'bg-app border-subtle text-slate-200'}`}>
                           <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: projectSettings.publishedTrackColor || '#10B981' }} />
                           Published
                         </span>
-                        <span className={`px-2 py-0.5 rounded-md text-[9px] font-semibold backdrop-blur-md border flex items-center gap-1.5 shadow-md ${themeMode === 'light' ? 'bg-white/95 border-slate-300 text-slate-800' : 'bg-slate-900/90 border-slate-700/80 text-slate-200'}`}>
+                        <span className={`px-2 py-0.5 rounded-md text-[9px] font-semibold backdrop-blur-md border flex items-center gap-1.5 shadow-md ${themeMode === 'light' ? 'bg-white/95 border-slate-300 text-slate-800' : 'bg-app border-subtle text-slate-200'}`}>
                           <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: projectSettings.stagingTrackColor || '#F59E0B' }} />
                           Staging
                         </span>
-                        <span className={`px-2 py-0.5 rounded-md text-[9px] font-semibold backdrop-blur-md border flex items-center gap-1.5 shadow-md ${themeMode === 'light' ? 'bg-white/95 border-slate-300 text-slate-800' : 'bg-slate-900/90 border-slate-700/80 text-slate-200'}`}>
+                        <span className={`px-2 py-0.5 rounded-md text-[9px] font-semibold backdrop-blur-md border flex items-center gap-1.5 shadow-md ${themeMode === 'light' ? 'bg-white/95 border-slate-300 text-slate-800' : 'bg-app border-subtle text-slate-200'}`}>
                           <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: projectSettings.defectTrackColor || '#EF4444' }} />
                           Defect
                         </span>
-                        <span className={`px-2 py-0.5 rounded-md text-[9px] font-semibold backdrop-blur-md border flex items-center gap-1.5 shadow-md ${themeMode === 'light' ? 'bg-white/95 border-slate-300 text-slate-800' : 'bg-slate-900/90 border-slate-700/80 text-slate-200'}`}>
+                        <span className={`px-2 py-0.5 rounded-md text-[9px] font-semibold backdrop-blur-md border flex items-center gap-1.5 shadow-md ${themeMode === 'light' ? 'bg-white/95 border-slate-300 text-slate-800' : 'bg-app border-subtle text-slate-200'}`}>
                           <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: projectSettings.selectedTrackColor || '#38BDF8' }} />
                           Selected
                         </span>
@@ -2142,7 +2142,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
 
           {/* SECTION 4: SECURITY, RBAC & ACCESS CONTROL SETTINGS */}
           <div className={`p-5 rounded-xl border space-y-4 ${cardBg}`}>
-            <div className={`flex flex-wrap items-center justify-between gap-2 pb-3 border-b ${themeMode === 'light' ? 'border-slate-200' : 'border-slate-800'}`}>
+            <div className={`flex flex-wrap items-center justify-between gap-2 pb-3 border-b ${themeMode === 'light' ? 'border-slate-200' : 'border-subtle'}`}>
               <div className="flex items-center gap-2">
                 <Shield size={16} className={themeMode === 'light' ? 'text-slate-700' : 'text-slate-300'} />
                 <div>
@@ -2154,7 +2154,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                   </p>
                 </div>
               </div>
-              <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-semibold border ${themeMode === 'light' ? 'bg-slate-100 text-slate-700 border-slate-200' : 'bg-slate-800/80 text-slate-300 border-slate-700'}`}>
+              <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-semibold border ${themeMode === 'light' ? 'bg-slate-100 text-slate-700 border-slate-200' : 'bg-inner text-slate-300 border-subtle'}`}>
                 Protected Mode
               </span>
             </div>
@@ -2239,22 +2239,22 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
-                  <div className={`p-2.5 rounded-lg border ${themeMode === 'light' ? 'bg-slate-50 border-slate-200' : 'bg-slate-900/60 border-slate-800'}`}>
+                  <div className={`p-2.5 rounded-lg border ${themeMode === 'light' ? 'bg-slate-50 border-slate-200' : 'bg-app border-subtle'}`}>
                     <h5 className={`font-bold text-[11px] mb-1 ${themeMode === 'light' ? 'text-slate-800' : 'text-slate-200'}`}>Administrator</h5>
                     <p className={`text-[10px] leading-tight ${themeMode === 'light' ? 'text-slate-500' : 'text-slate-400'}`}>Full read/write, DB deletion approval, storage probe & security settings.</p>
                   </div>
 
-                  <div className={`p-2.5 rounded-lg border ${themeMode === 'light' ? 'bg-slate-50 border-slate-200' : 'bg-slate-900/60 border-slate-800'}`}>
+                  <div className={`p-2.5 rounded-lg border ${themeMode === 'light' ? 'bg-slate-50 border-slate-200' : 'bg-app border-subtle'}`}>
                     <h5 className={`font-bold text-[11px] mb-1 ${themeMode === 'light' ? 'text-slate-800' : 'text-slate-200'}`}>QA Inspector</h5>
                     <p className={`text-[10px] leading-tight ${themeMode === 'light' ? 'text-slate-500' : 'text-slate-400'}`}>Flag quality defects, inspect 360° panoramas & export audit reports.</p>
                   </div>
 
-                  <div className={`p-2.5 rounded-lg border ${themeMode === 'light' ? 'bg-slate-50 border-slate-200' : 'bg-slate-900/60 border-slate-800'}`}>
+                  <div className={`p-2.5 rounded-lg border ${themeMode === 'light' ? 'bg-slate-50 border-slate-200' : 'bg-app border-subtle'}`}>
                     <h5 className={`font-bold text-[11px] mb-1 ${themeMode === 'light' ? 'text-slate-800' : 'text-slate-200'}`}>Survey Operator</h5>
                     <p className={`text-[10px] leading-tight ${themeMode === 'light' ? 'text-slate-500' : 'text-slate-400'}`}>Upload CSV datasets, view subgrids & submit deletion approval requests.</p>
                   </div>
 
-                  <div className={`p-2.5 rounded-lg border ${themeMode === 'light' ? 'bg-slate-50 border-slate-200' : 'bg-slate-900/60 border-slate-800'}`}>
+                  <div className={`p-2.5 rounded-lg border ${themeMode === 'light' ? 'bg-slate-50 border-slate-200' : 'bg-app border-subtle'}`}>
                     <h5 className={`font-bold text-[11px] mb-1 ${themeMode === 'light' ? 'text-slate-800' : 'text-slate-200'}`}>Viewer</h5>
                     <p className={`text-[10px] leading-tight ${themeMode === 'light' ? 'text-slate-500' : 'text-slate-400'}`}>Read-only access to published GIS map viewer, charts & analytics.</p>
                   </div>
@@ -2292,7 +2292,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                       setTimeout(() => setCopiedKey(false), 2000);
                       showToast('API key copied to clipboard!');
                     }}
-                    className={`px-3 py-1.5 rounded text-xs font-semibold cursor-pointer flex items-center gap-1 border transition-colors ${themeMode === 'light' ? 'bg-white hover:bg-slate-100 text-slate-700 border-slate-300' : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'}`}
+                    className={`px-3 py-1.5 rounded text-xs font-semibold cursor-pointer flex items-center gap-1 border transition-colors ${themeMode === 'light' ? 'bg-white hover:bg-slate-100 text-slate-700 border-slate-300' : 'bg-inner hover:bg-slate-700 text-slate-300 border-subtle'}`}
                   >
                     <Copy size={12} />
                     <span>{copiedKey ? 'Copied' : 'Copy'}</span>
@@ -2304,12 +2304,12 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
 
           {/* SECTION 5: CONTRACT SLA TARGETS & QA BENCHMARKS */}
           <div className={`p-5 rounded-xl border space-y-4 ${cardBg}`}>
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+            <div className="flex items-center justify-between pb-3 border-b border-subtle">
               <div className="flex items-center gap-2">
                 <Activity size={16} className="text-sky-400" />
                 <h3 className="text-sm font-bold text-slate-100 uppercase tracking-wide">5. Contract SLA Targets & QA Benchmarks</h3>
               </div>
-              <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-slate-800 border border-slate-700 text-slate-300">
+              <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-inner border border-subtle text-slate-300">
                 Quality SLA Standard
               </span>
             </div>
@@ -2381,7 +2381,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
             </div>
 
             {/* Save Button */}
-            <div className={`pt-3 border-t flex flex-wrap justify-end items-center gap-3 ${themeMode === 'light' ? 'border-slate-200' : 'border-slate-800'}`}>
+            <div className={`pt-3 border-t flex flex-wrap justify-end items-center gap-3 ${themeMode === 'light' ? 'border-slate-200' : 'border-subtle'}`}>
               {!isAdmin && (
                 <span className="text-xs text-amber-400 font-mono flex items-center gap-1.5">
                   <Lock size={13} /> Only administrators can save configuration changes.
@@ -2402,7 +2402,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                 }}
                 className={`px-5 py-2.5 rounded-lg text-xs font-bold transition-all shadow-md flex items-center gap-2 ${isAdmin
                   ? 'bg-sky-600 hover:bg-sky-500 text-white cursor-pointer active:scale-95'
-                  : 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed'
+                  : 'bg-inner text-slate-500 border border-subtle cursor-not-allowed'
                   }`}
               >
                 {isAdmin ? <CheckCircle size={14} /> : <Lock size={14} />}
@@ -2418,7 +2418,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
       {/* ========================================================================= */}
       {activeTab === 'approvals' && (
         <div className={`p-5 rounded-xl border space-y-4 ${cardBg}`}>
-          <div className={`flex flex-wrap items-center justify-between gap-3 pb-3 border-b ${themeMode === 'light' ? 'border-slate-200' : 'border-slate-800'}`}>
+          <div className={`flex flex-wrap items-center justify-between gap-3 pb-3 border-b ${themeMode === 'light' ? 'border-slate-200' : 'border-subtle'}`}>
             <div>
               <h3 className={`text-sm font-bold flex items-center gap-2 ${themeMode === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>
                 <CheckSquare size={16} className={themeMode === 'light' ? 'text-slate-700' : 'text-slate-300'} />
@@ -2440,10 +2440,10 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
             </div>
           </div>
 
-          <div className={`border rounded-lg overflow-x-auto ${themeMode === 'light' ? 'border-slate-200' : 'border-slate-800'}`}>
+          <div className={`border rounded-lg overflow-x-auto ${themeMode === 'light' ? 'border-slate-200' : 'border-subtle'}`}>
             <table className="w-full text-xs text-left border-collapse">
               <thead>
-                <tr className={`uppercase text-[10px] tracking-wider border-b ${themeMode === 'light' ? 'bg-slate-100/80 text-slate-600 border-slate-200' : 'bg-slate-900/80 text-slate-400 border-slate-800'}`}>
+                <tr className={`uppercase text-[10px] tracking-wider border-b ${themeMode === 'light' ? 'bg-slate-100/80 text-slate-600 border-slate-200' : 'bg-app text-slate-400 border-subtle'}`}>
                   <th className="px-3.5 py-2.5">Request ID</th>
                   <th className="px-3.5 py-2.5">Subgrid</th>
                   <th className="px-3.5 py-2.5">Requester</th>
@@ -2464,7 +2464,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                     const requesterEmail = req.userEmail || '-';
 
                     return (
-                      <tr key={req.id} className={`transition-colors ${themeMode === 'light' ? 'hover:bg-slate-50' : 'hover:bg-slate-800/30'}`}>
+                      <tr key={req.id} className={`transition-colors ${themeMode === 'light' ? 'hover:bg-slate-50' : 'hover:bg-inner'}`}>
                         <td className={`px-3.5 py-2.5 font-mono font-semibold ${themeMode === 'light' ? 'text-slate-800' : 'text-slate-300'}`}>{req.id}</td>
                         <td className={`px-3.5 py-2.5 font-mono font-bold ${themeMode === 'light' ? 'text-slate-800' : 'text-slate-200'}`}>{req.subgrid}</td>
                         <td className="px-3.5 py-2.5">
@@ -2534,7 +2534,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
       {/* ========================================================================= */}
       {activeTab === 'reports' && (
         <div className={`p-5 rounded-xl border space-y-5 ${cardBg}`}>
-          <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800">
+          <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-subtle">
             <div>
               <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2">
                 <FileText size={16} className="text-sky-400" />
@@ -2567,11 +2567,11 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                   <span className="text-slate-400 text-[10px] block font-sans">Processed Frames</span>
                   <strong className="text-slate-200">{totalReportFrames.toLocaleString()} frames <span className="text-[10px] font-normal text-slate-400 font-sans">(incl. staging)</span></strong>
                 </div>
-                <div className="text-right pl-4 border-l border-slate-800">
+                <div className="text-right pl-4 border-l border-subtle">
                   <span className="text-slate-400 text-[10px] block font-sans">Remaining KM</span>
                   <strong className="text-slate-200">{Math.max(0, targetKm - totalReportDistance).toFixed(1)} km</strong>
                 </div>
-                <div className="text-right pl-4 border-l border-slate-800">
+                <div className="text-right pl-4 border-l border-subtle">
                   <span className="text-slate-400 text-[10px] block font-sans">Active Subgrids</span>
                   <strong className="text-slate-200">{batchLogs.length} subgrids</strong>
                 </div>
@@ -2579,7 +2579,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
             </div>
 
             {/* Visual Progress Bar */}
-            <div className="w-full h-2.5 bg-slate-800/90 rounded-full overflow-hidden border border-slate-700/60">
+            <div className="w-full h-2.5 bg-inner rounded-full overflow-hidden border border-subtle">
               <div
                 className="h-full bg-sky-500 rounded-full transition-all duration-500"
                 style={{ width: `${Math.max(1, Math.min(100, overallProgressPercent))}%` }}
@@ -2598,7 +2598,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                 <div className="flex justify-between"><span>Total Distance:</span> <strong className="text-slate-200 font-mono">{totalReportDistance.toFixed(1)} km</strong></div>
                 <div className="flex justify-between"><span>Processed Frames:</span> <strong className="text-slate-200 font-mono">{totalReportFrames.toLocaleString()} frames <span className="text-[10px] font-normal text-slate-400 font-sans">(incl. staging)</span></strong></div>
                 <div className="flex justify-between"><span>Target Distance:</span> <strong className="text-slate-200 font-mono">{targetKm.toFixed(1)} km</strong></div>
-                <div className="flex justify-between pt-1 border-t border-slate-800/80"><span>Remaining to Survey:</span> <strong className="text-sky-400 font-mono">{Math.max(0, targetKm - totalReportDistance).toFixed(1)} km</strong></div>
+                <div className="flex justify-between pt-1 border-t border-subtle"><span>Remaining to Survey:</span> <strong className="text-sky-400 font-mono">{Math.max(0, targetKm - totalReportDistance).toFixed(1)} km</strong></div>
               </div>
             </div>
 
@@ -2611,7 +2611,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                 <div className="flex justify-between"><span>Defect Frames:</span> <strong className="text-amber-300 font-mono">{totalReportDefects}</strong></div>
                 <div className="flex justify-between"><span>Allowed Threshold:</span> <strong className="text-slate-200 font-mono">{projectSettings.maxDefectThresholdPercent || 5.0}%</strong></div>
                 <div className="flex justify-between"><span>Defect Rate:</span> <strong className="text-slate-200 font-mono">{totalReportFrames > 0 ? ((totalReportDefects / totalReportFrames) * 100).toFixed(2) : '0.00'}%</strong></div>
-                <div className="flex justify-between pt-1 border-t border-slate-800/80"><span>Pipeline Quality:</span> <strong className="text-emerald-400 font-mono">{compliantPercent}% Compliant</strong></div>
+                <div className="flex justify-between pt-1 border-t border-subtle"><span>Pipeline Quality:</span> <strong className="text-emerald-400 font-mono">{compliantPercent}% Compliant</strong></div>
               </div>
             </div>
 
@@ -2624,7 +2624,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                 <div className="flex justify-between"><span>Total Subgrids:</span> <strong className="text-slate-200 font-mono">{batchLogs.length}</strong></div>
                 <div className="flex justify-between"><span>Completed Batches:</span> <strong className="text-emerald-400 font-mono">{batchLogs.filter(b => b.status === 'Complete').length}</strong></div>
                 <div className="flex justify-between"><span>Ongoing Batches:</span> <strong className="text-amber-300 font-mono">{batchLogs.filter(b => b.status === 'Ongoing').length}</strong></div>
-                <div className="flex justify-between pt-1 border-t border-slate-800/80"><span>Ready for WebGIS:</span> <strong className="text-sky-400 font-mono">{batchLogs.filter(b => (b as any).publishToWebGIS === 'yes' || (b as any).isSyncedWithSupabase).length}</strong></div>
+                <div className="flex justify-between pt-1 border-t border-subtle"><span>Ready for WebGIS:</span> <strong className="text-sky-400 font-mono">{batchLogs.filter(b => (b as any).publishToWebGIS === 'yes' || (b as any).isSyncedWithSupabase).length}</strong></div>
               </div>
             </div>
           </div>
@@ -2641,9 +2641,9 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
               </span>
             </div>
 
-            <div className="border border-slate-800 rounded-xl overflow-hidden shadow-sm">
+            <div className="border border-subtle rounded-xl overflow-hidden shadow-sm">
               <table className="w-full text-left text-xs">
-                <thead className={`text-[11px] uppercase tracking-wider font-semibold border-b ${themeMode === 'light' ? 'bg-slate-100 text-slate-700 border-slate-200' : 'bg-[#070a0f] text-slate-400 border-slate-800'
+                <thead className={`text-[11px] uppercase tracking-wider font-semibold border-b ${themeMode === 'light' ? 'bg-slate-100 text-slate-700 border-slate-200' : 'bg-[#070a0f] text-slate-400 border-subtle'
                   }`}>
                   <tr>
                     <th className="px-3.5 py-2.5">Date</th>
@@ -2672,7 +2672,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                       return (
                         <tr
                           key={row.id || `${row.date}-${row.subgrid}-${idx}`}
-                          className={`hover:bg-slate-800/30 transition-colors ${themeMode === 'light' ? 'text-slate-800' : 'text-slate-300'
+                          className={`hover:bg-inner transition-colors ${themeMode === 'light' ? 'text-slate-800' : 'text-slate-300'
                             }`}
                         >
                           <td className="px-3.5 py-2.5 font-mono text-[11px] font-semibold">{row.date || '—'}</td>
@@ -2695,7 +2695,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                                 Published
                               </span>
                             ) : (
-                              <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-800 text-slate-400 border border-slate-700 font-mono">
+                              <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-inner text-slate-400 border border-subtle font-mono">
                                 Staging
                               </span>
                             )}
@@ -2706,7 +2706,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                   )}
                 </tbody>
                 {dailyData.length > 0 && (
-                  <tfoot className={`font-semibold border-t ${themeMode === 'light' ? 'bg-slate-50 text-slate-800 border-slate-200' : 'bg-[#070a0f] text-slate-200 border-slate-800'
+                  <tfoot className={`font-semibold border-t ${themeMode === 'light' ? 'bg-slate-50 text-slate-800 border-slate-200' : 'bg-[#070a0f] text-slate-200 border-subtle'
                     }`}>
                     <tr>
                       <td colSpan={2} className="px-3.5 py-2.5 text-slate-400 text-[11px]">Total ({dailyData.length} daily logs)</td>
@@ -2730,7 +2730,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
       {/* ========================================================================= */}
       {activeTab === 'audit' && (
         <div className={`p-5 rounded-xl border space-y-4 ${cardBg}`}>
-          <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800">
+          <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-subtle">
             <div>
               <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2">
                 <Activity size={16} className="text-sky-400" />
@@ -2766,10 +2766,10 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
             </select>
           </div>
 
-          <div className="border border-slate-800 rounded-lg overflow-x-auto max-h-[450px]">
+          <div className="border border-subtle rounded-lg overflow-x-auto max-h-[450px]">
             <table className="w-full text-xs text-left border-collapse">
-              <thead className="sticky top-0 bg-slate-900 z-10">
-                <tr className="text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800">
+              <thead className="sticky top-0 bg-app z-10">
+                <tr className="text-slate-400 uppercase text-[10px] tracking-wider border-b border-subtle">
                   <th className="px-3.5 py-2.5">Timestamp</th>
                   <th className="px-3.5 py-2.5">Action</th>
                   <th className="px-3.5 py-2.5">Event Title</th>
@@ -2784,17 +2784,17 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                   </tr>
                 ) : (
                   filteredAuditLogs.map(log => (
-                    <tr key={log.id} className="hover:bg-slate-800/30 transition-colors">
+                    <tr key={log.id} className="hover:bg-inner transition-colors">
                       <td className="px-3.5 py-2 font-mono text-[11px] text-slate-400 whitespace-nowrap">{log.timestamp}</td>
                       <td className="px-3.5 py-2">
-                        <span className="px-2 py-0.5 rounded text-[9.5px] font-bold font-mono uppercase bg-slate-800 border border-slate-700 text-slate-300">
+                        <span className="px-2 py-0.5 rounded text-[9.5px] font-bold font-mono uppercase bg-inner border border-subtle text-slate-300">
                           {log.type}
                         </span>
                       </td>
                       <td className="px-3.5 py-2 font-semibold text-slate-200 whitespace-nowrap">{log.title}</td>
                       <td className="px-3.5 py-2 text-slate-400 text-[11px] max-w-md truncate" title={log.details}>{log.details}</td>
                       <td className="px-3.5 py-2 text-right">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-semibold border ${log.status === 'success' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : log.status === 'error' ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' : 'bg-slate-800 text-slate-300 border-slate-700'}`}>
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-semibold border ${log.status === 'success' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : log.status === 'error' ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' : 'bg-inner text-slate-300 border-subtle'}`}>
                           {log.status || 'info'}
                         </span>
                       </td>
@@ -2812,7 +2812,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
       {/* ========================================================================= */}
       {activeTab === 'health' && (
         <div className={`p-5 rounded-xl border space-y-4 ${cardBg}`}>
-          <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+          <div className="flex items-center justify-between pb-3 border-b border-subtle">
             <div>
               <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2">
                 <Server size={16} className="text-emerald-400" />
@@ -2823,7 +2823,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
             <button
               onClick={handleTestHealth}
               disabled={isTestingHealth}
-              className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-sm"
+              className="px-3.5 py-2 bg-inner hover:bg-slate-700 border border-subtle text-slate-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-sm"
             >
               <RefreshCw size={13} className={isTestingHealth ? 'animate-spin text-sky-400' : 'text-sky-400'} />
               <span>Probe Health Now</span>
@@ -2906,9 +2906,9 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
       {/* MODAL 1: ADD USER / INVITE MODAL */}
       {/* ========================================================================= */}
       {isAddUserModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-app backdrop-blur-sm p-4 animate-in fade-in duration-200">
           <div className={`w-full max-w-md p-5 rounded-2xl border shadow-2xl space-y-4 ${cardBg}`}>
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+            <div className="flex items-center justify-between pb-3 border-b border-subtle">
               <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2">
                 <Users size={16} className="text-sky-400" />
                 Add / Provision Dashboard User
@@ -2955,11 +2955,11 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                 </select>
               </div>
 
-              <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+              <div className="flex justify-end gap-2 pt-3 border-t border-subtle">
                 <button
                   type="button"
                   onClick={() => setIsAddUserModalOpen(false)}
-                  className="px-3.5 py-2 rounded-lg border border-slate-700 bg-slate-800 text-slate-300 hover:text-white text-xs font-semibold cursor-pointer"
+                  className="px-3.5 py-2 rounded-lg border border-subtle bg-inner text-slate-300 hover:text-white text-xs font-semibold cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -2979,9 +2979,9 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
       {/* MODAL 2: REJECT DELETION REQUEST MODAL */}
       {/* ========================================================================= */}
       {rejectModalReqId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-app backdrop-blur-sm p-4 animate-in fade-in duration-200">
           <div className={`w-full max-w-md p-5 rounded-2xl border shadow-2xl space-y-4 ${cardBg}`}>
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+            <div className="flex items-center justify-between pb-3 border-b border-subtle">
               <h3 className="text-sm font-bold text-rose-300 flex items-center gap-2">
                 <XCircle size={16} className="text-rose-400" />
                 Reject Deletion Request ({rejectModalReqId})
@@ -2999,10 +2999,10 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                 className={`w-full p-2.5 rounded-lg text-xs font-medium focus:outline-none border ${inputBg}`}
               />
 
-              <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
+              <div className="flex justify-end gap-2 pt-2 border-t border-subtle">
                 <button
                   onClick={() => setRejectModalReqId(null)}
-                  className="px-3.5 py-2 rounded-lg border border-slate-700 bg-slate-800 text-slate-300 hover:text-white text-xs font-semibold cursor-pointer"
+                  className="px-3.5 py-2 rounded-lg border border-subtle bg-inner text-slate-300 hover:text-white text-xs font-semibold cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -3022,9 +3022,9 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
       {/* MODAL 3: CONFIRM ROLE ASSIGNMENT MODAL */}
       {/* ========================================================================= */}
       {roleChangeModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-app backdrop-blur-sm p-4 animate-in fade-in duration-200">
           <div className={`w-full max-w-md p-5 rounded-2xl border shadow-2xl space-y-4 ${cardBg}`}>
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+            <div className="flex items-center justify-between pb-3 border-b border-subtle">
               <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2">
                 <Shield size={16} className="text-sky-400" />
                 Confirm Role Assignment
@@ -3042,24 +3042,24 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                   <span className="text-slate-400">Current Role:</span>
                   <span className="font-semibold text-slate-300">{roleChangeModal.previousRole}</span>
                 </div>
-                <div className="flex justify-between items-center pt-1.5 border-t border-slate-800">
+                <div className="flex justify-between items-center pt-1.5 border-t border-subtle">
                   <span className="text-slate-400">New Assigned Role:</span>
                   <span className="font-bold text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded border border-sky-500/20">{roleChangeModal.targetRole}</span>
                 </div>
               </div>
 
-              <div className="p-2.5 rounded-lg bg-slate-900/60 border border-slate-800 text-[11px] text-slate-400 leading-relaxed">
+              <div className="p-2.5 rounded-lg bg-app border border-subtle text-[11px] text-slate-400 leading-relaxed">
                 {roleChangeModal.targetRole === 'Administrator' && '• Administrator: Full operational rights, deletion approvals, project settings & user management.'}
                 {roleChangeModal.targetRole === 'Survey Operator' && '• Survey Operator: Trajectory inspection, batch processing & survey editing rights.'}
                 {roleChangeModal.targetRole === 'QA Inspector' && '• QA Inspector: Quality assurance reviews, defect tagging & deletion request submissions.'}
                 {roleChangeModal.targetRole === 'Viewer' && '• Viewer: Read-only spatial viewing mode without data modification privileges.'}
               </div>
 
-              <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+              <div className="flex justify-end gap-2 pt-3 border-t border-subtle">
                 <button
                   type="button"
                   onClick={() => setRoleChangeModal(null)}
-                  className="px-3.5 py-2 rounded-lg border border-slate-700 bg-slate-800 text-slate-300 hover:text-white text-xs font-semibold cursor-pointer"
+                  className="px-3.5 py-2 rounded-lg border border-subtle bg-inner text-slate-300 hover:text-white text-xs font-semibold cursor-pointer"
                 >
                   Cancel
                 </button>

@@ -128,7 +128,7 @@ export const ThreePanoramaViewer: React.FC<ThreePanoramaViewerProps> = ({
     isDraggingRef.current = false;
     try {
       (e.target as HTMLElement).releasePointerCapture(e.pointerId);
-    } catch (_) {}
+    } catch (_) { }
   };
 
   const handleWheel = (e: React.WheelEvent) => {
@@ -220,7 +220,7 @@ export const ThreePanoramaViewer: React.FC<ThreePanoramaViewerProps> = ({
 
   return (
     <div
-      className={`relative overflow-hidden rounded-lg bg-slate-950 cursor-grab active:cursor-grabbing select-none ${className}`}
+      className={`relative overflow-hidden rounded-lg bg-app cursor-grab active:cursor-grabbing select-none ${className}`}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
@@ -229,7 +229,7 @@ export const ThreePanoramaViewer: React.FC<ThreePanoramaViewerProps> = ({
       <div ref={containerRef} className="w-full h-full min-h-[160px]" />
 
       {isLoading && (
-        <div className="absolute inset-0 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center pointer-events-none z-10">
+        <div className="absolute inset-0 bg-app backdrop-blur-xs flex items-center justify-center pointer-events-none z-10">
           <div className="flex items-center gap-2 text-sky-400 text-xs font-medium">
             <span className="w-2 h-2 rounded-full bg-sky-400 animate-ping" />
             Loading 360° Sphere...
@@ -238,7 +238,7 @@ export const ThreePanoramaViewer: React.FC<ThreePanoramaViewerProps> = ({
       )}
 
       {hasError && (
-        <div className="absolute inset-0 bg-slate-900/90 backdrop-blur-md flex items-center justify-center p-4 text-center z-20">
+        <div className="absolute inset-0 bg-app backdrop-blur-md flex items-center justify-center p-4 text-center z-20">
           <span className="text-xs text-amber-400 font-medium">
             360° Panorama Image Unavailable
           </span>

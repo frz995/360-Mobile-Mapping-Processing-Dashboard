@@ -3,6 +3,7 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+@import './themes.css';
 
 body {
   margin: 0;
@@ -57,7 +58,7 @@ body {
 .light-mode main.bg-\[\#0B0F17\],
 .light-mode .bg-\[\#0b0e14\],
 .light-mode .bg-\[\#0B0F17\],
-.light-mode .bg-slate-950,
+.light-mode .bg-app,
 .light-mode .bg-\[\#09090b\] {
   background-color: #f8fafc !important;
 }
@@ -77,17 +78,17 @@ body {
 .light-mode .bg-\[\#192231\],
 .light-mode .bg-\[\#1a2332\],
 .light-mode .bg-\[\#1e293b\],
-.light-mode .bg-slate-900,
-.light-mode .bg-slate-900\/90,
-.light-mode .bg-slate-900\/95,
-.light-mode .bg-slate-900\/50,
-.light-mode .bg-slate-900\/80,
-.light-mode .bg-slate-950\/90,
-.light-mode .bg-slate-950\/80,
-.light-mode .bg-slate-800,
-.light-mode .bg-slate-800\/90,
-.light-mode .bg-slate-800\/80,
-.light-mode .bg-slate-800\/50 {
+.light-mode .bg-app,
+.light-mode .bg-app\/90,
+.light-mode .bg-app\/95,
+.light-mode .bg-app\/50,
+.light-mode .bg-app\/80,
+.light-mode .bg-app\/90,
+.light-mode .bg-app\/80,
+.light-mode .bg-inner,
+.light-mode .bg-inner\/90,
+.light-mode .bg-inner\/80,
+.light-mode .bg-inner\/50 {
   background-color: #ffffff !important;
   border-color: #e2e8f0 !important;
   color: #0f172a !important;
@@ -115,10 +116,10 @@ body {
 .light-mode .bg-\[\#0c1017\],
 .light-mode .bg-\[\#11151c\],
 .light-mode .bg-\[\#192231\],
-.light-mode .bg-slate-900\/40,
-.light-mode .bg-slate-900\/60,
-.light-mode .bg-slate-900\/30,
-.light-mode .bg-slate-800\/40 {
+.light-mode .bg-app\/40,
+.light-mode .bg-app\/60,
+.light-mode .bg-app\/30,
+.light-mode .bg-inner\/40 {
   background-color: #f8fafc !important;
   border-color: #e2e8f0 !important;
 }
@@ -179,15 +180,15 @@ body {
 }
 
 /* Borders in Light Mode */
-.light-mode .border-slate-800,
-.light-mode .border-slate-800\/80,
-.light-mode .border-slate-800\/60,
-.light-mode .border-slate-800\/50,
-.light-mode .border-slate-800\/40,
-.light-mode .border-slate-800\/90,
-.light-mode .border-slate-700,
-.light-mode .border-slate-700\/80,
-.light-mode .border-slate-700\/60,
+.light-mode .border-subtle,
+.light-mode .border-subtle\/80,
+.light-mode .border-subtle\/60,
+.light-mode .border-subtle\/50,
+.light-mode .border-subtle\/40,
+.light-mode .border-subtle\/90,
+.light-mode .border-subtle,
+.light-mode .border-subtle\/80,
+.light-mode .border-subtle\/60,
 .light-mode .border-slate-600,
 .light-mode [class*="border-\[rgba\(255\,255\,255"] {
   border-color: #e2e8f0 !important;
@@ -257,7 +258,7 @@ body {
 
 /* Table Headers & Body */
 .light-mode table thead,
-.light-mode thead.bg-slate-800,
+.light-mode thead.bg-inner,
 .light-mode thead.bg-\[\#0d121d\],
 .light-mode table header {
   background-color: #f1f5f9 !important;
@@ -274,15 +275,15 @@ body {
 }
 
 .light-mode table tbody tr:hover,
-.light-mode .hover\:bg-slate-800\/50:hover,
-.light-mode .hover\:bg-slate-800:hover,
+.light-mode .hover\:bg-inner\/50:hover,
+.light-mode .hover\:bg-inner:hover,
 .light-mode .hover\:bg-\[\#151d2a\]:hover,
 .light-mode .hover\:bg-\[\#1e293b\]\/50:hover {
   background-color: #f8fafc !important;
 }
 
-.light-mode .divide-slate-800 > :not([hidden]) ~ :not([hidden]),
-.light-mode .divide-slate-700 > :not([hidden]) ~ :not([hidden]) {
+.light-mode .divide-slate-800> :not([hidden])~ :not([hidden]),
+.light-mode .divide-slate-700> :not([hidden])~ :not([hidden]) {
   border-color: #e2e8f0 !important;
 }
 
@@ -335,7 +336,7 @@ body {
 
 .light-mode .fixed .bg-\[\#0f172a\],
 .light-mode .fixed .bg-\[\#111827\],
-.light-mode .fixed .bg-slate-900,
+.light-mode .fixed .bg-app,
 .light-mode .fixed .bg-\[\#0d121d\],
 .light-mode .absolute .bg-\[\#111827\],
 .light-mode .absolute .bg-\[\#12161f\],
@@ -360,29 +361,29 @@ body {
   color: #ffffff !important;
 }
 
-.light-mode button.bg-slate-800,
-.light-mode button.bg-slate-900 {
+.light-mode button.bg-inner,
+.light-mode button.bg-app {
   background-color: #f1f5f9 !important;
   border-color: #cbd5e1 !important;
   color: #334155 !important;
 }
 
-.light-mode button.bg-slate-800:hover,
-.light-mode button.bg-slate-900:hover {
+.light-mode button.bg-inner:hover,
+.light-mode button.bg-app:hover {
   background-color: #e2e8f0 !important;
   color: #0f172a !important;
 }
 
 /* Light Mode System Metrics Panel Cards */
-.light-mode .bg-slate-900\/90,
-.light-mode .bg-slate-900\/80,
+.light-mode .bg-app\/90,
+.light-mode .bg-app\/80,
 .light-mode .bg-\[\#131b2e\] {
   background-color: #f8fafc !important;
   border-color: #e2e8f0 !important;
 }
 
-.light-mode .bg-slate-950\/80,
-.light-mode .bg-slate-950 {
+.light-mode .bg-app\/80,
+.light-mode .bg-app {
   background-color: #ffffff !important;
   border-color: #e2e8f0 !important;
   color: #0f172a !important;
@@ -419,8 +420,8 @@ body {
   border-radius: 6px !important;
 }
 
-.light-mode .custom-panotrack-popup .bg-slate-900\/95,
-.light-mode .custom-panotrack-popup .bg-slate-900,
+.light-mode .custom-panotrack-popup .bg-app\/95,
+.light-mode .custom-panotrack-popup .bg-app,
 .light-mode .custom-panotrack-popup .bg-\[\#0f172a\],
 .light-mode .custom-panotrack-popup [class*="bg-slate-"],
 .light-mode .custom-panotrack-popup [class*="bg-\[\#"],
@@ -431,8 +432,8 @@ body {
   color: #0f172a !important;
 }
 
-.light-mode .custom-panotrack-popup .border-slate-800,
-.light-mode .custom-panotrack-popup .border-slate-700\/80 {
+.light-mode .custom-panotrack-popup .border-subtle,
+.light-mode .custom-panotrack-popup .border-subtle\/80 {
   border-color: #e2e8f0 !important;
 }
 
@@ -465,12 +466,12 @@ body {
 .light-mode ::-webkit-scrollbar-track {
   background: #f1f5f9;
 }
+
 .light-mode ::-webkit-scrollbar-thumb {
   background: #cbd5e1;
   border-radius: 4px;
 }
+
 .light-mode ::-webkit-scrollbar-thumb:hover {
   background: #0ea5e9;
 }
-
-

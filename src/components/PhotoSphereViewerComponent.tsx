@@ -101,7 +101,7 @@ export const PhotoSphereViewerComponent: React.FC<PhotoSphereViewerProps> = ({
     <div className={`relative overflow-hidden rounded-lg ${className}`}>
       <div ref={containerRef} className="w-full h-full min-h-[120px]" />
       {hasError && (
-        <div className="absolute inset-0 bg-slate-900/90 backdrop-blur-md flex items-center justify-center p-4 text-center z-20">
+        <div className="absolute inset-0 bg-app backdrop-blur-md flex items-center justify-center p-4 text-center z-20">
           <span className="text-xs text-amber-400 font-medium">
             360° Image Preview Unavailable
           </span>

@@ -2,6 +2,7 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.tsx'
 import './index.css'
+import './themes.css';
 
 class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean; error: Error | null }> {
   constructor(props: { children: React.ReactNode }) {
@@ -20,7 +21,7 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
   handleReset = () => {
     try {
       localStorage.removeItem('layerCatalog');
-    } catch {}
+    } catch { }
     this.setState({ hasError: false, error: null });
     window.location.reload();
   };
