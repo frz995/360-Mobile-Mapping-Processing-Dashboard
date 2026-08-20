@@ -39,8 +39,6 @@ import {
   Copy,
   ExternalLink,
   Loader2,
-  Sun,
-  Moon,
   Info,
   Settings
 } from 'lucide-react';
@@ -4940,24 +4938,6 @@ export default function App() {
   // Derived themeMode for backward compatibility
   const themeMode = currentTheme === 'daylight' ? 'light' : 'dark';
 
-  // Synchronized Toggle Function for Navbar
-  const toggleTheme = () => {
-    const nextTheme = currentTheme === 'daylight'
-      ? (localStorage.getItem('app_last_dark_theme') || 'midnight')
-      : 'daylight';
-
-    if (currentTheme !== 'daylight') {
-      localStorage.setItem('app_last_dark_theme', currentTheme);
-    }
-
-    setCurrentTheme(nextTheme);
-    document.documentElement.setAttribute('data-theme', nextTheme);
-    try {
-      localStorage.setItem('app_dashboard_theme', nextTheme);
-    } catch (e) { }
-    window.dispatchEvent(new CustomEvent('app-theme-changed', { detail: nextTheme }));
-  };
-
   // Global Theme Listener
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', currentTheme);
@@ -7095,15 +7075,8 @@ export default function App() {
             )}
           </div>
           <div className="flex items-center gap-2 pl-2 border-l border-slate-800">
-            {/* LIGHT / DARK MODE TOGGLE SWITCH - ICON ONLY (NEUTRAL SLATE) */}
-            <button
-              onClick={toggleTheme}
-              className="p-1.5 rounded-lg border border-slate-700/80 bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition-all cursor-pointer flex items-center justify-center shadow-xs"
-              title={`Switch to ${themeMode === 'dark' ? 'Light' : 'Dark'} Mode`}
-            >
-              {themeMode === 'dark' ? <Sun size={16} className="text-slate-300" /> : <Moon size={16} className="text-slate-300" />}
-            </button>
 
+            {/* Guest user */}
             <div className={`w-7 h-7 rounded-full border flex items-center justify-center text-xs font-bold ${isGuestUser ? 'bg-amber-900/40 border-amber-700 text-amber-400' : 'bg-slate-800 border-slate-700 text-sky-400'
               }`} title={`Logged in as ${authSession?.user?.email || 'guest@example.com'}`}>
               {isGuestUser ? 'G' : (authSession?.user?.email?.charAt(0).toUpperCase() || 'F')}
