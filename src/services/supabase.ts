@@ -104,14 +104,15 @@ export async function fetchSupabaseData(): Promise<{
   error?: string;
 }> {
   try {
-    // Try fetching from panoramas_view or panoramas table
+    // Try fetching from panoramas_view or fallback to panoramas table
     let { data, error } = await supabase
       .from('panoramas_view')
       .select('*');
 
     if (error || !data || data.length === 0) {
-      console.warn('panoramas_view fallback to panoramas table:', error);
-      const res = await supabase.from('panoramas').select('*');
+      const res = await supabase
+        .from('panoramas')
+        .select('*');
       data = res.data;
       error = res.error;
     }
