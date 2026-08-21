@@ -7,8 +7,7 @@ import {
     ArrowRight,
     ChevronLeft,
     ChevronRight,
-    FileText,
-    Server
+    FileText
 } from 'lucide-react';
 
 export interface SystemShowcaseProps {
@@ -174,7 +173,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
         }
     ];
 
-    // Preload screenshot assets
+    // Preload screenshot assets into memory for instant transitions[cite: 1]
     useEffect(() => {
         SYSTEM_MODULES.forEach((mod) => {
             mod.images.forEach((src) => {
@@ -227,8 +226,8 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                                 key={mod.id}
                                 onClick={() => setActiveIndex(idx)}
                                 className={`px-3 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${activeIndex === idx
-                                        ? 'bg-slate-800 text-white font-semibold shadow-sm border border-slate-700'
-                                        : 'text-slate-400 hover:text-slate-200'
+                                    ? 'bg-slate-800 text-white font-semibold shadow-sm border border-slate-700'
+                                    : 'text-slate-400 hover:text-slate-200'
                                     }`}
                             >
                                 {mod.title.split('&')[0].trim()}
@@ -246,7 +245,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                         </button>
                         <button
                             onClick={() => onEnterDashboard && onEnterDashboard(current.id)}
-                            className="px-3 sm:px-4 py-1.5 rounded-lg text-xs font-semibold bg-white hover:bg-slate-200 text-slate-950 transition-all shadow-sm active:scale-95 cursor-pointer flex items-center gap-1.5"
+                            className="px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs font-semibold bg-white hover:bg-slate-200 text-slate-950 transition-all shadow-sm active:scale-95 cursor-pointer flex items-center gap-1.5"
                         >
                             <span>Launch</span>
                             <ArrowRight className="w-3.5 h-3.5 text-slate-950 hidden sm:inline" />
@@ -254,15 +253,15 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                     </div>
                 </div>
 
-                {/* Mobile Horizontal Selector */}
+                {/* Mobile Horizontal Module Selector */}
                 <div className="flex xl:hidden items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 w-full">
                     {SYSTEM_MODULES.map((mod, idx) => (
                         <button
                             key={mod.id}
                             onClick={() => setActiveIndex(idx)}
                             className={`px-2.5 py-1 rounded-lg text-[11px] font-medium whitespace-nowrap transition-all shrink-0 cursor-pointer ${activeIndex === idx
-                                    ? 'bg-slate-800 text-white font-semibold shadow-sm border border-slate-700'
-                                    : 'bg-slate-900/60 text-slate-400 hover:text-slate-200 border border-slate-800/60'
+                                ? 'bg-slate-800 text-white font-semibold shadow-sm border border-slate-700'
+                                : 'bg-slate-900/60 text-slate-400 hover:text-slate-200 border border-slate-800/60'
                                 }`}
                         >
                             {mod.title.split('&')[0].trim()}
@@ -273,120 +272,21 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
 
             {/* 3. Main Showcase Section */}
             <main className="relative z-20 flex-1 w-full px-3 sm:px-8 py-2 sm:py-3 overflow-y-auto lg:overflow-hidden flex items-center justify-center">
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-8 items-center w-full max-w-[1700px] mx-auto my-auto">
+                <div className="w-full max-w-[1700px] mx-auto my-auto flex flex-col lg:grid lg:grid-cols-12 gap-3 sm:gap-4 lg:gap-8 items-center">
 
-                    {/* Left Narrative Panel */}
-                    <div className="lg:col-span-5 xl:col-span-4.5 space-y-3.5 text-left flex flex-col justify-center order-2 lg:order-1 pb-4 lg:pb-0">
-
-                        {/* Top Hero Section */}
-                        <div className="space-y-1.5">
-                            <div className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded-full bg-slate-900/90 border border-slate-800 backdrop-blur-md">
-                                <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse" />
-                                <span className="text-[10px] font-bold tracking-widest text-slate-300 uppercase">
-                                    GeoSphere 360™ Platform
-                                </span>
-                                <span className="text-[9px] text-sky-400/80 font-mono pl-1 border-l border-slate-800">
-                                    LIVE OPS
-                                </span>
-                            </div>
-
-                            <h1 className="text-xl sm:text-2xl xl:text-3xl font-extrabold tracking-tight text-white leading-tight">
-                                GeoSphere 360™ Mobile Mapping Platform
-                            </h1>
-
-                            <p className="text-xs text-slate-400 font-normal leading-relaxed">
-                                Centralized geospatial operations hub for large-scale infrastructure mapping and asset maintenance.
-                            </p>
-                        </div>
-
-                        {/* Subtle Divider */}
-                        <div className="w-full h-px bg-gradient-to-r from-slate-800 via-slate-700/60 to-transparent" />
-
-                        {/* Active Module Details */}
-                        <div className="space-y-2.5">
-                            <div className="flex items-center justify-between">
-                                <span
-                                    className="text-[11px] font-bold uppercase tracking-wider block"
-                                    style={{ color: current.accentColor }}
-                                >
-                                    {current.category}
-                                </span>
-                                <span className="text-[10px] font-mono text-slate-500 bg-slate-900/90 px-2 py-0.5 rounded border border-slate-800">
-                                    Module 0{activeIndex + 1} / 05
-                                </span>
-                            </div>
-
-                            <div className="space-y-1">
-                                <h2 className="text-base sm:text-lg font-bold tracking-tight text-slate-100 leading-snug">
-                                    {current.title}
-                                </h2>
-                                <p className="text-xs text-slate-300/90 font-normal leading-relaxed line-clamp-3">
-                                    {current.description}
-                                </p>
-                            </div>
-
-                            {/* Micro Specs HUD */}
-                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 pt-0.5">
-                                {current.specs.map((spec, i) => (
-                                    <div
-                                        key={i}
-                                        className="p-2 rounded-xl bg-slate-900/80 border border-slate-800 backdrop-blur-md"
-                                    >
-                                        <span className="text-[10px] font-medium text-slate-400 block truncate">
-                                            {spec.label}
-                                        </span>
-                                        <span className="text-xs font-semibold text-slate-200 block mt-0.5 truncate">
-                                            {spec.value}
-                                        </span>
-                                    </div>
-                                ))}
-                            </div>
-
-                            {/* Launch Action Button */}
-                            <div className="pt-1">
-                                <button
-                                    onClick={() => onEnterDashboard && onEnterDashboard(current.id)}
-                                    className="w-full sm:w-auto px-5 py-2.5 rounded-xl font-semibold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all transform hover:opacity-95 active:scale-95 cursor-pointer shadow-lg"
-                                    style={{
-                                        backgroundColor: current.accentColor,
-                                        color: '#070b14'
-                                    }}
-                                >
-                                    <span>Enter System Module</span>
-                                    <ArrowRight className="w-4 h-4" />
-                                </button>
-                            </div>
-                        </div>
-
-                        {/* Enterprise Infrastructure Footer */}
-                        <div className="pt-2.5 border-t border-slate-800/80 space-y-1.5">
-                            <div className="flex items-center justify-between text-[10px]">
-                                <span className="text-slate-400 font-medium flex items-center gap-1.5">
-                                    <Server size={11} className="text-sky-400" />
-                                    Spatial Infrastructure Engine
-                                </span>
-                                <span className="inline-flex items-center gap-1 text-emerald-400 font-mono text-[9px]">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                                    PostGIS Cloud Synced
-                                </span>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-1.5 text-[9px] font-mono text-slate-400">
-                                <div className="bg-slate-900/60 px-2 py-1.5 rounded-lg border border-slate-800/70 flex flex-col justify-center">
-                                    <span className="text-slate-500 block text-[8px] font-bold">CRS STANDARDS</span>
-                                    <span className="text-slate-300 font-medium truncate">EPSG:4326 / 3857 / 3375</span>
-                                </div>
-                                <div className="bg-slate-900/60 px-2 py-1.5 rounded-lg border border-slate-800/70 flex flex-col justify-center">
-                                    <span className="text-slate-500 block text-[8px] font-bold">GOVERNANCE &amp; SLA</span>
-                                    <span className="text-slate-300 font-medium truncate">AES-256 • 0.00% Defect Pass</span>
-                                </div>
-                            </div>
-                        </div>
-
+                    {/* MOBILE-ONLY TOP HERO TITLE (Shows above the screenshot on phones/tablets) */}
+                    {/* MOBILE-ONLY TOP HERO TITLE (Centered on mobile) */}
+                    <div className="block lg:hidden w-full space-y-1 text-center shrink-0 px-2">
+                        <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white leading-tight">
+                            GeoSphere 360° Mobile Mapping Platform
+                        </h1>
+                        <p className="text-xs text-slate-400 font-normal leading-relaxed max-w-md mx-auto">
+                            Centralized geospatial operations hub for large-scale infrastructure mapping and asset maintenance.
+                        </p>
                     </div>
 
-                    {/* Right Screenshot Deck */}
-                    <div className="lg:col-span-7 xl:col-span-7.5 w-full flex flex-col justify-center group relative order-1 lg:order-2">
+                    {/* SCREENSHOT DECK (Center on mobile, Right column on desktop) */}
+                    <div className="w-full lg:col-span-7 xl:col-span-7 flex flex-col justify-center group relative order-2 lg:order-2">
 
                         {/* Ambient Underglow */}
                         <div className="absolute -inset-2 rounded-3xl overflow-hidden pointer-events-none opacity-30 group-hover:opacity-70 transition-opacity duration-500 blur-2xl">
@@ -433,8 +333,8 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                                             key={idx}
                                             onClick={() => setActivePhotoIdx(idx)}
                                             className={`relative h-10 w-16 sm:h-12 sm:w-20 rounded-lg overflow-hidden border transition-all cursor-pointer shrink-0 ${activePhotoIdx === idx
-                                                    ? 'border-sky-400 ring-2 ring-sky-400/30 opacity-100'
-                                                    : 'border-slate-800 opacity-60 hover:opacity-100'
+                                                ? 'border-sky-400 ring-2 ring-sky-400/30 opacity-100'
+                                                : 'border-slate-800 opacity-60 hover:opacity-100'
                                                 }`}
                                         >
                                             <img
@@ -450,6 +350,85 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                             )}
 
                         </div>
+                    </div>
+
+                    {/* NARRATIVE PANEL & MODULE CONTROLS (Bottom on mobile, Left column on desktop) */}
+                    <div className="w-full lg:col-span-5 xl:col-span-5 space-y-3 sm:space-y-4 text-left flex flex-col justify-center order-3 lg:order-1 pb-4 lg:pb-0">
+
+                        {/* Desktop Hero Section (Hidden on mobile) */}
+                        <div className="hidden lg:block space-y-2">
+                            <h1 className="text-2xl lg:text-3xl xl:text-4xl 2xl:text-5xl font-extrabold tracking-tight text-white leading-[1.1]">
+                                GeoSphere 360° Mobile Mapping Platform
+                            </h1>
+
+                            <p className="text-xs sm:text-sm text-slate-400 font-normal leading-relaxed pt-0.5">
+                                Centralized geospatial operations hub for large-scale infrastructure mapping, high-precision corridor trajectory tracking, and automated spatial asset maintenance.
+                            </p>
+                        </div>
+
+                        {/* Active Module Details */}
+                        <div className="space-y-2.5 pt-0.5">
+                            <div className="flex items-center justify-between">
+                                <span
+                                    className="text-xs sm:text-sm font-bold uppercase tracking-wider block"
+                                    style={{ color: current.accentColor }}
+                                >
+                                    {current.category}
+                                </span>
+                                <span className="text-[10px] sm:text-xs font-mono text-slate-400 bg-slate-900/90 px-2 py-0.5 rounded border border-slate-800">
+                                    Module 0{activeIndex + 1} of 05
+                                </span>
+                            </div>
+
+                            <div className="space-y-1">
+                                <h2 className="text-base sm:text-lg font-bold tracking-tight text-slate-100 leading-snug">
+                                    {current.title}
+                                </h2>
+                                <p className="text-xs sm:text-sm text-slate-300/90 font-normal leading-relaxed line-clamp-3">
+                                    {current.description}
+                                </p>
+                            </div>
+
+                            {/* Micro Specs HUD */}
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-0.5">
+                                {current.specs.map((spec, i) => (
+                                    <div
+                                        key={i}
+                                        className="p-2 sm:p-2.5 rounded-xl bg-slate-900/80 border border-slate-800 backdrop-blur-md"
+                                    >
+                                        <span className="text-[10px] sm:text-[11px] font-medium text-slate-400 block truncate">
+                                            {spec.label}
+                                        </span>
+                                        <span className="text-xs sm:text-sm font-semibold text-slate-200 block mt-0.5 truncate">
+                                            {spec.value}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+
+                            {/* Launch Action Button */}
+                            <div className="pt-1">
+                                <button
+                                    onClick={() => onEnterDashboard && onEnterDashboard(current.id)}
+                                    className="w-full sm:w-auto px-6 py-3 rounded-xl font-semibold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all transform hover:opacity-95 active:scale-95 cursor-pointer shadow-lg"
+                                    style={{
+                                        backgroundColor: current.accentColor,
+                                        color: '#070b14'
+                                    }}
+                                >
+                                    <span>Enter System Module</span>
+                                    <ArrowRight className="w-4 h-4" />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Bottom Professional WebGIS Introduction */}
+                        <div className="pt-1.5 text-left">
+                            <p className="text-[11.5px] sm:text-xs text-slate-400 font-normal leading-relaxed">
+                                <span className="text-slate-200 font-medium">Get started quickly with</span> our high-precision WebGIS coverage map, automated batch ingestion pipelines, frame-by-frame 360° equirectangular defect auditing, and cloud-synchronized PostGIS spatial intelligence.
+                            </p>
+                        </div>
+
                     </div>
 
                 </div>
@@ -477,8 +456,8 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                             key={mod.id}
                             onClick={() => setActiveIndex(idx)}
                             className={`h-2 rounded-full transition-all cursor-pointer ${activeIndex === idx
-                                    ? 'w-5 sm:w-6 bg-slate-200'
-                                    : 'w-2 bg-slate-700 hover:bg-slate-500'
+                                ? 'w-5 sm:w-6 bg-slate-200'
+                                : 'w-2 bg-slate-700 hover:bg-slate-500'
                                 }`}
                             title={mod.title}
                         />
