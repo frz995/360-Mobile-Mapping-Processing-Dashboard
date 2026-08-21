@@ -4926,17 +4926,30 @@ const DataForm = ({
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState<'dashboard' | 'data' | 'settings'>('dashboard');
+  const [showLanding, setShowLanding] = useState<boolean>(true);
+  const [authSession, setAuthSession] = useState<any>(null);
 
-  // Control Landing Showcase view state on initial load
-  const [showLanding, setShowLanding] = useState<boolean>(() => {
-    // If the user already has an active session, skip the landing showcase and go straight in
-    try {
-      const savedMock = localStorage.getItem('app_guest_session');
-      return !savedMock;
-    } catch {
-      return true;
+  // Stores intended destination when user clicks a showcase module
+  const [pendingModule, setPendingModule] = useState<string | null>(null);
+
+  // Helper: Routes directly to the canvas matching the chosen module
+  const navigateToModule = (targetView?: string | null) => {
+    if (!targetView) {
+      setCurrentPage('dashboard');
+      return;
     }
-  });
+
+    if (targetView === 'data' || targetView === 'postgis') {
+      setCurrentPage('data');
+    } else if (targetView === 'processing') {
+      setCurrentPage('data');
+    } else if (targetView === 'settings') {
+      setCurrentPage('settings');
+    } else {
+      // 'webgis', 'qa-inspector', 'analytics-audit', etc.
+      setCurrentPage('dashboard');
+    }
+  };
 
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
   const [isAboutModalOpen, setIsAboutModalOpen] = useState(false);
@@ -4982,11 +4995,8 @@ export default function App() {
 
 
   // ===== Supabase Auth Protection State =====
-  // 1. Initial State
-  const [authSession, setAuthSession] = useState<any>(null);
 
-  // 2. Guest Login Handler
-  // 2. Guest Login Handler (in-memory only; resets to landing page on refresh)
+  // 2. Guest Login Handler (routes directly to intended module canvas)
   const handleGuestLogin = () => {
     setAuthError(null);
     const guestSession = {
@@ -5001,8 +5011,14 @@ export default function App() {
       },
       isGuest: true
     };
+
     setAuthSession(guestSession);
     setShowLanding(false);
+
+    // Direct navigation for guest
+    navigateToModule(pendingModule);
+    setPendingModule(null);
+
     addAuditLog('CREATE', 'Guest Login', 'User logged in under Guest Read-Only mode', 'info');
   };
 
@@ -5139,6 +5155,11 @@ export default function App() {
       setAuthError(error.message || 'Invalid login credentials. Authorized users only.');
     } else if (data.session) {
       setAuthSession(data.session);
+      setShowLanding(false);
+
+      // Direct navigation for authenticated user
+      navigateToModule(pendingModule);
+      setPendingModule(null);
     }
   };
 
@@ -6507,9 +6528,13 @@ export default function App() {
         projectSettings={projectSettings}
         onEnterDashboard={(targetView) => {
           setShowLanding(false);
-          if (targetView === 'data') {
+
+          if (targetView === 'postgis' || targetView === 'processing' || targetView === 'data') {
             setCurrentPage('data');
+          } else if (targetView === 'settings') {
+            setCurrentPage('settings');
           } else {
+            // 'webgis', 'qa-inspector', 'analytics-audit' -> goes to main dashboard
             setCurrentPage('dashboard');
           }
         }}

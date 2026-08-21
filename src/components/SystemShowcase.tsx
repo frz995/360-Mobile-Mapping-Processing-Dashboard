@@ -159,7 +159,10 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             accentColor: '#a855f7',
             images: [
                 '/screenshots/Dashboard_UI_14.png',
-                '/screenshots/Dashboard_UI_15.png'
+                '/screenshots/Dashboard_UI_15.png',
+                '/screenshots/Dashboard_UI_19.png',
+                '/screenshots/Dashboard_UI_20.png',
+                '/screenshots/Dashboard_UI_21.png'
             ],
             icon: FileText,
             specs: [
@@ -190,7 +193,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
     const activeImage = current.images[activePhotoIdx] || current.images[0];
 
     return (
-        <div className="relative w-full min-h-screen lg:h-screen bg-[#070b14] text-slate-100 font-sans overflow-x-hidden overflow-y-auto lg:overflow-hidden select-none flex flex-col justify-between">
+        <div className="relative w-full h-[100dvh] max-h-[100dvh] bg-[#070b14] text-slate-100 font-sans overflow-hidden select-none flex flex-col justify-between">
 
             {/* 1. Full-Screen Ambient Blurred Background */}
             <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
@@ -204,65 +207,83 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                 <div className="absolute inset-0 bg-[#070b14]/80 backdrop-blur-2xl" />
             </div>
 
-            {/* 2. Top Header Navbar */}
-            <header className="relative z-30 px-4 sm:px-8 py-3 flex items-center justify-between border-b border-slate-800/80 bg-[#070b14]/90 backdrop-blur-md shrink-0">
-                <div>
-                    <span className="text-xs sm:text-sm font-semibold tracking-tight text-white block leading-tight">
-                        Mobile Mapping Data Management System
-                    </span>
-                    <span className="text-[10px] sm:text-xs text-slate-400 font-medium hidden xs:block">
-                        Spatial Trajectory Processing &amp; Quality Assurance Pipeline
-                    </span>
+            {/* 2. Top Header Navbar (Fixed at Top) */}
+            <header className="relative z-30 px-3 sm:px-8 py-2.5 sm:py-3 flex flex-col gap-2 border-b border-slate-800/80 bg-[#070b14]/90 backdrop-blur-md shrink-0">
+                <div className="flex items-center justify-between w-full">
+                    <div>
+                        <span className="text-xs sm:text-sm font-semibold tracking-tight text-white block leading-tight">
+                            Mobile Mapping Data Management System
+                        </span>
+                        <span className="text-[10px] sm:text-xs text-slate-400 font-medium hidden xs:block">
+                            Spatial Trajectory Processing &amp; Quality Assurance Pipeline
+                        </span>
+                    </div>
+
+                    {/* Desktop Navigation Pills */}
+                    <div className="hidden xl:flex items-center gap-1.5 p-1 rounded-xl bg-slate-900/90 border border-slate-800">
+                        {SYSTEM_MODULES.map((mod, idx) => (
+                            <button
+                                key={mod.id}
+                                onClick={() => setActiveIndex(idx)}
+                                className={`px-3 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${activeIndex === idx
+                                        ? 'bg-slate-800 text-white font-semibold shadow-sm border border-slate-700'
+                                        : 'text-slate-400 hover:text-slate-200'
+                                    }`}
+                            >
+                                {mod.title.split('&')[0].trim()}
+                            </button>
+                        ))}
+                    </div>
+
+                    {/* Header Action Buttons */}
+                    <div className="flex items-center gap-2 sm:gap-3">
+                        <button
+                            onClick={() => onEnterDashboard && onEnterDashboard('auth')}
+                            className="px-2.5 sm:px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white transition-colors cursor-pointer"
+                        >
+                            Sign In
+                        </button>
+                        <button
+                            onClick={() => onEnterDashboard && onEnterDashboard(current.id)}
+                            className="px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs font-semibold bg-white hover:bg-slate-200 text-slate-950 transition-all shadow-sm active:scale-95 cursor-pointer flex items-center gap-1.5"
+                        >
+                            <span>Launch</span>
+                            <ArrowRight className="w-3.5 h-3.5 text-slate-950 hidden sm:inline" />
+                        </button>
+                    </div>
                 </div>
 
-                {/* Desktop Navigation Pills */}
-                <div className="hidden xl:flex items-center gap-1.5 p-1 rounded-xl bg-slate-900/90 border border-slate-800">
+                {/* Mobile-Only Horizontal Module Selector Bar */}
+                <div className="flex xl:hidden items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 w-full">
                     {SYSTEM_MODULES.map((mod, idx) => (
                         <button
                             key={mod.id}
                             onClick={() => setActiveIndex(idx)}
-                            className={`px-3 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${activeIndex === idx
+                            className={`px-2.5 py-1 rounded-lg text-[11px] font-medium whitespace-nowrap transition-all shrink-0 cursor-pointer ${activeIndex === idx
                                     ? 'bg-slate-800 text-white font-semibold shadow-sm border border-slate-700'
-                                    : 'text-slate-400 hover:text-slate-200'
+                                    : 'bg-slate-900/60 text-slate-400 hover:text-slate-200 border border-slate-800/60'
                                 }`}
                         >
                             {mod.title.split('&')[0].trim()}
                         </button>
                     ))}
                 </div>
-
-                {/* Header Action Buttons */}
-                <div className="flex items-center gap-2 sm:gap-3">
-                    <button
-                        onClick={() => onEnterDashboard && onEnterDashboard()}
-                        className="px-2.5 sm:px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white transition-colors cursor-pointer"
-                    >
-                        Sign In
-                    </button>
-                    <button
-                        onClick={() => onEnterDashboard && onEnterDashboard(current.id)}
-                        className="px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs font-semibold bg-white hover:bg-slate-200 text-slate-950 transition-all shadow-sm active:scale-95 cursor-pointer flex items-center gap-1.5"
-                    >
-                        <span>Launch</span>
-                        <ArrowRight className="w-3.5 h-3.5 text-slate-950 hidden sm:inline" />
-                    </button>
-                </div>
             </header>
 
-            {/* 3. Main Showcase Section */}
-            <main className="relative z-20 flex-1 w-full px-4 sm:px-8 py-4 sm:py-6 lg:py-2 flex items-center justify-center">
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-center w-full max-w-[1700px] mx-auto">
+            {/* 3. Main Showcase Section (Scrollable on Mobile, Locked on Desktop) */}
+            <main className="relative z-20 flex-1 w-full px-3 sm:px-8 py-2.5 sm:py-4 overflow-y-auto lg:overflow-hidden flex items-center justify-center">
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 lg:gap-8 items-center w-full max-w-[1700px] mx-auto my-auto">
 
-                    {/* Left Narrative Panel (Mobile: Stacked Below / Above appropriately) */}
-                    <div className="lg:col-span-4 xl:col-span-3.5 space-y-4 text-left flex flex-col justify-center order-2 lg:order-1">
-                        <div className="space-y-1.5">
+                    {/* Left Narrative Panel */}
+                    <div className="lg:col-span-4 xl:col-span-3.5 space-y-3 sm:space-y-4 text-left flex flex-col justify-center order-2 lg:order-1 pb-4 lg:pb-0">
+                        <div className="space-y-1 sm:space-y-1.5">
                             <span
-                                className="text-xs font-semibold uppercase tracking-wider block"
+                                className="text-[11px] sm:text-xs font-semibold uppercase tracking-wider block"
                                 style={{ color: current.accentColor }}
                             >
                                 {current.category}
                             </span>
-                            <h1 className="text-xl sm:text-2xl lg:text-3xl xl:text-4xl font-bold tracking-tight text-white leading-tight">
+                            <h1 className="text-lg sm:text-2xl lg:text-3xl xl:text-4xl font-bold tracking-tight text-white leading-tight">
                                 {current.title}
                             </h1>
                             <p className="text-xs sm:text-sm text-slate-300 sm:text-slate-400 font-normal leading-relaxed">
@@ -270,12 +291,12 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                             </p>
                         </div>
 
-                        {/* Micro Specs HUD (Adaptive Grid for Mobile) */}
-                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1">
+                        {/* Micro Specs HUD */}
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-0.5">
                             {current.specs.map((spec, i) => (
                                 <div
                                     key={i}
-                                    className="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800 backdrop-blur-md"
+                                    className="p-2 sm:p-2.5 rounded-xl bg-slate-900/80 border border-slate-800 backdrop-blur-md"
                                 >
                                     <span className="text-[10px] sm:text-[10.5px] font-medium text-slate-400 block truncate">
                                         {spec.label}
@@ -288,10 +309,10 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                         </div>
 
                         {/* Launch Action Button */}
-                        <div className="pt-2">
+                        <div className="pt-1 sm:pt-2">
                             <button
                                 onClick={() => onEnterDashboard && onEnterDashboard(current.id)}
-                                className="w-full sm:w-auto px-6 py-3 rounded-xl font-semibold text-xs sm:text-sm flex items-center justify-center gap-2.5 transition-all transform hover:opacity-95 active:scale-95 cursor-pointer shadow-lg"
+                                className="w-full sm:w-auto px-5 sm:px-6 py-2.5 sm:py-3 rounded-xl font-semibold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all transform hover:opacity-95 active:scale-95 cursor-pointer shadow-lg"
                                 style={{
                                     backgroundColor: current.accentColor,
                                     color: '#070b14'
@@ -303,7 +324,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                         </div>
                     </div>
 
-                    {/* Right Full-Canvas Screenshot Deck */}
+                    {/* Right Screenshot Deck */}
                     <div className="lg:col-span-8 xl:col-span-8.5 w-full flex flex-col justify-center group relative order-1 lg:order-2">
 
                         {/* Ambient Underglow */}
@@ -317,11 +338,11 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                             />
                         </div>
 
-                        {/* Screen Container */}
-                        <div className="relative w-full lg:h-[calc(100vh-175px)] p-3 sm:p-4 rounded-2xl bg-slate-900/90 border border-slate-800/90 shadow-2xl flex flex-col justify-between backdrop-blur-xl">
+                        {/* Preview Frame Container */}
+                        <div className="relative w-full lg:h-[calc(100dvh-200px)] p-2.5 sm:p-4 rounded-2xl bg-slate-900/90 border border-slate-800/90 shadow-2xl flex flex-col justify-between backdrop-blur-xl">
 
                             {/* Top Subtitle Bar */}
-                            <div className="flex items-center justify-between px-1 sm:px-2 pb-2 border-b border-slate-800/80">
+                            <div className="flex items-center justify-between px-1 sm:px-2 pb-1.5 sm:pb-2 border-b border-slate-800/80">
                                 <span className="text-[11px] sm:text-xs font-semibold text-slate-300 truncate pr-2">
                                     {current.subtitle}
                                 </span>
@@ -330,8 +351,8 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                                 </span>
                             </div>
 
-                            {/* Full-Frame Dashboard Viewport */}
-                            <div className="relative w-full h-56 sm:h-72 md:h-96 lg:flex-1 rounded-xl bg-[#090d16] border border-slate-800/90 overflow-hidden flex items-center justify-center my-2">
+                            {/* Viewport Image */}
+                            <div className="relative w-full h-48 xs:h-56 sm:h-72 md:h-80 lg:flex-1 rounded-xl bg-[#090d16] border border-slate-800/90 overflow-hidden flex items-center justify-center my-1.5 sm:my-2">
                                 <img
                                     key={activeImage}
                                     src={activeImage}
@@ -343,14 +364,14 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                                 />
                             </div>
 
-                            {/* Thumbnail Selector Bar (Smooth Mobile Touch Scroll) */}
+                            {/* Thumbnail Selector Bar */}
                             {current.images.length > 1 && (
-                                <div className="flex items-center gap-2 pt-1 overflow-x-auto pb-1">
+                                <div className="flex items-center gap-1.5 sm:gap-2 pt-1 overflow-x-auto pb-0.5">
                                     {current.images.map((imgUrl, idx) => (
                                         <button
                                             key={idx}
                                             onClick={() => setActivePhotoIdx(idx)}
-                                            className={`relative h-11 w-16 sm:h-12 sm:w-20 rounded-lg overflow-hidden border transition-all cursor-pointer shrink-0 ${activePhotoIdx === idx
+                                            className={`relative h-10 w-16 sm:h-12 sm:w-20 rounded-lg overflow-hidden border transition-all cursor-pointer shrink-0 ${activePhotoIdx === idx
                                                     ? 'border-sky-400 ring-2 ring-sky-400/30 opacity-100'
                                                     : 'border-slate-800 opacity-60 hover:opacity-100'
                                                 }`}
@@ -373,13 +394,13 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                 </div>
             </main>
 
-            {/* 4. Footer Navigation Controls */}
-            <footer className="relative z-20 w-full px-4 sm:px-8 py-3 flex items-center justify-between border-t border-slate-800/80 bg-[#070b14]/90 backdrop-blur-md shrink-0">
+            {/* 4. Footer Navigation Controls (Always Pinned at the Bottom on Mobile & Desktop) */}
+            <footer className="relative z-30 w-full px-3 sm:px-8 py-2.5 sm:py-3 flex items-center justify-between border-t border-slate-800/80 bg-[#070b14]/95 backdrop-blur-md shrink-0">
                 <button
                     onClick={() => setActiveIndex((prev) => (prev - 1 + SYSTEM_MODULES.length) % SYSTEM_MODULES.length)}
                     className="flex items-center gap-2 sm:gap-3 opacity-80 hover:opacity-100 transition-all cursor-pointer"
                 >
-                    <div className="w-8 h-8 sm:w-7 sm:h-7 rounded-lg border border-slate-800 bg-slate-900 flex items-center justify-center">
+                    <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg border border-slate-800 bg-slate-900 flex items-center justify-center">
                         <ChevronLeft className="w-4 h-4 text-white" />
                     </div>
                     <div className="hidden sm:block text-left">
@@ -411,7 +432,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                         <span className="text-[10px] text-slate-400 block">Next</span>
                         <span className="text-xs font-semibold text-slate-200">{nextModule.title.split('&')[0]}</span>
                     </div>
-                    <div className="w-8 h-8 sm:w-7 sm:h-7 rounded-lg border border-slate-800 bg-slate-900 flex items-center justify-center">
+                    <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg border border-slate-800 bg-slate-900 flex items-center justify-center">
                         <ChevronRight className="w-4 h-4 text-white" />
                     </div>
                 </button>
