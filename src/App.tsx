@@ -5189,109 +5189,102 @@ export default function App() {
 
 
   // Fetch live database records on mount and merge with local drafts
+  // Fetch live database records on mount with instant cache & parallel loading
   useEffect(() => {
+    // 1. Instant Cache Hydration (0ms load time from previous session)
+    const cachedDaily = localStorage.getItem('app_cached_daily_data');
+    const cachedBatches = localStorage.getItem('app_cached_batch_logs');
+
+    if (cachedDaily && cachedBatches) {
+      try {
+        setDailyData(JSON.parse(cachedDaily));
+        setBatchLogs(JSON.parse(cachedBatches));
+        setIsDataLoading(false); // Show cached data immediately
+      } catch (e) {
+        console.warn('Cache parse skipped', e);
+      }
+    }
+
+    // 2. Parallel Background Fetch
     async function initLiveSupabaseData(isSilent: boolean = false) {
-      if (!isSilent) {
+      if (!cachedDaily && !isSilent) {
         setIsDataLoading(true);
       }
+
       try {
-        const { dailyData: sDaily, batchLogs: sBatches } = await fetchSupabaseData();
+        // Fetch all data sources concurrently in parallel
+        const [supabaseDataRes, qaRes, fetchedQa, dbAuditLogs, dbNotifications] = await Promise.allSettled([
+          fetchSupabaseData(),
+          supabase.from('qa_defects').select('qa_status, defect_flags, defect_count, subgrid'),
+          fetchQaRecordsFromSupabase(),
+          fetchAuditLogsFromSupabase(),
+          fetchNotificationsFromSupabase()
+        ]);
 
-        if (sDaily && sDaily.length > 0) {
-          setDailyData(sDaily);
-        }
-        if (sBatches && sBatches.length > 0) {
-          setBatchLogs(sBatches);
+        // Process Core Daily & Batch Data
+        if (supabaseDataRes.status === 'fulfilled') {
+          const { dailyData: sDaily, batchLogs: sBatches } = supabaseDataRes.value;
+          if (sDaily && sDaily.length > 0) {
+            setDailyData(sDaily);
+            try { localStorage.setItem('app_cached_daily_data', JSON.stringify(sDaily)); } catch { }
+          }
+          if (sBatches && sBatches.length > 0) {
+            setBatchLogs(sBatches);
+            try { localStorage.setItem('app_cached_batch_logs', JSON.stringify(sBatches)); } catch { }
+          }
         }
 
-        // Fetch live defect count from qa_defects table & sync per subgrid
-        try {
-          const { data: qaRows } = await supabase.from('qa_defects').select('qa_status, defect_flags, defect_count, subgrid');
-          if (qaRows && qaRows.length > 0) {
-            const defectsPerSubgrid = new Map<string, number>();
-            let totalFlaggedCount = 0;
-            qaRows.forEach(q => {
-              const isFlagged = q.qa_status === 'flagged' ||
-                (q.defect_flags && typeof q.defect_flags === 'object' && Object.values(q.defect_flags).some(Boolean)) ||
-                (q.defect_count && Number(q.defect_count) > 0);
-              if (isFlagged) {
-                totalFlaggedCount++;
-                if (q.subgrid) {
-                  const normSg = (extractSubgridName(q.subgrid) || q.subgrid).toUpperCase().trim();
-                  defectsPerSubgrid.set(normSg, (defectsPerSubgrid.get(normSg) || 0) + 1);
-                }
+        // Process QA Defects
+        if (qaRes.status === 'fulfilled' && qaRes.value.data) {
+          const qaRows = qaRes.value.data;
+          const defectsPerSubgrid = new Map<string, number>();
+          let totalFlaggedCount = 0;
+
+          qaRows.forEach((q: any) => {
+            const isFlagged = q.qa_status === 'flagged' ||
+              (q.defect_flags && typeof q.defect_flags === 'object' && Object.values(q.defect_flags).some(Boolean)) ||
+              (q.defect_count && Number(q.defect_count) > 0);
+
+            if (isFlagged) {
+              totalFlaggedCount++;
+              if (q.subgrid) {
+                const normSg = (extractSubgridName(q.subgrid) || q.subgrid).toUpperCase().trim();
+                defectsPerSubgrid.set(normSg, (defectsPerSubgrid.get(normSg) || 0) + 1);
               }
-            });
-
-            setLiveDefectCount(totalFlaggedCount);
-
-            if (defectsPerSubgrid.size > 0) {
-              setDailyData(prev => prev.map(d => {
-                if (!d.isSyncedWithSupabase) return d;
-                const normSg = (extractSubgridName(d.subgrid || (d.panoramas?.[0]?.filename) || '') || '').toUpperCase().trim();
-                const liveCount = defectsPerSubgrid.get(normSg);
-                if (liveCount !== undefined) {
-                  const actualDefects = (d.imagesDefected !== undefined && d.imagesDefected !== null)
-                    ? d.imagesDefected
-                    : (d.defectCount !== undefined && d.defectCount !== null)
-                      ? d.defectCount
-                      : liveCount;
-                  return { ...d, imagesDefected: actualDefects, defectCount: actualDefects };
-                }
-                return d;
-              }));
-
-              setBatchLogs(prev => prev.map(b => {
-                if (!b.isSyncedWithSupabase) return b;
-                const normSg = (extractSubgridName(b.subgrid || b.imageFilename || '') || '').toUpperCase().trim();
-                const liveCount = defectsPerSubgrid.get(normSg);
-                if (liveCount !== undefined) {
-                  const actualDefects = (b.defects !== undefined && b.defects !== null) ? b.defects : liveCount;
-                  return { ...b, defects: actualDefects };
-                }
-                return b;
-              }));
             }
-          } else {
-            setLiveDefectCount(0);
-          }
-        } catch (e) {
-          console.warn('qa_defects count fetch skipped:', e);
-          setLiveDefectCount(0);
+          });
+
+          setLiveDefectCount(totalFlaggedCount);
         }
 
-        const fetchedQa = await fetchQaRecordsFromSupabase();
-        if (fetchedQa && Object.keys(fetchedQa).length > 0) {
-          setQaSubgridRecords(prev => ({ ...fetchedQa, ...prev }));
+        // Process QA Records
+        if (fetchedQa.status === 'fulfilled' && fetchedQa.value && Object.keys(fetchedQa.value).length > 0) {
+          setQaSubgridRecords(prev => ({ ...fetchedQa.value, ...prev }));
         }
 
-        // Fetch dynamic audit logs and notifications from Supabase
-        try {
-          const dbAuditLogs = await fetchAuditLogsFromSupabase();
-          if (dbAuditLogs && dbAuditLogs.length > 0) {
-            setAuditLogs(prev => {
-              const prevReadMap = new Map(prev.map(p => [String(p.id), p.read]));
-              return dbAuditLogs.map(a => ({
-                ...a,
-                read: prevReadMap.has(String(a.id)) ? Boolean(prevReadMap.get(String(a.id))) : Boolean(a.read)
-              }));
-            });
-          }
-          const dbNotifications = await fetchNotificationsFromSupabase();
-          if (dbNotifications && dbNotifications.length > 0) {
-            setNotifications(prev => {
-              const prevReadMap = new Map(prev.map(p => [String(p.id), p.read]));
-              return dbNotifications.map(n => ({
-                ...n,
-                read: prevReadMap.has(String(n.id)) ? Boolean(prevReadMap.get(String(n.id))) : Boolean(n.read)
-              }));
-            });
-          }
-        } catch (e) {
-          console.warn('Audit logs / Notifications dynamic fetch notice:', e);
+        // Process Audit Logs
+        if (dbAuditLogs.status === 'fulfilled' && dbAuditLogs.value.length > 0) {
+          setAuditLogs(prev => {
+            const prevReadMap = new Map(prev.map(p => [String(p.id), p.read]));
+            return dbAuditLogs.value.map((a: any) => ({
+              ...a,
+              read: prevReadMap.has(String(a.id)) ? Boolean(prevReadMap.get(String(a.id))) : Boolean(a.read)
+            }));
+          });
+        }
+
+        // Process Notifications
+        if (dbNotifications.status === 'fulfilled' && dbNotifications.value.length > 0) {
+          setNotifications(prev => {
+            const prevReadMap = new Map(prev.map(p => [String(p.id), p.read]));
+            return dbNotifications.value.map((n: any) => ({
+              ...n,
+              read: prevReadMap.has(String(n.id)) ? Boolean(prevReadMap.get(String(n.id))) : Boolean(n.read)
+            }));
+          });
         }
       } catch (err) {
-        console.warn('Supabase initial fetch skipped:', err);
+        console.warn('Supabase fetch notice:', err);
         setSupabaseError('Unable to connect to Supabase backend. Operating in offline cached mode.');
       } finally {
         if (!isSilent) {
@@ -5300,46 +5293,17 @@ export default function App() {
       }
     }
 
-    // Initial load with skeleton
     initLiveSupabaseData(false);
 
-    // 1. Supabase Realtime channel subscription for instant live updates (SILENT)
+    // Realtime channel subscriptions
     const channelName = `live-dashboard-sync-${Date.now()}`;
     const liveChannel = supabase
       .channel(channelName)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'panoramas' }, () => {
-        console.log('Live database change detected in panoramas. Auto-updating dashboard silently...');
         initLiveSupabaseData(true);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'qa_defects' }, () => {
-        console.log('Live database change detected in qa_defects. Auto-updating dashboard silently...');
         initLiveSupabaseData(true);
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'audit_logs' }, () => {
-        fetchAuditLogsFromSupabase().then(logs => {
-          if (logs.length > 0) {
-            setAuditLogs(prev => {
-              const prevReadMap = new Map(prev.map(p => [String(p.id), p.read]));
-              return logs.map(a => ({
-                ...a,
-                read: prevReadMap.has(String(a.id)) ? Boolean(prevReadMap.get(String(a.id))) : Boolean(a.read)
-              }));
-            });
-          }
-        });
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, () => {
-        fetchNotificationsFromSupabase().then(notifs => {
-          if (notifs.length > 0) {
-            setNotifications(prev => {
-              const prevReadMap = new Map(prev.map(p => [String(p.id), p.read]));
-              return notifs.map(n => ({
-                ...n,
-                read: prevReadMap.has(String(n.id)) ? Boolean(prevReadMap.get(String(n.id))) : Boolean(n.read)
-              }));
-            });
-          }
-        });
       });
 
     try {
@@ -5348,15 +5312,13 @@ export default function App() {
       console.warn('Realtime subscription notice:', e);
     }
 
-    // 2. Background polling fallback every 30 seconds for continuous live updates (SILENT)
+    // 30s Polling fallback
     const liveInterval = setInterval(() => {
       initLiveSupabaseData(true);
     }, 30000);
 
     return () => {
-      try {
-        supabase.removeChannel(liveChannel);
-      } catch { }
+      try { supabase.removeChannel(liveChannel); } catch { }
       clearInterval(liveInterval);
     };
   }, []);
