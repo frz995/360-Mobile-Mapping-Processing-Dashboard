@@ -376,18 +376,18 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                             </p>
 
                             {/* Minimal System Metadata Footer */}
-                            <div className="pt-3 border-t border-slate-800/50 flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-slate-400">
+                            <div className="pt-3 border-t border-slate-800/50 flex flex-wrap items-center gap-x-6 gap-y-2 text-slate-400">
                                 <div className="flex items-center gap-1.5">
-                                    <span className="text-slate-500">Coordinate System:</span>
-                                    <span className="font-mono text-slate-300">EPSG:4326</span>
+                                    <span className="text-slate-500 text-[11px]">Coordinate System:</span>
+                                    <span className="font-semibold text-slate-200 text-xs">EPSG:4326</span>
                                 </div>
                                 <div className="flex items-center gap-1.5">
-                                    <span className="text-slate-500">Database:</span>
-                                    <span className="font-mono text-slate-300">PostGIS/PostgreSQL + Supabase</span>
+                                    <span className="text-slate-500 text-[11px]">Database:</span>
+                                    <span className="font-semibold text-slate-200 text-xs">PostGIS/PostgreSQL + Supabase</span>
                                 </div>
                                 <div className="flex items-center gap-1.5">
-                                    <span className="text-slate-500">Renderer:</span>
-                                    <span className="font-mono text-slate-300">MapLibre GL + Panellum Viewer</span>
+                                    <span className="text-slate-500 text-[11px]">Renderer:</span>
+                                    <span className="font-semibold text-slate-200 text-xs">MapLibre GL + Pannellum Viewer</span>
                                 </div>
                             </div>
                         </div>
