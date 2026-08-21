@@ -4943,23 +4943,32 @@ export default function App() {
     }
   }, [focusedSection]);
 
-  // 3. Module routing handler
-  const handleEnterModule = (targetView?: string) => {
+  // Module routing handler
+  const handleEnterModule = (targetView?: string | null) => {
     setShowLanding(false);
 
-    if (targetView === 'webgis') {
+    if (targetView === 'general-launch') {
+      // Direct launch into dashboard (clean view, no spotlight dimming)
+      setCurrentPage('dashboard');
+      setFocusedSection(null);
+    } else if (targetView === 'webgis') {
+      // 1. WebGIS Coverage Map Spotlight
       setCurrentPage('dashboard');
       setFocusedSection('map');
     } else if (targetView === 'processing') {
+      // 2. Batch Processing Spotlight
       setCurrentPage('dashboard');
       setFocusedSection('processing');
     } else if (targetView === 'qa-inspector') {
+      // 3. 360° Inspector Spotlight
       setCurrentPage('dashboard');
       setFocusedSection('qa');
     } else if (targetView === 'postgis' || targetView === 'data') {
+      // 4. PostGIS Data Management Canvas
       setCurrentPage('data');
       setFocusedSection(null);
     } else if (targetView === 'analytics-audit' || targetView === 'settings') {
+      // 5. Executive Reports & Audit Canvas
       setCurrentPage('settings');
       setFocusedSection(null);
     } else {
