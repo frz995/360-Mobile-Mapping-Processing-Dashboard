@@ -267,8 +267,8 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                         onClick={handleApplyTheme}
                         disabled={stagedTheme === activeTheme && !isSavedBanner}
                         className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${stagedTheme !== activeTheme
-                                ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-sm cursor-pointer'
-                                : 'bg-inner text-text-muted cursor-not-allowed border border-subtle'
+                            ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-sm cursor-pointer'
+                            : 'bg-inner text-text-muted cursor-not-allowed border border-subtle'
                             }`}
                     >
                         <Check className="w-3.5 h-3.5" />
@@ -306,8 +306,8 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                                     key={preset.id}
                                     onClick={() => handleSelectPreset(preset.id)}
                                     className={`p-3 rounded-lg border transition-all cursor-pointer ${isStaged
-                                            ? 'border-blue-500 bg-inner shadow-sm ring-1 ring-blue-500/40'
-                                            : 'border-subtle bg-card hover:border-slate-500'
+                                        ? 'border-blue-500 bg-inner shadow-sm ring-1 ring-blue-500/40'
+                                        : 'border-subtle bg-card hover:border-slate-500'
                                         }`}
                                 >
                                     <div className="flex items-start justify-between gap-3">

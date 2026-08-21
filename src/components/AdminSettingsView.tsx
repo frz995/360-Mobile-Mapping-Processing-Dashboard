@@ -1682,7 +1682,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                         type="button"
                         onClick={() => {
                           try {
-                            localStorage.setItem('tnb_project_settings', JSON.stringify(projectSettings));
+                            localStorage.setItem('app_project_settings', JSON.stringify(projectSettings));
                           } catch (e) { }
                           broadcastBasemap();
                           onSaveAllSettings?.();
@@ -2007,7 +2007,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                       type="button"
                       onClick={() => {
                         try {
-                          localStorage.setItem('tnb_project_settings', JSON.stringify(projectSettings));
+                          localStorage.setItem('app_project_settings', JSON.stringify(projectSettings));
                         } catch (e) { }
                         broadcastLayerTheme();
                         onSaveAllSettings?.();
@@ -2393,7 +2393,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                 onClick={() => {
                   if (!isAdmin) return;
                   try {
-                    localStorage.setItem('tnb_project_settings', JSON.stringify(projectSettings));
+                    localStorage.setItem('app_project_settings', JSON.stringify(projectSettings));
                   } catch (e) { }
                   sendPreviewData();
                   onSaveAllSettings?.();
