@@ -40,6 +40,18 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
 }) => {
     const [activeIndex, setActiveIndex] = useState(0);
     const [activePhotoIdx, setActivePhotoIdx] = useState(0);
+    const [isAnimating, setIsAnimating] = useState(false);
+
+    // Smooth navigation helper function
+    const handleModuleChange = (newIndex: number) => {
+        if (newIndex === activeIndex) return;
+        setIsAnimating(true);
+        setTimeout(() => {
+            setActiveIndex(newIndex);
+            setIsAnimating(false);
+        }, 350); // Relaxed, buttery-smooth 350ms duration
+    };
+
 
     // Dynamic telemetry calculations
     const computedDistance = dailyData.reduce((acc, item) => acc + (Number(item.distance || item.kmProcessed) || 0), 0);
@@ -193,18 +205,19 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
     const activeImage = current.images[activePhotoIdx] || current.images[0];
 
     return (
-        <div className="relative w-full h-[100dvh] max-h-[100dvh] bg-[#070b14] text-slate-100 font-sans overflow-hidden select-none flex flex-col justify-between">
+        <div className="relative w-full h-[100dvh] max-h-[100dvh] text-slate-100 font-sans overflow-hidden select-none flex flex-col justify-between">
 
-            {/* 1. Full-Screen Ambient Blurred Background */}
+            {/* 1. Fluid Cross-Fading Ambient Blurred Background */}
             <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
                 <img
+                    key={activeImage}
                     src={activeImage}
                     alt="Ambient Base Blur"
                     loading="eager"
                     decoding="async"
-                    className="w-full h-full object-cover scale-125 blur-[120px] sm:blur-[140px] opacity-20 sm:opacity-25 transition-all duration-500 ease-in-out"
+                    className="w-full h-full object-cover scale-125 blur-[120px] sm:blur-[150px] opacity-40 sm:opacity-50 transition-all duration-1000 ease-in-out animate-in fade-in zoom-in-105"
                 />
-                <div className="absolute inset-0 bg-[#070b14]/80 backdrop-blur-2xl" />
+                <div className="absolute inset-0 bg-[#070b14]/65 backdrop-blur-xl transition-all duration-700" />
             </div>
 
             {/* 2. Top Header Navbar */}
@@ -224,7 +237,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                         {SYSTEM_MODULES.map((mod, idx) => (
                             <button
                                 key={mod.id}
-                                onClick={() => setActiveIndex(idx)}
+                                onClick={() => handleModuleChange(idx)}
                                 className={`px-3 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${activeIndex === idx
                                     ? 'bg-slate-800 text-white font-semibold shadow-sm border border-slate-700'
                                     : 'text-slate-400 hover:text-slate-200'
@@ -258,7 +271,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                     {SYSTEM_MODULES.map((mod, idx) => (
                         <button
                             key={mod.id}
-                            onClick={() => setActiveIndex(idx)}
+                            onClick={() => handleModuleChange(idx)}
                             className={`px-2.5 py-1 rounded-lg text-[11px] font-medium whitespace-nowrap transition-all shrink-0 cursor-pointer ${activeIndex === idx
                                 ? 'bg-slate-800 text-white font-semibold shadow-sm border border-slate-700'
                                 : 'bg-slate-900/60 text-slate-400 hover:text-slate-200 border border-slate-800/60'
@@ -270,10 +283,9 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                 </div>
             </header>
 
-            {/* 3. Main Showcase Section */}
+            {/* 3. Main Showcase Section with Fluid Slide/Fade Key */}
             <main className="relative z-20 flex-1 w-full px-3 sm:px-8 py-2 sm:py-3 overflow-y-auto lg:overflow-hidden flex items-center justify-center">
-                <div className="w-full max-w-[1700px] mx-auto my-auto flex flex-col lg:grid lg:grid-cols-12 gap-3 sm:gap-4 lg:gap-8 items-center">
-
+                <div key={activeIndex} className="w-full max-w-[1700px] mx-auto my-auto flex flex-col lg:grid lg:grid-cols-12 gap-3 sm:gap-4 lg:gap-8 items-center animate-in fade-in slide-in-from-bottom-2 duration-500">
                     {/* MOBILE-ONLY TOP HERO TITLE (Shows above the screenshot on phones/tablets) */}
                     {/* MOBILE-ONLY TOP HERO TITLE (Centered on mobile) */}
                     <div className="block lg:hidden w-full space-y-1 text-center shrink-0 px-2">
@@ -285,9 +297,8 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                         </p>
                     </div>
 
-                    {/* SCREENSHOT DECK (Center on mobile, Right column on desktop) */}
-                    <div className="w-full lg:col-span-7 xl:col-span-7 flex flex-col justify-center group relative order-2 lg:order-2">
-
+                    {/* SCREENSHOT DECK */}
+                    <div className={`w-full lg:col-span-7 xl:col-span-7 flex flex-col justify-center group relative order-2 lg:order-2 transition-all duration-300 ease-out ${isAnimating ? 'opacity-0 scale-[0.995]' : 'opacity-100 scale-100'}`}>
                         {/* Ambient Underglow */}
                         <div className="absolute -inset-2 rounded-3xl overflow-hidden pointer-events-none opacity-30 group-hover:opacity-70 transition-opacity duration-500 blur-2xl">
                             <img
@@ -352,9 +363,8 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                         </div>
                     </div>
 
-                    {/* NARRATIVE PANEL & MODULE CONTROLS (Bottom on mobile, Left column on desktop) */}
-                    <div className="w-full lg:col-span-5 xl:col-span-5 space-y-3 sm:space-y-4 text-left flex flex-col justify-center order-3 lg:order-1 pb-4 lg:pb-0">
-
+                    {/* NARRATIVE PANEL & MODULE CONTROLS */}
+                    <div className={`w-full lg:col-span-5 xl:col-span-5 space-y-3 sm:space-y-4 text-left flex flex-col justify-center order-3 lg:order-1 pb-4 lg:pb-0 transition-all duration-300 ease-out ${isAnimating ? 'opacity-0 translate-y-1.5' : 'opacity-100 translate-y-0'}`}>
                         {/* Desktop Hero Section (Hidden on mobile) */}
                         <div className="hidden lg:block space-y-2">
                             <h1 className="text-2xl lg:text-3xl xl:text-4xl 2xl:text-5xl font-extrabold tracking-tight text-white leading-[1.1]">
@@ -437,7 +447,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             {/* 4. Pinned Footer Navigation Controls */}
             <footer className="relative z-30 w-full px-3 sm:px-8 py-2 sm:py-2.5 flex items-center justify-between border-t border-slate-800/80 bg-[#070b14]/95 backdrop-blur-md shrink-0">
                 <button
-                    onClick={() => setActiveIndex((prev) => (prev - 1 + SYSTEM_MODULES.length) % SYSTEM_MODULES.length)}
+                    onClick={() => handleModuleChange((activeIndex - 1 + SYSTEM_MODULES.length) % SYSTEM_MODULES.length)}
                     className="flex items-center gap-2 sm:gap-3 opacity-80 hover:opacity-100 transition-all cursor-pointer"
                 >
                     <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg border border-slate-800 bg-slate-900 flex items-center justify-center">
@@ -454,7 +464,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                     {SYSTEM_MODULES.map((mod, idx) => (
                         <button
                             key={mod.id}
-                            onClick={() => setActiveIndex(idx)}
+                            onClick={() => handleModuleChange(idx)}
                             className={`h-2 rounded-full transition-all cursor-pointer ${activeIndex === idx
                                 ? 'w-5 sm:w-6 bg-slate-200'
                                 : 'w-2 bg-slate-700 hover:bg-slate-500'
@@ -465,7 +475,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                 </div>
 
                 <button
-                    onClick={() => setActiveIndex((prev) => (prev + 1) % SYSTEM_MODULES.length)}
+                    onClick={() => handleModuleChange((activeIndex + 1) % SYSTEM_MODULES.length)}
                     className="flex items-center gap-2 sm:gap-3 opacity-80 hover:opacity-100 transition-all cursor-pointer"
                 >
                     <div className="hidden sm:block text-right">
