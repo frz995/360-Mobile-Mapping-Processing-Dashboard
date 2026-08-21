@@ -47,7 +47,7 @@ import { AdminSettingsView } from './components/AdminSettingsView';
 import * as shapefile from 'shapefile';
 import * as toGeoJSON from '@tmcw/togeojson';
 import './themes.css';
-
+import { SystemShowcase } from './components/SystemShowcase';
 // ==============================================
 // Data Interfaces & Types
 // ==============================================
@@ -756,7 +756,7 @@ const MapComponent = ({
       return passedSettings;
     }
     try {
-      const raw = localStorage.getItem('tnb_project_settings');
+      const raw = localStorage.getItem('app_project_settings');
       if (raw) return JSON.parse(raw);
     } catch (e) { }
     return {};
@@ -1503,7 +1503,7 @@ const DataManagementPage = ({
 }) => {
   const initialTab = (() => {
     try {
-      const raw = localStorage.getItem('tnb_project_settings');
+      const raw = localStorage.getItem('app_project_settings');
       const parsed = raw ? JSON.parse(raw) : null;
       return (parsed?.defaultDataTab === 'daily' || parsed?.defaultDataTab === 'vector') ? parsed.defaultDataTab : 'batches';
     } catch {
@@ -4926,6 +4926,18 @@ const DataForm = ({
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState<'dashboard' | 'data' | 'settings'>('dashboard');
+
+  // Control Landing Showcase view state on initial load
+  const [showLanding, setShowLanding] = useState<boolean>(() => {
+    // If the user already has an active session, skip the landing showcase and go straight in
+    try {
+      const savedMock = localStorage.getItem('app_guest_session');
+      return !savedMock;
+    } catch {
+      return true;
+    }
+  });
+
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
   const [isAboutModalOpen, setIsAboutModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'batches' | 'daily'>('batches');
@@ -4970,13 +4982,39 @@ export default function App() {
 
 
   // ===== Supabase Auth Protection State =====
-  const [authSession, setAuthSession] = useState<any>(() => {
+  // 1. Initial State
+  const [authSession, setAuthSession] = useState<any>(null);
+
+  // 2. Guest Login Handler
+  // 2. Guest Login Handler (in-memory only; resets to landing page on refresh)
+  const handleGuestLogin = () => {
+    setAuthError(null);
+    const guestSession = {
+      user: {
+        id: 'guest-user-001',
+        email: 'guest@example.com',
+        role: 'guest',
+        user_metadata: {
+          role: 'Viewer',
+          full_name: 'Guest'
+        }
+      },
+      isGuest: true
+    };
+    setAuthSession(guestSession);
+    setShowLanding(false);
+    addAuditLog('CREATE', 'Guest Login', 'User logged in under Guest Read-Only mode', 'info');
+  };
+
+  // 3. Sign Out Handler
+  const handleSignOut = async () => {
     try {
-      const savedMock = localStorage.getItem('tnb_mock_session');
-      if (savedMock) return JSON.parse(savedMock);
+      await supabase.auth.signOut();
     } catch (e) { }
-    return null;
-  });
+    setAuthSession(null);
+    setShowLanding(true);
+  };
+
   const [authLoading, setAuthLoading] = useState(true);
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
@@ -4987,12 +5025,12 @@ export default function App() {
   const [supabaseError, setSupabaseError] = useState<string | null>(null);
   const [projectSettings, setProjectSettings] = useState(() => {
     try {
-      const saved = localStorage.getItem('tnb_project_settings');
+      const saved = localStorage.getItem('app_project_settings');
       if (saved) return JSON.parse(saved);
     } catch (e) { }
     return {
-      projectName: '360 Mobile Mapping — TNB Subgrid Division',
-      contractCode: 'MMS-2026-TNB-01',
+      projectName: '360 Mobile Mapping — Spatial Operations Division',
+      contractCode: 'MMS-2026-GEO-01',
       targetKm: 315.2,
       targetImages: 50000,
       targetDeadline: '2026-12-31',
@@ -5001,8 +5039,8 @@ export default function App() {
       cameraResolution: '8K 360° Equirectangular',
       defaultEquipment: 'MMS',
       leadPic: '',
-      regionZone: 'Selangor & KL Subgrids',
-      clientName: 'Tenaga Nasional Berhad (TNB)',
+      regionZone: 'Central Operations Region',
+      clientName: 'Spatial Asset Operations',
       // Database & Image Fetching Settings
       supabaseUrl: 'https://frz995-360-processing.supabase.co',
       supabaseKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
@@ -5020,15 +5058,13 @@ export default function App() {
       maxLat: 6.8,
       minLon: 99.6,
       maxLon: 104.6,
-      // Advanced GIS & Processing Engine Settings Options
       autoDeduplicateSubgrids: true,
-      deduplicationStrategy: 'clean_merge', // 'clean_merge' | 'keep_latest' | 'preserve_runs'
+      deduplicationStrategy: 'clean_merge',
       enableBBoxFilter: true,
       autoPanOnTrackClick: true,
       defaultBasemapStyle: 'dark',
       defectThreshold: 85,
       aiDefectThresholdPercent: 85,
-      // CSV Column Alias & Normalization Settings
       csvLatAliases: 'latitude, lat, y, y_coord',
       csvLonAliases: 'longitude, lon, lng, x, x_coord',
       csvHeadingAliases: 'heading, bearing, dir, orientation',
@@ -5059,15 +5095,26 @@ export default function App() {
   } | null>(null);
 
   useEffect(() => {
+    // Check persistent Supabase Auth session on refresh
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) setAuthSession(session);
+      if (session) {
+        setAuthSession(session);
+        setShowLanding(false); // Authenticated user stays on Dashboard
+      } else {
+        setAuthSession(null);
+        setShowLanding(true);  // Guest / unauthenticated user returns to Landing
+      }
       setAuthLoading(false);
     }).catch(() => {
       setAuthLoading(false);
+      setShowLanding(true);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) setAuthSession(session);
+      if (session) {
+        setAuthSession(session);
+        setShowLanding(false);
+      }
       setAuthLoading(false);
     });
 
@@ -5075,25 +5122,6 @@ export default function App() {
   }, []);
 
   const isGuestUser = Boolean(authSession?.isGuest || authSession?.user?.role === 'guest' || authSession?.user?.email?.toLowerCase().includes('guest'));
-
-  const handleGuestLogin = () => {
-    setAuthError(null);
-    const guestSession = {
-      user: {
-        id: 'guest-user-001',
-        email: 'guest@example.com',
-        role: 'guest',
-        user_metadata: {
-          role: 'Viewer',
-          full_name: 'Guest'
-        }
-      },
-      isGuest: true
-    };
-    setAuthSession(guestSession);
-    try { localStorage.setItem('tnb_mock_session', JSON.stringify(guestSession)); } catch (e) { }
-    addAuditLog('CREATE', 'Guest Login', 'User logged in under Guest Read-Only mode', 'info');
-  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -5112,14 +5140,6 @@ export default function App() {
     } else if (data.session) {
       setAuthSession(data.session);
     }
-  };
-
-  const handleSignOut = async () => {
-    try {
-      await supabase.auth.signOut();
-      localStorage.removeItem('tnb_mock_session');
-    } catch (e) { }
-    setAuthSession(null);
   };
 
   const [layerCatalog, setLayerCatalog] = useState<(Layer | Folder)[]>(() => {
@@ -5420,7 +5440,7 @@ export default function App() {
 
   const handleSaveAllSettings = () => {
     try {
-      localStorage.setItem('tnb_project_settings', JSON.stringify(projectSettings));
+      localStorage.setItem('app_project_settings', JSON.stringify(projectSettings));
       setProjectSettings({ ...projectSettings });
       const sampleUrl = getPanoramaUrl('sample.jpg');
       const tables = getDatabaseTableMapping(projectSettings);
@@ -5682,7 +5702,7 @@ export default function App() {
 
     const now = new Date();
     const reportDate = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' }) + ' • ' + now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-    const documentRefNo = `TNB-MMS-EXEC-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const documentRefNo = `GEO-MMS-EXEC-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${Math.floor(1000 + Math.random() * 9000)}`;
     const operatorUser = authSession?.user?.email ? authSession.user.email : 'GIS Engineer';
 
     const html = `
@@ -5990,7 +6010,7 @@ export default function App() {
         </head>
         <body>
           <div class="action-bar no-print">
-            <div class="action-bar-title">TNB EXECUTIVE PDF REPORT PREVIEW</div>
+            <div class="action-bar-title">EXECUTIVE PDF REPORT PREVIEW</div>
             <button class="print-btn" onclick="window.print()">PRINT / SAVE AS PDF</button>
           </div>
 
@@ -6235,10 +6255,10 @@ export default function App() {
                 </div>
               </div>
               <div class="signoff-box">
-                <div class="signoff-role">APPROVED BY (TNB CLIENT)</div>
+                <div class="signoff-role">APPROVED BY (PROJECT DIRECTOR)</div>
                 <div class="signoff-line"></div>
                 <div class="signoff-meta">
-                  <strong>Name:</strong> Tenaga Nasional Berhad Rep.<br>
+                  <strong>Name:</strong> Client / Project Director<br>
                   <strong>Title:</strong> Project Director / Manager<br>
                   <strong>Date:</strong> _____ / _____ / 2026
                 </div>
@@ -6503,6 +6523,38 @@ export default function App() {
   };
 
   // ===== Render Supabase Auth Protection Gate (Minimalist Professional Enterprise Design) =====
+
+  // 1. Loading state during auth verification
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-[#070b14] flex items-center justify-center text-slate-400">
+        <div className="flex items-center gap-3">
+          <Loader2 className="w-5 h-5 animate-spin text-sky-400" />
+          <span className="text-xs font-semibold">Verifying authorization...</span>
+        </div>
+      </div>
+    );
+  }
+
+  // 2. Landing showcase (renders only if not logged in and showLanding is true)
+  if (showLanding && !authSession) {
+    return (
+      <SystemShowcase
+        dailyData={dailyData}
+        batchLogs={batchLogs}
+        projectSettings={projectSettings}
+        onEnterDashboard={(targetView) => {
+          setShowLanding(false);
+          if (targetView === 'data') {
+            setCurrentPage('data');
+          } else {
+            setCurrentPage('dashboard');
+          }
+        }}
+      />
+    );
+  }
+
   if (!authSession && !authLoading) {
     return (
       <div className="min-h-screen bg-card text-zinc-100 font-sans flex items-center justify-center p-6 relative overflow-hidden select-none">
