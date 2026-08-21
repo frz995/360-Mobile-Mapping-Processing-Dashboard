@@ -4928,9 +4928,45 @@ export default function App() {
   const [currentPage, setCurrentPage] = useState<'dashboard' | 'data' | 'settings'>('dashboard');
   const [showLanding, setShowLanding] = useState<boolean>(true);
   const [authSession, setAuthSession] = useState<any>(null);
-
-  // Stores intended destination when user clicks a showcase module
   const [pendingModule, setPendingModule] = useState<string | null>(null);
+
+  // 1. Module focus spotlight state
+  const [focusedSection, setFocusedSection] = useState<'map' | 'processing' | 'qa' | null>(null);
+
+  // 2. Auto-clear spotlight focus after 5 seconds
+  useEffect(() => {
+    if (focusedSection) {
+      const timer = setTimeout(() => {
+        setFocusedSection(null);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [focusedSection]);
+
+  // 3. Module routing handler
+  const handleEnterModule = (targetView?: string) => {
+    setShowLanding(false);
+
+    if (targetView === 'webgis') {
+      setCurrentPage('dashboard');
+      setFocusedSection('map');
+    } else if (targetView === 'processing') {
+      setCurrentPage('dashboard');
+      setFocusedSection('processing');
+    } else if (targetView === 'qa-inspector') {
+      setCurrentPage('dashboard');
+      setFocusedSection('qa');
+    } else if (targetView === 'postgis' || targetView === 'data') {
+      setCurrentPage('data');
+      setFocusedSection(null);
+    } else if (targetView === 'analytics-audit' || targetView === 'settings') {
+      setCurrentPage('settings');
+      setFocusedSection(null);
+    } else {
+      setCurrentPage('dashboard');
+      setFocusedSection(null);
+    }
+  };
 
   // Helper: Routes directly to the canvas matching the chosen module
   const navigateToModule = (targetView?: string | null) => {
@@ -4996,7 +5032,7 @@ export default function App() {
 
   // ===== Supabase Auth Protection State =====
 
-  // 2. Guest Login Handler (routes directly to intended module canvas)
+  // 2. Guest Login Handler (routes directly with 5s spotlight animation)
   const handleGuestLogin = () => {
     setAuthError(null);
     const guestSession = {
@@ -5013,10 +5049,9 @@ export default function App() {
     };
 
     setAuthSession(guestSession);
-    setShowLanding(false);
 
-    // Direct navigation for guest
-    navigateToModule(pendingModule);
+    // Trigger module routing & spotlight focus
+    handleEnterModule(pendingModule || 'webgis');
     setPendingModule(null);
 
     addAuditLog('CREATE', 'Guest Login', 'User logged in under Guest Read-Only mode', 'info');
@@ -6519,24 +6554,20 @@ export default function App() {
     );
   }
 
-  // 2. Landing showcase (renders only if not logged in and showLanding is true)
+  // 2. Landing showcase render guard
   if (showLanding && !authSession) {
     return (
       <SystemShowcase
         dailyData={dailyData}
         batchLogs={batchLogs}
         projectSettings={projectSettings}
-        onEnterDashboard={(targetView) => {
-          setShowLanding(false);
-
-          if (targetView === 'postgis' || targetView === 'processing' || targetView === 'data') {
-            setCurrentPage('data');
-          } else if (targetView === 'settings') {
-            setCurrentPage('settings');
-          } else {
-            // 'webgis', 'qa-inspector', 'analytics-audit' -> goes to main dashboard
-            setCurrentPage('dashboard');
+        onEnterDashboard={(targetView?: string) => {
+          if (targetView === 'auth') {
+            setShowLanding(false);
+            return;
           }
+          setPendingModule(targetView || 'webgis');
+          handleEnterModule(targetView || 'webgis');
         }}
       />
     );
@@ -7644,7 +7675,11 @@ export default function App() {
                 <div className="col-span-1 lg:col-span-5 flex flex-col gap-3 min-h-[400px] lg:min-h-0">
 
                   {/* TOP RIGHT PANEL: PROCESSING CONTROL & ADMIN */}
-                  <div className={`flex-1 bg-card border border-[rgba(255,255,255,0.08)] backdrop-blur-md rounded-xl flex flex-col overflow-hidden min-h-0 shadow-sm transition-all duration-300 ${tourStep === 4 ? 'ring-2 ring-sky-400/90 shadow-[0_0_35px_rgba(56,189,248,0.4)] z-30 relative scale-[1.002]' : tourStep !== null ? 'opacity-30 blur-[1.5px] pointer-events-none' : ''
+                  <div className={`flex-1 bg-card border border-[rgba(255,255,255,0.08)] backdrop-blur-md rounded-xl flex flex-col overflow-hidden transition-all duration-700 ${focusedSection === 'processing'
+                    ? 'relative z-30 ring-4 ring-emerald-400 shadow-[0_0_50px_rgba(52,211,153,0.5)] scale-[1.005]'
+                    : focusedSection
+                      ? 'filter blur-[4px] opacity-25 pointer-events-none'
+                      : ''
                     }`}>
                     <div className="p-3 border-b border-[rgba(255,255,255,0.08)] flex items-center justify-between shrink-0 bg-card">
                       <div className="flex items-center gap-3">
@@ -7994,7 +8029,11 @@ export default function App() {
                   </div>
 
                   {/* BOTTOM RIGHT PANEL: 360 VIEW INSPECTOR & QA */}
-                  <div className={`h-96 sm:h-[420px] bg-card border border-[rgba(255,255,255,0.08)] backdrop-blur-md rounded-xl flex flex-col overflow-hidden shrink-0 transition-all duration-300 shadow-sm ${tourStep === 3 ? 'ring-2 ring-sky-400/90 shadow-[0_0_35px_rgba(56,189,248,0.4)] z-30 relative scale-[1.002]' : tourStep !== null ? 'opacity-30 blur-[1.5px] pointer-events-none' : ''
+                  <div className={`flex-1 bg-card border border-[rgba(255,255,255,0.08)] backdrop-blur-md rounded-xl flex flex-col overflow-hidden transition-all duration-700 ${focusedSection === 'qa'
+                    ? 'relative z-30 ring-4 ring-indigo-400 shadow-[0_0_50px_rgba(129,140,248,0.5)] scale-[1.005]'
+                    : focusedSection
+                      ? 'filter blur-[4px] opacity-25 pointer-events-none'
+                      : ''
                     }`}>
                     <div className="px-3.5 py-2.5 border-b border-[rgba(255,255,255,0.08)] bg-card flex items-center justify-between shrink-0">
                       <span className="text-xs font-bold uppercase tracking-wider text-text-base flex items-center gap-2">
@@ -8004,7 +8043,7 @@ export default function App() {
                     </div>
 
                     <div className="flex-1 flex gap-2.5 p-2.5 min-h-0">
-                      {/* Embedded WebGIS 360 Viewer directly from 360 web mapping (Gives maximum space to left) */}
+                      {/* Embedded WebGIS 360 Viewer directly from 360 web mapping */}
                       <div className="flex-1 bg-app rounded-lg border border-subtle relative overflow-hidden group flex flex-col min-w-0">
                         {hasSelectedPoint ? (
                           <>
@@ -8015,7 +8054,7 @@ export default function App() {
                               themeMode={themeMode}
                               className="w-full h-full"
                             />
-                            <div className="absolute top-2 left-2 bg-app backdrop-blur-md px-2 py-1 rounded-md text-[10px] text-text-base font-mono z-10 pointer-events-none border border-subtle shadow-lg flex items-center gap-2">
+                            <div className="absolute top-2 left-2 bg-app backdrop-blur-md px-2 py-1 rounded-md text-[10px] text-text-base font-mono z-10 border border-subtle flex items-center gap-1.5">
                               <span className="w-2 h-2 rounded-full bg-sky-400"></span>
                               Telemetry: Pitch: {panoramaTelemetry.pitch > 0 ? `+${panoramaTelemetry.pitch}` : panoramaTelemetry.pitch}° | Yaw: {panoramaTelemetry.yaw}°
                             </div>
@@ -8233,6 +8272,7 @@ export default function App() {
                               </div>
                               <div className="grid grid-cols-2 gap-1.5 pt-0.5">
                                 <button
+                                  type="button"
                                   disabled={isQaLocked}
                                   onClick={() => {
                                     const defaultSg = (dailyData[0]?.subgrid) || (batchLogs[0]?.subgrid) || '';
@@ -8254,6 +8294,7 @@ export default function App() {
                                 </button>
 
                                 <button
+                                  type="button"
                                   disabled={isQaLocked}
                                   onClick={() => {
                                     const defaultSg = (dailyData[0]?.subgrid) || (batchLogs[0]?.subgrid) || '';
@@ -8283,7 +8324,7 @@ export default function App() {
               </div>
             </div>
           ) : currentPage === 'data' ? (
-            <div key="data-canvas" className="flex-1 flex flex-col min-h-0 overflow-hidden bg-card rounded-xl border border-[rgba(255,255,255,0.08)] shadow-2xl animate-in fade-in zoom-in-98 slide-in-from-right-2 duration-300 ease-out">
+            <div className="flex-1 flex flex-col min-h-0 overflow-hidden animate-in fade-in duration-500">
               <DataManagementPage
                 dailyData={dailyData}
                 setDailyData={setDailyData}
@@ -8318,451 +8359,460 @@ export default function App() {
               addAuditLog={addAuditLog}
             />
           ) : null}
-
         </main>
 
         {/* Subgrid Image Filenames List View Modal (Main Canvas) */}
-        {imagesListModal && imagesListModal.isOpen && (() => {
-          const filenames = (imagesListModal.customFilenames && imagesListModal.customFilenames.length > 0)
-            ? imagesListModal.customFilenames
-            : generateImageFilenamesList(imagesListModal.subgrid, imagesListModal.count > 0 ? imagesListModal.count : (imagesListModal.poiCount || 1), imagesListModal.baseFilename);
-          return (
-            <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[1000] p-4 backdrop-blur-sm">
-              <div className="bg-card border border-subtle rounded-xl p-5 max-w-md w-full max-h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-                <div className="flex justify-between items-center pb-3 mb-3 border-b border-subtle shrink-0">
-                  <div>
-                    <h2 className="text-sm font-bold text-text-base tracking-wide flex items-center gap-2">
-                      <Camera size={16} className="text-sky-400" />
-                      Subgrid {imagesListModal.subgrid} Filenames
-                    </h2>
-                    <span className="text-[11px] text-text-muted font-mono">
-                      {imagesListModal.poiCount !== undefined ? `POI: ${imagesListModal.poiCount.toLocaleString()}  •  ` : ''}
-                      Available Frames: <strong className="text-sky-400 font-bold">{filenames.length.toLocaleString()}</strong>
-                    </span>
-                  </div>
-                  <button
-                    onClick={() => setImagesListModal(null)}
-                    className="text-text-muted hover:text-text-base text-lg p-1 cursor-pointer transition-colors"
-                    aria-label="Close image filenames popup dialog"
-                  >
-                    &times;
-                  </button>
-                </div>
-                <div className="flex-1 overflow-y-auto font-mono text-xs text-slate-300 space-y-1 p-2 bg-card rounded-lg border border-subtle max-h-96">
-                  {filenames.map((name, idx) => (
-                    <div key={idx} className="flex items-center justify-between px-2.5 py-1 hover:bg-inner rounded transition-colors">
-                      <span className="text-text-muted text-[10px] w-10 shrink-0">{idx + 1}.</span>
-                      <span className="text-text-base font-semibold flex-1 truncate">{name}</span>
+        {
+          imagesListModal && imagesListModal.isOpen && (() => {
+            const filenames = (imagesListModal.customFilenames && imagesListModal.customFilenames.length > 0)
+              ? imagesListModal.customFilenames
+              : generateImageFilenamesList(imagesListModal.subgrid, imagesListModal.count > 0 ? imagesListModal.count : (imagesListModal.poiCount || 1), imagesListModal.baseFilename);
+            return (
+              <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[1000] p-4 backdrop-blur-sm">
+                <div className="bg-card border border-subtle rounded-xl p-5 max-w-md w-full max-h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+                  <div className="flex justify-between items-center pb-3 mb-3 border-b border-subtle shrink-0">
+                    <div>
+                      <h2 className="text-sm font-bold text-text-base tracking-wide flex items-center gap-2">
+                        <Camera size={16} className="text-sky-400" />
+                        Subgrid {imagesListModal.subgrid} Filenames
+                      </h2>
+                      <span className="text-[11px] text-text-muted font-mono">
+                        {imagesListModal.poiCount !== undefined ? `POI: ${imagesListModal.poiCount.toLocaleString()}  •  ` : ''}
+                        Available Frames: <strong className="text-sky-400 font-bold">{filenames.length.toLocaleString()}</strong>
+                      </span>
                     </div>
-                  ))}
-                </div>
-                <div className="pt-3 border-t border-subtle flex items-center justify-between shrink-0">
-                  <button
-                    onClick={() => {
-                      navigator.clipboard.writeText(filenames.join('\n'));
-                      alert(`Copied ${filenames.length} image filenames to clipboard!`);
-                    }}
-                    className="px-3 py-1.5 bg-inner hover:bg-slate-700 text-text-base border border-subtle rounded-lg text-xs font-medium cursor-pointer transition-colors flex items-center gap-1.5"
-                  >
-                    <Copy size={13} /> Copy List ({filenames.length})
-                  </button>
-                  <button
-                    onClick={() => setImagesListModal(null)}
-                    className="px-4 py-1.5 bg-sky-600 hover:bg-sky-500 text-text-base rounded-lg text-xs font-medium cursor-pointer transition-colors"
-                  >
-                    Close
-                  </button>
+                    <button
+                      onClick={() => setImagesListModal(null)}
+                      className="text-text-muted hover:text-text-base text-lg p-1 cursor-pointer transition-colors"
+                      aria-label="Close image filenames popup dialog"
+                    >
+                      &times;
+                    </button>
+                  </div>
+                  <div className="flex-1 overflow-y-auto font-mono text-xs text-slate-300 space-y-1 p-2 bg-card rounded-lg border border-subtle max-h-96">
+                    {filenames.map((name, idx) => (
+                      <div key={idx} className="flex items-center justify-between px-2.5 py-1 hover:bg-inner rounded transition-colors">
+                        <span className="text-text-muted text-[10px] w-10 shrink-0">{idx + 1}.</span>
+                        <span className="text-text-base font-semibold flex-1 truncate">{name}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="pt-3 border-t border-subtle flex items-center justify-between shrink-0">
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(filenames.join('\n'));
+                        alert(`Copied ${filenames.length} image filenames to clipboard!`);
+                      }}
+                      className="px-3 py-1.5 bg-inner hover:bg-slate-700 text-text-base border border-subtle rounded-lg text-xs font-medium cursor-pointer transition-colors flex items-center gap-1.5"
+                    >
+                      <Copy size={13} /> Copy List ({filenames.length})
+                    </button>
+                    <button
+                      onClick={() => setImagesListModal(null)}
+                      className="px-4 py-1.5 bg-sky-600 hover:bg-sky-500 text-text-base rounded-lg text-xs font-medium cursor-pointer transition-colors"
+                    >
+                      Close
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          );
-        })()}
+            );
+          })()
+        }
 
         {/* ========================================================= */}
         {/* INTERACTIVE GUIDED TOUR FLOATING TOOLTIP OVERLAY */}
         {/* ========================================================= */}
-        {tourStep !== null && (
-          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[90vw] max-w-lg bg-card border border-subtle rounded-2xl shadow-2xl z-[99999] p-4 text-text-base backdrop-blur-xl animate-in fade-in slide-in-from-bottom-4 duration-200">
-            <div className="flex items-center justify-between border-b border-subtle pb-2 mb-3">
-              <div className="flex items-center gap-2">
-                <span className="bg-inner text-text-base border border-subtle text-[10px] font-mono font-bold px-2 py-0.5 rounded-md uppercase tracking-wider">
-                  Step {tourStep} of {TOUR_STEPS.length}
-                </span>
-                <h3 className="text-xs font-bold text-text-base tracking-wide">
-                  {TOUR_STEPS[tourStep - 1].title}
-                </h3>
-              </div>
-              <button
-                onClick={() => setTourStep(null)}
-                className="text-text-muted hover:text-text-base p-1 rounded-lg hover:bg-inner transition-colors cursor-pointer"
-                title="End Guided Tour"
-              >
-                <X size={16} />
-              </button>
-            </div>
-
-            <p className="text-xs text-slate-300 leading-relaxed mb-4">
-              {TOUR_STEPS[tourStep - 1].desc}
-            </p>
-
-            {/* Step Dots Indicator */}
-            <div className="flex items-center justify-center gap-1.5 mb-3">
-              {TOUR_STEPS.map((s) => (
+        {
+          tourStep !== null && (
+            <div className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[90vw] max-w-lg bg-card border border-subtle rounded-2xl shadow-2xl z-[99999] p-4 text-text-base backdrop-blur-xl animate-in fade-in slide-in-from-bottom-4 duration-200">
+              <div className="flex items-center justify-between border-b border-subtle pb-2 mb-3">
+                <div className="flex items-center gap-2">
+                  <span className="bg-inner text-text-base border border-subtle text-[10px] font-mono font-bold px-2 py-0.5 rounded-md uppercase tracking-wider">
+                    Step {tourStep} of {TOUR_STEPS.length}
+                  </span>
+                  <h3 className="text-xs font-bold text-text-base tracking-wide">
+                    {TOUR_STEPS[tourStep - 1].title}
+                  </h3>
+                </div>
                 <button
-                  key={s.step}
-                  onClick={() => setTourStep(s.step)}
-                  className={`h-1.5 rounded-full transition-all cursor-pointer ${tourStep === s.step ? 'w-5 bg-slate-200' : 'w-1.5 bg-slate-700 hover:bg-slate-500'
-                    }`}
-                  title={`Go to step ${s.step}: ${s.title}`}
-                />
-              ))}
-            </div>
+                  onClick={() => setTourStep(null)}
+                  className="text-text-muted hover:text-text-base p-1 rounded-lg hover:bg-inner transition-colors cursor-pointer"
+                  title="End Guided Tour"
+                >
+                  <X size={16} />
+                </button>
+              </div>
 
-            <div className="flex items-center justify-between pt-2 border-t border-subtle">
-              <span className="text-[10px] text-text-muted font-mono">
-                Focus: <strong className="text-text-base">{TOUR_STEPS[tourStep - 1].highlight}</strong>
-              </span>
+              <p className="text-xs text-slate-300 leading-relaxed mb-4">
+                {TOUR_STEPS[tourStep - 1].desc}
+              </p>
 
-              <div className="flex items-center gap-2">
-                {tourStep > 1 && (
+              {/* Step Dots Indicator */}
+              <div className="flex items-center justify-center gap-1.5 mb-3">
+                {TOUR_STEPS.map((s) => (
                   <button
-                    onClick={() => setTourStep(tourStep - 1)}
-                    className="px-3 py-1 bg-inner hover:bg-slate-700 text-slate-300 border border-subtle text-xs font-medium rounded-lg transition-all cursor-pointer"
-                  >
-                    Previous
-                  </button>
-                )}
-                {tourStep < TOUR_STEPS.length ? (
-                  <button
-                    onClick={() => setTourStep(tourStep + 1)}
-                    className="px-3.5 py-1 bg-inner hover:bg-slate-700 text-text-base border border-slate-600 text-xs font-medium rounded-lg transition-all cursor-pointer flex items-center gap-1 shadow-sm"
-                  >
-                    Next Step <ChevronRight size={14} />
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => setTourStep(null)}
-                    className="px-3.5 py-1 bg-inner hover:bg-slate-700 text-emerald-400 border border-slate-600 text-xs font-semibold rounded-lg transition-all cursor-pointer shadow-sm"
-                  >
-                    Complete Tour ✓
-                  </button>
-                )}
+                    key={s.step}
+                    onClick={() => setTourStep(s.step)}
+                    className={`h-1.5 rounded-full transition-all cursor-pointer ${tourStep === s.step ? 'w-5 bg-slate-200' : 'w-1.5 bg-slate-700 hover:bg-slate-500'
+                      }`}
+                    title={`Go to step ${s.step}: ${s.title}`}
+                  />
+                ))}
+              </div>
+
+              <div className="flex items-center justify-between pt-2 border-t border-subtle">
+                <span className="text-[10px] text-text-muted font-mono">
+                  Focus: <strong className="text-text-base">{TOUR_STEPS[tourStep - 1].highlight}</strong>
+                </span>
+
+                <div className="flex items-center gap-2">
+                  {tourStep > 1 && (
+                    <button
+                      onClick={() => setTourStep(tourStep - 1)}
+                      className="px-3 py-1 bg-inner hover:bg-slate-700 text-slate-300 border border-subtle text-xs font-medium rounded-lg transition-all cursor-pointer"
+                    >
+                      Previous
+                    </button>
+                  )}
+                  {tourStep < TOUR_STEPS.length ? (
+                    <button
+                      onClick={() => setTourStep(tourStep + 1)}
+                      className="px-3.5 py-1 bg-inner hover:bg-slate-700 text-text-base border border-slate-600 text-xs font-medium rounded-lg transition-all cursor-pointer flex items-center gap-1 shadow-sm"
+                    >
+                      Next Step <ChevronRight size={14} />
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => setTourStep(null)}
+                      className="px-3.5 py-1 bg-inner hover:bg-slate-700 text-emerald-400 border border-slate-600 text-xs font-semibold rounded-lg transition-all cursor-pointer shadow-sm"
+                    >
+                      Complete Tour ✓
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          )
+        }
 
         {/* ========================================================= */}
         {/* HELP & USER GUIDE MODAL (Clean Minimalist Enterprise Design) */}
         {/* ========================================================= */}
-        {isHelpGuideOpen && (
-          <div className="fixed inset-0 bg-app backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-150">
-            <div className="bg-card border border-[rgba(255,255,255,0.08)] rounded-xl w-full max-w-3xl max-h-[85vh] shadow-2xl flex flex-col overflow-hidden text-text-base">
+        {
+          isHelpGuideOpen && (
+            <div className="fixed inset-0 bg-app backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-150">
+              <div className="bg-card border border-[rgba(255,255,255,0.08)] rounded-xl w-full max-w-3xl max-h-[85vh] shadow-2xl flex flex-col overflow-hidden text-text-base">
 
-              {/* Modal Header */}
-              <div className="p-4 bg-card border-b border-[rgba(255,255,255,0.08)] flex items-center justify-between">
-                <div>
-                  <h2 className="text-sm font-bold text-text-base tracking-tight">
-                    User Guide & System Manual
-                  </h2>
-                  <p className="text-[11px] text-text-muted mt-0.5">
-                    360° WebGIS Mobile Mapping Operations Manual
-                  </p>
+                {/* Modal Header */}
+                <div className="p-4 bg-card border-b border-[rgba(255,255,255,0.08)] flex items-center justify-between">
+                  <div>
+                    <h2 className="text-sm font-bold text-text-base tracking-tight">
+                      User Guide & System Manual
+                    </h2>
+                    <p className="text-[11px] text-text-muted mt-0.5">
+                      360° WebGIS Mobile Mapping Operations Manual
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        setIsHelpGuideOpen(false);
+                        setTourStep(1);
+                      }}
+                      className="px-3 py-1.5 bg-card hover:bg-slate-700 text-text-base hover:text-text-base border border-subtle text-xs font-semibold rounded-lg transition-all cursor-pointer"
+                      title="Start guided step-by-step tour"
+                    >
+                      Start Interactive Tour
+                    </button>
+                    <button
+                      onClick={() => setIsHelpGuideOpen(false)}
+                      className="text-text-muted hover:text-text-base p-1 cursor-pointer"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
                 </div>
 
-                <div className="flex items-center gap-2">
+                {/* Modal Navigation Tabs (Clean text, no emojis or icons) */}
+                <div className="px-4 py-2 bg-card border-b border-[rgba(255,255,255,0.06)] flex items-center gap-1.5 overflow-x-auto text-xs">
+                  {[
+                    { id: 'map', label: 'Interactive Map' },
+                    { id: 'panorama', label: '360° Street View' },
+                    { id: 'data', label: 'Daily Progress & DB' },
+                    { id: 'audit', label: 'Notifications & Audit' }
+                  ].map(tab => (
+                    <button
+                      key={tab.id}
+                      onClick={() => setHelpGuideTab(tab.id as any)}
+                      className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer whitespace-nowrap border font-medium ${helpGuideTab === tab.id
+                        ? 'bg-card text-text-base border-slate-600'
+                        : 'text-text-muted border-transparent hover:text-text-base hover:bg-inner'
+                        }`}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Modal Body Content (Clean neat boxes, no lightbulb/book icons) */}
+                <div className="p-5 overflow-y-auto space-y-3 flex-1 text-xs text-slate-300 leading-relaxed">
+                  {helpGuideTab === 'map' && (
+                    <div className="space-y-3">
+                      <div className="bg-card p-3.5 rounded-lg border border-subtle space-y-1">
+                        <h4 className="font-semibold text-text-base text-xs">1. Subgrid Selection &amp; Key Normalization</h4>
+                        <p className="text-text-muted">
+                          Clicking any subgrid on the map or inside the control table isolates all trajectory points for that region. Subgrid keys are automatically normalized (<code className="bg-inner px-1 py-0.5 rounded text-slate-300 font-mono text-[10px]">XX-YY &rarr; XXYY</code>) across CSV imports and database queries.
+                        </p>
+                      </div>
+
+                      <div className="bg-card p-3.5 rounded-lg border border-subtle space-y-1">
+                        <h4 className="font-semibold text-text-base text-xs">2. Date Filter Behavior</h4>
+                        <p className="text-text-muted">
+                          Selecting a capture date filters trajectory frames associated with that specific survey run while preserving concurrent subgrid boundary geometry and vector layer overlays.
+                        </p>
+                      </div>
+
+                      <div className="bg-card p-3.5 rounded-lg border border-subtle space-y-1">
+                        <h4 className="font-semibold text-text-base text-xs">3. WebGIS Layer Controls &amp; Base Maps</h4>
+                        <p className="text-text-muted">
+                          Use the map layer panel to toggle subgrid bounding boxes, trajectory polyline features, 360° panorama capture nodes, and high-voltage electrical grid lines.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {helpGuideTab === 'panorama' && (
+                    <div className="space-y-3">
+                      <div className="bg-card p-3.5 rounded-lg border border-subtle space-y-1">
+                        <h4 className="font-semibold text-text-base text-xs">1. Equirectangular 360° VR Camera Controls</h4>
+                        <p className="text-text-muted">
+                          Click and drag inside the 360° viewer to rotate pitch and yaw. Use the step controls or keyboard arrow keys to navigate forward/backward along vehicle trajectory frames.
+                        </p>
+                      </div>
+
+                      <div className="bg-card p-3.5 rounded-lg border border-subtle space-y-1">
+                        <h4 className="font-semibold text-text-base text-xs">2. Defect Inspection &amp; QA Benchmark Verification</h4>
+                        <p className="text-text-muted">
+                          Frames with flagged defects (<code className="bg-inner px-1 py-0.5 rounded text-slate-300 font-mono text-[10px]">Blurry Frame, Lens Obstruction, GPS Offset</code>) display automated defect questionnaires. Operator YES/NO validations immediately update defect status in Supabase.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {helpGuideTab === 'data' && (
+                    <div className="space-y-3">
+                      <div className="bg-card p-3.5 rounded-lg border border-subtle space-y-1">
+                        <h4 className="font-semibold text-text-base text-xs">1. Masterlist Trajectories vs Preserved Daily Passes</h4>
+                        <p className="text-text-muted">
+                          Toggle between <strong>Masterlist Aggregated Trajectories</strong> (consolidates subgrid survey distance &amp; POIs) and <strong>Preserved Daily Survey Runs</strong> (retains unique survey dates &amp; PIC operator history).
+                        </p>
+                      </div>
+
+                      <div className="bg-card p-3.5 rounded-lg border border-subtle space-y-1">
+                        <h4 className="font-semibold text-text-base text-xs">2. Passcode-Protected Admin Edits &amp; Deletions</h4>
+                        <p className="text-text-muted">
+                          Table records can be edited or deleted. Record deletions require security passcode verification to prevent unauthorized data loss and ensure audit trail integrity.
+                        </p>
+                      </div>
+
+                      <div className="bg-card p-3.5 rounded-lg border border-subtle space-y-1">
+                        <h4 className="font-semibold text-text-base text-xs">3. Real-Time Supabase PostgreSQL Sync</h4>
+                        <p className="text-text-muted">
+                          Click <strong>Publish All to Database</strong> to synchronize processed subgrid trajectories directly to Supabase production tables with live notifications.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {helpGuideTab === 'audit' && (
+                    <div className="space-y-3">
+                      <div className="bg-card p-3.5 rounded-lg border border-subtle space-y-1">
+                        <h4 className="font-semibold text-text-base text-xs">1. Chronological Activity Audit Logs</h4>
+                        <p className="text-text-muted">
+                          Click the audit log icon in top header to view logged user actions (create, edit, delete, publish, error) with date track-back filtering and user signatures.
+                        </p>
+                      </div>
+
+                      <div className="bg-card p-3.5 rounded-lg border border-subtle space-y-1">
+                        <h4 className="font-semibold text-text-base text-xs">2. Real-Time Publish Notifications</h4>
+                        <p className="text-text-muted">
+                          The notification bell alerts you whenever survey runs or masterlists are published to Supabase, showing total items updated and timestamp.
+                        </p>
+                      </div>
+
+                      <div className="bg-card p-3.5 rounded-lg border border-subtle space-y-1">
+                        <h4 className="font-semibold text-text-base text-xs">3. Executive Client PDF Deliverable Generator</h4>
+                        <p className="text-text-muted">
+                          Export one-click PDF QA summary reports containing subgrid defect pass rates, total surveyed kilometers, and client SLA verification sign-offs.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Modal Footer */}
+                <div className="p-4 bg-card border-t border-[rgba(255,255,255,0.08)] flex items-center justify-between">
                   <button
                     onClick={() => {
                       setIsHelpGuideOpen(false);
-                      setTourStep(1);
+                      setCurrentPage('data');
                     }}
-                    className="px-3 py-1.5 bg-card hover:bg-slate-700 text-text-base hover:text-text-base border border-subtle text-xs font-semibold rounded-lg transition-all cursor-pointer"
-                    title="Start guided step-by-step tour"
+                    className="px-3.5 py-2 bg-card hover:bg-slate-700 text-slate-300 hover:text-text-base border border-subtle text-xs font-semibold rounded-lg transition-all cursor-pointer"
+                    title="Open Layer Catalog & Data Management Page"
                   >
-                    Start Interactive Tour
+                    Open Layer Catalog & Data Management Page
                   </button>
+
                   <button
                     onClick={() => setIsHelpGuideOpen(false)}
-                    className="text-text-muted hover:text-text-base p-1 cursor-pointer"
+                    className="px-4 py-2 bg-card hover:bg-slate-700 text-text-base text-xs font-semibold rounded-lg transition-all cursor-pointer"
                   >
-                    <X size={16} />
+                    Close Manual
                   </button>
                 </div>
+
               </div>
-
-              {/* Modal Navigation Tabs (Clean text, no emojis or icons) */}
-              <div className="px-4 py-2 bg-card border-b border-[rgba(255,255,255,0.06)] flex items-center gap-1.5 overflow-x-auto text-xs">
-                {[
-                  { id: 'map', label: 'Interactive Map' },
-                  { id: 'panorama', label: '360° Street View' },
-                  { id: 'data', label: 'Daily Progress & DB' },
-                  { id: 'audit', label: 'Notifications & Audit' }
-                ].map(tab => (
-                  <button
-                    key={tab.id}
-                    onClick={() => setHelpGuideTab(tab.id as any)}
-                    className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer whitespace-nowrap border font-medium ${helpGuideTab === tab.id
-                      ? 'bg-card text-text-base border-slate-600'
-                      : 'text-text-muted border-transparent hover:text-text-base hover:bg-inner'
-                      }`}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
-
-              {/* Modal Body Content (Clean neat boxes, no lightbulb/book icons) */}
-              <div className="p-5 overflow-y-auto space-y-3 flex-1 text-xs text-slate-300 leading-relaxed">
-                {helpGuideTab === 'map' && (
-                  <div className="space-y-3">
-                    <div className="bg-card p-3.5 rounded-lg border border-subtle space-y-1">
-                      <h4 className="font-semibold text-text-base text-xs">1. Subgrid Selection &amp; Key Normalization</h4>
-                      <p className="text-text-muted">
-                        Clicking any subgrid on the map or inside the control table isolates all trajectory points for that region. Subgrid keys are automatically normalized (<code className="bg-inner px-1 py-0.5 rounded text-slate-300 font-mono text-[10px]">XX-YY &rarr; XXYY</code>) across CSV imports and database queries.
-                      </p>
-                    </div>
-
-                    <div className="bg-card p-3.5 rounded-lg border border-subtle space-y-1">
-                      <h4 className="font-semibold text-text-base text-xs">2. Date Filter Behavior</h4>
-                      <p className="text-text-muted">
-                        Selecting a capture date filters trajectory frames associated with that specific survey run while preserving concurrent subgrid boundary geometry and vector layer overlays.
-                      </p>
-                    </div>
-
-                    <div className="bg-card p-3.5 rounded-lg border border-subtle space-y-1">
-                      <h4 className="font-semibold text-text-base text-xs">3. WebGIS Layer Controls &amp; Base Maps</h4>
-                      <p className="text-text-muted">
-                        Use the map layer panel to toggle subgrid bounding boxes, trajectory polyline features, 360° panorama capture nodes, and high-voltage electrical grid lines.
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {helpGuideTab === 'panorama' && (
-                  <div className="space-y-3">
-                    <div className="bg-card p-3.5 rounded-lg border border-subtle space-y-1">
-                      <h4 className="font-semibold text-text-base text-xs">1. Equirectangular 360° VR Camera Controls</h4>
-                      <p className="text-text-muted">
-                        Click and drag inside the 360° viewer to rotate pitch and yaw. Use the step controls or keyboard arrow keys to navigate forward/backward along vehicle trajectory frames.
-                      </p>
-                    </div>
-
-                    <div className="bg-card p-3.5 rounded-lg border border-subtle space-y-1">
-                      <h4 className="font-semibold text-text-base text-xs">2. Defect Inspection &amp; QA Benchmark Verification</h4>
-                      <p className="text-text-muted">
-                        Frames with flagged defects (<code className="bg-inner px-1 py-0.5 rounded text-slate-300 font-mono text-[10px]">Blurry Frame, Lens Obstruction, GPS Offset</code>) display automated defect questionnaires. Operator YES/NO validations immediately update defect status in Supabase.
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {helpGuideTab === 'data' && (
-                  <div className="space-y-3">
-                    <div className="bg-card p-3.5 rounded-lg border border-subtle space-y-1">
-                      <h4 className="font-semibold text-text-base text-xs">1. Masterlist Trajectories vs Preserved Daily Passes</h4>
-                      <p className="text-text-muted">
-                        Toggle between <strong>Masterlist Aggregated Trajectories</strong> (consolidates subgrid survey distance &amp; POIs) and <strong>Preserved Daily Survey Runs</strong> (retains unique survey dates &amp; PIC operator history).
-                      </p>
-                    </div>
-
-                    <div className="bg-card p-3.5 rounded-lg border border-subtle space-y-1">
-                      <h4 className="font-semibold text-text-base text-xs">2. Passcode-Protected Admin Edits &amp; Deletions</h4>
-                      <p className="text-text-muted">
-                        Table records can be edited or deleted. Record deletions require security passcode verification to prevent unauthorized data loss and ensure audit trail integrity.
-                      </p>
-                    </div>
-
-                    <div className="bg-card p-3.5 rounded-lg border border-subtle space-y-1">
-                      <h4 className="font-semibold text-text-base text-xs">3. Real-Time Supabase PostgreSQL Sync</h4>
-                      <p className="text-text-muted">
-                        Click <strong>Publish All to Database</strong> to synchronize processed subgrid trajectories directly to Supabase production tables with live notifications.
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {helpGuideTab === 'audit' && (
-                  <div className="space-y-3">
-                    <div className="bg-card p-3.5 rounded-lg border border-subtle space-y-1">
-                      <h4 className="font-semibold text-text-base text-xs">1. Chronological Activity Audit Logs</h4>
-                      <p className="text-text-muted">
-                        Click the audit log icon in top header to view logged user actions (create, edit, delete, publish, error) with date track-back filtering and user signatures.
-                      </p>
-                    </div>
-
-                    <div className="bg-card p-3.5 rounded-lg border border-subtle space-y-1">
-                      <h4 className="font-semibold text-text-base text-xs">2. Real-Time Publish Notifications</h4>
-                      <p className="text-text-muted">
-                        The notification bell alerts you whenever survey runs or masterlists are published to Supabase, showing total items updated and timestamp.
-                      </p>
-                    </div>
-
-                    <div className="bg-card p-3.5 rounded-lg border border-subtle space-y-1">
-                      <h4 className="font-semibold text-text-base text-xs">3. Executive Client PDF Deliverable Generator</h4>
-                      <p className="text-text-muted">
-                        Export one-click PDF QA summary reports containing subgrid defect pass rates, total surveyed kilometers, and client SLA verification sign-offs.
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Modal Footer */}
-              <div className="p-4 bg-card border-t border-[rgba(255,255,255,0.08)] flex items-center justify-between">
-                <button
-                  onClick={() => {
-                    setIsHelpGuideOpen(false);
-                    setCurrentPage('data');
-                  }}
-                  className="px-3.5 py-2 bg-card hover:bg-slate-700 text-slate-300 hover:text-text-base border border-subtle text-xs font-semibold rounded-lg transition-all cursor-pointer"
-                  title="Open Layer Catalog & Data Management Page"
-                >
-                  Open Layer Catalog & Data Management Page
-                </button>
-
-                <button
-                  onClick={() => setIsHelpGuideOpen(false)}
-                  className="px-4 py-2 bg-card hover:bg-slate-700 text-text-base text-xs font-semibold rounded-lg transition-all cursor-pointer"
-                >
-                  Close Manual
-                </button>
-              </div>
-
             </div>
-          </div>
-        )}
+          )
+        }
 
         {/* ========================================================= */}
         {/* ABOUT DASHBOARD MODAL (Monochromatic Executive System Breakdown) */}
         {/* ========================================================= */}
-        {isAboutModalOpen && (
-          <div className="fixed inset-0 top-0 left-0 right-0 bottom-0 w-full h-full bg-app backdrop-blur-md z-[99999] flex items-center justify-center p-4 animate-in fade-in duration-150">
-            <div className="bg-card border border-subtle rounded-2xl w-full max-w-3xl shadow-2xl flex flex-col overflow-hidden text-text-base">
+        {
+          isAboutModalOpen && (
+            <div className="fixed inset-0 top-0 left-0 right-0 bottom-0 w-full h-full bg-app backdrop-blur-md z-[99999] flex items-center justify-center p-4 animate-in fade-in duration-150">
+              <div className="bg-card border border-subtle rounded-2xl w-full max-w-3xl shadow-2xl flex flex-col overflow-hidden text-text-base">
 
-              {/* Modal Header */}
-              <div className="p-5 bg-card border-b border-subtle flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="p-2.5 rounded-xl bg-inner border border-subtle text-slate-300 shadow-sm">
-                    <Info size={20} />
+                {/* Modal Header */}
+                <div className="p-5 bg-card border-b border-subtle flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 rounded-xl bg-inner border border-subtle text-slate-300 shadow-sm">
+                      <Info size={20} />
+                    </div>
+                    <div>
+                      <h2 className="text-base font-bold text-text-base tracking-wide">
+                        Mobile Mapping Data Management System
+                      </h2>
+                      <p className="text-xs text-sky-400 font-medium">
+                        Spatial Trajectory Processing &amp; Quality Assurance Pipeline
+                      </p>
+                      <p className="text-[11px] text-text-muted font-mono mt-0.5">
+                        Version 2.4.0 (Executive Enterprise Build)
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <h2 className="text-base font-bold text-text-base tracking-wide">
-                      Mobile Mapping Data Management System
-                    </h2>
-                    <p className="text-xs text-sky-400 font-medium">
-                      Spatial Trajectory Processing &amp; Quality Assurance Pipeline
+                  <button
+                    onClick={() => setIsAboutModalOpen(false)}
+                    className="text-text-muted hover:text-text-base p-1.5 rounded-lg hover:bg-inner transition-colors cursor-pointer"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+
+                {/* Modal Body Content */}
+                <div className="p-6 space-y-5 text-xs text-slate-300 leading-relaxed overflow-y-auto max-h-[75vh]">
+
+                  {/* 1. System Purpose & Domain Overview */}
+                  <div className="p-4 rounded-xl bg-card border border-subtle space-y-2">
+                    <h3 className="font-bold text-text-base text-xs uppercase tracking-wider flex items-center gap-2">
+                      <span>System Purpose &amp; Domain Architecture</span>
+                    </h3>
+                    <p className="text-slate-300 text-[11.5px] leading-relaxed">
+                      Engineered specifically for <strong>TNB 360° Mobile Mapping Operations</strong>, this WebGIS processing platform provides unified spatial trajectory analytics, automated subgrid deduplication, live Supabase PostGIS synchronization, and interactive 360° StreetView quality control inspection.
                     </p>
-                    <p className="text-[11px] text-text-muted font-mono mt-0.5">
-                      Version 2.4.0 (Executive Enterprise Build)
-                    </p>
                   </div>
-                </div>
-                <button
-                  onClick={() => setIsAboutModalOpen(false)}
-                  className="text-text-muted hover:text-text-base p-1.5 rounded-lg hover:bg-inner transition-colors cursor-pointer"
-                >
-                  <X size={18} />
-                </button>
-              </div>
 
-              {/* Modal Body Content */}
-              <div className="p-6 space-y-5 text-xs text-slate-300 leading-relaxed overflow-y-auto max-h-[75vh]">
-
-                {/* 1. System Purpose & Domain Overview */}
-                <div className="p-4 rounded-xl bg-card border border-subtle space-y-2">
-                  <h3 className="font-bold text-text-base text-xs uppercase tracking-wider flex items-center gap-2">
-                    <span>System Purpose &amp; Domain Architecture</span>
-                  </h3>
-                  <p className="text-slate-300 text-[11.5px] leading-relaxed">
-                    Engineered specifically for <strong>TNB 360° Mobile Mapping Operations</strong>, this WebGIS processing platform provides unified spatial trajectory analytics, automated subgrid deduplication, live Supabase PostGIS synchronization, and interactive 360° StreetView quality control inspection.
-                  </p>
-                </div>
-
-                {/* 2. Technical Specifications & GIS Core */}
-                <div className="space-y-2">
-                  <h4 className="font-bold text-slate-300 text-xs uppercase tracking-wider">
-                    Technical Specifications &amp; GIS Core
-                  </h4>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 font-mono text-[11px]">
-                    <div className="p-3 rounded-xl bg-card border border-subtle space-y-1">
-                      <span className="text-text-muted block text-[10px] uppercase">GIS Mapping Engine</span>
-                      <span className="text-text-base font-bold">PostGIS 3.4 + Leaflet 1.9 + WebGL</span>
-                    </div>
-                    <div className="p-3 rounded-xl bg-card border border-subtle space-y-1">
-                      <span className="text-text-muted block text-[10px] uppercase">Database Architecture</span>
-                      <span className="text-text-base font-bold">Supabase PostgreSQL (Realtime Listener)</span>
-                    </div>
-                    <div className="p-3 rounded-xl bg-card border border-subtle space-y-1">
-                      <span className="text-text-muted block text-[10px] uppercase">Coordinate Reference Systems</span>
-                      <span className="text-text-base font-bold">EPSG:4326, 3857, 3375 (Kertau RSO)</span>
-                    </div>
-                    <div className="p-3 rounded-xl bg-card border border-subtle space-y-1">
-                      <span className="text-text-muted block text-[10px] uppercase">360° Inspection Engine</span>
-                      <span className="text-text-base font-bold">Pannellum Equirectangular VR</span>
+                  {/* 2. Technical Specifications & GIS Core */}
+                  <div className="space-y-2">
+                    <h4 className="font-bold text-slate-300 text-xs uppercase tracking-wider">
+                      Technical Specifications &amp; GIS Core
+                    </h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 font-mono text-[11px]">
+                      <div className="p-3 rounded-xl bg-card border border-subtle space-y-1">
+                        <span className="text-text-muted block text-[10px] uppercase">GIS Mapping Engine</span>
+                        <span className="text-text-base font-bold">PostGIS 3.4 + Leaflet 1.9 + WebGL</span>
+                      </div>
+                      <div className="p-3 rounded-xl bg-card border border-subtle space-y-1">
+                        <span className="text-text-muted block text-[10px] uppercase">Database Architecture</span>
+                        <span className="text-text-base font-bold">Supabase PostgreSQL (Realtime Listener)</span>
+                      </div>
+                      <div className="p-3 rounded-xl bg-card border border-subtle space-y-1">
+                        <span className="text-text-muted block text-[10px] uppercase">Coordinate Reference Systems</span>
+                        <span className="text-text-base font-bold">EPSG:4326, 3857, 3375 (Kertau RSO)</span>
+                      </div>
+                      <div className="p-3 rounded-xl bg-card border border-subtle space-y-1">
+                        <span className="text-text-muted block text-[10px] uppercase">360° Inspection Engine</span>
+                        <span className="text-text-base font-bold">Pannellum Equirectangular VR</span>
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                {/* 4. Core Workflow Capabilities */}
-                <div className="space-y-2.5">
-                  <h4 className="font-bold text-slate-300 text-xs uppercase tracking-wider">
-                    Core Workflow Capabilities &amp; Features
-                  </h4>
-                  <div className="space-y-2 text-slate-300 text-[11.5px] leading-relaxed">
-                    <div className="p-3 rounded-xl bg-card border border-subtle space-y-1">
-                      <div className="font-bold text-text-base">1. Subgrid Trajectory Deduplication Strategy</div>
-                      <p className="text-text-muted text-[11px]">
-                        Auto-normalizes subgrid keys (<code className="bg-inner px-1 py-0.5 rounded text-slate-300 font-mono text-[10px]">XX-YY &rarr; XXYY</code>). Offers choice between Masterlist clean merge or preserved daily survey runs.
-                      </p>
-                    </div>
+                  {/* 4. Core Workflow Capabilities */}
+                  <div className="space-y-2.5">
+                    <h4 className="font-bold text-slate-300 text-xs uppercase tracking-wider">
+                      Core Workflow Capabilities &amp; Features
+                    </h4>
+                    <div className="space-y-2 text-slate-300 text-[11.5px] leading-relaxed">
+                      <div className="p-3 rounded-xl bg-card border border-subtle space-y-1">
+                        <div className="font-bold text-text-base">1. Subgrid Trajectory Deduplication Strategy</div>
+                        <p className="text-text-muted text-[11px]">
+                          Auto-normalizes subgrid keys (<code className="bg-inner px-1 py-0.5 rounded text-slate-300 font-mono text-[10px]">XX-YY &rarr; XXYY</code>). Offers choice between Masterlist clean merge or preserved daily survey runs.
+                        </p>
+                      </div>
 
-                    <div className="p-3 rounded-xl bg-card border border-subtle space-y-1">
-                      <div className="font-bold text-text-base">2. Interactive 360° QA Inspector &amp; SLA Benchmarks</div>
-                      <p className="text-text-muted text-[11px]">
-                        Supports AI defect threshold benchmarks (<code className="bg-inner px-1 py-0.5 rounded text-slate-300 font-mono text-[10px]">95%, 85%, 75%, 60%</code>) with custom flag labels (<code className="bg-inner px-1 py-0.5 rounded text-slate-300 font-mono text-[10px]">Blurry Frame, Lens Obstruction, Bad GPS</code>).
-                      </p>
-                    </div>
+                      <div className="p-3 rounded-xl bg-card border border-subtle space-y-1">
+                        <div className="font-bold text-text-base">2. Interactive 360° QA Inspector &amp; SLA Benchmarks</div>
+                        <p className="text-text-muted text-[11px]">
+                          Supports AI defect threshold benchmarks (<code className="bg-inner px-1 py-0.5 rounded text-slate-300 font-mono text-[10px]">95%, 85%, 75%, 60%</code>) with custom flag labels (<code className="bg-inner px-1 py-0.5 rounded text-slate-300 font-mono text-[10px]">Blurry Frame, Lens Obstruction, Bad GPS</code>).
+                        </p>
+                      </div>
 
-                    <div className="p-3 rounded-xl bg-card border border-subtle space-y-1">
-                      <div className="font-bold text-text-base">3. Executive PDF Summary Report Generator</div>
-                      <p className="text-text-muted text-[11px]">
-                        Generates client-ready QA PDF deliverables with automated pass/fail calculations and survey metrics.
-                      </p>
+                      <div className="p-3 rounded-xl bg-card border border-subtle space-y-1">
+                        <div className="font-bold text-text-base">3. Executive PDF Summary Report Generator</div>
+                        <p className="text-text-muted text-[11px]">
+                          Generates client-ready QA PDF deliverables with automated pass/fail calculations and survey metrics.
+                        </p>
+                      </div>
                     </div>
                   </div>
+
+                </div>
+
+                {/* Modal Footer */}
+                <div className="p-4 bg-card border-t border-subtle flex justify-between items-center text-[11px] text-text-muted shrink-0 font-mono">
+                  <span>© 2026 Mobile Mapping Data Management System</span>
+                  <button
+                    onClick={() => setIsAboutModalOpen(false)}
+                    className="px-4 py-1.5 bg-inner hover:bg-slate-700 text-text-base font-medium rounded-lg border border-subtle transition-all cursor-pointer shadow-sm"
+                  >
+                    Close System Info
+                  </button>
                 </div>
 
               </div>
-
-              {/* Modal Footer */}
-              <div className="p-4 bg-card border-t border-subtle flex justify-between items-center text-[11px] text-text-muted shrink-0 font-mono">
-                <span>© 2026 Mobile Mapping Data Management System</span>
-                <button
-                  onClick={() => setIsAboutModalOpen(false)}
-                  className="px-4 py-1.5 bg-inner hover:bg-slate-700 text-text-base font-medium rounded-lg border border-subtle transition-all cursor-pointer shadow-sm"
-                >
-                  Close System Info
-                </button>
-              </div>
-
             </div>
-          </div>
-        )}
+          )
+        }
 
         {/* QC Audit Modal */}
-        {qcModal && qcModal.isOpen && (
-          <QCAuditModal
-            subgrid={qcModal.subgrid}
-            poiCount={qcModal.poiCount}
-            availableCount={qcModal.availableCount}
-            baseFilename={qcModal.baseFilename}
-            availableFilenames={qcModal.availableFilenames}
-            expectedFilenames={qcModal.expectedFilenames}
-            onClose={() => setQcModal(null)}
-          />
-        )}
+        {
+          qcModal && qcModal.isOpen && (
+            <QCAuditModal
+              subgrid={qcModal.subgrid}
+              poiCount={qcModal.poiCount}
+              availableCount={qcModal.availableCount}
+              baseFilename={qcModal.baseFilename}
+              availableFilenames={qcModal.availableFilenames}
+              expectedFilenames={qcModal.expectedFilenames}
+              onClose={() => setQcModal(null)}
+            />
+          )
+        }
 
-      </div>
-    </div>
+      </div >
+    </div >
   );
 }
