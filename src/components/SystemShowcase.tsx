@@ -7,7 +7,8 @@ import {
     ArrowRight,
     ChevronLeft,
     ChevronRight,
-    FileText
+    FileText,
+    Server
 } from 'lucide-react';
 
 export interface SystemShowcaseProps {
@@ -173,7 +174,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
         }
     ];
 
-    // Preload screenshot assets into memory for instant transitions
+    // Preload screenshot assets
     useEffect(() => {
         SYSTEM_MODULES.forEach((mod) => {
             mod.images.forEach((src) => {
@@ -207,8 +208,8 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                 <div className="absolute inset-0 bg-[#070b14]/80 backdrop-blur-2xl" />
             </div>
 
-            {/* 2. Top Header Navbar (Fixed at Top) */}
-            <header className="relative z-30 px-3 sm:px-8 py-2.5 sm:py-3 flex flex-col gap-2 border-b border-slate-800/80 bg-[#070b14]/90 backdrop-blur-md shrink-0">
+            {/* 2. Top Header Navbar */}
+            <header className="relative z-30 px-3 sm:px-8 py-2 sm:py-2.5 flex flex-col gap-1.5 border-b border-slate-800/80 bg-[#070b14]/90 backdrop-blur-md shrink-0">
                 <div className="flex items-center justify-between w-full">
                     <div>
                         <span className="text-xs sm:text-sm font-semibold tracking-tight text-white block leading-tight">
@@ -245,7 +246,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                         </button>
                         <button
                             onClick={() => onEnterDashboard && onEnterDashboard(current.id)}
-                            className="px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs font-semibold bg-white hover:bg-slate-200 text-slate-950 transition-all shadow-sm active:scale-95 cursor-pointer flex items-center gap-1.5"
+                            className="px-3 sm:px-4 py-1.5 rounded-lg text-xs font-semibold bg-white hover:bg-slate-200 text-slate-950 transition-all shadow-sm active:scale-95 cursor-pointer flex items-center gap-1.5"
                         >
                             <span>Launch</span>
                             <ArrowRight className="w-3.5 h-3.5 text-slate-950 hidden sm:inline" />
@@ -253,7 +254,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                     </div>
                 </div>
 
-                {/* Mobile-Only Horizontal Module Selector Bar */}
+                {/* Mobile Horizontal Selector */}
                 <div className="flex xl:hidden items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 w-full">
                     {SYSTEM_MODULES.map((mod, idx) => (
                         <button
@@ -270,62 +271,122 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                 </div>
             </header>
 
-            {/* 3. Main Showcase Section (Scrollable on Mobile, Locked on Desktop) */}
-            <main className="relative z-20 flex-1 w-full px-3 sm:px-8 py-2.5 sm:py-4 overflow-y-auto lg:overflow-hidden flex items-center justify-center">
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 lg:gap-8 items-center w-full max-w-[1700px] mx-auto my-auto">
+            {/* 3. Main Showcase Section */}
+            <main className="relative z-20 flex-1 w-full px-3 sm:px-8 py-2 sm:py-3 overflow-y-auto lg:overflow-hidden flex items-center justify-center">
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-8 items-center w-full max-w-[1700px] mx-auto my-auto">
 
                     {/* Left Narrative Panel */}
-                    <div className="lg:col-span-4 xl:col-span-3.5 space-y-3 sm:space-y-4 text-left flex flex-col justify-center order-2 lg:order-1 pb-4 lg:pb-0">
-                        <div className="space-y-1 sm:space-y-1.5">
-                            <span
-                                className="text-[11px] sm:text-xs font-semibold uppercase tracking-wider block"
-                                style={{ color: current.accentColor }}
-                            >
-                                {current.category}
-                            </span>
-                            <h1 className="text-lg sm:text-2xl lg:text-3xl xl:text-4xl font-bold tracking-tight text-white leading-tight">
-                                {current.title}
+                    <div className="lg:col-span-5 xl:col-span-4.5 space-y-3.5 text-left flex flex-col justify-center order-2 lg:order-1 pb-4 lg:pb-0">
+
+                        {/* Top Hero Section */}
+                        <div className="space-y-1.5">
+                            <div className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded-full bg-slate-900/90 border border-slate-800 backdrop-blur-md">
+                                <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse" />
+                                <span className="text-[10px] font-bold tracking-widest text-slate-300 uppercase">
+                                    GeoSphere 360™ Platform
+                                </span>
+                                <span className="text-[9px] text-sky-400/80 font-mono pl-1 border-l border-slate-800">
+                                    LIVE OPS
+                                </span>
+                            </div>
+
+                            <h1 className="text-xl sm:text-2xl xl:text-3xl font-extrabold tracking-tight text-white leading-tight">
+                                GeoSphere 360™ Mobile Mapping Platform
                             </h1>
-                            <p className="text-xs sm:text-sm text-slate-300 sm:text-slate-400 font-normal leading-relaxed">
-                                {current.description}
+
+                            <p className="text-xs text-slate-400 font-normal leading-relaxed">
+                                Centralized geospatial operations hub for large-scale infrastructure mapping and asset maintenance.
                             </p>
                         </div>
 
-                        {/* Micro Specs HUD */}
-                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-0.5">
-                            {current.specs.map((spec, i) => (
-                                <div
-                                    key={i}
-                                    className="p-2 sm:p-2.5 rounded-xl bg-slate-900/80 border border-slate-800 backdrop-blur-md"
+                        {/* Subtle Divider */}
+                        <div className="w-full h-px bg-gradient-to-r from-slate-800 via-slate-700/60 to-transparent" />
+
+                        {/* Active Module Details */}
+                        <div className="space-y-2.5">
+                            <div className="flex items-center justify-between">
+                                <span
+                                    className="text-[11px] font-bold uppercase tracking-wider block"
+                                    style={{ color: current.accentColor }}
                                 >
-                                    <span className="text-[10px] sm:text-[10.5px] font-medium text-slate-400 block truncate">
-                                        {spec.label}
-                                    </span>
-                                    <span className="text-xs font-semibold text-slate-200 block mt-0.5 truncate">
-                                        {spec.value}
-                                    </span>
-                                </div>
-                            ))}
+                                    {current.category}
+                                </span>
+                                <span className="text-[10px] font-mono text-slate-500 bg-slate-900/90 px-2 py-0.5 rounded border border-slate-800">
+                                    Module 0{activeIndex + 1} / 05
+                                </span>
+                            </div>
+
+                            <div className="space-y-1">
+                                <h2 className="text-base sm:text-lg font-bold tracking-tight text-slate-100 leading-snug">
+                                    {current.title}
+                                </h2>
+                                <p className="text-xs text-slate-300/90 font-normal leading-relaxed line-clamp-3">
+                                    {current.description}
+                                </p>
+                            </div>
+
+                            {/* Micro Specs HUD */}
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 pt-0.5">
+                                {current.specs.map((spec, i) => (
+                                    <div
+                                        key={i}
+                                        className="p-2 rounded-xl bg-slate-900/80 border border-slate-800 backdrop-blur-md"
+                                    >
+                                        <span className="text-[10px] font-medium text-slate-400 block truncate">
+                                            {spec.label}
+                                        </span>
+                                        <span className="text-xs font-semibold text-slate-200 block mt-0.5 truncate">
+                                            {spec.value}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+
+                            {/* Launch Action Button */}
+                            <div className="pt-1">
+                                <button
+                                    onClick={() => onEnterDashboard && onEnterDashboard(current.id)}
+                                    className="w-full sm:w-auto px-5 py-2.5 rounded-xl font-semibold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all transform hover:opacity-95 active:scale-95 cursor-pointer shadow-lg"
+                                    style={{
+                                        backgroundColor: current.accentColor,
+                                        color: '#070b14'
+                                    }}
+                                >
+                                    <span>Enter System Module</span>
+                                    <ArrowRight className="w-4 h-4" />
+                                </button>
+                            </div>
                         </div>
 
-                        {/* Launch Action Button */}
-                        <div className="pt-1 sm:pt-2">
-                            <button
-                                onClick={() => onEnterDashboard && onEnterDashboard(current.id)}
-                                className="w-full sm:w-auto px-5 sm:px-6 py-2.5 sm:py-3 rounded-xl font-semibold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all transform hover:opacity-95 active:scale-95 cursor-pointer shadow-lg"
-                                style={{
-                                    backgroundColor: current.accentColor,
-                                    color: '#070b14'
-                                }}
-                            >
-                                <span>Enter System Module</span>
-                                <ArrowRight className="w-4 h-4" />
-                            </button>
+                        {/* Enterprise Infrastructure Footer */}
+                        <div className="pt-2.5 border-t border-slate-800/80 space-y-1.5">
+                            <div className="flex items-center justify-between text-[10px]">
+                                <span className="text-slate-400 font-medium flex items-center gap-1.5">
+                                    <Server size={11} className="text-sky-400" />
+                                    Spatial Infrastructure Engine
+                                </span>
+                                <span className="inline-flex items-center gap-1 text-emerald-400 font-mono text-[9px]">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                    PostGIS Cloud Synced
+                                </span>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-1.5 text-[9px] font-mono text-slate-400">
+                                <div className="bg-slate-900/60 px-2 py-1.5 rounded-lg border border-slate-800/70 flex flex-col justify-center">
+                                    <span className="text-slate-500 block text-[8px] font-bold">CRS STANDARDS</span>
+                                    <span className="text-slate-300 font-medium truncate">EPSG:4326 / 3857 / 3375</span>
+                                </div>
+                                <div className="bg-slate-900/60 px-2 py-1.5 rounded-lg border border-slate-800/70 flex flex-col justify-center">
+                                    <span className="text-slate-500 block text-[8px] font-bold">GOVERNANCE &amp; SLA</span>
+                                    <span className="text-slate-300 font-medium truncate">AES-256 • 0.00% Defect Pass</span>
+                                </div>
+                            </div>
                         </div>
+
                     </div>
 
                     {/* Right Screenshot Deck */}
-                    <div className="lg:col-span-8 xl:col-span-8.5 w-full flex flex-col justify-center group relative order-1 lg:order-2">
+                    <div className="lg:col-span-7 xl:col-span-7.5 w-full flex flex-col justify-center group relative order-1 lg:order-2">
 
                         {/* Ambient Underglow */}
                         <div className="absolute -inset-2 rounded-3xl overflow-hidden pointer-events-none opacity-30 group-hover:opacity-70 transition-opacity duration-500 blur-2xl">
@@ -339,10 +400,10 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                         </div>
 
                         {/* Preview Frame Container */}
-                        <div className="relative w-full lg:h-[calc(100dvh-200px)] p-2.5 sm:p-4 rounded-2xl bg-slate-900/90 border border-slate-800/90 shadow-2xl flex flex-col justify-between backdrop-blur-xl">
+                        <div className="relative w-full lg:h-[calc(100dvh-175px)] p-2.5 sm:p-4 rounded-2xl bg-slate-900/90 border border-slate-800/90 shadow-2xl flex flex-col justify-between backdrop-blur-xl">
 
                             {/* Top Subtitle Bar */}
-                            <div className="flex items-center justify-between px-1 sm:px-2 pb-1.5 sm:pb-2 border-b border-slate-800/80">
+                            <div className="flex items-center justify-between px-1 sm:px-2 pb-1.5 border-b border-slate-800/80">
                                 <span className="text-[11px] sm:text-xs font-semibold text-slate-300 truncate pr-2">
                                     {current.subtitle}
                                 </span>
@@ -394,8 +455,8 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                 </div>
             </main>
 
-            {/* 4. Footer Navigation Controls (Always Pinned at the Bottom on Mobile & Desktop) */}
-            <footer className="relative z-30 w-full px-3 sm:px-8 py-2.5 sm:py-3 flex items-center justify-between border-t border-slate-800/80 bg-[#070b14]/95 backdrop-blur-md shrink-0">
+            {/* 4. Pinned Footer Navigation Controls */}
+            <footer className="relative z-30 w-full px-3 sm:px-8 py-2 sm:py-2.5 flex items-center justify-between border-t border-slate-800/80 bg-[#070b14]/95 backdrop-blur-md shrink-0">
                 <button
                     onClick={() => setActiveIndex((prev) => (prev - 1 + SYSTEM_MODULES.length) % SYSTEM_MODULES.length)}
                     className="flex items-center gap-2 sm:gap-3 opacity-80 hover:opacity-100 transition-all cursor-pointer"
