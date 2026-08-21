@@ -20,7 +20,7 @@ export const WebGISViewerIframe: React.FC<WebGISViewerIframeProps> = ({
   const webGisBaseUrl = import.meta.env.VITE_MAP_URL || 'https://mobilemapping-nine.vercel.app';
 
   // Static iframe URL created ONCE on mount so iframe never reloads on prop updates
-  const staticSrc = useRef(`${webGisBaseUrl}/?embed=true&viewerOnly=true`).current;
+  const staticSrc = useRef(`${webGisBaseUrl}/?embed=true&viewerOnly=true&dashboard=true`).current;
 
   const postData = React.useCallback(() => {
     if (iframeRef.current && iframeRef.current.contentWindow) {
