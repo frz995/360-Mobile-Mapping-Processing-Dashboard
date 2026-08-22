@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import WebGISViewerIframe from './components/WebGISViewerIframe';
 import {
   AlertTriangle,
@@ -40,10 +40,15 @@ import {
   ExternalLink,
   Loader2,
   Info,
-  Settings
+  Settings,
+  Play,
+  StopCircle
 } from 'lucide-react';
-import { supabase, publishToSupabase, saveToStagingSupabase, deleteFromStagingSupabase, fetchSupabaseData, deleteFromSupabase, updateDefectStatusInSupabase, fetchQaRecordsFromSupabase, verifyCsvImageFilenamesInStorage, fetchAuditLogsFromSupabase, saveAuditLogToSupabase, fetchNotificationsFromSupabase, saveNotificationToSupabase, resolvePanoramaUrl, getDatabaseTableMapping, SUBGRID_COORDINATES } from './services/supabase';
+import { supabase, publishToSupabase, saveToStagingSupabase, deleteFromStagingSupabase, fetchSupabaseData, deleteFromSupabase, updateDefectStatusInSupabase, fetchQaRecordsFromSupabase, verifyCsvImageFilenamesInStorage, fetchAuditLogsFromSupabase, saveAuditLogToSupabase, fetchNotificationsFromSupabase, saveNotificationToSupabase, fetchProjectSettingsFromSupabase, saveProjectSettingsToSupabase, resolvePanoramaUrl, getDatabaseTableMapping, SUBGRID_COORDINATES } from './services/supabase';
 import { AdminSettingsView } from './components/AdminSettingsView';
+import { QAQCWorkbench } from './components/QAQCWorkbench';
+import { DefectsGalleryModal } from './components/DefectsGalleryModal';
+import { useQAQCWorker, type StationNode } from './hooks/useQAQCWorker';
 import * as shapefile from 'shapefile';
 import * as toGeoJSON from '@tmcw/togeojson';
 import './themes.css';
@@ -84,6 +89,7 @@ interface DailyTimeSeries {
   isFromSupabase?: boolean;
   _alreadySyncedToBatch?: boolean;
   panoramas?: PanoramaItem[];
+  qaqcStatus?: string;
 }
 
 interface BatchLog {
@@ -104,6 +110,7 @@ interface BatchLog {
   isSyncedWithSupabase?: boolean;
   isFromSupabase?: boolean;
   panoramas?: PanoramaItem[];
+  qaqcStatus?: string;
 }
 
 export interface NotificationItem {
@@ -371,6 +378,17 @@ export function calculateSubgridDistanceKm(points: { lat: number; lon: number }[
   return parseFloat(totalKm.toFixed(1));
 }
 
+// Helper: Unique ID generator for daily runs and batch items
+export function getItemId(item: any): string {
+  if (!item) return '';
+  if (item.id) return String(item.id);
+  if (item._id) return String(item._id);
+  if (item.runId) return String(item.runId);
+  const poi = item.poiCount || item.imagesProcessed || item.images || (item.panoramas ? item.panoramas.length : 0);
+  const km = item.kmProcessed || 0;
+  return `row-${item.date || 'nodate'}-${item.subgrid || item.imageFilename || 'nosub'}-${poi}-${km}`;
+}
+
 // Helper: Build a BatchLog from Supabase record or return dynamic fallback
 export function createBatchLogFromSupabaseOrDummy(
   row?: { filename?: string; image_url?: string; captured_at?: string; images?: number; defects?: number; km_processed?: number; kmProcessed?: number; grid?: string; subgrid?: string; pic?: string },
@@ -393,17 +411,13 @@ export function createBatchLogFromSupabaseOrDummy(
     defects: Number(row?.defects || 0),
     kmProcessed: Number(row?.km_processed || row?.kmProcessed || 0),
     status: 'Complete',
-    pic: row?.pic || ''
+    pic: row?.pic || 'Admin'
   };
 }
 
 // ==============================================
 // Initial State (Populated dynamically from Supabase)
 // ==============================================
-
-const INITIAL_NOTIFICATIONS: NotificationItem[] = [];
-
-const INITIAL_AUDIT_LOGS: AuditLogItem[] = [];
 
 const TOUR_STEPS = [
   {
@@ -480,10 +494,6 @@ const TOUR_STEPS = [
   }
 ];
 
-const INITIAL_DAILY_DATA: DailyTimeSeries[] = [];
-
-const INITIAL_BATCH_LOGS: BatchLog[] = [];
-
 // Calculate Haversine distance in KM between two GPS coordinates
 function calculateHaversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371; // Earth's radius in KM
@@ -511,9 +521,20 @@ function calculatePanoramaTrackKm(panoramas?: PanoramaItem[]): number {
   return Math.round(totalKm * 100) / 100;
 }
 
-export function reconcileBatchLogs(dailyItems: DailyTimeSeries[], _baseBatches?: BatchLog[]): BatchLog[] {
+export function reconcileBatchLogs(dailyItems: DailyTimeSeries[], baseBatches?: BatchLog[]): BatchLog[] {
   if (!dailyItems || dailyItems.length === 0) {
     return [];
+  }
+
+  // Lookup existing Masterlist Admin PICs
+  const baseBatchPicMap = new Map<string, string>();
+  if (baseBatches && Array.isArray(baseBatches)) {
+    baseBatches.forEach(b => {
+      const sg = (extractSubgridName(b.subgrid || b.imageFilename) || b.subgrid || '').toUpperCase().trim();
+      if (sg && b.pic) {
+        baseBatchPicMap.set(sg, b.pic);
+      }
+    });
   }
 
   // Group all daily records by normalized subgrid
@@ -529,7 +550,7 @@ export function reconcileBatchLogs(dailyItems: DailyTimeSeries[], _baseBatches?:
     publishedKm: number;
     totalKm: number;
     defects: number;
-    pics: Set<string>;
+    adminPic: string;
     captureEquipment: string;
     panoramas: any[];
     availableFilenames?: string[];
@@ -546,13 +567,33 @@ export function reconcileBatchLogs(dailyItems: DailyTimeSeries[], _baseBatches?:
     const singlePoi = d.poiCount || (d.panoramas?.length) || 0;
     const singleImg = isPublished ? getImagesProcessedCount(d) : 0;
     const kmVal = Number(d.kmProcessed || 0);
-    const defCount = Number(d.imagesDefected || d.defectCount || 0);
+    let cachedDefects: number | undefined;
+    try {
+      const cachedMap = JSON.parse(localStorage.getItem('app_qaqc_audit_cache_v2') || '{}');
+      const cached = cachedMap[`${normSub}_${getItemId(d) || 'default'}`] || cachedMap[`${normSub}_default`];
+      if (cached && typeof cached.defectCount === 'number') {
+        cachedDefects = cached.defectCount;
+      }
+    } catch (_) { }
+
+    let parsedStatusDefects = 0;
+    if (d.qaqcStatus) {
+      const m = d.qaqcStatus.match(/(\d+)\s+Defect/i);
+      if (m) parsedStatusDefects = parseInt(m[1], 10);
+    }
+
+    const defCount = (d.imagesDefected && d.imagesDefected > 0)
+      ? d.imagesDefected
+      : (d.defectCount && d.defectCount > 0)
+        ? d.defectCount
+        : (cachedDefects !== undefined && cachedDefects > 0)
+          ? cachedDefects
+          : (parsedStatusDefects > 0)
+            ? parsedStatusDefects
+            : 0;
 
     const existing = batchMap.get(normSub);
     if (existing) {
-      if (d.pic) {
-        d.pic.split(',').map(p => p.trim()).filter(Boolean).forEach(p => existing.pics.add(p));
-      }
       existing.totalPoi += singlePoi;
       existing.totalKm = Math.round((existing.totalKm + kmVal) * 100) / 100;
       if (isPublished) {
@@ -575,14 +616,11 @@ export function reconcileBatchLogs(dailyItems: DailyTimeSeries[], _baseBatches?:
         });
       }
     } else {
-      const picSet = new Set<string>();
-      if (d.pic && d.pic.trim()) {
-        d.pic.split(',').map(p => p.trim()).filter(Boolean).forEach(p => picSet.add(p));
-      }
-
       const initialAvailFiles = d.availableFilenames && Array.isArray(d.availableFilenames)
         ? [...d.availableFilenames]
         : (d.panoramas ? d.panoramas.filter((p: any) => p.isAvailable !== false).map((p: any) => p.filename).filter(Boolean) : []);
+
+      const designatedAdminPic = baseBatchPicMap.get(normSub) || 'Admin';
 
       batchMap.set(normSub, {
         id: `BATCH-${normSub}`,
@@ -596,7 +634,7 @@ export function reconcileBatchLogs(dailyItems: DailyTimeSeries[], _baseBatches?:
         publishedKm: isPublished ? kmVal : 0,
         totalKm: kmVal,
         defects: defCount,
-        pics: picSet,
+        adminPic: designatedAdminPic,
         captureEquipment: d.captureEquipment || 'MMS',
         panoramas: d.panoramas || [],
         availableFilenames: initialAvailFiles.length > 0 ? initialAvailFiles : undefined,
@@ -624,7 +662,7 @@ export function reconcileBatchLogs(dailyItems: DailyTimeSeries[], _baseBatches?:
       availableFilenames: entry.availableFilenames && entry.availableFilenames.length > 0 ? entry.availableFilenames : undefined,
       kmProcessed: entry.publishedKm,
       defects: entry.defects,
-      pic: Array.from(entry.pics).join(', ') || '',
+      pic: entry.adminPic || baseBatchPicMap.get(normSub) || 'Admin',
       status: finalStatus,
       captureEquipment: entry.captureEquipment,
       panoramas: entry.panoramas,
@@ -752,14 +790,7 @@ const MapComponent = ({
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
 
   const effectiveSettings = React.useMemo(() => {
-    if (passedSettings && typeof passedSettings === 'object' && Object.keys(passedSettings).length > 0) {
-      return passedSettings;
-    }
-    try {
-      const raw = localStorage.getItem('app_project_settings');
-      if (raw) return JSON.parse(raw);
-    } catch (e) { }
-    return {};
+    return (passedSettings && typeof passedSettings === 'object') ? passedSettings : {};
   }, [passedSettings, refreshKey]);
 
   const formattedStagedItems = React.useMemo(() => {
@@ -1484,15 +1515,7 @@ const DataManagementPage = ({
   isGuestUser?: boolean,
   projectSettings?: any
 }) => {
-  const initialTab = (() => {
-    try {
-      const raw = localStorage.getItem('app_project_settings');
-      const parsed = raw ? JSON.parse(raw) : null;
-      return (parsed?.defaultDataTab === 'daily' || parsed?.defaultDataTab === 'vector') ? parsed.defaultDataTab : 'batches';
-    } catch {
-      return 'batches';
-    }
-  })();
+  const initialTab = (projectSettings?.defaultDataTab === 'daily' || projectSettings?.defaultDataTab === 'vector') ? projectSettings.defaultDataTab : 'batches';
   const [dataTab, setDataTab] = useState<'batches' | 'daily' | 'vector'>(initialTab);
 
   const activeAuthUserName = React.useMemo(() => {
@@ -1850,14 +1873,14 @@ const DataManagementPage = ({
         const picVal = getVal(row, 'pic');
 
         const fallbackPic =
-          selectedPic ||
+          authSession?.user?.user_metadata?.username ||
           authSession?.user?.user_metadata?.full_name ||
           authSession?.user?.user_metadata?.name ||
-          authSession?.user?.email?.split('@')[0] ||
-          authSession?.user?.email ||
-          '';
+          (authSession?.user?.email ? authSession.user.email.split('@')[0] : '') ||
+          selectedPic ||
+          'Operator';
 
-        const pic = picVal && picVal.trim() ? picVal.trim() : fallbackPic;
+        const pic = (picVal && picVal.trim() && picVal.trim().toLowerCase() !== 'unassigned') ? picVal.trim() : fallbackPic;
 
         const pubVal = getVal(row, 'publishToWebGIS') || getVal(row, 'publishToUSVPRO');
         const pub = directPublish ? 'yes' : (['yes', 'no', 'need to recheck', 'in process'].includes(pubVal)
@@ -2308,13 +2331,6 @@ const DataManagementPage = ({
   useEffect(() => {
     setPage(1);
   }, [dataTab, searchQuery, pageSize]);
-
-  const getItemId = (item: BatchLog | DailyTimeSeries): string => {
-    if (item.id) return item.id;
-    const poi = (item as any).poiCount || (item as any).imagesProcessed || (item as any).images || 0;
-    const km = (item as any).kmProcessed || 0;
-    return `row-${item.date || 'nodate'}-${item.subgrid || 'nosub'}-${poi}-${km}`;
-  };
 
   // Filtered & Paginated Data
   const activeBatchLogs = React.useMemo(() => {
@@ -2843,14 +2859,12 @@ const DataManagementPage = ({
                       const { dailyData: sDaily, batchLogs: sBatches, error } = await fetchSupabaseData();
                       if (error) {
                         setPublishMessage({ text: 'Error syncing with Supabase: ' + error, type: 'error' });
-                      } else if (sDaily && sDaily.length > 0) {
-                        setDailyData(sDaily);
-                        setDraftDailyData(sDaily);
-                        setBatchLogs(sBatches);
-                        setIsDailyDirty(false);
-                        setPublishMessage({ text: `Successfully synced ${sDaily.length} subgrids directly from Supabase database!`, type: 'success' });
                       } else {
-                        setPublishMessage({ text: 'No live records found in Supabase database.', type: 'error' });
+                        setDailyData(sDaily || []);
+                        setDraftDailyData(sDaily || []);
+                        setBatchLogs(sBatches || []);
+                        setIsDailyDirty(false);
+                        setPublishMessage({ text: `Successfully synced ${sDaily ? sDaily.length : 0} records directly from Supabase!`, type: 'success' });
                       }
                     }}
                     className="flex items-center gap-2 bg-inner hover:bg-slate-700 border border-subtle text-text-base px-3.5 py-2 rounded-xl transition-all text-xs font-semibold cursor-pointer shadow-sm"
@@ -3292,7 +3306,7 @@ const DataManagementPage = ({
                               </td>
                               <td className="px-4 py-3.5 text-slate-300 font-medium whitespace-nowrap">{batch.defects}</td>
                               <td className="px-4 py-3.5 text-slate-300 font-medium whitespace-nowrap">
-                                {batch.pic && batch.pic.trim() ? batch.pic : (activeAuthUserName || authSession?.user?.email || 'Unassigned')}
+                                {batch.pic && batch.pic.trim() ? batch.pic : 'Admin'}
                               </td>
                               <td className="px-4 py-3.5 whitespace-nowrap">
                                 <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${batch.status === 'Complete'
@@ -3447,7 +3461,7 @@ const DataManagementPage = ({
                                 })()}
                               </td>
                               <td className="px-4 py-3.5 text-slate-300 font-medium whitespace-nowrap">
-                                {daily.pic && daily.pic.trim() ? daily.pic : (activeAuthUserName || authSession?.user?.email || 'Unassigned')}
+                                {daily.pic && daily.pic.trim() ? daily.pic : (activeAuthUserName || (authSession?.user?.email ? authSession.user.email.split('@')[0] : '') || 'Operator')}
                               </td>
                               <td className="px-4 py-3.5 whitespace-nowrap">
                                 <select
@@ -3677,6 +3691,7 @@ const DataManagementPage = ({
                         <DataForm
                           initialData={editingItem as BatchLog | DailyTimeSeries | null}
                           dataType={dataTab as 'batches' | 'daily'}
+                          activeAuthUserName={activeAuthUserName}
                           onSave={handleSave}
                           onCancel={() => {
                             setIsFormOpen(false);
@@ -4608,18 +4623,20 @@ const GRIDS = Array.from({ length: 12 }, (_, i) => (i + 1).toString());
 const DataForm = ({
   initialData,
   dataType,
+  activeAuthUserName,
   onSave,
   onCancel
 }: {
   initialData: BatchLog | DailyTimeSeries | null,
   dataType: 'batches' | 'daily',
+  activeAuthUserName?: string,
   onSave: (data: any) => void,
   onCancel: () => void
 }) => {
   const [formData, setFormData] = useState<any>(
     initialData ||
     (dataType === 'batches'
-      ? { date: new Date().toISOString().slice(0, 10), grid: '1', subgrid: '', imageFilename: '', images: 0, defects: 0, kmProcessed: 0, status: 'Ongoing' as const, captureEquipment: 'MMS', pic: '' }
+      ? { date: new Date().toISOString().slice(0, 10), grid: '1', subgrid: '', imageFilename: '', images: 0, defects: 0, kmProcessed: 0, status: 'Ongoing' as const, captureEquipment: 'MMS', pic: 'Admin' }
       : {
         date: '',
         grid: '1',
@@ -4629,7 +4646,7 @@ const DataForm = ({
         defectCount: 0,
         imagesDefected: 0,
         captureEquipment: 'MMS',
-        pic: '',
+        pic: activeAuthUserName || 'Operator',
         publishToUSVPRO: 'in process' as const,
         action: ''
       }
@@ -4869,6 +4886,66 @@ export default function App() {
   const [pendingModule, setPendingModule] = useState<string | null>(null);
   const [selectedDailyRunId, setSelectedDailyRunId] = useState<string | null>(null);
 
+  // 1. Core Dynamic States
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>([]);
+  const [dailyData, setDailyData] = useState<DailyTimeSeries[]>([]);
+  const [batchLogs, setBatchLogs] = useState<BatchLog[]>([]);
+  const [qaSubgridRecords, setQaSubgridRecords] = useState<Record<string, {
+    flags: { blurry: boolean; obstruction: boolean; badGps: boolean };
+    answer: 'yes' | 'no' | null;
+    isLocked: boolean;
+  }>>({});
+
+  // 2. Logging & Notification Callbacks
+  const addNotification = useCallback((item: Omit<NotificationItem, 'id' | 'timestamp' | 'read'>) => {
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    const timestampStr = `${dateStr}, ${timeStr}`;
+    const newNotif: NotificationItem = {
+      ...item,
+      id: `notif-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      timestamp: timestampStr,
+      read: false
+    };
+    setNotifications(prev => [newNotif, ...prev]);
+    saveNotificationToSupabase({
+      timestamp: timestampStr,
+      title: item.title,
+      message: item.message,
+      category: item.category,
+      totalItems: item.totalItems
+    }).catch(err => console.warn('Supabase notification save notice:', err));
+  }, []);
+
+  const addAuditLog = useCallback((type: AuditLogItem['type'], title: string, details: string, status: AuditLogItem['status'] = 'info') => {
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    const timestampStr = `${dateStr}, ${timeStr}`;
+    const userName = authSession?.user?.email ? authSession.user.email.split('@')[0] : 'System';
+    const newAudit: AuditLogItem = {
+      id: `audit-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      timestamp: timestampStr,
+      type,
+      title,
+      details,
+      user: userName,
+      status,
+      read: false
+    };
+    setAuditLogs(prev => [newAudit, ...prev]);
+    saveAuditLogToSupabase({
+      timestamp: timestampStr,
+      type,
+      title,
+      details,
+      user: userName,
+      status
+    }).catch(err => console.warn('Supabase audit log save notice:', err));
+  }, [authSession]);
+
   // 1. Module focus spotlight state
   const [focusedSection, setFocusedSection] = useState<'map' | 'processing' | 'qa' | null>(null);
 
@@ -5022,14 +5099,9 @@ export default function App() {
   const [showPassword, setShowPassword] = useState(false);
   const [isDataLoading, setIsDataLoading] = useState(true);
   const [supabaseError, setSupabaseError] = useState<string | null>(null);
-  const [projectSettings, setProjectSettings] = useState(() => {
-    try {
-      const saved = localStorage.getItem('app_project_settings');
-      if (saved) return JSON.parse(saved);
-    } catch (e) { }
-    return {
-      projectName: '360 Mobile Mapping — Spatial Operations Division',
-      contractCode: 'MMS-2026-GEO-01',
+  const [projectSettings, setProjectSettings] = useState<any>(() => ({
+    projectName: '360 Mobile Mapping — Spatial Operations Division',
+    contractCode: 'MMS-2026-GEO-01',
       targetKm: 315.2,
       targetImages: 50000,
       targetDeadline: '2026-12-31',
@@ -5072,8 +5144,7 @@ export default function App() {
       csvDateAliases: 'date, time, captured_at, timestamp',
       dropZeroGpsRows: true,
       csvTimestampFormat: 'auto'
-    };
-  });
+    }));
 
   const [imagesListModal, setImagesListModal] = useState<{
     isOpen: boolean;
@@ -5122,6 +5193,14 @@ export default function App() {
 
   const isGuestUser = Boolean(authSession?.isGuest || authSession?.user?.role === 'guest' || authSession?.user?.email?.toLowerCase().includes('guest'));
 
+  const activeAuthUserName = React.useMemo(() => {
+    if (!authSession || !authSession.user) return '';
+    const u = authSession.user;
+    const raw = u.user_metadata?.username || u.user_metadata?.full_name || u.user_metadata?.name || (u.email ? u.email.split('@')[0] : '');
+    if (!raw) return '';
+    return raw.charAt(0).toUpperCase() + raw.slice(1);
+  }, [authSession]);
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError(null);
@@ -5146,26 +5225,7 @@ export default function App() {
     }
   };
 
-  const [layerCatalog, setLayerCatalog] = useState<(Layer | Folder)[]>(() => {
-    const saved = localStorage.getItem('layerCatalog');
-    if (!saved) return [];
-    try {
-      const parsed = JSON.parse(saved);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
-  });
-
-  // Database-first state initialization (starts empty, fetched live from Supabase on mount)
-  const [dailyData, setDailyData] = useState<DailyTimeSeries[]>(() => {
-    ['dailyData_v4', 'dailyData_v5', 'dailyData_v6', 'dailyData_v7', 'dailyData_v8', 'dailyData_v9', 'dailyData_v10', 'dailyData_v11', 'dailyData_v12', 'dailyData_v13', 'dailyData_v14', 'dailyData_v15', 'dailyData_v16', 'dailyData_v17', 'dailyData_v18', 'dailyData_v19', 'dailyData_v20', 'dailyData_v21', 'dailyData_v22', 'dailyData_v23', 'dailyData_v24', 'dailyData_v25', 'dailyData_v26', 'dailyData_v27', 'dailyData_v28', 'dailyData_v29', 'dailyData_v30', 'dailyData_v31', 'batchLogs_v5', 'batchLogs_v6', 'batchLogs_v7', 'batchLogs_v8', 'batchLogs_v9', 'batchLogs_v10', 'batchLogs_v11', 'batchLogs_v12', 'batchLogs_v13', 'batchLogs_v14', 'batchLogs_v15', 'batchLogs_v16', 'batchLogs_v17', 'batchLogs_v18', 'batchLogs_v19', 'batchLogs_v20', 'batchLogs_v21', 'batchLogs_v22', 'batchLogs_v23', 'batchLogs_v24', 'batchLogs_v25', 'batchLogs_v26', 'batchLogs_v27', 'batchLogs_v28', 'batchLogs_v29', 'batchLogs_v30', 'batchLogs_v31', 'qaSubgridRecords_v13'].forEach(k => {
-      try { localStorage.removeItem(k); } catch { }
-    });
-    return INITIAL_DAILY_DATA;
-  });
-
-  const [batchLogs, setBatchLogs] = useState<BatchLog[]>(() => INITIAL_BATCH_LOGS);
+  const [layerCatalog, setLayerCatalog] = useState<(Layer | Folder)[]>([]);
 
   const activeBatchLogs = React.useMemo(() => {
     const strategy = projectSettings?.deduplicationStrategy || 'clean_merge';
@@ -5193,49 +5253,34 @@ export default function App() {
 
 
   // Fetch live database records on mount and merge with local drafts
-  // Fetch live database records on mount with instant cache & parallel loading
+  // Fetch live database records on mount directly from Supabase
   useEffect(() => {
-    // 1. Instant Cache Hydration (0ms load time from previous session)
-    const cachedDaily = localStorage.getItem('app_cached_daily_data');
-    const cachedBatches = localStorage.getItem('app_cached_batch_logs');
-
-    if (cachedDaily && cachedBatches) {
-      try {
-        setDailyData(JSON.parse(cachedDaily));
-        setBatchLogs(JSON.parse(cachedBatches));
-        setIsDataLoading(false); // Show cached data immediately
-      } catch (e) {
-        console.warn('Cache parse skipped', e);
-      }
-    }
-
-    // 2. Parallel Background Fetch
     async function initLiveSupabaseData(isSilent: boolean = false) {
-      if (!cachedDaily && !isSilent) {
+      if (!isSilent) {
         setIsDataLoading(true);
       }
 
       try {
         // Fetch all data sources concurrently in parallel
-        const [supabaseDataRes, qaRes, fetchedQa, dbAuditLogs, dbNotifications] = await Promise.allSettled([
+        const [supabaseDataRes, qaRes, fetchedQa, dbAuditLogs, dbNotifications, dbSettingsRes] = await Promise.allSettled([
           fetchSupabaseData(),
           supabase.from('qa_defects').select('qa_status, defect_flags, defect_count, subgrid'),
           fetchQaRecordsFromSupabase(),
           fetchAuditLogsFromSupabase(),
-          fetchNotificationsFromSupabase()
+          fetchNotificationsFromSupabase(),
+          fetchProjectSettingsFromSupabase()
         ]);
 
-        // Process Core Daily & Batch Data
+        // Process Project Settings
+        if (dbSettingsRes.status === 'fulfilled' && dbSettingsRes.value) {
+          setProjectSettings((prev: any) => ({ ...prev, ...dbSettingsRes.value }));
+        }
+
+        // Process Core Daily & Batch Data directly from Supabase
         if (supabaseDataRes.status === 'fulfilled') {
           const { dailyData: sDaily, batchLogs: sBatches } = supabaseDataRes.value;
-          if (sDaily && sDaily.length > 0) {
-            setDailyData(sDaily);
-            try { localStorage.setItem('app_cached_daily_data', JSON.stringify(sDaily)); } catch { }
-          }
-          if (sBatches && sBatches.length > 0) {
-            setBatchLogs(sBatches);
-            try { localStorage.setItem('app_cached_batch_logs', JSON.stringify(sBatches)); } catch { }
-          }
+          setDailyData(sDaily || []);
+          setBatchLogs(sBatches || []);
         }
 
         // Process QA Defects
@@ -5332,13 +5377,7 @@ export default function App() {
 
   // Dynamic state persists directly via Supabase API (no local storage dependency)
 
-  useEffect(() => {
-    try {
-      localStorage.setItem('layerCatalog', JSON.stringify(layerCatalog));
-    } catch (err) {
-      console.warn('Unable to save layerCatalog to localStorage (possibly exceeded quota):', err);
-    }
-  }, [layerCatalog]);
+  // Dynamic layer catalog managed via live React state
 
   // Calculated totals: count only verified, published frames & distance for executive KPIs
   const totalImages = dailyData.reduce((sum, d) => {
@@ -5349,10 +5388,46 @@ export default function App() {
     const isPub = d.publishToWebGIS === 'yes' || d.isSyncedWithSupabase === true;
     return isPub ? sum + (d.kmProcessed || 0) : sum;
   }, 0);
+
+  // Automated QA/QC Worker Hook
+  const {
+    workerState: qaqcWorkerState,
+    startInspection: startQAQCInspection,
+    pauseInspection: pauseQAQCInspection,
+    resumeInspection: resumeQAQCInspection,
+    abortInspection: abortQAQCInspection
+  } = useQAQCWorker();
+
   const [_liveDefectCount, setLiveDefectCount] = useState<number>(0);
-  const totalDefects = (dailyData.length > 0 || batchLogs.length > 0)
-    ? dailyData.reduce((sum, d) => sum + (d.imagesDefected || d.defectCount || 0), 0)
-    : 0;
+
+  const totalDefects = useMemo(() => {
+    return dailyData.reduce((sum, d) => {
+      const dailySubgrid = (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim();
+      const runId = getItemId(d);
+      const isThisRowActive = (qaqcWorkerState.isRunning || qaqcWorkerState.isCompleted) && (
+        qaqcWorkerState.runId ? qaqcWorkerState.runId === runId : qaqcWorkerState.subgrid === dailySubgrid
+      );
+
+      let parsedStatusDefects = 0;
+      if (d.qaqcStatus) {
+        const m = d.qaqcStatus.match(/(\d+)\s+Defect/i);
+        if (m) parsedStatusDefects = parseInt(m[1], 10);
+      }
+
+      const count = isThisRowActive
+        ? qaqcWorkerState.defectsList.length
+        : (d.imagesDefected && d.imagesDefected > 0)
+          ? d.imagesDefected
+          : (d.defectCount && d.defectCount > 0)
+            ? d.defectCount
+            : (parsedStatusDefects > 0)
+              ? parsedStatusDefects
+              : 0;
+
+      return sum + count;
+    }, 0);
+  }, [dailyData, qaqcWorkerState.isRunning, qaqcWorkerState.isCompleted, qaqcWorkerState.defectsList.length, qaqcWorkerState.runId, qaqcWorkerState.subgrid]);
+
   const totalFramesForHealth = (dailyData.length > 0 || batchLogs.length > 0)
     ? (dailyData.reduce((sum, d) => sum + (d.panoramas?.length || d.poiCount || d.imagesProcessed || 0), 0) || batchLogs.reduce((sum, b) => sum + (b.panoramas?.length || b.images || 0), 0))
     : 0;
@@ -5367,33 +5442,13 @@ export default function App() {
   const handleRefreshMap = () => {
     setMapRefreshKey(Date.now());
     fetchSupabaseData().then(({ dailyData: sDaily, batchLogs: sBatches }) => {
-      if (sDaily && sDaily.length > 0) {
-        setDailyData(sDaily);
-      }
-      if (sBatches && sBatches.length > 0) {
-        setBatchLogs(sBatches);
-      }
+      setDailyData(sDaily || []);
+      setBatchLogs(sBatches || []);
     }).catch(err => console.warn('Refresh map live sync notice:', err));
   };
 
   // Notification & Audit Log State Management
-  const [notifications, setNotifications] = useState<NotificationItem[]>(() => {
-    const saved = localStorage.getItem('app_notifications_v1');
-    if (!saved) return INITIAL_NOTIFICATIONS;
-    try {
-      const parsed = JSON.parse(saved);
-      return Array.isArray(parsed) ? parsed : INITIAL_NOTIFICATIONS;
-    } catch { return INITIAL_NOTIFICATIONS; }
-  });
 
-  const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>(() => {
-    const saved = localStorage.getItem('app_audit_logs_v1');
-    if (!saved) return INITIAL_AUDIT_LOGS;
-    try {
-      const parsed = JSON.parse(saved);
-      return Array.isArray(parsed) ? parsed : INITIAL_AUDIT_LOGS;
-    } catch { return INITIAL_AUDIT_LOGS; }
-  });
 
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [isAuditLogOpen, setIsAuditLogOpen] = useState(false);
@@ -5406,8 +5461,8 @@ export default function App() {
 
   const handleSaveAllSettings = () => {
     try {
-      localStorage.setItem('app_project_settings', JSON.stringify(projectSettings));
       setProjectSettings({ ...projectSettings });
+      saveProjectSettingsToSupabase(projectSettings).catch(err => console.warn('Supabase settings save notice:', err));
       const sampleUrl = getPanoramaUrl('sample.jpg');
       const tables = getDatabaseTableMapping(projectSettings);
       addAuditLog(
@@ -5423,12 +5478,8 @@ export default function App() {
       });
       handleRefreshMap();
       fetchSupabaseData().then(({ dailyData: sDaily, batchLogs: sBatches }) => {
-        if (sDaily && sDaily.length > 0) {
-          setDailyData(sDaily);
-        }
-        if (sBatches && sBatches.length > 0) {
-          setBatchLogs(sBatches);
-        }
+        setDailyData(sDaily || []);
+        setBatchLogs(sBatches || []);
       }).catch(err => console.warn('Re-sync error on settings save:', err));
       setSettingsSaveToast({
         show: true,
@@ -5445,14 +5496,6 @@ export default function App() {
   const availableAuditDates = React.useMemo(() => {
     const dates = auditLogs.map(l => l.timestamp.split(',')[0].trim());
     return Array.from(new Set(dates)).filter(Boolean);
-  }, [auditLogs]);
-
-  useEffect(() => {
-    try { localStorage.setItem('app_notifications_v1', JSON.stringify(notifications)); } catch { }
-  }, [notifications]);
-
-  useEffect(() => {
-    try { localStorage.setItem('app_audit_logs_v1', JSON.stringify(auditLogs)); } catch { }
   }, [auditLogs]);
 
   // LIVE INTERACTIVE TOUR ACTION CONTROLLER
@@ -5493,54 +5536,6 @@ export default function App() {
 
   const unreadNotifCount = notifications.filter(n => !n.read).length;
   const unreadAuditCount = auditLogs.filter(a => !a.read).length;
-
-  const addNotification = React.useCallback((item: Omit<NotificationItem, 'id' | 'timestamp' | 'read'>) => {
-    const now = new Date();
-    const dateStr = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-    const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-    const timestampStr = `${dateStr}, ${timeStr}`;
-    const newNotif: NotificationItem = {
-      ...item,
-      id: `notif-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-      timestamp: timestampStr,
-      read: false
-    };
-    setNotifications(prev => [newNotif, ...prev]);
-    saveNotificationToSupabase({
-      timestamp: timestampStr,
-      title: item.title,
-      message: item.message,
-      category: item.category,
-      totalItems: item.totalItems
-    }).catch(err => console.warn('Supabase notification save notice:', err));
-  }, []);
-
-  const addAuditLog = React.useCallback((type: AuditLogItem['type'], title: string, details: string, status: AuditLogItem['status'] = 'info') => {
-    const now = new Date();
-    const dateStr = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-    const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-    const timestampStr = `${dateStr}, ${timeStr}`;
-    const userName = authSession?.user?.email ? authSession.user.email.split('@')[0] : 'System';
-    const newAudit: AuditLogItem = {
-      id: `audit-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-      timestamp: timestampStr,
-      type,
-      title,
-      details,
-      user: userName,
-      status,
-      read: false
-    };
-    setAuditLogs(prev => [newAudit, ...prev]);
-    saveAuditLogToSupabase({
-      timestamp: timestampStr,
-      type,
-      title,
-      details,
-      user: userName,
-      status
-    }).catch(err => console.warn('Supabase audit log save notice:', err));
-  }, [authSession]);
 
   // Top-level subgrid filter state for Main Dashboard Page interactive row filtering
   const [selectedSubgridFilter, setSelectedSubgridFilter] = useState<string | null>(null);
@@ -6273,11 +6268,6 @@ export default function App() {
     lng: 102.807800
   });
   const [inspectorSubgrid, setInspectorSubgrid] = useState<string>('');
-  const [qaSubgridRecords, setQaSubgridRecords] = useState<Record<string, {
-    flags: { blurry: boolean; obstruction: boolean; badGps: boolean };
-    answer: 'yes' | 'no' | null;
-    isLocked: boolean;
-  }>>({});
   const [selectedQaFlags, setSelectedQaFlags] = useState<{ blurry: boolean; obstruction: boolean; badGps: boolean }>({
     blurry: false,
     obstruction: false,
@@ -6285,6 +6275,195 @@ export default function App() {
   });
   const [qaQuestionnaireAnswer, setQaQuestionnaireAnswer] = useState<'yes' | 'no' | null>(null);
   const [isQaLocked, setIsQaLocked] = useState<boolean>(false);
+
+  const [isQAQCRunnerModalOpen, setIsQAQCRunnerModalOpen] = useState<boolean>(false);
+  const [isDefectsGalleryOpen, setIsDefectsGalleryOpen] = useState<boolean>(false);
+  const [selectedDefectSubgrid, setSelectedDefectSubgrid] = useState<string>('');
+
+  const getStationsForSubgrid = (targetSubgrid: string, runId?: string | null) => {
+    const cleanSg = (extractSubgridName(targetSubgrid) || targetSubgrid || '').toUpperCase().trim();
+    if (!cleanSg) return [];
+
+    // Prioritize the specific selected daily survey run if present
+    const targetRunId = runId !== undefined ? runId : selectedDailyRunId;
+    const matchDaily = targetRunId
+      ? dailyData.find(d => getItemId(d) === targetRunId || d.id === targetRunId || (d as any)._id === targetRunId || (d as any).runId === targetRunId)
+      : dailyData.find(d => (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim() === cleanSg);
+
+    const matchBatch = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || b.subgrid || '').toUpperCase().trim() === cleanSg);
+
+    const targetItem = matchDaily || matchBatch;
+    const exactFrameCount = targetItem ? getImagesProcessedCount(targetItem) : 0;
+
+    // 1. Existing station arrays if present in the target daily run
+    if (matchDaily?.panoramas && matchDaily.panoramas.length > 0) {
+      const availPanoramas = matchDaily.availableFilenames && matchDaily.availableFilenames.length > 0
+        ? matchDaily.panoramas.filter((p: any) => matchDaily.availableFilenames!.includes(p.filename))
+        : (matchDaily.panoramas.some((p: any) => p.isAvailable !== undefined)
+          ? matchDaily.panoramas.filter((p: any) => p.isAvailable === true)
+          : matchDaily.panoramas);
+
+      const pansToUse = availPanoramas.length > 0
+        ? (exactFrameCount > 0 ? availPanoramas.slice(0, exactFrameCount) : availPanoramas)
+        : matchDaily.panoramas.slice(0, exactFrameCount || matchDaily.panoramas.length);
+
+      if (pansToUse.length > 0) {
+        return pansToUse.map((p, idx) => ({
+          filename: p.filename || `${cleanSg}-${String(idx + 1).padStart(4, '0')}.jpg`,
+          point_id: p.filename || `${cleanSg}-${String(idx + 1).padStart(4, '0')}.jpg`,
+          latitude: p.latitude ?? (p as any).lat,
+          longitude: p.longitude ?? (p as any).lon ?? (p as any).lng,
+          lat: p.latitude ?? (p as any).lat,
+          lng: p.longitude ?? (p as any).lon ?? (p as any).lng,
+          bearing: p.bearing ?? p.heading ?? ((idx * 15) % 360),
+          image_url: resolvePanoramaUrl(p.filename || `${cleanSg}-${String(idx + 1).padStart(4, '0')}.jpg`, projectSettings)
+        }));
+      }
+    }
+
+    // 2. Existing station arrays in batch logs if no specific daily run was selected
+    if (!targetRunId && matchBatch?.panoramas && matchBatch.panoramas.length > 0) {
+      const pansToUse = exactFrameCount > 0 ? matchBatch.panoramas.slice(0, exactFrameCount) : matchBatch.panoramas;
+      return pansToUse.map((p, idx) => ({
+        filename: p.filename || `${cleanSg}-${String(idx + 1).padStart(4, '0')}.jpg`,
+        point_id: p.filename || `${cleanSg}-${String(idx + 1).padStart(4, '0')}.jpg`,
+        latitude: p.latitude ?? (p as any).lat,
+        longitude: p.longitude ?? (p as any).lon ?? (p as any).lng,
+        lat: p.latitude ?? (p as any).lat,
+        lng: p.longitude ?? (p as any).lon ?? (p as any).lng,
+        bearing: p.bearing ?? p.heading ?? ((idx * 15) % 360),
+        image_url: resolvePanoramaUrl(p.filename || `${cleanSg}-${String(idx + 1).padStart(4, '0')}.jpg`, projectSettings)
+      }));
+    }
+
+    // 3. Generate sequential station array strictly based on the target run's exact frame count
+    const totalCount = exactFrameCount > 0
+      ? exactFrameCount
+      : (matchDaily?.availableImagesCount || (matchDaily?.availableFilenames?.length) || matchDaily?.imagesProcessed || matchDaily?.poiCount || matchBatch?.images || matchBatch?.poiCount || 0);
+
+    if (totalCount === 0) return [];
+
+    const baseCoords = SUBGRID_COORDINATES[cleanSg] || [102.807800, 2.542429];
+    const baseLon = baseCoords[0];
+    const baseLat = baseCoords[1];
+
+    const generated = [];
+    const customFilenames = matchDaily?.availableFilenames;
+    for (let i = 0; i < totalCount; i++) {
+      const latOffset = i * 0.00012;
+      const lngOffset = i * 0.00008;
+      const fn = (customFilenames && customFilenames[i]) || `${cleanSg}-${String(i + 1).padStart(4, '0')}.jpg`;
+      generated.push({
+        filename: fn,
+        point_id: fn,
+        latitude: baseLat + latOffset,
+        longitude: baseLon + lngOffset,
+        lat: baseLat + latOffset,
+        lng: baseLon + lngOffset,
+        bearing: (45 + i * 2) % 360,
+        image_url: resolvePanoramaUrl(fn, projectSettings)
+      });
+    }
+
+    return generated;
+  };
+
+  const handleStartInspectionFromWorkbench = (params: {
+    subgrid: string;
+    runId?: string | null;
+    stations: StationNode[];
+    config: any;
+    stepIntervalMs: number;
+    pic: string;
+    customThresholds?: any;
+  }) => {
+    const { subgrid, runId = null, stations, config, stepIntervalMs, pic, customThresholds } = params;
+    const cleanSub = subgrid.toUpperCase().trim();
+    const effectivePic = pic || activeAuthUserName || (authSession?.user?.email ? authSession.user.email.split('@')[0] : '') || 'Operator';
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    const timestampStr = `${dateStr}, ${timeStr}`;
+
+    console.log('[QA/QC Batch Inspection Triggered via Workbench]:', {
+      subgrid: cleanSub,
+      runId,
+      stationsCount: stations.length,
+      pic: effectivePic,
+      config,
+      stepIntervalMs,
+      customThresholds
+    });
+
+    saveNotificationToSupabase({
+      timestamp: timestampStr,
+      title: `Batch QA/QC Initialized (${cleanSub || 'All'})`,
+      message: `Automated QA/QC inspection pipeline started for subgrid ${cleanSub || 'General'}${runId ? ' (Single Run Scoped)' : ''}. Total frames: ${stations.length}. Active flags: [Blur: ${config.checkBlur ? 'ON' : 'OFF'}, Obstruction: ${config.checkObstruction ? 'ON' : 'OFF'}, GPS: ${config.checkGps ? 'ON' : 'OFF'}]. Inspector: ${effectivePic}.`,
+      category: 'SYSTEM',
+      totalItems: 1
+    }).catch(() => { });
+
+    startQAQCInspection({
+      subgrid: cleanSub,
+      runId,
+      stations,
+      config,
+      stepIntervalMs,
+      pic: effectivePic,
+      projectSettings,
+      customThresholds,
+      onDefectFound: (_defect, newDefectCount) => {
+        if (runId) {
+          setDailyData(prev => prev.map(d => {
+            if (getItemId(d) === runId) {
+              return { ...d, defectCount: newDefectCount, imagesDefected: newDefectCount };
+            }
+            return d;
+          }));
+        } else if (cleanSub) {
+          setDailyData(prev => prev.map(d => {
+            const dSg = (extractSubgridName(d.subgrid) || '').toUpperCase().trim();
+            return dSg === cleanSub ? { ...d, defectCount: newDefectCount, imagesDefected: newDefectCount } : d;
+          }));
+        }
+
+        if (cleanSub) {
+          setBatchLogs(prev => prev.map(b => {
+            const bSg = (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim();
+            return bSg === cleanSub ? { ...b, defects: newDefectCount } : b;
+          }));
+        }
+      },
+      onComplete: (summary) => {
+        const statusText = `QAQC Completed (${summary.defectsCount} Defect${summary.defectsCount === 1 ? '' : 's'} Found)`;
+        if (summary.runId) {
+          setDailyData(prev => prev.map(d => {
+            if (getItemId(d) === summary.runId) {
+              return {
+                ...d,
+                defectCount: summary.defectsCount,
+                imagesDefected: summary.defectsCount,
+                qaqcStatus: statusText
+              };
+            }
+            return d;
+          }));
+        } else if (summary.subgrid) {
+          setDailyData(prev => prev.map(d => {
+            const dSg = (extractSubgridName(d.subgrid) || '').toUpperCase().trim();
+            return dSg === summary.subgrid ? { ...d, defectCount: summary.defectsCount, imagesDefected: summary.defectsCount, qaqcStatus: statusText } : d;
+          }));
+        }
+
+        if (summary.subgrid) {
+          setBatchLogs(prev => prev.map(b => {
+            const bSg = (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim();
+            return bSg === summary.subgrid ? { ...b, defects: summary.defectsCount, qaqcStatus: statusText } : b;
+          }));
+        }
+      }
+    });
+  };
 
   const saveSubgridQa = (
     sgKey: string,
@@ -6489,14 +6668,6 @@ export default function App() {
 
       return nextSubgrid;
     });
-  };
-
-  // Helper: Unique ID generator for survey runs
-  const getItemId = (item: any): string => {
-    if (item?.id) return item.id;
-    const poi = item?.poiCount || item?.imagesProcessed || item?.images || 0;
-    const km = item?.kmProcessed || 0;
-    return `row-${item?.date || 'nodate'}-${item?.subgrid || 'nosub'}-${poi}-${km}`;
   };
 
   // Dedicated Handler: Select a single daily survey run
@@ -6906,16 +7077,7 @@ export default function App() {
                 const nextState = !isAuditLogOpen;
                 setIsAuditLogOpen(nextState);
                 if (nextState) {
-                  setAuditLogs(old => {
-                    const updated = old.map(a => ({ ...a, read: true }));
-                    try {
-                      localStorage.setItem('app_audit_logs_v1', JSON.stringify(updated));
-                      const ids = updated.map(a => String(a.id));
-                      localStorage.setItem('app_audit_read_ids_v1', JSON.stringify(ids));
-                      localStorage.setItem('app_audit_cleared_at_v1', String(Date.now()));
-                    } catch { }
-                    return updated;
-                  });
+                  setAuditLogs(old => old.map(a => ({ ...a, read: true })));
                 }
                 setIsNotifOpen(false);
               }}
@@ -7035,16 +7197,7 @@ export default function App() {
                 const nextState = !isNotifOpen;
                 setIsNotifOpen(nextState);
                 if (nextState) {
-                  setNotifications(old => {
-                    const updated = old.map(n => ({ ...n, read: true }));
-                    try {
-                      localStorage.setItem('app_notifications_v1', JSON.stringify(updated));
-                      const ids = updated.map(n => String(n.id));
-                      localStorage.setItem('app_notif_read_ids_v1', JSON.stringify(ids));
-                      localStorage.setItem('app_notif_cleared_at_v1', String(Date.now()));
-                    } catch { }
-                    return updated;
-                  });
+                  setNotifications(old => old.map(n => ({ ...n, read: true })));
                 }
                 setIsAuditLogOpen(false);
               }}
@@ -7078,14 +7231,7 @@ export default function App() {
                   <div className="flex items-center gap-2">
                     {notifications.length > 0 && (
                       <button
-                        onClick={() => {
-                          setNotifications([]);
-                          try {
-                            localStorage.setItem('app_notifications_v1', JSON.stringify([]));
-                            localStorage.setItem('app_notif_read_ids_v1', JSON.stringify([]));
-                            localStorage.setItem('app_notif_cleared_at_v1', String(Date.now()));
-                          } catch { }
-                        }}
+                        onClick={() => setNotifications([])}
                         className="text-text-muted hover:text-rose-400 text-[10px] font-medium transition-colors flex items-center gap-1 cursor-pointer"
                         title="Clear all notifications"
                       >
@@ -7133,17 +7279,7 @@ export default function App() {
                             <div className="flex items-center gap-1.5">
                               <span className="text-[10px] text-text-muted">{notif.timestamp}</span>
                               <button
-                                onClick={() => setNotifications(prev => {
-                                  const filtered = prev.filter(n => n.id !== notif.id);
-                                  try {
-                                    localStorage.setItem('app_notifications_v1', JSON.stringify(filtered));
-                                    const saved = localStorage.getItem('app_notif_read_ids_v1');
-                                    const readIds = saved ? JSON.parse(saved) : [];
-                                    readIds.push(String(notif.id));
-                                    localStorage.setItem('app_notif_read_ids_v1', JSON.stringify(readIds));
-                                  } catch { }
-                                  return filtered;
-                                })}
+                                onClick={() => setNotifications(prev => prev.filter(n => n.id !== notif.id))}
                                 className="text-text-muted hover:text-rose-400 p-0.5 cursor-pointer opacity-80 hover:opacity-100 transition-opacity"
                                 title="Dismiss notification"
                               >
@@ -7921,19 +8057,109 @@ export default function App() {
                                       </button>
                                     </td>
                                     <td className="px-3.5 py-3.5 font-semibold whitespace-nowrap">
-                                      <span className="text-slate-300">
-                                        {log.defects || 0}
-                                      </span>
+                                      {(() => {
+                                        const isThisMasterlistUnderInspection = qaqcWorkerState.isRunning && !qaqcWorkerState.runId && qaqcWorkerState.subgrid === batchSubgrid;
+                                        const isThisMasterlistCompleted = qaqcWorkerState.isCompleted && !qaqcWorkerState.runId && qaqcWorkerState.subgrid === batchSubgrid;
+
+                                        let cachedMap: Record<string, any> = {};
+                                        try {
+                                          cachedMap = JSON.parse(localStorage.getItem('app_qaqc_audit_cache_v2') || '{}');
+                                        } catch (_) { }
+
+                                        const cached = cachedMap[`${batchSubgrid}_default`];
+                                        const cachedDefects = (cached && typeof cached.defectCount === 'number') ? cached.defectCount : undefined;
+
+                                        let parsedDefects: number | undefined;
+                                        if (log.qaqcStatus) {
+                                          const m = log.qaqcStatus.match(/(\d+)\s+Defect/i);
+                                          if (m) parsedDefects = parseInt(m[1], 10);
+                                        }
+
+                                        // Sum defects across all daily runs for this subgrid
+                                        const subgridDailyRuns = dailyData.filter(d => (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim() === batchSubgrid);
+                                        const subgridDefectsFromDaily = subgridDailyRuns.reduce((sum, d) => {
+                                          const runId = getItemId(d);
+                                          const isThisDailyActive = (qaqcWorkerState.isRunning || qaqcWorkerState.isCompleted) && (
+                                            qaqcWorkerState.runId ? qaqcWorkerState.runId === runId : qaqcWorkerState.subgrid === batchSubgrid
+                                          );
+                                          const dailyCached = cachedMap[`${batchSubgrid}_${runId || 'default'}`];
+                                          const dailyCachedCount = (dailyCached && typeof dailyCached.defectCount === 'number') ? dailyCached.defectCount : 0;
+                                          let dailyParsed = 0;
+                                          if (d.qaqcStatus) {
+                                            const m = d.qaqcStatus.match(/(\d+)\s+Defect/i);
+                                            if (m) dailyParsed = parseInt(m[1], 10);
+                                          }
+                                          const cnt = isThisDailyActive
+                                            ? qaqcWorkerState.defectsList.length
+                                            : (d.imagesDefected && d.imagesDefected > 0)
+                                              ? d.imagesDefected
+                                              : (d.defectCount && d.defectCount > 0)
+                                                ? d.defectCount
+                                                : (dailyCachedCount > 0)
+                                                  ? dailyCachedCount
+                                                  : (dailyParsed > 0)
+                                                    ? dailyParsed
+                                                    : 0;
+                                          return sum + cnt;
+                                        }, 0);
+
+                                        const dCount = subgridDefectsFromDaily > 0
+                                          ? subgridDefectsFromDaily
+                                          : (isThisMasterlistUnderInspection || isThisMasterlistCompleted)
+                                            ? qaqcWorkerState.defectsList.length
+                                            : (log.defects && log.defects > 0)
+                                              ? log.defects
+                                              : (cachedDefects !== undefined && cachedDefects > 0)
+                                                ? cachedDefects
+                                                : (parsedDefects !== undefined && parsedDefects > 0)
+                                                  ? parsedDefects
+                                                  : 0;
+
+                                        return dCount > 0 ? (
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setSelectedDefectSubgrid(batchSubgrid);
+                                              setIsDefectsGalleryOpen(true);
+                                            }}
+                                            className="text-amber-400 hover:text-amber-300 font-semibold hover:underline cursor-pointer text-[11px] tabular-nums transition-colors"
+                                            title="Click to open QA/QC Defect Review Gallery"
+                                          >
+                                            {dCount}
+                                          </button>
+                                        ) : (
+                                          <span className="text-text-muted text-[11px] font-medium tabular-nums">0</span>
+                                        );
+                                      })()}
                                     </td>
-                                    <td className="px-3.5 py-3.5 text-slate-300 font-medium whitespace-nowrap">{log.pic || ''}</td>
+                                    <td className="px-3.5 py-3.5 text-slate-300 font-medium whitespace-nowrap">{log.pic || 'Admin'}</td>
                                     <td className="px-3.5 py-3.5 whitespace-nowrap">
-                                      <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap ${log.status === 'Complete' || (log.status as string) === 'Published'
-                                        ? 'bg-inner text-text-base border border-subtle'
-                                        : 'bg-app text-text-muted border border-subtle'
-                                        }`}>
-                                        {log.status === 'Complete' || (log.status as string) === 'Published' ? <CheckCircle size={10} className="text-emerald-400" /> : <Clock size={10} className="text-amber-400" />}
-                                        {log.status || 'Complete'}
-                                      </span>
+                                      {qaqcWorkerState.isRunning && !qaqcWorkerState.runId && qaqcWorkerState.subgrid === batchSubgrid ? (
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setIsQAQCRunnerModalOpen(true);
+                                          }}
+                                          className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-sky-500/15 text-sky-400 border border-sky-500/30 inline-flex items-center gap-1.5 whitespace-nowrap animate-pulse shadow-sm hover:scale-105 transition-transform cursor-pointer"
+                                          title="Click to open QA/QC Live HUD"
+                                        >
+                                          <Activity size={10} className="text-sky-400 animate-spin" />
+                                          QAQC In Progress ({qaqcWorkerState.currentIndex + 1}/{qaqcWorkerState.totalStations})
+                                        </button>
+                                      ) : log.qaqcStatus || (qaqcWorkerState.isCompleted && !qaqcWorkerState.runId && qaqcWorkerState.subgrid === batchSubgrid) ? (
+                                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 inline-flex items-center gap-1 whitespace-nowrap shadow-sm">
+                                          <CheckCircle size={10} className="text-emerald-400" />
+                                          {log.qaqcStatus || `QAQC Completed (${qaqcWorkerState.defectsList.length} Defects Found)`}
+                                        </span>
+                                      ) : (
+                                        <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap ${log.status === 'Complete' || (log.status as string) === 'Published'
+                                          ? 'bg-inner text-text-base border border-subtle'
+                                          : 'bg-app text-text-muted border border-subtle'
+                                          }`}>
+                                          {log.status === 'Complete' || (log.status as string) === 'Published' ? <CheckCircle size={10} className="text-emerald-400" /> : <Clock size={10} className="text-amber-400" />}
+                                          {log.status || 'Complete'}
+                                        </span>
+                                      )}
                                     </td>
                                     <td className="px-3.5 py-3.5 text-right whitespace-nowrap">
                                       <button onClick={(e) => { e.stopPropagation(); toggleSubgridFilter(batchSubgrid); }} className="px-2.5 py-1 bg-inner hover:bg-slate-700 text-text-base hover:text-text-base border border-subtle rounded-md text-[10px] font-medium cursor-pointer transition-colors whitespace-nowrap" aria-label={`View logs for subgrid ${batchSubgrid}`}>
@@ -7993,9 +8219,46 @@ export default function App() {
                                 })
                                 .map((log, i) => {
                                   const dailySubgrid = (log.subgrid || '').toUpperCase().trim();
-                                  const isRowSelected = selectedDailyRunId === getItemId(log);
+                                  const runId = getItemId(log);
+                                  const isRowSelected = selectedDailyRunId === runId;
+                                  const isThisRowUnderInspection = qaqcWorkerState.isRunning && (
+                                    qaqcWorkerState.runId ? qaqcWorkerState.runId === runId : qaqcWorkerState.subgrid === dailySubgrid
+                                  );
+                                  const isThisRowCompleted = qaqcWorkerState.isCompleted && (
+                                    qaqcWorkerState.runId ? qaqcWorkerState.runId === runId : qaqcWorkerState.subgrid === dailySubgrid
+                                  );
+
+                                  let cachedDefects: number | undefined;
+                                  try {
+                                    const cachedMap = JSON.parse(localStorage.getItem('app_qaqc_audit_cache_v2') || '{}');
+                                    const cached = cachedMap[`${dailySubgrid}_${runId || 'default'}`] || cachedMap[`${dailySubgrid}_default`];
+                                    if (cached && typeof cached.defectCount === 'number') {
+                                      cachedDefects = cached.defectCount;
+                                    }
+                                  } catch (_) { }
+
+                                  let parsedStatusDefects: number | undefined;
+                                  if (log.qaqcStatus) {
+                                    const m = log.qaqcStatus.match(/(\d+)\s+Defect/i);
+                                    if (m) parsedStatusDefects = parseInt(m[1], 10);
+                                  }
+
                                   const matchBatch = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === dailySubgrid);
-                                  const defectCount = log.imagesDefected ?? log.defectCount ?? (matchBatch?.defects ?? 0);
+
+                                  const defectCount = (isThisRowUnderInspection || isThisRowCompleted)
+                                    ? qaqcWorkerState.defectsList.length
+                                    : (log.imagesDefected && log.imagesDefected > 0)
+                                      ? log.imagesDefected
+                                      : (log.defectCount && log.defectCount > 0)
+                                        ? log.defectCount
+                                        : (cachedDefects !== undefined && cachedDefects > 0)
+                                          ? cachedDefects
+                                          : (parsedStatusDefects !== undefined && parsedStatusDefects > 0)
+                                            ? parsedStatusDefects
+                                            : (matchBatch?.defects && matchBatch.defects > 0)
+                                              ? matchBatch.defects
+                                              : 0;
+
                                   const isPublished = log.publishToWebGIS === 'yes';
                                   return (
                                     <tr
@@ -8043,21 +8306,76 @@ export default function App() {
                                         </button>
                                       </td>
                                       <td className="px-3.5 py-3.5 font-semibold whitespace-nowrap">
-                                        <span className={defectCount > 0 ? "text-amber-400 font-bold" : "text-text-muted"}>
-                                          {defectCount}
-                                        </span>
-                                      </td>
-                                      <td className="px-3.5 py-3.5 text-slate-300 font-medium whitespace-nowrap">{log.pic || ''}</td>
-                                      <td className="px-3.5 py-3.5 whitespace-nowrap">
-                                        {isPublished ? (
-                                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-inner text-text-base border border-subtle inline-flex items-center gap-1 whitespace-nowrap">
-                                            <CheckCircle size={10} className="text-emerald-400" /> Published
-                                          </span>
+                                        {defectCount > 0 ? (
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setSelectedDefectSubgrid(dailySubgrid);
+                                              setIsDefectsGalleryOpen(true);
+                                            }}
+                                            className="text-amber-400 hover:text-amber-300 font-semibold hover:underline cursor-pointer text-[11px] tabular-nums transition-colors"
+                                            title="Click to open QA/QC Defect Review Gallery"
+                                          >
+                                            {defectCount}
+                                          </button>
                                         ) : (
-                                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-app text-text-muted border border-subtle inline-flex items-center gap-1 whitespace-nowrap">
-                                            <Clock size={10} className="text-amber-400" /> In Progress
-                                          </span>
+                                          <span className="text-text-muted text-[11px] font-medium tabular-nums">0</span>
                                         )}
+                                      </td>
+                                      <td className="px-3.5 py-3.5 text-slate-300 font-medium whitespace-nowrap">{log.pic || (activeAuthUserName || (authSession?.user?.email ? authSession.user.email.split('@')[0] : '') || 'Operator')}</td>
+                                      <td className="px-3.5 py-3.5 whitespace-nowrap">
+                                        {(() => {
+                                          const isThisRowUnderInspection = qaqcWorkerState.isRunning && (
+                                            qaqcWorkerState.runId
+                                              ? qaqcWorkerState.runId === getItemId(log)
+                                              : qaqcWorkerState.subgrid === dailySubgrid
+                                          );
+
+                                          const isThisRowCompleted = qaqcWorkerState.isCompleted && (
+                                            qaqcWorkerState.runId
+                                              ? qaqcWorkerState.runId === getItemId(log)
+                                              : qaqcWorkerState.subgrid === dailySubgrid
+                                          );
+
+                                          if (isThisRowUnderInspection) {
+                                            return (
+                                              <button
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  setIsQAQCRunnerModalOpen(true);
+                                                }}
+                                                className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-sky-500/15 text-sky-400 border border-sky-500/30 inline-flex items-center gap-1.5 whitespace-nowrap animate-pulse shadow-sm hover:scale-105 transition-transform cursor-pointer"
+                                                title="Click to view live QA/QC inspection HUD"
+                                              >
+                                                <Activity size={10} className="text-sky-400 animate-spin" />
+                                                QAQC In Progress ({qaqcWorkerState.currentIndex + 1}/{qaqcWorkerState.totalStations})
+                                              </button>
+                                            );
+                                          }
+
+                                          if (log.qaqcStatus || isThisRowCompleted) {
+                                            return (
+                                              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 inline-flex items-center gap-1 whitespace-nowrap shadow-sm">
+                                                <CheckCircle size={10} className="text-emerald-400" />
+                                                {log.qaqcStatus || `QAQC Completed (${qaqcWorkerState.defectsList.length} Defects Found)`}
+                                              </span>
+                                            );
+                                          }
+
+                                          if (isPublished) {
+                                            return (
+                                              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-inner text-text-base border border-subtle inline-flex items-center gap-1 whitespace-nowrap">
+                                                <CheckCircle size={10} className="text-emerald-400" /> Published
+                                              </span>
+                                            );
+                                          }
+
+                                          return (
+                                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-app text-text-muted border border-subtle inline-flex items-center gap-1 whitespace-nowrap">
+                                              <Clock size={10} className="text-amber-400" /> In Progress
+                                            </span>
+                                          );
+                                        })()}
                                       </td>
                                       <td className="px-3.5 py-3.5 text-right font-medium text-slate-300 whitespace-nowrap">{log.captureEquipment || 'MMS'}</td>
                                     </tr>
@@ -8077,11 +8395,66 @@ export default function App() {
                       ? 'filter blur-[4px] opacity-25 pointer-events-none'
                       : ''
                     }`}>
-                    <div className="px-3.5 py-2.5 border-b border-[rgba(255,255,255,0.08)] bg-card flex items-center justify-between shrink-0">
-                      <span className="text-xs font-bold uppercase tracking-wider text-text-base flex items-center gap-2">
-                        <Camera size={15} className="text-sky-400" />
+                    <div className="px-3.5 py-2 border-b border-subtle bg-card flex items-center justify-between shrink-0 gap-3">
+                      <span className="text-xs font-bold uppercase tracking-wider text-text-base flex items-center gap-2 shrink-0">
+                        <Camera size={14} className="text-accent" />
                         360 VIEW INSPECTOR & QA
                       </span>
+
+                      <div className="flex items-center gap-2">
+                        {/* Live Processing Status Run (Docked at left of Run Batch button) */}
+                        {qaqcWorkerState.isRunning && (
+                          <div className="flex items-center gap-2 px-2.5 py-1 bg-inner border border-subtle rounded-lg text-xs animate-in fade-in duration-200">
+                            <span className="relative flex h-2 w-2 shrink-0">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-75"></span>
+                              <span className="relative inline-flex rounded-full h-2 w-2 bg-accent"></span>
+                            </span>
+                            <span className="text-[11px] font-medium text-text-base truncate">
+                              QA/QC: <span className="font-semibold text-accent">{qaqcWorkerState.subgrid || 'General'}</span>
+                            </span>
+                            <div className="w-14 h-1 bg-card rounded-full overflow-hidden border border-subtle/60 shrink-0">
+                              <div
+                                className="h-full bg-accent transition-all duration-150"
+                                style={{
+                                  width: `${Math.min(100, Math.round(((qaqcWorkerState.currentIndex + 1) / (qaqcWorkerState.totalStations || 1)) * 100))}%`
+                                }}
+                              />
+                            </div>
+                            <span className="text-[10px] font-semibold tabular-nums text-text-base shrink-0">
+                              {Math.min(100, Math.round(((qaqcWorkerState.currentIndex + 1) / (qaqcWorkerState.totalStations || 1)) * 100))}%
+                            </span>
+                            <span className="text-[10px] text-text-muted tabular-nums shrink-0">
+                              ({qaqcWorkerState.currentIndex + 1}/{qaqcWorkerState.totalStations})
+                            </span>
+                            <button
+                              onClick={() => setIsQAQCRunnerModalOpen(true)}
+                              className="px-2 py-0.5 bg-card hover:bg-card/80 text-text-base border border-subtle rounded text-[10px] font-medium transition-colors cursor-pointer flex items-center gap-1 shadow-sm"
+                            >
+                              <Activity size={10} className="animate-spin text-accent" />
+                              <span>Open HUD</span>
+                            </button>
+                            <button
+                              onClick={abortQAQCInspection}
+                              className="px-2 py-0.5 bg-card hover:bg-red-950/30 text-text-muted hover:text-red-400 border border-subtle hover:border-red-800/50 rounded text-[10px] font-medium transition-colors cursor-pointer flex items-center gap-1 shadow-sm"
+                              title="Abort inspection"
+                            >
+                              <StopCircle size={10} />
+                              <span>Abort</span>
+                            </button>
+                          </div>
+                        )}
+
+                        <button
+                          onClick={() => {
+                            setIsQAQCRunnerModalOpen(true);
+                          }}
+                          title="Launch Full Canvas QA/QC Inspection Workbench with Target Selection Hub"
+                          className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm bg-inner hover:bg-inner/80 text-text-base border border-subtle hover:border-accent active:scale-95 cursor-pointer"
+                        >
+                          <Play size={11} className="fill-current text-accent" />
+                          <span>Run Batch QA/QC</span>
+                        </button>
+                      </div>
                     </div>
 
                     <div className="flex-1 flex gap-2.5 p-2.5 min-h-0">
@@ -8094,6 +8467,9 @@ export default function App() {
                               subgrid={selectedSubgridFilter || ''}
                               bearing={panoramaTelemetry.yaw}
                               themeMode={themeMode}
+                              isQAQCRunning={qaqcWorkerState.isRunning}
+                              qaqcSubgrid={qaqcWorkerState.subgrid}
+                              qaqcPic={qaqcWorkerState.pic}
                               className="w-full h-full"
                             />
                             <div className="absolute top-2 left-2 bg-app backdrop-blur-md px-2 py-1 rounded-md text-[10px] text-text-base font-mono z-10 border border-subtle flex items-center gap-1.5">
@@ -8836,6 +9212,98 @@ export default function App() {
 
               </div>
             </div>
+          )
+        }
+
+        {/* ========================================================= */}
+        {/* AUTOMATED QA/QC FULL CANVAS WORKBENCH */}
+        {/* ========================================================= */}
+        {
+          isQAQCRunnerModalOpen && (
+            <QAQCWorkbench
+              isOpen={isQAQCRunnerModalOpen}
+              workerState={qaqcWorkerState}
+              dailyData={dailyData}
+              batchLogs={batchLogs}
+              projectSettings={projectSettings}
+              activeUserName={activeAuthUserName || (authSession?.user?.email ? authSession.user.email.split('@')[0] : '') || 'Operator'}
+              surveyDate={selectedDateFilter || undefined}
+              getStationsForSubgrid={getStationsForSubgrid}
+              onStartInspection={handleStartInspectionFromWorkbench}
+              onPause={pauseQAQCInspection}
+              onResume={resumeQAQCInspection}
+              onAbort={abortQAQCInspection}
+              onSignOffAndPublish={async (sg: string, runId?: string | null) => {
+                setDailyData((prev: any[]) => prev.map((d: any) => {
+                  const isMatch = (runId && getItemId(d) === runId) || (extractSubgridName(d.subgrid || '')?.toUpperCase() === sg.toUpperCase());
+                  return isMatch ? { ...d, publishToWebGIS: 'yes', qaqcStatus: 'QA/QC Approved' } : d;
+                }));
+                try {
+                  const cleanSg = sg.replace(/\s+/g, '_');
+                  await supabase.from(projectSettings?.stagingTable || 'data_staging')
+                    .update({ publish_to_webgis: 'yes', qa_status: 'QA/QC Approved', updated_at: new Date().toISOString() })
+                    .ilike('subgrid', cleanSg);
+                } catch (err) {
+                  console.warn('Sign-off push to Supabase failed:', err);
+                }
+              }}
+              onClose={() => setIsQAQCRunnerModalOpen(false)}
+              onOpenDefectsGallery={(sg) => {
+                setSelectedDefectSubgrid(sg);
+                setIsDefectsGalleryOpen(true);
+              }}
+            />
+          )
+        }
+
+        {/* ========================================================= */}
+        {/* QA/QC DEFECTS REVIEW GALLERY MODAL */}
+        {/* ========================================================= */}
+        {
+          isDefectsGalleryOpen && (
+            <DefectsGalleryModal
+              isOpen={isDefectsGalleryOpen}
+              subgrid={selectedDefectSubgrid}
+              projectSettings={projectSettings}
+              activeUserName={activeAuthUserName || (authSession?.user?.email ? authSession.user.email.split('@')[0] : '') || 'Operator'}
+              onClose={() => setIsDefectsGalleryOpen(false)}
+              onJumpTo360={(target) => {
+                setIsDefectsGalleryOpen(false);
+                if (target.imageUrl) {
+                  setActivePanoramaUrl(target.imageUrl);
+                }
+                if (target.pointId) {
+                  setActivePanoramaFilename(target.pointId);
+                  setHasSelectedPoint(true);
+                }
+                if (target.lat && target.lng) {
+                  setInspectorCoords({ lat: target.lat, lng: target.lng });
+                }
+                if (selectedDefectSubgrid) {
+                  setInspectorSubgrid(selectedDefectSubgrid);
+                }
+                if (target.bearing !== undefined) {
+                  setPanoramaTelemetry(prev => ({ ...prev, yaw: target.bearing || 0 }));
+                }
+                setFocusedSection('qa');
+                setTimeout(() => {
+                  setFocusedSection(null);
+                }, 1500);
+              }}
+              onDefectResolved={(_pointId, remainingActiveCount) => {
+                const targetSg = selectedDefectSubgrid.toUpperCase().trim();
+                if (targetSg) {
+                  setDailyData(prev => prev.map(d => {
+                    const dSg = (extractSubgridName(d.subgrid) || '').toUpperCase().trim();
+                    return dSg === targetSg ? { ...d, defectCount: remainingActiveCount, imagesDefected: remainingActiveCount } : d;
+                  }));
+                  setBatchLogs(prev => prev.map(b => {
+                    const bSg = (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim();
+                    return bSg === targetSg ? { ...b, defects: remainingActiveCount } : b;
+                  }));
+                }
+              }}
+            />
           )
         }
 

@@ -49,10 +49,31 @@ VALUES
     (TO_CHAR(NOW() - INTERVAL '30 minutes', 'DD Mon YYYY, HH12:MI AM'), 'System Health Audit', 'All subgrid batch runs reconciled.', 'SYSTEM', TRUE, 0)
 ON CONFLICT DO NOTHING;
 
--- 4. Enable Row Level Security (RLS) & Public Read/Write Access Policies
+-- 4. Create QA/QC Defects Table
+CREATE TABLE IF NOT EXISTS public.qa_defects (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    subgrid VARCHAR(50) NOT NULL,
+    point_id VARCHAR(100) NOT NULL,
+    frame_index INT NOT NULL,
+    defect_flags JSONB NOT NULL DEFAULT '{}'::jsonb,
+    defect_type VARCHAR(100) NOT NULL,
+    pic VARCHAR(100) NOT NULL,
+    image_url TEXT,
+    lat DOUBLE PRECISION,
+    lng DOUBLE PRECISION,
+    bearing NUMERIC,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    CONSTRAINT unique_subgrid_point_id UNIQUE (subgrid, point_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_qa_defects_subgrid ON public.qa_defects(subgrid);
+CREATE INDEX IF NOT EXISTS idx_qa_defects_point_id ON public.qa_defects(point_id);
+
+-- 5. Enable Row Level Security (RLS) & Public Read/Write Access Policies
 ALTER TABLE public.subgrids ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.qa_defects ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Allow public read on subgrids" ON public.subgrids FOR SELECT USING (true);
 CREATE POLICY "Allow public insert/update on subgrids" ON public.subgrids FOR ALL USING (true);
@@ -63,7 +84,14 @@ CREATE POLICY "Allow public insert on audit_logs" ON public.audit_logs FOR INSER
 CREATE POLICY "Allow public read on notifications" ON public.notifications FOR SELECT USING (true);
 CREATE POLICY "Allow public insert/update on notifications" ON public.notifications FOR ALL USING (true);
 
--- 5. Optional PostGIS Dynamic Subgrid View (if PostGIS extension is enabled)
+CREATE POLICY "Allow public read on qa_defects" ON public.qa_defects FOR SELECT USING (true);
+CREATE POLICY "Allow public insert on qa_defects" ON public.qa_defects FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow public update on qa_defects" ON public.qa_defects FOR UPDATE USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public delete on qa_defects" ON public.qa_defects FOR DELETE USING (true);
+ALTER TABLE public.qa_defects ADD COLUMN IF NOT EXISTS is_resolved BOOLEAN DEFAULT false;
+ALTER TABLE public.qa_defects ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMPTZ;
+
+-- 6. Optional PostGIS Dynamic Subgrid View (if PostGIS extension is enabled)
 DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'postgis') THEN
@@ -80,3 +108,4 @@ BEGIN
         ';
     END IF;
 END $$;
+

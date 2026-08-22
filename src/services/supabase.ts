@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import type { QADefectRecord } from '../types/admin';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://tqqybumedywzylujjkqa.supabase.co';
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_KEY || 'sb_publishable_Nf52vHR8rCpvoj-w77ZehQ_QniT4-EV';
@@ -131,12 +132,12 @@ export async function fetchSupabaseData(): Promise<{
           if (row.subgrid_code) {
             const sgKey = row.subgrid_code.toUpperCase().trim();
             knownMetadata[sgKey] = {
-              grid: row.grid_id || '1',
-              pic: row.pic || 'Unassigned',
-              equipment: row.equipment || 'MMS',
-              date: 'Sep 4',
-              defaultKm: 0,
-              defaultCount: 0
+              grid: row.grid_id || row.grid || '1',
+              pic: row.pic || row.operator || row.surveyor || '',
+              equipment: row.equipment || row.capture_equipment || 'MMS',
+              date: row.date || row.survey_date || (row.captured_at ? new Date(row.captured_at).toISOString().slice(0, 10) : ''),
+              defaultKm: typeof row.km === 'number' ? row.km : 0,
+              defaultCount: typeof row.poi_count === 'number' ? row.poi_count : 0
             };
             if (typeof row.latitude === 'number' && typeof row.longitude === 'number') {
               SUBGRID_COORDINATES[sgKey] = [Number(row.longitude), Number(row.latitude)];
@@ -240,7 +241,9 @@ export async function fetchSupabaseData(): Promise<{
         }
       }
 
-      const rawDate = r.captured_at ? new Date(r.captured_at).toISOString().slice(0, 10) : '2022-09-04';
+      const rawDate = r.captured_at
+        ? new Date(r.captured_at).toISOString().slice(0, 10)
+        : (r.date || r.survey_date || (r.created_at ? new Date(r.created_at).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10)));
       const extractedBatchId = r.description ? (r.description.match(/\[(.*?)\]/)?.[1] || r.description.match(/daily-[\w-]+/)?.[0] || r.description.match(/staging-[\w-]+/)?.[0]) : null;
       const extractedPublishSignature = r.description ? r.description.match(/Published Batch \([^)]+\) - ([\d\-: ]+)/)?.[0] : null;
       const runKey = r.batch_id || r.run_id || extractedBatchId || (extractedPublishSignature ? `${sg}_${extractedPublishSignature}` : `${sg}_${r.id || `${rawDate}_${r.poi_count || r.images_processed || 0}_${r.km_processed || 0}`}`);
@@ -582,7 +585,6 @@ export async function fetchSupabaseData(): Promise<{
         }
         existing.defects += defCount;
         existing.runsCount += 1;
-        if (d.pic && !existing.pics.has(d.pic)) existing.pics.add(d.pic);
         if (d.availableFilenames && Array.isArray(d.availableFilenames)) {
           if (!existing.availableFilenames) existing.availableFilenames = [];
           d.availableFilenames.forEach((fn: string) => {
@@ -590,12 +592,11 @@ export async function fetchSupabaseData(): Promise<{
           });
         }
       } else {
-        const picSet = new Set<string>();
-        if (d.pic) picSet.add(d.pic);
-
         const initialAvailFiles = d.availableFilenames && Array.isArray(d.availableFilenames)
           ? [...d.availableFilenames]
           : (d.panoramas ? d.panoramas.filter((p: any) => p.isAvailable !== false).map((p: any) => p.filename).filter(Boolean) : []);
+
+        const adminPic = knownMetadata[sg]?.pic || 'Admin';
 
         batchMap.set(sg, {
           id: `BATCH-${sg}`,
@@ -609,7 +610,7 @@ export async function fetchSupabaseData(): Promise<{
           publishedKm: isPublished ? kmVal : 0,
           totalKm: kmVal,
           defects: defCount,
-          pics: picSet,
+          adminPic: adminPic,
           captureEquipment: d.captureEquipment || 'MMS',
           panoramas: d.panoramas || [],
           availableFilenames: initialAvailFiles,
@@ -636,7 +637,7 @@ export async function fetchSupabaseData(): Promise<{
         kmProcessed: entry.publishedKm,
         status: isComplete ? 'Complete' : 'Ongoing',
         captureEquipment: entry.captureEquipment,
-        pic: Array.from(entry.pics).filter(Boolean).join(', ') || knownMetadata[sg]?.pic || 'Unassigned',
+        pic: entry.adminPic || knownMetadata[sg]?.pic || 'Admin',
         isSyncedWithSupabase: entry.publishedRunsCount > 0,
         panoramas: entry.panoramas
       });
@@ -1294,31 +1295,21 @@ export async function fetchAuditLogsFromSupabase(): Promise<any[]> {
       .from('audit_logs')
       .select('*')
       .order('created_at', { ascending: false })
-      .limit(50);
+      .limit(100);
 
     if (error || !data || data.length === 0) return [];
 
-    let readIds = new Set<string>();
-    try {
-      const savedRead = localStorage.getItem('app_audit_read_ids_v1');
-      if (savedRead) readIds = new Set(JSON.parse(savedRead));
-    } catch { }
-
-    const lastClearedAt = Number(localStorage.getItem('app_audit_cleared_at_v1') || 0);
-
     return data.map(item => {
       const id = String(item.id || item.created_at || item.timestamp);
-      const createdAtTime = item.created_at ? new Date(item.created_at).getTime() : 0;
-      const isRead = item.read === true || readIds.has(id) || (lastClearedAt > 0 && createdAtTime <= lastClearedAt);
       return {
         id: item.id || `audit-${id}`,
-        timestamp: item.timestamp,
-        type: item.type,
+        timestamp: item.timestamp || (item.created_at ? new Date(item.created_at).toLocaleString() : ''),
+        type: item.type || 'SYSTEM',
         title: item.title,
         details: item.details,
         user: item.user_name || item.user || 'System',
         status: item.status || 'info',
-        read: isRead
+        read: Boolean(item.read)
       };
     });
   } catch (err) {
@@ -1367,30 +1358,20 @@ export async function fetchNotificationsFromSupabase(): Promise<any[]> {
       .from('notifications')
       .select('*')
       .order('created_at', { ascending: false })
-      .limit(50);
+      .limit(100);
 
     if (error || !data || data.length === 0) return [];
 
-    let readIds = new Set<string>();
-    try {
-      const savedRead = localStorage.getItem('app_notif_read_ids_v1');
-      if (savedRead) readIds = new Set(JSON.parse(savedRead));
-    } catch { }
-
-    const lastClearedAt = Number(localStorage.getItem('app_notif_cleared_at_v1') || 0);
-
     return data.map(item => {
       const id = String(item.id || item.created_at || item.timestamp);
-      const createdAtTime = item.created_at ? new Date(item.created_at).getTime() : 0;
-      const isRead = item.read === true || readIds.has(id) || (lastClearedAt > 0 && createdAtTime <= lastClearedAt);
       return {
         id: item.id || `notif-${id}`,
-        timestamp: item.timestamp,
+        timestamp: item.timestamp || (item.created_at ? new Date(item.created_at).toLocaleString() : ''),
         title: item.title,
         message: item.message,
-        category: item.category,
-        read: isRead,
-        totalItems: item.total_items
+        category: item.category || 'SYSTEM',
+        read: Boolean(item.read),
+        totalItems: item.total_items || item.totalItems
       };
     });
   } catch (err) {
@@ -1486,7 +1467,7 @@ export async function testDatabaseHealth(): Promise<{
 }
 
 /**
- * Fetch data deletion approval requests from Supabase / localStorage fallback.
+ * Fetch data deletion approval requests from Supabase.
  */
 export async function fetchDeletionRequestsFromSupabase(_currentUser?: any): Promise<any[]> {
   try {
@@ -1512,11 +1493,6 @@ export async function fetchDeletionRequestsFromSupabase(_currentUser?: any): Pro
     console.warn('Deletion requests query notice:', e);
   }
 
-  const saved = localStorage.getItem('app_deletion_requests_v1');
-  if (saved) {
-    try { return JSON.parse(saved); } catch { }
-  }
-
   return [];
 }
 
@@ -1525,7 +1501,7 @@ export async function fetchDeletionRequestsFromSupabase(_currentUser?: any): Pro
  */
 export async function saveDeletionRequestToSupabase(req: any): Promise<boolean> {
   try {
-    await supabase.from('deletion_requests').insert([{
+    const { error } = await supabase.from('deletion_requests').insert([{
       subgrid: req.subgrid,
       requested_by: req.requestedBy,
       user_email: req.userEmail,
@@ -1536,15 +1512,15 @@ export async function saveDeletionRequestToSupabase(req: any): Promise<boolean> 
       status: 'Pending',
       filenames: req.filenames || []
     }]);
-  } catch { }
-
-  try {
-    const existing = await fetchDeletionRequestsFromSupabase();
-    const updated = [req, ...existing.filter(e => e.id !== req.id)];
-    localStorage.setItem('app_deletion_requests_v1', JSON.stringify(updated));
-  } catch { }
-
-  return true;
+    if (error) {
+      console.warn('Deletion request insert notice:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn('Exception saving deletion request:', err);
+    return false;
+  }
 }
 
 /**
@@ -1559,27 +1535,21 @@ export async function updateDeletionRequestStatusInSupabase(
   const reviewedAt = new Date().toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
   try {
-    await supabase.from('deletion_requests').update({
+    const { error } = await supabase.from('deletion_requests').update({
       status,
       reviewed_by: reviewedBy,
       reviewed_at: reviewedAt,
       rejection_reason: rejectionReason || null
     }).eq('id', id);
-  } catch { }
-
-  try {
-    const existing = await fetchDeletionRequestsFromSupabase();
-    const updated = existing.map(e => e.id === id ? {
-      ...e,
-      status,
-      reviewedBy,
-      reviewedAt,
-      rejectionReason
-    } : e);
-    localStorage.setItem('app_deletion_requests_v1', JSON.stringify(updated));
-  } catch { }
-
-  return true;
+    if (error) {
+      console.warn('Update deletion request notice:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn('Exception updating deletion request:', err);
+    return false;
+  }
 }
 
 /**
@@ -1668,19 +1638,135 @@ export async function fetchUserAccountsFromSupabase(currentSession?: any): Promi
 }
 
 /**
- * Save user directory list to storage and database.
+ * Save user directory list to database.
  */
 export async function saveUserAccountToSupabase(users: any[]): Promise<boolean> {
   try {
-    localStorage.setItem('app_user_accounts_v1', JSON.stringify(users));
-  } catch { }
-
-  try {
-    await supabase.from('user_accounts').upsert(users);
-  } catch { }
-
-  return true;
+    const { error } = await supabase.from('user_accounts').upsert(users);
+    if (error) {
+      console.warn('User accounts upsert notice:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn('Exception saving user account:', err);
+    return false;
+  }
 }
 
+/**
+ * Fetch dynamic project settings from Supabase.
+ */
+export async function fetchProjectSettingsFromSupabase(): Promise<any | null> {
+  try {
+    const { data, error } = await supabase.from('project_settings').select('*').limit(1).maybeSingle();
+    if (!error && data) {
+      return data.settings || data;
+    }
+  } catch (err) {
+    console.warn('Project settings query notice:', err);
+  }
+  return null;
+}
 
+/**
+ * Persist project settings to Supabase database.
+ */
+export async function saveProjectSettingsToSupabase(settings: any): Promise<boolean> {
+  try {
+    const { error } = await supabase.from('project_settings').upsert([{
+      id: 'default',
+      settings: settings,
+      updated_at: new Date().toISOString()
+    }]);
+    if (error) {
+      console.warn('Project settings save notice:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn('Exception saving project settings:', err);
+    return false;
+  }
+}
 
+/**
+ * Fetch all QA defect anomaly records for a specific subgrid.
+ */
+export async function fetchQADefectsForSubgrid(subgrid: string): Promise<QADefectRecord[]> {
+  try {
+    const cleanSub = (subgrid || '').toUpperCase().trim();
+    if (!cleanSub) return [];
+
+    const { data, error } = await supabase
+      .from('qa_defects')
+      .select('*')
+      .eq('subgrid', cleanSub)
+      .order('frame_index', { ascending: true });
+
+    if (error) {
+      console.warn('fetchQADefectsForSubgrid notice:', error.message);
+      return [];
+    }
+
+    return (data || []).map((row: any) => ({
+      id: row.id,
+      subgrid: row.subgrid,
+      point_id: row.point_id,
+      frame_index: row.frame_index,
+      defect_flags: typeof row.defect_flags === 'object' ? row.defect_flags : {},
+      defect_type: row.defect_type,
+      pic: row.pic,
+      image_url: row.image_url,
+      lat: row.lat,
+      lng: row.lng,
+      bearing: row.bearing,
+      is_resolved: Boolean(row.is_resolved),
+      resolved_at: row.resolved_at,
+      created_at: row.created_at
+    }));
+  } catch (err) {
+    console.warn('fetchQADefectsForSubgrid catch:', err);
+    return [];
+  }
+}
+
+/**
+ * Update QA defect record as resolved/dismissed in Supabase.
+ */
+export async function resolveQADefectInSupabase(subgrid: string, pointId: string, resolvedBy?: string): Promise<boolean> {
+  try {
+    const cleanSub = (subgrid || '').toUpperCase().trim();
+    const now = new Date().toISOString();
+    const { error } = await supabase
+      .from('qa_defects')
+      .update({
+        is_resolved: true,
+        resolved_at: now
+      })
+      .eq('subgrid', cleanSub)
+      .eq('point_id', pointId);
+
+    if (error) {
+      console.warn('resolveQADefectInSupabase error:', error.message);
+      return false;
+    }
+
+    // Save audit trail
+    const dateStr = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    const timeStr = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    saveAuditLogToSupabase({
+      timestamp: `${dateStr}, ${timeStr}`,
+      type: 'EDIT',
+      title: `QA Defect Resolved: ${pointId}`,
+      details: `Defect on node ${pointId} in subgrid ${cleanSub} marked as resolved/dismissed by ${resolvedBy || 'Operator'}.`,
+      user: resolvedBy || 'Operator',
+      status: 'success'
+    }).catch(() => {});
+
+    return true;
+  } catch (err) {
+    console.warn('resolveQADefectInSupabase catch:', err);
+    return false;
+  }
+}

@@ -30,6 +30,7 @@ import {
   ExternalLink,
   Lock,
   Trash2,
+  SlidersHorizontal,
   History
 } from 'lucide-react';
 import { UserAccount, DeletionApprovalRequest, SystemHealthMetrics, ExtendedProjectSettings } from '../types/admin';
@@ -401,7 +402,6 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
       return u;
     });
     setUsers(updated);
-    try { localStorage.setItem('app_user_accounts_v1', JSON.stringify(updated)); } catch { }
     saveUserAccountToSupabase(updated);
     const targetUser = users.find(u => u.id === userId);
     addAuditLog?.('SECURITY', `User Account ${targetUser?.status === 'Active' ? 'Disabled' : 'Enabled'}`, `Updated status for ${targetUser?.name} (${targetUser?.email})`, 'info');
@@ -428,7 +428,6 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
     const { userId, userName, userEmail, targetRole } = roleChangeModal;
     const updated = users.map(u => u.id === userId ? { ...u, role: targetRole } : u);
     setUsers(updated);
-    try { localStorage.setItem('app_user_accounts_v1', JSON.stringify(updated)); } catch { }
     saveUserAccountToSupabase(updated);
     addAuditLog?.('SECURITY', 'User Role Modified', `Assigned ${targetRole} role to ${userName} (${userEmail})`, 'info');
     showToast(`Role updated to ${targetRole} for ${userName}`);
@@ -447,7 +446,6 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
     }
     const updated = users.filter(u => u.id !== userId);
     setUsers(updated);
-    try { localStorage.setItem('app_user_accounts_v1', JSON.stringify(updated)); } catch { }
     saveUserAccountToSupabase(updated);
     addAuditLog?.('DELETE', `User Deleted`, `Administrator removed user account ${targetUser?.name} (${targetUser?.email})`, 'info');
     showToast(`User ${targetUser?.name} removed from directory.`);
@@ -473,7 +471,6 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
 
     const updated = [newUser, ...users.filter(u => u.email.toLowerCase().trim() !== newUser.email.toLowerCase().trim())];
     setUsers(updated);
-    try { localStorage.setItem('app_user_accounts_v1', JSON.stringify(updated)); } catch { }
     saveUserAccountToSupabase(updated);
     addAuditLog?.('CREATE', 'New User Provisioned', `Added user ${newUser.name} with role ${newUser.role}`, 'success');
     addNotification?.({
@@ -1681,9 +1678,6 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                       <button
                         type="button"
                         onClick={() => {
-                          try {
-                            localStorage.setItem('app_project_settings', JSON.stringify(projectSettings));
-                          } catch (e) { }
                           broadcastBasemap();
                           onSaveAllSettings?.();
                           showToast('Basemap & Opacity settings applied to Dashboard!');
@@ -2006,9 +2000,6 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                     <button
                       type="button"
                       onClick={() => {
-                        try {
-                          localStorage.setItem('app_project_settings', JSON.stringify(projectSettings));
-                        } catch (e) { }
                         broadcastLayerTheme();
                         onSaveAllSettings?.();
                         showToast('Survey Trajectory Layer theme applied to Dashboard!');
@@ -2379,6 +2370,18 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                   className={`w-full px-3 py-2 rounded-lg font-medium focus:outline-none border ${inputBg}`}
                 />
               </div>
+
+              <div className="col-span-1 md:col-span-2 p-4 rounded-xl bg-inner border border-subtle flex items-start gap-3 mt-2">
+                <div className="p-2 rounded-lg bg-sky-500/10 text-sky-400 border border-sky-500/20 shrink-0">
+                  <SlidersHorizontal size={18} />
+                </div>
+                <div className="space-y-1">
+                  <h4 className="text-xs font-bold text-text-base">QA/QC Defect Detection Thresholds</h4>
+                  <p className="text-[11px] text-text-muted leading-relaxed">
+                    Detection thresholds (Blur Sharpness, GPS Jump Limit, Lens Obstruction & Glare) are now managed in real-time directly inside the <strong>QA/QC Workbench Canvas</strong> via the <strong>Threshold Settings</strong> button.
+                  </p>
+                </div>
+              </div>
             </div>
 
             {/* Save Button */}
@@ -2393,9 +2396,6 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                 disabled={!isAdmin}
                 onClick={() => {
                   if (!isAdmin) return;
-                  try {
-                    localStorage.setItem('app_project_settings', JSON.stringify(projectSettings));
-                  } catch (e) { }
                   sendPreviewData();
                   onSaveAllSettings?.();
                   addAuditLog?.('SETTINGS', 'Saved Project Settings', 'Updated project parameters, basemap, security and SLA benchmarks.', 'success');
