@@ -75,17 +75,14 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
 
     // Dynamic telemetry calculations
     const computedDistance = dailyData.reduce((acc, item) => acc + (Number(item.distance || item.kmProcessed) || 0), 0);
-    const totalDistance = computedDistance > 0 ? computedDistance : 315.2;
-
-    const computedFrames = dailyData.reduce((acc, item) => acc + (Number(item.images || item.imagesProcessed) || 0), 0);
-    const totalFrames = computedFrames > 0 ? computedFrames : 12480;
-
-    const activeJobs = batchLogs.length > 0
-        ? batchLogs.filter((b: any) => b.status === 'In Progress' || b.status === 'Ongoing').length
-        : 3;
-
-    const targetDistance = projectSettings?.targetDistanceKm || projectSettings?.targetKm || 315.2;
-    const pctTarget = Math.min(100, (totalDistance / targetDistance) * 100).toFixed(1);
+    const computedFrames = dailyData.reduce((acc, item) => acc + (Number(item.availableImagesCount || item.panoramas?.length || item.images || item.imagesProcessed || item.poiCount) || 0), 0);
+    const computedDefects = dailyData.reduce((acc, item) => acc + (Number(item.imagesDefected || item.defectCount) || 0), 0);
+    const activeJobs = batchLogs.filter((b: any) => b.status === 'In Progress' || b.status === 'Ongoing').length;
+    const targetDistance = Number(projectSettings?.targetKm) || Number(projectSettings?.targetDistanceKm) || 0;
+    const pctTarget = targetDistance > 0 ? Math.min(100, (computedDistance / targetDistance) * 100).toFixed(1) : '0.0';
+    const slaPercent = computedFrames > 0
+        ? Math.max(0, ((computedFrames - computedDefects) / computedFrames) * 100).toFixed(1)
+        : '100.0';
 
     const SYSTEM_MODULES: SystemModule[] = [
         {
@@ -95,7 +92,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             subtitle: 'Real-Time Trajectory Tracing & Geospatial Clustering',
             description: 'Continuous spatial trajectory mapping across surveyed corridors with EPSG:4326 coordinate alignment, automated subgrid bounding box projection, and multi-layer basemap visualization.',
             metricLabel: 'Total Distance Mapped',
-            metricValue: `${totalDistance.toFixed(1)} km (${pctTarget}%)`,
+            metricValue: `${computedDistance.toFixed(1)} km (${pctTarget}%)`,
             statusBadge: 'Active WebGIS',
             accentColor: '#38bdf8',
             images: [
@@ -116,7 +113,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             subtitle: 'Multi-Batch Ledger & Automated Subgrid Reconciliation',
             description: 'Distributed data pipelines aggregating spherical panoramic imagery across active survey grids with automated progress tracking, metadata parsing, and status logging.',
             metricLabel: 'Processed Imagery',
-            metricValue: `${totalFrames.toLocaleString()} Frames (${activeJobs} Active)`,
+            metricValue: `${computedFrames.toLocaleString()} Frames (${activeJobs} Active)`,
             statusBadge: 'Pipeline Ready',
             accentColor: '#34d399',
             images: [
@@ -139,8 +136,8 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             subtitle: 'Frame-by-Frame Equirectangular QA Verification',
             description: 'High-definition 360° spherical imagery auditing with real-time camera telemetry monitoring and instant defect flagging for optical blur, lens obstructions, and GPS drift.',
             metricLabel: 'Quality SLA Health',
-            metricValue: '100.0% Normal',
-            statusBadge: '100% Pass Rate',
+            metricValue: `${slaPercent}% Quality`,
+            statusBadge: `${slaPercent}% Compliance`,
             accentColor: '#818cf8',
             images: [
                 '/screenshots/Dashboard_UI_3.png',
@@ -163,7 +160,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             subtitle: 'Supabase Realtime Cloud Sync & PostGIS Vector Management',
             description: 'Centralized spatial database powered by Supabase PostgreSQL and PostGIS, facilitating realtime CSV trajectory ingestion, automated duplicate subgrid verification, vector layer staging, and secure cloud storage.',
             metricLabel: 'Production Datasets',
-            metricValue: `${batchLogs.length || 3} Master Batches`,
+            metricValue: `${batchLogs.length} Master Batches`,
             statusBadge: 'Supabase Connected',
             accentColor: '#fbbf24',
             images: [
@@ -185,8 +182,8 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             title: 'Executive Reports & Audit Trail',
             subtitle: 'Project Survey Progress Ledgers & Real-Time Security Logs',
             description: 'Automated executive reporting engine compiling contract survey milestones, QA/QC SLA threshold compliance, daily operational progress ledgers, and immutable security audit trails.',
-            metricLabel: 'Security Events Logged',
-            metricValue: '50 Events (100% Compliant)',
+            metricLabel: 'Operational Logs',
+            metricValue: `${dailyData.length} Survey Records`,
             statusBadge: 'Audit Trail Active',
             accentColor: '#a855f7',
             images: [

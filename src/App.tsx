@@ -791,24 +791,7 @@ const MapComponent = ({
         ? '#10b981'
         : (statusVal === 'need to recheck' || statusVal === 'no' ? '#ef4444' : '#f59e0b');
 
-      let pans = item.panoramas || item.points || [];
-      if (!pans || pans.length === 0) {
-        const sg = (item.subgrid || '').toUpperCase();
-        const sgCoords = SUBGRID_COORDINATES[sg];
-        const baseCoord = sgCoords ? { lat: sgCoords[1], lng: sgCoords[0] } : { lat: 2.5389, lng: 102.8050 };
-        const count = item.poiCount || item.imagesProcessed || 14;
-        pans = Array.from({ length: count }, (_, idx) => ({
-          filename: `${sg}-${String(idx + 1).padStart(4, '0')}.jpg`,
-          image_url: `${sg}-${String(idx + 1).padStart(4, '0')}.jpg`,
-          subgrid: sg,
-          grid: item.grid,
-          latitude: baseCoord.lat + (idx * 0.00015),
-          longitude: baseCoord.lng + (idx * 0.0002),
-          lat: baseCoord.lat + (idx * 0.00015),
-          lon: baseCoord.lng + (idx * 0.0002),
-          lng: baseCoord.lng + (idx * 0.0002)
-        }));
-      }
+      const pans = item.panoramas || item.points || [];
 
       const formattedPans = pans.map((p: any) => ({
         ...p,
@@ -1499,7 +1482,7 @@ const DataManagementPage = ({
   addNotification?: (item: Omit<NotificationItem, 'id' | 'timestamp' | 'read'>) => void,
   addAuditLog?: (type: AuditLogItem['type'], title: string, details: string, status?: AuditLogItem['status']) => void,
   isGuestUser?: boolean,
-  projectSettings?: any;
+  projectSettings?: any
 }) => {
   const initialTab = (() => {
     try {
@@ -1649,25 +1632,7 @@ const DataManagementPage = ({
 
   const activeDailyFilterCount = Object.values(dailyColumnFilters).filter(Boolean).length;
 
-  // Selected subgrid filter state (interactive row click -> zoom to extent, filter, & blink)
-  const [selectedSubgridFilter, setSelectedSubgridFilter] = useState<string | null>(null);
 
-  const toggleSubgridFilter = (subgridRaw: string) => {
-    const sg = (extractSubgridName(subgridRaw) || subgridRaw).toUpperCase().trim();
-    setSelectedSubgridFilter(prev => {
-      const next = prev === sg ? null : sg;
-
-      // Broadcast filter message to embedded WebGIS map iframe
-      const iframes = document.querySelectorAll('iframe');
-      iframes.forEach(f => {
-        try {
-          f.contentWindow?.postMessage({ type: 'FILTER_SUBGRID', subgrid: next || '' }, '*');
-        } catch (e) { }
-      });
-
-      return next;
-    });
-  };
 
   // Admin Security Delete State
   const [deleteTarget, setDeleteTarget] = useState<BatchLog | DailyTimeSeries | null>(null);
@@ -2743,7 +2708,7 @@ const DataManagementPage = ({
               <div className="flex items-center gap-3">
                 <div className="flex items-center gap-2 px-3 py-1.5 bg-card border border-subtle rounded-xl text-xs text-slate-300 shadow-inner">
                   <User size={13} className="text-text-muted" />
-                  <span className="font-semibold text-text-base">{authSession.user?.email || 'guest@example.com'}</span>
+                  <span className="font-semibold text-text-base">{authSession.user?.email || (isGuestUser ? 'Guest User' : 'Operator')}</span>
                   {isGuestUser ? (
                     <span className="bg-inner text-text-muted border border-subtle px-2 py-0.5 rounded-full text-[10px] font-bold">Guest</span>
                   ) : (
@@ -3167,24 +3132,7 @@ const DataManagementPage = ({
             </div>
           ) : (
             <>
-              {/* Active Subgrid Filter Banner */}
-              {selectedSubgridFilter && (
-                <div className="p-3.5 bg-sky-950/80 border border-sky-500/40 rounded-2xl flex items-center justify-between text-sky-200 text-xs shadow-xl">
-                  <div className="flex items-center gap-3">
-                    <span className="w-2.5 h-2.5 rounded-full bg-sky-400 shadow-[0_0_8px_rgba(56,189,248,0.6)] shrink-0" />
-                    <div>
-                      <span className="font-bold text-text-base uppercase text-sm tracking-wide">FILTER ACTIVE: Subgrid [{selectedSubgridFilter}]</span>
-                      <span className="text-xs text-sky-300 ml-2 block sm:inline">— Showing only this subgrid. WebGIS map zoomed to extent.</span>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => toggleSubgridFilter(selectedSubgridFilter)}
-                    className="px-3.5 py-1.5 bg-sky-600 hover:bg-sky-500 text-text-base rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer shrink-0"
-                  >
-                    Show All Data
-                  </button>
-                </div>
-              )}
+
 
               {/* Bulk Selection Bar */}
               {selectedRowIds.size > 0 && (
@@ -3289,14 +3237,10 @@ const DataManagementPage = ({
                       paginatedBatchLogs.length > 0 ? (
                         paginatedBatchLogs.map((batch, index) => {
                           const batchSubgrid = (extractSubgridName(batch.subgrid || batch.imageFilename) || '').toUpperCase().trim();
-                          const isSelected = selectedSubgridFilter === batchSubgrid;
                           return (
                             <tr
                               key={batch.id || `b-${index}`}
-                              className={`transition-all ${isSelected
-                                ? 'bg-sky-950/90 border-l-4 border-sky-400 font-bold text-text-base shadow-lg shadow-sky-950/50 ring-1 ring-sky-500/30'
-                                : 'hover:bg-inner'
-                                }`}
+                              className="hover:bg-inner transition-all text-slate-300"
                             >
                               <td className="px-3 py-3.5 w-10 text-center" onClick={(e) => e.stopPropagation()}>
                                 <input
@@ -3318,7 +3262,6 @@ const DataManagementPage = ({
                               <td className="px-4 py-3.5 font-mono text-text-base font-semibold whitespace-nowrap">{batch.grid}</td>
                               <td className="px-4 py-3.5 font-semibold text-text-base whitespace-nowrap flex items-center gap-2">
                                 <span>{batchSubgrid}</span>
-                                {isSelected && <span className="bg-slate-700 text-text-base text-[10px] px-1.5 py-0.5 rounded-full font-bold">FILTERED</span>}
                               </td>
                               <td className="px-4 py-3.5 font-mono text-xs text-text-base font-semibold whitespace-nowrap">{getPOICount(batch).toLocaleString()}</td>
                               <td className="px-4 py-3.5 font-semibold text-slate-300 whitespace-nowrap">{batch.kmProcessed.toFixed(1)}</td>
@@ -3419,15 +3362,11 @@ const DataManagementPage = ({
                       paginatedDailyData.length > 0 ? (
                         paginatedDailyData.map((daily, index) => {
                           const dailySubgrid = (daily.subgrid || '').toUpperCase().trim();
-                          const isSelected = selectedSubgridFilter === dailySubgrid;
                           const isPublished = daily.publishToWebGIS === 'yes';
                           return (
                             <tr
                               key={daily.id || `d-${daily.date}-${daily.subgrid}-${index}`}
-                              className={`transition-all ${isSelected
-                                ? 'bg-sky-950/90 border-l-4 border-sky-400 font-bold text-text-base shadow-lg shadow-sky-950/50 ring-1 ring-sky-500/30'
-                                : 'hover:bg-inner'
-                                }`}
+                              className="hover:bg-inner transition-all text-slate-300"
                             >
                               <td className="px-3 py-3.5 w-10 text-center" onClick={(e) => e.stopPropagation()}>
                                 <input
@@ -3449,7 +3388,6 @@ const DataManagementPage = ({
                               <td className="px-4 py-3.5 text-text-base font-semibold whitespace-nowrap">{daily.grid}</td>
                               <td className="px-4 py-3.5 text-text-base font-semibold whitespace-nowrap flex items-center gap-2">
                                 <span>{daily.subgrid}</span>
-                                {isSelected && <span className="bg-slate-700 text-text-base text-[10px] px-1.5 py-0.5 rounded-full font-bold">FILTERED</span>}
                               </td>
                               <td className="px-4 py-3.5 font-mono text-xs text-text-base font-semibold whitespace-nowrap">{getPOICount(daily).toLocaleString()}</td>
                               <td className="px-4 py-3.5 text-slate-300 font-semibold whitespace-nowrap">{daily.kmProcessed.toFixed(1)}</td>
@@ -3653,7 +3591,7 @@ const DataManagementPage = ({
 
           {/* Dual-View Add/Edit Record Modal (Left: Form Data, Right: Interactive Map Preview) */}
           {isFormOpen && (() => {
-            const editSubgrid = editingItem ? (extractSubgridName((editingItem as any).subgrid || (editingItem as any).imageFilename) || (editingItem as any).subgrid || '') : (selectedSubgridFilter || '');
+            const editSubgrid = editingItem ? (extractSubgridName((editingItem as any).subgrid || (editingItem as any).imageFilename) || (editingItem as any).subgrid || '') : '';
             const editGrid = editingItem ? ((editingItem as any).grid || '1') : '1';
             const isPub = editingItem ? ((editingItem as any).publishToWebGIS === 'yes' || (editingItem as any).publishToUSVPRO === 'yes') : false;
             const statusVal = isPub ? 'yes' : ((editingItem as any)?.publishToWebGIS || (editingItem as any)?.status || 'in process');
@@ -4929,6 +4867,7 @@ export default function App() {
   const [showLanding, setShowLanding] = useState<boolean>(true);
   const [authSession, setAuthSession] = useState<any>(null);
   const [pendingModule, setPendingModule] = useState<string | null>(null);
+  const [selectedDailyRunId, setSelectedDailyRunId] = useState<string | null>(null);
 
   // 1. Module focus spotlight state
   const [focusedSection, setFocusedSection] = useState<'map' | 'processing' | 'qa' | null>(null);
@@ -5420,8 +5359,8 @@ export default function App() {
   const pipelineHealthPercent = totalFramesForHealth > 0
     ? (totalDefects === 0 ? '100.0' : Math.max(0, ((totalFramesForHealth - totalDefects) / totalFramesForHealth) * 100).toFixed(1))
     : '100.0';
-  const targetKm = projectSettings?.targetKm || 315.2;
-  const progressPercent = Math.min(100, Math.round((totalKm / targetKm) * 100));
+  const targetKm = Number(projectSettings?.targetKm) || (totalKm > 0 ? totalKm : 0);
+  const progressPercent = targetKm > 0 ? Math.min(100, Math.round((totalKm / targetKm) * 100)) : 0;
   const activeJobsCount = batchLogs.filter(b => b.status === 'Ongoing').length + dailyData.filter(d => (d as any).status === 'Ongoing' || (d as any).status === 'In Progress').length;
 
   const [mapRefreshKey, setMapRefreshKey] = useState<number>(Date.now());
@@ -5723,9 +5662,9 @@ export default function App() {
       ? (((totalPoiCount - totalDefectsCount) / totalPoiCount) * 100).toFixed(1)
       : '100.0';
 
-    const targetKmVal = projectSettings?.targetKm || 315.2;
-    const targetImagesVal = projectSettings?.targetImages || 50000;
-    const targetProgressPct = Math.min(100, (totalKmVal / targetKmVal) * 100).toFixed(1);
+    const targetKmVal = Number(projectSettings?.targetKm) || (totalKmVal > 0 ? totalKmVal : 0);
+    const targetImagesVal = Number(projectSettings?.targetImages) || (totalPanoramasCount > 0 ? totalPanoramasCount : 0);
+    const targetProgressPct = targetKmVal > 0 ? Math.min(100, (totalKmVal / targetKmVal) * 100).toFixed(1) : '0.0';
 
     const now = new Date();
     const reportDate = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' }) + ' • ' + now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
@@ -6267,27 +6206,27 @@ export default function App() {
                 <div class="signoff-role">PREPARED BY (GIS ENGINEER)</div>
                 <div class="signoff-line"></div>
                 <div class="signoff-meta">
-                  <strong>Name:</strong> ${operatorUser}<br>
-                  <strong>Title:</strong> Lead GIS Operations Engineer<br>
-                  <strong>Date:</strong> _____ / _____ / 2026
+                  <strong>Name:</strong> ${projectSettings?.engineerName || operatorUser}<br>
+                  <strong>Title:</strong> ${projectSettings?.engineerTitle || 'Lead GIS Operations Engineer'}<br>
+                  <strong>Date:</strong> ${reportDate}
                 </div>
               </div>
               <div class="signoff-box">
                 <div class="signoff-role">VERIFIED BY (QA LEAD)</div>
                 <div class="signoff-line"></div>
                 <div class="signoff-meta">
-                  <strong>Name:</strong> Quality Auditor<br>
-                  <strong>Title:</strong> Senior QA Verification Specialist<br>
-                  <strong>Date:</strong> _____ / _____ / 2026
+                  <strong>Name:</strong> ${projectSettings?.qaLeadName || 'Senior Quality Auditor'}<br>
+                  <strong>Title:</strong> ${projectSettings?.qaLeadTitle || 'QA/QC Verification Specialist'}<br>
+                  <strong>Date:</strong> ${reportDate}
                 </div>
               </div>
               <div class="signoff-box">
                 <div class="signoff-role">APPROVED BY (PROJECT DIRECTOR)</div>
                 <div class="signoff-line"></div>
                 <div class="signoff-meta">
-                  <strong>Name:</strong> Client / Project Director<br>
-                  <strong>Title:</strong> Project Director / Manager<br>
-                  <strong>Date:</strong> _____ / _____ / 2026
+                  <strong>Name:</strong> ${projectSettings?.projectDirector || projectSettings?.contractorName || 'Project Director'}<br>
+                  <strong>Title:</strong> ${projectSettings?.directorTitle || 'Project Director / Manager'}<br>
+                  <strong>Date:</strong> ${reportDate}
                 </div>
               </div>
             </div>
@@ -6377,11 +6316,13 @@ export default function App() {
             setActivePanoramaFilename(fn);
           }
           const imageUrl = (pt.image_url && typeof pt.image_url === 'string' && pt.image_url.trim().length > 0)
-            ? (pt.image_url.startsWith('http') || pt.image_url.startsWith('/') ? pt.image_url : `/MMS_PIC/${pt.image_url.replace(/^\/+/, '').replace(/^MMS_PIC\//i, '')}`)
-            : (fn ? `/MMS_PIC/${fn}` : '');
+            ? (pt.image_url.startsWith('http') || pt.image_url.startsWith('/') ? pt.image_url : resolvePanoramaUrl(pt.image_url, projectSettings))
+            : (fn ? resolvePanoramaUrl(fn, projectSettings) : '');
 
           if (imageUrl) {
             setActivePanoramaUrl(imageUrl);
+          } else {
+            setActivePanoramaUrl('');
           }
           if (typeof pt.bearing === 'number' || typeof pt.heading === 'number') {
             setPanoramaTelemetry(prev => ({ ...prev, yaw: pt.bearing ?? pt.heading }));
@@ -6504,19 +6445,20 @@ export default function App() {
         const foundDaily = dailyData.find(d => (extractSubgridName(d.subgrid) || '').toUpperCase().trim() === s);
         const foundBatch = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === s);
         const firstPan = foundDaily?.panoramas?.[0] || foundBatch?.panoramas?.[0];
-        const fn = firstPan?.filename || (foundBatch?.imageFilename) || `${s}-0001.jpg`;
-        const lat = firstPan?.latitude ?? (firstPan as any)?.lat ?? (foundDaily as any)?.points?.[0]?.lat ?? (SUBGRID_COORDINATES[s]?.[1] ?? 2.542429);
-        const lng = firstPan?.longitude ?? (firstPan as any)?.lon ?? (firstPan as any)?.lng ?? (foundDaily as any)?.points?.[0]?.lon ?? (SUBGRID_COORDINATES[s]?.[0] ?? 102.807800);
+        const fn = firstPan?.filename || (foundBatch?.imageFilename) || '';
+        const lat = firstPan?.latitude ?? (firstPan as any)?.lat ?? (foundDaily as any)?.points?.[0]?.lat ?? (SUBGRID_COORDINATES[s]?.[1] ?? 0);
+        const lng = firstPan?.longitude ?? (firstPan as any)?.lon ?? (firstPan as any)?.lng ?? (foundDaily as any)?.points?.[0]?.lon ?? (SUBGRID_COORDINATES[s]?.[0] ?? 0);
         return { fn, lat, lng };
       };
 
       if (nextSubgrid) {
         const def = getSubgridDefault(nextSubgrid);
+        const imgUrl = def.fn ? resolvePanoramaUrl(def.fn, projectSettings) : '';
         setActivePanoramaFilename(def.fn);
-        setActivePanoramaUrl(`/MMS_PIC/${def.fn}`);
+        setActivePanoramaUrl(imgUrl);
         setInspectorCoords({ lat: def.lat, lng: def.lng });
         setInspectorSubgrid(nextSubgrid);
-        setHasSelectedPoint(true);
+        setHasSelectedPoint(Boolean(def.lat && def.lng));
 
         const iframes = document.querySelectorAll('iframe');
         iframes.forEach(f => {
@@ -6526,7 +6468,7 @@ export default function App() {
               type: 'MAP_POINT_SELECTED',
               point: {
                 filename: def.fn,
-                image_url: `/MMS_PIC/${def.fn}`,
+                image_url: imgUrl,
                 subgrid: nextSubgrid,
                 lat: def.lat,
                 lon: def.lng,
@@ -6549,6 +6491,89 @@ export default function App() {
     });
   };
 
+  // Helper: Unique ID generator for survey runs
+  const getItemId = (item: any): string => {
+    if (item?.id) return item.id;
+    const poi = item?.poiCount || item?.imagesProcessed || item?.images || 0;
+    const km = item?.kmProcessed || 0;
+    return `row-${item?.date || 'nodate'}-${item?.subgrid || 'nosub'}-${poi}-${km}`;
+  };
+
+  // Dedicated Handler: Select a single daily survey run
+  const handleSelectDailyRun = (daily: DailyTimeSeries) => {
+    const rowId = getItemId(daily);
+
+    // Toggle off if already selected
+    if (selectedDailyRunId === rowId) {
+      setSelectedDailyRunId(null);
+      setSelectedSubgridFilter(null);
+      setSelectedDateFilter(null);
+
+      const iframes = document.querySelectorAll('iframe');
+      iframes.forEach(f => {
+        try {
+          f.contentWindow?.postMessage({ type: 'FILTER_SUBGRID', subgrid: '', date: '' }, '*');
+          // Reset staged data preview to all runs
+          f.contentWindow?.postMessage({
+            type: 'SET_STAGED_DATA',
+            stagedItems: dailyData
+          }, '*');
+        } catch (e) { }
+      });
+      return;
+    }
+
+    // 1. Set specific Run ID and filters
+    setSelectedDailyRunId(rowId);
+    setSelectedSubgridFilter(daily.subgrid);
+    setSelectedDateFilter(daily.date || null);
+
+    const firstPan = daily.panoramas?.[0];
+    const fn = firstPan?.filename || (daily as any)?.imageFilename || '';
+    const lat = firstPan?.latitude ?? (firstPan as any)?.lat ?? 0;
+    const lng = firstPan?.longitude ?? (firstPan as any)?.lon ?? 0;
+    const imgUrl = fn ? resolvePanoramaUrl(fn, projectSettings) : '';
+
+    setActivePanoramaFilename(fn);
+    setActivePanoramaUrl(imgUrl);
+    setInspectorCoords({ lat, lng });
+    setInspectorSubgrid(daily.subgrid);
+    setHasSelectedPoint(Boolean(lat && lng));
+
+    // 2. Transmit message restricting map display strictly to this single run
+    const iframes = document.querySelectorAll('iframe');
+    iframes.forEach(f => {
+      try {
+        // Send single-run filter
+        f.contentWindow?.postMessage({
+          type: 'FILTER_SUBGRID',
+          subgrid: daily.subgrid,
+          date: daily.date || '',
+          runId: rowId
+        }, '*');
+
+        // Send ONLY this single run's panoramas to the map
+        f.contentWindow?.postMessage({
+          type: 'SET_STAGED_DATA',
+          stagedItems: [daily]
+        }, '*');
+
+        // Select the initial node
+        f.contentWindow?.postMessage({
+          type: 'MAP_POINT_SELECTED',
+          point: {
+            filename: fn,
+            image_url: imgUrl,
+            subgrid: daily.subgrid,
+            lat,
+            lon: lng,
+            lng,
+            bearing: firstPan?.bearing ?? 0
+          }
+        }, '*');
+      } catch (e) { }
+    });
+  };
   // ===== Render Supabase Auth Protection Gate (Minimalist Professional Enterprise Design) =====
 
   // 1. Loading state during auth verification
@@ -7155,10 +7180,10 @@ export default function App() {
           </div>
           <div className="flex items-center gap-2 pl-2 border-l border-subtle">
 
-            {/* Guest user */}
+            {/* User Avatar Initial */}
             <div className={`w-7 h-7 rounded-full border flex items-center justify-center text-xs font-bold ${isGuestUser ? 'bg-amber-900/40 border-amber-700 text-amber-400' : 'bg-inner border-subtle text-sky-400'
-              }`} title={`Logged in as ${authSession?.user?.email || 'guest@example.com'}`}>
-              {isGuestUser ? 'G' : (authSession?.user?.email?.charAt(0).toUpperCase() || 'F')}
+              }`} title={`Logged in as ${authSession?.user?.email || (isGuestUser ? 'Guest' : 'User')}`}>
+              {isGuestUser ? 'G' : (authSession?.user?.email?.charAt(0).toUpperCase() || authSession?.user?.user_metadata?.full_name?.charAt(0).toUpperCase() || 'U')}
             </div>
             {isGuestUser && (
               <span className="text-[10px] font-semibold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded-md">
@@ -7619,8 +7644,8 @@ export default function App() {
                         const matchDaily = dailyData.find(d => (extractSubgridName(d.subgrid) || '').toUpperCase().trim() === name);
                         const matchBatch = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === name);
                         const firstPan = matchDaily?.panoramas?.[0] || matchBatch?.panoramas?.[0];
-                        const lat = firstPan?.latitude ?? (firstPan as any)?.lat ?? (matchDaily as any)?.points?.[0]?.lat ?? (SUBGRID_COORDINATES[name]?.[1] ?? 2.5389);
-                        const lng = firstPan?.longitude ?? (firstPan as any)?.lon ?? (firstPan as any)?.lng ?? (matchDaily as any)?.points?.[0]?.lon ?? (SUBGRID_COORDINATES[name]?.[0] ?? 102.8050);
+                        const lat = firstPan?.latitude ?? (firstPan as any)?.lat ?? (matchDaily as any)?.points?.[0]?.lat ?? (SUBGRID_COORDINATES[name]?.[1] ?? 0);
+                        const lng = firstPan?.longitude ?? (firstPan as any)?.lon ?? (firstPan as any)?.lng ?? (matchDaily as any)?.points?.[0]?.lon ?? (SUBGRID_COORDINATES[name]?.[0] ?? 0);
                         return { lat, lng };
                       };
 
@@ -7637,18 +7662,19 @@ export default function App() {
                             <span className="text-sky-400 font-mono text-xs">Subgrid ID: {selectedSubgridFilter} {selectedDateFilter ? `(${selectedDateFilter})` : ''}</span>
                             <button onClick={() => toggleSubgridFilter(selectedSubgridFilter)} className="text-text-muted hover:text-text-base p-0.5 rounded cursor-pointer transition-colors" title="Close filter">✕</button>
                           </div>
-                          <div className="text-slate-300 font-mono text-[11px] flex justify-between gap-4"><span className="text-text-muted">Coordinates:</span> <span>{activeCoords.lat.toFixed(4)}° N, {activeCoords.lng.toFixed(4)}° E</span></div>
+                          <div className="text-slate-300 font-mono text-[11px] flex justify-between gap-4"><span className="text-text-muted">Coordinates:</span> <span>{activeCoords.lat && activeCoords.lng ? `${activeCoords.lat.toFixed(4)}° N, ${activeCoords.lng.toFixed(4)}° E` : '—'}</span></div>
                           <div className="text-slate-300 text-[11px] flex justify-between gap-4"><span className="text-text-muted">Distance from start:</span> <span className="font-semibold text-text-base">{activeKm} km</span></div>
                           <div className="text-slate-300 text-[11px] flex justify-between gap-4"><span className="text-text-muted">Image Count:</span> <span className="font-semibold text-text-base">{activeImages}</span></div>
                           <div className="text-slate-300 text-[11px] flex justify-between items-center gap-4">
                             <span className="text-text-muted">Defect Images:</span>
                             <button
                               onClick={() => {
-                                const validFn = activeDailyLog?.panoramas?.[0]?.filename || activeBatchLog?.imageFilename || `${selectedSubgridFilter || 'SUBGRID'}-0001.jpg`;
-                                const imgUrl = `/MMS_PIC/${validFn}`;
+                                const validFn = activeDailyLog?.panoramas?.[0]?.filename || activeBatchLog?.imageFilename || '';
+                                const imgUrl = validFn ? resolvePanoramaUrl(validFn, projectSettings) : '';
+                                setActivePanoramaFilename(validFn);
                                 setActivePanoramaUrl(imgUrl);
-                                setHasSelectedPoint(true);
-                                if (activeCoords) {
+                                setHasSelectedPoint(Boolean(activeCoords.lat && activeCoords.lng));
+                                if (activeCoords.lat && activeCoords.lng) {
                                   setInspectorCoords(activeCoords);
                                 }
                                 if (selectedSubgridFilter) {
@@ -7674,7 +7700,11 @@ export default function App() {
                       refreshKey={mapRefreshKey}
                       onManualRefresh={handleRefreshMap}
                       selectedSubgridFilter={selectedSubgridFilter}
-                      stagedItems={dailyData}
+                      stagedItems={
+                        selectedDailyRunId
+                          ? dailyData.filter(d => getItemId(d) === selectedDailyRunId)
+                          : dailyData
+                      }
                       projectSettings={projectSettings}
                     />
                   </div>
@@ -7963,15 +7993,18 @@ export default function App() {
                                 })
                                 .map((log, i) => {
                                   const dailySubgrid = (log.subgrid || '').toUpperCase().trim();
-                                  const isRowSelected = selectedSubgridFilter === dailySubgrid && (!selectedDateFilter || selectedDateFilter === log.date);
+                                  const isRowSelected = selectedDailyRunId === getItemId(log);
                                   const matchBatch = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === dailySubgrid);
                                   const defectCount = log.imagesDefected ?? log.defectCount ?? (matchBatch?.defects ?? 0);
                                   const isPublished = log.publishToWebGIS === 'yes';
                                   return (
                                     <tr
                                       key={log.id || `dash-d-${log.date}-${log.subgrid}-${i}`}
-                                      onClick={() => toggleSubgridFilter(dailySubgrid, log.date)}
-                                      className={`cursor-pointer transition-all ${isRowSelected ? 'bg-sky-950/80 text-text-base font-medium border-l-2 border-sky-400' : 'hover:bg-inner text-slate-300'}`}
+                                      onClick={() => handleSelectDailyRun(log)}
+                                      className={`cursor-pointer transition-all duration-150 ${isRowSelected
+                                        ? '!bg-sky-900/60 border-l-4 border-sky-400 !text-white font-semibold shadow-inner'
+                                        : 'hover:bg-inner text-slate-300'
+                                        }`}
                                     >
                                       <td className="px-3.5 py-3.5 font-mono text-[10px] text-text-muted whitespace-nowrap">
                                         <div className="inline-flex items-center gap-1.5 whitespace-nowrap">

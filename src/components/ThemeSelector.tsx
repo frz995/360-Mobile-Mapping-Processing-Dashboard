@@ -125,19 +125,29 @@ export interface ThemeCanvasProps {
 }
 
 // Leaflet Map Component
-const LiveLeafletMapContainer: React.FC<{ tileUrl: string }> = ({ tileUrl }) => {
+const LiveLeafletMapContainer: React.FC<{
+    tileUrl: string;
+    points?: [number, number][];
+    projectSettings?: any;
+}> = ({ tileUrl, points = [], projectSettings }) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const mapRef = useRef<any>(null);
     const tileLayerRef = useRef<any>(null);
+    const polylineRef = useRef<any>(null);
+    const markersRef = useRef<any[]>([]);
 
     useEffect(() => {
         if (!containerRef.current) return;
         const L = (window as any).L;
 
         if (L && !mapRef.current) {
+            const defaultCenter: [number, number] = projectSettings?.defaultCenter && Array.isArray(projectSettings.defaultCenter)
+                ? [projectSettings.defaultCenter[0], projectSettings.defaultCenter[1]]
+                : [4.2105, 101.9758]; // Neutral regional centroid
+
             const map = L.map(containerRef.current, {
-                center: [2.55313, 102.81319],
-                zoom: 14,
+                center: defaultCenter,
+                zoom: points.length > 0 ? 14 : 7,
                 zoomControl: false,
                 attributionControl: false
             });
@@ -145,37 +155,37 @@ const LiveLeafletMapContainer: React.FC<{ tileUrl: string }> = ({ tileUrl }) => 
             const layer = L.tileLayer(tileUrl, { maxZoom: 19 }).addTo(map);
             tileLayerRef.current = layer;
 
-            const points: [number, number][] = [
-                [2.5492, 102.8120],
-                [2.5501, 102.8135],
-                [2.5512, 102.8148],
-                [2.5520, 102.8155],
-                [2.5528, 102.8164],
-                [2.5535, 102.8172],
-                [2.5548, 102.8190],
-                [2.5560, 102.8215]
-            ];
-
-            L.polyline(points, {
-                color: '#f59e0b',
-                weight: 3.5,
-                opacity: 0.9,
-                dashArray: '4, 4'
-            }).addTo(map);
-
-            points.forEach(pt => {
-                L.circleMarker(pt, {
-                    radius: 4,
-                    fillColor: '#f59e0b',
-                    color: '#ffffff',
-                    weight: 1,
-                    fillOpacity: 1
+            if (points.length > 0) {
+                const poly = L.polyline(points, {
+                    color: '#f59e0b',
+                    weight: 3.5,
+                    opacity: 0.9,
+                    dashArray: '4, 4'
                 }).addTo(map);
-            });
+                polylineRef.current = poly;
+
+                const markers = points.slice(0, 100).map(pt => {
+                    return L.circleMarker(pt, {
+                        radius: 4,
+                        fillColor: '#f59e0b',
+                        color: '#ffffff',
+                        weight: 1,
+                        fillOpacity: 1
+                    }).addTo(map);
+                });
+                markersRef.current = markers;
+
+                try {
+                    const bounds = L.latLngBounds(points);
+                    if (bounds.isValid()) {
+                        map.fitBounds(bounds, { padding: [20, 20], maxZoom: 16 });
+                    }
+                } catch (_) { }
+            }
 
             mapRef.current = map;
         }
-    }, []);
+    }, [points, projectSettings]);
 
     useEffect(() => {
         if (tileLayerRef.current) {
@@ -226,11 +236,29 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
 
     const stagedObj = THEME_PRESETS.find((t) => t.id === stagedTheme) || THEME_PRESETS[0];
 
-    const totalDistance = dailyData.reduce((acc, item) => acc + (Number(item.distance) || 0), 0);
-    const totalFrames = dailyData.reduce((acc, item) => acc + (Number(item.images) || 0), 0);
-    const activeJobs = batchLogs.filter((b: any) => b.status === 'In Progress' || b.status === 'Ongoing').length || 3;
-    const targetDistance = projectSettings?.targetDistanceKm || 315.2;
-    const pctTarget = Math.min(100, (totalDistance / targetDistance) * 100).toFixed(1);
+    const totalDistance = dailyData.reduce((acc, item) => acc + (Number(item.kmProcessed || item.distance) || 0), 0);
+    const totalFrames = dailyData.reduce((acc, item) => acc + (Number(item.availableImagesCount || item.panoramas?.length || item.imagesProcessed || item.images) || 0), 0);
+    const totalDefects = dailyData.reduce((acc, item) => acc + (Number(item.imagesDefected || item.defectCount) || 0), 0);
+    const activeJobs = batchLogs.filter((b: any) => b.status === 'In Progress' || b.status === 'Ongoing').length;
+    const targetDistance = Number(projectSettings?.targetKm) || Number(projectSettings?.targetDistanceKm) || (totalDistance > 0 ? totalDistance : 0);
+    const pctTarget = targetDistance > 0 ? Math.min(100, (totalDistance / targetDistance) * 100).toFixed(1) : '0.0';
+    const qualitySlaPercent = totalFrames > 0
+        ? Math.max(0, ((totalFrames - totalDefects) / totalFrames) * 100).toFixed(1)
+        : '100.0';
+
+    const validMapPoints: [number, number][] = React.useMemo(() => {
+        const pts: [number, number][] = [];
+        (dailyData || []).forEach((d: any) => {
+            (d.panoramas || d.points || []).forEach((p: any) => {
+                const lat = p.latitude ?? p.lat;
+                const lng = p.longitude ?? p.lon ?? p.lng;
+                if (typeof lat === 'number' && typeof lng === 'number' && !isNaN(lat) && !isNaN(lng) && (lat !== 0 || lng !== 0)) {
+                    pts.push([lat, lng]);
+                }
+            });
+        });
+        return pts;
+    }, [dailyData]);
 
     return (
         <div className="space-y-5">
@@ -386,7 +414,7 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                         </span>
                     </div>
 
-                    {/* Staged Scope Container */}
+                    {/* Staged Sandbox Container */}
                     <div
                         data-theme={stagedTheme}
                         className="p-3.5 rounded-xl border transition-all duration-200 space-y-3 shadow-sm"
@@ -396,15 +424,16 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                             color: stagedObj.textPrimary
                         }}
                     >
-                        {/* 1. App Header */}
+                    <div className="space-y-4">
+                        {/* 1. Header Bar Simulation */}
                         <div
-                            className="px-3 py-2 rounded-lg border flex items-center justify-between"
+                            className="p-3.5 rounded-xl border flex items-center justify-between"
                             style={{
                                 backgroundColor: stagedObj.bgCard,
                                 borderColor: stagedObj.borderSubtle
                             }}
                         >
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2.5">
                                 <div
                                     className="w-6 h-6 rounded flex items-center justify-center text-white text-[11px]"
                                     style={{ backgroundColor: stagedObj.accent }}
@@ -412,18 +441,31 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                                     <Layers className="w-3.5 h-3.5" />
                                 </div>
                                 <div>
-                                    <div className="text-xs font-semibold tracking-tight" style={{ color: stagedObj.textPrimary }}>
-                                        Mobile Mapping Data Management System
-                                    </div>
-                                    <div className="text-[9px]" style={{ color: stagedObj.textMuted }}>
-                                        Spatial Trajectory Processing & QA Pipeline
-                                    </div>
+                                    <span className="text-xs font-bold block" style={{ color: stagedObj.textPrimary }}>
+                                        {projectSettings?.projectName || 'GeoSphere 360 Operations Hub'}
+                                    </span>
+                                    <span className="text-[10px] block" style={{ color: stagedObj.textMuted }}>
+                                        Contract: {projectSettings?.contractCode || 'MMS-2026-TNB-01'}
+                                    </span>
                                 </div>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                                <span
+                                    className="px-2 py-0.5 rounded text-[10px] font-mono font-bold"
+                                    style={{
+                                        backgroundColor: stagedObj.accentBg,
+                                        color: stagedObj.accent,
+                                        border: `1px solid ${stagedObj.accent}40`
+                                    }}
+                                >
+                                    {stagedObj.badge.toUpperCase()}
+                                </span>
                             </div>
                         </div>
 
-                        {/* 2. 4 KPI Metrics */}
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                        {/* 2. Mini KPI Cards Row */}
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                             <div
                                 className="p-2.5 rounded-lg border flex flex-col justify-between"
                                 style={{
@@ -432,18 +474,15 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                                 }}
                             >
                                 <div className="flex items-center justify-between text-[8.5px] uppercase font-semibold tracking-wider" style={{ color: stagedObj.textMuted }}>
-                                    <span>DISTANCE MAPPED</span>
+                                    <span>SURVEY PROGRESS</span>
                                     <Navigation className="w-3 h-3" style={{ color: stagedObj.accent }} />
                                 </div>
-                                <div className="my-0.5 flex items-baseline gap-1">
+                                <div className="my-0.5">
                                     <span className="text-sm font-bold" style={{ color: stagedObj.textPrimary }}>
                                         {totalDistance.toFixed(1)} km
                                     </span>
-                                    <span className="text-[8px] font-mono" style={{ color: stagedObj.accent }}>
-                                        ({pctTarget}%)
-                                    </span>
                                 </div>
-                                <div className="text-[8px]" style={{ color: stagedObj.textMuted }}>Target: {targetDistance} km</div>
+                                <div className="text-[8px]" style={{ color: stagedObj.textMuted }}>{pctTarget}% of Target</div>
                             </div>
 
                             <div
@@ -454,7 +493,7 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                                 }}
                             >
                                 <div className="flex items-center justify-between text-[8.5px] uppercase font-semibold tracking-wider" style={{ color: stagedObj.textMuted }}>
-                                    <span>PROCESSED FRAMES</span>
+                                    <span>PANORAMAS</span>
                                     <Camera className="w-3 h-3" style={{ color: stagedObj.accent }} />
                                 </div>
                                 <div className="my-0.5">
@@ -462,7 +501,7 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                                         {totalFrames.toLocaleString()}
                                     </span>
                                 </div>
-                                <div className="text-[8px]" style={{ color: stagedObj.textMuted }}>360° Images Ingested</div>
+                                <div className="text-[8px]" style={{ color: stagedObj.textMuted }}>Images Processed</div>
                             </div>
 
                             <div
@@ -497,10 +536,10 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                                 </div>
                                 <div className="my-0.5">
                                     <span className="text-sm font-bold text-emerald-400">
-                                        100.0%
+                                        {qualitySlaPercent}%
                                     </span>
                                 </div>
-                                <div className="text-[8px]" style={{ color: stagedObj.textMuted }}>0 Defect Flags</div>
+                                <div className="text-[8px]" style={{ color: stagedObj.textMuted }}>{totalDefects} Defect Flags</div>
                             </div>
                         </div>
 
@@ -514,7 +553,7 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                                     borderColor: stagedObj.borderSubtle
                                 }}
                             >
-                                <LiveLeafletMapContainer tileUrl={stagedObj.mapTileUrl} />
+                                <LiveLeafletMapContainer tileUrl={stagedObj.mapTileUrl} points={validMapPoints} projectSettings={projectSettings} />
 
                                 {/* Map Floating Bar */}
                                 <div className="p-2.5 flex items-center justify-between z-10 pointer-events-none">
@@ -576,28 +615,33 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                                                 Processing Admin
                                             </span>
                                             <span className="text-[8px] font-mono" style={{ color: stagedObj.textMuted }}>
-                                                {dailyData.length || 3} Batches
+                                                {batchLogs.length} Batches
                                             </span>
                                         </div>
 
                                         <div className="space-y-1 my-1 text-[8px]">
-                                            {[
-                                                { subgrid: 'N93E70', img: '0 frames', status: 'Ongoing' },
-                                                { subgrid: 'N94E70', img: '0 frames', status: 'Ongoing' },
-                                                { subgrid: 'N94E71', img: '0 frames', status: 'Ongoing' }
-                                            ].map((row, idx) => (
-                                                <div
-                                                    key={idx}
-                                                    className="flex items-center justify-between p-1.5 rounded"
-                                                    style={{
-                                                        backgroundColor: stagedObj.innerCard
-                                                    }}
-                                                >
-                                                    <span className="font-mono font-medium" style={{ color: stagedObj.textPrimary }}>{row.subgrid}</span>
-                                                    <span style={{ color: stagedObj.textMuted }}>{row.img}</span>
-                                                    <span className="font-medium text-amber-500">{row.status}</span>
+                                            {batchLogs.length > 0 ? (
+                                                batchLogs.slice(0, 3).map((row: any, idx: number) => {
+                                                    const frameCount = row.availableImagesCount ?? row.panoramas?.length ?? row.images ?? 0;
+                                                    return (
+                                                        <div
+                                                            key={row.id || idx}
+                                                            className="flex items-center justify-between p-1.5 rounded"
+                                                            style={{
+                                                                backgroundColor: stagedObj.innerCard
+                                                            }}
+                                                        >
+                                                            <span className="font-mono font-medium" style={{ color: stagedObj.textPrimary }}>{row.subgrid || `SG-${idx + 1}`}</span>
+                                                            <span style={{ color: stagedObj.textMuted }}>{frameCount} frames</span>
+                                                            <span className="font-medium text-amber-500">{row.status || 'Ongoing'}</span>
+                                                        </div>
+                                                    );
+                                                })
+                                            ) : (
+                                                <div className="p-2 text-center text-text-muted text-[8px]">
+                                                    No batches registered
                                                 </div>
-                                            ))}
+                                            )}
                                         </div>
                                     </div>
 
@@ -630,10 +674,10 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                                 </div>
                             </div>
                         </div>
-
                     </div>
                 </div>
             </div>
+        </div>
         </div>
     );
 };

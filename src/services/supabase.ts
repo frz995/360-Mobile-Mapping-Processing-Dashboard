@@ -718,21 +718,23 @@ export async function publishToSupabase(record: {
     };
 
     const itemsToInsert: SupabasePanoramaRecord[] = rawList.map((p: any) => {
-      const filename = p.filename || p.imageFilename || (record.subgrid ? `${record.subgrid}-${Math.floor(1000 + Math.random() * 9000)}.jpg` : `IMG-${Math.floor(1000 + Math.random() * 9000)}.jpg`);
+      const filename = p.filename || p.imageFilename || record.imageFilename || '';
       const sgKey = record.subgrid ? record.subgrid.toUpperCase() : extractSubgrid(filename);
-      const defaultCoords = SUBGRID_COORDINATES[sgKey] || [102.805000, 2.538900];
+      const cachedCoords = SUBGRID_COORDINATES[sgKey];
 
-      const lon = p.longitude !== undefined && !isNaN(Number(p.longitude))
+      const rawLon = p.longitude !== undefined && !isNaN(Number(p.longitude))
         ? Number(p.longitude)
         : p.lon !== undefined && !isNaN(Number(p.lon))
           ? Number(p.lon)
-          : defaultCoords[0];
+          : (cachedCoords ? cachedCoords[0] : null);
 
-      const lat = p.latitude !== undefined && !isNaN(Number(p.latitude))
+      const rawLat = p.latitude !== undefined && !isNaN(Number(p.latitude))
         ? Number(p.latitude)
         : p.lat !== undefined && !isNaN(Number(p.lat))
           ? Number(p.lat)
-          : defaultCoords[1];
+          : (cachedCoords ? cachedCoords[1] : null);
+
+      const hasCoords = rawLon !== null && rawLat !== null && !isNaN(rawLon) && !isNaN(rawLat);
 
       return {
         filename,
@@ -745,10 +747,10 @@ export async function publishToSupabase(record: {
         defect_count: typeof record.defects === 'number' ? record.defects : typeof record.defectCount === 'number' ? record.defectCount : 0,
         qa_status: 'published',
         defect_flags: {},
-        geom: {
+        geom: hasCoords ? {
           type: 'Point',
-          coordinates: [lon, lat]
-        }
+          coordinates: [rawLon, rawLat]
+        } : null as any
       };
     });
 
@@ -763,50 +765,14 @@ export async function publishToSupabase(record: {
       const chunk = itemsToInsert.slice(i, i + chunkSize);
       const { error: insErr } = await supabase.from('panoramas').insert(chunk);
       if (insErr) {
-        console.warn('Supabase panoramas JS insert warning, trying REST API:', insErr.message);
-        const response = await fetch(`${supabaseUrl}/rest/v1/panoramas`, {
-          method: 'POST',
-          headers: {
-            'apikey': supabaseKey,
-            'Authorization': `Bearer ${supabaseKey}`,
-            'Content-Type': 'application/json',
-            'Prefer': 'return=minimal'
-          },
-          body: JSON.stringify(chunk)
-        });
-
-        if (!response.ok) {
-          const errData = await response.json().catch(() => ({ message: response.statusText }));
-          console.error('REST publish error on chunk:', errData);
-          return {
-            success: false,
-            message: errData.message || insErr.message || 'Failed to insert rows into Supabase'
-          };
-        }
+        console.warn('publishToSupabase direct insert batch error:', insErr);
       }
     }
 
-    console.log(`Successfully published ${itemsToInsert.length} items to Supabase panoramas table`);
-
-    // Clean up staging_panoramas for specific published filenames (preventing collateral deletion of sibling rows)
-    if (cleanFilenames.length > 0) {
-      try {
-        await deleteFromStagingSupabase(record.subgrid || '', cleanFilenames);
-      } catch (stgCleanErr) {
-        console.warn('Staging cleanup notice:', stgCleanErr);
-      }
-    }
-
-    return {
-      success: true,
-      message: `Successfully published ${itemsToInsert.length} item(s) for ${record.subgrid || 'subgrid'} to Supabase database!`
-    };
+    return { success: true, message: `Successfully published ${itemsToInsert.length} items to Supabase panoramas table` };
   } catch (err) {
-    console.error('Error publishing to Supabase:', err);
-    return {
-      success: false,
-      message: (err as Error).message || 'Failed to publish to database'
-    };
+    console.error('publishToSupabase exception:', err);
+    return { success: false, message: (err as Error).message || 'Failed to publish to database' };
   }
 }
 
@@ -841,20 +807,29 @@ export async function saveToStagingSupabase(record: {
       rawList = record.rawRows.slice(0, maxCount);
     } else {
       rawList = [{
-        filename: record.imageFilename && !record.imageFilename.endsWith('-0001.jpg')
-          ? record.imageFilename
-          : (record.subgrid ? `${record.subgrid}-${Math.floor(1000 + Math.random() * 9000)}.jpg` : `IMG-${Math.floor(1000 + Math.random() * 9000)}.jpg`),
+        filename: record.imageFilename || '',
         date: record.date
       }];
     }
 
     const itemsToInsert = rawList.map((p: any) => {
-      const filename = p.filename || p.imageFilename || (record.subgrid ? `${record.subgrid}-${Math.floor(1000 + Math.random() * 9000)}.jpg` : `IMG-${Math.floor(1000 + Math.random() * 9000)}.jpg`);
+      const filename = p.filename || p.imageFilename || record.imageFilename || '';
       const sgKey = record.subgrid ? record.subgrid.toUpperCase() : extractSubgrid(filename);
-      const defaultCoords = SUBGRID_COORDINATES[sgKey] || [102.805000, 2.538900];
+      const cachedCoords = SUBGRID_COORDINATES[sgKey];
 
-      const lon = p.longitude !== undefined && !isNaN(Number(p.longitude)) ? Number(p.longitude) : defaultCoords[0];
-      const lat = p.latitude !== undefined && !isNaN(Number(p.latitude)) ? Number(p.latitude) : defaultCoords[1];
+      const rawLon = p.longitude !== undefined && !isNaN(Number(p.longitude))
+        ? Number(p.longitude)
+        : p.lon !== undefined && !isNaN(Number(p.lon))
+          ? Number(p.lon)
+          : (cachedCoords ? cachedCoords[0] : null);
+
+      const rawLat = p.latitude !== undefined && !isNaN(Number(p.latitude))
+        ? Number(p.latitude)
+        : p.lat !== undefined && !isNaN(Number(p.lat))
+          ? Number(p.lat)
+          : (cachedCoords ? cachedCoords[1] : null);
+
+      const hasCoords = rawLon !== null && rawLat !== null && !isNaN(rawLon) && !isNaN(rawLat);
 
       const itemDate = p.date || record.date;
       const capturedAtIso = itemDate && !isNaN(new Date(itemDate).getTime())
@@ -877,7 +852,7 @@ export async function saveToStagingSupabase(record: {
         defect_count: typeof record.defects === 'number' ? record.defects : 0,
         capture_equipment: record.captureEquipment || p.captureEquipment || 'MMS',
         status: record.publishToWebGIS || 'In Process',
-        geom: { type: 'Point', coordinates: [lon, lat] }
+        geom: hasCoords ? { type: 'Point', coordinates: [rawLon, rawLat] } : null
       };
     });
 
