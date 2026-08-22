@@ -238,18 +238,18 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             </div>
 
             {/* 2. Top Header Navbar */}
-            <header className="relative z-30 px-4 sm:px-8 py-2.5 sm:py-3 flex items-center justify-between border-b border-slate-800/80 bg-[#070b14]/90 backdrop-blur-md shrink-0">
-                <div>
-                    <span className="text-xs sm:text-sm font-semibold tracking-tight text-white block leading-tight">
+            <header className="relative z-30 px-3 sm:px-8 py-2.5 sm:py-3 flex items-center justify-between border-b border-slate-800/80 bg-[#070b14]/90 backdrop-blur-md shrink-0">
+                <div className="min-w-0 pr-2">
+                    <span className="text-xs sm:text-sm font-semibold tracking-tight text-white block leading-tight truncate">
                         Mobile Mapping Data Management System
                     </span>
-                    <span className="text-[10px] sm:text-xs text-slate-400 font-medium hidden xs:block">
+                    <span className="text-[10px] sm:text-xs text-slate-400 font-medium hidden xs:block truncate">
                         Spatial Trajectory Processing &amp; Quality Assurance Pipeline
                     </span>
                 </div>
 
                 {/* Single Clean Desktop Navigation Pills */}
-                <div className="hidden lg:flex items-center gap-1 p-1 rounded-xl bg-slate-900/80 border border-slate-800">
+                <div className="hidden lg:flex items-center gap-1 p-1 rounded-xl bg-slate-900/80 border border-slate-800 shrink-0">
                     {SYSTEM_MODULES.map((mod, idx) => (
                         <button
                             key={mod.id}
@@ -265,16 +265,16 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                 </div>
 
                 {/* Header Action Buttons */}
-                <div className="flex items-center gap-2 sm:gap-3">
+                <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
                     <button
                         onClick={() => onEnterDashboard && onEnterDashboard('auth')}
-                        className="px-2.5 sm:px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white transition-colors cursor-pointer"
+                        className="px-2 sm:px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white transition-colors cursor-pointer"
                     >
                         Sign In
                     </button>
                     <button
                         onClick={() => onEnterDashboard && onEnterDashboard('general-launch')}
-                        className="px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs font-semibold bg-white hover:bg-slate-200 text-slate-950 transition-all shadow-sm active:scale-95 cursor-pointer flex items-center gap-1.5"
+                        className="px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs font-semibold bg-white hover:bg-slate-200 text-slate-950 transition-all shadow-sm active:scale-95 cursor-pointer flex items-center gap-1.5"
                     >
                         <span>Launch</span>
                         <ArrowRight className="w-3.5 h-3.5 text-slate-950 hidden sm:inline" />
@@ -283,21 +283,25 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             </header>
 
             {/* 3. Main Showcase Section */}
-            <main className="relative z-20 flex-1 w-full px-4 sm:px-8 py-3 sm:py-4 overflow-y-auto lg:overflow-hidden flex items-center justify-center">
-                <div className="w-full max-w-[1700px] mx-auto my-auto grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
+            <main className="relative z-20 flex-1 w-full px-3 sm:px-8 py-3 sm:py-4 overflow-y-auto lg:overflow-hidden flex items-start lg:items-center justify-start lg:justify-center">
+                <div className="w-full max-w-[1700px] mx-auto my-0 lg:my-auto grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-8 lg:gap-12 items-center">
 
-                    {/* MOBILE TITLE */}
-                    <div className="block lg:hidden col-span-1 space-y-1 text-center shrink-0 px-2">
-                        <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white leading-tight">
-                            GeoSphere 360° Mobile Mapping Platform
+                    {/* MOBILE HERO BADGE & TITLE */}
+                    <div className="block lg:hidden col-span-1 space-y-1 text-center shrink-0 px-1 pt-1">
+                        <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-slate-800/80 border border-slate-700/60 text-[10px] sm:text-xs font-semibold text-slate-300 mb-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse" />
+                            <span>GeoSphere 360° Platform</span>
+                        </div>
+                        <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight text-white leading-tight">
+                            Mobile Mapping Data Suite
                         </h1>
-                        <p className="text-xs text-slate-400 font-normal leading-relaxed max-w-md mx-auto">
-                            Centralizing spatial data pipelines with high-precision corridor tracking, PostGIS cloud synchronization, and frame-by-frame spherical QA auditing.
+                        <p className="text-[11px] sm:text-xs text-slate-400 font-normal leading-relaxed max-w-md mx-auto">
+                            Centralizing spatial pipelines with corridor tracking, PostGIS cloud sync, and spherical QA auditing.
                         </p>
                     </div>
 
                     {/* NARRATIVE PANEL & MODULE CONTROLS (Left 5 cols on Desktop) */}
-                    <div className={`w-full lg:col-span-5 space-y-5 sm:space-y-6 text-left flex flex-col justify-center order-3 lg:order-1 pb-4 lg:pb-0 transition-all duration-300 ease-out ${isAnimating ? 'opacity-0 translate-y-1.5' : 'opacity-100 translate-y-0'}`}>
+                    <div className={`w-full lg:col-span-5 space-y-4 sm:space-y-6 text-left flex flex-col justify-center order-3 lg:order-1 pb-6 lg:pb-0 transition-all duration-300 ease-out ${isAnimating ? 'opacity-0 translate-y-1.5' : 'opacity-100 translate-y-0'}`}>
 
                         {/* Desktop Hero Section */}
                         <div className="hidden lg:block space-y-2.5 pb-2 border-b border-slate-800/40">
@@ -311,7 +315,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                         </div>
 
                         {/* Active Module Details */}
-                        <div className="space-y-3 pt-1">
+                        <div className="space-y-2.5 sm:space-y-3 pt-1">
                             <div className="flex items-center justify-between">
                                 <span
                                     className="text-xs sm:text-sm font-bold uppercase tracking-wider block"
@@ -319,31 +323,31 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                                 >
                                     {current.category}
                                 </span>
-                                <span className="text-[11px] sm:text-xs font-semibold tracking-wider text-slate-300 bg-slate-800/80 px-2.5 py-0.5 rounded-full border border-slate-700/60 tabular-nums">
+                                <span className="text-[10px] sm:text-xs font-semibold tracking-wider text-slate-300 bg-slate-800/80 px-2 sm:px-2.5 py-0.5 rounded-full border border-slate-700/60 tabular-nums">
                                     Module 0{activeIndex + 1} / 05
                                 </span>
                             </div>
 
                             <div className="space-y-1">
-                                <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-100 leading-tight">
+                                <h2 className="text-lg sm:text-2xl lg:text-3xl font-extrabold tracking-tight text-slate-100 leading-tight">
                                     {current.title}
                                 </h2>
-                                <p className="text-xs sm:text-sm text-slate-300/90 font-normal leading-relaxed line-clamp-3">
+                                <p className="text-[11px] sm:text-xs lg:text-sm text-slate-300/90 font-normal leading-relaxed line-clamp-3 sm:line-clamp-none">
                                     {current.description}
                                 </p>
                             </div>
 
                             {/* Micro Specs HUD */}
-                            <div className="grid grid-cols-3 gap-2 pt-0.5">
+                            <div className="grid grid-cols-3 gap-1.5 sm:gap-2 pt-0.5">
                                 {current.specs.map((spec, i) => (
                                     <div
                                         key={i}
-                                        className="p-2 sm:p-2.5 rounded-xl bg-slate-900/80 border border-slate-800 backdrop-blur-md"
+                                        className="p-1.5 sm:p-2.5 rounded-xl bg-slate-900/80 border border-slate-800 backdrop-blur-md min-w-0"
                                     >
-                                        <span className="text-[10px] sm:text-[11px] font-medium text-slate-400 block truncate">
+                                        <span className="text-[9px] xs:text-[10px] sm:text-[11px] font-medium text-slate-400 block truncate">
                                             {spec.label}
                                         </span>
-                                        <span className="text-xs sm:text-sm font-semibold text-slate-200 block mt-0.5 truncate">
+                                        <span className="text-[10.5px] xs:text-xs sm:text-sm font-semibold text-slate-200 block mt-0.5 truncate">
                                             {spec.value}
                                         </span>
                                     </div>
@@ -354,7 +358,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                             <div className="pt-1">
                                 <button
                                     onClick={() => onEnterDashboard && onEnterDashboard(current.id)}
-                                    className="w-full sm:w-auto px-6 py-3 rounded-xl font-semibold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all transform hover:opacity-95 active:scale-95 cursor-pointer shadow-lg"
+                                    className="w-full sm:w-auto px-5 sm:px-6 py-2.5 sm:py-3 rounded-xl font-semibold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all transform hover:opacity-95 active:scale-95 cursor-pointer shadow-lg"
                                     style={{
                                         backgroundColor: current.accentColor,
                                         color: '#070b14'
@@ -367,24 +371,24 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                         </div>
 
                         {/* Bottom Professional WebGIS Introduction */}
-                        <div className="pt-1.5 text-left">
-                            <p className="text-[11.5px] sm:text-xs text-slate-400 font-normal leading-relaxed">
+                        <div className="pt-1 text-left space-y-2">
+                            <p className="text-[11px] sm:text-xs text-slate-400 font-normal leading-relaxed">
                                 <span className="text-slate-200 font-medium">Get started quickly with</span> our high-precision WebGIS coverage map, automated batch ingestion pipelines, frame-by-frame 360° equirectangular defect auditing, and cloud-synchronized PostGIS spatial intelligence.
                             </p>
 
                             {/* Minimal System Metadata Footer */}
-                            <div className="pt-3 border-t border-slate-800/50 flex flex-wrap items-center gap-x-6 gap-y-2 text-slate-400">
+                            <div className="pt-2 sm:pt-3 border-t border-slate-800/50 flex flex-wrap items-center gap-x-4 sm:gap-x-6 gap-y-1.5 text-slate-400 text-[10px] sm:text-xs">
                                 <div className="flex items-center gap-1.5">
-                                    <span className="text-slate-500 text-[11px]">Coordinate System:</span>
-                                    <span className="font-semibold text-slate-200 text-xs">EPSG:4326</span>
+                                    <span className="text-slate-500">CRS:</span>
+                                    <span className="font-semibold text-slate-200">EPSG:4326</span>
                                 </div>
                                 <div className="flex items-center gap-1.5">
-                                    <span className="text-slate-500 text-[11px]">Database:</span>
-                                    <span className="font-semibold text-slate-200 text-xs">PostGIS/PostgreSQL + Supabase</span>
+                                    <span className="text-slate-500">DB:</span>
+                                    <span className="font-semibold text-slate-200">PostGIS + Supabase</span>
                                 </div>
                                 <div className="flex items-center gap-1.5">
-                                    <span className="text-slate-500 text-[11px]">Renderer:</span>
-                                    <span className="font-semibold text-slate-200 text-xs">MapLibre GL + Pannellum Viewer</span>
+                                    <span className="text-slate-500">Renderer:</span>
+                                    <span className="font-semibold text-slate-200">MapLibre GL + Pannellum</span>
                                 </div>
                             </div>
                         </div>
@@ -398,7 +402,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                         className={`w-full lg:col-span-7 flex flex-col justify-center group relative order-2 lg:order-2 transition-all duration-300 ease-out touch-pan-y ${isAnimating ? 'opacity-0 scale-[0.995]' : 'opacity-100 scale-100'}`}
                     >
                         {/* Ambient Underglow */}
-                        <div className="absolute -inset-4 sm:-inset-6 rounded-3xl overflow-hidden pointer-events-none opacity-40 group-hover:opacity-90 blur-2xl sm:blur-3xl transition-all duration-500 ease-out -z-10">
+                        <div className="absolute -inset-3 sm:-inset-6 rounded-3xl overflow-hidden pointer-events-none opacity-40 group-hover:opacity-90 blur-xl sm:blur-3xl transition-all duration-500 ease-out -z-10">
                             <img
                                 src={activeImage}
                                 alt="Underglow"
@@ -409,20 +413,20 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                         </div>
 
                         {/* Preview Frame Container */}
-                        <div className="relative w-full aspect-[16/10] p-3 sm:p-4 rounded-2xl bg-slate-900/90 border border-slate-800/90 shadow-2xl flex flex-col justify-between overflow-hidden">
+                        <div className="relative w-full aspect-[16/10] p-2.5 sm:p-4 rounded-2xl bg-slate-900/90 border border-slate-800/90 shadow-2xl flex flex-col justify-between overflow-hidden">
 
                             {/* Top Subtitle Bar */}
-                            <div className="flex items-center justify-between px-1 pb-2 border-b border-slate-800/80">
-                                <span className="text-[11px] sm:text-xs font-semibold text-slate-300 truncate pr-2">
+                            <div className="flex items-center justify-between px-1 pb-1.5 sm:pb-2 border-b border-slate-800/80">
+                                <span className="text-[10px] sm:text-xs font-semibold text-slate-300 truncate pr-2">
                                     {current.subtitle}
                                 </span>
-                                <span className="text-[10px] sm:text-xs font-medium text-slate-400 shrink-0">
+                                <span className="text-[9px] sm:text-xs font-medium text-slate-400 shrink-0">
                                     {activePhotoIdx + 1} / {current.images.length}
                                 </span>
                             </div>
 
                             {/* Viewport Image */}
-                            <div className="relative w-full flex-1 rounded-xl bg-[#090d16] border border-slate-800/90 overflow-hidden flex items-center justify-center my-2 sm:my-3">
+                            <div className="relative w-full flex-1 rounded-xl bg-[#090d16] border border-slate-800/90 overflow-hidden flex items-center justify-center my-1.5 sm:my-3">
                                 <img
                                     key={activeImage}
                                     src={activeImage}
@@ -436,12 +440,12 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
 
                             {/* Thumbnail Selector Bar */}
                             {current.images.length > 1 && (
-                                <div className="flex items-center gap-2 pt-1 overflow-x-auto pb-0.5">
+                                <div className="flex items-center gap-1.5 sm:gap-2 pt-1 overflow-x-auto pb-0.5 no-scrollbar">
                                     {current.images.map((imgUrl, idx) => (
                                         <button
                                             key={idx}
                                             onClick={() => setActivePhotoIdx(idx)}
-                                            className={`relative h-10 w-16 sm:h-12 sm:w-20 rounded-lg overflow-hidden border transition-all cursor-pointer shrink-0 ${activePhotoIdx === idx
+                                            className={`relative h-8 w-13 sm:h-12 sm:w-20 rounded-lg overflow-hidden border transition-all cursor-pointer shrink-0 ${activePhotoIdx === idx
                                                 ? 'border-sky-400 ring-2 ring-sky-400/30 opacity-100'
                                                 : 'border-slate-800 opacity-60 hover:opacity-100'
                                                 }`}
@@ -465,12 +469,12 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             </main>
 
             {/* 4. Pinned Footer Navigation Controls */}
-            <footer className="relative z-30 w-full px-4 sm:px-8 py-2.5 sm:py-3 flex items-center justify-between border-t border-slate-800/80 bg-[#070b14]/95 backdrop-blur-md shrink-0">
+            <footer className="relative z-30 w-full px-3 sm:px-8 py-2 sm:py-3 flex items-center justify-between border-t border-slate-800/80 bg-[#070b14]/95 backdrop-blur-md shrink-0">
                 <button
                     onClick={() => handleModuleChange((activeIndex - 1 + SYSTEM_MODULES.length) % SYSTEM_MODULES.length)}
-                    className="flex items-center gap-2 sm:gap-3 opacity-80 hover:opacity-100 transition-all cursor-pointer"
+                    className="flex items-center gap-1.5 sm:gap-3 opacity-80 hover:opacity-100 transition-all cursor-pointer p-1 -m-1"
                 >
-                    <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg border border-slate-800 bg-slate-900 flex items-center justify-center">
+                    <div className="w-8 h-8 rounded-lg border border-slate-800 bg-slate-900 flex items-center justify-center">
                         <ChevronLeft className="w-4 h-4 text-white" />
                     </div>
                     <div className="hidden sm:block text-left">
@@ -485,7 +489,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                         <button
                             key={mod.id}
                             onClick={() => handleModuleChange(idx)}
-                            className={`h-2 rounded-full transition-all cursor-pointer ${activeIndex === idx
+                            className={`h-2 rounded-full transition-all cursor-pointer p-1 -my-1 ${activeIndex === idx
                                 ? 'w-5 sm:w-6 bg-slate-200'
                                 : 'w-2 bg-slate-700 hover:bg-slate-500'
                                 }`}
@@ -496,13 +500,13 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
 
                 <button
                     onClick={() => handleModuleChange((activeIndex + 1) % SYSTEM_MODULES.length)}
-                    className="flex items-center gap-2 sm:gap-3 opacity-80 hover:opacity-100 transition-all cursor-pointer"
+                    className="flex items-center gap-1.5 sm:gap-3 opacity-80 hover:opacity-100 transition-all cursor-pointer p-1 -m-1"
                 >
                     <div className="hidden sm:block text-right">
                         <span className="text-[10px] text-slate-400 block">Next</span>
                         <span className="text-xs font-semibold text-slate-200">{nextModule.title.split('&')[0]}</span>
                     </div>
-                    <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg border border-slate-800 bg-slate-900 flex items-center justify-center">
+                    <div className="w-8 h-8 rounded-lg border border-slate-800 bg-slate-900 flex items-center justify-center">
                         <ChevronRight className="w-4 h-4 text-white" />
                     </div>
                 </button>

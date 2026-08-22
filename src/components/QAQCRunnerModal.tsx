@@ -58,13 +58,13 @@ export const QAQCRunnerModal: React.FC<QAQCRunnerModalProps> = ({
   const estimatedSecondsLeft = Math.ceil(remainingStations * 0.25);
 
   return (
-    <div className="fixed inset-0 top-0 left-0 right-0 bottom-0 w-full h-full bg-black/80 backdrop-blur-md z-[99999] flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200">
-      <div className="bg-card border border-subtle rounded-2xl w-full max-w-3xl shadow-2xl flex flex-col overflow-hidden text-text-base animate-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 top-0 left-0 right-0 bottom-0 w-full h-full bg-black/80 backdrop-blur-md z-[99999] flex items-center justify-center p-2 sm:p-4 animate-in fade-in duration-200">
+      <div className="bg-card border border-subtle rounded-2xl w-full max-w-3xl max-h-[92vh] sm:max-h-[85vh] shadow-2xl flex flex-col overflow-hidden text-text-base animate-in zoom-in-95 duration-200">
 
         {/* Modal Header */}
-        <div className="p-4 sm:p-5 bg-card border-b border-subtle flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-3">
-            <div className={`p-2.5 rounded-xl border shadow-sm ${
+        <div className="p-3.5 sm:p-5 bg-card border-b border-subtle flex items-center justify-between shrink-0 gap-2">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+            <div className={`p-2 sm:p-2.5 rounded-xl border shadow-sm shrink-0 ${
               isCompleted
                 ? 'bg-emerald-500/20 border-emerald-500/30 text-emerald-400'
                 : isAborted
@@ -72,22 +72,22 @@ export const QAQCRunnerModal: React.FC<QAQCRunnerModalProps> = ({
                 : 'bg-sky-500/20 border-sky-500/30 text-sky-400'
             }`}>
               {isCompleted ? (
-                <CheckCircle size={20} />
+                <CheckCircle size={18} />
               ) : isAborted ? (
-                <AlertTriangle size={20} />
+                <AlertTriangle size={18} />
               ) : (
-                <Activity size={20} className="animate-pulse" />
+                <Activity size={18} className="animate-pulse" />
               )}
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-base font-bold text-text-base tracking-wide">
-                  Automated QA/QC Analysis Runner
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                <h2 className="text-sm sm:text-base font-bold text-text-base tracking-wide truncate">
+                  QA/QC Analysis Runner
                 </h2>
-                <span className="text-[10px] font-mono font-bold text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded border border-sky-500/20">
+                <span className="text-[10px] font-mono font-bold text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded border border-sky-500/20 shrink-0">
                   {subgrid || 'General'}
                 </span>
-                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded border ${
+                <span className={`text-[9px] sm:text-[10px] font-semibold px-2 py-0.5 rounded border shrink-0 ${
                   isCompleted
                     ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
                     : isAborted
@@ -96,23 +96,23 @@ export const QAQCRunnerModal: React.FC<QAQCRunnerModalProps> = ({
                     ? 'text-amber-400 bg-amber-500/10 border-amber-500/20'
                     : 'text-sky-400 bg-sky-500/10 border-sky-500/20'
                 }`}>
-                  {isCompleted ? 'ANALYSIS COMPLETE' : isAborted ? 'ABORTED' : isPaused ? 'PAUSED' : 'INSPECTING SEQUENTIALLY'}
+                  {isCompleted ? 'COMPLETE' : isAborted ? 'ABORTED' : isPaused ? 'PAUSED' : 'INSPECTING'}
                 </span>
               </div>
-              <p className="text-xs text-text-muted mt-0.5">
-                Target: {totalStations} Stations • PIC: <span className="text-emerald-400 font-semibold">{pic || 'Operator'}</span> • Interval: 250ms/node • Background Active
+              <p className="text-[11px] sm:text-xs text-text-muted mt-0.5 truncate">
+                Target: {totalStations} Stations • PIC: <span className="text-emerald-400 font-semibold">{pic || 'Operator'}</span>
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             {!isCompleted && !isAborted && (
               <button
                 onClick={isPaused ? onResume : onPause}
-                className="px-3 py-1.5 bg-inner hover:bg-slate-700 text-xs font-semibold rounded-lg border border-subtle transition-colors flex items-center gap-1.5 cursor-pointer shadow-sm"
+                className="px-2.5 sm:px-3 py-1 sm:py-1.5 bg-inner hover:bg-slate-700 text-xs font-semibold rounded-lg border border-subtle transition-colors flex items-center gap-1.5 cursor-pointer shadow-sm"
               >
                 {isPaused ? <Play size={13} className="text-emerald-400" /> : <Pause size={13} className="text-amber-400" />}
-                <span>{isPaused ? 'Resume' : 'Pause'}</span>
+                <span className="hidden sm:inline">{isPaused ? 'Resume' : 'Pause'}</span>
               </button>
             )}
             <button
@@ -126,7 +126,7 @@ export const QAQCRunnerModal: React.FC<QAQCRunnerModalProps> = ({
         </div>
 
         {/* Modal Body */}
-        <div className="p-5 space-y-4 overflow-y-auto max-h-[75vh]">
+        <div className="p-3.5 sm:p-5 space-y-3.5 sm:space-y-4 overflow-y-auto max-h-[75vh]">
 
           {/* 1. High-Tech Progress Bar & Metrics */}
           <div className="p-4 rounded-xl bg-inner border border-subtle space-y-2.5 shadow-inner">

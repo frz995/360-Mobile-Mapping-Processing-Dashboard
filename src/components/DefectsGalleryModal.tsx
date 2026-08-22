@@ -131,28 +131,29 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="relative w-full max-w-5xl h-[88vh] bg-card border border-[rgba(255,255,255,0.12)] rounded-2xl shadow-2xl flex flex-col overflow-hidden text-text-base">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
+      <div className="relative w-full max-w-5xl h-[94vh] sm:h-[88vh] bg-card border border-[rgba(255,255,255,0.12)] rounded-2xl shadow-2xl flex flex-col overflow-hidden text-text-base">
         
         {/* HEADER BAR */}
-        <div className="px-6 py-4 border-b border-[rgba(255,255,255,0.08)] bg-app flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 shadow-inner">
-              <AlertTriangle size={20} />
+        <div className="px-3.5 sm:px-6 py-3 sm:py-4 border-b border-[rgba(255,255,255,0.08)] bg-app flex items-center justify-between shrink-0 gap-2">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 shadow-inner shrink-0">
+              <AlertTriangle size={18} className="sm:hidden" />
+              <AlertTriangle size={20} className="hidden sm:block" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-base font-bold tracking-tight text-white">QA/QC Defect Review Gallery</h2>
-                <span className="px-2 py-0.5 rounded-full text-xs font-mono font-bold bg-sky-500/15 text-sky-400 border border-sky-500/30">
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                <h2 className="text-sm sm:text-base font-bold tracking-tight text-white truncate">Defect Review Gallery</h2>
+                <span className="px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-mono font-bold bg-sky-500/15 text-sky-400 border border-sky-500/30 shrink-0">
                   {cleanSubgrid}
                 </span>
                 {activeCount > 0 && (
-                  <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-400 border border-amber-500/30 animate-pulse">
-                    {activeCount} Active {activeCount === 1 ? 'Anomaly' : 'Anomalies'}
+                  <span className="px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-semibold bg-amber-500/15 text-amber-400 border border-amber-500/30 animate-pulse shrink-0">
+                    {activeCount} Active
                   </span>
                 )}
               </div>
-              <p className="text-xs text-text-muted">
+              <p className="text-[11px] sm:text-xs text-text-muted truncate hidden xs:block">
                 Audit anomalies detected during automated blur, lens obstruction, and GPS trajectory analysis.
               </p>
             </div>
@@ -160,23 +161,23 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
 
           <button
             onClick={onClose}
-            className="p-2 hover:bg-inner rounded-xl text-text-muted hover:text-white transition-colors cursor-pointer"
+            className="p-1.5 sm:p-2 hover:bg-inner rounded-xl text-text-muted hover:text-white transition-colors cursor-pointer shrink-0"
             aria-label="Close Defect Gallery Modal"
           >
-            <X size={20} />
+            <X size={18} />
           </button>
         </div>
 
         {/* CONTROLS & FILTER CHIPS */}
-        <div className="px-6 py-3 border-b border-[rgba(255,255,255,0.06)] bg-card/60 flex flex-wrap items-center justify-between gap-3 shrink-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs font-semibold text-text-muted flex items-center gap-1.5 mr-1">
-              <Filter size={13} />
+        <div className="px-3.5 sm:px-6 py-2.5 sm:py-3 border-b border-[rgba(255,255,255,0.06)] bg-card/60 flex flex-wrap items-center justify-between gap-2 shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar w-full sm:w-auto pb-1 sm:pb-0">
+            <span className="text-xs font-semibold text-text-muted flex items-center gap-1 mr-1 shrink-0">
+              <Filter size={12} />
               Filter:
             </span>
             <button
               onClick={() => setFilterCategory('all')}
-              className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+              className={`px-2.5 sm:px-3 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                 filterCategory === 'all'
                   ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40 font-semibold'
                   : 'bg-inner hover:bg-slate-800 text-slate-400 border border-subtle'
@@ -186,7 +187,7 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
             </button>
             <button
               onClick={() => setFilterCategory('blur')}
-              className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer flex items-center gap-1.5 ${
+              className={`px-2.5 sm:px-3 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
                 filterCategory === 'blur'
                   ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 font-semibold'
                   : 'bg-inner hover:bg-slate-800 text-slate-400 border border-subtle'
@@ -197,29 +198,29 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
             </button>
             <button
               onClick={() => setFilterCategory('obstruction')}
-              className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer flex items-center gap-1.5 ${
+              className={`px-2.5 sm:px-3 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
                 filterCategory === 'obstruction'
                   ? 'bg-orange-500/20 text-orange-300 border border-orange-500/40 font-semibold'
                   : 'bg-inner hover:bg-slate-800 text-slate-400 border border-subtle'
               }`}
             >
               <Sun size={12} />
-              Obstruction / Glare ({obstructionCount})
+              Obstruction ({obstructionCount})
             </button>
             <button
               onClick={() => setFilterCategory('gps')}
-              className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer flex items-center gap-1.5 ${
+              className={`px-2.5 sm:px-3 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
                 filterCategory === 'gps'
                   ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40 font-semibold'
                   : 'bg-inner hover:bg-slate-800 text-slate-400 border border-subtle'
               }`}
             >
               <Navigation size={12} />
-              GPS Jump ({gpsCount})
+              GPS ({gpsCount})
             </button>
           </div>
 
-          <label className="flex items-center gap-2 text-xs font-medium text-text-muted cursor-pointer hover:text-white transition-colors">
+          <label className="flex items-center gap-2 text-xs font-medium text-text-muted cursor-pointer hover:text-white transition-colors shrink-0">
             <input
               type="checkbox"
               checked={showResolved}
@@ -231,7 +232,7 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
         </div>
 
         {/* DEFECT CARDS GRID BODY */}
-        <div className="flex-1 p-6 overflow-y-auto min-h-0 bg-app/50">
+        <div className="flex-1 p-3 sm:p-6 overflow-y-auto min-h-0 bg-app/50">
           {isLoading ? (
             <div className="h-full flex flex-col items-center justify-center gap-3 text-text-muted">
               <Loader2 size={32} className="animate-spin text-sky-400" />
