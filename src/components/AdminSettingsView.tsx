@@ -580,7 +580,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
     return dailyData.reduce((s, d) => s + (Number(d.imagesDefected) || Number(d.defectCount) || 0), 0);
   }, [dailyData]);
 
-  const targetKm = Number(projectSettings?.targetKm) || 315.2;
+  const targetKm = Number(projectSettings?.targetKm) || (totalReportDistance > 0 ? totalReportDistance : 0);
   const overallProgressPercent = targetKm > 0 ? Math.min(100, (totalReportDistance / targetKm) * 100) : 0;
   const compliantPercent = totalReportFrames > 0
     ? Math.max(0, ((totalReportFrames - totalReportDefects) / totalReportFrames) * 100).toFixed(1)
@@ -2320,8 +2320,9 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                 <input
                   type="number"
                   step="0.1"
-                  value={projectSettings.targetKm || 315.2}
-                  onChange={e => setProjectSettings(prev => ({ ...prev, targetKm: parseFloat(e.target.value) || 315.2 }))}
+                  value={projectSettings.targetKm ?? ''}
+                  onChange={e => setProjectSettings(prev => ({ ...prev, targetKm: e.target.value === '' ? 0 : parseFloat(e.target.value) }))}
+                  placeholder="e.g. 300.0"
                   className={`w-full px-3 py-2 rounded-lg font-mono focus:outline-none border ${inputBg}`}
                 />
               </div>

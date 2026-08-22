@@ -7,8 +7,6 @@ interface ThreePanoramaViewerProps {
   className?: string;
 }
 
-const DEFAULT_PANORAMA = 'https://pannellum.org/images/alma.jpg';
-
 const getAngleDiff = (a: number, b: number) => {
   let diff = a - b;
   while (diff > 180) diff -= 360;
@@ -29,7 +27,7 @@ export const ThreePanoramaViewer: React.FC<ThreePanoramaViewerProps> = ({
   const materialCurrentRef = useRef<THREE.MeshBasicMaterial | null>(null);
   const animFrameIdRef = useRef<number | null>(null);
 
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
   const [hasError, setHasError] = useState<boolean>(false);
 
   // Camera angles state
@@ -69,6 +67,12 @@ export const ThreePanoramaViewer: React.FC<ThreePanoramaViewerProps> = ({
 
   // Load panorama texture
   const loadTexture = useCallback((url: string) => {
+    if (!url) {
+      setIsLoading(false);
+      setHasError(true);
+      return;
+    }
+
     setIsLoading(true);
     setHasError(false);
 
@@ -95,12 +99,8 @@ export const ThreePanoramaViewer: React.FC<ThreePanoramaViewerProps> = ({
       undefined,
       (err) => {
         console.warn('ThreePanoramaViewer: Texture load failed for URL:', url, err);
-        if (url !== DEFAULT_PANORAMA) {
-          loadTexture(DEFAULT_PANORAMA);
-        } else {
-          setIsLoading(false);
-          setHasError(true);
-        }
+        setIsLoading(false);
+        setHasError(true);
       }
     );
   }, []);
@@ -215,7 +215,12 @@ export const ThreePanoramaViewer: React.FC<ThreePanoramaViewerProps> = ({
 
   // Trigger texture load when URL changes
   useEffect(() => {
-    loadTexture(panoramaUrl || DEFAULT_PANORAMA);
+    if (panoramaUrl) {
+      loadTexture(panoramaUrl);
+    } else {
+      setIsLoading(false);
+      setHasError(true);
+    }
   }, [panoramaUrl, loadTexture]);
 
   return (
@@ -237,10 +242,10 @@ export const ThreePanoramaViewer: React.FC<ThreePanoramaViewerProps> = ({
         </div>
       )}
 
-      {hasError && (
+      {(!panoramaUrl || hasError) && (
         <div className="absolute inset-0 bg-app backdrop-blur-md flex items-center justify-center p-4 text-center z-20">
           <span className="text-xs text-amber-400 font-medium">
-            360° Panorama Image Unavailable
+            No 360° Panorama Available
           </span>
         </div>
       )}
@@ -249,3 +254,4 @@ export const ThreePanoramaViewer: React.FC<ThreePanoramaViewerProps> = ({
 };
 
 export default ThreePanoramaViewer;
+
