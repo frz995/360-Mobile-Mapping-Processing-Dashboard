@@ -143,6 +143,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
 
   // Main Workbench View Navigation ('console' | 'thresholds' | 'audit')
   const [workbenchTab, setWorkbenchTab] = useState<'console' | 'thresholds' | 'audit'>('console');
+  const [mobileConsoleTab, setMobileConsoleTab] = useState<'canvas' | 'targets' | 'telemetry'>('canvas');
   const [isSigningOff, setIsSigningOff] = useState<boolean>(false);
 
   // Dynamic QA/QC Defect Detection Thresholds (Loaded from Local Storage or Project Settings)
@@ -486,6 +487,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
     if (!selectedSubgrid || selectedStations.length === 0) return;
 
     setSelectedStationIndex(null);
+    setMobileConsoleTab('canvas');
     onStartInspection({
       subgrid: selectedSubgrid,
       runId: selectedRunId,
@@ -589,51 +591,51 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
       {/* ========================================================= */}
       {/* 1. TOP PRECISION CONSOLE HEADER BAR */}
       {/* ========================================================= */}
-      <header className="h-14 px-5 bg-card/90 backdrop-blur-md border-b border-subtle flex items-center justify-between shrink-0 relative z-30 shadow-sm">
+      <header className="h-13 sm:h-14 px-3 sm:px-5 bg-card/90 backdrop-blur-md border-b border-subtle flex items-center justify-between shrink-0 relative z-30 shadow-sm gap-2">
         
         {/* Left: Breadcrumbs & Target Identifier */}
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 text-xs">
-            <span className="text-text-muted font-medium tracking-wide">GeoSphere 360</span>
-            <span className="text-text-muted/40">/</span>
-            <span className="text-text-muted font-medium">QA/QC Console</span>
-            <span className="text-text-muted/40">/</span>
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+          <div className="flex items-center gap-1.5 sm:gap-2 text-xs truncate">
+            <span className="text-text-muted font-medium tracking-wide hidden md:inline">GeoSphere 360</span>
+            <span className="text-text-muted/40 hidden md:inline">/</span>
+            <span className="text-text-muted font-medium hidden sm:inline">QA/QC</span>
+            <span className="text-text-muted/40 hidden sm:inline">/</span>
             {workbenchTab === 'console' && (
               <>
-                <span className="text-text-base font-semibold px-2 py-0.5 rounded-lg bg-inner border border-subtle">
+                <span className="text-text-base font-semibold px-2 py-0.5 rounded-lg bg-inner border border-subtle text-[11px] sm:text-xs truncate max-w-[130px] sm:max-w-none">
                   {isRunning || isCompleted ? activeRunningSubgrid : (selectedSubgrid || 'No Target')}
                 </span>
                 {surveyDate && (
                   <>
-                    <span className="text-text-muted/40">•</span>
-                    <span className="text-text-muted text-xs">{surveyDate}</span>
+                    <span className="text-text-muted/40 hidden lg:inline">•</span>
+                    <span className="text-text-muted text-xs hidden lg:inline">{surveyDate}</span>
                   </>
                 )}
                 {(activeRunningPic || inspectorPic) && (
                   <>
-                    <span className="text-text-muted/40">•</span>
-                    <span className="text-text-muted text-xs">PIC: <span className="text-text-base font-medium">{activeRunningPic || inspectorPic}</span></span>
+                    <span className="text-text-muted/40 hidden xl:inline">•</span>
+                    <span className="text-text-muted text-xs hidden xl:inline">PIC: <span className="text-text-base font-medium">{activeRunningPic || inspectorPic}</span></span>
                   </>
                 )}
               </>
             )}
             {workbenchTab === 'thresholds' && (
-              <span className="text-text-base font-semibold px-2.5 py-1 rounded-lg bg-inner border border-subtle flex items-center gap-1.5 shadow-sm">
+              <span className="text-text-base font-semibold px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg bg-inner border border-subtle flex items-center gap-1.5 shadow-sm text-xs">
                 <SlidersHorizontal size={13} className="text-zinc-400" />
-                <span>Threshold Settings</span>
+                <span>Thresholds</span>
               </span>
             )}
             {workbenchTab === 'audit' && (
-              <span className="text-text-base font-semibold px-2.5 py-1 rounded-lg bg-inner border border-subtle flex items-center gap-1.5 shadow-sm">
+              <span className="text-text-base font-semibold px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg bg-inner border border-subtle flex items-center gap-1.5 shadow-sm text-xs">
                 <FileSpreadsheet size={13} className="text-zinc-400" />
-                <span>Audit Summary</span>
+                <span>Audit</span>
               </span>
             )}
           </div>
 
           {/* Engine Status Tag (when in console tab) */}
           {workbenchTab === 'console' && (
-            <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-inner border border-subtle text-[11px] shadow-sm">
+            <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-inner border border-subtle text-[11px] shadow-sm shrink-0">
               <span className={`w-2 h-2 rounded-full ${
                 isRunning && !isPaused
                   ? 'bg-accent animate-pulse'
@@ -658,11 +660,11 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
 
         {/* Center: Live Station Progress Telemetry (Only when in live Console tab) */}
         {workbenchTab === 'console' && (isRunning || isCompleted || cachedAudit) && (
-          <div className="hidden md:flex items-center gap-3 text-xs text-text-base bg-inner px-4 py-1.5 rounded-xl border border-subtle shadow-inner">
+          <div className="hidden lg:flex items-center gap-3 text-xs text-text-base bg-inner px-3.5 py-1.5 rounded-xl border border-subtle shadow-inner shrink-0">
             <span className="text-zinc-400 font-normal">
               Station <strong className="text-white font-bold">{Math.min(currentIndex + 1, totalStations)}</strong> / <span className="text-zinc-400">{totalStations}</span>
             </span>
-            <div className="w-32 h-1.5 bg-zinc-800 rounded-full overflow-hidden border border-subtle">
+            <div className="w-24 xl:w-32 h-1.5 bg-zinc-800 rounded-full overflow-hidden border border-subtle">
               <div
                 className="h-full bg-sky-500 rounded-full transition-all duration-150"
                 style={{ width: `${progressPct}%` }}
@@ -674,13 +676,13 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
         )}
 
         {/* Right: Main View Navigation Switcher & Actions */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           {/* Main Navigation Segmented Switcher */}
-          <div className="flex items-center p-1 rounded-xl bg-inner border border-subtle shadow-inner">
+          <div className="flex items-center p-0.5 sm:p-1 rounded-xl bg-inner border border-subtle shadow-inner">
             <button
               type="button"
               onClick={() => setWorkbenchTab('console')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+              className={`px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
                 workbenchTab === 'console'
                   ? 'bg-card text-text-base shadow-sm border border-zinc-600'
                   : 'text-text-muted hover:text-text-base'
@@ -688,13 +690,13 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
               title="Return to Live QA/QC Inspection Console"
             >
               <Activity size={13} className={workbenchTab === 'console' ? 'text-sky-400' : 'text-zinc-500'} />
-              <span>Console</span>
+              <span className="hidden xs:inline">Console</span>
             </button>
 
             <button
               type="button"
               onClick={() => setWorkbenchTab('thresholds')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+              className={`px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
                 workbenchTab === 'thresholds'
                   ? 'bg-card text-text-base shadow-sm border border-zinc-600'
                   : 'text-text-muted hover:text-text-base'
@@ -702,13 +704,13 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
               title="Configure and Calibrate Detection Thresholds"
             >
               <SlidersHorizontal size={13} className={workbenchTab === 'thresholds' ? 'text-sky-400' : 'text-zinc-500'} />
-              <span>Threshold Settings</span>
+              <span className="hidden xs:inline">Thresholds</span>
             </button>
 
             <button
               type="button"
               onClick={() => setWorkbenchTab('audit')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+              className={`px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
                 workbenchTab === 'audit'
                   ? 'bg-card text-text-base shadow-sm border border-zinc-600'
                   : 'text-text-muted hover:text-text-base'
@@ -716,7 +718,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
               title="View Complete Audit Metrics & Defect Report"
             >
               <FileSpreadsheet size={13} className={workbenchTab === 'audit' ? 'text-sky-400' : 'text-zinc-500'} />
-              <span>Audit Summary</span>
+              <span className="hidden xs:inline">Audit</span>
             </button>
           </div>
 
@@ -724,43 +726,43 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
           {workbenchTab === 'console' && isRunning && (
             <button
               onClick={isPaused ? onResume : onPause}
-              className={`px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95 ${
+              className={`px-2 sm:px-3 py-1 sm:py-1.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95 ${
                 isPaused
                   ? 'bg-emerald-950/40 hover:bg-emerald-900/50 text-emerald-400 border-emerald-800/60'
                   : 'bg-amber-950/40 hover:bg-amber-900/50 text-amber-400 border-amber-800/60'
               }`}
             >
               {isPaused ? <Play size={13} /> : <Pause size={13} />}
-              <span>{isPaused ? 'Resume' : 'Pause'}</span>
+              <span className="hidden sm:inline">{isPaused ? 'Resume' : 'Pause'}</span>
             </button>
           )}
 
           <button
             onClick={onClose}
-            className="px-3 py-1.5 bg-inner hover:bg-inner/80 text-text-base rounded-xl border border-subtle text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95"
+            className="px-2 sm:px-3 py-1 sm:py-1.5 bg-inner hover:bg-inner/80 text-text-base rounded-xl border border-subtle text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95"
             title="Minimize console to floating widget"
           >
             <Minimize2 size={13} />
-            <span>Minimize</span>
+            <span className="hidden sm:inline">Minimize</span>
           </button>
 
           {isRunning ? (
             <button
               onClick={onAbort}
-              className="px-3 py-1.5 bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 rounded-xl border border-rose-800/50 text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95"
+              className="px-2 sm:px-3 py-1 sm:py-1.5 bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 rounded-xl border border-rose-800/50 text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95"
               title="Abort inspection loop"
             >
               <StopCircle size={13} />
-              <span>Abort</span>
+              <span className="hidden sm:inline">Abort</span>
             </button>
           ) : (
             <button
               onClick={onClose}
-              className="px-3 py-1.5 bg-inner hover:bg-rose-950/30 text-text-muted hover:text-rose-400 rounded-xl border border-subtle hover:border-rose-800/40 text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95"
+              className="px-2 sm:px-3 py-1 sm:py-1.5 bg-inner hover:bg-rose-950/30 text-text-muted hover:text-rose-400 rounded-xl border border-subtle hover:border-rose-800/40 text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95"
               title="Exit console"
             >
               <X size={14} />
-              <span>Exit</span>
+              <span className="hidden sm:inline">Exit</span>
             </button>
           )}
         </div>
@@ -770,12 +772,52 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
       {/* 2. BODY CONTENT: CONSOLE / THRESHOLDS / AUDIT SUMMARY */}
       {/* ========================================================= */}
       {workbenchTab === 'console' && (
-        <div className="flex-1 p-3.5 gap-3.5 flex overflow-hidden bg-app min-h-0">
+        <div className="flex-1 p-2 sm:p-3.5 gap-2 sm:gap-3.5 flex flex-col lg:flex-row overflow-hidden bg-app min-h-0">
+
+          {/* MOBILE SEGMENTED VIEWPORT SWITCHER (Only visible on lg:hidden) */}
+          <div className="flex lg:hidden items-center justify-between p-1 rounded-xl bg-card border border-subtle shrink-0 shadow-sm gap-1">
+            <button
+              type="button"
+              onClick={() => setMobileConsoleTab('canvas')}
+              className={`flex-1 py-1.5 text-center text-xs font-semibold rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                mobileConsoleTab === 'canvas'
+                  ? 'bg-inner text-white shadow-sm ring-1 ring-white/10'
+                  : 'text-text-muted hover:text-text-base'
+              }`}
+            >
+              <Crosshair size={13} />
+              <span>Canvas ({Math.min(currentIndex + 1, totalStations)}/{totalStations})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setMobileConsoleTab('targets')}
+              className={`flex-1 py-1.5 text-center text-xs font-semibold rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                mobileConsoleTab === 'targets'
+                  ? 'bg-inner text-white shadow-sm ring-1 ring-white/10'
+                  : 'text-text-muted hover:text-text-base'
+              }`}
+            >
+              <Layers size={13} />
+              <span>Targets ({filteredTargetList.length})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setMobileConsoleTab('telemetry')}
+              className={`flex-1 py-1.5 text-center text-xs font-semibold rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                mobileConsoleTab === 'telemetry'
+                  ? 'bg-inner text-white shadow-sm ring-1 ring-white/10'
+                  : 'text-text-muted hover:text-text-base'
+              }`}
+            >
+              <Activity size={13} />
+              <span>Stream ({effectiveDefectsList.length > 0 ? `${effectiveDefectsList.length} Flagged` : effectiveHistory.length})</span>
+            </button>
+          </div>
 
         {/* --------------------------------------------------------- */}
         {/* COLUMN 1: TARGET SELECTION & CONFIG HUB (CARD CONTAINER) */}
         {/* --------------------------------------------------------- */}
-        <aside className="w-[380px] bg-card/90 backdrop-blur-md border border-subtle rounded-2xl flex flex-col shrink-0 overflow-hidden shadow-xl ring-1 ring-white/5 text-xs">
+        <aside className={`w-full lg:w-[380px] bg-card/90 backdrop-blur-md border border-subtle rounded-2xl flex flex-col shrink-0 overflow-hidden shadow-xl ring-1 ring-white/5 text-xs ${mobileConsoleTab === 'targets' ? 'flex-1' : 'hidden lg:flex'}`}>
           
           {/* Header Navigation Tabs */}
           <div className="p-3 border-b border-subtle bg-card">
@@ -1127,49 +1169,50 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
         {/* --------------------------------------------------------- */}
         {/* COLUMN 2: CENTER STAGE (ROUNDED-2XL EXPANSIVE VIEWPORT) */}
         {/* --------------------------------------------------------- */}
-        <div className="flex-1 bg-black border border-subtle rounded-2xl relative flex flex-col justify-between overflow-hidden shadow-2xl ring-1 ring-white/5 min-w-0">
+        <div className={`w-full lg:flex-1 bg-black border border-subtle rounded-2xl relative flex flex-col justify-between overflow-hidden shadow-2xl ring-1 ring-white/5 min-w-0 ${mobileConsoleTab === 'canvas' ? 'flex-1' : 'hidden lg:flex'}`}>
           
           {/* Floating Top Completion / Post-Scan Banner (Clean & Subdued) */}
           {(isCompleted || (progressPct === 100 && !isRunning && effectiveHistory.length > 0)) && (
-            <div className="m-3 px-4 py-2.5 bg-card/95 backdrop-blur-md border border-subtle rounded-2xl shadow-xl flex items-center justify-between shrink-0 text-xs z-20 animate-in slide-in-from-top-2 duration-200">
-              <div className="flex items-center gap-2.5">
+            <div className="m-2 sm:m-3 px-3 sm:px-4 py-2 sm:py-2.5 bg-card/95 backdrop-blur-md border border-subtle rounded-2xl shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 shrink-0 text-xs z-20 animate-in slide-in-from-top-2 duration-200">
+              <div className="flex items-center gap-2 sm:gap-2.5 flex-wrap">
                 <CheckCircle2 size={16} className="text-zinc-400 shrink-0" />
-                <span className="font-bold text-text-base">
-                  Audit Completed ({effectiveHistory.length} Stations Scanned)
+                <span className="font-bold text-text-base text-[11px] sm:text-xs">
+                  Audit Completed ({effectiveHistory.length} Stations)
                 </span>
-                <span className="text-zinc-600">•</span>
-                <span className={`font-semibold ${effectiveDefectsList.length > 0 ? 'text-rose-400' : 'text-zinc-300'}`}>
-                  {effectiveDefectsList.length === 0 ? 'Zero Defects Flagged' : `${effectiveDefectsList.length} Defect(s) Flagged`}
+                <span className="text-zinc-600 hidden xs:inline">•</span>
+                <span className={`font-semibold text-[11px] sm:text-xs ${effectiveDefectsList.length > 0 ? 'text-rose-400' : 'text-zinc-300'}`}>
+                  {effectiveDefectsList.length === 0 ? 'Zero Defects' : `${effectiveDefectsList.length} Defect(s)`}
                 </span>
-                <span className="text-zinc-600">•</span>
-                <span className="text-zinc-400">Pass Rate: <strong className="text-white font-bold font-mono">{auditPassRate}%</strong></span>
+                <span className="text-zinc-600 hidden xs:inline">•</span>
+                <span className="text-zinc-400 text-[11px] sm:text-xs">Pass: <strong className="text-white font-bold font-mono">{auditPassRate}%</strong></span>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 sm:gap-2 w-full sm:w-auto justify-end">
                 {effectiveDefectsList.length > 0 && (
                   <button
                     onClick={() => {
                       setFilterMode('flagged');
+                      setMobileConsoleTab('telemetry');
                       if (effectiveDefectsList[0]) {
                         const first = effectiveDefectsList[0] as any;
                         const idx = first.frame_index ?? first.index ?? 1;
                         setSelectedStationIndex(idx);
                       }
                     }}
-                    className="px-3 py-1.5 bg-inner hover:bg-inner/80 text-zinc-200 border border-subtle rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95"
+                    className="flex-1 sm:flex-none px-2.5 sm:px-3 py-1.5 bg-inner hover:bg-inner/80 text-zinc-200 border border-subtle rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-sm active:scale-95"
                   >
                     <Eye size={13} className="text-zinc-400" />
-                    <span>Review Defect Gallery ({effectiveDefectsList.length})</span>
+                    <span>Defects ({effectiveDefectsList.length})</span>
                   </button>
                 )}
 
                 <button
                   onClick={handleSignOff}
                   disabled={isSigningOff}
-                  className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 active:scale-95 shadow-md shadow-emerald-950/40"
+                  className="flex-1 sm:flex-none px-3 sm:px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 active:scale-95 shadow-md shadow-emerald-950/40"
                 >
                   <CheckCheck size={14} />
-                  <span>{isSigningOff ? 'Approving...' : 'Sign-Off & Publish'}</span>
+                  <span>{isSigningOff ? 'Approving...' : 'Sign-Off'}</span>
                 </button>
               </div>
             </div>
@@ -1177,28 +1220,28 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
 
           {/* Floating Top HUD Telemetry Bar (if not completed banner) */}
           {!(isCompleted || (progressPct === 100 && !isRunning && effectiveHistory.length > 0)) && (
-            <div className="m-3 px-4 py-2 bg-card/85 backdrop-blur-md border border-subtle rounded-xl flex items-center justify-between shrink-0 text-xs z-10 shadow-lg">
-              <div className="flex items-center gap-2.5">
-                <span className="text-zinc-400 font-semibold uppercase tracking-wider text-[10px]">Target</span>
-                <span className="font-bold text-text-base px-2 py-0.5 rounded-md bg-inner border border-subtle">
+            <div className="m-2 sm:m-3 px-3 sm:px-4 py-1.5 sm:py-2 bg-card/85 backdrop-blur-md border border-subtle rounded-xl flex items-center justify-between shrink-0 text-[11px] sm:text-xs z-10 shadow-lg gap-2">
+              <div className="flex items-center gap-1.5 sm:gap-2.5 min-w-0">
+                <span className="text-zinc-400 font-semibold uppercase tracking-wider text-[9px] sm:text-[10px] hidden xs:inline">Target</span>
+                <span className="font-bold text-text-base px-2 py-0.5 rounded-md bg-inner border border-subtle text-[11px] sm:text-xs truncate max-w-[120px] sm:max-w-none">
                   {activeRunningSubgrid || selectedSubgrid || 'None'}
                 </span>
                 <span className="text-zinc-600">•</span>
-                <span className="text-zinc-400 font-medium font-mono">
+                <span className="text-zinc-400 font-medium font-mono truncate">
                   {isRunning || isCompleted
-                    ? `Station ${Math.min(currentIndex + 1, totalStations)} of ${totalStations}`
-                    : `${selectedStations.length} Stations Queued`}
+                    ? `Node ${Math.min(currentIndex + 1, totalStations)}/${totalStations}`
+                    : `${selectedStations.length} Queued`}
                 </span>
               </div>
 
-              <div className="flex items-center gap-4 text-xs text-zinc-400">
-                <div className="flex items-center gap-1.5 font-mono">
-                  <span className="text-zinc-500 text-[11px]">Est. Remaining:</span>
+              <div className="flex items-center gap-2 sm:gap-4 text-[11px] sm:text-xs text-zinc-400 shrink-0">
+                <div className="flex items-center gap-1 font-mono">
+                  <span className="text-zinc-500 text-[10px] sm:text-[11px] hidden xs:inline">Left:</span>
                   <span className="tabular-nums text-zinc-200 font-semibold">{isCompleted ? '0s' : isRunning ? `${estimatedSecondsLeft}s` : '--'}</span>
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-zinc-500 text-[11px]">Defects:</span>
-                  <span className={`tabular-nums font-bold px-2 py-0.5 rounded-md font-mono ${effectiveDefectsList.length > 0 ? "bg-rose-950/40 text-rose-400 border border-rose-800/40" : "bg-inner text-zinc-300 border border-subtle"}`}>
+                <div className="flex items-center gap-1">
+                  <span className="text-zinc-500 text-[10px] sm:text-[11px] hidden xs:inline">Defects:</span>
+                  <span className={`tabular-nums font-bold px-1.5 sm:px-2 py-0.5 rounded-md font-mono ${effectiveDefectsList.length > 0 ? "bg-rose-950/40 text-rose-400 border border-rose-800/40" : "bg-inner text-zinc-300 border border-subtle"}`}>
                     {effectiveDefectsList.length}
                   </span>
                 </div>
@@ -1207,7 +1250,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
           )}
 
           {/* Main Equirectangular / Viewport Area */}
-          <div className="flex-1 relative w-full h-full min-h-0 overflow-hidden bg-black flex items-center justify-center">
+          <div className="flex-1 relative w-full h-full min-h-[260px] overflow-hidden bg-black flex items-center justify-center">
             {activeDisplayThumbnail ? (
               <img
                 src={activeDisplayThumbnail}
@@ -1218,44 +1261,45 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                 }}
               />
             ) : (
-              <div className="flex flex-col items-center justify-center gap-3 text-zinc-500 text-xs text-center p-8 max-w-md">
-                <div className="w-16 h-16 rounded-2xl bg-zinc-900/80 border border-zinc-800 flex items-center justify-center text-zinc-400 shadow-inner">
-                  <Crosshair size={32} className="text-zinc-400 animate-pulse" />
+              <div className="flex flex-col items-center justify-center gap-2 sm:gap-3 text-zinc-500 text-xs text-center p-4 sm:p-8 max-w-md">
+                <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-2xl bg-zinc-900/80 border border-zinc-800 flex items-center justify-center text-zinc-400 shadow-inner">
+                  <Crosshair size={24} className="text-zinc-400 animate-pulse sm:hidden" />
+                  <Crosshair size={32} className="text-zinc-400 animate-pulse hidden sm:block" />
                 </div>
-                <p className="text-sm font-bold text-zinc-100">
+                <p className="text-xs sm:text-sm font-bold text-zinc-100">
                   {isRunning ? 'Analyzing equirectangular frame stream...' : 'Inspection Canvas Standby'}
                 </p>
-                <p className="text-xs text-zinc-400 leading-relaxed">
-                  {selectedSubgrid ? `Ready to scan ${selectedStations.length} frames from ${selectedSubgrid}` : 'Select a survey dataset from the left panel to initialize automated analysis'}
+                <p className="text-[11px] sm:text-xs text-zinc-400 leading-relaxed max-w-xs">
+                  {selectedSubgrid ? `Ready to scan ${selectedStations.length} frames from ${selectedSubgrid}` : 'Select a survey dataset from the targets panel to initialize automated analysis'}
                 </p>
               </div>
             )}
 
             {/* Subtle Reticle Corner Precision Marks */}
-            <div className="absolute top-3 left-3 w-3 h-3 border-t-2 border-l-2 border-white/20 rounded-tl pointer-events-none" />
-            <div className="absolute top-3 right-3 w-3 h-3 border-t-2 border-r-2 border-white/20 rounded-tr pointer-events-none" />
-            <div className="absolute bottom-3 left-3 w-3 h-3 border-b-2 border-l-2 border-white/20 rounded-bl pointer-events-none" />
-            <div className="absolute bottom-3 right-3 w-3 h-3 border-b-2 border-r-2 border-white/20 rounded-br pointer-events-none" />
+            <div className="absolute top-2 sm:top-3 left-2 sm:left-3 w-2.5 sm:w-3 h-2.5 sm:h-3 border-t-2 border-l-2 border-white/20 rounded-tl pointer-events-none" />
+            <div className="absolute top-2 sm:top-3 right-2 sm:right-3 w-2.5 sm:w-3 h-2.5 sm:h-3 border-t-2 border-r-2 border-white/20 rounded-tr pointer-events-none" />
+            <div className="absolute bottom-2 sm:bottom-3 left-2 sm:left-3 w-2.5 sm:w-3 h-2.5 sm:h-3 border-b-2 border-l-2 border-white/20 rounded-bl pointer-events-none" />
+            <div className="absolute bottom-2 sm:bottom-3 right-2 sm:right-3 w-2.5 sm:w-3 h-2.5 sm:h-3 border-b-2 border-r-2 border-white/20 rounded-br pointer-events-none" />
 
             {/* HUD OVERLAY 1: Top-Left Node Identifier */}
             {(isRunning || effectiveHistory.length > 0) && (
-              <div className="absolute top-3 left-3 bg-zinc-950/75 backdrop-blur-md border border-white/15 rounded-xl px-3 py-2 shadow-2xl space-y-0.5 max-w-[280px] z-10">
-                <div className="flex items-center gap-2">
+              <div className="absolute top-2 left-2 sm:top-3 sm:left-3 bg-zinc-950/80 backdrop-blur-md border border-white/15 rounded-xl px-2 sm:px-3 py-1 sm:py-2 shadow-2xl space-y-0.5 max-w-[150px] sm:max-w-[280px] z-10">
+                <div className="flex items-center gap-1.5 sm:gap-2">
                   <span className="w-1.5 h-1.5 rounded-full bg-zinc-400 shrink-0" />
-                  <span className="font-bold text-xs text-white tracking-tight truncate font-mono">
+                  <span className="font-bold text-[11px] sm:text-xs text-white tracking-tight truncate font-mono">
                     {activeDisplayPointId || `Station ${activeDisplayIndex}`}
                   </span>
                 </div>
-                <div className="text-[11px] text-zinc-400 font-mono font-normal pl-3.5">
-                  Frame <strong className="text-white font-bold">{activeDisplayIndex}</strong> of {totalStations} {activeRecord && <span className="text-zinc-400">(History)</span>}
+                <div className="text-[10px] sm:text-[11px] text-zinc-400 font-mono font-normal pl-2.5 sm:pl-3.5 truncate">
+                  Frame <strong className="text-white font-bold">{activeDisplayIndex}</strong>/{totalStations}
                 </div>
               </div>
             )}
 
             {/* HUD OVERLAY 2: Top-Right Diagnostics Stream (GPS & Equipment) */}
             {(isRunning || effectiveHistory.length > 0) && (
-              <div className="absolute top-3 right-3 bg-zinc-950/75 backdrop-blur-md border border-white/15 rounded-xl px-3 py-2 shadow-2xl space-y-0.5 text-xs min-w-[160px] z-10">
-                <div className="flex items-center justify-between gap-3 text-[11px]">
+              <div className="absolute top-2 right-2 sm:top-3 sm:right-3 bg-zinc-950/80 backdrop-blur-md border border-white/15 rounded-xl px-2 sm:px-3 py-1 sm:py-2 shadow-2xl space-y-0.5 text-xs min-w-[110px] sm:min-w-[160px] z-10">
+                <div className="flex items-center justify-between gap-2 sm:gap-3 text-[10px] sm:text-[11px]">
                   <span className="text-zinc-400 font-medium">GPS:</span>
                   <span className={`font-bold font-mono ${
                     activeRecord
@@ -1265,13 +1309,13 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                       : 'text-zinc-200'
                   }`}>
                     {activeRecord
-                      ? `${activeDisplayStepDistance > 0 ? activeDisplayStepDistance.toFixed(1) : '0.0'}m step`
-                      : liveCheckStatus.gps.detail || `${currentStepDistance > 0 ? currentStepDistance.toFixed(1) : '0.0'}m step`}
+                      ? `${activeDisplayStepDistance > 0 ? activeDisplayStepDistance.toFixed(1) : '0.0'}m`
+                      : liveCheckStatus.gps.detail || `${currentStepDistance > 0 ? currentStepDistance.toFixed(1) : '0.0'}m`}
                   </span>
                 </div>
-                <div className="flex items-center justify-between gap-3 text-[11px]">
-                  <span className="text-zinc-400 font-medium">Equipment:</span>
-                  <span className="font-bold text-zinc-300 font-mono">
+                <div className="flex items-center justify-between gap-2 sm:gap-3 text-[10px] sm:text-[11px]">
+                  <span className="text-zinc-400 font-medium">Equip:</span>
+                  <span className="font-bold text-zinc-300 font-mono truncate">
                     {(() => {
                       const currentItem = filteredTargetList.find(t => t.subgrid === (activeRunningSubgrid || selectedSubgrid));
                       return currentItem?.raw?.captureEquipment || currentItem?.raw?.equipment || (projectSettings as any)?.captureEquipment || 'MMS';
@@ -1283,16 +1327,16 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
 
             {/* HUD OVERLAY 3: Bottom-Left Spatial Coordinates */}
             {(isRunning || effectiveHistory.length > 0) && (
-              <div className="absolute bottom-3 left-3 bg-zinc-950/75 backdrop-blur-md border border-white/15 rounded-xl px-3 py-2 shadow-2xl space-y-0.5 z-10">
-                <div className="text-white text-xs tabular-nums font-bold flex items-center gap-1.5 font-mono">
-                  <Navigation size={11} className="text-zinc-400 shrink-0" />
+              <div className="absolute bottom-2 left-2 sm:bottom-3 sm:left-3 bg-zinc-950/80 backdrop-blur-md border border-white/15 rounded-xl px-2 sm:px-3 py-1 sm:py-2 shadow-2xl space-y-0.5 z-10 max-w-[160px] sm:max-w-none">
+                <div className="text-white text-[10px] sm:text-xs tabular-nums font-bold flex items-center gap-1 sm:gap-1.5 font-mono truncate">
+                  <Navigation size={10} className="text-zinc-400 shrink-0" />
                   <span>
                     {activeDisplayCoords.lat && activeDisplayCoords.lng
-                      ? `${Number(activeDisplayCoords.lat).toFixed(6)}°, ${Number(activeDisplayCoords.lng).toFixed(6)}°`
-                      : '0.000000°, 0.000000°'}
+                      ? `${Number(activeDisplayCoords.lat).toFixed(4)}°, ${Number(activeDisplayCoords.lng).toFixed(4)}°`
+                      : '0.0000°, 0.0000°'}
                   </span>
                 </div>
-                <div className="text-zinc-400 text-[11px] font-normal flex items-center gap-1.5 font-mono pl-3.5">
+                <div className="text-zinc-400 text-[9px] sm:text-[11px] font-normal flex items-center gap-1 sm:gap-1.5 font-mono pl-2.5 sm:pl-3.5">
                   <span className="text-zinc-500">Step:</span>
                   <span className="tabular-nums text-zinc-300 font-semibold">
                     {activeDisplayStepDistance > 0 ? `+${activeDisplayStepDistance.toFixed(1)}m` : '0.0m'}
@@ -1303,12 +1347,12 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
 
             {/* HUD OVERLAY 4: Bottom-Right Compass Heading & Track State */}
             {(isRunning || effectiveHistory.length > 0) && (
-              <div className="absolute bottom-3 right-3 bg-zinc-950/75 backdrop-blur-md border border-white/15 rounded-xl px-3 py-2 shadow-2xl space-y-0.5 text-right z-10">
-                <div className="text-white text-xs tabular-nums font-bold flex items-center justify-end gap-1.5 font-mono">
-                  <Compass size={11} className="text-zinc-400 shrink-0" />
-                  <span>Heading {activeDisplayBearing.toFixed(1)}°</span>
+              <div className="absolute bottom-2 right-2 sm:bottom-3 sm:right-3 bg-zinc-950/80 backdrop-blur-md border border-white/15 rounded-xl px-2 sm:px-3 py-1 sm:py-2 shadow-2xl space-y-0.5 text-right z-10">
+                <div className="text-white text-[10px] sm:text-xs tabular-nums font-bold flex items-center justify-end gap-1 sm:gap-1.5 font-mono">
+                  <Compass size={10} className="text-zinc-400 shrink-0" />
+                  <span>{activeDisplayBearing.toFixed(0)}°</span>
                 </div>
-                <div className="text-zinc-400 text-[11px] font-normal flex items-center justify-end gap-1.5 font-mono">
+                <div className="text-zinc-400 text-[9px] sm:text-[11px] font-normal flex items-center justify-end gap-1 font-mono">
                   <span className="text-zinc-500">Track:</span>
                   <span className={`font-semibold ${
                     !activeDisplayCoords.lat || !activeDisplayCoords.lng
@@ -1331,10 +1375,10 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
             {selectedStationIndex !== null && isRunning && (
               <button
                 onClick={() => setSelectedStationIndex(null)}
-                className="absolute bottom-16 left-1/2 -translate-x-1/2 bg-zinc-900/95 hover:bg-zinc-800 text-white border border-white/20 backdrop-blur-md px-4 py-2 rounded-full text-xs font-semibold transition-all cursor-pointer shadow-2xl flex items-center gap-2 active:scale-95"
+                className="absolute bottom-12 sm:bottom-16 left-1/2 -translate-x-1/2 bg-zinc-900/95 hover:bg-zinc-800 text-white border border-white/20 backdrop-blur-md px-3 sm:px-4 py-1.5 sm:py-2 rounded-full text-[11px] sm:text-xs font-semibold transition-all cursor-pointer shadow-2xl flex items-center gap-1.5 sm:gap-2 active:scale-95 whitespace-nowrap z-20"
               >
-                <RotateCcw size={13} />
-                <span>Return to Live Station #{currentIndex + 1}</span>
+                <RotateCcw size={12} />
+                <span>Return to Live #{currentIndex + 1}</span>
               </button>
             )}
 
@@ -1342,25 +1386,25 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
 
           {/* Aborted Banner */}
           {isAborted && (
-            <div className="m-3 p-3.5 bg-card/95 border border-rose-500/30 rounded-2xl flex items-center justify-between shrink-0 text-xs shadow-lg">
-              <div className="flex items-center gap-2.5">
-                <AlertTriangle size={17} className="text-rose-400" />
-                <span className="font-bold text-text-base">
-                  Inspection Halted by Operator
+            <div className="m-2 sm:m-3 p-2.5 sm:p-3.5 bg-card/95 border border-rose-500/30 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 shrink-0 text-xs shadow-lg">
+              <div className="flex items-center gap-2 sm:gap-2.5 flex-wrap">
+                <AlertTriangle size={16} className="text-rose-400 shrink-0" />
+                <span className="font-bold text-text-base text-xs">
+                  Inspection Halted
                 </span>
-                <span className="text-zinc-400">
-                  • {effectiveHistory.length} nodes scanned • {effectiveDefectsList.length} defects flagged
+                <span className="text-zinc-400 text-[11px] sm:text-xs">
+                  • {effectiveHistory.length} scanned • {effectiveDefectsList.length} defects
                 </span>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
                 {effectiveDefectsList.length > 0 && onOpenDefectsGallery && (
                   <button
                     onClick={() => {
                       onClose();
                       onOpenDefectsGallery(activeRunningSubgrid || selectedSubgrid);
                     }}
-                    className="px-3.5 py-1.5 bg-inner hover:bg-inner/80 text-zinc-200 border border-subtle rounded-xl text-xs font-semibold cursor-pointer transition-colors shadow-sm"
+                    className="w-full sm:w-auto px-3 sm:px-3.5 py-1.5 bg-inner hover:bg-inner/80 text-zinc-200 border border-subtle rounded-xl text-xs font-semibold cursor-pointer transition-colors shadow-sm text-center"
                   >
                     Review Defect Gallery
                   </button>
@@ -1374,7 +1418,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
         {/* --------------------------------------------------------- */}
         {/* COLUMN 3: TELEMETRY & DEFECT STREAM (CALM & FOCUSED) */}
         {/* --------------------------------------------------------- */}
-        <aside className="w-[340px] bg-card/90 backdrop-blur-md border border-subtle rounded-2xl flex flex-col shrink-0 overflow-hidden shadow-xl ring-1 ring-white/5 text-xs">
+        <aside className={`w-full lg:w-[340px] bg-card/90 backdrop-blur-md border border-subtle rounded-2xl flex flex-col shrink-0 overflow-hidden shadow-xl ring-1 ring-white/5 text-xs ${mobileConsoleTab === 'telemetry' ? 'flex-1' : 'hidden lg:flex'}`}>
           
           {/* Header with Filter & SLA Pill */}
           <div className="p-3.5 border-b border-subtle flex items-center justify-between shrink-0 bg-card">
@@ -1528,24 +1572,24 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
       {/* 2C. AUDIT SUMMARY VIEW (SEAMLESS TAB) */}
       {/* ========================================================= */}
       {workbenchTab === 'audit' && (
-        <div className="flex-1 flex flex-col p-6 bg-app overflow-y-auto space-y-6 max-w-7xl mx-auto w-full">
+        <div className="flex-1 flex flex-col p-3 sm:p-6 bg-app overflow-y-auto space-y-4 sm:space-y-6 max-w-7xl mx-auto w-full">
           
           {/* Scope Header Card */}
-          <div className="flex items-center justify-between p-4 rounded-2xl bg-card border border-subtle shadow-sm">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-sky-500/10 text-sky-400 border border-sky-500/20">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3.5 sm:p-4 rounded-2xl bg-card border border-subtle shadow-sm">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="p-2 sm:p-2.5 rounded-xl bg-sky-500/10 text-sky-400 border border-sky-500/20 shrink-0">
                 <FileSpreadsheet size={20} />
               </div>
-              <div>
-                <h3 className="font-bold text-sm md:text-base text-text-base">QA/QC Audit Inspection Summary</h3>
-                <p className="text-xs text-text-muted mt-0.5">
-                  Subgrid: <strong className="text-zinc-200">{activeRunningSubgrid || selectedSubgrid || 'All Target'}</strong> • Inspector: <strong className="text-zinc-200">{inspectorPic || activeUserName || 'Operator'}</strong> • {surveyDate || 'Active Session'}
+              <div className="min-w-0">
+                <h3 className="font-bold text-sm sm:text-base text-text-base truncate">QA/QC Audit Inspection Summary</h3>
+                <p className="text-[11px] sm:text-xs text-text-muted mt-0.5 truncate">
+                  Subgrid: <strong className="text-zinc-200">{activeRunningSubgrid || selectedSubgrid || 'All Target'}</strong> • Inspector: <strong className="text-zinc-200">{inspectorPic || activeUserName || 'Operator'}</strong>
                 </p>
               </div>
             </div>
             <button
               onClick={handleExportCSV}
-              className="px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-2 shadow-md active:scale-95"
+              className="w-full sm:w-auto px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center justify-center gap-2 shadow-md active:scale-95 shrink-0"
             >
               <Download size={14} />
               <span>Export CSV Report</span>
@@ -1553,34 +1597,34 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
           </div>
 
           {/* Key Metrics Grid */}
-          <div className="grid grid-cols-2 md:grid-cols-6 gap-3.5">
-            <div className="p-4 bg-card border border-subtle rounded-2xl space-y-1 shadow-sm">
-              <span className="text-xs text-text-muted">Pass Rate</span>
-              <p className={`text-2xl font-bold font-mono ${auditPassRate >= 95 ? 'text-emerald-400' : 'text-amber-400'}`}>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 sm:gap-3.5">
+            <div className="p-3 sm:p-4 bg-card border border-subtle rounded-2xl space-y-1 shadow-sm">
+              <span className="text-[11px] sm:text-xs text-text-muted">Pass Rate</span>
+              <p className={`text-xl sm:text-2xl font-bold font-mono ${auditPassRate >= 95 ? 'text-emerald-400' : 'text-amber-400'}`}>
                 {auditPassRate}%
               </p>
             </div>
-            <div className="p-4 bg-card border border-subtle rounded-2xl space-y-1 shadow-sm">
-              <span className="text-xs text-text-muted">Nodes Scanned</span>
-              <p className="text-2xl font-bold text-text-base font-mono">{effectiveHistory.length}</p>
+            <div className="p-3 sm:p-4 bg-card border border-subtle rounded-2xl space-y-1 shadow-sm">
+              <span className="text-[11px] sm:text-xs text-text-muted">Nodes Scanned</span>
+              <p className="text-xl sm:text-2xl font-bold text-text-base font-mono">{effectiveHistory.length}</p>
             </div>
-            <div className="p-4 bg-card border border-subtle rounded-2xl space-y-1 shadow-sm">
-              <span className="text-xs text-text-muted">Defects Flagged</span>
-              <p className={`text-2xl font-bold font-mono ${effectiveDefectsList.length > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
+            <div className="p-3 sm:p-4 bg-card border border-subtle rounded-2xl space-y-1 shadow-sm">
+              <span className="text-[11px] sm:text-xs text-text-muted">Defects Flagged</span>
+              <p className={`text-xl sm:text-2xl font-bold font-mono ${effectiveDefectsList.length > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
                 {effectiveDefectsList.length}
               </p>
             </div>
-            <div className="p-4 bg-card border border-subtle rounded-2xl space-y-1 shadow-sm">
-              <span className="text-xs text-text-muted">Mean Sharpness</span>
-              <p className="text-2xl font-bold text-text-base font-mono">{meanSharpnessScore}</p>
+            <div className="p-3 sm:p-4 bg-card border border-subtle rounded-2xl space-y-1 shadow-sm">
+              <span className="text-[11px] sm:text-xs text-text-muted">Mean Sharpness</span>
+              <p className="text-xl sm:text-2xl font-bold text-text-base font-mono">{meanSharpnessScore}</p>
             </div>
-            <div className="p-4 bg-card border border-subtle rounded-2xl space-y-1 shadow-sm">
-              <span className="text-xs text-text-muted">Total Runtime</span>
-              <p className="text-2xl font-bold text-text-base font-mono">{elapsedSeconds || cachedAudit?.elapsedSeconds || 0}s</p>
+            <div className="p-3 sm:p-4 bg-card border border-subtle rounded-2xl space-y-1 shadow-sm">
+              <span className="text-[11px] sm:text-xs text-text-muted">Total Runtime</span>
+              <p className="text-xl sm:text-2xl font-bold text-text-base font-mono">{elapsedSeconds || cachedAudit?.elapsedSeconds || 0}s</p>
             </div>
-            <div className="p-4 bg-card border border-subtle rounded-2xl space-y-1 shadow-sm">
-              <span className="text-xs text-text-muted">SLA Status</span>
-              <p className={`text-xl font-bold ${effectiveDefectsList.length === 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+            <div className="p-3 sm:p-4 bg-card border border-subtle rounded-2xl space-y-1 shadow-sm">
+              <span className="text-[11px] sm:text-xs text-text-muted">SLA Status</span>
+              <p className={`text-lg sm:text-xl font-bold ${effectiveDefectsList.length === 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                 {effectiveDefectsList.length === 0 ? 'Nominal' : 'Action Req'}
               </p>
             </div>
@@ -1588,12 +1632,12 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
 
           {/* Scanned Stations Diagnostics Table */}
           <div className="bg-card border border-subtle rounded-2xl overflow-hidden shadow-sm flex flex-col">
-            <div className="px-5 py-3.5 border-b border-subtle bg-inner flex items-center justify-between">
-              <span className="font-bold text-xs text-text-base uppercase tracking-wider">
-                Scanned Stations & Defect Diagnostics Log ({effectiveHistory.length})
+            <div className="px-4 sm:px-5 py-3 sm:py-3.5 border-b border-subtle bg-inner flex items-center justify-between">
+              <span className="font-bold text-[11px] sm:text-xs text-text-base uppercase tracking-wider">
+                Scanned Diagnostics Log ({effectiveHistory.length})
               </span>
               <span className="text-xs text-text-muted font-mono">
-                {effectiveDefectsList.length} Defect(s) Flagged
+                {effectiveDefectsList.length} Flagged
               </span>
             </div>
             <div className="max-h-[420px] overflow-y-auto divide-y divide-subtle">
@@ -1603,28 +1647,28 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                 </div>
               ) : (
                 effectiveHistory.map((item) => (
-                  <div key={`${item.pointId}-${item.index}`} className={`px-5 py-3 flex items-center justify-between text-xs transition-colors ${
+                  <div key={`${item.pointId}-${item.index}`} className={`px-3.5 sm:px-5 py-2.5 sm:py-3 flex flex-col sm:flex-row sm:items-center justify-between text-xs gap-1.5 sm:gap-0 transition-colors ${
                     item.status === 'flagged' ? 'bg-rose-950/15' : 'hover:bg-inner/40'
                   }`}>
-                    <div className="flex items-center gap-3">
-                      <span className={`w-2 h-2 rounded-full ${item.status === 'flagged' ? 'bg-rose-400' : 'bg-zinc-600'}`} />
+                    <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+                      <span className={`w-2 h-2 rounded-full ${item.status === 'flagged' ? 'bg-rose-400' : 'bg-zinc-600'} shrink-0`} />
                       <span className="font-mono font-bold text-zinc-300">#{item.index}</span>
-                      <span className="font-mono text-zinc-200">{item.pointId}</span>
+                      <span className="font-mono text-zinc-200 truncate max-w-[140px] sm:max-w-none">{item.pointId}</span>
                       {item.defectType && (
-                        <span className="px-2 py-0.5 rounded bg-rose-950/60 border border-rose-800/60 text-rose-300 font-semibold text-[11px]">
+                        <span className="px-2 py-0.5 rounded bg-rose-950/60 border border-rose-800/60 text-rose-300 font-semibold text-[10px] sm:text-[11px]">
                           {item.defectType}
                         </span>
                       )}
                       {item.reasons && item.reasons.length > 0 && (
-                        <span className="text-zinc-400 text-xs hidden md:inline truncate max-w-md">
+                        <span className="text-zinc-400 text-[11px] sm:text-xs hidden md:inline truncate max-w-md">
                           {item.reasons[0]}
                         </span>
                       )}
                     </div>
-                    <div className="flex items-center gap-4 font-mono text-zinc-400">
-                      <span>{item.lat.toFixed(5)}°, {item.lng.toFixed(5)}°</span>
-                      {item.blurVariance !== undefined && <span>Sharpness: {item.blurVariance.toFixed(1)}</span>}
-                      <span>{item.timestamp}</span>
+                    <div className="flex items-center gap-2 sm:gap-4 font-mono text-zinc-400 text-[11px] sm:text-xs justify-between sm:justify-end pl-4 sm:pl-0">
+                      <span>{item.lat.toFixed(4)}°, {item.lng.toFixed(4)}°</span>
+                      {item.blurVariance !== undefined && <span>Score: {item.blurVariance.toFixed(1)}</span>}
+                      <span className="text-zinc-500">{item.timestamp}</span>
                     </div>
                   </div>
                 ))
