@@ -222,3 +222,12 @@ body,
 [data-theme="daylight"] [class*="border-subtle"] {
     border-color: var(--border-subtle) !important;
 }
+
+@keyframes scanline {
+    0% {
+        transform: translateY(-100%);
+    }
+    100% {
+        transform: translateY(1000%);
+    }
+}

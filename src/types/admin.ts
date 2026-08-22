@@ -123,6 +123,10 @@ export interface ExtendedProjectSettings {
   qaFlag2?: string;
   qaFlag3?: string;
   qaFlag4?: string;
+  blurVarianceThreshold?: number;
+  gpsMaxJumpDistanceMeters?: number;
+  glareLuminanceThreshold?: number;
+  obstructionMinBrightness?: number;
   deduplicationStrategy?: 'clean_merge' | 'preserve_runs';
   dailyDataImportPolicy?: 'preserve_runs' | 'merge_samedate';
   autoDeduplicateSubgrids?: boolean;
@@ -130,5 +134,29 @@ export interface ExtendedProjectSettings {
   defaultDataTab?: 'batches' | 'daily' | 'vector';
   dateFormat?: string;
   unitSystem?: 'metric' | 'imperial';
+}
+
+export interface QADefectRecord {
+  id?: string;
+  subgrid: string;
+  point_id: string;
+  frame_index: number;
+  defect_flags: Record<string, any>;
+  defect_type: string;
+  pic: string;
+  image_url?: string;
+  lat?: number;
+  lng?: number;
+  bearing?: number;
+  is_resolved?: boolean;
+  resolved_at?: string;
+  created_at?: string;
+}
+
+export interface QAQCConfig {
+  checkBlur: boolean;
+  checkObstruction: boolean;
+  checkGps: boolean;
+  pic?: string;
 }
 

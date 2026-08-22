@@ -1,10 +1,13 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 interface WebGISViewerIframeProps {
   panoramaUrl: string;
   subgrid?: string;
   bearing?: number;
   themeMode?: 'dark' | 'light';
+  isQAQCRunning?: boolean;
+  qaqcSubgrid?: string;
+  qaqcPic?: string;
   className?: string;
 }
 
@@ -13,6 +16,9 @@ export const WebGISViewerIframe: React.FC<WebGISViewerIframeProps> = ({
   subgrid = '',
   bearing = 0,
   themeMode = 'dark',
+  isQAQCRunning = false,
+  qaqcSubgrid = '',
+  qaqcPic = '',
   className = 'w-full h-full'
 }) => {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -45,16 +51,55 @@ export const WebGISViewerIframe: React.FC<WebGISViewerIframeProps> = ({
     }
   }, [panoramaUrl, subgrid, bearing, themeMode]);
 
-  // Listen for iframe onLoad and VIEWER_READY message to re-post SET_PANORAMA when iframe is ready
+  const [isLocked, setIsLocked] = useState<boolean>(false);
+  const [lockPic, setLockPic] = useState<string>('');
+
+  // Handle external QA/QC lock state from parent props
+  useEffect(() => {
+    const isSubgridMatch = !qaqcSubgrid || !subgrid || qaqcSubgrid.toUpperCase().trim() === subgrid.toUpperCase().trim();
+    if (isQAQCRunning && isSubgridMatch) {
+      setIsLocked(true);
+      setLockPic(qaqcPic || 'Inspector');
+      if (iframeRef.current && iframeRef.current.contentWindow) {
+        try {
+          iframeRef.current.contentWindow.postMessage({
+            type: 'LOCK_SUBGRID',
+            subgrid: qaqcSubgrid || subgrid,
+            pic: qaqcPic
+          }, '*');
+        } catch (_) {}
+      }
+    } else if (!isQAQCRunning && isLocked) {
+      setIsLocked(false);
+      setLockPic('');
+      if (iframeRef.current && iframeRef.current.contentWindow) {
+        try {
+          iframeRef.current.contentWindow.postMessage({
+            type: 'UNLOCK_SUBGRID',
+            subgrid: qaqcSubgrid || subgrid
+          }, '*');
+        } catch (_) {}
+      }
+    }
+  }, [isQAQCRunning, qaqcSubgrid, subgrid, qaqcPic, isLocked]);
+
+  // Listen for iframe onLoad and VIEWER_READY / LOCK_SUBGRID messages
   useEffect(() => {
     const handleMessage = (e: MessageEvent) => {
       if (e.data?.type === 'VIEWER_READY') {
         postData();
+      } else if (e.data?.type === 'LOCK_SUBGRID') {
+        if (!subgrid || (e.data.subgrid && e.data.subgrid.toUpperCase() === subgrid.toUpperCase())) {
+          setIsLocked(true);
+          setLockPic(e.data.pic || '');
+        }
+      } else if (e.data?.type === 'UNLOCK_SUBGRID') {
+        setIsLocked(false);
       }
     };
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [postData]);
+  }, [postData, subgrid]);
 
   // Send SET_PANORAMA whenever panoramaUrl, subgrid, or bearing changes
   useEffect(() => {
@@ -80,15 +125,25 @@ export const WebGISViewerIframe: React.FC<WebGISViewerIframeProps> = ({
   };
 
   return (
-    <div className={`relative overflow-hidden rounded-lg bg-black ${className}`}>
+    <div className={`relative overflow-hidden rounded-lg bg-card ${className}`}>
       <iframe
         ref={iframeRef}
         src={staticSrc}
         onLoad={handleIframeLoad}
         title="WebGIS 360 Viewer"
-        className="w-full h-full border-0 rounded-lg"
+        className={`w-full h-full border-0 rounded-lg transition-opacity duration-300 ${
+          isLocked ? 'opacity-35 pointer-events-none' : 'opacity-100'
+        }`}
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
       />
+      {isLocked && (
+        <div className="absolute inset-0 bg-app/40 backdrop-blur-[2px] flex flex-col items-center justify-center pointer-events-none z-20 animate-in fade-in duration-200">
+          <div className="bg-card/95 border border-subtle rounded-md px-3.5 py-2 shadow-lg flex items-center gap-2 text-xs font-medium text-text-base">
+            <span className="w-2 h-2 rounded-full bg-accent animate-pulse" />
+            <span>QA/QC Lockout Active {lockPic ? `(${lockPic})` : ''}</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

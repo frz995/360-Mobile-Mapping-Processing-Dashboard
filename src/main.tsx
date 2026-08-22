@@ -19,9 +19,6 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
   }
 
   handleReset = () => {
-    try {
-      localStorage.removeItem('layerCatalog');
-    } catch { }
     this.setState({ hasError: false, error: null });
     window.location.reload();
   };
