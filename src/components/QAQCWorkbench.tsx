@@ -257,7 +257,11 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
       };
 
       setAuditCache(prev => {
-        const next = { ...prev, [cacheKey]: record };
+        const next = {
+          ...prev,
+          [cacheKey]: record,
+          [`${activeRunningSubgrid.toUpperCase()}_default`]: record
+        };
         try {
           localStorage.setItem(AUDIT_CACHE_STORAGE_KEY, JSON.stringify(next));
           window.dispatchEvent(new CustomEvent('qaqc_audit_updated', { detail: { cacheKey, record } }));
@@ -279,7 +283,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
         const formattedDate = formatDisplayDate(d.date);
         const pic = (d.pic && d.pic.trim().toLowerCase() !== 'unassigned') ? d.pic : (activeUserName || 'Operator');
 
-        const cachedAudit = runId ? auditCache[`${sg}_${runId}`] : undefined;
+        const cachedAudit = (runId && auditCache[`${sg}_${runId}`]) || auditCache[`${sg}_default`] || Object.entries(auditCache).find(([k]) => k.startsWith(`${sg}_`))?.[1];
         let parsedDefects: number | undefined;
         if (d.qaqcStatus) {
           const m = d.qaqcStatus.match(/(\d+)\s+Defect/i);
@@ -312,12 +316,12 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
           km,
           pic,
           defectCount,
-          qaqcStatus: d.qaqcStatus || (isPublished ? 'QA/QC Approved' : ''),
+          qaqcStatus: d.qaqcStatus || (cachedAudit ? `QAQC Completed (${defectCount} Defect${defectCount === 1 ? '' : 's'} Found)` : isPublished ? 'QA/QC Approved' : ''),
           isPublished,
           publishStatus
         };
       });
-  }, [dailyData, batchLogs, auditCache]);
+  }, [dailyData, batchLogs, auditCache, activeUserName]);
 
   // Processed list for Masterlist / Batches Tab (matches exact order and logic of Processing Admin Masterlist table)
   const processedBatchLogs: TargetDatasetItem[] = useMemo(() => {
@@ -332,7 +336,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
       const pic = (b.pic && b.pic.trim().toLowerCase() !== 'unassigned') ? b.pic : ((b as any).adminPic || activeUserName || 'Admin');
       const formattedDate = formatDisplayDate(b.date);
 
-      const cachedAudit = auditCache[`${sg}_default`];
+      const cachedAudit = auditCache[`${sg}_default`] || Object.entries(auditCache).find(([k]) => k.startsWith(`${sg}_`))?.[1];
       let parsedDefects: number | undefined;
       if (b.qaqcStatus) {
         const m = b.qaqcStatus.match(/(\d+)\s+Defect/i);
@@ -362,12 +366,12 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
         km,
         pic,
         defectCount,
-        qaqcStatus: b.qaqcStatus || (isPublished ? 'QA/QC Approved' : ''),
+        qaqcStatus: b.qaqcStatus || (cachedAudit ? `QAQC Completed (${defectCount} Defect${defectCount === 1 ? '' : 's'} Found)` : isPublished ? 'QA/QC Approved' : ''),
         isPublished,
         publishStatus
       };
     });
-  }, [dailyData, batchLogs, auditCache]);
+  }, [dailyData, batchLogs, auditCache, activeUserName]);
 
   // Counts for Category Switcher
   const stagingCount = useMemo(() => {

@@ -3370,7 +3370,7 @@ const DataManagementPage = ({
                                     let cachedDefects: number | undefined;
                                     try {
                                       const cachedMap = JSON.parse(localStorage.getItem('app_qaqc_audit_cache_v2') || '{}');
-                                      const cached = cachedMap[`${batchSubgrid}_default`];
+                                      const cached = cachedMap[`${batchSubgrid}_default`] || Object.entries(cachedMap).find(([k]) => k.startsWith(`${batchSubgrid}_`))?.[1];
                                       if (cached && typeof cached.defectCount === 'number') {
                                         cachedDefects = cached.defectCount;
                                       }
@@ -5390,19 +5390,11 @@ export default function App() {
           setProjectSettings((prev: any) => ({ ...prev, ...dbSettingsRes.value }));
         }
 
-        // Process Core Daily & Batch Data directly from Supabase
-        if (supabaseDataRes.status === 'fulfilled') {
-          const { dailyData: sDaily, batchLogs: sBatches } = supabaseDataRes.value;
-          setDailyData(sDaily || []);
-          setBatchLogs(sBatches || []);
-        }
-
-        // Process QA Defects
+        // Process QA Defects map first from qaRes
+        const defectsPerSubgrid = new Map<string, number>();
+        let totalFlaggedCount = 0;
         if (qaRes.status === 'fulfilled' && qaRes.value.data) {
           const qaRows = qaRes.value.data;
-          const defectsPerSubgrid = new Map<string, number>();
-          let totalFlaggedCount = 0;
-
           qaRows.forEach((q: any) => {
             const isFlagged = q.qa_status === 'flagged' ||
               (q.defect_flags && typeof q.defect_flags === 'object' && Object.values(q.defect_flags).some(Boolean)) ||
@@ -5416,8 +5408,57 @@ export default function App() {
               }
             }
           });
-
           setLiveDefectCount(totalFlaggedCount);
+        }
+
+        // Also read localStorage audit cache
+        let localAuditCache: Record<string, any> = {};
+        try {
+          localAuditCache = JSON.parse(localStorage.getItem('app_qaqc_audit_cache_v2') || '{}');
+        } catch (_) {}
+
+        // Process Core Daily & Batch Data directly from Supabase with defect & status hydration
+        if (supabaseDataRes.status === 'fulfilled') {
+          const { dailyData: sDaily, batchLogs: sBatches } = supabaseDataRes.value;
+
+          const hydratedDaily = (sDaily || []).map((d: any) => {
+            const sg = (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim();
+            const runId = getItemId(d);
+            const cachedAudit = (runId && localAuditCache[`${sg}_${runId}`]) || localAuditCache[`${sg}_default`] || Object.entries(localAuditCache).find(([k]) => k.startsWith(`${sg}_`))?.[1];
+            const dbDefects = defectsPerSubgrid.get(sg) || 0;
+            const cachedDefects = cachedAudit && typeof cachedAudit.defectCount === 'number' ? cachedAudit.defectCount : 0;
+            const explicitDefects = (typeof d.imagesDefected === 'number' && d.imagesDefected > 0) ? d.imagesDefected : (typeof d.defectCount === 'number' && d.defectCount > 0) ? d.defectCount : 0;
+            const finalDefects = Math.max(dbDefects, cachedDefects, explicitDefects);
+
+            const qaqcStatus = d.qaqcStatus || (cachedAudit ? `QAQC Completed (${cachedDefects} Defect${cachedDefects === 1 ? '' : 's'} Found)` : (finalDefects > 0 ? `QAQC Completed (${finalDefects} Defects Found)` : undefined));
+
+            return {
+              ...d,
+              defectCount: finalDefects,
+              imagesDefected: finalDefects,
+              ...(qaqcStatus ? { qaqcStatus } : {})
+            };
+          });
+
+          const hydratedBatches = (sBatches || []).map((b: any) => {
+            const sg = (extractSubgridName(b.subgrid || b.imageFilename) || b.subgrid || '').toUpperCase().trim();
+            const cachedAudit = localAuditCache[`${sg}_default`] || Object.entries(localAuditCache).find(([k]) => k.startsWith(`${sg}_`))?.[1];
+            const dbDefects = defectsPerSubgrid.get(sg) || 0;
+            const cachedDefects = cachedAudit && typeof cachedAudit.defectCount === 'number' ? cachedAudit.defectCount : 0;
+            const explicitDefects = (typeof b.defects === 'number' && b.defects > 0) ? b.defects : 0;
+            const finalDefects = Math.max(dbDefects, cachedDefects, explicitDefects);
+
+            const qaqcStatus = b.qaqcStatus || (cachedAudit ? `QAQC Completed (${cachedDefects} Defect${cachedDefects === 1 ? '' : 's'} Found)` : (finalDefects > 0 ? `QAQC Completed (${finalDefects} Defects Found)` : undefined));
+
+            return {
+              ...b,
+              defects: finalDefects,
+              ...(qaqcStatus ? { qaqcStatus } : {})
+            };
+          });
+
+          setDailyData(hydratedDaily);
+          setBatchLogs(hydratedBatches);
         }
 
         // Process QA Records
@@ -5548,7 +5589,7 @@ export default function App() {
         );
 
         let cachedDefects: number | undefined;
-        const cached = (runId && cachedMap[`${dailySubgrid}_${runId}`]) || cachedMap[`${dailySubgrid}_default`];
+        const cached = (runId && cachedMap[`${dailySubgrid}_${runId}`]) || cachedMap[`${dailySubgrid}_default`] || Object.entries(cachedMap).find(([k]) => k.startsWith(`${dailySubgrid}_`))?.[1];
         if (cached && typeof cached.defectCount === 'number') {
           cachedDefects = cached.defectCount;
         }
@@ -5578,7 +5619,7 @@ export default function App() {
     return batchLogs.reduce((sum, b) => {
       const sg = (extractSubgridName(b.subgrid || b.imageFilename) || b.subgrid || '').toUpperCase().trim();
       let cachedDefects: number | undefined;
-      const cached = cachedMap[`${sg}_default`];
+      const cached = cachedMap[`${sg}_default`] || Object.entries(cachedMap).find(([k]) => k.startsWith(`${sg}_`))?.[1];
       if (cached && typeof cached.defectCount === 'number') {
         cachedDefects = cached.defectCount;
       }
@@ -5617,34 +5658,46 @@ export default function App() {
   const handleRefreshMap = () => {
     setMapRefreshKey(Date.now());
     fetchSupabaseData().then(({ dailyData: sDaily, batchLogs: sBatches }) => {
+      let localCache: Record<string, any> = {};
+      try { localCache = JSON.parse(localStorage.getItem('app_qaqc_audit_cache_v2') || '{}'); } catch (_) {}
+
       // Merge while preserving ongoing QA/QC inspection state and local defect records
       setDailyData(prev => {
         if (!sDaily || sDaily.length === 0) return prev;
         return sDaily.map(sd => {
           const matchedPrev = prev.find(p => getItemId(p) === getItemId(sd));
-          if (matchedPrev) {
-            return {
-              ...sd,
-              defectCount: (typeof matchedPrev.defectCount === 'number' && matchedPrev.defectCount > 0) ? matchedPrev.defectCount : sd.defectCount,
-              imagesDefected: (typeof matchedPrev.imagesDefected === 'number' && matchedPrev.imagesDefected > 0) ? matchedPrev.imagesDefected : sd.imagesDefected,
-              qaqcStatus: matchedPrev.qaqcStatus || sd.qaqcStatus
-            };
-          }
-          return sd;
+          const sg = (extractSubgridName(sd.subgrid) || sd.subgrid || '').toUpperCase().trim();
+          const runId = getItemId(sd);
+          const cachedAudit = (runId && localCache[`${sg}_${runId}`]) || localCache[`${sg}_default`] || Object.entries(localCache).find(([k]) => k.startsWith(`${sg}_`))?.[1];
+          const cachedCount = cachedAudit && typeof cachedAudit.defectCount === 'number' ? cachedAudit.defectCount : 0;
+          const prevCount = (matchedPrev && typeof matchedPrev.defectCount === 'number') ? matchedPrev.defectCount : 0;
+          const finalCount = Math.max(sd.defectCount || 0, prevCount, cachedCount);
+          const qaqcStatus = sd.qaqcStatus || matchedPrev?.qaqcStatus || (cachedAudit ? `QAQC Completed (${cachedCount} Defect${cachedCount === 1 ? '' : 's'} Found)` : undefined);
+
+          return {
+            ...sd,
+            defectCount: finalCount,
+            imagesDefected: finalCount,
+            ...(qaqcStatus ? { qaqcStatus } : {})
+          };
         });
       });
       setBatchLogs(prev => {
         if (!sBatches || sBatches.length === 0) return prev;
         return sBatches.map(sb => {
           const matchedPrev = prev.find(p => p.subgrid === sb.subgrid || p.id === sb.id);
-          if (matchedPrev) {
-            return {
-              ...sb,
-              defects: (typeof matchedPrev.defects === 'number' && matchedPrev.defects > 0) ? matchedPrev.defects : sb.defects,
-              qaqcStatus: matchedPrev.qaqcStatus || sb.qaqcStatus
-            };
-          }
-          return sb;
+          const sg = (extractSubgridName(sb.subgrid || sb.imageFilename) || sb.subgrid || '').toUpperCase().trim();
+          const cachedAudit = localCache[`${sg}_default`] || Object.entries(localCache).find(([k]) => k.startsWith(`${sg}_`))?.[1];
+          const cachedCount = cachedAudit && typeof cachedAudit.defectCount === 'number' ? cachedAudit.defectCount : 0;
+          const prevCount = (matchedPrev && typeof matchedPrev.defects === 'number') ? matchedPrev.defects : 0;
+          const finalCount = Math.max(sb.defects || 0, prevCount, cachedCount);
+          const qaqcStatus = sb.qaqcStatus || matchedPrev?.qaqcStatus || (cachedAudit ? `QAQC Completed (${cachedCount} Defect${cachedCount === 1 ? '' : 's'} Found)` : undefined);
+
+          return {
+            ...sb,
+            defects: finalCount,
+            ...(qaqcStatus ? { qaqcStatus } : {})
+          };
         });
       });
     }).catch(err => console.warn('Refresh map live sync notice:', err));
@@ -6652,6 +6705,9 @@ export default function App() {
       onComplete: (summary) => {
         const statusText = `QAQC Completed (${summary.defectsCount} Defect${summary.defectsCount === 1 ? '' : 's'} Found)`;
         const targetRunId = summary.runId || selectedDailyRunId;
+        const normSg = (summary.subgrid || '').toUpperCase().trim();
+
+        // 1. Update React state for dailyData
         if (targetRunId) {
           setDailyData(prev => prev.map(d => {
             if (getItemId(d) === targetRunId || d.id === targetRunId || (d as any)._id === targetRunId || (d as any).runId === targetRunId) {
@@ -6664,9 +6720,9 @@ export default function App() {
             }
             return d;
           }));
-        } else if (summary.subgrid) {
+        } else if (normSg) {
           setDailyData(prev => {
-            const matchingRows = prev.filter(d => (extractSubgridName(d.subgrid) || '').toUpperCase().trim() === summary.subgrid);
+            const matchingRows = prev.filter(d => (extractSubgridName(d.subgrid) || '').toUpperCase().trim() === normSg);
             const targetRow = matchingRows.find(d => getImagesProcessedCount(d) > 0) || matchingRows[0];
             return prev.map(d => {
               if (targetRow && d === targetRow) {
@@ -6682,11 +6738,47 @@ export default function App() {
           });
         }
 
-        if (summary.subgrid) {
+        // 2. Update React state for batchLogs
+        if (normSg) {
           setBatchLogs(prev => prev.map(b => {
             const bSg = (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim();
-            return bSg === summary.subgrid ? { ...b, defects: summary.defectsCount, qaqcStatus: statusText } : b;
+            return bSg === normSg ? { ...b, defects: summary.defectsCount, qaqcStatus: statusText } : b;
           }));
+        }
+
+        // 3. Persist audit run to localStorage audit cache under both run-specific and default keys
+        if (normSg) {
+          try {
+            const currentCache = JSON.parse(localStorage.getItem('app_qaqc_audit_cache_v2') || '{}');
+            const cacheRecord = {
+              subgrid: normSg,
+              runId: targetRunId || null,
+              totalStations: summary.totalInspected,
+              defectCount: summary.defectsCount,
+              passRate: summary.totalInspected > 0 ? Math.round(((summary.totalInspected - summary.defectsCount) / summary.totalInspected) * 100) : 100,
+              completedAt: new Date().toISOString(),
+              pic: effectivePic,
+              defectsList: summary.defects
+            };
+            if (targetRunId) {
+              currentCache[`${normSg}_${targetRunId}`] = cacheRecord;
+            }
+            currentCache[`${normSg}_default`] = cacheRecord;
+            localStorage.setItem('app_qaqc_audit_cache_v2', JSON.stringify(currentCache));
+            window.dispatchEvent(new CustomEvent('qaqc_audit_updated', { detail: { subgrid: normSg, record: cacheRecord } }));
+          } catch (_) {}
+
+          // 4. Asynchronously persist defect count and QA status to Supabase
+          try {
+            const stagingTable = projectSettings?.stagingTable || 'staging_panoramas';
+            Promise.resolve(
+              supabase.from(stagingTable).update({
+                defect_count: summary.defectsCount,
+                qa_status: statusText,
+                updated_at: new Date().toISOString()
+              }).ilike('subgrid', normSg.replace(/\s+/g, '_'))
+            ).catch(() => {});
+          } catch (_) {}
         }
       }
     });
@@ -8298,7 +8390,7 @@ export default function App() {
                                           cachedMap = JSON.parse(localStorage.getItem('app_qaqc_audit_cache_v2') || '{}');
                                         } catch (_) { }
 
-                                        const cached = cachedMap[`${batchSubgrid}_default`];
+                                        const cached = cachedMap[`${batchSubgrid}_default`] || Object.entries(cachedMap).find(([k]) => k.startsWith(`${batchSubgrid}_`))?.[1];
                                         const cachedDefects = (cached && typeof cached.defectCount === 'number') ? cached.defectCount : undefined;
 
                                         let parsedDefects: number | undefined;
@@ -8314,7 +8406,7 @@ export default function App() {
                                           const isThisDailyActive = (qaqcWorkerState.isRunning || qaqcWorkerState.isCompleted) && (
                                             qaqcWorkerState.runId ? qaqcWorkerState.runId === runId : qaqcWorkerState.subgrid === batchSubgrid
                                           );
-                                          const dailyCached = cachedMap[`${batchSubgrid}_${runId || 'default'}`];
+                                          const dailyCached = (runId && cachedMap[`${batchSubgrid}_${runId}`]) || cachedMap[`${batchSubgrid}_default`] || Object.entries(cachedMap).find(([k]) => k.startsWith(`${batchSubgrid}_`))?.[1];
                                           const dailyCachedCount = (dailyCached && typeof dailyCached.defectCount === 'number') ? dailyCached.defectCount : 0;
                                           let dailyParsed = 0;
                                           if (d.qaqcStatus) {
@@ -8466,11 +8558,12 @@ export default function App() {
                                   );
 
                                   let cachedDefects: number | undefined;
+                                  let cachedAuditObj: any = undefined;
                                   try {
                                     const cachedMap = JSON.parse(localStorage.getItem('app_qaqc_audit_cache_v2') || '{}');
-                                    const cached = runId ? cachedMap[`${dailySubgrid}_${runId}`] : undefined;
-                                    if (cached && typeof cached.defectCount === 'number') {
-                                      cachedDefects = cached.defectCount;
+                                    cachedAuditObj = (runId && cachedMap[`${dailySubgrid}_${runId}`]) || cachedMap[`${dailySubgrid}_default`] || Object.entries(cachedMap).find(([k]) => k.startsWith(`${dailySubgrid}_`))?.[1];
+                                    if (cachedAuditObj && typeof cachedAuditObj.defectCount === 'number') {
+                                      cachedDefects = cachedAuditObj.defectCount;
                                     }
                                   } catch (_) { }
 
@@ -8592,11 +8685,13 @@ export default function App() {
                                             );
                                           }
 
-                                          if (log.qaqcStatus || isThisRowCompleted) {
+                                          const effectiveQaqcStatus = log.qaqcStatus || (isThisRowCompleted ? `QAQC Completed (${qaqcWorkerState.defectsList.length} Defects Found)` : (cachedAuditObj ? `QAQC Completed (${cachedAuditObj.defectCount} Defect${cachedAuditObj.defectCount === 1 ? '' : 's'} Found)` : undefined));
+
+                                          if (effectiveQaqcStatus) {
                                             return (
                                               <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-inner text-slate-300 border border-subtle inline-flex items-center gap-1 whitespace-nowrap shadow-sm">
                                                 <CheckCircle size={10} className="text-emerald-400" />
-                                                {log.qaqcStatus || `QAQC Completed (${qaqcWorkerState.defectsList.length} Defects Found)`}
+                                                {effectiveQaqcStatus}
                                               </span>
                                             );
                                           }
