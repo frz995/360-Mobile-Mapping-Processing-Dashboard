@@ -283,7 +283,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
         const formattedDate = formatDisplayDate(d.date);
         const pic = (d.pic && d.pic.trim().toLowerCase() !== 'unassigned') ? d.pic : (activeUserName || 'Operator');
 
-        const cachedAudit = (runId && auditCache[`${sg}_${runId}`]) || auditCache[`${sg}_default`] || Object.entries(auditCache).find(([k]) => k.startsWith(`${sg}_`))?.[1];
+        const cachedAudit = runId ? auditCache[`${sg}_${runId}`] : undefined;
         let parsedDefects: number | undefined;
         if (d.qaqcStatus) {
           const m = d.qaqcStatus.match(/(\d+)\s+Defect/i);
@@ -306,6 +306,10 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
         const isRecheck = d.publishToWebGIS === 'need to recheck';
         const publishStatus: 'published' | 'staging' | 'recheck' = isPublished ? 'published' : isRecheck ? 'recheck' : 'staging';
 
+        const qaqcStatus = frameCount === 0
+          ? (isPublished ? 'QA/QC Approved' : '')
+          : (d.qaqcStatus || (cachedAudit ? `QAQC Completed (${defectCount} Defect${defectCount === 1 ? '' : 's'} Found)` : isPublished ? 'QA/QC Approved' : ''));
+
         return {
           raw: d,
           runId,
@@ -316,7 +320,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
           km,
           pic,
           defectCount,
-          qaqcStatus: d.qaqcStatus || (cachedAudit ? `QAQC Completed (${defectCount} Defect${defectCount === 1 ? '' : 's'} Found)` : isPublished ? 'QA/QC Approved' : ''),
+          qaqcStatus,
           isPublished,
           publishStatus
         };
