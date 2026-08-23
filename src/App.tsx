@@ -812,7 +812,7 @@ const MapComponent = ({
           });
         }
       });
-    } catch (_) {}
+    } catch (_) { }
 
     if (Array.isArray(defectsList)) {
       defectsList.forEach((d: any) => {
@@ -949,7 +949,7 @@ const MapComponent = ({
               defectsArray.push(...rec.defectsList);
             }
           });
-        } catch (_) {}
+        } catch (_) { }
         if (Array.isArray(defectsList)) {
           defectsArray.push(...defectsList);
         }
@@ -4987,7 +4987,7 @@ export default function App() {
   // 1. Core Dynamic States
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>([]);
-  const [readAuditIds, setReadAuditIds] = useState<Set<string>>(() => {
+  const [readAuditIds, _setReadAuditIds] = useState<Set<string>>(() => {
     try {
       const raw = localStorage.getItem('app_read_audit_ids');
       return raw ? new Set(JSON.parse(raw)) : new Set();
@@ -4995,7 +4995,7 @@ export default function App() {
       return new Set();
     }
   });
-  const [readNotifIds, setReadNotifIds] = useState<Set<string>>(() => {
+  const [readNotifIds, _setReadNotifIds] = useState<Set<string>>(() => {
     try {
       const raw = localStorage.getItem('app_read_notif_ids');
       return raw ? new Set(JSON.parse(raw)) : new Set();
@@ -5216,49 +5216,49 @@ export default function App() {
   const [projectSettings, setProjectSettings] = useState<any>(() => ({
     projectName: '360 Mobile Mapping — Spatial Operations Division',
     contractCode: 'MMS-2026-GEO-01',
-      targetKm: 315.2,
-      targetImages: 50000,
-      targetDeadline: '2026-12-31',
-      maxDefectRatePercent: 1.5,
-      minGpsAccuracyM: 1.0,
-      cameraResolution: '8K 360° Equirectangular',
-      defaultEquipment: 'MMS',
-      leadPic: '',
-      regionZone: 'Central Operations Region',
-      clientName: 'Spatial Asset Operations',
-      // Database & Image Fetching Settings
-      supabaseUrl: 'https://frz995-360-processing.supabase.co',
-      supabaseKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
-      dbAutoSyncSec: 60,
-      dbTableName: 'batch_logs',
-      imageFetchSource: 'local',
-      imageStoragePath: '/MMS_PIC/',
-      imageFormatPattern: '{subgrid}-{index:04d}.jpg',
-      imagePreloadCount: 3,
-      enableImageRetryFallback: true,
-      // GIS Spatial Reference & Bounding Box Settings
-      selectedCrs: 'EPSG:4326',
-      selectedRegionBBox: 'peninsular_malaysia',
-      minLat: 1.2,
-      maxLat: 6.8,
-      minLon: 99.6,
-      maxLon: 104.6,
-      autoDeduplicateSubgrids: true,
-      deduplicationStrategy: 'clean_merge',
-      enableBBoxFilter: true,
-      autoPanOnTrackClick: true,
-      defaultBasemapStyle: 'dark',
-      defectThreshold: 85,
-      aiDefectThresholdPercent: 85,
-      csvLatAliases: 'latitude, lat, y, y_coord',
-      csvLonAliases: 'longitude, lon, lng, x, x_coord',
-      csvHeadingAliases: 'heading, bearing, dir, orientation',
-      csvFilenameAliases: 'filename, imagefilename, image_url, file, frame_id',
-      csvSubgridAliases: 'subgrid, grid_id, section, tile',
-      csvDateAliases: 'date, time, captured_at, timestamp',
-      dropZeroGpsRows: true,
-      csvTimestampFormat: 'auto'
-    }));
+    targetKm: 315.2,
+    targetImages: 50000,
+    targetDeadline: '2026-12-31',
+    maxDefectRatePercent: 1.5,
+    minGpsAccuracyM: 1.0,
+    cameraResolution: '8K 360° Equirectangular',
+    defaultEquipment: 'MMS',
+    leadPic: '',
+    regionZone: 'Central Operations Region',
+    clientName: 'Spatial Asset Operations',
+    // Database & Image Fetching Settings
+    supabaseUrl: 'https://frz995-360-processing.supabase.co',
+    supabaseKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+    dbAutoSyncSec: 60,
+    dbTableName: 'batch_logs',
+    imageFetchSource: 'local',
+    imageStoragePath: '/MMS_PIC/',
+    imageFormatPattern: '{subgrid}-{index:04d}.jpg',
+    imagePreloadCount: 3,
+    enableImageRetryFallback: true,
+    // GIS Spatial Reference & Bounding Box Settings
+    selectedCrs: 'EPSG:4326',
+    selectedRegionBBox: 'peninsular_malaysia',
+    minLat: 1.2,
+    maxLat: 6.8,
+    minLon: 99.6,
+    maxLon: 104.6,
+    autoDeduplicateSubgrids: true,
+    deduplicationStrategy: 'clean_merge',
+    enableBBoxFilter: true,
+    autoPanOnTrackClick: true,
+    defaultBasemapStyle: 'dark',
+    defectThreshold: 85,
+    aiDefectThresholdPercent: 85,
+    csvLatAliases: 'latitude, lat, y, y_coord',
+    csvLonAliases: 'longitude, lon, lng, x, x_coord',
+    csvHeadingAliases: 'heading, bearing, dir, orientation',
+    csvFilenameAliases: 'filename, imagefilename, image_url, file, frame_id',
+    csvSubgridAliases: 'subgrid, grid_id, section, tile',
+    csvDateAliases: 'date, time, captured_at, timestamp',
+    dropZeroGpsRows: true,
+    csvTimestampFormat: 'auto'
+  }));
 
   const [imagesListModal, setImagesListModal] = useState<{
     isOpen: boolean;
@@ -8483,16 +8483,16 @@ export default function App() {
                                   const defectCount = frameCount === 0
                                     ? 0
                                     : (isThisRowUnderInspection || isThisRowCompleted)
-                                    ? qaqcWorkerState.defectsList.length
-                                    : (log.imagesDefected && log.imagesDefected > 0)
-                                      ? log.imagesDefected
-                                      : (log.defectCount && log.defectCount > 0)
-                                        ? log.defectCount
-                                        : (cachedDefects !== undefined && cachedDefects > 0)
-                                          ? cachedDefects
-                                          : (parsedStatusDefects !== undefined && parsedStatusDefects > 0)
-                                            ? parsedStatusDefects
-                                            : 0;
+                                      ? qaqcWorkerState.defectsList.length
+                                      : (log.imagesDefected && log.imagesDefected > 0)
+                                        ? log.imagesDefected
+                                        : (log.defectCount && log.defectCount > 0)
+                                          ? log.defectCount
+                                          : (cachedDefects !== undefined && cachedDefects > 0)
+                                            ? cachedDefects
+                                            : (parsedStatusDefects !== undefined && parsedStatusDefects > 0)
+                                              ? parsedStatusDefects
+                                              : 0;
 
                                   const isPublished = log.publishToWebGIS === 'yes';
                                   return (
