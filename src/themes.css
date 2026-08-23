@@ -5,6 +5,7 @@
 /* 1. MIDNIGHT NAVY (System Default) */
 :root,
 [data-theme="midnight"] {
+    color-scheme: dark;
     --bg-app: #080e1a;
     --bg-card: #0f172a;
     --bg-inner: #162138;
@@ -81,6 +82,7 @@
 
 /* 5. DAYLIGHT CLEAN (Modern SaaS Crisp Light Canvas) */
 [data-theme="daylight"] {
+    color-scheme: light;
     --bg-app: #f4f6f9;
     --bg-card: #ffffff;
     --bg-inner: #f8fafc;
