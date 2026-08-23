@@ -2330,6 +2330,18 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
               </div>
 
               <div>
+                <label className="block text-text-muted font-medium mb-1">Deliverable Image Processing Model</label>
+                <select
+                  value={projectSettings.deliverableModel || 'masked_car'}
+                  onChange={e => setProjectSettings(prev => ({ ...prev, deliverableModel: e.target.value as any }))}
+                  className={`w-full px-3 py-2 rounded-lg font-medium focus:outline-none border ${inputBg}`}
+                >
+                  <option value="masked_car">Masked Vehicle (Top 52% ROI - Excludes Nadir Mask)</option>
+                  <option value="generative_fill">Generative Clean Fill (Full 80% ROI - Full Scene & Road)</option>
+                </select>
+              </div>
+
+              <div>
                 <label className="block text-text-muted font-medium mb-1">Batch Log Deduplication Strategy</label>
                 <select
                   value={projectSettings.deduplicationStrategy || 'clean_merge'}

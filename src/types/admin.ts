@@ -127,6 +127,7 @@ export interface ExtendedProjectSettings {
   gpsMaxJumpDistanceMeters?: number;
   glareLuminanceThreshold?: number;
   obstructionMinBrightness?: number;
+  deliverableModel?: 'masked_car' | 'generative_fill';
   deduplicationStrategy?: 'clean_merge' | 'preserve_runs';
   dailyDataImportPolicy?: 'preserve_runs' | 'merge_samedate';
   autoDeduplicateSubgrids?: boolean;
