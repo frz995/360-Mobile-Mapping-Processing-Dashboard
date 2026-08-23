@@ -5617,12 +5617,15 @@ export default function App() {
                   ? parsedStatusDefects
                   : 0;
 
-        return sum + count;
+        return sum + Math.min(count, frameCount);
       }, 0);
     }
 
     return batchLogs.reduce((sum, b) => {
       const sg = (extractSubgridName(b.subgrid || b.imageFilename) || b.subgrid || '').toUpperCase().trim();
+      const bFrames = getImagesProcessedCount(b);
+      if (bFrames === 0) return sum;
+
       let cachedDefects: number | undefined;
       const cached = cachedMap[`${sg}_default`] || Object.entries(cachedMap).find(([k]) => k.startsWith(`${sg}_`))?.[1];
       if (cached && typeof cached.defectCount === 'number') {
@@ -5641,7 +5644,7 @@ export default function App() {
             ? b.defects
             : 0;
 
-      return sum + count;
+      return sum + Math.min(count, bFrames);
     }, 0);
   }, [dailyData, batchLogs, qaqcWorkerState.isRunning, qaqcWorkerState.isCompleted, qaqcWorkerState.defectsList.length, qaqcWorkerState.runId, qaqcWorkerState.subgrid, qaqcAuditVersion]);
 
@@ -5677,7 +5680,7 @@ export default function App() {
           const cachedAudit = runId ? localCache[`${sg}_${runId}`] : undefined;
           const cachedCount = cachedAudit && typeof cachedAudit.defectCount === 'number' ? cachedAudit.defectCount : 0;
           const prevCount = (matchedPrev && typeof matchedPrev.defectCount === 'number') ? matchedPrev.defectCount : 0;
-          const finalCount = frameCount === 0 ? 0 : Math.max(sd.defectCount || 0, prevCount, cachedCount);
+          const finalCount = frameCount === 0 ? 0 : Math.min(frameCount, Math.max(sd.defectCount || 0, prevCount, cachedCount));
           const qaqcStatus = frameCount === 0
             ? (sd.publishToWebGIS === 'yes' ? 'Published' : undefined)
             : (sd.qaqcStatus || matchedPrev?.qaqcStatus || (cachedAudit ? `QAQC Completed (${cachedCount} Defect${cachedCount === 1 ? '' : 's'} Found)` : undefined));
@@ -5695,11 +5698,46 @@ export default function App() {
         return sBatches.map(sb => {
           const matchedPrev = prev.find(p => p.subgrid === sb.subgrid || p.id === sb.id);
           const sg = (extractSubgridName(sb.subgrid || sb.imageFilename) || sb.subgrid || '').toUpperCase().trim();
-          const cachedAudit = localCache[`${sg}_default`] || Object.entries(localCache).find(([k]) => k.startsWith(`${sg}_`))?.[1];
+          const matchingDaily = (sDaily || []).filter((d: any) => (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim() === sg);
+          const totalSubFrames = getImagesProcessedCount(sb) || matchingDaily.reduce((acc: number, d: any) => acc + getImagesProcessedCount(d), 0);
+
+          let dailyDefectsSum = 0;
+          let hasDailyInspection = false;
+          matchingDaily.forEach((d: any) => {
+            const fCount = getImagesProcessedCount(d);
+            if (fCount === 0) return;
+            const runId = getItemId(d);
+            const runCache = runId ? localCache[`${sg}_${runId}`] : undefined;
+            const def = (runCache && typeof runCache.defectCount === 'number')
+              ? runCache.defectCount
+              : (typeof d.imagesDefected === 'number' && d.imagesDefected > 0)
+                ? d.imagesDefected
+                : (typeof d.defectCount === 'number' && d.defectCount > 0)
+                  ? d.defectCount
+                  : 0;
+            if (def > 0 || runCache || d.qaqcStatus) {
+              hasDailyInspection = true;
+              dailyDefectsSum += Math.min(def, fCount);
+            }
+          });
+
+          const cachedAudit = localCache[`${sg}_default`];
           const cachedCount = cachedAudit && typeof cachedAudit.defectCount === 'number' ? cachedAudit.defectCount : 0;
           const prevCount = (matchedPrev && typeof matchedPrev.defects === 'number') ? matchedPrev.defects : 0;
-          const finalCount = Math.max(sb.defects || 0, prevCount, cachedCount);
-          const qaqcStatus = sb.qaqcStatus || matchedPrev?.qaqcStatus || (cachedAudit ? `QAQC Completed (${cachedCount} Defect${cachedCount === 1 ? '' : 's'} Found)` : undefined);
+
+          let finalCount = totalSubFrames === 0 ? 0 : (
+            hasDailyInspection
+              ? dailyDefectsSum
+              : Math.max(sb.defects || 0, prevCount, cachedCount)
+          );
+
+          if (totalSubFrames > 0) {
+            finalCount = Math.min(finalCount, totalSubFrames);
+          }
+
+          const qaqcStatus = totalSubFrames === 0 ? undefined : (
+            sb.qaqcStatus || matchedPrev?.qaqcStatus || (cachedAudit ? `QAQC Completed (${cachedCount} Defect${cachedCount === 1 ? '' : 's'} Found)` : undefined)
+          );
 
           return {
             ...sb,
@@ -8390,15 +8428,18 @@ export default function App() {
                                     </td>
                                     <td className="px-3.5 py-3.5 font-semibold whitespace-nowrap">
                                       {(() => {
-                                        const isThisMasterlistUnderInspection = qaqcWorkerState.isRunning && !qaqcWorkerState.runId && qaqcWorkerState.subgrid === batchSubgrid;
-                                        const isThisMasterlistCompleted = qaqcWorkerState.isCompleted && !qaqcWorkerState.runId && qaqcWorkerState.subgrid === batchSubgrid;
+                                        const isThisMasterlistActive = (qaqcWorkerState.isRunning || qaqcWorkerState.isCompleted) && qaqcWorkerState.subgrid === batchSubgrid;
+                                        const isSpecificRunActive = isThisMasterlistActive && Boolean(qaqcWorkerState.runId);
+                                        const isWholeSubgridActive = isThisMasterlistActive && !qaqcWorkerState.runId;
+
+                                        const batchFrames = getImagesProcessedCount(log);
 
                                         let cachedMap: Record<string, any> = {};
                                         try {
                                           cachedMap = JSON.parse(localStorage.getItem('app_qaqc_audit_cache_v2') || '{}');
                                         } catch (_) { }
 
-                                        const cached = cachedMap[`${batchSubgrid}_default`] || Object.entries(cachedMap).find(([k]) => k.startsWith(`${batchSubgrid}_`))?.[1];
+                                        const cached = cachedMap[`${batchSubgrid}_default`];
                                         const cachedDefects = (cached && typeof cached.defectCount === 'number') ? cached.defectCount : undefined;
 
                                         let parsedDefects: number | undefined;
@@ -8407,45 +8448,65 @@ export default function App() {
                                           if (m) parsedDefects = parseInt(m[1], 10);
                                         }
 
-                                        // Sum defects across all daily runs for this subgrid
-                                        const subgridDailyRuns = dailyData.filter(d => (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim() === batchSubgrid);
-                                        const subgridDefectsFromDaily = subgridDailyRuns.reduce((sum, d) => {
-                                          const runId = getItemId(d);
-                                          const isThisDailyActive = (qaqcWorkerState.isRunning || qaqcWorkerState.isCompleted) && (
-                                            qaqcWorkerState.runId ? qaqcWorkerState.runId === runId : qaqcWorkerState.subgrid === batchSubgrid
-                                          );
-                                          const dailyCached = (runId && cachedMap[`${batchSubgrid}_${runId}`]) || cachedMap[`${batchSubgrid}_default`] || Object.entries(cachedMap).find(([k]) => k.startsWith(`${batchSubgrid}_`))?.[1];
-                                          const dailyCachedCount = (dailyCached && typeof dailyCached.defectCount === 'number') ? dailyCached.defectCount : 0;
-                                          let dailyParsed = 0;
-                                          if (d.qaqcStatus) {
-                                            const m = d.qaqcStatus.match(/(\d+)\s+Defect/i);
-                                            if (m) dailyParsed = parseInt(m[1], 10);
-                                          }
-                                          const cnt = isThisDailyActive
-                                            ? qaqcWorkerState.defectsList.length
-                                            : (d.imagesDefected && d.imagesDefected > 0)
-                                              ? d.imagesDefected
-                                              : (d.defectCount && d.defectCount > 0)
-                                                ? d.defectCount
-                                                : (dailyCachedCount > 0)
-                                                  ? dailyCachedCount
-                                                  : (dailyParsed > 0)
-                                                    ? dailyParsed
-                                                    : 0;
-                                          return sum + cnt;
-                                        }, 0);
+                                        let dCount = 0;
+                                        if (isWholeSubgridActive) {
+                                          dCount = qaqcWorkerState.defectsList.length;
+                                        } else {
+                                          const subgridDailyRuns = dailyData.filter(d => (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim() === batchSubgrid);
+                                          if (subgridDailyRuns.length > 0) {
+                                            let sumDefects = 0;
+                                            let anyDailyInspected = false;
+                                            subgridDailyRuns.forEach(d => {
+                                              const fCount = getImagesProcessedCount(d);
+                                              if (fCount === 0) return;
 
-                                        const dCount = subgridDefectsFromDaily > 0
-                                          ? subgridDefectsFromDaily
-                                          : (isThisMasterlistUnderInspection || isThisMasterlistCompleted)
-                                            ? qaqcWorkerState.defectsList.length
-                                            : (log.defects && log.defects > 0)
+                                              const runId = getItemId(d);
+                                              const isThisDailyActive = isSpecificRunActive && qaqcWorkerState.runId === runId;
+                                              const dailyCached = runId ? cachedMap[`${batchSubgrid}_${runId}`] : undefined;
+                                              const dailyCachedCount = (dailyCached && typeof dailyCached.defectCount === 'number') ? dailyCached.defectCount : 0;
+
+                                              let runDefects = 0;
+                                              if (isThisDailyActive) {
+                                                runDefects = qaqcWorkerState.defectsList.length;
+                                                anyDailyInspected = true;
+                                              } else if (dailyCachedCount > 0) {
+                                                runDefects = dailyCachedCount;
+                                                anyDailyInspected = true;
+                                              } else if (typeof d.imagesDefected === 'number' && d.imagesDefected > 0) {
+                                                runDefects = d.imagesDefected;
+                                                anyDailyInspected = true;
+                                              } else if (typeof d.defectCount === 'number' && d.defectCount > 0) {
+                                                runDefects = d.defectCount;
+                                                anyDailyInspected = true;
+                                              }
+                                              sumDefects += Math.min(runDefects, fCount);
+                                            });
+
+                                            if (anyDailyInspected) {
+                                              dCount = sumDefects;
+                                            } else if (typeof log.defects === 'number' && log.defects > 0) {
+                                              dCount = log.defects;
+                                            } else if (cachedDefects !== undefined && cachedDefects > 0) {
+                                              dCount = cachedDefects;
+                                            } else if (parsedDefects !== undefined && parsedDefects > 0) {
+                                              dCount = parsedDefects;
+                                            }
+                                          } else {
+                                            dCount = (typeof log.defects === 'number' && log.defects > 0)
                                               ? log.defects
                                               : (cachedDefects !== undefined && cachedDefects > 0)
                                                 ? cachedDefects
                                                 : (parsedDefects !== undefined && parsedDefects > 0)
                                                   ? parsedDefects
                                                   : 0;
+                                          }
+                                        }
+
+                                        if (batchFrames > 0) {
+                                          dCount = Math.min(dCount, batchFrames);
+                                        } else {
+                                          dCount = 0;
+                                        }
 
                                         return dCount > 0 ? (
                                           <button

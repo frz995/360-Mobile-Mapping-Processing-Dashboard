@@ -7,7 +7,8 @@ import {
     ArrowRight,
     ChevronLeft,
     ChevronRight,
-    FileText
+    FileText,
+    Workflow
 } from 'lucide-react';
 
 export interface SystemShowcaseProps {
@@ -15,6 +16,11 @@ export interface SystemShowcaseProps {
     dailyData?: any[];
     batchLogs?: any[];
     projectSettings?: any;
+}
+
+interface WorkflowStep {
+    step: string;
+    action: string;
 }
 
 interface SystemModule {
@@ -29,6 +35,7 @@ interface SystemModule {
     accentColor: string;
     images: string[];
     icon: React.ElementType;
+    workflow: WorkflowStep[];
     specs: { label: string; value: string }[];
 }
 
@@ -87,34 +94,39 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
     const SYSTEM_MODULES: SystemModule[] = [
         {
             id: 'webgis',
-            category: 'Spatial Telemetry & Coverage',
+            category: 'Corridor Spatial Telemetry',
             title: 'Interactive Coverage Map & WebGIS',
-            subtitle: 'Real-Time Trajectory Tracing & Geospatial Clustering',
-            description: 'Continuous spatial trajectory mapping across surveyed corridors with EPSG:4326 coordinate alignment, automated subgrid bounding box projection, and multi-layer basemap visualization.',
+            subtitle: 'Trajectory Geometries & Subgrid Coverage Tracking',
+            description: 'Monitors vehicle survey trajectories along road corridors. Projects GPS coordinates in EPSG:4326, groups surveyed points into regional grid boundaries, and visualizes route coverage across standard GIS basemaps.',
             metricLabel: 'Total Distance Mapped',
             metricValue: `${computedDistance.toFixed(1)} km (${pctTarget}%)`,
-            statusBadge: 'Active WebGIS',
+            statusBadge: 'EPSG:4326 Aligned',
             accentColor: '#38bdf8',
             images: [
                 '/screenshots/Dashboard_UI_1.png',
                 '/screenshots/Dashboard_UI_13.png'
             ],
             icon: Compass,
+            workflow: [
+                { step: '01. Ingest', action: 'Parse GPS/GNSS trajectory coordinates' },
+                { step: '02. Project', action: 'Cluster points into subgrid boundaries' },
+                { step: '03. Verify', action: 'Calculate geodesic road mileage (KM)' }
+            ],
             specs: [
-                { label: 'Map Dashboard', value: 'Interactive WebGIS' },
-                { label: 'Processing Table', value: 'Batch Run & Status' },
-                { label: '360° Viewer & QA', value: 'Spherical Inspector' },
+                { label: 'Coordinate System', value: 'EPSG:4326 (WGS 84)' },
+                { label: 'Map Engine', value: 'MapLibre GL Vector Basemap' },
+                { label: 'Corridor Metric', value: 'Geodesic Distance (KM)' },
             ],
         },
         {
             id: 'processing',
-            category: 'Pipeline Automation & Batch Control',
+            category: 'Data Ingestion & Reconciliation',
             title: 'Batch Processing & Ingestion Pipeline',
-            subtitle: 'Multi-Batch Ledger & Automated Subgrid Reconciliation',
-            description: 'Distributed data pipelines aggregating spherical panoramic imagery across active survey grids with automated progress tracking, metadata parsing, and status logging.',
+            subtitle: 'Subgrid Masterlist & Daily Progress Management',
+            description: 'Manages multi-day field survey collections. Reconciles raw survey batches against storage buckets, verifies image file counts per subgrid, and maintains a structured ledger for daily contractor progress.',
             metricLabel: 'Processed Imagery',
             metricValue: `${computedFrames.toLocaleString()} Frames (${activeJobs} Active)`,
-            statusBadge: 'Pipeline Ready',
+            statusBadge: 'Storage Verified',
             accentColor: '#34d399',
             images: [
                 '/screenshots/Dashboard_UI_17.png',
@@ -123,18 +135,23 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                 '/screenshots/Dashboard_UI_18.png'
             ],
             icon: Layers,
+            workflow: [
+                { step: '01. Collect', action: 'Upload field CSV & raw panorama sets' },
+                { step: '02. Verify', action: 'Cross-check files against storage bucket' },
+                { step: '03. Reconcile', action: 'Update masterlist & daily progress records' }
+            ],
             specs: [
-                { label: 'Pipeline Engine', value: 'Automated Batch Ingest' },
-                { label: 'Queue Status', value: 'Dynamic Subgrid Stream' },
-                { label: 'Defect Filtering', value: 'Pre-flight Verification' }
+                { label: 'File Validation', value: 'MMS Storage Verification' },
+                { label: 'Ledger Type', value: 'Masterlist & Daily Logs' },
+                { label: 'Asset Storage', value: 'Supabase Object Bucket' }
             ]
         },
         {
             id: 'qa-inspector',
-            category: 'Quality Assurance & 360° Inspection',
+            category: 'Optical Quality Assurance',
             title: 'Panoramic StreetView & Defect Inspector',
-            subtitle: 'Frame-by-Frame Equirectangular QA Verification',
-            description: 'High-definition 360° spherical imagery auditing with real-time camera telemetry monitoring and instant defect flagging for optical blur, lens obstructions, and GPS drift.',
+            subtitle: 'Automated Optical Sharpness & Defect Auditing',
+            description: 'Performs automated and manual inspection on equirectangular spherical panoramas. Evaluates image sharpness via Tenengrad gradient variance, identifies camera pitch/yaw anomalies, and flags lens obstructions before final publishing.',
             metricLabel: 'Quality SLA Health',
             metricValue: `${slaPercent}% Quality`,
             statusBadge: `${slaPercent}% Compliance`,
@@ -147,21 +164,26 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                 '/screenshots/Dashboard_UI_8.png'
             ],
             icon: Camera,
+            workflow: [
+                { step: '01. Sequence', action: 'Load trajectory nodes in travel order' },
+                { step: '02. Compute', action: 'Run multi-thread Tenengrad analysis' },
+                { step: '03. Classify', action: 'Flag optical blur, obstruction, & drift' }
+            ],
             specs: [
-                { label: 'Sensor Matrix', value: '360° Equirectangular' },
-                { label: 'Camera Telemetry', value: 'Real-Time Pitch / Yaw' },
-                { label: 'Defect Auditing', value: 'Automated + Manual Lock' }
+                { label: 'Sensor Format', value: '8K 360° Equirectangular' },
+                { label: 'Sharpness Metric', value: 'Tenengrad Variance (Min 12.0)' },
+                { label: 'Defect Classes', value: 'Blur, Lens Mask, GPS Drift' }
             ]
         },
         {
             id: 'postgis',
-            category: 'Enterprise Spatial Cloud Infrastructure',
+            category: 'Spatial Database & Layer Staging',
             title: 'Supabase & PostGIS Spatial Hub',
-            subtitle: 'Supabase Realtime Cloud Sync & PostGIS Vector Management',
+            subtitle: 'Relational Spatial Staging & Production Sync',
             description: 'Centralized spatial database powered by Supabase PostgreSQL and PostGIS, facilitating realtime CSV trajectory ingestion, automated duplicate subgrid verification, vector layer staging, and secure cloud storage.',
             metricLabel: 'Production Datasets',
             metricValue: `${batchLogs.length} Master Batches`,
-            statusBadge: 'Supabase Connected',
+            statusBadge: 'PostGIS Connected',
             accentColor: '#fbbf24',
             images: [
                 '/screenshots/Dashboard_UI_9.png',
@@ -170,21 +192,26 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                 '/screenshots/Dashboard_UI_12.png'
             ],
             icon: Database,
+            workflow: [
+                { step: '01. Stage', action: 'Write imported rows to staging tables' },
+                { step: '02. Index', action: 'Apply spatial GIST index on geometry' },
+                { step: '03. Publish', action: 'Synchronize verified rows to production' }
+            ],
             specs: [
-                { label: 'Cloud Engine', value: 'Supabase PostgreSQL + PostGIS' },
-                { label: 'Data Security', value: 'Supabase RBAC & Auth Gate' },
-                { label: 'Storage & Stream', value: 'Realtime Sync & Storage API' }
+                { label: 'Database Engine', value: 'PostgreSQL + PostGIS Extension' },
+                { label: 'Spatial Index', value: 'GIST on Point Geometry (lat/lon)' },
+                { label: 'Table Gate', value: 'Staging to Production Sync' }
             ]
         },
         {
             id: 'analytics-audit',
-            category: 'Analytics & Audit Compliance',
+            category: 'Operational Auditing & Compliance',
             title: 'Executive Reports & Audit Trail',
-            subtitle: 'Project Survey Progress Ledgers & Real-Time Security Logs',
-            description: 'Automated executive reporting engine compiling contract survey milestones, QA/QC SLA threshold compliance, daily operational progress ledgers, and immutable security audit trails.',
+            subtitle: 'Survey Milestone Ledgers & Timestamped Activity Logs',
+            description: 'Generates operational ledgers and contract milestone summaries. Records all data edits, inspection completions, and publishing events into an immutable audit trail for quality compliance and project handover.',
             metricLabel: 'Operational Logs',
             metricValue: `${dailyData.length} Survey Records`,
-            statusBadge: 'Audit Trail Active',
+            statusBadge: 'Audit Trail Locked',
             accentColor: '#a855f7',
             images: [
                 '/screenshots/Dashboard_UI_14.png',
@@ -194,10 +221,15 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                 '/screenshots/Dashboard_UI_21.png'
             ],
             icon: FileText,
+            workflow: [
+                { step: '01. Record', action: 'Log all user edits, imports & sign-offs' },
+                { step: '02. Audit', action: 'Verify SLA defect rates per contractor' },
+                { step: '03. Export', action: 'Generate executive summary reports' }
+            ],
             specs: [
-                { label: 'Report Format', value: 'Executive PDF / CSV Export' },
-                { label: 'Audit Security', value: 'Immutable Activity Trail' },
-                { label: 'QA Compliance', value: '0.00% Defect Tolerance' }
+                { label: 'Audit Trail', value: 'Immutable Event Timestamping' },
+                { label: 'Report Types', value: 'Contract Milestones & QA Logs' },
+                { label: 'Data Export', value: 'Downloadable CSV / PDF Ledger' }
             ]
         }
     ];
@@ -311,7 +343,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                         </div>
 
                         {/* Active Module Details */}
-                        <div className="space-y-2.5 sm:space-y-3 pt-1">
+                        <div className="space-y-2.5 sm:space-y-3 pt-0.5">
                             <div className="flex items-center justify-between">
                                 <span
                                     className="text-xs sm:text-sm font-bold uppercase tracking-wider block"
@@ -333,7 +365,32 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                                 </p>
                             </div>
 
-                            {/* Micro Specs HUD */}
+                            {/* Technical Workflow Flow (3-Step Pipeline) */}
+                            {current.workflow && current.workflow.length > 0 && (
+                                <div className="space-y-1 pt-0.5">
+                                    <div className="flex items-center gap-1.5 text-[10px] sm:text-[11px] font-semibold text-slate-400">
+                                        <Workflow className="w-3 h-3 text-slate-400" />
+                                        <span>Technical Execution Flow</span>
+                                    </div>
+                                    <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
+                                        {current.workflow.map((wf, idx) => (
+                                            <div
+                                                key={idx}
+                                                className="p-1.5 sm:p-2 rounded-xl bg-slate-900/90 border border-slate-800 text-left min-w-0"
+                                            >
+                                                <span className="text-[9.5px] font-mono font-bold block" style={{ color: current.accentColor }}>
+                                                    {wf.step}
+                                                </span>
+                                                <span className="text-[10px] sm:text-[11px] font-medium text-slate-200 block mt-0.5 line-clamp-2 leading-tight">
+                                                    {wf.action}
+                                                </span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Technical Specifications HUD */}
                             <div className="grid grid-cols-3 gap-1.5 sm:gap-2 pt-0.5">
                                 {current.specs.map((spec, i) => (
                                     <div
