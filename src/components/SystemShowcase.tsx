@@ -97,10 +97,10 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             category: 'Corridor Spatial Telemetry',
             title: 'Interactive Coverage Map & WebGIS',
             subtitle: 'Trajectory Geometries & Subgrid Coverage Tracking',
-            description: 'Monitors vehicle survey trajectories along road corridors. Projects GPS coordinates in EPSG:4326, groups surveyed points into regional grid boundaries, and visualizes route coverage across standard GIS basemaps.',
+            description: 'Monitors vehicle survey trajectories along road corridors. Synchronizes high-precision GNSS positioning coordinates, groups surveyed points into regional grid boundaries, and visualizes route coverage across standard GIS basemaps.',
             metricLabel: 'Total Distance Mapped',
             metricValue: `${computedDistance.toFixed(1)} km (${pctTarget}%)`,
-            statusBadge: 'EPSG:4326 Aligned',
+            statusBadge: 'Telemetry Active',
             accentColor: '#38bdf8',
             images: [
                 '/screenshots/Dashboard_UI_1.png',
@@ -113,7 +113,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                 { step: '03. Verify', action: 'Calculate geodesic road mileage (KM)' }
             ],
             specs: [
-                { label: 'Coordinate System', value: 'EPSG:4326 (WGS 84)' },
+                { label: 'Spatial Tracking', value: 'High-Precision GNSS' },
                 { label: 'Map Engine', value: 'MapLibre GL Vector Basemap' },
                 { label: 'Corridor Metric', value: 'Geodesic Distance (KM)' },
             ],
@@ -432,8 +432,8 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                             {/* Minimal System Metadata Footer */}
                             <div className="pt-2 sm:pt-3 border-t border-slate-800/50 flex flex-wrap items-center gap-x-4 sm:gap-x-6 gap-y-1.5 text-slate-400 text-[10px] sm:text-xs">
                                 <div className="flex items-center gap-1.5">
-                                    <span className="text-slate-500">CRS:</span>
-                                    <span className="font-semibold text-slate-200">EPSG:4326</span>
+                                    <span className="text-slate-500">Platform:</span>
+                                    <span className="font-semibold text-slate-200">Mobile Mapping System</span>
                                 </div>
                                 <div className="flex items-center gap-1.5">
                                     <span className="text-slate-500">DB:</span>
