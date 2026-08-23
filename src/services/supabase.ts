@@ -335,6 +335,29 @@ export async function fetchSupabaseData(): Promise<{
       return { count: verified.length, verifiedFilenames: verified };
     }
 
+    // Query qa_defects table to aggregate actual defect counts per subgrid
+    const qaDefectsPerSubgrid = new Map<string, number>();
+    try {
+      const { data: qdRows } = await supabase.from('qa_defects').select('subgrid, qa_status, defect_flags, defect_count');
+      if (qdRows && qdRows.length > 0) {
+        qdRows.forEach((r: any) => {
+          const isFlagged = r.qa_status === 'flagged' ||
+            (r.defect_flags && typeof r.defect_flags === 'object' && Object.values(r.defect_flags).some(Boolean)) ||
+            (r.defect_count && Number(r.defect_count) > 0);
+          if (isFlagged && r.subgrid) {
+            const norm = (extractSubgrid(r.subgrid) || r.subgrid).toUpperCase().trim();
+            qaDefectsPerSubgrid.set(norm, (qaDefectsPerSubgrid.get(norm) || 0) + 1);
+          }
+        });
+      }
+    } catch (_) {}
+
+    // Also read local audit cache
+    let localAuditCache: Record<string, any> = {};
+    try {
+      localAuditCache = JSON.parse(localStorage.getItem('app_qaqc_audit_cache_v2') || '{}');
+    } catch (_) {}
+
     const dailyData: any[] = [];
 
     // Push published daily records
@@ -367,7 +390,14 @@ export async function fetchSupabaseData(): Promise<{
 
       const calcKm = calculateDistance(g.points);
       const km = calcKm > 0 ? calcKm : Math.round((poiCount * 0.005) * 100) / 100;
-      const defects = g.recordDefects !== undefined ? g.recordDefects : 0;
+      
+      const normSubgrid = subgrid.toUpperCase().trim();
+      const cachedAudit = (runKey && localAuditCache[`${normSubgrid}_${runKey}`]) || localAuditCache[`${normSubgrid}_default`] || Object.entries(localAuditCache).find(([k]) => k.startsWith(`${normSubgrid}_`))?.[1];
+      const dbDefectCount = qaDefectsPerSubgrid.get(normSubgrid) || 0;
+      const cachedDefectCount = cachedAudit && typeof cachedAudit.defectCount === 'number' ? cachedAudit.defectCount : 0;
+      const explicitDefectCount = g.recordDefects !== undefined ? g.recordDefects : 0;
+      const defects = Math.max(dbDefectCount, cachedDefectCount, explicitDefectCount);
+      const qaqcStatus = cachedAudit ? `QAQC Completed (${cachedDefectCount} Defect${cachedDefectCount === 1 ? '' : 's'} Found)` : (defects > 0 ? `QAQC Completed (${defects} Defects Found)` : undefined);
 
       let dateFormatted = g.dateStr;
       const d = new Date(g.dateStr);
@@ -387,6 +417,7 @@ export async function fetchSupabaseData(): Promise<{
         availableFilenames: verifiedFiles.length > 0 ? verifiedFiles : undefined,
         defectCount: defects,
         imagesDefected: defects,
+        ...(qaqcStatus ? { qaqcStatus } : {}),
         captureEquipment: equipment,
         publishToWebGIS: 'yes',
         action: 'Published in database',
@@ -521,6 +552,14 @@ export async function fetchSupabaseData(): Promise<{
           const finalImgCount = verifiedCount;
           const picName = g.pic || knownMetadata[sg]?.pic || 'Unassigned';
 
+          const normSg = sg.toUpperCase().trim();
+          const cachedAudit = (runKey && localAuditCache[`${normSg}_${runKey}`]) || localAuditCache[`${normSg}_default`] || Object.entries(localAuditCache).find(([k]) => k.startsWith(`${normSg}_`))?.[1];
+          const dbDefectCount = qaDefectsPerSubgrid.get(normSg) || 0;
+          const cachedDefectCount = cachedAudit && typeof cachedAudit.defectCount === 'number' ? cachedAudit.defectCount : 0;
+          const explicitDefectCount = typeof g.defectCount === 'number' ? g.defectCount : 0;
+          const finalDefectCount = Math.max(dbDefectCount, cachedDefectCount, explicitDefectCount);
+          const qaqcStatus = cachedAudit ? `QAQC Completed (${cachedDefectCount} Defect${cachedDefectCount === 1 ? '' : 's'} Found)` : (finalDefectCount > 0 ? `QAQC Completed (${finalDefectCount} Defects Found)` : undefined);
+
           dailyData.push({
             id: `staging-d-${runKey}`,
             date: dateFormatted,
@@ -531,8 +570,9 @@ export async function fetchSupabaseData(): Promise<{
             poiCount: count,
             availableImagesCount: finalImgCount,
             availableFilenames: verifiedFiles.length > 0 ? verifiedFiles : undefined,
-            defectCount: g.defectCount,
-            imagesDefected: g.defectCount,
+            defectCount: finalDefectCount,
+            imagesDefected: finalDefectCount,
+            ...(qaqcStatus ? { qaqcStatus } : {}),
             captureEquipment: g.equipment,
             publishToWebGIS: 'in process',
             action: 'Imported (staging)',
@@ -583,7 +623,8 @@ export async function fetchSupabaseData(): Promise<{
           existing.publishedKm = Math.round((existing.publishedKm + kmVal) * 100) / 100;
           existing.publishedRunsCount += 1;
         }
-        existing.defects += defCount;
+        existing.defects = Math.max(existing.defects, defCount);
+        if (d.qaqcStatus) existing.qaqcStatus = d.qaqcStatus;
         existing.runsCount += 1;
         if (d.availableFilenames && Array.isArray(d.availableFilenames)) {
           if (!existing.availableFilenames) existing.availableFilenames = [];
@@ -610,6 +651,7 @@ export async function fetchSupabaseData(): Promise<{
           publishedKm: isPublished ? kmVal : 0,
           totalKm: kmVal,
           defects: defCount,
+          qaqcStatus: d.qaqcStatus,
           adminPic: adminPic,
           captureEquipment: d.captureEquipment || 'MMS',
           panoramas: d.panoramas || [],
