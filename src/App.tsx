@@ -4987,22 +4987,6 @@ export default function App() {
   // 1. Core Dynamic States
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>([]);
-  const [readAuditIds, _setReadAuditIds] = useState<Set<string>>(() => {
-    try {
-      const raw = localStorage.getItem('app_read_audit_ids');
-      return raw ? new Set(JSON.parse(raw)) : new Set();
-    } catch (_) {
-      return new Set();
-    }
-  });
-  const [readNotifIds, _setReadNotifIds] = useState<Set<string>>(() => {
-    try {
-      const raw = localStorage.getItem('app_read_notif_ids');
-      return raw ? new Set(JSON.parse(raw)) : new Set();
-    } catch (_) {
-      return new Set();
-    }
-  });
   const [dailyData, setDailyData] = useState<DailyTimeSeries[]>([]);
   const [batchLogs, setBatchLogs] = useState<BatchLog[]>([]);
   const [qaSubgridRecords, setQaSubgridRecords] = useState<Record<string, {
@@ -5059,6 +5043,49 @@ export default function App() {
       status
     }).catch(err => console.warn('Supabase audit log save notice:', err));
   }, [authSession]);
+
+  // Persistent Read State Management for Audit Logs and Notifications
+  const markAuditLogsAsRead = useCallback(() => {
+    try {
+      const allIds = auditLogs.map(a => String(a.id));
+      const currentRead = new Set(JSON.parse(localStorage.getItem('app_read_audit_ids') || '[]'));
+      allIds.forEach(id => {
+        currentRead.add(id);
+        currentRead.add(`audit-${id}`);
+      });
+      localStorage.setItem('app_read_audit_ids', JSON.stringify(Array.from(currentRead)));
+      localStorage.setItem('app_last_read_audit_time', Date.now().toString());
+    } catch (_) {}
+    setAuditLogs(old => old.map(a => ({ ...a, read: true })));
+  }, [auditLogs]);
+
+  const markNotificationsAsRead = useCallback(() => {
+    try {
+      const allIds = notifications.map(n => String(n.id));
+      const currentRead = new Set(JSON.parse(localStorage.getItem('app_read_notif_ids') || '[]'));
+      allIds.forEach(id => {
+        currentRead.add(id);
+        currentRead.add(`notif-${id}`);
+      });
+      localStorage.setItem('app_read_notif_ids', JSON.stringify(Array.from(currentRead)));
+      localStorage.setItem('app_last_read_notif_time', Date.now().toString());
+    } catch (_) {}
+    setNotifications(old => old.map(n => ({ ...n, read: true })));
+  }, [notifications]);
+
+  const clearNotifications = useCallback(() => {
+    try {
+      const allIds = notifications.map(n => String(n.id));
+      const currentRead = new Set(JSON.parse(localStorage.getItem('app_read_notif_ids') || '[]'));
+      allIds.forEach(id => {
+        currentRead.add(id);
+        currentRead.add(`notif-${id}`);
+      });
+      localStorage.setItem('app_read_notif_ids', JSON.stringify(Array.from(currentRead)));
+      localStorage.setItem('app_cleared_notif_time', Date.now().toString());
+    } catch (_) {}
+    setNotifications([]);
+  }, [notifications]);
 
   // 1. Module focus spotlight state
   const [focusedSection, setFocusedSection] = useState<'map' | 'processing' | 'qa' | null>(null);
@@ -5468,12 +5495,24 @@ export default function App() {
           setQaSubgridRecords(prev => ({ ...fetchedQa.value, ...prev }));
         }
 
-        // Process Audit Logs
+        // Process Audit Logs with dynamic read persistence
         if (dbAuditLogs.status === 'fulfilled' && dbAuditLogs.value.length > 0) {
+          let readAuditSet = new Set<string>();
+          let lastReadAuditTime = 0;
+          try {
+            readAuditSet = new Set(JSON.parse(localStorage.getItem('app_read_audit_ids') || '[]'));
+            lastReadAuditTime = Number(localStorage.getItem('app_last_read_audit_time') || '0');
+          } catch (_) {}
+
           setAuditLogs(prev => {
             return dbAuditLogs.value.map((a: any) => {
               const strId = String(a.id);
-              const isRead = Boolean(a.read) || readAuditIds.has(strId) || readAuditIds.has(`audit-${strId}`) || prev.some(p => String(p.id) === strId && p.read);
+              const itemTime = a.created_at ? new Date(a.created_at).getTime() : 0;
+              const isRead = Boolean(a.read) ||
+                readAuditSet.has(strId) ||
+                readAuditSet.has(`audit-${strId}`) ||
+                (lastReadAuditTime > 0 && itemTime > 0 && itemTime <= lastReadAuditTime) ||
+                prev.some(p => String(p.id) === strId && p.read);
               return {
                 ...a,
                 read: isRead
@@ -5482,17 +5521,39 @@ export default function App() {
           });
         }
 
-        // Process Notifications
+        // Process Notifications with dynamic read & clear persistence
         if (dbNotifications.status === 'fulfilled' && dbNotifications.value.length > 0) {
+          let readNotifSet = new Set<string>();
+          let lastReadNotifTime = 0;
+          let clearedNotifTime = 0;
+          try {
+            readNotifSet = new Set(JSON.parse(localStorage.getItem('app_read_notif_ids') || '[]'));
+            lastReadNotifTime = Number(localStorage.getItem('app_last_read_notif_time') || '0');
+            clearedNotifTime = Number(localStorage.getItem('app_cleared_notif_time') || '0');
+          } catch (_) {}
+
           setNotifications(prev => {
-            return dbNotifications.value.map((n: any) => {
-              const strId = String(n.id);
-              const isRead = Boolean(n.read) || readNotifIds.has(strId) || readNotifIds.has(`notif-${strId}`) || prev.some(p => String(p.id) === strId && p.read);
-              return {
-                ...n,
-                read: isRead
-              };
-            });
+            return dbNotifications.value
+              .filter((n: any) => {
+                if (clearedNotifTime > 0) {
+                  const itemTime = n.created_at ? new Date(n.created_at).getTime() : 0;
+                  if (itemTime > 0 && itemTime <= clearedNotifTime) return false;
+                }
+                return true;
+              })
+              .map((n: any) => {
+                const strId = String(n.id);
+                const itemTime = n.created_at ? new Date(n.created_at).getTime() : 0;
+                const isRead = Boolean(n.read) ||
+                  readNotifSet.has(strId) ||
+                  readNotifSet.has(`notif-${strId}`) ||
+                  (lastReadNotifTime > 0 && itemTime > 0 && itemTime <= lastReadNotifTime) ||
+                  prev.some(p => String(p.id) === strId && p.read);
+                return {
+                  ...n,
+                  read: isRead
+                };
+              });
           });
         }
       } catch (err) {
@@ -7445,7 +7506,7 @@ export default function App() {
                 const nextState = !isAuditLogOpen;
                 setIsAuditLogOpen(nextState);
                 if (nextState) {
-                  setAuditLogs(old => old.map(a => ({ ...a, read: true })));
+                  markAuditLogsAsRead();
                 }
                 setIsNotifOpen(false);
               }}
@@ -7565,7 +7626,7 @@ export default function App() {
                 const nextState = !isNotifOpen;
                 setIsNotifOpen(nextState);
                 if (nextState) {
-                  setNotifications(old => old.map(n => ({ ...n, read: true })));
+                  markNotificationsAsRead();
                 }
                 setIsAuditLogOpen(false);
               }}
@@ -7599,7 +7660,7 @@ export default function App() {
                   <div className="flex items-center gap-2">
                     {notifications.length > 0 && (
                       <button
-                        onClick={() => setNotifications([])}
+                        onClick={clearNotifications}
                         className="text-text-muted hover:text-rose-400 text-[10px] font-medium transition-colors flex items-center gap-1 cursor-pointer"
                         title="Clear all notifications"
                       >
@@ -7647,7 +7708,16 @@ export default function App() {
                             <div className="flex items-center gap-1.5">
                               <span className="text-[10px] text-text-muted">{notif.timestamp}</span>
                               <button
-                                onClick={() => setNotifications(prev => prev.filter(n => n.id !== notif.id))}
+                                onClick={() => {
+                                  const strId = String(notif.id);
+                                  try {
+                                    const currentRead = new Set(JSON.parse(localStorage.getItem('app_read_notif_ids') || '[]'));
+                                    currentRead.add(strId);
+                                    currentRead.add(`notif-${strId}`);
+                                    localStorage.setItem('app_read_notif_ids', JSON.stringify(Array.from(currentRead)));
+                                  } catch (_) {}
+                                  setNotifications(prev => prev.filter(n => String(n.id) !== strId));
+                                }}
                                 className="text-text-muted hover:text-rose-400 p-0.5 cursor-pointer opacity-80 hover:opacity-100 transition-opacity"
                                 title="Dismiss notification"
                               >

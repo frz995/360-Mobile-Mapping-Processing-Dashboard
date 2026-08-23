@@ -104,7 +104,11 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             accentColor: '#38bdf8',
             images: [
                 '/screenshots/Dashboard_UI_1.png',
-                '/screenshots/Dashboard_UI_13.png'
+                '/screenshots/Dashboard_UI_13.png',
+                '/screenshots/Dashboard_UI_5.png',
+                '/screenshots/Dashboard_UI_6.png',
+                '/screenshots/Dashboard_UI_7.png',
+                '/screenshots/Dashboard_UI_8.png'
             ],
             icon: Compass,
             workflow: [
@@ -157,22 +161,21 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             statusBadge: `${slaPercent}% Compliance`,
             accentColor: '#818cf8',
             images: [
-                '/screenshots/Dashboard_UI_3.png',
-                '/screenshots/Dashboard_UI_5.png',
-                '/screenshots/Dashboard_UI_6.png',
-                '/screenshots/Dashboard_UI_7.png',
-                '/screenshots/Dashboard_UI_8.png'
+                '/screenshots/Dashboard_UI_26.png',
+                '/screenshots/Dashboard_UI_27.png',
+                '/screenshots/Dashboard_UI_28.png',
+                '/screenshots/Dashboard_UI_3.png'
             ],
             icon: Camera,
             workflow: [
                 { step: '01. Sequence', action: 'Load trajectory nodes in travel order' },
                 { step: '02. Compute', action: 'Run multi-thread Tenengrad analysis' },
-                { step: '03. Classify', action: 'Flag optical blur, obstruction, & drift' }
+                { step: '03. Classify', action: 'Flag Blur, Obstruction & Bad GPS' }
             ],
             specs: [
                 { label: 'Sensor Format', value: '8K 360° Equirectangular' },
                 { label: 'Sharpness Metric', value: 'Tenengrad Variance (Min 12.0)' },
-                { label: 'Defect Classes', value: 'Blur, Lens Mask, GPS Drift' }
+                { label: 'Defect Classes', value: 'Blur, Obstruction, Bad GPS' }
             ]
         },
         {
