@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import type { ExtendedProjectSettings, QADefectRecord, QAQCConfig } from '../types/admin';
-import { detectBadGps, detectBlurAndObstruction, calculateForwardBearing, type QAQCThresholdSettings } from '../utils/qaqcAnalyzer';
+import { analyzeImageSharpness, detectBlurAndObstruction } from '../utils/qaqcAnalyzer';
 import { resolvePanoramaUrl, supabase } from '../services/supabase';
 
 export interface StationNode {
@@ -40,8 +40,17 @@ export interface StationInspectionRecord {
   isBlur?: boolean;
   isObstruction?: boolean;
   defectType?: string;
+  deliverableModel?: 'masked_car' | 'generative_fill';
   reasons?: string[];
   timestamp: string;
+}
+
+export interface QAQCThresholdSettings {
+  blurVarianceThreshold?: number; // default: 68.0
+  gpsMaxJumpDistanceMeters?: number; // default: 50.0
+  glareLuminanceThreshold?: number; // default: 240.0
+  obstructionMinBrightness?: number; // default: 15.0
+  deliverableModel?: 'masked_car' | 'generative_fill';
 }
 
 export interface QAQCWorkerState {
@@ -93,6 +102,104 @@ export interface StartInspectionParams {
     subgrid: string;
     runId?: string | null;
   }) => void;
+}
+
+/**
+ * Calculates geodesic distance in meters between two lat/lng coordinates using the Haversine formula.
+ */
+export function calculateGeodesicDistanceMeters(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number
+): number {
+  if (lat1 === lat2 && lon1 === lon2) return 0;
+  if (!lat1 || !lon1 || !lat2 || !lon2) return 0;
+
+  const R = 6371000; // Earth radius in meters
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const radLat1 = (lat1 * Math.PI) / 180;
+  const radLat2 = (lat2 * Math.PI) / 180;
+
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(radLat1) * Math.cos(radLat2) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  return R * c;
+}
+
+/**
+ * Calculates geodesic forward azimuth / bearing in degrees [0, 360) between two coordinates.
+ */
+export function calculateForwardBearing(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number
+): number {
+  if (lat1 === lat2 && lon1 === lon2) return 0;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const radLat1 = (lat1 * Math.PI) / 180;
+  const radLat2 = (lat2 * Math.PI) / 180;
+
+  const y = Math.sin(dLon) * Math.cos(radLat2);
+  const x =
+    Math.cos(radLat1) * Math.sin(radLat2) -
+    Math.sin(radLat1) * Math.cos(radLat2) * Math.cos(dLon);
+
+  const brng = (Math.atan2(y, x) * 180) / Math.PI;
+  return (brng + 360) % 360;
+}
+
+/**
+ * Directional Multi-Quadrant Blur & Obstruction Analyzer
+ * Evaluates 4 horizontal quadrants (Front, Right, Back, Left) to prevent sharp background
+ * objects or watermarks from masking blur in another sector.
+ */
+export async function analyzeEquirectangularBlur(
+  imageUrl: string,
+  blurThreshold: number = 68.0,
+  deliverableModel: 'masked_car' | 'generative_fill' = 'masked_car',
+  options?: {
+    timeoutMs?: number;
+    obstructionMinBrightness?: number;
+    glareLuminanceThreshold?: number;
+  }
+): Promise<{
+  isBlur: boolean;
+  minScore: number;
+  worstSector: string;
+  isObstruction: boolean;
+  avgBrightness: number;
+  clippedRatio: number;
+  reason?: string;
+  status: 'success' | 'skipped' | 'error';
+}> {
+  const [sharpResult, obsResult] = await Promise.all([
+    analyzeImageSharpness(imageUrl, blurThreshold, deliverableModel, options),
+    detectBlurAndObstruction(imageUrl, {
+      darkThreshold: options?.obstructionMinBrightness,
+      glareLuminanceThreshold: options?.glareLuminanceThreshold,
+      timeoutMs: options?.timeoutMs
+    })
+  ]);
+
+  const reasons: string[] = [];
+  if (sharpResult.isBlurry && sharpResult.reason) reasons.push(sharpResult.reason);
+  if (obsResult.isObstruction && obsResult.reason) reasons.push(obsResult.reason);
+
+  return {
+    isBlur: sharpResult.isBlurry,
+    minScore: sharpResult.minScore,
+    worstSector: sharpResult.worstSector,
+    isObstruction: obsResult.isObstruction,
+    avgBrightness: obsResult.avgBrightness,
+    clippedRatio: obsResult.clippedRatio,
+    reason: reasons.length > 0 ? reasons.join('; ') : undefined,
+    status: sharpResult.status
+  };
 }
 
 function broadcastToMapIframes(payload: any) {
@@ -267,7 +374,7 @@ export function useQAQCWorker() {
     const accumulatedDefects: QADefectRecord[] = [];
     const accumulatedHistory: StationInspectionRecord[] = [];
 
-    // Initialize state
+    // Initialize worker state
     setWorkerState({
       isRunning: true,
       isPaused: false,
@@ -300,7 +407,7 @@ export function useQAQCWorker() {
     });
 
     try {
-      // 1. Broadcast LOCK_SUBGRID to all embedded map iframes to dim track ribbon
+      // Broadcast LOCK_SUBGRID to map iframes
       broadcastToMapIframes({
         type: 'LOCK_SUBGRID',
         subgrid: cleanSubgrid,
@@ -308,18 +415,13 @@ export function useQAQCWorker() {
       });
 
       for (let i = 0; i < total; i++) {
-        if (abortRef.current) {
-          break;
-        }
+        if (abortRef.current) break;
 
-        // Handle Pause state
         while (isPausedRef.current && !abortRef.current) {
           await new Promise(r => setTimeout(r, 100));
         }
 
-        if (abortRef.current) {
-          break;
-        }
+        if (abortRef.current) break;
 
         const currStation = stations[i];
         const prevStation = i > 0 ? stations[i - 1] : undefined;
@@ -327,7 +429,7 @@ export function useQAQCWorker() {
         const ptId = currStation.filename || currStation.point_id || `${cleanSubgrid}-${String(i + 1).padStart(4, '0')}.jpg`;
         const lat = Number(currStation.latitude ?? currStation.lat ?? 0);
         const lng = Number(currStation.longitude ?? currStation.lng ?? currStation.lon ?? 0);
-        
+
         let bearing = Number(currStation.bearing ?? currStation.heading ?? 0);
         if (!bearing && prevStation) {
           const prevLat = Number(prevStation.latitude ?? prevStation.lat ?? 0);
@@ -336,10 +438,10 @@ export function useQAQCWorker() {
             bearing = calculateForwardBearing(prevLat, prevLng, lat, lng);
           }
         }
-        
+
         const imgUrl = currStation.image_url || resolvePanoramaUrl(ptId, projectSettings);
 
-        // Notify progress callback
+        // Progress callback
         if (onProgress) {
           onProgress({
             currentIndex: i,
@@ -351,31 +453,40 @@ export function useQAQCWorker() {
           });
         }
 
-        // Live check statuses for this station
         const currentLiveCheck: LiveCheckStatus = {
           blur: { active: config.checkBlur, status: config.checkBlur ? 'checking' : 'skipped' },
           obstruction: { active: config.checkObstruction, status: config.checkObstruction ? 'checking' : 'skipped' },
           gps: { active: config.checkGps, status: config.checkGps ? 'checking' : 'skipped' }
         };
 
-        // Extract dynamic QA/QC thresholds from Project Settings or Custom overrides
-        const thresholds: QAQCThresholdSettings = {
-          blurVarianceThreshold: customThresholds?.blurVarianceThreshold ?? projectSettings?.blurVarianceThreshold ?? 60.0,
-          gpsMaxJumpDistanceMeters: customThresholds?.gpsMaxJumpDistanceMeters ?? projectSettings?.gpsMaxJumpDistanceMeters ?? 50.0,
-          glareLuminanceThreshold: customThresholds?.glareLuminanceThreshold ?? projectSettings?.glareLuminanceThreshold ?? 240.0,
-          obstructionMinBrightness: customThresholds?.obstructionMinBrightness ?? projectSettings?.obstructionMinBrightness ?? 15.0
-        };
+        // QA/QC Thresholds from Custom Overrides or Project Settings
+        const blurThreshold = customThresholds?.blurVarianceThreshold ?? projectSettings?.blurVarianceThreshold ?? 68.0;
+        const gpsMaxJumpDistance = customThresholds?.gpsMaxJumpDistanceMeters ?? projectSettings?.gpsMaxJumpDistanceMeters ?? 50.0;
+        const deliverableModel = customThresholds?.deliverableModel ?? projectSettings?.deliverableModel ?? 'masked_car';
+        const darkThreshold = customThresholds?.obstructionMinBrightness ?? projectSettings?.obstructionMinBrightness ?? 15.0;
+        const glareThreshold = customThresholds?.glareLuminanceThreshold ?? projectSettings?.glareLuminanceThreshold ?? 240.0;
 
-        // 1. Run GPS Check
+        // 1. Geodesic GPS Distance & Jump Check
         let isBadGps = false;
         let gpsReason = '';
         let stepDist = 0;
 
         if (config.checkGps) {
-          const gpsResult = detectBadGps(currStation, prevStation, thresholds);
-          isBadGps = gpsResult.isBadGps;
-          gpsReason = gpsResult.reason || '';
-          stepDist = gpsResult.distanceMeters;
+          const hasValidCoords = lat !== 0 && lng !== 0 && !isNaN(lat) && !isNaN(lng);
+          if (!hasValidCoords) {
+            isBadGps = true;
+            gpsReason = 'Missing or zero GPS coordinates';
+          } else if (prevStation) {
+            const prevLat = Number(prevStation.latitude ?? prevStation.lat ?? 0);
+            const prevLng = Number(prevStation.longitude ?? prevStation.lng ?? prevStation.lon ?? 0);
+            if (prevLat && prevLng) {
+              stepDist = calculateGeodesicDistanceMeters(prevLat, prevLng, lat, lng);
+              if (stepDist > gpsMaxJumpDistance) {
+                isBadGps = true;
+                gpsReason = `GPS Jump Detected (${stepDist.toFixed(1)}m > ${gpsMaxJumpDistance}m)`;
+              }
+            }
+          }
 
           currentLiveCheck.gps = {
             active: true,
@@ -384,7 +495,7 @@ export function useQAQCWorker() {
           };
         }
 
-        // 2. Run Image Analysis (Blur + Obstruction) with 1500ms timeout & dynamic thresholds
+        // 2. Directional Multi-Quadrant Blur & Obstruction Check
         let isBlur = false;
         let isObstruction = false;
         let isSkippedImg = false;
@@ -394,38 +505,28 @@ export function useQAQCWorker() {
         let avgBrightness = 128.0;
 
         if ((config.checkBlur || config.checkObstruction) && imgUrl) {
-          const imgAnalysis = await detectBlurAndObstruction(imgUrl, {
-            thresholds,
-            timeoutMs: 1500
-          });
+          if (config.checkBlur) {
+            const blurResult = await analyzeImageSharpness(imgUrl, blurThreshold, deliverableModel, {
+              timeoutMs: 4000
+            });
 
-          if (imgAnalysis.analysisStatus === 'skipped' || imgAnalysis.reason === 'SKIPPED_IMG_TIMEOUT') {
-            isSkippedImg = true;
-            if (config.checkBlur) {
+            if (blurResult.status === 'skipped') {
+              isSkippedImg = true;
+              blurVariance = 0;
               currentLiveCheck.blur = {
                 active: true,
                 status: 'skipped',
-                detail: 'SKIPPED (No Image / Timeout)'
+                detail: `SKIPPED (${blurResult.reason || 'Timeout'})`
               };
-            }
-            if (config.checkObstruction) {
-              currentLiveCheck.obstruction = {
-                active: true,
-                status: 'skipped',
-                detail: 'SKIPPED (No Image / Timeout)'
-              };
-            }
-          } else {
-            if (config.checkBlur) {
-              isBlur = imgAnalysis.isBlur;
-              blurVariance = imgAnalysis.blurVariance;
-              const score = imgAnalysis.tenengradScore ?? blurVariance;
+            } else {
+              isBlur = blurResult.isBlurry;
+              blurVariance = blurResult.minScore;
               if (isBlur) {
-                blurDetail = `Blur ${score.toFixed(1)} (DEFECT)`;
-              } else if (score < 55.0) {
-                blurDetail = `Sharp ${score.toFixed(1)} (Marginal)`;
+                blurDetail = blurResult.reason || `Blurry Frame in ${blurResult.worstSector} sector (Sharpness score ${blurVariance.toFixed(1)} below threshold ${blurThreshold.toFixed(1)})`;
+              } else if (blurVariance < 55.0) {
+                blurDetail = `Sharp ${blurVariance.toFixed(1)} (Marginal)`;
               } else {
-                blurDetail = `Sharp ${score.toFixed(1)}`;
+                blurDetail = `Sharp ${blurVariance.toFixed(1)}`;
               }
               currentLiveCheck.blur = {
                 active: true,
@@ -433,11 +534,25 @@ export function useQAQCWorker() {
                 detail: blurDetail
               };
             }
+          }
 
-            if (config.checkObstruction) {
-              isObstruction = imgAnalysis.isObstruction;
-              avgBrightness = imgAnalysis.avgBrightness;
-              obstructionDetail = isObstruction ? (imgAnalysis.reason || `Luma ${avgBrightness.toFixed(1)}`) : `Luma ${avgBrightness.toFixed(1)}`;
+          if (config.checkObstruction) {
+            const obsAnalysis = await analyzeEquirectangularBlur(imgUrl, blurThreshold, deliverableModel, {
+              timeoutMs: 4000,
+              obstructionMinBrightness: darkThreshold,
+              glareLuminanceThreshold: glareThreshold
+            });
+
+            if (obsAnalysis.status === 'skipped') {
+              currentLiveCheck.obstruction = {
+                active: true,
+                status: 'skipped',
+                detail: `SKIPPED (${obsAnalysis.reason || 'Timeout'})`
+              };
+            } else {
+              isObstruction = obsAnalysis.isObstruction;
+              avgBrightness = obsAnalysis.avgBrightness;
+              obstructionDetail = isObstruction ? (obsAnalysis.reason || `Luma ${avgBrightness.toFixed(1)}`) : `Luma ${avgBrightness.toFixed(1)}`;
               currentLiveCheck.obstruction = {
                 active: true,
                 status: isObstruction ? 'flagged' : 'passed',
@@ -447,7 +562,7 @@ export function useQAQCWorker() {
           }
         }
 
-        // 3. Flag and Record Defect if detected
+        // 3. Defect Aggregation & Recording
         const hasDefect = isBadGps || isBlur || isObstruction;
         let defectType = '';
 
@@ -469,6 +584,7 @@ export function useQAQCWorker() {
               blurVariance,
               avgBrightness,
               stepDistanceMeters: stepDist,
+              deliverableModel,
               reasons: [gpsReason, blurDetail, obstructionDetail].filter(Boolean)
             },
             defect_type: defectType,
@@ -482,21 +598,28 @@ export function useQAQCWorker() {
 
           accumulatedDefects.push(defectRecord);
 
-          // Broadcast MAP_POINT_DEFECT to highlight the defect marker in red on the WebGIS map
+          // Broadcast defect marker to map
           broadcastToMapIframes({
             type: 'MAP_POINT_DEFECT',
             pointId: ptId,
+            filename: ptId,
+            is_defect: true,
             lat: lat || undefined,
             lng: lng || undefined,
             color: '#EF4444'
           });
+          broadcastToMapIframes({
+            type: 'UPDATE_POINT_DEFECT',
+            pointId: ptId,
+            filename: ptId,
+            is_defect: true
+          });
 
-          // Trigger real-time defect callback
           if (onDefectFound) {
             onDefectFound(defectRecord, accumulatedDefects.length);
           }
 
-          // Upsert into Supabase qa_defects table
+          // Asynchronously upsert defect to Supabase
           try {
             const { error: upsertErr } = await supabase.from('qa_defects').upsert({
               subgrid: defectRecord.subgrid,
@@ -516,11 +639,11 @@ export function useQAQCWorker() {
               setWorkerState(prev => ({ ...prev, syncedCount: prev.syncedCount + 1 }));
             }
           } catch (err) {
-            console.warn('qa_defects network notice:', err);
+            console.warn('qa_defects sync notice:', err);
           }
         }
 
-        // Record into history feed
+        // 4. Inspection History Record
         const nodeStatus: 'flagged' | 'skipped' | 'passed' = hasDefect ? 'flagged' : (isSkippedImg ? 'skipped' : 'passed');
         const stationRecord: StationInspectionRecord = {
           index: i + 1,
@@ -537,12 +660,14 @@ export function useQAQCWorker() {
           isBlur,
           isObstruction,
           defectType: hasDefect ? defectType : undefined,
+          deliverableModel,
           reasons: [gpsReason, blurDetail, obstructionDetail].filter(Boolean),
-          timestamp: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+          timestamp: new Date().toLocaleTimeString()
         };
+
         accumulatedHistory.push(stationRecord);
 
-        // Update active worker telemetry state
+        // Update real-time hook state
         setWorkerState(prev => ({
           ...prev,
           currentIndex: i,
@@ -556,19 +681,42 @@ export function useQAQCWorker() {
           history: [...accumulatedHistory]
         }));
 
-        // Yield to browser execution frame to allow React & DOM to paint smoothly
-        await new Promise(r => {
-          requestAnimationFrame(() => setTimeout(r, Math.max(50, stepIntervalMs)));
+        // Broadcast active node inspection to maps
+        broadcastToMapIframes({
+          type: 'MAP_POINT_INSPECTING',
+          pointId: ptId,
+          lat: lat || undefined,
+          lng: lng || undefined,
+          bearing,
+          index: i + 1,
+          total
         });
+
+        // Step pacing interval
+        if (stepIntervalMs > 0 && i < total - 1) {
+          await new Promise(r => setTimeout(r, stepIntervalMs));
+        }
       }
 
+      // Complete inspection run
       if (!abortRef.current) {
         setWorkerState(prev => ({
           ...prev,
           isRunning: false,
           isCompleted: true,
-          currentIndex: total - 1
+          isPaused: false
         }));
+
+        broadcastToMapIframes({
+          type: 'UNLOCK_SUBGRID',
+          subgrid: cleanSubgrid
+        });
+
+        broadcastToMapIframes({
+          type: 'QAQC_DEFECTS_SYNC',
+          subgrid: cleanSubgrid,
+          defects: accumulatedDefects
+        });
 
         if (onComplete) {
           onComplete({
@@ -595,7 +743,6 @@ export function useQAQCWorker() {
       }));
     } finally {
       isRunningRef.current = false;
-      // Guaranteed map unlock
       broadcastToMapIframes({
         type: 'UNLOCK_SUBGRID',
         subgrid: cleanSubgrid

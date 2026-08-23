@@ -12,6 +12,7 @@ export interface QAQCThresholdsData {
   gpsMaxJumpDistanceMeters: number;
   obstructionMinBrightness: number;
   glareLuminanceThreshold: number;
+  deliverableModel?: 'masked_car' | 'generative_fill';
 }
 
 export interface QAQCThresholdStudioViewProps {
@@ -43,6 +44,11 @@ export const QAQCThresholdStudioView: React.FC<QAQCThresholdStudioViewProps> = (
   const [isComparingSplitObstruction, setIsComparingSplitObstruction] = useState<boolean>(true);
   const [splitPositionObstruction, setSplitPositionObstruction] = useState<number>(50);
 
+  // Dynamic sample image based on active deliverable model
+  const sampleBlurImage = (thresholds.deliverableModel || 'masked_car') === 'generative_fill'
+    ? '/samples/sample_survey_generative.jpg'
+    : '/samples/sample_survey_sharp.jpg';
+
   // Simulated live scores for Blur
   const simulatedSharpScore = 84.6;
   const simulatedBlurScore = useMemo(() => {
@@ -71,10 +77,11 @@ export const QAQCThresholdStudioView: React.FC<QAQCThresholdStudioViewProps> = (
       onResetDefaults();
     } else {
       setThresholds({
-        blurVarianceThreshold: 60.0,
+        blurVarianceThreshold: 68.0,
         gpsMaxJumpDistanceMeters: 50.0,
         obstructionMinBrightness: 15.0,
-        glareLuminanceThreshold: 240.0
+        glareLuminanceThreshold: 240.0,
+        deliverableModel: 'masked_car'
       });
     }
     setBlurPreviewLevel(1.0);
@@ -128,8 +135,8 @@ export const QAQCThresholdStudioView: React.FC<QAQCThresholdStudioViewProps> = (
               type="button"
               onClick={() => setActiveDefectTab('blur')}
               className={`px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${activeDefectTab === 'blur'
-                  ? 'bg-card text-white shadow-sm ring-1 ring-white/10'
-                  : 'text-text-muted hover:text-text-base'
+                ? 'bg-card text-white shadow-sm ring-1 ring-white/10'
+                : 'text-text-muted hover:text-text-base'
                 }`}
             >
               Blur Detection
@@ -138,8 +145,8 @@ export const QAQCThresholdStudioView: React.FC<QAQCThresholdStudioViewProps> = (
               type="button"
               onClick={() => setActiveDefectTab('obstruction')}
               className={`px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${activeDefectTab === 'obstruction'
-                  ? 'bg-card text-white shadow-sm ring-1 ring-white/10'
-                  : 'text-text-muted hover:text-text-base'
+                ? 'bg-card text-white shadow-sm ring-1 ring-white/10'
+                : 'text-text-muted hover:text-text-base'
                 }`}
             >
               Lens &amp; Glitch
@@ -148,8 +155,8 @@ export const QAQCThresholdStudioView: React.FC<QAQCThresholdStudioViewProps> = (
               type="button"
               onClick={() => setActiveDefectTab('gps')}
               className={`px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${activeDefectTab === 'gps'
-                  ? 'bg-card text-white shadow-sm ring-1 ring-white/10'
-                  : 'text-text-muted hover:text-text-base'
+                ? 'bg-card text-white shadow-sm ring-1 ring-white/10'
+                : 'text-text-muted hover:text-text-base'
                 }`}
             >
               GPS Telemetry
@@ -192,7 +199,7 @@ export const QAQCThresholdStudioView: React.FC<QAQCThresholdStudioViewProps> = (
                   <div
                     className="absolute inset-0 w-full h-full bg-contain bg-no-repeat bg-center transition-all duration-75"
                     style={{
-                      backgroundImage: `url('/samples/sample_survey_sharp.jpg')`,
+                      backgroundImage: `url('${sampleBlurImage}')`,
                       filter: `blur(${blurPreviewLevel}px)`
                     }}
                   />
@@ -201,7 +208,7 @@ export const QAQCThresholdStudioView: React.FC<QAQCThresholdStudioViewProps> = (
                   <div
                     className="absolute inset-0 w-full h-full bg-contain bg-no-repeat bg-center border-r-2 border-zinc-400 pointer-events-none"
                     style={{
-                      backgroundImage: `url('/samples/sample_survey_sharp.jpg')`,
+                      backgroundImage: `url('${sampleBlurImage}')`,
                       clipPath: `polygon(0 0, ${splitPosition}% 0, ${splitPosition}% 100%, 0 100%)`
                     }}
                   />
@@ -220,8 +227,8 @@ export const QAQCThresholdStudioView: React.FC<QAQCThresholdStudioViewProps> = (
                     <span className="text-zinc-300 font-medium hidden xs:inline">Simulated</span>
                     <span className="font-mono font-bold text-zinc-100 text-xs sm:text-sm tabular-nums">{simulatedBlurScore.toFixed(1)}</span>
                     <span className={`px-2 py-0.5 rounded-lg text-[10px] sm:text-[11px] font-semibold ${isSimulatedBlurFlagged
-                        ? 'bg-rose-950 text-rose-300 border border-rose-700/80'
-                        : 'bg-emerald-950 text-emerald-300 border border-emerald-700/80'
+                      ? 'bg-rose-950 text-rose-300 border border-rose-700/80'
+                      : 'bg-emerald-950 text-emerald-300 border border-emerald-700/80'
                       }`}>
                       {isSimulatedBlurFlagged ? 'Defect' : 'Passed'}
                     </span>
@@ -248,6 +255,12 @@ export const QAQCThresholdStudioView: React.FC<QAQCThresholdStudioViewProps> = (
                     </div>
                   </div>
 
+                  {/* Scan Zone Badge */}
+                  <div className="absolute bottom-2 sm:bottom-4 left-2 sm:left-4 px-2.5 sm:px-3 py-1 rounded-xl bg-zinc-950/95 border border-zinc-700/80 text-[10px] sm:text-[11px] text-zinc-300 font-sans shadow-2xl flex items-center gap-1.5 z-10 pointer-events-none">
+                    <span className="w-1.5 h-1.5 rounded-full bg-zinc-400" />
+                    <span>Scan Zone: {(thresholds.deliverableModel || 'masked_car') === 'generative_fill' ? '15% - 80% (Full Frame)' : '10% - 52% (Upper Half)'}</span>
+                  </div>
+
                   {/* Center Helper Text */}
                   <div className="hidden sm:block absolute bottom-4 left-1/2 -translate-x-1/2 px-4 py-1.5 rounded-full bg-zinc-950/95 border border-zinc-700/80 text-xs text-zinc-300 font-sans pointer-events-none shadow-2xl whitespace-nowrap">
                     Drag split divider horizontally to compare Sharp (Left) vs Blurry (Right)
@@ -258,7 +271,7 @@ export const QAQCThresholdStudioView: React.FC<QAQCThresholdStudioViewProps> = (
                 <div className="w-full h-full grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3.5 p-2 sm:p-3.5">
                   <div className="relative rounded-xl overflow-hidden border border-subtle bg-black flex items-center justify-center min-h-[140px]">
                     <img
-                      src="/samples/sample_survey_sharp.jpg"
+                      src={sampleBlurImage}
                       alt="Sharp Reference"
                       className="w-full h-full object-contain"
                     />
@@ -270,7 +283,7 @@ export const QAQCThresholdStudioView: React.FC<QAQCThresholdStudioViewProps> = (
 
                   <div className="relative rounded-xl overflow-hidden border border-subtle bg-black flex items-center justify-center min-h-[140px]">
                     <img
-                      src="/samples/sample_survey_sharp.jpg"
+                      src={sampleBlurImage}
                       alt="Simulated Blurry Frame"
                       className="w-full h-full object-contain"
                       style={{ filter: `blur(${blurPreviewLevel}px)` }}
@@ -345,8 +358,8 @@ export const QAQCThresholdStudioView: React.FC<QAQCThresholdStudioViewProps> = (
                       {obstructionSimMode === 'glare' && `Luma ${glareSimLevel}`}
                     </span>
                     <span className={`px-2 py-0.5 rounded-lg text-[10px] sm:text-[11px] font-semibold ${isObstructionFlagged
-                        ? 'bg-rose-950 text-rose-300 border border-rose-700/80'
-                        : 'bg-emerald-950 text-emerald-300 border border-emerald-700/80'
+                      ? 'bg-rose-950 text-rose-300 border border-rose-700/80'
+                      : 'bg-emerald-950 text-emerald-300 border border-emerald-700/80'
                       }`}>
                       {isObstructionFlagged ? 'Defect' : 'Passed'}
                     </span>
@@ -543,7 +556,7 @@ export const QAQCThresholdStudioView: React.FC<QAQCThresholdStudioViewProps> = (
               type="button"
               onClick={handleApply}
               disabled={showToast}
-              className="px-3 py-1.5 bg-inner hover:bg-card text-text-base rounded-xl border border-subtle hover:border-zinc-500 text-xs font-semibold transition-all cursor-pointer shadow-sm active:scale-95 flex items-center gap-1.5 disabled:opacity-80"
+              className="px-3 py-1.5 bg-card hover:bg-inner text-slate-300 hover:text-text-base rounded-xl border border-[rgba(255,255,255,0.12)] text-xs font-medium transition-all cursor-pointer shadow-sm active:scale-95 flex items-center gap-1.5 disabled:opacity-80"
             >
               <Check size={13} className="text-zinc-300" />
               <span>{showToast ? 'Saved' : 'Apply & Save'}</span>
@@ -557,6 +570,47 @@ export const QAQCThresholdStudioView: React.FC<QAQCThresholdStudioViewProps> = (
           {/* TAB 1: BLUR PARAMETERS */}
           {activeDefectTab === 'blur' && (
             <>
+              {/* Deliverable Image Model Selector Card */}
+              <div className="p-3.5 rounded-xl bg-inner border border-subtle space-y-2.5">
+                <div className="flex items-center justify-between text-xs font-semibold">
+                  <span className="text-text-base font-medium">Deliverable Image Model</span>
+                  <span className="font-mono text-xs text-text-muted">
+                    {(thresholds.deliverableModel || 'masked_car') === 'generative_fill' ? 'Full 80% ROI' : 'Top 52% ROI'}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-card border border-subtle text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setThresholds(prev => ({ ...prev, deliverableModel: 'masked_car' }))}
+                    className={`py-2 px-2.5 rounded-lg text-left transition-all cursor-pointer ${
+                      (thresholds.deliverableModel || 'masked_car') === 'masked_car'
+                        ? 'bg-inner text-white shadow-sm font-semibold ring-1 ring-white/10'
+                        : 'text-text-muted hover:text-text-base'
+                    }`}
+                  >
+                    <span className="font-semibold text-xs text-text-base block">Masked Vehicle</span>
+                    <span className="text-[10px] text-text-muted mt-0.5 block">Scans top 52% (excludes car mask)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setThresholds(prev => ({ ...prev, deliverableModel: 'generative_fill' }))}
+                    className={`py-2 px-2.5 rounded-lg text-left transition-all cursor-pointer ${
+                      thresholds.deliverableModel === 'generative_fill'
+                        ? 'bg-inner text-white shadow-sm font-semibold ring-1 ring-white/10'
+                        : 'text-text-muted hover:text-text-base'
+                    }`}
+                  >
+                    <span className="font-semibold text-xs text-text-base block">Generative Fill</span>
+                    <span className="text-[10px] text-text-muted mt-0.5 block">Scans full scene & road (80% ROI)</span>
+                  </button>
+                </div>
+                <p className="text-[11px] text-text-muted leading-relaxed">
+                  {(thresholds.deliverableModel || 'masked_car') === 'masked_car'
+                    ? 'Excludes the lower nadir black vehicle silhouette to avoid false edge spikes.'
+                    : 'Evaluates continuous road textures and vertical assets across the full scene.'}
+                </p>
+              </div>
+
               {/* Blur Defect Cutoff Card */}
               <div className="p-3.5 rounded-xl bg-inner border border-subtle space-y-2.5">
                 <div className="flex items-center justify-between text-xs font-semibold">
@@ -565,18 +619,21 @@ export const QAQCThresholdStudioView: React.FC<QAQCThresholdStudioViewProps> = (
                 </div>
                 <input
                   type="range"
-                  min="20"
-                  max="90"
+                  min="50"
+                  max="78"
                   step="0.5"
                   value={thresholds.blurVarianceThreshold}
                   onChange={(e) => setThresholds(prev => ({ ...prev, blurVarianceThreshold: Number(e.target.value) }))}
                   className="w-full accent-zinc-200 cursor-pointer"
                 />
                 <div className="flex justify-between text-xs text-text-muted font-sans pt-0.5">
-                  <span>45.0 (Lenient)</span>
-                  <span className="text-text-base font-semibold">60.0 (Standard)</span>
+                  <span>55.0 (Lenient)</span>
+                  <span className="text-text-base font-semibold">68.0 (Standard)</span>
                   <span>75.0 (Strict)</span>
                 </div>
+                <p className="text-[11px] text-text-muted leading-relaxed pt-1 border-t border-subtle">
+                  Logic: Frames scoring <strong className="text-text-base font-semibold">≥ {thresholds.blurVarianceThreshold.toFixed(1)}</strong> pass inspection. Frames below cutoff are flagged as <strong className="text-rose-400 font-semibold">Defects</strong>.
+                </p>
               </div>
 
               {/* Simulate Photo Blur Slider */}
@@ -588,15 +645,22 @@ export const QAQCThresholdStudioView: React.FC<QAQCThresholdStudioViewProps> = (
                 <input
                   type="range"
                   min="0"
-                  max="8"
+                  max="5"
                   step="0.2"
                   value={blurPreviewLevel}
                   onChange={(e) => setBlurPreviewLevel(Number(e.target.value))}
                   className="w-full accent-zinc-200 cursor-pointer"
                 />
-                <p className="text-xs text-text-muted leading-relaxed">
-                  Adjust simulated blur to verify when out-of-focus frames trigger defects.
-                </p>
+                <div className="flex items-center justify-between pt-1">
+                  <span className="text-[11px] text-text-muted">Simulated Status:</span>
+                  <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-semibold font-mono ${
+                    isSimulatedBlurFlagged
+                      ? 'bg-rose-950/40 text-rose-300 border border-rose-800/40'
+                      : 'bg-card text-zinc-300 border border-subtle'
+                  }`}>
+                    {isSimulatedBlurFlagged ? 'Defect (Blurry)' : 'Passed (Sharp)'}
+                  </span>
+                </div>
               </div>
 
               {/* Presets */}
@@ -605,30 +669,30 @@ export const QAQCThresholdStudioView: React.FC<QAQCThresholdStudioViewProps> = (
                 <div className="grid grid-cols-3 gap-1.5 p-1 rounded-xl bg-inner border border-subtle text-xs">
                   <button
                     type="button"
-                    onClick={() => setThresholds(prev => ({ ...prev, blurVarianceThreshold: 45.0 }))}
-                    className={`py-1.5 px-1 rounded-lg text-center font-medium transition-all cursor-pointer text-xs ${thresholds.blurVarianceThreshold === 45.0
-                        ? 'bg-card text-white shadow-sm font-semibold ring-1 ring-white/10'
-                        : 'text-text-muted hover:text-text-base'
+                    onClick={() => setThresholds(prev => ({ ...prev, blurVarianceThreshold: 55.0 }))}
+                    className={`py-1.5 px-1 rounded-lg text-center font-medium transition-all cursor-pointer text-xs ${thresholds.blurVarianceThreshold === 55.0
+                      ? 'bg-card text-white shadow-sm font-semibold ring-1 ring-white/10'
+                      : 'text-text-muted hover:text-text-base'
                       }`}
                   >
-                    Lenient (45)
+                    Lenient (55)
                   </button>
                   <button
                     type="button"
-                    onClick={() => setThresholds(prev => ({ ...prev, blurVarianceThreshold: 60.0 }))}
-                    className={`py-1.5 px-1 rounded-lg text-center font-medium transition-all cursor-pointer text-xs ${thresholds.blurVarianceThreshold === 60.0
-                        ? 'bg-card text-white shadow-sm font-semibold ring-1 ring-white/10'
-                        : 'text-text-muted hover:text-text-base'
+                    onClick={() => setThresholds(prev => ({ ...prev, blurVarianceThreshold: 68.0 }))}
+                    className={`py-1.5 px-1 rounded-lg text-center font-medium transition-all cursor-pointer text-xs ${thresholds.blurVarianceThreshold === 68.0
+                      ? 'bg-card text-white shadow-sm font-semibold ring-1 ring-white/10'
+                      : 'text-text-muted hover:text-text-base'
                       }`}
                   >
-                    Standard (60)
+                    Standard (68)
                   </button>
                   <button
                     type="button"
                     onClick={() => setThresholds(prev => ({ ...prev, blurVarianceThreshold: 75.0 }))}
                     className={`py-1.5 px-1 rounded-lg text-center font-medium transition-all cursor-pointer text-xs ${thresholds.blurVarianceThreshold === 75.0
-                        ? 'bg-card text-white shadow-sm font-semibold ring-1 ring-white/10'
-                        : 'text-text-muted hover:text-text-base'
+                      ? 'bg-card text-white shadow-sm font-semibold ring-1 ring-white/10'
+                      : 'text-text-muted hover:text-text-base'
                       }`}
                   >
                     Strict (75)
@@ -649,9 +713,70 @@ export const QAQCThresholdStudioView: React.FC<QAQCThresholdStudioViewProps> = (
                 </span>
               </div>
 
+              {/* Suggested Cutoff by Survey Type Note */}
+              <div className="p-3.5 rounded-xl bg-inner border border-subtle space-y-2">
+                <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider block">
+                  Suggested Cutoff by Survey Type
+                </span>
+                <div className="space-y-1.5">
+                  <div
+                    onClick={() => setThresholds(prev => ({ ...prev, blurVarianceThreshold: 75.0 }))}
+                    className={`p-2.5 rounded-lg border transition-all cursor-pointer flex items-center justify-between gap-3 ${
+                      thresholds.blurVarianceThreshold >= 72.0 && thresholds.blurVarianceThreshold <= 75.0
+                        ? 'bg-card border-zinc-500 text-white shadow-sm ring-1 ring-white/10'
+                        : 'bg-card/40 border-subtle hover:bg-card text-text-muted hover:text-text-base'
+                    }`}
+                  >
+                    <div className="min-w-0">
+                      <span className="font-semibold text-xs text-text-base block">Utility Asset Audit</span>
+                      <span className="text-[10px] text-text-muted mt-0.5 block truncate">Pole numbers, cables, meter boxes</span>
+                    </div>
+                    <span className="font-mono text-[11px] font-semibold px-2 py-0.5 rounded-md bg-inner border border-subtle text-zinc-200 shrink-0">
+                      72 – 75
+                    </span>
+                  </div>
+
+                  <div
+                    onClick={() => setThresholds(prev => ({ ...prev, blurVarianceThreshold: 68.0 }))}
+                    className={`p-2.5 rounded-lg border transition-all cursor-pointer flex items-center justify-between gap-3 ${
+                      thresholds.blurVarianceThreshold === 68.0
+                        ? 'bg-card border-zinc-500 text-white shadow-sm ring-1 ring-white/10'
+                        : 'bg-card/40 border-subtle hover:bg-card text-text-muted hover:text-text-base'
+                    }`}
+                  >
+                    <div className="min-w-0">
+                      <span className="font-semibold text-xs text-text-base block">Standard Urban Mapping</span>
+                      <span className="text-[10px] text-text-muted mt-0.5 block truncate">Balanced pass/fail SLA rate</span>
+                    </div>
+                    <span className="font-mono text-[11px] font-semibold px-2 py-0.5 rounded-md bg-inner border border-subtle text-zinc-200 shrink-0">
+                      68
+                    </span>
+                  </div>
+
+                  <div
+                    onClick={() => setThresholds(prev => ({ ...prev, blurVarianceThreshold: 60.0 }))}
+                    className={`p-2.5 rounded-lg border transition-all cursor-pointer flex items-center justify-between gap-3 ${
+                      thresholds.blurVarianceThreshold >= 55.0 && thresholds.blurVarianceThreshold <= 60.0
+                        ? 'bg-card border-zinc-500 text-white shadow-sm ring-1 ring-white/10'
+                        : 'bg-card/40 border-subtle hover:bg-card text-text-muted hover:text-text-base'
+                    }`}
+                  >
+                    <div className="min-w-0">
+                      <span className="font-semibold text-xs text-text-base block">Highway & Rural Captures</span>
+                      <span className="text-[10px] text-text-muted mt-0.5 block truncate">Open sky, vegetation & fields</span>
+                    </div>
+                    <span className="font-mono text-[11px] font-semibold px-2 py-0.5 rounded-md bg-inner border border-subtle text-zinc-200 shrink-0">
+                      55 – 60
+                    </span>
+                  </div>
+                </div>
+              </div>
+
               {/* Technical Description */}
               <div className="p-3 rounded-xl bg-inner/60 border border-subtle text-xs text-text-muted leading-relaxed">
-                Evaluates 32 horizon asset tiles (excluding blank sky and vehicle hood) for high-frequency edge variance.
+                {(thresholds.deliverableModel || 'masked_car') === 'generative_fill'
+                  ? 'Evaluates 32 horizon and road tiles (15% to 80% height) for high-frequency edge variance.'
+                  : 'Evaluates 32 upper horizon asset tiles (10% to 52% height, excluding vehicle nadir mask) for high-frequency edge variance.'}
               </div>
             </>
           )}
@@ -667,8 +792,8 @@ export const QAQCThresholdStudioView: React.FC<QAQCThresholdStudioViewProps> = (
                     type="button"
                     onClick={() => setObstructionSimMode('glitch')}
                     className={`py-2 px-1 rounded-lg text-center font-medium transition-all cursor-pointer text-xs flex flex-col items-center gap-1 ${obstructionSimMode === 'glitch'
-                        ? 'bg-card text-white shadow-sm font-semibold ring-1 ring-white/10'
-                        : 'text-text-muted hover:text-text-base'
+                      ? 'bg-card text-white shadow-sm font-semibold ring-1 ring-white/10'
+                      : 'text-text-muted hover:text-text-base'
                       }`}
                   >
                     <Zap size={13} className="text-zinc-300" />
@@ -679,8 +804,8 @@ export const QAQCThresholdStudioView: React.FC<QAQCThresholdStudioViewProps> = (
                     type="button"
                     onClick={() => setObstructionSimMode('blackout')}
                     className={`py-2 px-1 rounded-lg text-center font-medium transition-all cursor-pointer text-xs flex flex-col items-center gap-1 ${obstructionSimMode === 'blackout'
-                        ? 'bg-card text-white shadow-sm font-semibold ring-1 ring-white/10'
-                        : 'text-text-muted hover:text-text-base'
+                      ? 'bg-card text-white shadow-sm font-semibold ring-1 ring-white/10'
+                      : 'text-text-muted hover:text-text-base'
                       }`}
                   >
                     <EyeOff size={13} className="text-zinc-300" />
@@ -691,8 +816,8 @@ export const QAQCThresholdStudioView: React.FC<QAQCThresholdStudioViewProps> = (
                     type="button"
                     onClick={() => setObstructionSimMode('glare')}
                     className={`py-2 px-1 rounded-lg text-center font-medium transition-all cursor-pointer text-xs flex flex-col items-center gap-1 ${obstructionSimMode === 'glare'
-                        ? 'bg-card text-white shadow-sm font-semibold ring-1 ring-white/10'
-                        : 'text-text-muted hover:text-text-base'
+                      ? 'bg-card text-white shadow-sm font-semibold ring-1 ring-white/10'
+                      : 'text-text-muted hover:text-text-base'
                       }`}
                   >
                     <Sun size={13} className="text-zinc-300" />
@@ -814,8 +939,8 @@ export const QAQCThresholdStudioView: React.FC<QAQCThresholdStudioViewProps> = (
                   </span>
                 </div>
                 <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-lg ${isObstructionFlagged
-                    ? 'text-rose-400 bg-rose-950 border border-rose-800'
-                    : 'text-emerald-400 bg-emerald-950 border border-emerald-800'
+                  ? 'text-rose-400 bg-rose-950 border border-rose-800'
+                  : 'text-emerald-400 bg-emerald-950 border border-emerald-800'
                   }`}>
                   {isObstructionFlagged ? 'Defect' : 'Passed'}
                 </span>
@@ -856,8 +981,8 @@ export const QAQCThresholdStudioView: React.FC<QAQCThresholdStudioViewProps> = (
                     type="button"
                     onClick={() => setThresholds(prev => ({ ...prev, gpsMaxJumpDistanceMeters: 25 }))}
                     className={`py-1.5 px-1 rounded-lg text-center font-medium transition-all cursor-pointer text-xs ${thresholds.gpsMaxJumpDistanceMeters === 25
-                        ? 'bg-card text-white shadow-sm font-semibold ring-1 ring-white/10'
-                        : 'text-text-muted hover:text-text-base'
+                      ? 'bg-card text-white shadow-sm font-semibold ring-1 ring-white/10'
+                      : 'text-text-muted hover:text-text-base'
                       }`}
                   >
                     Dense (25m)
@@ -866,8 +991,8 @@ export const QAQCThresholdStudioView: React.FC<QAQCThresholdStudioViewProps> = (
                     type="button"
                     onClick={() => setThresholds(prev => ({ ...prev, gpsMaxJumpDistanceMeters: 50 }))}
                     className={`py-1.5 px-1 rounded-lg text-center font-medium transition-all cursor-pointer text-xs ${thresholds.gpsMaxJumpDistanceMeters === 50
-                        ? 'bg-card text-white shadow-sm font-semibold ring-1 ring-white/10'
-                        : 'text-text-muted hover:text-text-base'
+                      ? 'bg-card text-white shadow-sm font-semibold ring-1 ring-white/10'
+                      : 'text-text-muted hover:text-text-base'
                       }`}
                   >
                     Standard (50m)
@@ -876,8 +1001,8 @@ export const QAQCThresholdStudioView: React.FC<QAQCThresholdStudioViewProps> = (
                     type="button"
                     onClick={() => setThresholds(prev => ({ ...prev, gpsMaxJumpDistanceMeters: 100 }))}
                     className={`py-1.5 px-1 rounded-lg text-center font-medium transition-all cursor-pointer text-xs ${thresholds.gpsMaxJumpDistanceMeters === 100
-                        ? 'bg-card text-white shadow-sm font-semibold ring-1 ring-white/10'
-                        : 'text-text-muted hover:text-text-base'
+                      ? 'bg-card text-white shadow-sm font-semibold ring-1 ring-white/10'
+                      : 'text-text-muted hover:text-text-base'
                       }`}
                   >
                     Highway (100m)

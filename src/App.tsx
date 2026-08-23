@@ -776,7 +776,8 @@ const MapComponent = ({
   refreshKey,
   selectedSubgridFilter,
   stagedItems,
-  projectSettings: passedSettings
+  projectSettings: passedSettings,
+  defectsList
 }: {
   dataManagement?: boolean;
   layerCatalog?: (Layer | Folder)[];
@@ -785,6 +786,7 @@ const MapComponent = ({
   selectedSubgridFilter?: string | null;
   stagedItems?: any[];
   projectSettings?: any;
+  defectsList?: any[];
 }) => {
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -798,6 +800,26 @@ const MapComponent = ({
 
     // Track published point keys to prevent orange staging duplicates from overlapping green published points
     const publishedPointKeys = new Set<string>();
+    const knownDefectFilenames = new Set<string>();
+
+    try {
+      const cachedMap = JSON.parse(localStorage.getItem('app_qaqc_audit_cache_v2') || '{}');
+      Object.values(cachedMap).forEach((rec: any) => {
+        if (rec && Array.isArray(rec.defectsList)) {
+          rec.defectsList.forEach((d: any) => {
+            const fn = (d.point_id || d.filename || d.pointId || '').split('/').pop()?.toUpperCase().trim();
+            if (fn) knownDefectFilenames.add(fn);
+          });
+        }
+      });
+    } catch (_) {}
+
+    if (Array.isArray(defectsList)) {
+      defectsList.forEach((d: any) => {
+        const fn = (d.point_id || d.filename || d.pointId || '').split('/').pop()?.toUpperCase().trim();
+        if (fn) knownDefectFilenames.add(fn);
+      });
+    }
 
     stagedItems.forEach(item => {
       const isPub = item.publishToWebGIS === 'yes' || item.publishToUSVPRO === 'yes' || Boolean(item.isSyncedWithSupabase) || item.isFromSupabase === true;
@@ -824,35 +846,53 @@ const MapComponent = ({
 
       const pans = item.panoramas || item.points || [];
 
-      const formattedPans = pans.map((p: any) => ({
-        ...p,
-        filename: p.filename || p.image_url,
-        image_url: p.image_url || p.filename,
-        subgrid: p.subgrid || item.subgrid,
-        grid: p.grid || item.grid,
-        latitude: p.latitude ?? p.lat ?? p.y,
-        longitude: p.longitude ?? p.lon ?? p.lng ?? p.x,
-        lat: p.lat ?? p.latitude ?? p.y,
-        lon: p.lon ?? p.longitude ?? p.lng ?? p.x,
-        lng: p.lng ?? p.longitude ?? p.lon ?? p.x,
-        y: p.y ?? p.latitude ?? p.lat,
-        x: p.x ?? p.longitude ?? p.lon ?? p.lng,
-        date: p.date ?? p.captured_at,
-        captured_at: p.captured_at ?? p.date,
-        status: statusVal,
-        qa_status: statusVal,
-        publishToWebGIS: statusVal,
-        publishToUSVPRO: statusVal,
-        isPublished: isPub,
-        published: isPub,
-        opacity: op,
-        fillOpacity: op,
-        strokeOpacity: op,
-        color: colorHex,
-        statusColor: colorHex,
-        strokeColor: colorHex,
-        fillColor: colorHex
-      }));
+      const formattedPans = pans.map((p: any) => {
+        const fnClean = (p.filename || p.image_url || '').split('/').pop()?.toUpperCase().trim();
+        const isPointDefect = Boolean(
+          (fnClean && knownDefectFilenames.has(fnClean)) ||
+          p.isDefect ||
+          p.is_defect ||
+          p.defectType ||
+          p.status === 'defect' ||
+          p.qa_status === 'defect' ||
+          (p.defect_flags && typeof p.defect_flags === 'object' && Object.values(p.defect_flags).some(Boolean))
+        );
+        const pointColorHex = isPointDefect ? '#ef4444' : colorHex;
+        const pointStatusVal = isPointDefect ? 'defect' : statusVal;
+        const pointOp = isPointDefect ? 1.0 : op;
+
+        return {
+          ...p,
+          filename: p.filename || p.image_url,
+          image_url: p.image_url || p.filename,
+          subgrid: p.subgrid || item.subgrid,
+          grid: p.grid || item.grid,
+          latitude: p.latitude ?? p.lat ?? p.y,
+          longitude: p.longitude ?? p.lon ?? p.lng ?? p.x,
+          lat: p.lat ?? p.latitude ?? p.y,
+          lon: p.lon ?? p.longitude ?? p.lng ?? p.x,
+          lng: p.lng ?? p.longitude ?? p.lon ?? p.x,
+          y: p.y ?? p.latitude ?? p.lat,
+          x: p.x ?? p.longitude ?? p.lon ?? p.lng,
+          date: p.date ?? p.captured_at,
+          captured_at: p.captured_at ?? p.date,
+          status: pointStatusVal,
+          qa_status: pointStatusVal,
+          publishToWebGIS: statusVal,
+          publishToUSVPRO: statusVal,
+          isPublished: isPub,
+          published: isPub,
+          is_defect: isPointDefect,
+          isDefect: isPointDefect,
+          opacity: pointOp,
+          fillOpacity: pointOp,
+          strokeOpacity: pointOp,
+          color: pointColorHex,
+          statusColor: pointColorHex,
+          strokeColor: pointColorHex,
+          fillColor: pointColorHex
+        };
+      });
 
       return {
         subgrid: item.subgrid,
@@ -874,7 +914,7 @@ const MapComponent = ({
         points: formattedPans
       };
     });
-  }, [stagedItems]);
+  }, [stagedItems, defectsList]);
 
   const sendStagedData = React.useCallback(() => {
     if (iframeRef.current && iframeRef.current.contentWindow && formattedStagedItems.length > 0) {
@@ -899,9 +939,29 @@ const MapComponent = ({
           statusFilters: { published: true, defect: true, stitching: true },
           showPanotrackData: true
         }, '*');
+
+        // 4. Send QAQC_DEFECTS_SYNC with all known defect items
+        const defectsArray: any[] = [];
+        try {
+          const cachedMap = JSON.parse(localStorage.getItem('app_qaqc_audit_cache_v2') || '{}');
+          Object.values(cachedMap).forEach((rec: any) => {
+            if (rec && Array.isArray(rec.defectsList)) {
+              defectsArray.push(...rec.defectsList);
+            }
+          });
+        } catch (_) {}
+        if (Array.isArray(defectsList)) {
+          defectsArray.push(...defectsList);
+        }
+        if (defectsArray.length > 0) {
+          iframeRef.current.contentWindow.postMessage({
+            type: 'QAQC_DEFECTS_SYNC',
+            defects: defectsArray
+          }, '*');
+        }
       } catch (e) { }
     }
-  }, [formattedStagedItems, dataManagement]);
+  }, [formattedStagedItems, dataManagement, defectsList]);
 
   const syncMapSettings = React.useCallback(() => {
     if (!iframeRef.current || !iframeRef.current.contentWindow) return;
@@ -3183,374 +3243,414 @@ const DataManagementPage = ({
                 </div>
               )}
 
-              <div className="bg-card border border-subtle rounded-2xl overflow-x-auto shadow-xl">
-                <table className="w-full text-left">
-                  <thead className="bg-card text-text-muted border-b border-subtle">
-                    <tr>
-                      <th className="px-3 py-3.5 w-10 text-center">
-                        <input
-                          type="checkbox"
-                          checked={
-                            dataTab === 'batches'
-                              ? paginatedBatchLogs.length > 0 && paginatedBatchLogs.every(b => selectedRowIds.has(getItemId(b)))
-                              : paginatedDailyData.length > 0 && paginatedDailyData.every(d => selectedRowIds.has(getItemId(d)))
-                          }
-                          onChange={(e) => {
-                            const currentList = dataTab === 'batches' ? paginatedBatchLogs : paginatedDailyData;
-                            if (e.target.checked) {
-                              setSelectedRowIds(prev => {
-                                const next = new Set(prev);
-                                currentList.forEach(item => next.add(getItemId(item)));
-                                return next;
-                              });
-                            } else {
-                              setSelectedRowIds(prev => {
-                                const next = new Set(prev);
-                                currentList.forEach(item => next.delete(getItemId(item)));
-                                return next;
-                              });
+              <div className="bg-card border border-subtle rounded-2xl shadow-xl overflow-hidden flex flex-col">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left">
+                    <thead className="bg-card text-text-muted border-b border-subtle">
+                      <tr>
+                        <th className="px-3 py-3.5 w-10 text-center">
+                          <input
+                            type="checkbox"
+                            checked={
+                              dataTab === 'batches'
+                                ? paginatedBatchLogs.length > 0 && paginatedBatchLogs.every(b => selectedRowIds.has(getItemId(b)))
+                                : paginatedDailyData.length > 0 && paginatedDailyData.every(d => selectedRowIds.has(getItemId(d)))
                             }
-                          }}
-                          className="rounded border-subtle bg-app text-sky-500 focus:ring-sky-500 cursor-pointer w-4 h-4 accent-sky-500"
-                          title="Select / Deselect all rows"
-                        />
-                      </th>
+                            onChange={(e) => {
+                              const currentList = dataTab === 'batches' ? paginatedBatchLogs : paginatedDailyData;
+                              if (e.target.checked) {
+                                setSelectedRowIds(prev => {
+                                  const next = new Set(prev);
+                                  currentList.forEach(item => next.add(getItemId(item)));
+                                  return next;
+                                });
+                              } else {
+                                setSelectedRowIds(prev => {
+                                  const next = new Set(prev);
+                                  currentList.forEach(item => next.delete(getItemId(item)));
+                                  return next;
+                                });
+                              }
+                            }}
+                            className="rounded border-subtle bg-app text-sky-500 focus:ring-sky-500 cursor-pointer w-4 h-4 accent-sky-500"
+                            title="Select / Deselect all rows"
+                          />
+                        </th>
+                        {dataTab === 'batches' ? (
+                          <>
+                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Date</th>
+                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Grid</th>
+                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Subgrid</th>
+                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">POI</th>
+                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Distance (km)</th>
+                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Images</th>
+                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Defects</th>
+                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">PIC</th>
+                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Status</th>
+                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Configure</th>
+                          </>
+                        ) : (
+                          <>
+                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Date</th>
+                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Grid</th>
+                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Subgrid</th>
+                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">POI</th>
+                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">KM Processed</th>
+                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Images Processed</th>
+                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Capture Equipment</th>
+                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Defects</th>
+                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">PIC</th>
+                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Publish to WEBGIS</th>
+                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Status</th>
+                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Configure</th>
+                          </>
+                        )}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800">
                       {dataTab === 'batches' ? (
-                        <>
-                          <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Date</th>
-                          <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Grid</th>
-                          <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Subgrid</th>
-                          <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">POI</th>
-                          <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Distance (km)</th>
-                          <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Images</th>
-                          <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Defects</th>
-                          <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">PIC</th>
-                          <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Status</th>
-                          <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Configure</th>
-                        </>
-                      ) : (
-                        <>
-                          <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Date</th>
-                          <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Grid</th>
-                          <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Subgrid</th>
-                          <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">POI</th>
-                          <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">KM Processed</th>
-                          <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Images Processed</th>
-                          <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Capture Equipment</th>
-                          <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Defects</th>
-                          <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">PIC</th>
-                          <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Publish to WEBGIS</th>
-                          <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Status</th>
-                          <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Configure</th>
-                        </>
-                      )}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800">
-                    {dataTab === 'batches' ? (
-                      paginatedBatchLogs.length > 0 ? (
-                        paginatedBatchLogs.map((batch, index) => {
-                          const batchSubgrid = (extractSubgridName(batch.subgrid || batch.imageFilename) || '').toUpperCase().trim();
-                          return (
-                            <tr
-                              key={batch.id || `b-${index}`}
-                              className="hover:bg-inner transition-all text-slate-300"
-                            >
-                              <td className="px-3 py-3.5 w-10 text-center" onClick={(e) => e.stopPropagation()}>
-                                <input
-                                  type="checkbox"
-                                  checked={selectedRowIds.has(getItemId(batch))}
-                                  onChange={(e) => {
-                                    const id = getItemId(batch);
-                                    setSelectedRowIds(prev => {
-                                      const next = new Set(prev);
-                                      if (e.target.checked) next.add(id);
-                                      else next.delete(id);
-                                      return next;
-                                    });
-                                  }}
-                                  className="rounded border-subtle bg-app text-sky-500 focus:ring-sky-500 cursor-pointer w-4 h-4 accent-sky-500"
-                                />
-                              </td>
-                              <td className="px-4 py-3.5 font-mono text-xs text-slate-300 whitespace-nowrap">{formatDisplayDate(batch.date)}</td>
-                              <td className="px-4 py-3.5 font-mono text-text-base font-semibold whitespace-nowrap">{batch.grid}</td>
-                              <td className="px-4 py-3.5 font-semibold text-text-base whitespace-nowrap flex items-center gap-2">
-                                <span>{batchSubgrid}</span>
-                              </td>
-                              <td className="px-4 py-3.5 font-mono text-xs text-text-base font-semibold whitespace-nowrap">{getPOICount(batch).toLocaleString()}</td>
-                              <td className="px-4 py-3.5 font-semibold text-slate-300 whitespace-nowrap">{batch.kmProcessed.toFixed(1)}</td>
-                              <td className="px-4 py-3.5 whitespace-nowrap">
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    const customFn = batch.availableFilenames && batch.availableFilenames.length > 0
-                                      ? batch.availableFilenames
-                                      : (batch.panoramas && batch.panoramas.length > 0
-                                        ? batch.panoramas.filter((p: any) => p.isAvailable !== false).map((p: any) => p.filename).filter((f): f is string => Boolean(f))
-                                        : undefined);
-                                    setImagesListModal({
+                        paginatedBatchLogs.length > 0 ? (
+                          paginatedBatchLogs.map((batch, index) => {
+                            const batchSubgrid = (extractSubgridName(batch.subgrid || batch.imageFilename) || '').toUpperCase().trim();
+                            return (
+                              <tr
+                                key={batch.id || `b-${index}`}
+                                className="hover:bg-inner transition-all text-slate-300"
+                              >
+                                <td className="px-3 py-3.5 w-10 text-center" onClick={(e) => e.stopPropagation()}>
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedRowIds.has(getItemId(batch))}
+                                    onChange={(e) => {
+                                      const id = getItemId(batch);
+                                      setSelectedRowIds(prev => {
+                                        const next = new Set(prev);
+                                        if (e.target.checked) next.add(id);
+                                        else next.delete(id);
+                                        return next;
+                                      });
+                                    }}
+                                    className="rounded border-subtle bg-app text-sky-500 focus:ring-sky-500 cursor-pointer w-4 h-4 accent-sky-500"
+                                  />
+                                </td>
+                                <td className="px-4 py-3.5 font-mono text-xs text-slate-300 whitespace-nowrap">{formatDisplayDate(batch.date)}</td>
+                                <td className="px-4 py-3.5 font-mono text-text-base font-semibold whitespace-nowrap">{batch.grid}</td>
+                                <td className="px-4 py-3.5 font-semibold text-text-base whitespace-nowrap flex items-center gap-2">
+                                  <span>{batchSubgrid}</span>
+                                </td>
+                                <td className="px-4 py-3.5 font-mono text-xs text-text-base font-semibold whitespace-nowrap">{getPOICount(batch).toLocaleString()}</td>
+                                <td className="px-4 py-3.5 font-semibold text-slate-300 whitespace-nowrap">{batch.kmProcessed.toFixed(1)}</td>
+                                <td className="px-4 py-3.5 whitespace-nowrap">
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      const customFn = batch.availableFilenames && batch.availableFilenames.length > 0
+                                        ? batch.availableFilenames
+                                        : (batch.panoramas && batch.panoramas.length > 0
+                                          ? batch.panoramas.filter((p: any) => p.isAvailable !== false).map((p: any) => p.filename).filter((f): f is string => Boolean(f))
+                                          : undefined);
+                                      setImagesListModal({
+                                        isOpen: true,
+                                        subgrid: batchSubgrid,
+                                        count: getImagesProcessedCount(batch),
+                                        poiCount: getPOICount(batch),
+                                        baseFilename: batch.imageFilename,
+                                        customFilenames: customFn && customFn.length > 0 ? customFn : undefined
+                                      });
+                                    }}
+                                    className="text-text-base hover:text-text-base hover:underline font-semibold text-xs cursor-pointer inline-flex items-center gap-1.5 whitespace-nowrap"
+                                    title="Click to view list of image filenames"
+                                  >
+                                    <span>{getImagesProcessedCount(batch).toLocaleString()} frames</span>
+                                    <ExternalLink size={11} className="shrink-0 text-text-muted" />
+                                  </button>
+                                </td>
+                                <td className="px-4 py-3.5 text-slate-300 font-medium whitespace-nowrap">
+                                  {(() => {
+                                    let cachedDefects: number | undefined;
+                                    try {
+                                      const cachedMap = JSON.parse(localStorage.getItem('app_qaqc_audit_cache_v2') || '{}');
+                                      const cached = cachedMap[`${batchSubgrid}_default`];
+                                      if (cached && typeof cached.defectCount === 'number') {
+                                        cachedDefects = cached.defectCount;
+                                      }
+                                    } catch (_) { }
+
+                                    const count = (cachedDefects !== undefined && cachedDefects > 0)
+                                      ? cachedDefects
+                                      : (batch.defects && batch.defects > 0)
+                                        ? batch.defects
+                                        : 0;
+
+                                    return count;
+                                  })()}
+                                </td>
+                                <td className="px-4 py-3.5 text-slate-300 font-medium whitespace-nowrap">
+                                  {(batch.pic && batch.pic.trim().toLowerCase() !== 'unassigned') ? batch.pic : (activeAuthUserName || 'Admin')}
+                                </td>
+                                <td className="px-4 py-3.5 whitespace-nowrap">
+                                  <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${batch.status === 'Complete'
+                                    ? 'bg-inner text-text-base border border-subtle'
+                                    : 'bg-app text-text-muted border border-subtle'
+                                    }`}>
+                                    {batch.status === 'Complete' ? <CheckCircle size={10} className="text-emerald-400" /> : <Clock size={10} className="text-amber-400" />}
+                                    {batch.status}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3.5 flex items-center gap-2 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                                  <button
+                                    onClick={() => setQcModal({
                                       isOpen: true,
                                       subgrid: batchSubgrid,
-                                      count: getImagesProcessedCount(batch),
                                       poiCount: getPOICount(batch),
+                                      availableCount: getImagesProcessedCount(batch),
                                       baseFilename: batch.imageFilename,
-                                      customFilenames: customFn && customFn.length > 0 ? customFn : undefined
-                                    });
-                                  }}
-                                  className="text-text-base hover:text-text-base hover:underline font-semibold text-xs cursor-pointer inline-flex items-center gap-1.5 whitespace-nowrap"
-                                  title="Click to view list of image filenames"
-                                >
-                                  <span>{getImagesProcessedCount(batch).toLocaleString()} frames</span>
-                                  <ExternalLink size={11} className="shrink-0 text-text-muted" />
-                                </button>
-                              </td>
-                              <td className="px-4 py-3.5 text-slate-300 font-medium whitespace-nowrap">{batch.defects}</td>
-                              <td className="px-4 py-3.5 text-slate-300 font-medium whitespace-nowrap">
-                                {batch.pic && batch.pic.trim() ? batch.pic : 'Admin'}
-                              </td>
-                              <td className="px-4 py-3.5 whitespace-nowrap">
-                                <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${batch.status === 'Complete'
-                                  ? 'bg-inner text-text-base border border-subtle'
-                                  : 'bg-app text-text-muted border border-subtle'
-                                  }`}>
-                                  {batch.status === 'Complete' ? <CheckCircle size={10} className="text-emerald-400" /> : <Clock size={10} className="text-amber-400" />}
-                                  {batch.status}
-                                </span>
-                              </td>
-                              <td className="px-4 py-3.5 flex items-center gap-2 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                                <button
-                                  onClick={() => setQcModal({
-                                    isOpen: true,
-                                    subgrid: batchSubgrid,
-                                    poiCount: getPOICount(batch),
-                                    availableCount: getImagesProcessedCount(batch),
-                                    baseFilename: batch.imageFilename,
-                                    availableFilenames: batch.availableFilenames,
-                                    expectedFilenames: batch.panoramas?.map((p: any) => p.filename).filter(Boolean)
-                                  })}
-                                  className="px-2.5 py-1 rounded-lg border text-xs font-medium bg-inner hover:bg-slate-700 text-text-base border-subtle transition-all cursor-pointer flex items-center gap-1.5 shadow-sm"
-                                  title={`Run QC Audit for ${batchSubgrid}`}
-                                >
-                                  {getPOICount(batch) > getImagesProcessedCount(batch) ? (
-                                    <ShieldAlert size={14} className="text-red-400" />
+                                      availableFilenames: batch.availableFilenames,
+                                      expectedFilenames: batch.panoramas?.map((p: any) => p.filename).filter(Boolean)
+                                    })}
+                                    className="px-2.5 py-1 rounded-lg border text-xs font-medium bg-inner hover:bg-slate-700 text-text-base border-subtle transition-all cursor-pointer flex items-center gap-1.5 shadow-sm"
+                                    title={`Run QC Audit for ${batchSubgrid}`}
+                                  >
+                                    {getPOICount(batch) > getImagesProcessedCount(batch) ? (
+                                      <ShieldAlert size={14} className="text-red-400" />
+                                    ) : (
+                                      <ShieldCheck size={14} className="text-red-400" />
+                                    )}
+                                    <span>QC Audit</span>
+                                  </button>
+                                  {!isGuestUser ? (
+                                    <>
+                                      <button
+                                        onClick={() => {
+                                          setEditingItem(batch);
+                                          setIsFormOpen(true);
+                                        }}
+                                        className="text-text-muted hover:text-sky-400 transition-colors p-1"
+                                        title="Edit"
+                                      >
+                                        <Edit2 size={18} />
+                                      </button>
+                                      <button
+                                        onClick={() => initiateDelete(batch)}
+                                        className="text-text-muted hover:text-red-400 transition-colors p-1 cursor-pointer"
+                                        title="Delete Record (Admin Authorization Required)"
+                                      >
+                                        <Trash2 size={18} />
+                                      </button>
+                                    </>
                                   ) : (
-                                    <ShieldCheck size={14} className="text-red-400" />
+                                    <span className="text-[10px] text-slate-600 italic">View only</span>
                                   )}
-                                  <span>QC Audit</span>
-                                </button>
-                                {!isGuestUser ? (
-                                  <>
-                                    <button
-                                      onClick={() => {
-                                        setEditingItem(batch);
-                                        setIsFormOpen(true);
-                                      }}
-                                      className="text-text-muted hover:text-sky-400 transition-colors p-1"
-                                      title="Edit"
-                                    >
-                                      <Edit2 size={18} />
-                                    </button>
-                                    <button
-                                      onClick={() => initiateDelete(batch)}
-                                      className="text-text-muted hover:text-red-400 transition-colors p-1 cursor-pointer"
-                                      title="Delete Record (Admin Authorization Required)"
-                                    >
-                                      <Trash2 size={18} />
-                                    </button>
-                                  </>
-                                ) : (
-                                  <span className="text-[10px] text-slate-600 italic">View only</span>
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        })
+                                </td>
+                              </tr>
+                            );
+                          })
+                        ) : (
+                          <tr>
+                            <td colSpan={10} className="px-4 py-12 text-center text-text-muted">
+                              {searchQuery ? `No batch logs found matching "${searchQuery}"` : 'No batch logs available'}
+                            </td>
+                          </tr>
+                        )
                       ) : (
-                        <tr>
-                          <td colSpan={10} className="px-4 py-12 text-center text-text-muted">
-                            {searchQuery ? `No batch logs found matching "${searchQuery}"` : 'No batch logs available'}
-                          </td>
-                        </tr>
-                      )
-                    ) : (
-                      paginatedDailyData.length > 0 ? (
-                        paginatedDailyData.map((daily, index) => {
-                          const dailySubgrid = (daily.subgrid || '').toUpperCase().trim();
-                          const isPublished = daily.publishToWebGIS === 'yes';
-                          return (
-                            <tr
-                              key={daily.id || `d-${daily.date}-${daily.subgrid}-${index}`}
-                              className="hover:bg-inner transition-all text-slate-300"
-                            >
-                              <td className="px-3 py-3.5 w-10 text-center" onClick={(e) => e.stopPropagation()}>
-                                <input
-                                  type="checkbox"
-                                  checked={selectedRowIds.has(getItemId(daily))}
-                                  onChange={(e) => {
-                                    const id = getItemId(daily);
-                                    setSelectedRowIds(prev => {
-                                      const next = new Set(prev);
-                                      if (e.target.checked) next.add(id);
-                                      else next.delete(id);
-                                      return next;
-                                    });
-                                  }}
-                                  className="rounded border-subtle bg-app text-sky-500 focus:ring-sky-500 cursor-pointer w-4 h-4 accent-sky-500"
-                                />
-                              </td>
-                              <td className="px-4 py-3.5 text-slate-300 font-mono text-xs whitespace-nowrap">{formatDisplayDate(daily.date)}</td>
-                              <td className="px-4 py-3.5 text-text-base font-semibold whitespace-nowrap">{daily.grid}</td>
-                              <td className="px-4 py-3.5 text-text-base font-semibold whitespace-nowrap flex items-center gap-2">
-                                <span>{daily.subgrid}</span>
-                              </td>
-                              <td className="px-4 py-3.5 font-mono text-xs text-text-base font-semibold whitespace-nowrap">{getPOICount(daily).toLocaleString()}</td>
-                              <td className="px-4 py-3.5 text-slate-300 font-semibold whitespace-nowrap">{daily.kmProcessed.toFixed(1)}</td>
-                              <td className="px-4 py-3.5 whitespace-nowrap">
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    const subFilter = (extractSubgridName(dailySubgrid) || dailySubgrid).toUpperCase().trim();
-                                    const customFn = daily.availableFilenames && daily.availableFilenames.length > 0
-                                      ? daily.availableFilenames
-                                      : (daily.panoramas && daily.panoramas.length > 0
-                                        ? daily.panoramas.filter((p: any) => p.isAvailable !== false).map((p: any) => p.filename).filter((f): f is string => Boolean(f) && (extractSubgridName(f) || '').toUpperCase().trim() === subFilter)
-                                        : undefined);
-                                    const rowFrameCount = getImagesProcessedCount(daily);
-                                    setImagesListModal({
-                                      isOpen: true,
-                                      subgrid: dailySubgrid,
-                                      count: customFn && customFn.length > 0 ? customFn.length : rowFrameCount,
-                                      poiCount: getPOICount(daily),
-                                      baseFilename: (daily.panoramas?.[0]?.filename) || `${dailySubgrid}-0001.jpg`,
-                                      customFilenames: customFn && customFn.length > 0 ? customFn : undefined
-                                    });
-                                  }}
-                                  className="text-text-base hover:text-text-base hover:underline font-semibold text-xs cursor-pointer inline-flex items-center gap-1.5 whitespace-nowrap"
-                                  title="Click to view list of image filenames"
-                                >
-                                  <span>{getImagesProcessedCount(daily).toLocaleString()} frames</span>
-                                  <ExternalLink size={11} className="shrink-0 text-text-muted" />
-                                </button>
-                              </td>
-                              <td className="px-4 py-3.5 whitespace-nowrap">
-                                <select
-                                  value={daily.captureEquipment || 'MMS'}
-                                  onChange={(e) => {
-                                    const val = e.target.value;
-                                    const updated = draftDailyData.map(d => getItemId(d) === getItemId(daily) ? { ...d, captureEquipment: val } : d);
-                                    setDraftDailyData(updated);
-                                    setDailyData(updated);
-                                    setBatchLogs(reconcileBatchLogs(updated, batchLogs));
-                                  }}
-                                  className="bg-app border border-subtle rounded-lg px-2 py-1 text-xs font-semibold text-text-base focus:outline-none focus:ring-1 focus:ring-slate-500 cursor-pointer"
-                                >
-                                  <option value="MMS" className="bg-app text-text-base">MMS</option>
-                                  <option value="Backpack" className="bg-app text-text-base">Backpack</option>
-                                  <option value="Drone" className="bg-app text-text-base">Drone</option>
-                                  <option value="Handheld" className="bg-app text-text-base">Handheld</option>
-                                </select>
-                              </td>
-                              <td className="px-4 py-3.5 text-slate-300 font-medium whitespace-nowrap">
-                                {(() => {
-                                  const matchBatch = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === dailySubgrid);
-                                  return (daily.imagesDefected !== undefined && daily.imagesDefected !== null)
-                                    ? daily.imagesDefected
-                                    : (daily.defectCount !== undefined && daily.defectCount !== null)
-                                      ? daily.defectCount
-                                      : (matchBatch?.defects ?? 0);
-                                })()}
-                              </td>
-                              <td className="px-4 py-3.5 text-slate-300 font-medium whitespace-nowrap">
-                                {daily.pic && daily.pic.trim() ? daily.pic : (activeAuthUserName || (authSession?.user?.email ? authSession.user.email.split('@')[0] : '') || 'Operator')}
-                              </td>
-                              <td className="px-4 py-3.5 whitespace-nowrap">
-                                <select
-                                  value={daily.publishToWebGIS || 'in process'}
-                                  onChange={(e) => {
-                                    const val = e.target.value as DailyTimeSeries['publishToWebGIS'];
-                                    if (val === 'yes') {
-                                      handlePublishRecord(daily);
-                                    } else {
-                                      const updated = draftDailyData.map(d => getItemId(d) === getItemId(daily) ? { ...d, publishToWebGIS: val, isSyncedWithSupabase: false } : d);
+                        paginatedDailyData.length > 0 ? (
+                          paginatedDailyData.map((daily, index) => {
+                            const dailySubgrid = (daily.subgrid || '').toUpperCase().trim();
+                            const isPublished = daily.publishToWebGIS === 'yes';
+                            return (
+                              <tr
+                                key={daily.id || `d-${daily.date}-${daily.subgrid}-${index}`}
+                                className="hover:bg-inner transition-all text-slate-300"
+                              >
+                                <td className="px-3 py-3.5 w-10 text-center" onClick={(e) => e.stopPropagation()}>
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedRowIds.has(getItemId(daily))}
+                                    onChange={(e) => {
+                                      const id = getItemId(daily);
+                                      setSelectedRowIds(prev => {
+                                        const next = new Set(prev);
+                                        if (e.target.checked) next.add(id);
+                                        else next.delete(id);
+                                        return next;
+                                      });
+                                    }}
+                                    className="rounded border-subtle bg-app text-sky-500 focus:ring-sky-500 cursor-pointer w-4 h-4 accent-sky-500"
+                                  />
+                                </td>
+                                <td className="px-4 py-3.5 text-slate-300 font-mono text-xs whitespace-nowrap">{formatDisplayDate(daily.date)}</td>
+                                <td className="px-4 py-3.5 text-text-base font-semibold whitespace-nowrap">{daily.grid}</td>
+                                <td className="px-4 py-3.5 text-text-base font-semibold whitespace-nowrap flex items-center gap-2">
+                                  <span>{daily.subgrid}</span>
+                                </td>
+                                <td className="px-4 py-3.5 font-mono text-xs text-text-base font-semibold whitespace-nowrap">{getPOICount(daily).toLocaleString()}</td>
+                                <td className="px-4 py-3.5 text-slate-300 font-semibold whitespace-nowrap">{daily.kmProcessed.toFixed(1)}</td>
+                                <td className="px-4 py-3.5 whitespace-nowrap">
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      const subFilter = (extractSubgridName(dailySubgrid) || dailySubgrid).toUpperCase().trim();
+                                      const customFn = daily.availableFilenames && daily.availableFilenames.length > 0
+                                        ? daily.availableFilenames
+                                        : (daily.panoramas && daily.panoramas.length > 0
+                                          ? daily.panoramas.filter((p: any) => p.isAvailable !== false).map((p: any) => p.filename).filter((f): f is string => Boolean(f) && (extractSubgridName(f) || '').toUpperCase().trim() === subFilter)
+                                          : undefined);
+                                      const rowFrameCount = getImagesProcessedCount(daily);
+                                      setImagesListModal({
+                                        isOpen: true,
+                                        subgrid: dailySubgrid,
+                                        count: customFn && customFn.length > 0 ? customFn.length : rowFrameCount,
+                                        poiCount: getPOICount(daily),
+                                        baseFilename: (daily.panoramas?.[0]?.filename) || `${dailySubgrid}-0001.jpg`,
+                                        customFilenames: customFn && customFn.length > 0 ? customFn : undefined
+                                      });
+                                    }}
+                                    className="text-text-base hover:text-text-base hover:underline font-semibold text-xs cursor-pointer inline-flex items-center gap-1.5 whitespace-nowrap"
+                                    title="Click to view list of image filenames"
+                                  >
+                                    <span>{getImagesProcessedCount(daily).toLocaleString()} frames</span>
+                                    <ExternalLink size={11} className="shrink-0 text-text-muted" />
+                                  </button>
+                                </td>
+                                <td className="px-4 py-3.5 whitespace-nowrap">
+                                  <select
+                                    value={daily.captureEquipment || 'MMS'}
+                                    onChange={(e) => {
+                                      const val = e.target.value;
+                                      const updated = draftDailyData.map(d => getItemId(d) === getItemId(daily) ? { ...d, captureEquipment: val } : d);
                                       setDraftDailyData(updated);
                                       setDailyData(updated);
-                                    }
-                                  }}
-                                  className="bg-app border border-subtle rounded-lg px-2 py-1 text-xs font-semibold text-text-base focus:outline-none focus:ring-1 focus:ring-slate-500 cursor-pointer"
-                                >
-                                  <option value="in process" className="bg-app text-slate-300">in process</option>
-                                  <option value="yes" className="bg-app text-text-base">yes (Publish)</option>
-                                  <option value="need to recheck" className="bg-app text-slate-300">need to recheck</option>
-                                  <option value="no" className="bg-app text-text-muted">no</option>
-                                </select>
-                              </td>
-                              <td className="px-4 py-3.5 whitespace-nowrap">
-                                {isPublished ? (
-                                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold bg-inner text-text-base border border-subtle">
-                                    <CheckCircle size={12} className="text-emerald-400" />
-                                    published in database
-                                  </span>
-                                ) : (
-                                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold bg-app text-text-muted border border-subtle">
-                                    <Clock size={12} className="text-amber-400" />
-                                    ready to publish
-                                  </span>
-                                )}
-                              </td>
-                              <td className="px-4 py-3.5 flex items-center gap-2 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                                {!isGuestUser ? (
-                                  <>
-                                    <button
-                                      onClick={() => handlePublishRecord(daily)}
-                                      disabled={isPublished || publishingId === getItemId(daily)}
-                                      className={`transition-colors p-1 ${isPublished ? 'text-slate-600 cursor-not-allowed opacity-40' : 'text-emerald-400 hover:text-emerald-300 cursor-pointer'}`}
-                                      title={isPublished ? 'Already published in database' : 'Click to publish to database'}
-                                    >
-                                      {publishingId === getItemId(daily) ? (
-                                        <RefreshCw size={18} className="animate-spin text-sky-400" />
-                                      ) : (
-                                        <Database size={18} />
-                                      )}
-                                    </button>
-                                    <button
-                                      onClick={() => {
-                                        setEditingItem(daily);
-                                        setIsFormOpen(true);
-                                      }}
-                                      className="text-text-muted hover:text-sky-400 transition-colors p-1 cursor-pointer"
-                                      title="Edit Record"
-                                    >
-                                      <Edit2 size={18} />
-                                    </button>
-                                    <button
-                                      onClick={() => initiateDelete(daily)}
-                                      className="text-text-muted hover:text-red-400 transition-colors p-1 cursor-pointer"
-                                      title="Delete Record (Admin Authorization Required)"
-                                    >
-                                      <Trash2 size={18} />
-                                    </button>
-                                  </>
-                                ) : (
-                                  <span className="text-[10px] text-slate-600 italic">View only</span>
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        })
-                      ) : (
-                        <tr>
-                          <td colSpan={12} className="px-4 py-12 text-center text-text-muted">
-                            {searchQuery ? `No daily records found matching "${searchQuery}"` : 'No daily data available'}
-                          </td>
-                        </tr>
-                      )
-                    )}
-                  </tbody>
-                </table>
+                                      setBatchLogs(reconcileBatchLogs(updated, batchLogs));
+                                    }}
+                                    className="bg-app border border-subtle rounded-lg px-2 py-1 text-xs font-semibold text-text-base focus:outline-none focus:ring-1 focus:ring-slate-500 cursor-pointer"
+                                  >
+                                    <option value="MMS" className="bg-app text-text-base">MMS</option>
+                                    <option value="Backpack" className="bg-app text-text-base">Backpack</option>
+                                    <option value="Drone" className="bg-app text-text-base">Drone</option>
+                                    <option value="Handheld" className="bg-app text-text-base">Handheld</option>
+                                  </select>
+                                </td>
+                                <td className="px-4 py-3.5 text-slate-300 font-medium whitespace-nowrap">
+                                  {(() => {
+                                    const runId = getItemId(daily);
+                                    let cachedDefects: number | undefined;
+                                    try {
+                                      const cachedMap = JSON.parse(localStorage.getItem('app_qaqc_audit_cache_v2') || '{}');
+                                      const cached = (runId && cachedMap[`${dailySubgrid}_${runId}`]) || cachedMap[`${dailySubgrid}_default`];
+                                      if (cached && typeof cached.defectCount === 'number') {
+                                        cachedDefects = cached.defectCount;
+                                      }
+                                    } catch (_) { }
+
+                                    const matchBatch = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === dailySubgrid);
+
+                                    const count = (cachedDefects !== undefined && cachedDefects > 0)
+                                      ? cachedDefects
+                                      : (daily.imagesDefected !== undefined && daily.imagesDefected > 0)
+                                        ? daily.imagesDefected
+                                        : (daily.defectCount !== undefined && daily.defectCount > 0)
+                                          ? daily.defectCount
+                                          : (matchBatch?.defects && matchBatch.defects > 0)
+                                            ? matchBatch.defects
+                                            : 0;
+
+                                    return count;
+                                  })()}
+                                </td>
+                                <td className="px-4 py-3.5 text-slate-300 font-medium whitespace-nowrap">
+                                  {(daily.pic && daily.pic.trim().toLowerCase() !== 'unassigned')
+                                    ? daily.pic
+                                    : (activeAuthUserName || (authSession?.user?.email ? authSession.user.email.split('@')[0] : '') || 'Operator')}
+                                </td>
+                                <td className="px-4 py-3.5 whitespace-nowrap">
+                                  <select
+                                    value={daily.publishToWebGIS || 'in process'}
+                                    onChange={(e) => {
+                                      const val = e.target.value as DailyTimeSeries['publishToWebGIS'];
+                                      if (val === 'yes') {
+                                        handlePublishRecord(daily);
+                                      } else {
+                                        const updated = draftDailyData.map(d => getItemId(d) === getItemId(daily) ? { ...d, publishToWebGIS: val, isSyncedWithSupabase: false } : d);
+                                        setDraftDailyData(updated);
+                                        setDailyData(updated);
+                                      }
+                                    }}
+                                    className="bg-app border border-subtle rounded-lg px-2 py-1 text-xs font-semibold text-text-base focus:outline-none focus:ring-1 focus:ring-slate-500 cursor-pointer"
+                                  >
+                                    <option value="in process" className="bg-app text-slate-300">In Process</option>
+                                    <option value="yes" className="bg-app text-text-base">Yes - Publish</option>
+                                    <option value="need to recheck" className="bg-app text-slate-300">Need to Recheck</option>
+                                    <option value="no" className="bg-app text-text-muted">No</option>
+                                  </select>
+                                </td>
+                                <td className="px-4 py-3.5 whitespace-nowrap">
+                                  {isPublished ? (
+                                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold bg-inner text-slate-300 border border-subtle">
+                                      <CheckCircle size={12} className="text-emerald-400 shrink-0" />
+                                      Published in database
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold bg-inner text-slate-300 border border-subtle">
+                                      <Clock size={12} className="text-amber-400 shrink-0" />
+                                      Ready to publish
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="px-4 py-3.5 flex items-center gap-2 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                                  {!isGuestUser ? (
+                                    <>
+                                      <button
+                                        onClick={() => handlePublishRecord(daily)}
+                                        disabled={isPublished || publishingId === getItemId(daily)}
+                                        className={`transition-colors p-1 ${isPublished ? 'text-slate-600 cursor-not-allowed opacity-40' : 'text-emerald-400 hover:text-emerald-300 cursor-pointer'}`}
+                                        title={isPublished ? 'Already published in database' : 'Click to publish to database'}
+                                      >
+                                        {publishingId === getItemId(daily) ? (
+                                          <RefreshCw size={18} className="animate-spin text-sky-400" />
+                                        ) : (
+                                          <Database size={18} />
+                                        )}
+                                      </button>
+                                      <button
+                                        onClick={() => {
+                                          setEditingItem(daily);
+                                          setIsFormOpen(true);
+                                        }}
+                                        className="text-text-muted hover:text-sky-400 transition-colors p-1 cursor-pointer"
+                                        title="Edit Record"
+                                      >
+                                        <Edit2 size={18} />
+                                      </button>
+                                      <button
+                                        onClick={() => initiateDelete(daily)}
+                                        className="text-text-muted hover:text-red-400 transition-colors p-1 cursor-pointer"
+                                        title="Delete Record (Admin Authorization Required)"
+                                      >
+                                        <Trash2 size={18} />
+                                      </button>
+                                    </>
+                                  ) : (
+                                    <span className="text-[10px] text-slate-600 italic">View only</span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })
+                        ) : (
+                          <tr>
+                            <td colSpan={12} className="px-4 py-12 text-center text-text-muted">
+                              {searchQuery ? `No daily records found matching "${searchQuery}"` : 'No daily data available'}
+                            </td>
+                          </tr>
+                        )
+                      )}
+                    </tbody>
+                  </table>
+                </div>
 
                 {/* Pagination Controls Footer */}
                 {totalItems > 0 && (
-                  <div className="px-6 py-4 bg-app border-t border-subtle flex flex-wrap items-center justify-between gap-4 text-xs text-text-muted">
+                  <div className="px-5 py-3 bg-card border-t border-subtle flex flex-wrap items-center justify-between gap-3 text-xs text-text-muted">
                     <div className="flex items-center gap-4">
                       <span>
                         Showing <strong className="text-text-base">{(safePage - 1) * pageSize + 1}</strong> to{' '}
@@ -3562,7 +3662,7 @@ const DataManagementPage = ({
                         <select
                           value={pageSize}
                           onChange={(e) => setPageSize(Number(e.target.value))}
-                          className="bg-inner border border-subtle text-text-base rounded px-2 py-1 focus:outline-none focus:border-sky-500"
+                          className="bg-inner border border-subtle text-text-base rounded px-2 py-1 focus:outline-none focus:border-sky-500 cursor-pointer"
                         >
                           <option value={10}>10</option>
                           <option value={25}>25</option>
@@ -3576,20 +3676,20 @@ const DataManagementPage = ({
                       <button
                         onClick={() => setPage(p => Math.max(1, p - 1))}
                         disabled={safePage === 1}
-                        className="flex items-center gap-1 px-3 py-1.5 rounded bg-inner hover:bg-slate-700 disabled:opacity-40 disabled:hover:bg-inner text-slate-300 font-medium transition-colors"
+                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-inner hover:bg-slate-700 disabled:opacity-40 disabled:hover:bg-inner text-slate-300 font-medium transition-colors cursor-pointer"
                       >
                         <ChevronLeft size={14} />
                         Previous
                       </button>
 
-                      <span className="px-3 py-1 bg-inner rounded text-text-base font-semibold">
+                      <span className="px-3 py-1 bg-inner rounded-lg text-text-base font-semibold border border-subtle">
                         Page {safePage} of {totalPages}
                       </span>
 
                       <button
                         onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                         disabled={safePage === totalPages}
-                        className="flex items-center gap-1 px-3 py-1.5 rounded bg-inner hover:bg-slate-700 disabled:opacity-40 disabled:hover:bg-inner text-slate-300 font-medium transition-colors"
+                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-inner hover:bg-slate-700 disabled:opacity-40 disabled:hover:bg-inner text-slate-300 font-medium transition-colors cursor-pointer"
                       >
                         Next
                         <ChevronRight size={14} />
@@ -3598,8 +3698,6 @@ const DataManagementPage = ({
                   </div>
                 )}
               </div>
-
-
             </>
           )}
 
@@ -4889,6 +4987,22 @@ export default function App() {
   // 1. Core Dynamic States
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>([]);
+  const [readAuditIds, setReadAuditIds] = useState<Set<string>>(() => {
+    try {
+      const raw = localStorage.getItem('app_read_audit_ids');
+      return raw ? new Set(JSON.parse(raw)) : new Set();
+    } catch (_) {
+      return new Set();
+    }
+  });
+  const [readNotifIds, setReadNotifIds] = useState<Set<string>>(() => {
+    try {
+      const raw = localStorage.getItem('app_read_notif_ids');
+      return raw ? new Set(JSON.parse(raw)) : new Set();
+    } catch (_) {
+      return new Set();
+    }
+  });
   const [dailyData, setDailyData] = useState<DailyTimeSeries[]>([]);
   const [batchLogs, setBatchLogs] = useState<BatchLog[]>([]);
   const [qaSubgridRecords, setQaSubgridRecords] = useState<Record<string, {
@@ -5314,22 +5428,28 @@ export default function App() {
         // Process Audit Logs
         if (dbAuditLogs.status === 'fulfilled' && dbAuditLogs.value.length > 0) {
           setAuditLogs(prev => {
-            const prevReadMap = new Map(prev.map(p => [String(p.id), p.read]));
-            return dbAuditLogs.value.map((a: any) => ({
-              ...a,
-              read: prevReadMap.has(String(a.id)) ? Boolean(prevReadMap.get(String(a.id))) : Boolean(a.read)
-            }));
+            return dbAuditLogs.value.map((a: any) => {
+              const strId = String(a.id);
+              const isRead = Boolean(a.read) || readAuditIds.has(strId) || readAuditIds.has(`audit-${strId}`) || prev.some(p => String(p.id) === strId && p.read);
+              return {
+                ...a,
+                read: isRead
+              };
+            });
           });
         }
 
         // Process Notifications
         if (dbNotifications.status === 'fulfilled' && dbNotifications.value.length > 0) {
           setNotifications(prev => {
-            const prevReadMap = new Map(prev.map(p => [String(p.id), p.read]));
-            return dbNotifications.value.map((n: any) => ({
-              ...n,
-              read: prevReadMap.has(String(n.id)) ? Boolean(prevReadMap.get(String(n.id))) : Boolean(n.read)
-            }));
+            return dbNotifications.value.map((n: any) => {
+              const strId = String(n.id);
+              const isRead = Boolean(n.read) || readNotifIds.has(strId) || readNotifIds.has(`notif-${strId}`) || prev.some(p => String(p.id) === strId && p.read);
+              return {
+                ...n,
+                read: isRead
+              };
+            });
           });
         }
       } catch (err) {
@@ -5399,38 +5519,93 @@ export default function App() {
   } = useQAQCWorker();
 
   const [_liveDefectCount, setLiveDefectCount] = useState<number>(0);
+  const [qaqcAuditVersion, setQaqcAuditVersion] = useState<number>(0);
+
+  useEffect(() => {
+    const handleAuditUpdate = () => {
+      setQaqcAuditVersion(v => v + 1);
+    };
+    window.addEventListener('qaqc_audit_updated', handleAuditUpdate);
+    window.addEventListener('storage', handleAuditUpdate);
+    return () => {
+      window.removeEventListener('qaqc_audit_updated', handleAuditUpdate);
+      window.removeEventListener('storage', handleAuditUpdate);
+    };
+  }, []);
 
   const totalDefects = useMemo(() => {
-    return dailyData.reduce((sum, d) => {
-      const dailySubgrid = (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim();
-      const runId = getItemId(d);
-      const isThisRowActive = (qaqcWorkerState.isRunning || qaqcWorkerState.isCompleted) && (
-        qaqcWorkerState.runId ? qaqcWorkerState.runId === runId : qaqcWorkerState.subgrid === dailySubgrid
-      );
+    let cachedMap: Record<string, any> = {};
+    try {
+      cachedMap = JSON.parse(localStorage.getItem('app_qaqc_audit_cache_v2') || '{}');
+    } catch (_) { }
 
-      let parsedStatusDefects = 0;
-      if (d.qaqcStatus) {
-        const m = d.qaqcStatus.match(/(\d+)\s+Defect/i);
-        if (m) parsedStatusDefects = parseInt(m[1], 10);
+    if (dailyData.length > 0) {
+      return dailyData.reduce((sum, d) => {
+        const dailySubgrid = (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim();
+        const runId = getItemId(d);
+        const isThisRowActive = (qaqcWorkerState.isRunning || qaqcWorkerState.isCompleted) && (
+          qaqcWorkerState.runId ? qaqcWorkerState.runId === runId : qaqcWorkerState.subgrid === dailySubgrid
+        );
+
+        let cachedDefects: number | undefined;
+        const cached = (runId && cachedMap[`${dailySubgrid}_${runId}`]) || cachedMap[`${dailySubgrid}_default`];
+        if (cached && typeof cached.defectCount === 'number') {
+          cachedDefects = cached.defectCount;
+        }
+
+        let parsedStatusDefects = 0;
+        if (d.qaqcStatus) {
+          const m = d.qaqcStatus.match(/(\d+)\s+Defect/i);
+          if (m) parsedStatusDefects = parseInt(m[1], 10);
+        }
+
+        const count = isThisRowActive
+          ? qaqcWorkerState.defectsList.length
+          : (cachedDefects !== undefined && cachedDefects > 0)
+            ? cachedDefects
+            : (d.imagesDefected && d.imagesDefected > 0)
+              ? d.imagesDefected
+              : (d.defectCount && d.defectCount > 0)
+                ? d.defectCount
+                : (parsedStatusDefects > 0)
+                  ? parsedStatusDefects
+                  : 0;
+
+        return sum + count;
+      }, 0);
+    }
+
+    return batchLogs.reduce((sum, b) => {
+      const sg = (extractSubgridName(b.subgrid || b.imageFilename) || b.subgrid || '').toUpperCase().trim();
+      let cachedDefects: number | undefined;
+      const cached = cachedMap[`${sg}_default`];
+      if (cached && typeof cached.defectCount === 'number') {
+        cachedDefects = cached.defectCount;
       }
+
+      const isThisRowActive = (qaqcWorkerState.isRunning || qaqcWorkerState.isCompleted) && (
+        qaqcWorkerState.subgrid === sg
+      );
 
       const count = isThisRowActive
         ? qaqcWorkerState.defectsList.length
-        : (d.imagesDefected && d.imagesDefected > 0)
-          ? d.imagesDefected
-          : (d.defectCount && d.defectCount > 0)
-            ? d.defectCount
-            : (parsedStatusDefects > 0)
-              ? parsedStatusDefects
-              : 0;
+        : (cachedDefects !== undefined && cachedDefects > 0)
+          ? cachedDefects
+          : (b.defects && b.defects > 0)
+            ? b.defects
+            : 0;
 
       return sum + count;
     }, 0);
-  }, [dailyData, qaqcWorkerState.isRunning, qaqcWorkerState.isCompleted, qaqcWorkerState.defectsList.length, qaqcWorkerState.runId, qaqcWorkerState.subgrid]);
+  }, [dailyData, batchLogs, qaqcWorkerState.isRunning, qaqcWorkerState.isCompleted, qaqcWorkerState.defectsList.length, qaqcWorkerState.runId, qaqcWorkerState.subgrid, qaqcAuditVersion]);
 
-  const totalFramesForHealth = (dailyData.length > 0 || batchLogs.length > 0)
-    ? (dailyData.reduce((sum, d) => sum + (d.panoramas?.length || d.poiCount || d.imagesProcessed || 0), 0) || batchLogs.reduce((sum, b) => sum + (b.panoramas?.length || b.images || 0), 0))
-    : 0;
+  const totalFramesForHealth = useMemo(() => {
+    const dailyTotal = dailyData.reduce((sum, d) => sum + (d.imagesProcessed || d.panoramas?.length || d.poiCount || 0), 0);
+    if (dailyTotal > 0) return dailyTotal;
+    const batchTotal = batchLogs.reduce((sum, b) => sum + (b.images || b.panoramas?.length || 0), 0);
+    return batchTotal;
+  }, [dailyData, batchLogs]);
+
   const pipelineHealthPercent = totalFramesForHealth > 0
     ? (totalDefects === 0 ? '100.0' : Math.max(0, ((totalFramesForHealth - totalDefects) / totalFramesForHealth) * 100).toFixed(1))
     : '100.0';
@@ -5442,8 +5617,36 @@ export default function App() {
   const handleRefreshMap = () => {
     setMapRefreshKey(Date.now());
     fetchSupabaseData().then(({ dailyData: sDaily, batchLogs: sBatches }) => {
-      setDailyData(sDaily || []);
-      setBatchLogs(sBatches || []);
+      // Merge while preserving ongoing QA/QC inspection state and local defect records
+      setDailyData(prev => {
+        if (!sDaily || sDaily.length === 0) return prev;
+        return sDaily.map(sd => {
+          const matchedPrev = prev.find(p => getItemId(p) === getItemId(sd));
+          if (matchedPrev) {
+            return {
+              ...sd,
+              defectCount: (typeof matchedPrev.defectCount === 'number' && matchedPrev.defectCount > 0) ? matchedPrev.defectCount : sd.defectCount,
+              imagesDefected: (typeof matchedPrev.imagesDefected === 'number' && matchedPrev.imagesDefected > 0) ? matchedPrev.imagesDefected : sd.imagesDefected,
+              qaqcStatus: matchedPrev.qaqcStatus || sd.qaqcStatus
+            };
+          }
+          return sd;
+        });
+      });
+      setBatchLogs(prev => {
+        if (!sBatches || sBatches.length === 0) return prev;
+        return sBatches.map(sb => {
+          const matchedPrev = prev.find(p => p.subgrid === sb.subgrid || p.id === sb.id);
+          if (matchedPrev) {
+            return {
+              ...sb,
+              defects: (typeof matchedPrev.defects === 'number' && matchedPrev.defects > 0) ? matchedPrev.defects : sb.defects,
+              qaqcStatus: matchedPrev.qaqcStatus || sb.qaqcStatus
+            };
+          }
+          return sb;
+        });
+      });
     }).catch(err => console.warn('Refresh map live sync notice:', err));
   };
 
@@ -6158,6 +6361,10 @@ export default function App() {
                 <span class="spec-val">Supabase PostGIS Cloud Instance</span>
               </div>
               <div class="spec-row">
+                <span class="spec-key">Deliverable Image Processing Model:</span>
+                <span class="spec-val">${projectSettings?.deliverableModel === 'generative_fill' ? 'Generative Clean Fill (Full 80% ROI)' : 'Masked Vehicle (Top 52% ROI)'}</span>
+              </div>
+              <div class="spec-row">
                 <span class="spec-key">GPS Accuracy Tolerance Threshold:</span>
                 <span class="spec-val">≤ ${projectSettings?.minGpsAccuracyM || 1.0} meters</span>
               </div>
@@ -6413,18 +6620,26 @@ export default function App() {
       projectSettings,
       customThresholds,
       onDefectFound: (_defect, newDefectCount) => {
-        if (runId) {
+        const targetRunId = runId || selectedDailyRunId;
+        if (targetRunId) {
           setDailyData(prev => prev.map(d => {
-            if (getItemId(d) === runId) {
+            if (getItemId(d) === targetRunId || d.id === targetRunId || (d as any)._id === targetRunId || (d as any).runId === targetRunId) {
               return { ...d, defectCount: newDefectCount, imagesDefected: newDefectCount };
             }
             return d;
           }));
         } else if (cleanSub) {
-          setDailyData(prev => prev.map(d => {
-            const dSg = (extractSubgridName(d.subgrid) || '').toUpperCase().trim();
-            return dSg === cleanSub ? { ...d, defectCount: newDefectCount, imagesDefected: newDefectCount } : d;
-          }));
+          setDailyData(prev => {
+            // If multiple rows have the same subgrid, only update the one that has frames / is currently selected
+            const matchingRows = prev.filter(d => (extractSubgridName(d.subgrid) || '').toUpperCase().trim() === cleanSub);
+            const targetRow = matchingRows.find(d => getImagesProcessedCount(d) > 0) || matchingRows[0];
+            return prev.map(d => {
+              if (targetRow && d === targetRow) {
+                return { ...d, defectCount: newDefectCount, imagesDefected: newDefectCount };
+              }
+              return d;
+            });
+          });
         }
 
         if (cleanSub) {
@@ -6436,9 +6651,10 @@ export default function App() {
       },
       onComplete: (summary) => {
         const statusText = `QAQC Completed (${summary.defectsCount} Defect${summary.defectsCount === 1 ? '' : 's'} Found)`;
-        if (summary.runId) {
+        const targetRunId = summary.runId || selectedDailyRunId;
+        if (targetRunId) {
           setDailyData(prev => prev.map(d => {
-            if (getItemId(d) === summary.runId) {
+            if (getItemId(d) === targetRunId || d.id === targetRunId || (d as any)._id === targetRunId || (d as any).runId === targetRunId) {
               return {
                 ...d,
                 defectCount: summary.defectsCount,
@@ -6449,10 +6665,21 @@ export default function App() {
             return d;
           }));
         } else if (summary.subgrid) {
-          setDailyData(prev => prev.map(d => {
-            const dSg = (extractSubgridName(d.subgrid) || '').toUpperCase().trim();
-            return dSg === summary.subgrid ? { ...d, defectCount: summary.defectsCount, imagesDefected: summary.defectsCount, qaqcStatus: statusText } : d;
-          }));
+          setDailyData(prev => {
+            const matchingRows = prev.filter(d => (extractSubgridName(d.subgrid) || '').toUpperCase().trim() === summary.subgrid);
+            const targetRow = matchingRows.find(d => getImagesProcessedCount(d) > 0) || matchingRows[0];
+            return prev.map(d => {
+              if (targetRow && d === targetRow) {
+                return {
+                  ...d,
+                  defectCount: summary.defectsCount,
+                  imagesDefected: summary.defectsCount,
+                  qaqcStatus: statusText
+                };
+              }
+              return d;
+            });
+          });
         }
 
         if (summary.subgrid) {
@@ -7026,7 +7253,7 @@ export default function App() {
     <div
       data-theme={currentTheme}
       style={{ backgroundColor: 'var(--bg-app)', color: 'var(--text-primary)' }}
-      className="min-h-screen md:h-screen w-screen font-sans flex flex-col overflow-y-auto md:overflow-hidden transition-colors duration-200"
+      className="min-h-screen md:h-screen w-full max-w-full font-sans flex flex-col overflow-x-hidden overflow-y-auto md:overflow-hidden transition-colors duration-200"
     >
       {/* SLEEK GLASSMORPHIC TOAST NOTIFICATION FOR SETTINGS SAVE */}
       {settingsSaveToast && (
@@ -7044,18 +7271,21 @@ export default function App() {
       )}
 
       {/* TOP GLOBAL NAVBAR */}
-      <header className="h-14 bg-card border-b border-subtle px-4 flex items-center justify-between shrink-0 z-20">
-        <div className="flex flex-col select-none">
-          <h1 className="text-base sm:text-lg font-bold text-text-base tracking-tight font-sans leading-tight">
+      <header className="min-h-14 py-2 sm:py-0 px-3 sm:px-4 bg-card border-b border-subtle flex items-center justify-between shrink-0 z-20 gap-2">
+        <div className="flex flex-col select-none min-w-0">
+          <h1 className="text-sm sm:text-base md:text-lg font-bold text-text-base tracking-tight font-sans leading-tight truncate">
             {t('appTitle')}
           </h1>
-          <span className="text-[11px] text-text-muted font-normal tracking-normal mt-0.5">
+          <span className="text-[10px] sm:text-[11px] text-text-muted font-normal tracking-normal mt-0.5 hidden sm:inline truncate">
             Spatial Trajectory Processing &amp; Quality Assurance Pipeline
+          </span>
+          <span className="text-[9px] text-text-muted font-normal tracking-normal mt-0.5 sm:hidden truncate">
+            Spatial Pipeline
           </span>
         </div>
 
         {/* Top Right Controls */}
-        <div className={`flex items-center gap-3 text-text-muted relative transition-all duration-300 ${tourStep === 5 ? 'ring-2 ring-sky-400/90 shadow-[0_0_35px_rgba(56,189,248,0.4)] z-30 relative bg-app px-2 py-1 rounded-xl' : tourStep !== null ? 'opacity-30 blur-[1.5px] pointer-events-none' : ''
+        <div className={`flex items-center gap-1.5 sm:gap-3 text-text-muted relative shrink-0 transition-all duration-300 ${tourStep === 5 ? 'ring-2 ring-sky-400/90 shadow-[0_0_35px_rgba(56,189,248,0.4)] z-30 relative bg-app px-2 py-1 rounded-xl' : tourStep !== null ? 'opacity-30 blur-[1.5px] pointer-events-none' : ''
           }`}>
           {/* HELP & USER GUIDE ICON (Interactive Tour & Webmap Manual) */}
           <button
@@ -7600,18 +7830,19 @@ export default function App() {
                 <div className={`col-span-1 lg:col-span-7 min-h-[380px] lg:min-h-0 bg-card border border-[rgba(255,255,255,0.08)] backdrop-blur-md rounded-xl flex flex-col overflow-hidden relative transition-all duration-300 ${tourStep === 2 ? 'ring-2 ring-sky-400/90 shadow-[0_0_35px_rgba(56,189,248,0.4)] z-30 relative scale-[1.002]' : tourStep !== null ? 'opacity-30 blur-[1.5px] pointer-events-none' : ''
                   }`}>
                   {/* Header */}
-                  <div className="p-3 border-b border-[rgba(255,255,255,0.08)] flex items-center justify-between shrink-0 bg-card">
+                  <div className="p-2.5 sm:p-3 border-b border-[rgba(255,255,255,0.08)] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 shrink-0 bg-card">
                     <span className="text-xs font-bold uppercase tracking-wider text-slate-300">
                       INTERACTIVE COVERAGE MAP
                     </span>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap w-full sm:w-auto justify-end">
                       <button
                         onClick={generateExecutivePdfReport}
-                        className="px-3 py-1.5 bg-card hover:bg-card text-slate-300 hover:text-text-base border border-[rgba(255,255,255,0.12)] text-[11px] font-medium rounded-lg transition-all uppercase tracking-tight cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95"
+                        className="flex-1 sm:flex-none px-2.5 sm:px-3 py-1.5 bg-card hover:bg-inner text-slate-300 hover:text-text-base border border-[rgba(255,255,255,0.12)] text-[10px] sm:text-[11px] font-medium rounded-lg transition-all uppercase tracking-tight cursor-pointer flex items-center justify-center gap-1.5 shadow-sm active:scale-95 whitespace-nowrap"
                         title="Generate printable Executive PDF Summary Report"
                       >
-                        <FileText size={13} />
-                        <span>GENERATE EXECUTIVE PDF REPORT</span>
+                        <FileText size={13} className="shrink-0" />
+                        <span className="hidden xs:inline">GENERATE PDF REPORT</span>
+                        <span className="xs:hidden">PDF REPORT</span>
                       </button>
                       <button
                         onClick={() => {
@@ -7624,14 +7855,14 @@ export default function App() {
                             } catch (err) { }
                           });
                         }}
-                        className={`px-3 py-1.5 text-[11px] font-medium rounded-lg border transition-all uppercase tracking-tight flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95 ${isDrawingBBox
+                        className={`flex-1 sm:flex-none px-2.5 sm:px-3 py-1.5 text-[10px] sm:text-[11px] font-medium rounded-lg border transition-all uppercase tracking-tight flex items-center justify-center gap-1.5 cursor-pointer shadow-sm active:scale-95 whitespace-nowrap ${isDrawingBBox
                           ? 'bg-card border-slate-400 text-text-base'
-                          : 'bg-card hover:bg-card text-slate-300 border-[rgba(255,255,255,0.12)] hover:border-[rgba(255,255,255,0.2)]'
+                          : 'bg-card hover:bg-inner text-slate-300 border-[rgba(255,255,255,0.12)] hover:border-[rgba(255,255,255,0.2)]'
                           }`}
                         title="Toggle spatial bounding box rectangle filter on map"
                       >
-                        <Maximize2 size={13} />
-                        <span>{isDrawingBBox ? 'CLEAR BBOX FILTER' : 'SPATIAL FILTER (BBOX)'}</span>
+                        <Maximize2 size={13} className="shrink-0" />
+                        <span>{isDrawingBBox ? 'CLEAR BBOX' : 'BBOX FILTER'}</span>
                       </button>
                     </div>
                   </div>
@@ -7842,6 +8073,7 @@ export default function App() {
                           : dailyData
                       }
                       projectSettings={projectSettings}
+                      defectsList={qaqcWorkerState.defectsList}
                     />
                   </div>
                 </div>
@@ -7856,22 +8088,22 @@ export default function App() {
                       ? 'filter blur-[4px] opacity-25 pointer-events-none'
                       : ''
                     }`}>
-                    <div className="p-3 border-b border-[rgba(255,255,255,0.08)] flex items-center justify-between shrink-0 bg-card">
-                      <div className="flex items-center gap-3">
-                        <span className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-2">
-                          <Database size={14} className="text-sky-400" />
-                          PROCESSING CONTROL & ADMIN
+                    <div className="p-2.5 sm:p-3 border-b border-[rgba(255,255,255,0.08)] flex flex-wrap items-center justify-between gap-2 shrink-0 bg-card">
+                      <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+                        <span className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5 sm:gap-2">
+                          <Database size={14} className="text-sky-400 shrink-0" />
+                          <span>PROCESSING CONTROL & ADMIN</span>
                         </span>
-                        <div className="flex bg-card border border-[rgba(255,255,255,0.08)] rounded-lg p-0.5 text-[10px]">
+                        <div className="flex bg-inner border border-[rgba(255,255,255,0.08)] rounded-lg p-0.5 text-[10px]">
                           <button
                             onClick={() => setActiveTab('batches')}
-                            className={`px-2 py-0.5 rounded font-semibold transition-colors cursor-pointer ${activeTab === 'batches' ? 'bg-card text-text-base' : 'text-text-muted hover:text-text-base'}`}
+                            className={`px-2 py-0.5 rounded font-semibold transition-colors cursor-pointer ${activeTab === 'batches' ? 'bg-card text-text-base shadow-sm' : 'text-text-muted hover:text-text-base'}`}
                           >
                             Overall Progress ({activeBatchLogs.length})
                           </button>
                           <button
                             onClick={() => setActiveTab('daily')}
-                            className={`px-2 py-0.5 rounded font-semibold transition-colors cursor-pointer ${activeTab === 'daily' ? 'bg-card text-text-base' : 'text-text-muted hover:text-text-base'}`}
+                            className={`px-2 py-0.5 rounded font-semibold transition-colors cursor-pointer ${activeTab === 'daily' ? 'bg-card text-text-base shadow-sm' : 'text-text-muted hover:text-text-base'}`}
                           >
                             Daily Progress ({dailyData.length})
                           </button>
@@ -7893,7 +8125,7 @@ export default function App() {
                       </div>
                       <button
                         onClick={() => setCurrentPage('data')}
-                        className="px-3 py-1.5 bg-card hover:bg-card text-slate-300 hover:text-text-base border border-[rgba(255,255,255,0.12)] text-[11px] font-medium rounded-lg transition-all uppercase tracking-tight cursor-pointer shadow-sm"
+                        className="px-2.5 sm:px-3 py-1.5 bg-card hover:bg-inner text-slate-300 hover:text-text-base border border-[rgba(255,255,255,0.12)] text-[10px] sm:text-[11px] font-medium rounded-lg transition-all uppercase tracking-tight cursor-pointer shadow-sm ml-auto sm:ml-0"
                       >
                         RE-UPLOAD CSV
                       </button>
@@ -8132,7 +8364,11 @@ export default function App() {
                                         );
                                       })()}
                                     </td>
-                                    <td className="px-3.5 py-3.5 text-slate-300 font-medium whitespace-nowrap">{log.pic || 'Admin'}</td>
+                                    <td className="px-3.5 py-3.5 text-slate-300 font-medium whitespace-nowrap">
+                                      {(log.pic && log.pic.toLowerCase().trim() !== 'unassigned')
+                                        ? log.pic
+                                        : (activeAuthUserName || (authSession?.user?.email ? authSession.user.email.split('@')[0] : '') || 'Admin')}
+                                    </td>
                                     <td className="px-3.5 py-3.5 whitespace-nowrap">
                                       {qaqcWorkerState.isRunning && !qaqcWorkerState.runId && qaqcWorkerState.subgrid === batchSubgrid ? (
                                         <button
@@ -8220,18 +8456,19 @@ export default function App() {
                                 .map((log, i) => {
                                   const dailySubgrid = (log.subgrid || '').toUpperCase().trim();
                                   const runId = getItemId(log);
+                                  const frameCount = getImagesProcessedCount(log);
                                   const isRowSelected = selectedDailyRunId === runId;
                                   const isThisRowUnderInspection = qaqcWorkerState.isRunning && (
-                                    qaqcWorkerState.runId ? qaqcWorkerState.runId === runId : qaqcWorkerState.subgrid === dailySubgrid
+                                    qaqcWorkerState.runId ? qaqcWorkerState.runId === runId : isRowSelected
                                   );
                                   const isThisRowCompleted = qaqcWorkerState.isCompleted && (
-                                    qaqcWorkerState.runId ? qaqcWorkerState.runId === runId : qaqcWorkerState.subgrid === dailySubgrid
+                                    qaqcWorkerState.runId ? qaqcWorkerState.runId === runId : isRowSelected
                                   );
 
                                   let cachedDefects: number | undefined;
                                   try {
                                     const cachedMap = JSON.parse(localStorage.getItem('app_qaqc_audit_cache_v2') || '{}');
-                                    const cached = cachedMap[`${dailySubgrid}_${runId || 'default'}`] || cachedMap[`${dailySubgrid}_default`];
+                                    const cached = runId ? cachedMap[`${dailySubgrid}_${runId}`] : undefined;
                                     if (cached && typeof cached.defectCount === 'number') {
                                       cachedDefects = cached.defectCount;
                                     }
@@ -8243,9 +8480,9 @@ export default function App() {
                                     if (m) parsedStatusDefects = parseInt(m[1], 10);
                                   }
 
-                                  const matchBatch = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === dailySubgrid);
-
-                                  const defectCount = (isThisRowUnderInspection || isThisRowCompleted)
+                                  const defectCount = frameCount === 0
+                                    ? 0
+                                    : (isThisRowUnderInspection || isThisRowCompleted)
                                     ? qaqcWorkerState.defectsList.length
                                     : (log.imagesDefected && log.imagesDefected > 0)
                                       ? log.imagesDefected
@@ -8255,9 +8492,7 @@ export default function App() {
                                           ? cachedDefects
                                           : (parsedStatusDefects !== undefined && parsedStatusDefects > 0)
                                             ? parsedStatusDefects
-                                            : (matchBatch?.defects && matchBatch.defects > 0)
-                                              ? matchBatch.defects
-                                              : 0;
+                                            : 0;
 
                                   const isPublished = log.publishToWebGIS === 'yes';
                                   return (
@@ -8322,7 +8557,11 @@ export default function App() {
                                           <span className="text-text-muted text-[11px] font-medium tabular-nums">0</span>
                                         )}
                                       </td>
-                                      <td className="px-3.5 py-3.5 text-slate-300 font-medium whitespace-nowrap">{log.pic || (activeAuthUserName || (authSession?.user?.email ? authSession.user.email.split('@')[0] : '') || 'Operator')}</td>
+                                      <td className="px-3.5 py-3.5 text-slate-300 font-medium whitespace-nowrap">
+                                        {(log.pic && log.pic.toLowerCase().trim() !== 'unassigned')
+                                          ? log.pic
+                                          : (activeAuthUserName || (authSession?.user?.email ? authSession.user.email.split('@')[0] : '') || 'Operator')}
+                                      </td>
                                       <td className="px-3.5 py-3.5 whitespace-nowrap">
                                         {(() => {
                                           const isThisRowUnderInspection = qaqcWorkerState.isRunning && (
@@ -8355,7 +8594,7 @@ export default function App() {
 
                                           if (log.qaqcStatus || isThisRowCompleted) {
                                             return (
-                                              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 inline-flex items-center gap-1 whitespace-nowrap shadow-sm">
+                                              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-inner text-slate-300 border border-subtle inline-flex items-center gap-1 whitespace-nowrap shadow-sm">
                                                 <CheckCircle size={10} className="text-emerald-400" />
                                                 {log.qaqcStatus || `QAQC Completed (${qaqcWorkerState.defectsList.length} Defects Found)`}
                                               </span>
@@ -8395,24 +8634,24 @@ export default function App() {
                       ? 'filter blur-[4px] opacity-25 pointer-events-none'
                       : ''
                     }`}>
-                    <div className="px-3.5 py-2 border-b border-subtle bg-card flex items-center justify-between shrink-0 gap-3">
+                    <div className="px-3.5 py-2 border-b border-subtle bg-card flex flex-wrap items-center justify-between shrink-0 gap-2">
                       <span className="text-xs font-bold uppercase tracking-wider text-text-base flex items-center gap-2 shrink-0">
                         <Camera size={14} className="text-accent" />
-                        360 VIEW INSPECTOR & QA
+                        <span>360 INSPECTOR VIEWER & QAQC</span>
                       </span>
 
-                      <div className="flex items-center gap-2">
-                        {/* Live Processing Status Run (Docked at left of Run Batch button) */}
-                        {qaqcWorkerState.isRunning && (
-                          <div className="flex items-center gap-2 px-2.5 py-1 bg-inner border border-subtle rounded-lg text-xs animate-in fade-in duration-200">
+                      <div className="flex items-center gap-2 min-w-0">
+                        {/* Live Processing Status Run or Completed Badge */}
+                        {qaqcWorkerState.isRunning ? (
+                          <div className="flex items-center gap-2.5 px-3 py-1 bg-inner border border-subtle rounded-xl text-xs shadow-sm animate-in fade-in duration-200">
                             <span className="relative flex h-2 w-2 shrink-0">
                               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-75"></span>
                               <span className="relative inline-flex rounded-full h-2 w-2 bg-accent"></span>
                             </span>
-                            <span className="text-[11px] font-medium text-text-base truncate">
-                              QA/QC: <span className="font-semibold text-accent">{qaqcWorkerState.subgrid || 'General'}</span>
+                            <span className="text-xs font-medium text-text-base whitespace-nowrap">
+                              QA/QC: <span className="font-mono font-bold text-accent">{qaqcWorkerState.subgrid || 'General'}</span>
                             </span>
-                            <div className="w-14 h-1 bg-card rounded-full overflow-hidden border border-subtle/60 shrink-0">
+                            <div className="w-16 h-1.5 bg-card rounded-full overflow-hidden border border-subtle/80 shrink-0">
                               <div
                                 className="h-full bg-accent transition-all duration-150"
                                 style={{
@@ -8420,40 +8659,40 @@ export default function App() {
                                 }}
                               />
                             </div>
-                            <span className="text-[10px] font-semibold tabular-nums text-text-base shrink-0">
+                            <span className="text-xs font-semibold tabular-nums text-text-base shrink-0 font-mono">
                               {Math.min(100, Math.round(((qaqcWorkerState.currentIndex + 1) / (qaqcWorkerState.totalStations || 1)) * 100))}%
                             </span>
-                            <span className="text-[10px] text-text-muted tabular-nums shrink-0">
-                              ({qaqcWorkerState.currentIndex + 1}/{qaqcWorkerState.totalStations})
+                            <span className="text-[11px] text-text-muted tabular-nums shrink-0 font-mono">
+                              ({Math.min(qaqcWorkerState.totalStations || 1, qaqcWorkerState.currentIndex + 1)}/{qaqcWorkerState.totalStations || 1})
                             </span>
                             <button
                               onClick={() => setIsQAQCRunnerModalOpen(true)}
-                              className="px-2 py-0.5 bg-card hover:bg-card/80 text-text-base border border-subtle rounded text-[10px] font-medium transition-colors cursor-pointer flex items-center gap-1 shadow-sm"
+                              className="px-2 py-0.5 bg-card hover:bg-card text-slate-300 hover:text-text-base border border-[rgba(255,255,255,0.12)] rounded text-[10px] font-medium transition-all cursor-pointer flex items-center gap-1 shadow-sm active:scale-95 shrink-0"
                             >
-                              <Activity size={10} className="animate-spin text-accent" />
+                              <Activity size={10} className="animate-spin text-sky-400" />
                               <span>Open HUD</span>
                             </button>
                             <button
                               onClick={abortQAQCInspection}
-                              className="px-2 py-0.5 bg-card hover:bg-red-950/30 text-text-muted hover:text-red-400 border border-subtle hover:border-red-800/50 rounded text-[10px] font-medium transition-colors cursor-pointer flex items-center gap-1 shadow-sm"
+                              className="px-2 py-0.5 bg-card hover:bg-red-950/30 text-slate-300 hover:text-rose-400 border border-[rgba(255,255,255,0.12)] hover:border-red-800/50 rounded text-[10px] font-medium transition-all cursor-pointer flex items-center gap-1 shadow-sm active:scale-95 shrink-0"
                               title="Abort inspection"
                             >
                               <StopCircle size={10} />
                               <span>Abort</span>
                             </button>
                           </div>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              setIsQAQCRunnerModalOpen(true);
+                            }}
+                            title="Launch Full Canvas QA/QC Inspection Workbench with Target Selection Hub"
+                            className="px-3 py-1.5 bg-card hover:bg-card text-slate-300 hover:text-text-base border border-[rgba(255,255,255,0.12)] text-[11px] font-medium rounded-lg transition-all cursor-pointer shadow-sm flex items-center gap-1.5 active:scale-95"
+                          >
+                            <Play size={11} className="fill-current text-slate-300" />
+                            <span>Run Batch QA/QC</span>
+                          </button>
                         )}
-
-                        <button
-                          onClick={() => {
-                            setIsQAQCRunnerModalOpen(true);
-                          }}
-                          title="Launch Full Canvas QA/QC Inspection Workbench with Target Selection Hub"
-                          className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm bg-inner hover:bg-inner/80 text-text-base border border-subtle hover:border-accent active:scale-95 cursor-pointer"
-                        >
-                          <Play size={11} className="fill-current text-accent" />
-                          <span>Run Batch QA/QC</span>
-                        </button>
                       </div>
                     </div>
 

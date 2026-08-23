@@ -286,17 +286,13 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             <main className="relative z-20 flex-1 w-full px-3 sm:px-8 py-3 sm:py-4 overflow-y-auto lg:overflow-hidden flex items-start lg:items-center justify-start lg:justify-center">
                 <div className="w-full max-w-[1700px] mx-auto my-0 lg:my-auto grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-8 lg:gap-12 items-center">
 
-                    {/* MOBILE HERO BADGE & TITLE */}
+                    {/* MOBILE HERO TITLE */}
                     <div className="block lg:hidden col-span-1 space-y-1 text-center shrink-0 px-1 pt-1">
-                        <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-slate-800/80 border border-slate-700/60 text-[10px] sm:text-xs font-semibold text-slate-300 mb-1">
-                            <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse" />
-                            <span>GeoSphere 360° Platform</span>
-                        </div>
                         <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight text-white leading-tight">
-                            Mobile Mapping Data Suite
+                            GeoSphere 360° Mobile Mapping Platform
                         </h1>
                         <p className="text-[11px] sm:text-xs text-slate-400 font-normal leading-relaxed max-w-md mx-auto">
-                            Centralizing spatial pipelines with corridor tracking, PostGIS cloud sync, and spherical QA auditing.
+                            Centralizing spatial data pipelines with high-precision corridor tracking, PostGIS cloud synchronization, and frame-by-frame spherical QA auditing.
                         </p>
                     </div>
 
@@ -391,6 +387,11 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                                     <span className="font-semibold text-slate-200">MapLibre GL + Pannellum</span>
                                 </div>
                             </div>
+
+                            {/* Copyright Notice */}
+                            <p className="pt-0.5 text-[8.5px] sm:text-[9.5px] text-slate-500/80 font-normal tracking-tight select-none">
+                                © 2026 Mobile Mapping Data Management System. All rights reserved.
+                            </p>
                         </div>
 
                     </div>
