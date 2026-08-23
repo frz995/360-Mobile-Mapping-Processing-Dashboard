@@ -392,12 +392,12 @@ export async function fetchSupabaseData(): Promise<{
       const km = calcKm > 0 ? calcKm : Math.round((poiCount * 0.005) * 100) / 100;
       
       const normSubgrid = subgrid.toUpperCase().trim();
-      const cachedAudit = (runKey && localAuditCache[`${normSubgrid}_${runKey}`]) || localAuditCache[`${normSubgrid}_default`] || Object.entries(localAuditCache).find(([k]) => k.startsWith(`${normSubgrid}_`))?.[1];
-      const dbDefectCount = qaDefectsPerSubgrid.get(normSubgrid) || 0;
+      const runId = `sp-d-${runKey}`;
+      const cachedAudit = localAuditCache[`${normSubgrid}_${runId}`] || (runKey ? localAuditCache[`${normSubgrid}_${runKey}`] : undefined);
       const cachedDefectCount = cachedAudit && typeof cachedAudit.defectCount === 'number' ? cachedAudit.defectCount : 0;
       const explicitDefectCount = g.recordDefects !== undefined ? g.recordDefects : 0;
-      const defects = Math.max(dbDefectCount, cachedDefectCount, explicitDefectCount);
-      const qaqcStatus = cachedAudit ? `QAQC Completed (${cachedDefectCount} Defect${cachedDefectCount === 1 ? '' : 's'} Found)` : (defects > 0 ? `QAQC Completed (${defects} Defects Found)` : undefined);
+      const defects = finalImageCount === 0 ? 0 : Math.max(cachedDefectCount, explicitDefectCount);
+      const qaqcStatus = finalImageCount === 0 ? undefined : (cachedAudit ? `QAQC Completed (${cachedDefectCount} Defect${cachedDefectCount === 1 ? '' : 's'} Found)` : (defects > 0 ? `QAQC Completed (${defects} Defects Found)` : undefined));
 
       let dateFormatted = g.dateStr;
       const d = new Date(g.dateStr);
@@ -553,12 +553,12 @@ export async function fetchSupabaseData(): Promise<{
           const picName = g.pic || knownMetadata[sg]?.pic || 'Unassigned';
 
           const normSg = sg.toUpperCase().trim();
-          const cachedAudit = (runKey && localAuditCache[`${normSg}_${runKey}`]) || localAuditCache[`${normSg}_default`] || Object.entries(localAuditCache).find(([k]) => k.startsWith(`${normSg}_`))?.[1];
-          const dbDefectCount = qaDefectsPerSubgrid.get(normSg) || 0;
+          const runId = `staging-d-${runKey}`;
+          const cachedAudit = localAuditCache[`${normSg}_${runId}`] || (runKey ? localAuditCache[`${normSg}_${runKey}`] : undefined);
           const cachedDefectCount = cachedAudit && typeof cachedAudit.defectCount === 'number' ? cachedAudit.defectCount : 0;
           const explicitDefectCount = typeof g.defectCount === 'number' ? g.defectCount : 0;
-          const finalDefectCount = Math.max(dbDefectCount, cachedDefectCount, explicitDefectCount);
-          const qaqcStatus = cachedAudit ? `QAQC Completed (${cachedDefectCount} Defect${cachedDefectCount === 1 ? '' : 's'} Found)` : (finalDefectCount > 0 ? `QAQC Completed (${finalDefectCount} Defects Found)` : undefined);
+          const finalDefectCount = finalImgCount === 0 ? 0 : Math.max(cachedDefectCount, explicitDefectCount);
+          const qaqcStatus = finalImgCount === 0 ? undefined : (cachedAudit ? `QAQC Completed (${cachedDefectCount} Defect${cachedDefectCount === 1 ? '' : 's'} Found)` : (finalDefectCount > 0 ? `QAQC Completed (${finalDefectCount} Defects Found)` : undefined));
 
           dailyData.push({
             id: `staging-d-${runKey}`,

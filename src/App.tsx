@@ -5424,13 +5424,15 @@ export default function App() {
           const hydratedDaily = (sDaily || []).map((d: any) => {
             const sg = (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim();
             const runId = getItemId(d);
-            const cachedAudit = (runId && localAuditCache[`${sg}_${runId}`]) || localAuditCache[`${sg}_default`] || Object.entries(localAuditCache).find(([k]) => k.startsWith(`${sg}_`))?.[1];
-            const dbDefects = defectsPerSubgrid.get(sg) || 0;
+            const frameCount = getImagesProcessedCount(d);
+            const cachedAudit = runId ? localAuditCache[`${sg}_${runId}`] : undefined;
             const cachedDefects = cachedAudit && typeof cachedAudit.defectCount === 'number' ? cachedAudit.defectCount : 0;
             const explicitDefects = (typeof d.imagesDefected === 'number' && d.imagesDefected > 0) ? d.imagesDefected : (typeof d.defectCount === 'number' && d.defectCount > 0) ? d.defectCount : 0;
-            const finalDefects = Math.max(dbDefects, cachedDefects, explicitDefects);
+            const finalDefects = frameCount === 0 ? 0 : Math.max(cachedDefects, explicitDefects);
 
-            const qaqcStatus = d.qaqcStatus || (cachedAudit ? `QAQC Completed (${cachedDefects} Defect${cachedDefects === 1 ? '' : 's'} Found)` : (finalDefects > 0 ? `QAQC Completed (${finalDefects} Defects Found)` : undefined));
+            const qaqcStatus = frameCount === 0
+              ? (d.publishToWebGIS === 'yes' ? 'Published' : undefined)
+              : (d.qaqcStatus || (cachedAudit ? `QAQC Completed (${cachedDefects} Defect${cachedDefects === 1 ? '' : 's'} Found)` : (finalDefects > 0 ? `QAQC Completed (${finalDefects} Defects Found)` : undefined)));
 
             return {
               ...d,
@@ -5584,12 +5586,15 @@ export default function App() {
       return dailyData.reduce((sum, d) => {
         const dailySubgrid = (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim();
         const runId = getItemId(d);
+        const frameCount = getImagesProcessedCount(d);
+        if (frameCount === 0) return sum;
+
         const isThisRowActive = (qaqcWorkerState.isRunning || qaqcWorkerState.isCompleted) && (
-          qaqcWorkerState.runId ? qaqcWorkerState.runId === runId : qaqcWorkerState.subgrid === dailySubgrid
+          qaqcWorkerState.runId ? qaqcWorkerState.runId === runId : false
         );
 
         let cachedDefects: number | undefined;
-        const cached = (runId && cachedMap[`${dailySubgrid}_${runId}`]) || cachedMap[`${dailySubgrid}_default`] || Object.entries(cachedMap).find(([k]) => k.startsWith(`${dailySubgrid}_`))?.[1];
+        const cached = runId ? cachedMap[`${dailySubgrid}_${runId}`] : undefined;
         if (cached && typeof cached.defectCount === 'number') {
           cachedDefects = cached.defectCount;
         }
@@ -5668,11 +5673,14 @@ export default function App() {
           const matchedPrev = prev.find(p => getItemId(p) === getItemId(sd));
           const sg = (extractSubgridName(sd.subgrid) || sd.subgrid || '').toUpperCase().trim();
           const runId = getItemId(sd);
-          const cachedAudit = (runId && localCache[`${sg}_${runId}`]) || localCache[`${sg}_default`] || Object.entries(localCache).find(([k]) => k.startsWith(`${sg}_`))?.[1];
+          const frameCount = getImagesProcessedCount(sd);
+          const cachedAudit = runId ? localCache[`${sg}_${runId}`] : undefined;
           const cachedCount = cachedAudit && typeof cachedAudit.defectCount === 'number' ? cachedAudit.defectCount : 0;
           const prevCount = (matchedPrev && typeof matchedPrev.defectCount === 'number') ? matchedPrev.defectCount : 0;
-          const finalCount = Math.max(sd.defectCount || 0, prevCount, cachedCount);
-          const qaqcStatus = sd.qaqcStatus || matchedPrev?.qaqcStatus || (cachedAudit ? `QAQC Completed (${cachedCount} Defect${cachedCount === 1 ? '' : 's'} Found)` : undefined);
+          const finalCount = frameCount === 0 ? 0 : Math.max(sd.defectCount || 0, prevCount, cachedCount);
+          const qaqcStatus = frameCount === 0
+            ? (sd.publishToWebGIS === 'yes' ? 'Published' : undefined)
+            : (sd.qaqcStatus || matchedPrev?.qaqcStatus || (cachedAudit ? `QAQC Completed (${cachedCount} Defect${cachedCount === 1 ? '' : 's'} Found)` : undefined));
 
           return {
             ...sd,
@@ -8551,17 +8559,17 @@ export default function App() {
                                   const frameCount = getImagesProcessedCount(log);
                                   const isRowSelected = selectedDailyRunId === runId;
                                   const isThisRowUnderInspection = qaqcWorkerState.isRunning && (
-                                    qaqcWorkerState.runId ? qaqcWorkerState.runId === runId : isRowSelected
+                                    qaqcWorkerState.runId ? qaqcWorkerState.runId === runId : false
                                   );
                                   const isThisRowCompleted = qaqcWorkerState.isCompleted && (
-                                    qaqcWorkerState.runId ? qaqcWorkerState.runId === runId : isRowSelected
+                                    qaqcWorkerState.runId ? qaqcWorkerState.runId === runId : false
                                   );
 
                                   let cachedDefects: number | undefined;
                                   let cachedAuditObj: any = undefined;
                                   try {
                                     const cachedMap = JSON.parse(localStorage.getItem('app_qaqc_audit_cache_v2') || '{}');
-                                    cachedAuditObj = (runId && cachedMap[`${dailySubgrid}_${runId}`]) || cachedMap[`${dailySubgrid}_default`] || Object.entries(cachedMap).find(([k]) => k.startsWith(`${dailySubgrid}_`))?.[1];
+                                    cachedAuditObj = runId ? cachedMap[`${dailySubgrid}_${runId}`] : undefined;
                                     if (cachedAuditObj && typeof cachedAuditObj.defectCount === 'number') {
                                       cachedDefects = cachedAuditObj.defectCount;
                                     }
@@ -8657,18 +8665,6 @@ export default function App() {
                                       </td>
                                       <td className="px-3.5 py-3.5 whitespace-nowrap">
                                         {(() => {
-                                          const isThisRowUnderInspection = qaqcWorkerState.isRunning && (
-                                            qaqcWorkerState.runId
-                                              ? qaqcWorkerState.runId === getItemId(log)
-                                              : qaqcWorkerState.subgrid === dailySubgrid
-                                          );
-
-                                          const isThisRowCompleted = qaqcWorkerState.isCompleted && (
-                                            qaqcWorkerState.runId
-                                              ? qaqcWorkerState.runId === getItemId(log)
-                                              : qaqcWorkerState.subgrid === dailySubgrid
-                                          );
-
                                           if (isThisRowUnderInspection) {
                                             return (
                                               <button
@@ -8685,7 +8681,9 @@ export default function App() {
                                             );
                                           }
 
-                                          const effectiveQaqcStatus = log.qaqcStatus || (isThisRowCompleted ? `QAQC Completed (${qaqcWorkerState.defectsList.length} Defects Found)` : (cachedAuditObj ? `QAQC Completed (${cachedAuditObj.defectCount} Defect${cachedAuditObj.defectCount === 1 ? '' : 's'} Found)` : undefined));
+                                          const effectiveQaqcStatus = frameCount === 0
+                                            ? undefined
+                                            : (log.qaqcStatus || (isThisRowCompleted ? `QAQC Completed (${qaqcWorkerState.defectsList.length} Defects Found)` : (cachedAuditObj ? `QAQC Completed (${cachedAuditObj.defectCount} Defect${cachedAuditObj.defectCount === 1 ? '' : 's'} Found)` : undefined)));
 
                                           if (effectiveQaqcStatus) {
                                             return (
