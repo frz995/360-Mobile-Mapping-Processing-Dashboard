@@ -507,20 +507,13 @@ export function useQAQCWorker() {
         let avgBrightness = 128.0;
 
         if ((config.checkBlur || config.checkObstruction) && imgUrl) {
-          const analysis = await detectBlurAndObstruction(imgUrl, {
-            blurThreshold,
+          const analysis = await analyzeImageSharpness(imgUrl, blurThreshold, deliverableModel, {
+            timeoutMs: 4000,
             darkThreshold,
-            glareLuminanceThreshold: glareThreshold,
-            timeoutMs: 2500,
-            thresholds: {
-              blurVarianceThreshold: blurThreshold,
-              obstructionMinBrightness: darkThreshold,
-              glareLuminanceThreshold: glareThreshold,
-              deliverableModel
-            }
+            glareThreshold
           });
 
-          if (analysis.analysisStatus === 'skipped') {
+          if (analysis.status === 'skipped') {
             isSkippedImg = true;
             blurVariance = 0;
             currentLiveCheck.blur = {
@@ -535,10 +528,10 @@ export function useQAQCWorker() {
             };
           } else {
             if (config.checkBlur) {
-              isBlur = analysis.isBlur;
-              blurVariance = analysis.blurVariance;
+              isBlur = analysis.isBlurry;
+              blurVariance = analysis.minScore;
               if (isBlur) {
-                blurDetail = analysis.reason || `Blurry Frame (${blurVariance.toFixed(1)} below threshold ${blurThreshold.toFixed(1)})`;
+                blurDetail = analysis.reason || `Blurry Frame in ${analysis.worstSector} sector (Sharpness score ${blurVariance.toFixed(1)} below threshold ${blurThreshold.toFixed(1)})`;
               } else if (blurVariance < 55.0) {
                 blurDetail = `Sharp ${blurVariance.toFixed(1)} (Marginal)`;
               } else {
@@ -554,7 +547,7 @@ export function useQAQCWorker() {
             if (config.checkObstruction) {
               isObstruction = analysis.isObstruction;
               avgBrightness = analysis.avgBrightness;
-              obstructionDetail = isObstruction ? (analysis.reason || `Luma ${avgBrightness.toFixed(1)}`) : `Luma ${avgBrightness.toFixed(1)}`;
+              obstructionDetail = isObstruction ? (analysis.obstructionReason || `Luma ${avgBrightness.toFixed(1)}`) : `Luma ${avgBrightness.toFixed(1)}`;
               currentLiveCheck.obstruction = {
                 active: true,
                 status: isObstruction ? 'flagged' : 'passed',
@@ -614,7 +607,13 @@ export function useQAQCWorker() {
             type: 'UPDATE_POINT_DEFECT',
             pointId: ptId,
             filename: ptId,
-            is_defect: true
+            is_defect: true,
+            color: '#EF4444'
+          });
+          broadcastToMapIframes({
+            type: 'QAQC_DEFECTS_SYNC',
+            subgrid: cleanSubgrid,
+            defects: [...accumulatedDefects]
           });
 
           if (onDefectFound) {

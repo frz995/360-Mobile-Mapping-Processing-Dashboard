@@ -408,10 +408,17 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
       
       const normSubgrid = subgrid.toUpperCase().trim();
       const runId = `sp-d-${runKey}`;
-      const cachedAudit = cloudAuditCache[`${normSubgrid}_${runId}`] || (runKey ? cloudAuditCache[`${normSubgrid}_${runKey}`] : undefined);
-      const cachedDefectCount = cachedAudit && typeof cachedAudit.defectCount === 'number' ? cachedAudit.defectCount : 0;
-      const defects = (finalImageCount === 0 || !cachedAudit) ? 0 : Math.min(cachedDefectCount, finalImageCount);
-      const qaqcStatus = finalImageCount === 0 ? undefined : (cachedAudit ? (cachedDefectCount === 0 ? 'Published (QAQC Verified)' : `Published (${cachedDefectCount} Defect${cachedDefectCount === 1 ? '' : 's'} Found)`) : undefined);
+      const subgridDefectsFromDb = qaDefectsPerSubgrid.get(normSubgrid) || 0;
+      const cachedAudit = cloudAuditCache[`${normSubgrid}_${runId}`] || (runKey ? cloudAuditCache[`${normSubgrid}_${runKey}`] : undefined) || cloudAuditCache[`${normSubgrid}_default`] || Object.entries(cloudAuditCache).find(([k]) => k.startsWith(`${normSubgrid}_`))?.[1];
+      const cachedDefectCount = (cachedAudit && typeof cachedAudit.defectCount === 'number')
+        ? cachedAudit.defectCount
+        : (g.recordDefects || subgridDefectsFromDb || 0);
+      const defects = finalImageCount === 0 ? 0 : Math.min(cachedDefectCount, finalImageCount);
+      const qaqcStatus = finalImageCount === 0
+        ? undefined
+        : (cachedAudit || defects > 0
+            ? (defects === 0 ? 'Published (QAQC Verified)' : `Published (${defects} Defect${defects === 1 ? '' : 's'} Found)`)
+            : undefined);
 
       let dateFormatted = g.dateStr;
       const d = new Date(g.dateStr);
@@ -567,15 +574,18 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
           const picName = formatPIC(g.pic || knownMetadata[sg]?.pic || 'Unassigned');
           const normSg = sg.toUpperCase().trim();
           const runId = `staging-d-${runKey}`;
-          const cachedAudit = cloudAuditCache[`${normSg}_${runId}`] || (runKey ? cloudAuditCache[`${normSg}_${runKey}`] : undefined);
-          const cachedDefectCount = cachedAudit && typeof cachedAudit.defectCount === 'number' ? cachedAudit.defectCount : 0;
-          const finalDefectCount = (finalImgCount === 0 || !cachedAudit) ? 0 : Math.min(cachedDefectCount, finalImgCount);
+          const subgridDefectsFromDb = qaDefectsPerSubgrid.get(normSg) || 0;
+          const cachedAudit = cloudAuditCache[`${normSg}_${runId}`] || (runKey ? cloudAuditCache[`${normSg}_${runKey}`] : undefined) || cloudAuditCache[`${normSg}_default`] || Object.entries(cloudAuditCache).find(([k]) => k.startsWith(`${normSg}_`))?.[1];
+          const cachedDefectCount = (cachedAudit && typeof cachedAudit.defectCount === 'number')
+            ? cachedAudit.defectCount
+            : (g.defectCount || subgridDefectsFromDb || 0);
+          const finalDefectCount = finalImgCount === 0 ? 0 : Math.min(cachedDefectCount, finalImgCount);
           const isPub = g.status === 'yes';
           const qaqcStatus = finalImgCount === 0 ? undefined : (
-            cachedAudit
+            cachedAudit || finalDefectCount > 0
               ? (isPub
-                  ? (cachedDefectCount === 0 ? 'Published (QAQC Verified)' : `Published (${cachedDefectCount} Defect${cachedDefectCount === 1 ? '' : 's'} Found)`)
-                  : (cachedDefectCount === 0 ? 'QAQC Passed (Ready to Publish)' : `QAQC Flagged (${cachedDefectCount} Defect${cachedDefectCount === 1 ? '' : 's'} Found)`)
+                  ? (finalDefectCount === 0 ? 'Published (QAQC Verified)' : `Published (${finalDefectCount} Defect${finalDefectCount === 1 ? '' : 's'} Found)`)
+                  : (finalDefectCount === 0 ? 'QAQC Passed (Ready to Publish)' : `QAQC Flagged (${finalDefectCount} Defect${finalDefectCount === 1 ? '' : 's'} Found)`)
                 )
               : undefined
           );

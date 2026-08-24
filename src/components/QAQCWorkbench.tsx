@@ -29,7 +29,9 @@ import {
   Rows,
   Maximize2,
   Map,
-  Minimize
+  Minimize,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import type { QAQCWorkerState, StationInspectionRecord, StationNode } from '../hooks/useQAQCWorker';
 import type { QAQCConfig, ExtendedProjectSettings, QADefectRecord } from '../types/admin';
@@ -66,6 +68,7 @@ export interface QAQCWorkbenchProps {
   batchLogs?: any[];
   projectSettings?: ExtendedProjectSettings;
   qaqcAuditRuns?: Record<string, any>;
+  defectsList?: any[];
   activeUserName?: string;
   surveyDate?: string;
   initialSubgrid?: string;
@@ -117,6 +120,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
   batchLogs = [],
   projectSettings,
   qaqcAuditRuns = {},
+  defectsList = [],
   activeUserName = 'Operator',
   surveyDate,
   initialSubgrid,
@@ -312,24 +316,31 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
         const formattedDate = formatDisplayDate(d.date);
         const pic = (d.pic && d.pic.trim().toLowerCase() !== 'unassigned') ? d.pic : (activeUserName || 'Operator');
 
-        const cachedAudit = runId ? auditCache[`${sg}_${runId}`] : undefined;
+        const cachedAudit = (runId ? auditCache[`${sg}_${runId}`] : undefined) || auditCache[`${sg}_default`] || Object.entries(auditCache).find(([k]) => k.startsWith(`${sg}_`))?.[1];
         let parsedDefects: number | undefined;
         if (d.qaqcStatus) {
           const m = d.qaqcStatus.match(/(\d+)\s+Defect/i);
           if (m) parsedDefects = parseInt(m[1], 10);
         }
 
+        const matchingDefectsFromList = Array.isArray(defectsList)
+          ? defectsList.filter((defItem: any) => {
+              const dSg = (extractSubgridName(defItem.subgrid || '') || defItem.subgrid || '').toUpperCase().trim();
+              const dRunId = defItem.run_id || defItem.runId;
+              if (runId && dRunId) return dSg === sg && dRunId === runId;
+              return dSg === sg;
+            }).length
+          : 0;
+
         const defectCount = frameCount === 0
           ? 0
-          : (cachedAudit && typeof cachedAudit.defectCount === 'number')
-          ? cachedAudit.defectCount
-          : (parsedDefects !== undefined && parsedDefects > 0)
-          ? parsedDefects
-          : (d.imagesDefected && d.imagesDefected > 0)
-          ? d.imagesDefected
-          : (d.defectCount && d.defectCount > 0)
-          ? d.defectCount
-          : 0;
+          : Math.max(
+              (cachedAudit && typeof cachedAudit.defectCount === 'number') ? cachedAudit.defectCount : 0,
+              parsedDefects || 0,
+              d.imagesDefected || 0,
+              d.defectCount || 0,
+              matchingDefectsFromList || 0
+            );
 
         const isPublished = d.publishToWebGIS === 'yes' || d.qaqcStatus === 'QA/QC Approved' || Boolean(d.isSyncedWithSupabase) || d.status === 'published';
         const isRecheck = d.publishToWebGIS === 'need to recheck';
@@ -337,7 +348,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
 
         const qaqcStatus = frameCount === 0
           ? (isPublished ? 'QA/QC Approved' : '')
-          : (d.qaqcStatus || (cachedAudit ? `QAQC Completed (${defectCount} Defect${defectCount === 1 ? '' : 's'} Found)` : isPublished ? 'QA/QC Approved' : ''));
+          : (d.qaqcStatus || (cachedAudit || defectCount > 0 ? `QAQC Completed (${defectCount} Defect${defectCount === 1 ? '' : 's'} Found)` : isPublished ? 'QA/QC Approved' : ''));
 
         return {
           raw: d,
@@ -354,7 +365,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
           publishStatus
         };
       });
-  }, [dailyData, batchLogs, auditCache, activeUserName]);
+  }, [dailyData, batchLogs, auditCache, activeUserName, defectsList]);
 
   // Processed list for Masterlist / Batches Tab (matches exact order and logic of Processing Admin Masterlist table)
   const processedBatchLogs: TargetDatasetItem[] = useMemo(() => {
@@ -376,13 +387,20 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
         if (m) parsedDefects = parseInt(m[1], 10);
       }
 
-      const defectCount = (cachedAudit && typeof cachedAudit.defectCount === 'number')
-        ? cachedAudit.defectCount
-        : (parsedDefects !== undefined && parsedDefects > 0)
-        ? parsedDefects
-        : (b.defects && b.defects > 0)
-        ? b.defects
+      // Aggregate defect counts from all daily runs matching this master subgrid
+      const matchingDailyRuns = processedDailyRuns.filter(d => d.subgrid.toUpperCase().trim() === sg);
+      const dailyDefectsSum = matchingDailyRuns.reduce((sum, d) => sum + (d.defectCount || 0), 0);
+      const matchingDefectsFromList = Array.isArray(defectsList)
+        ? defectsList.filter((defItem: any) => (extractSubgridName(defItem.subgrid || '') || defItem.subgrid || '').toUpperCase().trim() === sg).length
         : 0;
+
+      const defectCount = Math.max(
+        dailyDefectsSum,
+        matchingDefectsFromList,
+        b.defects || 0,
+        (cachedAudit && typeof cachedAudit.defectCount === 'number') ? cachedAudit.defectCount : 0,
+        parsedDefects || 0
+      );
 
       const isPublished = b.publishToWebGIS === 'yes' || b.qaqcStatus === 'QA/QC Approved' || Boolean(b.isSyncedWithSupabase) || b.status === 'published';
       const isRecheck = b.publishToWebGIS === 'need to recheck';
@@ -399,12 +417,12 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
         km,
         pic,
         defectCount,
-        qaqcStatus: b.qaqcStatus || (cachedAudit ? `QAQC Completed (${defectCount} Defect${defectCount === 1 ? '' : 's'} Found)` : isPublished ? 'QA/QC Approved' : ''),
+        qaqcStatus: b.qaqcStatus || (cachedAudit || defectCount > 0 ? `QAQC Completed (${defectCount} Defect${defectCount === 1 ? '' : 's'} Found)` : isPublished ? 'QA/QC Approved' : ''),
         isPublished,
         publishStatus
       };
     });
-  }, [dailyData, batchLogs, auditCache, activeUserName]);
+  }, [dailyData, batchLogs, auditCache, activeUserName, processedDailyRuns, defectsList]);
 
   // Counts for Category Switcher
   const stagingCount = useMemo(() => {
@@ -417,19 +435,19 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
     return list.filter(i => i.isPublished).length;
   }, [targetTab, processedDailyRuns, processedBatchLogs]);
 
-  // Auto-select first valid dataset if none selected
+  // Auto-select target dataset strictly when an initial selection was passed from dashboard
   useEffect(() => {
-    if (!selectedSubgrid && !isRunning) {
-      const firstValidDaily = processedDailyRuns.find(r => r.frameCount > 0);
-      if (firstValidDaily) {
-        setSelectedSubgrid(firstValidDaily.subgrid);
-        setSelectedRunId(firstValidDaily.runId);
-        if (firstValidDaily.pic && firstValidDaily.pic !== 'Unassigned') {
-          setInspectorPic(firstValidDaily.pic);
+    if (initialSubgrid && !selectedSubgrid && !isRunning) {
+      const matchInitial = processedDailyRuns.find(r => (initialRunId && r.runId === initialRunId) || (r.subgrid.toUpperCase() === initialSubgrid.toUpperCase() && r.frameCount > 0));
+      if (matchInitial) {
+        setSelectedSubgrid(matchInitial.subgrid);
+        setSelectedRunId(initialRunId || matchInitial.runId);
+        if (matchInitial.pic && matchInitial.pic !== 'Unassigned') {
+          setInspectorPic(matchInitial.pic);
         }
       }
     }
-  }, [processedDailyRuns, selectedSubgrid, isRunning]);
+  }, [processedDailyRuns, selectedSubgrid, isRunning, initialSubgrid, initialRunId]);
 
   // Filtered dataset targets based on search query, category filter & valid frame toggles
   const filteredTargetList: TargetDatasetItem[] = useMemo(() => {
@@ -461,21 +479,61 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
   const cachedAudit: AuditRunRecord | null = useMemo(() => {
     if (!selectedSubgrid) return null;
     const key = `${selectedSubgrid.toUpperCase()}_${selectedRunId || 'default'}`;
-    return auditCache[key] || null;
+    const direct = auditCache[key];
+    if (direct) return direct;
+    return Object.entries(auditCache).find(([k]) => k.startsWith(`${selectedSubgrid.toUpperCase()}_`))?.[1] || null;
   }, [auditCache, selectedSubgrid, selectedRunId]);
 
-  // Effective Active Telemetry Data (live runner if active, else cached audit if available)
-  const effectiveHistory = useMemo(() => {
-    if (isRunning || liveHistory.length > 0) return liveHistory;
-    if (cachedAudit && cachedAudit.history) return cachedAudit.history;
-    return [];
-  }, [isRunning, liveHistory, cachedAudit]);
-
+  // Effective Active Defects List
   const effectiveDefectsList = useMemo(() => {
     if (isRunning || liveHistory.length > 0) return liveDefectsList;
-    if (cachedAudit && cachedAudit.defectsList) return cachedAudit.defectsList;
+    if (cachedAudit && cachedAudit.defectsList && cachedAudit.defectsList.length > 0) return cachedAudit.defectsList;
+    if (selectedSubgrid && Array.isArray(defectsList)) {
+      const curSg = selectedSubgrid.toUpperCase().trim();
+      const filtered = defectsList.filter((d: any) => {
+        const dSg = (extractSubgridName(d.subgrid || '') || d.subgrid || '').toUpperCase().trim();
+        const dRunId = d.run_id || d.runId;
+        if (selectedRunId && dRunId) return dSg === curSg && dRunId === selectedRunId;
+        return dSg === curSg;
+      });
+      if (filtered.length > 0) return filtered;
+    }
     return [];
-  }, [isRunning, liveHistory, liveDefectsList, cachedAudit]);
+  }, [isRunning, liveHistory, liveDefectsList, cachedAudit, selectedSubgrid, selectedRunId, defectsList]);
+
+  // Effective Active Telemetry Data (live runner if active, else cached audit or synthesized defect feed)
+  const effectiveHistory = useMemo((): StationInspectionRecord[] => {
+    if (isRunning || liveHistory.length > 0) return liveHistory;
+    if (cachedAudit && cachedAudit.history && cachedAudit.history.length > 0) return cachedAudit.history;
+    if (effectiveDefectsList.length > 0) {
+      return effectiveDefectsList.map((d: any, idx: number) => {
+        const ptId = d.point_id || d.pointId || d.filename || `Station ${idx + 1}`;
+        const fn = d.filename || d.image_url || ptId;
+        const frameIdx = d.frame_index || d.index || (idx + 1);
+        const lat = Number(d.lat || d.latitude || 0);
+        const lng = Number(d.lng || d.lon || d.longitude || 0);
+        const reasons = d.defect_flags?.reasons || d.reasons || [d.defect_type || 'Defect Flagged'];
+        const blurVariance = d.defect_flags?.blurScore ?? d.blurVariance ?? 35.0;
+
+        return {
+          index: frameIdx,
+          pointId: ptId,
+          timestamp: d.created_at ? new Date(d.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : 'Logged',
+          lat,
+          lng,
+          bearing: d.bearing || 0,
+          stepDistance: d.step_distance || 0,
+          status: 'flagged' as const,
+          defectType: d.defect_type || 'Defect Flagged',
+          deliverableModel: (d.defect_flags?.deliverableModel || projectSettings?.deliverableModel || 'masked_car') as 'masked_car' | 'generative_fill',
+          reasons: Array.isArray(reasons) ? reasons : [String(reasons)],
+          blurVariance,
+          thumbnailUrl: fn
+        };
+      });
+    }
+    return [];
+  }, [isRunning, liveHistory, cachedAudit, effectiveDefectsList, projectSettings?.deliverableModel]);
 
   // Telemetry station metrics
   const totalStations = rawTotalStations || (cachedAudit ? cachedAudit.totalStations : selectedStations.length) || 1;
@@ -488,6 +546,14 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
   const estimatedSecondsLeft = Math.ceil((remainingStations * stepIntervalMs) / 1000);
 
   // Selected station preview if clicked from history feed, otherwise live current node or fallback to first station
+    // Selected station preview if clicked from history feed or stepped manually
+  const selectedStationFallback = useMemo(() => {
+    if (selectedStationIndex !== null && selectedStations.length >= selectedStationIndex) {
+      return selectedStations[selectedStationIndex - 1];
+    }
+    return selectedStations[0] || null;
+  }, [selectedStationIndex, selectedStations]);
+
   const activeRecord: StationInspectionRecord | null = useMemo(() => {
     if (selectedStationIndex !== null) {
       return effectiveHistory.find(h => h.index === selectedStationIndex) || null;
@@ -504,40 +570,127 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
     ? (activeRecord.thumbnailUrl ? resolvePanoramaUrl(activeRecord.thumbnailUrl, projectSettings) : defaultThumbnail)
     : currentThumbnail
     ? resolvePanoramaUrl(currentThumbnail, projectSettings)
+    : selectedStationFallback
+    ? resolvePanoramaUrl(selectedStationFallback.image_url || selectedStationFallback.filename || selectedStationFallback.thumbnailUrl || (selectedSubgrid ? `${selectedSubgrid}-0001.jpg` : ''), projectSettings)
     : (cachedAudit && cachedAudit.history?.[0]?.thumbnailUrl
         ? resolvePanoramaUrl(cachedAudit.history[0].thumbnailUrl, projectSettings)
         : defaultThumbnail);
 
   const activeDisplayPointId = activeRecord
     ? activeRecord.pointId
-    : currentPointId || (cachedAudit && cachedAudit.history?.[0]?.pointId) || (selectedStations[0]?.point_id || selectedStations[0]?.filename || selectedStations[0]?.id || (selectedSubgrid ? `${selectedSubgrid}-0001` : ''));
+    : currentPointId || selectedStationFallback?.point_id || selectedStationFallback?.filename || selectedStationFallback?.id || (cachedAudit && cachedAudit.history?.[0]?.pointId) || (selectedSubgrid ? `${selectedSubgrid}-0001` : '');
+
   const activeDisplayCoords = activeRecord
     ? { lat: activeRecord.lat, lng: activeRecord.lng }
     : currentCoords.lat && currentCoords.lng
     ? currentCoords
-    : { lat: selectedStations[0]?.lat || (selectedStations[0] as any)?.latitude || null, lng: selectedStations[0]?.lng || (selectedStations[0] as any)?.longitude || (selectedStations[0] as any)?.lon || null };
+    : selectedStationFallback
+    ? { lat: selectedStationFallback.lat || (selectedStationFallback as any)?.latitude || null, lng: selectedStationFallback.lng || (selectedStationFallback as any)?.longitude || (selectedStationFallback as any)?.lon || null }
+    : { lat: selectedStations[0]?.lat || null, lng: selectedStations[0]?.lng || null };
+
   const activeDisplayBearing = activeRecord
     ? activeRecord.bearing
-    : currentBearing || selectedStations[0]?.bearing || (selectedStations[0] as any)?.heading || 0;
+    : currentBearing || selectedStationFallback?.bearing || (selectedStationFallback as any)?.heading || 0;
+
   const activeDisplayStepDistance = activeRecord
     ? activeRecord.stepDistance
     : currentStepDistance;
+
   const activeDisplayIndex = Math.min(
     totalStations > 0 ? totalStations : Math.max(1, selectedStations.length),
-    Math.max(1, activeRecord ? activeRecord.index : isRunning || isCompleted ? currentIndex + 1 : 1)
+    Math.max(1, selectedStationIndex !== null ? selectedStationIndex : isRunning || isCompleted ? currentIndex + 1 : 1)
   );
 
     const lastLoadedSubgridRef = useRef<string>('');
 
   // 1. Initialize track dataset on the map ONCE per subgrid selection (avoids layer recreation stutter)
-  const initWorkbenchMapTrack = useCallback(() => {
+    const initWorkbenchMapTrack = useCallback(() => {
     if (!mapIframeRef.current?.contentWindow) return;
     const activeSg = (activeRunningSubgrid || selectedSubgrid || '').toUpperCase().trim();
     if (!activeSg) return;
 
-    const cacheKey = `${activeSg}_${selectedRunId || 'default'}`;
+    const allDefectsMerged = [...(defectsList || []), ...(effectiveDefectsList || [])];
+    const cacheKey = `${activeSg}_${selectedRunId || 'default'}_${allDefectsMerged.length}`;
     if (lastLoadedSubgridRef.current === cacheKey) return;
     lastLoadedSubgridRef.current = cacheKey;
+
+    const knownDefectFilenames = new Set<string>();
+    allDefectsMerged.forEach((d: any) => {
+      const fn = (d.point_id || d.filename || d.pointId || d.image_url || '').split('/').pop()?.toUpperCase().trim();
+      const ptId = (d.point_id || d.pointId || '').toUpperCase().trim();
+      if (fn) knownDefectFilenames.add(fn);
+      if (ptId) knownDefectFilenames.add(ptId);
+    });
+
+    const formatTrackItem = (item: any) => {
+      const isPub = item.publishToWebGIS === 'yes' || item.publishToUSVPRO === 'yes' || Boolean(item.isSyncedWithSupabase) || item.isFromSupabase === true;
+      const statusVal = isPub ? 'yes' : (item.publishToWebGIS || item.publishToUSVPRO || 'in process');
+      const op = isPub ? 1.0 : 0.7;
+      const colorHex = isPub
+        ? '#10b981'
+        : (statusVal === 'need to recheck' || statusVal === 'no' ? '#ef4444' : '#f59e0b');
+
+      const pans = item.panoramas || item.points || [];
+
+      const formattedPans = pans.map((p: any) => {
+        const fnClean = (p.filename || p.image_url || '').split('/').pop()?.toUpperCase().trim();
+        const ptClean = (p.point_id || p.pointId || '').toUpperCase().trim();
+        const isPointDefect = Boolean(
+          (fnClean && knownDefectFilenames.has(fnClean)) ||
+          (ptClean && knownDefectFilenames.has(ptClean)) ||
+          p.isDefect ||
+          p.is_defect ||
+          p.defectType ||
+          p.status === 'defect' ||
+          p.qa_status === 'defect' ||
+          (p.defect_flags && typeof p.defect_flags === 'object' && Object.values(p.defect_flags).some(Boolean))
+        );
+        const pointColorHex = isPointDefect ? '#ef4444' : colorHex;
+        const pointStatusVal = isPointDefect ? 'defect' : statusVal;
+        const pointOp = isPointDefect ? 1.0 : op;
+
+        return {
+          ...p,
+          filename: p.filename || p.image_url,
+          image_url: p.image_url || p.filename,
+          subgrid: p.subgrid || item.subgrid,
+          grid: p.grid || item.grid,
+          latitude: p.latitude ?? p.lat ?? p.y,
+          longitude: p.longitude ?? p.lon ?? p.lng ?? p.x,
+          lat: p.lat ?? p.latitude ?? p.y,
+          lon: p.lon ?? p.longitude ?? p.lng ?? p.x,
+          lng: p.lng ?? p.longitude ?? p.lon ?? p.x,
+          y: p.y ?? p.latitude ?? p.lat,
+          x: p.x ?? p.longitude ?? p.lon ?? p.lng,
+          date: p.date ?? p.captured_at,
+          captured_at: p.captured_at ?? p.date,
+          status: pointStatusVal,
+          qa_status: pointStatusVal,
+          publishToWebGIS: statusVal,
+          publishToUSVPRO: statusVal,
+          isPublished: isPub,
+          published: isPub,
+          is_defect: isPointDefect,
+          isDefect: isPointDefect,
+          opacity: pointOp,
+          fillOpacity: pointOp,
+          strokeOpacity: pointOp,
+          color: pointColorHex,
+          statusColor: pointColorHex,
+          strokeColor: pointColorHex,
+          fillColor: pointColorHex
+        };
+      });
+
+      return {
+        ...item,
+        status: statusVal,
+        color: colorHex,
+        isPublished: isPub,
+        panoramas: formattedPans,
+        points: formattedPans
+      };
+    };
 
     try {
       // 1. Set subgrid filter
@@ -547,38 +700,60 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
         runId: selectedRunId || ''
       }, '*');
 
-      // 2. Transmit strictly only the selected survey track points
+      // 2. Transmit strictly only the selected survey track points with exact status colors & defect flags
       const activeDailyRun = dailyData.find(d =>
         (selectedRunId && getItemId(d) === selectedRunId) ||
         (extractSubgridName(d.subgrid) || '').toUpperCase().trim() === activeSg
       );
       if (activeDailyRun) {
+        const formatted = formatTrackItem(activeDailyRun);
         mapIframeRef.current.contentWindow.postMessage({
           type: 'SET_STAGED_DATA',
-          stagedItems: [activeDailyRun]
+          stagedItems: [formatted]
         }, '*');
       }
 
-      // 3. Broadcast discovered defect markers
-      if (effectiveDefectsList.length > 0) {
+      // 3. Broadcast discovered defect markers immediately for zero delay
+      if (allDefectsMerged.length > 0) {
         mapIframeRef.current.contentWindow.postMessage({
           type: 'QAQC_DEFECTS_SYNC',
-          defects: effectiveDefectsList
+          defects: allDefectsMerged
         }, '*');
       }
     } catch (_) {}
-  }, [activeRunningSubgrid, selectedSubgrid, selectedRunId, dailyData, effectiveDefectsList]);
+  }, [activeRunningSubgrid, selectedSubgrid, selectedRunId, dailyData, defectsList, effectiveDefectsList]);
 
   // Load track dataset only when target subgrid changes or map loads
   useEffect(() => {
     initWorkbenchMapTrack();
   }, [initWorkbenchMapTrack, selectedSubgrid, selectedRunId, viewportMode]);
 
+  // Real-time defect marker synchronization to ensure defects never revert to green during QC
+  useEffect(() => {
+    if (!mapIframeRef.current?.contentWindow) return;
+    if (effectiveDefectsList.length === 0) return;
+    try {
+      mapIframeRef.current.contentWindow.postMessage({
+        type: 'QAQC_DEFECTS_SYNC',
+        subgrid: activeRunningSubgrid || selectedSubgrid,
+        defects: effectiveDefectsList
+      }, '*');
+    } catch (_) {}
+  }, [effectiveDefectsList, activeRunningSubgrid, selectedSubgrid]);
+
   // 2. Only stream node updates when QC is actively RUNNING (no continuous pan/focus when idle or completed)
   useEffect(() => {
     if (!isRunning) return;
     if (!mapIframeRef.current?.contentWindow) return;
     if (!activeDisplayCoords.lat || !activeDisplayCoords.lng) return;
+
+    const isCurrentDefect = Boolean(
+      activeRecord?.defectType ||
+      liveCheckStatus.blur.status === 'flagged' ||
+      liveCheckStatus.obstruction.status === 'flagged' ||
+      liveCheckStatus.gps.status === 'flagged' ||
+      effectiveDefectsList.some((d: any) => (d.point_id || d.pointId || d.filename) === activeDisplayPointId)
+    );
 
     try {
       mapIframeRef.current.contentWindow.postMessage({
@@ -589,7 +764,10 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
           lat: activeDisplayCoords.lat,
           lon: activeDisplayCoords.lng,
           lng: activeDisplayCoords.lng,
-          bearing: activeDisplayBearing
+          bearing: activeDisplayBearing,
+          is_defect: isCurrentDefect,
+          isDefect: isCurrentDefect,
+          color: isCurrentDefect ? '#EF4444' : undefined
         },
         isLiveTracking: true,
         noAnimation: true
@@ -601,42 +779,77 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
         heading: activeDisplayBearing
       }, '*');
     } catch (_) {}
-  }, [isRunning, activeDisplayIndex, activeDisplayCoords, activeDisplayBearing, activeDisplayPointId, activeRunningSubgrid, selectedSubgrid]);
+  }, [isRunning, activeDisplayIndex, activeDisplayCoords, activeDisplayBearing, activeDisplayPointId, activeRecord, liveCheckStatus, effectiveDefectsList, activeRunningSubgrid, selectedSubgrid]);
 
-  // 3. Single click preview if user manually clicks a historical station in the feed
+  // 3. Highlight station node on map when user manually selects or clicks Prev/Next
   useEffect(() => {
     if (selectedStationIndex === null || isRunning) return;
-    if (!activeRecord || !activeRecord.lat || !activeRecord.lng) return;
     if (!mapIframeRef.current?.contentWindow) return;
+    if (!activeDisplayCoords.lat || !activeDisplayCoords.lng) return;
 
     try {
       mapIframeRef.current.contentWindow.postMessage({
         type: 'MAP_POINT_SELECTED',
         point: {
-          filename: activeRecord.pointId,
+          filename: activeDisplayPointId,
+          image_url: activeDisplayThumbnail,
           subgrid: activeRunningSubgrid || selectedSubgrid,
-          lat: activeRecord.lat,
-          lon: activeRecord.lng,
-          lng: activeRecord.lng,
-          bearing: activeRecord.bearing
+          lat: activeDisplayCoords.lat,
+          lon: activeDisplayCoords.lng,
+          lng: activeDisplayCoords.lng,
+          bearing: activeDisplayBearing
         },
-        isUserSelect: true
+        isUserSelect: true,
+        panTo: true
+      }, '*');
+
+      mapIframeRef.current.contentWindow.postMessage({
+        type: 'SET_CAMERA_HEADING',
+        bearing: activeDisplayBearing,
+        heading: activeDisplayBearing
       }, '*');
     } catch (_) {}
-  }, [selectedStationIndex, activeRecord, isRunning, activeRunningSubgrid, selectedSubgrid]);
+  }, [selectedStationIndex, isRunning, activeDisplayCoords, activeDisplayPointId, activeDisplayThumbnail, activeDisplayBearing, activeRunningSubgrid, selectedSubgrid]);
 
-  // 4. Map handshake listener
+  // 4. Map handshake and interactive panotrack click listener
   useEffect(() => {
     const handleMessage = (e: MessageEvent) => {
       if (e.data?.type === 'VIEWER_READY' || e.data?.type === 'MAP_READY') {
         setIsMapReady(true);
         lastLoadedSubgridRef.current = ''; // Reset to force clean reload on new ready
         initWorkbenchMapTrack();
+      } else if (e.data?.type === 'MAP_POINT_SELECTED' || e.data?.type === 'POINT_SELECTED' || e.data?.type === 'PANORAMA_SELECTED') {
+        if (isRunning) return; // Do not interrupt active automated inspection
+        const pt = e.data.point || e.data.payload || e.data;
+        if (pt) {
+          const fn = (pt.filename || pt.image_url || pt.pointId || pt.point_id || '').split('/').pop()?.toUpperCase().trim();
+          const stnIdx = selectedStations.findIndex(s => {
+            const sFn = (s.filename || s.image_url || s.point_id || s.id || '').split('/').pop()?.toUpperCase().trim();
+            const sPtId = (s.point_id || s.id || '').toUpperCase().trim();
+            return fn && (sFn === fn || sPtId === fn);
+          });
+          if (stnIdx !== -1) {
+            setSelectedStationIndex(stnIdx + 1);
+          } else {
+            const ptLat = Number(pt.lat || pt.latitude);
+            const ptLng = Number(pt.lng || pt.lon || pt.longitude);
+            if (!isNaN(ptLat) && !isNaN(ptLng)) {
+              const coordIdx = selectedStations.findIndex(s => {
+                const sLat = Number(s.lat || (s as any).latitude);
+                const sLng = Number(s.lng || (s as any).longitude || (s as any).lon);
+                return Math.abs(sLat - ptLat) < 0.0001 && Math.abs(sLng - ptLng) < 0.0001;
+              });
+              if (coordIdx !== -1) {
+                setSelectedStationIndex(coordIdx + 1);
+              }
+            }
+          }
+        }
       }
     };
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [initWorkbenchMapTrack]);
+  }, [initWorkbenchMapTrack, isRunning, selectedStations]);
 
   // Filtered station history stream
   const filteredHistory = useMemo(() => {
@@ -647,6 +860,99 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
   }, [effectiveHistory, filterMode]);
 
   // Handle launch of inspection
+  // Station Navigation Handlers (Prev / Next image matching panotrack)
+  const handlePrevStation = useCallback(() => {
+    if (isRunning) return;
+    const current = activeDisplayIndex;
+    const targetIdx = Math.max(1, current - 1);
+    setSelectedStationIndex(targetIdx);
+
+    const stn = (selectedStations && selectedStations[targetIdx - 1]) || (effectiveHistory && effectiveHistory[targetIdx - 1]);
+    if (stn && mapIframeRef.current?.contentWindow) {
+      const lat = stn.lat || (stn as any)?.latitude;
+      const lng = stn.lng || (stn as any)?.longitude || (stn as any)?.lon;
+      const bearing = stn.bearing || (stn as any)?.heading || 0;
+      const fn = stn.filename || stn.point_id || stn.id || (stn as any)?.pointId;
+      if (lat && lng) {
+        try {
+          mapIframeRef.current.contentWindow.postMessage({
+            type: 'MAP_POINT_SELECTED',
+            point: {
+              filename: fn,
+              subgrid: activeRunningSubgrid || selectedSubgrid,
+              lat,
+              lon: lng,
+              lng,
+              bearing
+            },
+            isUserSelect: true,
+            panTo: true
+          }, '*');
+          mapIframeRef.current.contentWindow.postMessage({
+            type: 'SET_CAMERA_HEADING',
+            bearing,
+            heading: bearing
+          }, '*');
+        } catch (_) {}
+      }
+    }
+  }, [isRunning, activeDisplayIndex, selectedStations, effectiveHistory, activeRunningSubgrid, selectedSubgrid]);
+
+  const handleNextStation = useCallback(() => {
+    if (isRunning) return;
+    const maxIdx = totalStations > 0 ? totalStations : Math.max(1, selectedStations.length);
+    const current = activeDisplayIndex;
+    const targetIdx = Math.min(maxIdx, current + 1);
+    setSelectedStationIndex(targetIdx);
+
+    const stn = (selectedStations && selectedStations[targetIdx - 1]) || (effectiveHistory && effectiveHistory[targetIdx - 1]);
+    if (stn && mapIframeRef.current?.contentWindow) {
+      const lat = stn.lat || (stn as any)?.latitude;
+      const lng = stn.lng || (stn as any)?.longitude || (stn as any)?.lon;
+      const bearing = stn.bearing || (stn as any)?.heading || 0;
+      const fn = stn.filename || stn.point_id || stn.id || (stn as any)?.pointId;
+      if (lat && lng) {
+        try {
+          mapIframeRef.current.contentWindow.postMessage({
+            type: 'MAP_POINT_SELECTED',
+            point: {
+              filename: fn,
+              subgrid: activeRunningSubgrid || selectedSubgrid,
+              lat,
+              lon: lng,
+              lng,
+              bearing
+            },
+            isUserSelect: true,
+            panTo: true
+          }, '*');
+          mapIframeRef.current.contentWindow.postMessage({
+            type: 'SET_CAMERA_HEADING',
+            bearing,
+            heading: bearing
+          }, '*');
+        } catch (_) {}
+      }
+    }
+  }, [isRunning, totalStations, selectedStations, effectiveHistory, activeDisplayIndex, activeRunningSubgrid, selectedSubgrid]);
+
+  // Keyboard shortcut listener for ArrowLeft / ArrowRight navigation
+  useEffect(() => {
+    if (!isOpen || isRunning) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
+        e.preventDefault();
+        handlePrevStation();
+      } else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
+        e.preventDefault();
+        handleNextStation();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, isRunning, handlePrevStation, handleNextStation]);
+
   const handleLaunchInspection = () => {
     if (!selectedSubgrid || selectedStations.length === 0) return;
 
@@ -1180,8 +1486,8 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                       isZeroFrames
                         ? 'opacity-40 bg-card border-subtle/50 cursor-not-allowed text-text-muted'
                         : isSelected
-                        ? 'bg-inner border-slate-500 text-text-base shadow-sm ring-1 ring-white/10 cursor-pointer'
-                        : 'bg-card hover:bg-inner/60 text-text-muted hover:text-text-base border-subtle cursor-pointer'
+                        ? 'bg-slate-700/60 border-slate-300/80 text-white shadow-lg ring-2 ring-slate-400/40 cursor-pointer'
+                        : 'bg-card hover:bg-slate-800/40 hover:border-slate-600/50 text-text-muted hover:text-text-base border-subtle cursor-pointer'
                     }`}
                   >
                     <div className="min-w-0 space-y-1">
@@ -1471,7 +1777,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                 ? 'h-1/2 lg:h-full lg:w-1/2 border-b lg:border-b-0 lg:border-r border-subtle'
                 : 'h-full w-full'
             }`}>
-              {activeDisplayThumbnail ? (
+              {(activeRunningSubgrid || selectedSubgrid) && activeDisplayThumbnail ? (
                 <img
                   src={activeDisplayThumbnail}
                   alt={`Station ${activeDisplayIndex}`}
@@ -1596,6 +1902,31 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                 </div>
               )}
 
+                            {/* FLOATING PREV / NEXT PANOTRACK BUTTONS OVERLAY */}
+              <button
+                type="button"
+                onClick={handlePrevStation}
+                disabled={activeDisplayIndex <= 1 || isRunning}
+                className={`absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 z-20 w-10 sm:w-12 h-10 sm:h-12 rounded-full bg-black/75 hover:bg-black/95 text-white/90 hover:text-white border border-white/20 hover:border-white/40 shadow-2xl flex items-center justify-center transition-all cursor-pointer backdrop-blur-md active:scale-90 ${
+                  activeDisplayIndex <= 1 || isRunning ? 'opacity-30 pointer-events-none' : 'opacity-85 hover:opacity-100 hover:scale-105'
+                }`}
+                title={`Previous Station (Frame ${Math.max(1, activeDisplayIndex - 1)})`}
+              >
+                <ChevronLeft size={22} className="shrink-0 -translate-x-0.5" />
+              </button>
+
+              <button
+                type="button"
+                onClick={handleNextStation}
+                disabled={activeDisplayIndex >= (totalStations > 0 ? totalStations : selectedStations.length) || isRunning}
+                className={`absolute right-3 sm:right-4 top-1/2 -translate-y-1/2 z-20 w-10 sm:w-12 h-10 sm:h-12 rounded-full bg-black/75 hover:bg-black/95 text-white/90 hover:text-white border border-white/20 hover:border-white/40 shadow-2xl flex items-center justify-center transition-all cursor-pointer backdrop-blur-md active:scale-90 ${
+                  activeDisplayIndex >= (totalStations > 0 ? totalStations : selectedStations.length) || isRunning ? 'opacity-30 pointer-events-none' : 'opacity-85 hover:opacity-100 hover:scale-105'
+                }`}
+                title={`Next Station (Frame ${Math.min(totalStations > 0 ? totalStations : selectedStations.length, activeDisplayIndex + 1)})`}
+              >
+                <ChevronRight size={22} className="shrink-0 translate-x-0.5" />
+              </button>
+
               {/* Return to Live Telemetry Button */}
               {selectedStationIndex !== null && isRunning && (
                 <button
@@ -1619,7 +1950,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                 <div className="h-8 px-3 bg-card/90 backdrop-blur-md border-b border-subtle flex items-center justify-between shrink-0 text-xs z-10">
                   <div className="flex items-center gap-2">
                     <Map size={13} className="text-sky-400" />
-                    <span className="font-semibold text-text-base text-xs">Live Vehicle Trajectory Map</span>
+                    <span className="font-semibold text-text-base text-xs">Vehicle Trajectory Map</span>
                     <span className="text-text-muted/40">•</span>
                     <span className="text-text-muted font-mono text-[11px] truncate max-w-[120px] sm:max-w-none">
                       {activeRunningSubgrid || selectedSubgrid || 'No Target'}
@@ -1627,22 +1958,34 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                   </div>
                   <div className="flex items-center gap-2 text-text-muted font-mono text-[11px]">
                     <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                    <span className="hidden sm:inline">Auto-Tracking Active</span>
+                    <span className="hidden sm:inline">Tracking Active</span>
                   </div>
                 </div>
 
                 {/* Map Iframe Container */}
                 <div className="flex-1 w-full h-full relative">
-                  <iframe
-                    ref={mapIframeRef}
-                    src={`${import.meta.env.VITE_MAP_URL || 'https://mobilemapping-nine.vercel.app'}/?embed=true&dashboard=true&qaqcWorkbench=true&basemap=${encodeURIComponent(projectSettings?.defaultBasemap || 'positron')}&subgrid=${encodeURIComponent(activeRunningSubgrid || selectedSubgrid)}`}
-                    className="w-full h-full border-0"
-                    title="QAQC Synchronized Trajectory Map"
-                    onLoad={() => {
-                      setIsMapReady(true);
-                      initWorkbenchMapTrack();
-                    }}
-                  />
+                  {(activeRunningSubgrid || selectedSubgrid) ? (
+                    <iframe
+                      ref={mapIframeRef}
+                      src={`${import.meta.env.VITE_MAP_URL || 'https://mobilemapping-nine.vercel.app'}/?embed=true&dashboard=true&qaqcWorkbench=true&basemap=${encodeURIComponent(projectSettings?.defaultBasemap || 'positron')}&subgrid=${encodeURIComponent(activeRunningSubgrid || selectedSubgrid)}`}
+                      className="w-full h-full border-0"
+                      title="QAQC Synchronized Trajectory Map"
+                      onLoad={() => {
+                        setIsMapReady(true);
+                        initWorkbenchMapTrack();
+                      }}
+                    />
+                  ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center gap-2 p-6 text-center select-none bg-app">
+                      <div className="w-10 h-10 rounded-xl bg-card border border-subtle flex items-center justify-center text-text-muted">
+                        <Map size={20} className="text-text-muted" />
+                      </div>
+                      <div className="space-y-0.5 max-w-xs">
+                        <h5 className="text-xs font-semibold text-text-base">Trajectory Map Standby</h5>
+                        <p className="text-[11px] text-text-muted">Select a survey target from the left panel to load trajectory path</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -1795,12 +2138,12 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                     onClick={() => setSelectedStationIndex(isSelected ? null : item.index)}
                     className={`p-2.5 rounded-xl border transition-all cursor-pointer space-y-1 ${
                       isSelected
-                        ? 'bg-inner border-slate-500 text-text-base shadow-sm ring-1 ring-white/10'
+                        ? 'bg-slate-700/60 border-slate-300/80 text-white shadow-lg ring-2 ring-slate-400/40'
                         : isLive
-                        ? 'bg-inner border-subtle text-text-base'
+                        ? 'bg-slate-800/40 border-slate-600/60 text-white'
                         : item.status === 'flagged'
-                        ? 'bg-inner/60 border border-subtle text-text-base hover:bg-inner'
-                        : 'bg-card hover:bg-inner/50 text-text-muted hover:text-text-base border-subtle'
+                        ? 'bg-inner/60 border border-subtle text-text-base hover:bg-slate-800/40'
+                        : 'bg-card hover:bg-slate-800/40 text-text-muted hover:text-text-base border-subtle'
                     }`}
                   >
                     {/* Row 1: Node Station Number, Filename & Timestamp */}

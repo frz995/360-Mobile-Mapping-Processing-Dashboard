@@ -521,6 +521,10 @@ export interface SharpnessAnalysisResult {
   meanScore: number;
   worstSector: string;
   sectorScores: SectorScore[];
+  avgBrightness: number;
+  clippedRatio: number;
+  isObstruction: boolean;
+  obstructionReason?: string;
   reason?: string;
   status: 'success' | 'skipped' | 'error';
 }
@@ -534,7 +538,12 @@ export async function analyzeImageSharpness(
   imageUrl: string,
   blurThreshold: number = 68.0,
   deliverableModel: 'masked_car' | 'generative_fill' = 'masked_car',
-  options?: { timeoutMs?: number }
+  options?: {
+    timeoutMs?: number;
+    darkThreshold?: number;
+    glareThreshold?: number;
+    glareThresholdRatio?: number;
+  }
 ): Promise<SharpnessAnalysisResult> {
   const timeoutMs = options?.timeoutMs ?? 4000;
 
@@ -545,6 +554,9 @@ export async function analyzeImageSharpness(
       meanScore: 0,
       worstSector: 'Front',
       sectorScores: [],
+      avgBrightness: 128.0,
+      clippedRatio: 0,
+      isObstruction: false,
       reason: 'SKIPPED_NO_IMAGE_URL',
       status: 'skipped'
     };
@@ -652,6 +664,9 @@ export async function analyzeImageSharpness(
       meanScore: 0,
       worstSector: 'Front',
       sectorScores: [],
+      avgBrightness: 128.0,
+      clippedRatio: 0,
+      isObstruction: false,
       reason: 'SKIPPED_IMG_TIMEOUT',
       status: 'skipped'
     };
@@ -675,7 +690,10 @@ export async function analyzeImageSharpness(
         { name: 'Back', variance: 0, score: resScore },
         { name: 'Left', variance: 0, score: resScore }
       ],
-      reason: `Blurry Frame (Sharpness score ${resScore.toFixed(1)} below threshold ${blurThreshold.toFixed(1)})`,
+      avgBrightness: 128.0,
+      clippedRatio: 0,
+      isObstruction: false,
+      reason: `Blurry Frame (Low-res preview resolution ${naturalWidth}px lacks micro-detail, score ${resScore.toFixed(1)} < ${blurThreshold.toFixed(1)})`,
       status: 'success'
     };
   }
@@ -685,9 +703,37 @@ export async function analyzeImageSharpness(
     const totalPixels = sampleWidth * sampleHeight;
     const gray = new Float32Array(totalPixels);
 
+    let totalBrightness = 0;
+    let clippedPixels = 0;
+    const glareThresh = options?.glareThreshold ?? 240.0;
+
     for (let i = 0; i < totalPixels; i++) {
       const idx = i * 4;
-      gray[i] = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
+      const r = data[idx];
+      const g = data[idx + 1];
+      const b = data[idx + 2];
+      const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+      gray[i] = lum;
+      totalBrightness += lum;
+
+      if (r >= glareThresh && g >= glareThresh && b >= glareThresh) {
+        clippedPixels++;
+      }
+    }
+
+    const avgBrightness = totalBrightness / totalPixels;
+    const clippedRatio = clippedPixels / totalPixels;
+    const darkThresh = options?.darkThreshold ?? 15.0;
+    const glareRatioLimit = options?.glareThresholdRatio ?? 0.40;
+
+    let isObstruction = false;
+    let obstructionReason: string | undefined;
+    if (avgBrightness < darkThresh) {
+      isObstruction = true;
+      obstructionReason = `Lens occlusion / underexposed frame (Brightness: ${avgBrightness.toFixed(1)} < ${darkThresh})`;
+    } else if (clippedRatio > glareRatioLimit) {
+      isObstruction = true;
+      obstructionReason = `Severe solar glare / overexposure clipping (${(clippedRatio * 100).toFixed(1)}% clipped >= ${glareThresh})`;
     }
 
     // Latitude ROI Cropping based on deliverable model
@@ -782,6 +828,10 @@ export async function analyzeImageSharpness(
       meanScore,
       worstSector: minQuad.name,
       sectorScores,
+      avgBrightness,
+      clippedRatio,
+      isObstruction,
+      obstructionReason,
       reason: isBlurry
         ? `Blurry Frame in ${minQuad.name} sector (Sharpness score ${minScore.toFixed(1)} below threshold ${blurThreshold.toFixed(1)})`
         : undefined,
@@ -794,6 +844,9 @@ export async function analyzeImageSharpness(
       meanScore: 30.0,
       worstSector: 'Front',
       sectorScores: [],
+      avgBrightness: 128.0,
+      clippedRatio: 0,
+      isObstruction: false,
       reason: `Analysis error: ${(err as Error).message}`,
       status: 'error'
     };
