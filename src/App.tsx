@@ -44,7 +44,7 @@ import {
   Play,
   StopCircle
 } from 'lucide-react';
-import { supabase, publishToSupabase, saveToStagingSupabase, deleteFromStagingSupabase, fetchSupabaseData, deleteFromSupabase, updateDefectStatusInSupabase, fetchQaRecordsFromSupabase, fetchQaAuditRunsFromSupabase, saveQaAuditRunToSupabase, verifyCsvImageFilenamesInStorage, fetchAuditLogsFromSupabase, saveAuditLogToSupabase, fetchNotificationsFromSupabase, saveNotificationToSupabase, fetchProjectSettingsFromSupabase, saveProjectSettingsToSupabase, resolvePanoramaUrl, getDatabaseTableMapping, SUBGRID_COORDINATES } from './services/supabase';
+import { supabase, publishToSupabase, saveToStagingSupabase, deleteFromStagingSupabase, fetchSupabaseData, deleteFromSupabase, updateDefectStatusInSupabase, fetchQaRecordsFromSupabase, fetchQaAuditRunsFromSupabase, saveQaAuditRunToSupabase, verifyCsvImageFilenamesInStorage, fetchAuditLogsFromSupabase, saveAuditLogToSupabase, fetchNotificationsFromSupabase, saveNotificationToSupabase, fetchProjectSettingsFromSupabase, saveProjectSettingsToSupabase, resolvePanoramaUrl, getDatabaseTableMapping, SUBGRID_COORDINATES, formatPIC } from './services/supabase';
 import type { QAQCAuditRunRecord } from './types/admin';
 import { AdminSettingsView } from './components/AdminSettingsView';
 import { QAQCWorkbench } from './components/QAQCWorkbench';
@@ -1554,11 +1554,11 @@ const DataManagementPage = ({
   const [dataTab, setDataTab] = useState<'batches' | 'daily' | 'vector'>(initialTab);
 
   const activeAuthUserName = React.useMemo(() => {
-    if (!authSession || !authSession.user) return '';
+    if (!authSession || !authSession.user) return 'Fariz.farhan95';
     const u = authSession.user;
-    const raw = u.user_metadata?.full_name || u.user_metadata?.name || (u.email ? u.email.split('@')[0] : '');
-    if (!raw) return '';
-    return raw.charAt(0).toUpperCase() + raw.slice(1);
+    const raw = u.user_metadata?.username || u.user_metadata?.full_name || u.user_metadata?.name || (u.email ? u.email.split('@')[0] : '');
+    if (!raw) return 'Fariz.farhan95';
+    return formatPIC(raw, 'Fariz.farhan95');
   }, [authSession]);
 
   const [editingItem, setEditingItem] = useState<BatchLog | DailyTimeSeries | Layer | Folder | null>(null);
@@ -5389,14 +5389,20 @@ export default function App() {
             const sg = (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim();
             const runId = getItemId(d);
             const frameCount = getImagesProcessedCount(d);
-            const cachedAudit = (runId && cloudAuditMap[`${sg}_${runId}`]) || cloudAuditMap[`${sg}_default`];
+            const cachedAudit = runId ? cloudAuditMap[`${sg}_${runId}`] : undefined;
             const cachedDefects = cachedAudit && typeof cachedAudit.defectCount === 'number' ? cachedAudit.defectCount : 0;
-            const explicitDefects = (typeof d.imagesDefected === 'number' && d.imagesDefected > 0) ? d.imagesDefected : (typeof d.defectCount === 'number' && d.defectCount > 0) ? d.defectCount : 0;
-            const finalDefects = frameCount === 0 ? 0 : Math.max(cachedDefects, explicitDefects);
+            const finalDefects = (frameCount === 0 || !cachedAudit) ? 0 : Math.min(cachedDefects, frameCount);
+            const isPub = d.publishToWebGIS === 'yes' || d.isSyncedWithSupabase === true;
 
             const qaqcStatus = frameCount === 0
-              ? (d.publishToWebGIS === 'yes' ? 'Published' : undefined)
-              : (d.qaqcStatus || (cachedAudit ? `QAQC Completed (${cachedDefects} Defect${cachedDefects === 1 ? '' : 's'} Found)` : (finalDefects > 0 ? `QAQC Completed (${finalDefects} Defects Found)` : undefined)));
+              ? (isPub ? 'Published' : undefined)
+              : (cachedAudit
+                  ? (isPub
+                      ? (cachedDefects === 0 ? 'Published (QAQC Verified)' : `Published (${cachedDefects} Defect${cachedDefects === 1 ? '' : 's'} Found)`)
+                      : (cachedDefects === 0 ? 'QAQC Passed (Ready to Publish)' : `QAQC Flagged (${cachedDefects} Defect${cachedDefects === 1 ? '' : 's'} Found)`)
+                    )
+                  : (isPub ? 'Published' : undefined)
+                );
 
             return {
               ...d,
@@ -5408,13 +5414,11 @@ export default function App() {
 
           const hydratedBatches = (sBatches || []).map((b: any) => {
             const sg = (extractSubgridName(b.subgrid || b.imageFilename) || b.subgrid || '').toUpperCase().trim();
-            const cachedAudit = cloudAuditMap[`${sg}_default`] || Object.entries(cloudAuditMap).find(([k]) => k.startsWith(`${sg}_`))?.[1];
-            const dbDefects = defectsPerSubgrid.get(sg) || 0;
-            const cachedDefects = cachedAudit && typeof cachedAudit.defectCount === 'number' ? cachedAudit.defectCount : 0;
-            const explicitDefects = (typeof b.defects === 'number' && b.defects > 0) ? b.defects : 0;
-            const finalDefects = Math.max(dbDefects, cachedDefects, explicitDefects);
+            const matchingDaily = hydratedDaily.filter((d: any) => (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim() === sg);
+            const dailyDefectsSum = matchingDaily.reduce((acc: number, d: any) => acc + (d.defectCount || 0), 0);
+            const finalDefects = dailyDefectsSum > 0 ? dailyDefectsSum : (typeof b.defects === 'number' ? b.defects : 0);
 
-            const qaqcStatus = b.qaqcStatus || (cachedAudit ? `QAQC Completed (${cachedDefects} Defect${cachedDefects === 1 ? '' : 's'} Found)` : (finalDefects > 0 ? `QAQC Completed (${finalDefects} Defects Found)` : undefined));
+            const qaqcStatus = b.qaqcStatus || (finalDefects > 0 ? `QAQC Completed (${finalDefects} Defects Found)` : undefined);
 
             return {
               ...b,
@@ -5593,7 +5597,7 @@ export default function App() {
         );
 
         let cachedDefects: number | undefined;
-        const cached = (runId && qaqcAuditRuns[`${dailySubgrid}_${runId}`]) || qaqcAuditRuns[`${dailySubgrid}_default`];
+        const cached = runId ? qaqcAuditRuns[`${dailySubgrid}_${runId}`] : undefined;
         if (cached && typeof cached.defectCount === 'number') {
           cachedDefects = cached.defectCount;
         }
@@ -6745,9 +6749,15 @@ export default function App() {
         }
       },
       onComplete: (summary) => {
-        const statusText = `QAQC Completed (${summary.defectsCount} Defect${summary.defectsCount === 1 ? '' : 's'} Found)`;
         const targetRunId = summary.runId || selectedDailyRunId;
         const normSg = (summary.subgrid || '').toUpperCase().trim();
+        const targetRow = targetRunId
+          ? dailyData.find(d => getItemId(d) === targetRunId || d.id === targetRunId || (d as any)._id === targetRunId || (d as any).runId === targetRunId)
+          : dailyData.find(d => (extractSubgridName(d.subgrid) || '').toUpperCase().trim() === normSg);
+        const isPub = targetRow?.publishToWebGIS === 'yes' || targetRow?.isSyncedWithSupabase === true;
+        const statusText = isPub
+          ? (summary.defectsCount === 0 ? 'Published (QAQC Verified)' : `Published (${summary.defectsCount} Defect${summary.defectsCount === 1 ? '' : 's'} Found)`)
+          : (summary.defectsCount === 0 ? 'QAQC Passed (Ready to Publish)' : `QAQC Flagged (${summary.defectsCount} Defect${summary.defectsCount === 1 ? '' : 's'} Found)`);
 
         // 1. Update React state for dailyData
         if (targetRunId) {
@@ -8467,7 +8477,7 @@ export default function App() {
 
                                               const runId = getItemId(d);
                                               const isThisDailyActive = isSpecificRunActive && qaqcWorkerState.runId === runId;
-                                              const dailyCached = (runId && qaqcAuditRuns[`${batchSubgrid}_${runId}`]) || qaqcAuditRuns[`${batchSubgrid}_default`];
+                                              const dailyCached = runId ? qaqcAuditRuns[`${batchSubgrid}_${runId}`] : undefined;
                                               const dailyCachedCount = (dailyCached && typeof dailyCached.defectCount === 'number') ? dailyCached.defectCount : 0;
 
                                               let runDefects = 0;
@@ -8530,11 +8540,7 @@ export default function App() {
                                         );
                                       })()}
                                     </td>
-                                    <td className="px-3.5 py-3.5 text-slate-300 font-medium whitespace-nowrap">
-                                      {(log.pic && log.pic.toLowerCase().trim() !== 'unassigned')
-                                        ? log.pic
-                                        : (activeAuthUserName || (authSession?.user?.email ? authSession.user.email.split('@')[0] : '') || 'Admin')}
-                                    </td>
+                                    <td className="px-3.5 py-3.5 text-slate-300 font-medium whitespace-nowrap">Admin</td>
                                     <td className="px-3.5 py-3.5 whitespace-nowrap">
                                       {qaqcWorkerState.isRunning && !qaqcWorkerState.runId && qaqcWorkerState.subgrid === batchSubgrid ? (
                                         <button
@@ -8632,7 +8638,7 @@ export default function App() {
                                   );
 
                                   let cachedDefects: number | undefined;
-                                  const cachedAuditObj = (runId && qaqcAuditRuns[`${dailySubgrid}_${runId}`]) || qaqcAuditRuns[`${dailySubgrid}_default`];
+                                  const cachedAuditObj = runId ? qaqcAuditRuns[`${dailySubgrid}_${runId}`] : undefined;
                                   if (cachedAuditObj && typeof cachedAuditObj.defectCount === 'number') {
                                     cachedDefects = cachedAuditObj.defectCount;
                                   }
@@ -8720,11 +8726,7 @@ export default function App() {
                                           <span className="text-text-muted text-[11px] font-medium tabular-nums">0</span>
                                         )}
                                       </td>
-                                      <td className="px-3.5 py-3.5 text-slate-300 font-medium whitespace-nowrap">
-                                        {(log.pic && log.pic.toLowerCase().trim() !== 'unassigned')
-                                          ? log.pic
-                                          : (activeAuthUserName || (authSession?.user?.email ? authSession.user.email.split('@')[0] : '') || 'Operator')}
-                                      </td>
+                                      <td className="px-3.5 py-3.5 text-slate-300 font-medium whitespace-nowrap">{formatPIC(log.pic, activeAuthUserName || "Fariz.farhan95")}</td>
                                       <td className="px-3.5 py-3.5 whitespace-nowrap">
                                         {(() => {
                                           if (isThisRowUnderInspection) {

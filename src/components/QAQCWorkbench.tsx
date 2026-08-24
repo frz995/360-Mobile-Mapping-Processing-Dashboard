@@ -63,6 +63,8 @@ export interface QAQCWorkbenchProps {
   qaqcAuditRuns?: Record<string, any>;
   activeUserName?: string;
   surveyDate?: string;
+  initialSubgrid?: string;
+  initialRunId?: string | null;
   getStationsForSubgrid: (subgrid: string, runId?: string | null) => StationNode[];
   onStartInspection: (params: {
     subgrid: string;
@@ -112,6 +114,8 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
   qaqcAuditRuns = {},
   activeUserName = 'Operator',
   surveyDate,
+  initialSubgrid,
+  initialRunId,
   getStationsForSubgrid,
   onStartInspection,
   onPause,
@@ -121,15 +125,23 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
   onOpenDefectsGallery,
   onSignOffAndPublish: _onSignOffAndPublish
 }) => {
-  // Navigation & Filter Tabs (Default to Master Subgrid categorization)
-  const [targetTab, setTargetTab] = useState<'daily' | 'masterlist'>('masterlist');
+  // Navigation & Filter Tabs (Default to Daily tab if a specific run was selected, else Masterlist)
+  const [targetTab, setTargetTab] = useState<'daily' | 'masterlist'>(initialRunId ? 'daily' : 'masterlist');
   const [categoryFilter, setCategoryFilter] = useState<'all' | 'staging' | 'published'>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [showOnlyWithFrames, setShowOnlyWithFrames] = useState<boolean>(false);
 
-  // Selected Target Dataset in Console
-  const [selectedSubgrid, setSelectedSubgrid] = useState<string>('');
-  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  // Selected Target Dataset in Console strictly scoped to the active selection
+  const [selectedSubgrid, setSelectedSubgrid] = useState<string>(initialSubgrid || '');
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(initialRunId || null);
+
+  useEffect(() => {
+    if (initialSubgrid) setSelectedSubgrid(initialSubgrid);
+    if (initialRunId !== undefined) {
+      setSelectedRunId(initialRunId);
+      if (initialRunId) setTargetTab('daily');
+    }
+  }, [initialSubgrid, initialRunId]);
 
   // Inspection Rules & 4 Pacing Options (Auto + 200ms + 300ms + 500ms)
   const [config, setConfig] = useState<QAQCConfig>({
