@@ -199,26 +199,24 @@ export function getImagesProcessedCount(item?: {
 
   const rawPoi = Number(item.poiCount ?? (item as any).poi ?? (item.panoramas ? item.panoramas.length : 0));
 
-  let rawCount = 0;
-
-  // 1. Explicit verified count from Supabase storage verification
+  // 1. Explicit verified count from Supabase storage verification is the gold standard
   if (typeof item.availableImagesCount === 'number') {
-    rawCount = item.availableImagesCount;
-  } else if (item.availableFilenames && Array.isArray(item.availableFilenames)) {
-    rawCount = item.availableFilenames.length;
-  } else if (item.panoramas && item.panoramas.length > 0) {
+    return Math.min(item.availableImagesCount, rawPoi > 0 ? rawPoi : item.availableImagesCount);
+  }
+  if (item.availableFilenames && Array.isArray(item.availableFilenames)) {
+    return item.availableFilenames.length;
+  }
+  if (item.panoramas && item.panoramas.length > 0) {
     const availablePans = item.panoramas.filter((p: any) => p.isAvailable === true);
-    rawCount = availablePans.length > 0 ? availablePans.length : item.panoramas.filter((p: any) => p.isAvailable !== false).length;
-  } else if (typeof item.imagesProcessed === 'number') {
-    rawCount = item.imagesProcessed;
-  } else if (typeof item.images === 'number') {
-    rawCount = item.images;
+    return availablePans.length;
   }
-
-  if (rawPoi > 0 && rawCount > rawPoi) {
-    return rawPoi;
+  if (typeof item.imagesProcessed === 'number') {
+    return Math.min(item.imagesProcessed, rawPoi > 0 ? rawPoi : item.imagesProcessed);
   }
-  return rawCount;
+  if (typeof item.images === 'number') {
+    return Math.min(item.images, rawPoi > 0 ? rawPoi : item.images);
+  }
+  return 0;
 }
 
 

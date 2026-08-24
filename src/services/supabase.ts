@@ -158,10 +158,13 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
     const primaryBucket = settings?.supabaseBucket || (settings as any)?.storageBucket || import.meta.env.VITE_SUPABASE_BUCKET || import.meta.env.VITE_STORAGE_BUCKET || 'MMS_PIC';
     const candidateLocations: Array<{ bucket: string; path: string }> = [
       { bucket: primaryBucket, path: '' },
-      { bucket: primaryBucket, path: 'MMS_PIC' },
+      { bucket: primaryBucket.toLowerCase(), path: '' },
+      { bucket: primaryBucket.toUpperCase(), path: '' },
       { bucket: 'MMS_PIC', path: '' },
+      { bucket: 'mms_pic', path: '' },
       { bucket: 'panoramas', path: '' },
-      { bucket: 'panoramas', path: 'MMS_PIC' }
+      { bucket: 'panoramas', path: 'MMS_PIC' },
+      { bucket: 'panoramas', path: 'mms_pic' }
     ];
 
     const uniqueLocations = candidateLocations.filter((loc, idx, self) =>
@@ -209,13 +212,13 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
     // Helper to verify image filenames directly against storage
     function verifyFilenamesAgainstStorage(
       filenames: string[],
-      subgridKey?: string
+      _subgridKey?: string
     ): { count: number; verifiedFilenames: string[] } {
       if (!filenames || filenames.length === 0) {
         return { count: 0, verifiedFilenames: [] };
       }
 
-      // 1. If storage file set is available from bucket list, match exact filenames against bucket
+      // Check in-memory storage file set from bucket list
       if (storageFileSet.size > 0) {
         const verified = filenames.filter((fn) => {
           const cleanFn = fn.split('/').pop()?.toLowerCase().trim() || fn.toLowerCase().trim();
@@ -224,15 +227,8 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
         return { count: verified.length, verifiedFilenames: verified };
       }
 
-      // 2. If storage has counts per subgrid
-      const norm = (subgridKey || '').toUpperCase().trim();
-      if (norm && storageImageCounts.has(norm)) {
-        const count = storageImageCounts.get(norm) || 0;
-        return { count: Math.min(filenames.length, count), verifiedFilenames: [] };
-      }
-
-      // 3. Resilient fallback: Return existing filenames so counts are not wiped to 0 if storage listing is restricted
-      return { count: filenames.length, verifiedFilenames: filenames };
+      // If storage list is empty or track images are not uploaded, count is 0
+      return { count: 0, verifiedFilenames: [] };
     }
 
     // Query qa_defects table to aggregate actual defect counts per subgrid
@@ -1271,7 +1267,7 @@ export async function verifyCsvImageFilenamesInStorage(filenames: string[], sett
     return { availableCount, verifiedFilenames };
   }
 
-  return { availableCount: filenames.length, verifiedFilenames: filenames };
+  return { availableCount: 0, verifiedFilenames: [] };
 }
 
 export interface DatabaseTableMapping {
