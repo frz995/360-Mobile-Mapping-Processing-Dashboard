@@ -7225,11 +7225,21 @@ export default function App() {
         const iframes = document.querySelectorAll('iframe');
         iframes.forEach(f => {
           try {
-            f.contentWindow?.postMessage({ type: 'FILTER_SUBGRID', subgrid: '', date: '' }, '*');
-            // Reset staged data preview to all runs
+            f.contentWindow?.postMessage({ type: 'FILTER_SUBGRID', subgrid: '', date: '', isSingleRun: false }, '*');
+            const formattedAll = dailyData.map(d => {
+              const isPub = d.publishToWebGIS === 'yes' || d.isSyncedWithSupabase === true;
+              return {
+                ...d,
+                isPublished: isPub,
+                status: isPub ? 'yes' : (d.publishToWebGIS || 'in process'),
+                opacity: isPub ? 1.0 : 0.7,
+                statusColor: isPub ? '#10b981' : '#f59e0b'
+              };
+            });
             f.contentWindow?.postMessage({
               type: 'SET_STAGED_DATA',
-              stagedItems: dailyData
+              stagedItems: formattedAll,
+              isSingleRun: false
             }, '*');
           } catch (e) { }
         });
@@ -7255,6 +7265,32 @@ export default function App() {
       setHasSelectedPoint(Boolean(imgUrl || (lat && lng)));
 
       // 2. Transmit message restricting map display strictly to this single run
+      const isPub = daily.publishToWebGIS === 'yes' || daily.isSyncedWithSupabase === true;
+      const formattedItem = {
+        ...daily,
+        isPublished: isPub,
+        status: isPub ? 'yes' : (daily.publishToWebGIS || 'in process'),
+        opacity: isPub ? 1.0 : 0.7,
+        statusColor: isPub ? '#10b981' : '#f59e0b',
+        panoramas: (daily.panoramas || []).map((p: any) => {
+          const fnClean = (p.filename || p.image_url || '').split('/').pop()?.toUpperCase().trim();
+          const isPtDefect = Boolean(
+            p.isDefect ||
+            p.is_defect ||
+            (fnClean && allKnownDefects.some((d: any) => (d.point_id || d.filename || '').split('/').pop()?.toUpperCase().trim() === fnClean))
+          );
+          return {
+            ...p,
+            isPublished: isPub,
+            status: isPtDefect ? 'defect' : (isPub ? 'yes' : 'in process'),
+            isDefect: isPtDefect,
+            is_defect: isPtDefect,
+            color: isPtDefect ? '#ef4444' : (isPub ? '#10b981' : '#f59e0b'),
+            opacity: isPtDefect ? 1.0 : (isPub ? 1.0 : 0.7)
+          };
+        })
+      };
+
       const iframes = document.querySelectorAll('iframe');
       iframes.forEach(f => {
         try {
@@ -7263,13 +7299,16 @@ export default function App() {
             type: 'FILTER_SUBGRID',
             subgrid: daily.subgrid,
             date: daily.date || '',
-            runId: rowId
+            runId: rowId,
+            isSingleRun: true
           }, '*');
 
-          // Send ONLY this single run's panoramas to the map
+          // Send ONLY this single run's formatted panoramas to the map
           f.contentWindow?.postMessage({
             type: 'SET_STAGED_DATA',
-            stagedItems: [daily]
+            stagedItems: [formattedItem],
+            isSingleRun: true,
+            runId: rowId
           }, '*');
 
           // Send SET_PANORAMA to 360 viewer
