@@ -59,7 +59,7 @@ export interface SupabasePanoramaRecord {
   };
 }
 
-// Subgrid centroid coordinates (longitude, latitude) populated dynamically
+// Subgrid centroid coordinates (longitude, latitude) populated dynamically from real database records
 export const SUBGRID_COORDINATES: Record<string, [number, number]> = {};
 
 // Helper: Format PIC name
