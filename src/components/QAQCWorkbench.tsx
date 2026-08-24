@@ -764,11 +764,9 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
         let finalLon = typeof rawLon === 'number' && !isNaN(rawLon) && rawLon !== 0 ? rawLon : (typeof rawLon === 'string' ? parseFloat(rawLon) : null);
 
         if (finalLat === null || isNaN(finalLat) || finalLon === null || isNaN(finalLon)) {
-          const baseCoords = SUBGRID_COORDINATES[activeSgNorm] || [102.807800, 2.542429];
-          const seqMatch = (fnClean || '').match(/-(\d+)\./);
-          const seqNum = seqMatch ? parseInt(seqMatch[1], 10) : (idx + 1);
-          finalLat = baseCoords[1] + (seqNum - 1) * 0.00012;
-          finalLon = baseCoords[0] + (seqNum - 1) * 0.00008;
+          const baseCoords = SUBGRID_COORDINATES[activeSgNorm];
+          finalLat = baseCoords ? baseCoords[1] : 0;
+          finalLon = baseCoords ? baseCoords[0] : 0;
         }
 
         return {

@@ -6634,8 +6634,8 @@ export default function App() {
     fov: 75
   });
   const [inspectorCoords, setInspectorCoords] = useState<{ lat: number; lng: number }>({
-    lat: 2.542429,
-    lng: 102.807800
+    lat: 0,
+    lng: 0
   });
   const [inspectorSubgrid, setInspectorSubgrid] = useState<string>('');
   const [selectedQaFlags, setSelectedQaFlags] = useState<{ blurry: boolean; obstruction: boolean; badGps: boolean }>({
@@ -6692,21 +6692,22 @@ export default function App() {
           : (matchDaily.availableImagesCount || (matchDaily.availableFilenames?.length) || matchDaily.imagesProcessed || matchDaily.poiCount || 0);
 
         if (totalCount > 0) {
-          const baseCoords = SUBGRID_COORDINATES[cleanSg] || [102.807800, 2.542429];
-          const baseLon = baseCoords[0];
-          const baseLat = baseCoords[1];
+          const baseCoords = SUBGRID_COORDINATES[cleanSg];
+          const baseLon = baseCoords ? baseCoords[0] : 0;
+          const baseLat = baseCoords ? baseCoords[1] : 0;
           const customFilenames = matchDaily.availableFilenames;
           return Array.from({ length: totalCount }, (_, i) => {
-            const latOffset = i * 0.00012;
-            const lngOffset = i * 0.00008;
+            const pt = (matchDaily as any).points?.[i];
+            const lat = pt?.lat ?? baseLat;
+            const lng = pt?.lon ?? baseLon;
             const fn = (customFilenames && customFilenames[i]) || `${cleanSg}-${String(i + 1).padStart(4, '0')}.jpg`;
             return {
               filename: fn,
               point_id: fn,
-              latitude: baseLat + latOffset,
-              longitude: baseLon + lngOffset,
-              lat: baseLat + latOffset,
-              lng: baseLon + lngOffset,
+              latitude: lat,
+              longitude: lng,
+              lat: lat,
+              lng: lng,
               bearing: (45 + i * 2) % 360,
               image_url: resolvePanoramaUrl(fn, projectSettings)
             };
@@ -6747,10 +6748,10 @@ export default function App() {
             collectedStations.push({
               filename: p.filename || fn,
               point_id: p.filename || (p as any).point_id || fn,
-              latitude: p.latitude ?? (p as any).lat ?? (p as any).y,
-              longitude: p.longitude ?? (p as any).lon ?? (p as any).lng ?? (p as any).x,
-              lat: p.latitude ?? (p as any).lat ?? (p as any).y,
-              lng: p.longitude ?? (p as any).lon ?? (p as any).lng ?? (p as any).x,
+              latitude: p.latitude ?? (p as any).lat ?? (p as any).y ?? 0,
+              longitude: p.longitude ?? (p as any).lon ?? (p as any).lng ?? (p as any).x ?? 0,
+              lat: p.latitude ?? (p as any).lat ?? (p as any).y ?? 0,
+              lng: p.longitude ?? (p as any).lon ?? (p as any).lng ?? (p as any).x ?? 0,
               bearing: p.bearing ?? p.heading ?? ((collectedStations.length * 15) % 360),
               image_url: resolvePanoramaUrl(p.filename || fn, projectSettings)
             });
@@ -6763,9 +6764,9 @@ export default function App() {
           if (!seenFilenames.has(key)) {
             seenFilenames.add(key);
             const pt = (d as any).points?.[pIdx];
-            const baseCoords = SUBGRID_COORDINATES[cleanSg] || [102.807800, 2.542429];
-            const lat = pt?.lat ?? (baseCoords[1] + collectedStations.length * 0.00012);
-            const lng = pt?.lon ?? (baseCoords[0] + collectedStations.length * 0.00008);
+            const baseCoords = SUBGRID_COORDINATES[cleanSg];
+            const lat = pt?.lat ?? (baseCoords ? baseCoords[1] : 0);
+            const lng = pt?.lon ?? (baseCoords ? baseCoords[0] : 0);
             collectedStations.push({
               filename: fn,
               point_id: fn,
@@ -6792,10 +6793,10 @@ export default function App() {
       return pansToUse.map((p, idx) => ({
         filename: p.filename || `${cleanSg}-${String(idx + 1).padStart(4, '0')}.jpg`,
         point_id: p.filename || `${cleanSg}-${String(idx + 1).padStart(4, '0')}.jpg`,
-        latitude: p.latitude ?? (p as any).lat ?? (p as any).y,
-        longitude: p.longitude ?? (p as any).lon ?? (p as any).lng ?? (p as any).x,
-        lat: p.latitude ?? (p as any).lat ?? (p as any).y,
-        lng: p.longitude ?? (p as any).lon ?? (p as any).lng ?? (p as any).x,
+        latitude: p.latitude ?? (p as any).lat ?? (p as any).y ?? 0,
+        longitude: p.longitude ?? (p as any).lon ?? (p as any).lng ?? (p as any).x ?? 0,
+        lat: p.latitude ?? (p as any).lat ?? (p as any).y ?? 0,
+        lng: p.longitude ?? (p as any).lon ?? (p as any).lng ?? (p as any).x ?? 0,
         bearing: p.bearing ?? p.heading ?? ((idx * 15) % 360),
         image_url: resolvePanoramaUrl(p.filename || `${cleanSg}-${String(idx + 1).padStart(4, '0')}.jpg`, projectSettings)
       }));
@@ -6808,21 +6809,19 @@ export default function App() {
 
     if (totalCount === 0) return [];
 
-    const baseCoords = SUBGRID_COORDINATES[cleanSg] || [102.807800, 2.542429];
-    const baseLon = baseCoords[0];
-    const baseLat = baseCoords[1];
+    const baseCoords = SUBGRID_COORDINATES[cleanSg];
+    const baseLon = baseCoords ? baseCoords[0] : 0;
+    const baseLat = baseCoords ? baseCoords[1] : 0;
 
     return Array.from({ length: totalCount }, (_, i) => {
-      const latOffset = i * 0.00012;
-      const lngOffset = i * 0.00008;
       const fn = `${cleanSg}-${String(i + 1).padStart(4, '0')}.jpg`;
       return {
         filename: fn,
         point_id: fn,
-        latitude: baseLat + latOffset,
-        longitude: baseLon + lngOffset,
-        lat: baseLat + latOffset,
-        lng: baseLon + lngOffset,
+        latitude: baseLat,
+        longitude: baseLon,
+        lat: baseLat,
+        lng: baseLon,
         bearing: (45 + i * 2) % 360,
         image_url: resolvePanoramaUrl(fn, projectSettings)
       };
