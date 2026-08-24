@@ -7054,7 +7054,7 @@ export default function App() {
         const foundDaily = dailyData.find(d => (extractSubgridName(d.subgrid) || '').toUpperCase().trim() === s);
         const foundBatch = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === s);
         const firstPan = foundDaily?.panoramas?.[0] || foundBatch?.panoramas?.[0];
-        const fn = firstPan?.filename || (foundBatch?.imageFilename) || '';
+        const fn = firstPan?.filename || foundDaily?.availableFilenames?.[0] || (foundBatch?.imageFilename) || `${s}-0001.jpg`;
         const lat = firstPan?.latitude ?? (firstPan as any)?.lat ?? (foundDaily as any)?.points?.[0]?.lat ?? (SUBGRID_COORDINATES[s]?.[1] ?? 0);
         const lng = firstPan?.longitude ?? (firstPan as any)?.lon ?? (firstPan as any)?.lng ?? (foundDaily as any)?.points?.[0]?.lon ?? (SUBGRID_COORDINATES[s]?.[0] ?? 0);
         return { fn, lat, lng };
@@ -7067,12 +7067,24 @@ export default function App() {
         setActivePanoramaUrl(imgUrl);
         setInspectorCoords({ lat: def.lat, lng: def.lng });
         setInspectorSubgrid(nextSubgrid);
-        setHasSelectedPoint(Boolean(def.lat && def.lng));
+        setHasSelectedPoint(Boolean(imgUrl || (def.lat && def.lng)));
 
         const iframes = document.querySelectorAll('iframe');
         iframes.forEach(f => {
           try {
             f.contentWindow?.postMessage({ type: 'FILTER_SUBGRID', subgrid: nextSubgrid, date: nextDate || '' }, '*');
+            f.contentWindow?.postMessage({
+              type: 'SET_PANORAMA',
+              point: {
+                filename: def.fn,
+                image_url: imgUrl,
+                subgrid: nextSubgrid,
+                lat: def.lat,
+                lon: def.lng,
+                lng: def.lng,
+                bearing: 0
+              }
+            }, '*');
             f.contentWindow?.postMessage({
               type: 'MAP_POINT_SELECTED',
               point: {
@@ -7100,82 +7112,96 @@ export default function App() {
     });
   };
 
-  // Dedicated Handler: Select a single daily survey run
-  const handleSelectDailyRun = (daily: DailyTimeSeries) => {
-    const rowId = getItemId(daily);
+    // Dedicated Handler: Select a single daily survey run
+    const handleSelectDailyRun = (daily: DailyTimeSeries) => {
+      const rowId = getItemId(daily);
 
-    // Toggle off if already selected
-    if (selectedDailyRunId === rowId) {
-      setSelectedDailyRunId(null);
-      setSelectedSubgridFilter(null);
-      setSelectedDateFilter(null);
+      // Toggle off if already selected
+      if (selectedDailyRunId === rowId) {
+        setSelectedDailyRunId(null);
+        setSelectedSubgridFilter(null);
+        setSelectedDateFilter(null);
 
+        const iframes = document.querySelectorAll('iframe');
+        iframes.forEach(f => {
+          try {
+            f.contentWindow?.postMessage({ type: 'FILTER_SUBGRID', subgrid: '', date: '' }, '*');
+            // Reset staged data preview to all runs
+            f.contentWindow?.postMessage({
+              type: 'SET_STAGED_DATA',
+              stagedItems: dailyData
+            }, '*');
+          } catch (e) { }
+        });
+        return;
+      }
+
+      // 1. Set specific Run ID and filters
+      setSelectedDailyRunId(rowId);
+      setSelectedSubgridFilter(daily.subgrid);
+      setSelectedDateFilter(daily.date || null);
+
+      const normSg = (extractSubgridName(daily.subgrid) || daily.subgrid || '').toUpperCase().trim();
+      const firstPan = daily.panoramas?.[0];
+      const fn = firstPan?.filename || daily.availableFilenames?.[0] || (daily as any)?.imageFilename || `${normSg}-0001.jpg`;
+      const lat = firstPan?.latitude ?? (firstPan as any)?.lat ?? (daily as any)?.points?.[0]?.lat ?? (SUBGRID_COORDINATES[normSg]?.[1] ?? 0);
+      const lng = firstPan?.longitude ?? (firstPan as any)?.lon ?? (firstPan as any)?.lng ?? (daily as any)?.points?.[0]?.lon ?? (SUBGRID_COORDINATES[normSg]?.[0] ?? 0);
+      const imgUrl = fn ? resolvePanoramaUrl(fn, projectSettings) : '';
+
+      setActivePanoramaFilename(fn);
+      setActivePanoramaUrl(imgUrl);
+      setInspectorCoords({ lat, lng });
+      setInspectorSubgrid(daily.subgrid);
+      setHasSelectedPoint(Boolean(imgUrl || (lat && lng)));
+
+      // 2. Transmit message restricting map display strictly to this single run
       const iframes = document.querySelectorAll('iframe');
       iframes.forEach(f => {
         try {
-          f.contentWindow?.postMessage({ type: 'FILTER_SUBGRID', subgrid: '', date: '' }, '*');
-          // Reset staged data preview to all runs
+          // Send single-run filter
+          f.contentWindow?.postMessage({
+            type: 'FILTER_SUBGRID',
+            subgrid: daily.subgrid,
+            date: daily.date || '',
+            runId: rowId
+          }, '*');
+
+          // Send ONLY this single run's panoramas to the map
           f.contentWindow?.postMessage({
             type: 'SET_STAGED_DATA',
-            stagedItems: dailyData
+            stagedItems: [daily]
+          }, '*');
+
+          // Send SET_PANORAMA to 360 viewer
+          f.contentWindow?.postMessage({
+            type: 'SET_PANORAMA',
+            point: {
+              filename: fn,
+              image_url: imgUrl,
+              subgrid: daily.subgrid,
+              lat,
+              lon: lng,
+              lng,
+              bearing: firstPan?.bearing ?? 0
+            }
+          }, '*');
+
+          // Select the initial node on map
+          f.contentWindow?.postMessage({
+            type: 'MAP_POINT_SELECTED',
+            point: {
+              filename: fn,
+              image_url: imgUrl,
+              subgrid: daily.subgrid,
+              lat,
+              lon: lng,
+              lng,
+              bearing: firstPan?.bearing ?? 0
+            }
           }, '*');
         } catch (e) { }
       });
-      return;
-    }
-
-    // 1. Set specific Run ID and filters
-    setSelectedDailyRunId(rowId);
-    setSelectedSubgridFilter(daily.subgrid);
-    setSelectedDateFilter(daily.date || null);
-
-    const firstPan = daily.panoramas?.[0];
-    const fn = firstPan?.filename || (daily as any)?.imageFilename || '';
-    const lat = firstPan?.latitude ?? (firstPan as any)?.lat ?? 0;
-    const lng = firstPan?.longitude ?? (firstPan as any)?.lon ?? 0;
-    const imgUrl = fn ? resolvePanoramaUrl(fn, projectSettings) : '';
-
-    setActivePanoramaFilename(fn);
-    setActivePanoramaUrl(imgUrl);
-    setInspectorCoords({ lat, lng });
-    setInspectorSubgrid(daily.subgrid);
-    setHasSelectedPoint(Boolean(lat && lng));
-
-    // 2. Transmit message restricting map display strictly to this single run
-    const iframes = document.querySelectorAll('iframe');
-    iframes.forEach(f => {
-      try {
-        // Send single-run filter
-        f.contentWindow?.postMessage({
-          type: 'FILTER_SUBGRID',
-          subgrid: daily.subgrid,
-          date: daily.date || '',
-          runId: rowId
-        }, '*');
-
-        // Send ONLY this single run's panoramas to the map
-        f.contentWindow?.postMessage({
-          type: 'SET_STAGED_DATA',
-          stagedItems: [daily]
-        }, '*');
-
-        // Select the initial node
-        f.contentWindow?.postMessage({
-          type: 'MAP_POINT_SELECTED',
-          point: {
-            filename: fn,
-            image_url: imgUrl,
-            subgrid: daily.subgrid,
-            lat,
-            lon: lng,
-            lng,
-            bearing: firstPan?.bearing ?? 0
-          }
-        }, '*');
-      } catch (e) { }
-    });
-  };
-  // ===== Render Supabase Auth Protection Gate (Minimalist Professional Enterprise Design) =====
+    };
 
   // 1. Loading state during auth verification
   if (authLoading) {
