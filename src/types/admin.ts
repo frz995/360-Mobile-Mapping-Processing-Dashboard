@@ -66,6 +66,7 @@ export interface ExtendedProjectSettings {
   stagingTable?: string;
   subgridTable?: string;
   qaDefectsTable?: string;
+  qaqcRunsTable?: string;
   auditLogsTable?: string;
   deletionRequestsTable?: string;
   notificationsTable?: string;
@@ -151,7 +152,36 @@ export interface QADefectRecord {
   bearing?: number;
   is_resolved?: boolean;
   resolved_at?: string;
+  user_id?: string;
+  user_email?: string;
   created_at?: string;
+  updated_at?: string;
+}
+
+export interface QAQCAuditRunRecord {
+  id?: string;
+  subgrid: string;
+  runId?: string | null;
+  totalStations: number;
+  defectCount: number;
+  passRate: number;
+  meanTenengradScore?: number;
+  defectsList?: any[];
+  history?: any[];
+  pic?: string;
+  user_id?: string;
+  user_email?: string;
+  completedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface QAQCThresholds {
+  blurVarianceThreshold: number;
+  gpsMaxJumpDistanceMeters: number;
+  obstructionMinBrightness: number;
+  glareLuminanceThreshold: number;
+  deliverableModel?: 'masked_car' | 'generative_fill';
 }
 
 export interface QAQCConfig {
@@ -160,4 +190,5 @@ export interface QAQCConfig {
   checkGps: boolean;
   pic?: string;
 }
+
 

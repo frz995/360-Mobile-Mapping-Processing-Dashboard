@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import type { QAQCWorkerState, StationInspectionRecord, StationNode } from '../hooks/useQAQCWorker';
 import type { QAQCConfig, ExtendedProjectSettings, QADefectRecord } from '../types/admin';
+import { saveProjectSettingsToSupabase } from '../services/supabase';
 import { QAQCThresholdStudioView } from './QAQCThresholdStudioModal';
 import {
   getImagesProcessedCount,
@@ -59,6 +60,7 @@ export interface QAQCWorkbenchProps {
   dailyData?: any[];
   batchLogs?: any[];
   projectSettings?: ExtendedProjectSettings;
+  qaqcAuditRuns?: Record<string, any>;
   activeUserName?: string;
   surveyDate?: string;
   getStationsForSubgrid: (subgrid: string, runId?: string | null) => StationNode[];
@@ -101,15 +103,13 @@ interface TargetDatasetItem {
   publishStatus: 'published' | 'staging' | 'recheck';
 }
 
-const AUDIT_CACHE_STORAGE_KEY = 'app_qaqc_audit_cache_v2';
-const QAQC_THRESHOLDS_STORAGE_KEY = 'app_qaqc_thresholds_v2';
-
 export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
   isOpen,
   workerState,
   dailyData = [],
   batchLogs = [],
   projectSettings,
+  qaqcAuditRuns = {},
   activeUserName = 'Operator',
   surveyDate,
   getStationsForSubgrid,
@@ -150,34 +150,40 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
   const [auditLogFilter, setAuditLogFilter] = useState<'all' | 'flagged' | 'passed'>('all');
   const [auditSearchQuery, setAuditSearchQuery] = useState<string>('');
 
-  // Dynamic QA/QC Defect Detection Thresholds (Loaded from Local Storage or Project Settings)
+  // Dynamic QA/QC Defect Detection Thresholds (Loaded from Cloud Project Settings)
   const [localThresholds, setLocalThresholds] = useState<{
     blurVarianceThreshold: number;
     gpsMaxJumpDistanceMeters: number;
     obstructionMinBrightness: number;
     glareLuminanceThreshold: number;
     deliverableModel?: 'masked_car' | 'generative_fill';
-  }>(() => {
-    try {
-      const saved = localStorage.getItem(QAQC_THRESHOLDS_STORAGE_KEY);
-      if (saved) {
-        return JSON.parse(saved);
-      }
-    } catch {}
-    return {
-      blurVarianceThreshold: projectSettings?.blurVarianceThreshold ?? 68.0,
-      gpsMaxJumpDistanceMeters: projectSettings?.gpsMaxJumpDistanceMeters ?? 50.0,
-      obstructionMinBrightness: projectSettings?.obstructionMinBrightness ?? 15.0,
-      glareLuminanceThreshold: projectSettings?.glareLuminanceThreshold ?? 240.0,
-      deliverableModel: projectSettings?.deliverableModel ?? 'masked_car'
-    };
-  });
+  }>(() => ({
+    blurVarianceThreshold: projectSettings?.blurVarianceThreshold ?? 68.0,
+    gpsMaxJumpDistanceMeters: projectSettings?.gpsMaxJumpDistanceMeters ?? 50.0,
+    obstructionMinBrightness: projectSettings?.obstructionMinBrightness ?? 15.0,
+    glareLuminanceThreshold: projectSettings?.glareLuminanceThreshold ?? 240.0,
+    deliverableModel: projectSettings?.deliverableModel ?? 'masked_car'
+  }));
+
+  useEffect(() => {
+    if (projectSettings) {
+      setLocalThresholds({
+        blurVarianceThreshold: projectSettings?.blurVarianceThreshold ?? 68.0,
+        gpsMaxJumpDistanceMeters: projectSettings?.gpsMaxJumpDistanceMeters ?? 50.0,
+        obstructionMinBrightness: projectSettings?.obstructionMinBrightness ?? 15.0,
+        glareLuminanceThreshold: projectSettings?.glareLuminanceThreshold ?? 240.0,
+        deliverableModel: projectSettings?.deliverableModel ?? 'masked_car'
+      });
+    }
+  }, [projectSettings?.blurVarianceThreshold, projectSettings?.gpsMaxJumpDistanceMeters, projectSettings?.obstructionMinBrightness, projectSettings?.glareLuminanceThreshold, projectSettings?.deliverableModel]);
 
   const handleSaveThresholds = (updated: typeof localThresholds) => {
     setLocalThresholds(updated);
-    try {
-      localStorage.setItem(QAQC_THRESHOLDS_STORAGE_KEY, JSON.stringify(updated));
-    } catch (_) {}
+    const updatedSettings = {
+      ...(projectSettings || {}),
+      ...updated
+    };
+    saveProjectSettingsToSupabase(updatedSettings).catch(() => {});
   };
 
   const handleResetThresholds = () => {
@@ -189,20 +195,21 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
       deliverableModel: (projectSettings?.deliverableModel || 'masked_car') as 'masked_car' | 'generative_fill'
     };
     setLocalThresholds(defaults);
-    try {
-      localStorage.setItem(QAQC_THRESHOLDS_STORAGE_KEY, JSON.stringify(defaults));
-    } catch (_) {}
+    const updatedSettings = {
+      ...(projectSettings || {}),
+      ...defaults
+    };
+    saveProjectSettingsToSupabase(updatedSettings).catch(() => {});
   };
 
-  // Persistent Audit Cache Map
-  const [auditCache, setAuditCache] = useState<Record<string, AuditRunRecord>>(() => {
-    try {
-      const saved = localStorage.getItem(AUDIT_CACHE_STORAGE_KEY);
-      return saved ? JSON.parse(saved) : {};
-    } catch {
-      return {};
-    }
-  });
+  // Persistent Audit Cache Map populated from Supabase Realtime/Cloud props and session updates
+  const [localAuditRuns, setLocalAuditRuns] = useState<Record<string, AuditRunRecord>>({});
+  const auditCache = useMemo<Record<string, AuditRunRecord>>(() => {
+    return {
+      ...(qaqcAuditRuns || {}),
+      ...localAuditRuns
+    };
+  }, [qaqcAuditRuns, localAuditRuns]);
 
   const {
     subgrid: activeRunningSubgrid,
@@ -256,16 +263,13 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
         defectsList: liveDefectsList
       };
 
-      setAuditCache(prev => {
+      setLocalAuditRuns(prev => {
         const next = {
           ...prev,
           [cacheKey]: record,
           [`${activeRunningSubgrid.toUpperCase()}_default`]: record
         };
-        try {
-          localStorage.setItem(AUDIT_CACHE_STORAGE_KEY, JSON.stringify(next));
-          window.dispatchEvent(new CustomEvent('qaqc_audit_updated', { detail: { cacheKey, record } }));
-        } catch (_) {}
+        window.dispatchEvent(new CustomEvent('qaqc_audit_updated', { detail: { cacheKey, record } }));
         return next;
       });
     }

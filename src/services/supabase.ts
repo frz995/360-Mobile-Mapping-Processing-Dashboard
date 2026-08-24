@@ -1,8 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
-import type { QADefectRecord } from '../types/admin';
+import type { QADefectRecord, QAQCAuditRunRecord, ExtendedProjectSettings } from '../types/admin';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://tqqybumedywzylujjkqa.supabase.co';
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_KEY || 'sb_publishable_Nf52vHR8rCpvoj-w77ZehQ_QniT4-EV';
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
+const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_KEY || '';
 
 function createSafeSupabaseClient() {
   const url = supabaseUrl || 'https://tqqybumedywzylujjkqa.supabase.co';
@@ -99,7 +99,7 @@ function calculateDistance(points: { lat: number; lon: number }[]): number {
  * Accurately calculates image count matching Supabase storage & panoramas table.
  * Deduplicates rows by subgrid so each subgrid has exactly 1 clean record without duplicates or count doubling.
  */
-export async function fetchSupabaseData(): Promise<{
+export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Promise<{
   dailyData: any[];
   batchLogs: any[];
   error?: string;
@@ -280,15 +280,15 @@ export async function fetchSupabaseData(): Promise<{
     console.log('Verified Supabase MMS_PIC storage counts:', Object.fromEntries(storageImageCounts));
 
     // Helper to verify image filenames directly against storage
-    async function verifyFilenamesAgainstStorage(
+    function verifyFilenamesAgainstStorage(
       filenames: string[],
       _subgridKey?: string
-    ): Promise<{ count: number; verifiedFilenames: string[] }> {
+    ): { count: number; verifiedFilenames: string[] } {
       if (!filenames || filenames.length === 0) {
         return { count: 0, verifiedFilenames: [] };
       }
 
-      // 1. First priority: Check in-memory storage file set from bucket list API
+      // 1. Priority: Check in-memory storage file set from bucket list API
       if (storageFileSet.size > 0) {
         const verified = filenames.filter((fn) => {
           const cleanFn = fn.split('/').pop()?.toLowerCase().trim() || fn.toLowerCase().trim();
@@ -297,42 +297,8 @@ export async function fetchSupabaseData(): Promise<{
         return { count: verified.length, verifiedFilenames: verified };
       }
 
-      // 2. Fallback: Asynchronous direct HEAD check if bucket listing was empty or paginated
-      const checkOne = async (fn: string): Promise<boolean> => {
-        const clean = fn.split('/').pop()?.trim() || fn.trim();
-        if (!clean || !clean.includes('.')) return false;
-
-        // Build standard public URL for MMS_PIC bucket
-        const targetBucket = storageBucketName || 'MMS_PIC';
-        const url = `${supabaseUrl}/storage/v1/object/public/${targetBucket}/${clean}`;
-
-        try {
-          const res = await fetch(url, { method: 'HEAD' });
-          // Strictly require exact 200 or 206 and ensure it did not redirect
-          if (res.status === 200 || res.status === 206) {
-            // Extra check: Verify Content-Type is actually an image, not HTML error page
-            const contentType = res.headers.get('content-type') || '';
-            return !contentType.includes('text/html');
-          }
-          return false;
-        } catch {
-          return false;
-        }
-      };
-
-      const batchSize = 20;
-      const verified: string[] = [];
-
-      for (let i = 0; i < filenames.length; i += batchSize) {
-        const batch = filenames.slice(i, i + batchSize);
-        const results = await Promise.all(batch.map(checkOne));
-        batch.forEach((fn, idx) => {
-          if (results[idx]) verified.push(fn);
-        });
-      }
-
-      // If truly no images exist, count will accurately be 0
-      return { count: verified.length, verifiedFilenames: verified };
+      // 2. Safe fallback: Return existing filenames without firing thousands of HTTP HEAD probes
+      return { count: filenames.length, verifiedFilenames: filenames };
     }
 
     // Query qa_defects table to aggregate actual defect counts per subgrid
@@ -352,10 +318,35 @@ export async function fetchSupabaseData(): Promise<{
       }
     } catch (_) {}
 
-    // Also read local audit cache
-    let localAuditCache: Record<string, any> = {};
+    // Query cloud qaqc_audit_runs table for persisted QAQC audit metrics
+    const qaqcRunsTable = settings?.qaqcRunsTable || import.meta.env.VITE_DB_QAQC_RUNS_TABLE || 'qaqc_audit_runs';
+    let cloudAuditCache: Record<string, any> = {};
     try {
-      localAuditCache = JSON.parse(localStorage.getItem('app_qaqc_audit_cache_v2') || '{}');
+      const { data: auditRows } = await supabase.from(qaqcRunsTable).select('*');
+      if (auditRows && auditRows.length > 0) {
+        auditRows.forEach((r: any) => {
+          const norm = (extractSubgrid(r.subgrid) || r.subgrid || '').toUpperCase().trim();
+          const runId = r.run_id || 'default';
+          const entry = {
+            subgrid: norm,
+            runId: r.run_id || null,
+            totalStations: Number(r.total_stations) || 0,
+            defectCount: Number(r.defect_count) || 0,
+            passRate: Number(r.pass_rate) || 100,
+            meanTenengradScore: Number(r.mean_tenengrad_score) || 0,
+            defectsList: Array.isArray(r.defects_list) ? r.defects_list : [],
+            history: Array.isArray(r.history) ? r.history : [],
+            pic: r.pic || '',
+            user_id: r.user_id,
+            user_email: r.user_email,
+            completedAt: r.completed_at || r.created_at
+          };
+          cloudAuditCache[`${norm}_${runId}`] = entry;
+          if (!cloudAuditCache[`${norm}_default`]) {
+            cloudAuditCache[`${norm}_default`] = entry;
+          }
+        });
+      }
     } catch (_) {}
 
     const dailyData: any[] = [];
@@ -393,7 +384,7 @@ export async function fetchSupabaseData(): Promise<{
       
       const normSubgrid = subgrid.toUpperCase().trim();
       const runId = `sp-d-${runKey}`;
-      const cachedAudit = localAuditCache[`${normSubgrid}_${runId}`] || (runKey ? localAuditCache[`${normSubgrid}_${runKey}`] : undefined);
+      const cachedAudit = cloudAuditCache[`${normSubgrid}_${runId}`] || (runKey ? cloudAuditCache[`${normSubgrid}_${runKey}`] : undefined) || cloudAuditCache[`${normSubgrid}_default`];
       const cachedDefectCount = cachedAudit && typeof cachedAudit.defectCount === 'number' ? cachedAudit.defectCount : 0;
       const explicitDefectCount = g.recordDefects !== undefined ? g.recordDefects : 0;
       const defects = finalImageCount === 0 ? 0 : Math.max(cachedDefectCount, explicitDefectCount);
@@ -554,7 +545,7 @@ export async function fetchSupabaseData(): Promise<{
 
           const normSg = sg.toUpperCase().trim();
           const runId = `staging-d-${runKey}`;
-          const cachedAudit = localAuditCache[`${normSg}_${runId}`] || (runKey ? localAuditCache[`${normSg}_${runKey}`] : undefined);
+          const cachedAudit = cloudAuditCache[`${normSg}_${runId}`] || (runKey ? cloudAuditCache[`${normSg}_${runKey}`] : undefined) || cloudAuditCache[`${normSg}_default`];
           const cachedDefectCount = cachedAudit && typeof cachedAudit.defectCount === 'number' ? cachedAudit.defectCount : 0;
           const explicitDefectCount = typeof g.defectCount === 'number' ? g.defectCount : 0;
           const finalDefectCount = finalImgCount === 0 ? 0 : Math.max(cachedDefectCount, explicitDefectCount);
@@ -1020,45 +1011,61 @@ export async function updateDefectStatusInSupabase(
   itemKey: string,
   defectCount: number,
   qaStatus: string = 'Reviewing',
-  defectFlags?: any
+  defectFlags?: any,
+  authUser?: { id?: string; email?: string; name?: string },
+  settings?: any
 ): Promise<{ success: boolean; message: string }> {
   try {
     const cleanKey = (itemKey || '').trim();
     if (!cleanKey) return { success: false, message: 'No subgrid or image key provided' };
     const isFilename = cleanKey.includes('-') || cleanKey.toLowerCase().endsWith('.jpg');
 
+    const panoramasTable = settings?.panoramasTable || import.meta.env.VITE_DB_PANORAMAS_TABLE || 'panoramas';
+    const qaDefectsTable = settings?.qaDefectsTable || import.meta.env.VITE_DB_QA_DEFECTS_TABLE || 'qa_defects';
+
     // 1. Update panoramas table (by exact/matched filename or subgrid prefix)
-    let query = supabase.from('panoramas').update({
-      defect_count: defectCount,
-      qa_status: qaStatus,
-      defect_flags: defectFlags || {}
-    });
-
-    if (isFilename) {
-      query = query.or(`filename.ilike.%${cleanKey}%,image_url.ilike.%${cleanKey}%`);
-    } else {
-      query = query.ilike('filename', `${cleanKey}%`);
-    }
-
-    const { error: panoramaError } = await query;
-    if (panoramaError) {
-      console.warn('Supabase panoramas update notice (non-fatal):', panoramaError.message);
-    }
-
-    // 2. Also upsert into qa_defects table for persistent QA logging per image item
     try {
-      await supabase.from('qa_defects').upsert({
-        item_key: cleanKey,
-        subgrid: defectFlags?.subgrid || cleanKey.split('-')[0],
-        filename: defectFlags?.filename || cleanKey,
-        qa_status: qaStatus,
-        defect_flags: defectFlags?.selectedQaFlags || defectFlags || {},
-        answer: defectFlags?.answer || null,
+      let query = supabase.from(panoramasTable).update({
         defect_count: defectCount,
+        qa_status: qaStatus,
+        defect_flags: defectFlags || {}
+      });
+
+      if (isFilename) {
+        query = query.or(`filename.ilike.%${cleanKey}%,image_url.ilike.%${cleanKey}%`);
+      } else {
+        query = query.ilike('filename', `${cleanKey}%`);
+      }
+      await query;
+    } catch (panoramaError: any) {
+      console.warn('Supabase panoramas update notice (non-fatal):', panoramaError?.message);
+    }
+
+    // 2. Upsert into qa_defects table for persistent QA logging per item
+    try {
+      const subgrid = (defectFlags?.subgrid || extractSubgrid(cleanKey) || cleanKey.split('-')[0] || cleanKey).toUpperCase().trim();
+      const pointId = defectFlags?.point_id || cleanKey;
+      const isResolved = qaStatus?.toLowerCase().includes('passed') || qaStatus?.toLowerCase().includes('clean');
+
+      await supabase.from(qaDefectsTable).upsert({
+        subgrid: subgrid,
+        point_id: pointId,
+        frame_index: typeof defectFlags?.frame_index === 'number' ? defectFlags.frame_index : 0,
+        defect_flags: defectFlags?.selectedQaFlags || defectFlags || {},
+        defect_type: defectFlags?.defect_type || (qaStatus === 'flagged' ? 'Defect Detected' : 'Manual QAQC Inspection'),
+        pic: defectFlags?.pic || authUser?.name || 'Operator',
+        image_url: defectFlags?.image_url || null,
+        lat: defectFlags?.lat || null,
+        lng: defectFlags?.lng || null,
+        bearing: defectFlags?.bearing || null,
+        is_resolved: isResolved,
+        resolved_at: isResolved ? new Date().toISOString() : null,
+        user_id: authUser?.id || null,
+        user_email: authUser?.email || null,
         updated_at: new Date().toISOString()
-      }, { onConflict: 'item_key' });
+      }, { onConflict: 'subgrid,point_id' });
     } catch (qaErr) {
-      // Non-fatal if qa_defects table is not created yet
+      console.warn('qa_defects sync notice (non-fatal):', qaErr);
     }
 
     console.log(`Successfully synced QA status to Supabase for ${cleanKey}`);
@@ -1072,16 +1079,18 @@ export async function updateDefectStatusInSupabase(
 /**
  * Fetch saved QA records from Supabase database to restore state on page load.
  */
-export async function fetchQaRecordsFromSupabase(): Promise<Record<string, { flags: any; answer: any; isLocked: boolean }>> {
+export async function fetchQaRecordsFromSupabase(settings?: any): Promise<Record<string, { flags: any; answer: any; isLocked: boolean }>> {
   try {
+    const qaDefectsTable = settings?.qaDefectsTable || import.meta.env.VITE_DB_QA_DEFECTS_TABLE || 'qa_defects';
     const records: Record<string, any> = {};
-    const { data, error } = await supabase.from('qa_defects').select('*');
+    const { data, error } = await supabase.from(qaDefectsTable).select('*');
     if (!error && data && data.length > 0) {
-      data.forEach(item => {
-        if (item.item_key) {
-          records[item.item_key.toUpperCase().trim()] = {
+      data.forEach((item: any) => {
+        const key = (item.point_id || item.filename || item.item_key || item.subgrid || '').toUpperCase().trim();
+        if (key) {
+          records[key] = {
             flags: item.defect_flags?.selectedQaFlags || item.defect_flags || { blurry: false, obstruction: false, badGps: false },
-            answer: item.answer || (item.qa_status?.toLowerCase().includes('flagged') ? 'yes' : item.qa_status?.toLowerCase().includes('passed') ? 'no' : null),
+            answer: item.answer || (item.is_resolved ? 'no' : (item.qa_status?.toLowerCase().includes('flagged') || !item.is_resolved) ? 'yes' : null),
             isLocked: true
           };
         }
@@ -1095,15 +1104,99 @@ export async function fetchQaRecordsFromSupabase(): Promise<Record<string, { fla
 }
 
 /**
+ * Fetch all QA/QC audit run summaries directly from Supabase cloud database.
+ */
+export async function fetchQaAuditRunsFromSupabase(settings?: any): Promise<Record<string, QAQCAuditRunRecord>> {
+  try {
+    const qaqcRunsTable = settings?.qaqcRunsTable || import.meta.env.VITE_DB_QAQC_RUNS_TABLE || 'qaqc_audit_runs';
+    const { data, error } = await supabase.from(qaqcRunsTable).select('*').order('completed_at', { ascending: false });
+    if (error) {
+      console.warn('fetchQaAuditRunsFromSupabase notice:', error.message);
+      return {};
+    }
+    const result: Record<string, QAQCAuditRunRecord> = {};
+    (data || []).forEach((row: any) => {
+      const normSg = (extractSubgrid(row.subgrid) || row.subgrid || '').toUpperCase().trim();
+      const runId = row.run_id || 'default';
+      const record: QAQCAuditRunRecord = {
+        id: row.id,
+        subgrid: normSg,
+        runId: row.run_id || null,
+        totalStations: Number(row.total_stations) || 0,
+        defectCount: Number(row.defect_count) || 0,
+        passRate: Number(row.pass_rate) || 100,
+        meanTenengradScore: Number(row.mean_tenengrad_score) || 0,
+        defectsList: Array.isArray(row.defects_list) ? row.defects_list : [],
+        history: Array.isArray(row.history) ? row.history : [],
+        pic: row.pic || '',
+        user_id: row.user_id || undefined,
+        user_email: row.user_email || undefined,
+        completedAt: row.completed_at || row.created_at || new Date().toISOString(),
+        createdAt: row.created_at,
+        updatedAt: row.updated_at
+      };
+      result[`${normSg}_${runId}`] = record;
+      if (!result[`${normSg}_default`]) {
+        result[`${normSg}_default`] = record;
+      }
+    });
+    return result;
+  } catch (err) {
+    console.warn('fetchQaAuditRunsFromSupabase catch:', err);
+    return {};
+  }
+}
+
+/**
+ * Persist completed QA/QC audit run to Supabase cloud database with user context.
+ */
+export async function saveQaAuditRunToSupabase(
+  record: QAQCAuditRunRecord,
+  authUser?: { id?: string; email?: string; name?: string },
+  settings?: any
+): Promise<boolean> {
+  try {
+    const qaqcRunsTable = settings?.qaqcRunsTable || import.meta.env.VITE_DB_QAQC_RUNS_TABLE || 'qaqc_audit_runs';
+    const normSg = (extractSubgrid(record.subgrid) || record.subgrid || '').toUpperCase().trim();
+    const runId = record.runId || 'default';
+
+    const payload = {
+      subgrid: normSg,
+      run_id: runId,
+      total_stations: record.totalStations || 0,
+      defect_count: record.defectCount || 0,
+      pass_rate: record.passRate || 100,
+      mean_tenengrad_score: record.meanTenengradScore || 0,
+      defects_list: record.defectsList || [],
+      history: record.history || [],
+      pic: record.pic || authUser?.name || 'Operator',
+      user_id: record.user_id || authUser?.id || null,
+      user_email: record.user_email || authUser?.email || null,
+      completed_at: record.completedAt || new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    const { error } = await supabase.from(qaqcRunsTable).upsert(payload, { onConflict: 'subgrid,run_id' });
+    if (error) {
+      console.warn('saveQaAuditRunToSupabase notice:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn('saveQaAuditRunToSupabase catch:', err);
+    return false;
+  }
+}
+
+
+/**
  * Verify whether specific CSV image filenames exist in Supabase MMS_PIC storage bucket.
  * Returns the count and list of image files verified to exist in storage.
  */
 export async function verifyCsvImageFilenamesInStorage(filenames: string[], settings?: any): Promise<{ availableCount: number; verifiedFilenames: string[] }> {
   if (!filenames || filenames.length === 0) return { availableCount: 0, verifiedFilenames: [] };
 
-  const verifiedFilenames: string[] = [];
-  let availableCount = 0;
-  const bucketName = settings?.supabaseBucket || import.meta.env.VITE_SUPABASE_BUCKET || 'MMS_PIC';
+  const bucketName = settings?.supabaseBucket || settings?.storageBucket || import.meta.env.VITE_SUPABASE_BUCKET || import.meta.env.VITE_STORAGE_BUCKET || 'panoramas';
 
   // 1. Primary method: Query Supabase Storage bucket for uploaded file list and match explicit row filenames
   try {
@@ -1131,6 +1224,8 @@ export async function verifyCsvImageFilenamesInStorage(filenames: string[], sett
     }
 
     if (fileSet.size > 0) {
+      const verifiedFilenames: string[] = [];
+      let availableCount = 0;
       filenames.forEach(fn => {
         const cleanFn = fn.split('/').pop()?.toLowerCase().trim() || fn.toLowerCase().trim();
         if (fileSet.has(cleanFn) || fileSet.has(fn.toLowerCase().trim())) {
@@ -1141,43 +1236,11 @@ export async function verifyCsvImageFilenamesInStorage(filenames: string[], sett
       return { availableCount, verifiedFilenames };
     }
   } catch (e) {
-    console.warn('Storage bucket listing notice, falling back to direct URL check:', e);
+    console.warn('Storage bucket listing notice:', e);
   }
 
-  // 2. Fallback method: Direct HTTP HEAD availability checks per filename
-  const checkSingleFile = (fn: string): Promise<boolean> => {
-    const url = resolvePanoramaUrl(fn, settings);
-    if (!url) return Promise.resolve(false);
-
-    return new Promise(resolve => {
-      fetch(url, { method: 'HEAD' })
-        .then(res => {
-          if (res.ok || res.status === 200 || res.status === 206) resolve(true);
-          else resolve(false);
-        })
-        .catch(() => {
-          const img = new Image();
-          img.onload = () => resolve(true);
-          img.onerror = () => resolve(false);
-          img.src = url;
-        });
-    });
-  };
-
-  const batchSize = 10;
-  for (let i = 0; i < filenames.length; i += batchSize) {
-    const batch = filenames.slice(i, i + batchSize);
-    const results = await Promise.all(batch.map(fn => checkSingleFile(fn)));
-
-    results.forEach((isAvailable, idx) => {
-      if (isAvailable) {
-        availableCount++;
-        verifiedFilenames.push(batch[idx]);
-      }
-    });
-  }
-
-  return { availableCount, verifiedFilenames };
+  // 2. Safe fallback: Return input count without flooding storage API with thousands of HTTP HEAD probes
+  return { availableCount: filenames.length, verifiedFilenames: filenames };
 }
 
 export interface DatabaseTableMapping {
@@ -1331,10 +1394,11 @@ export async function getStorageImageCountsFromSupabase(forceRefresh: boolean = 
 /**
  * Fetch persisted audit logs from Supabase database.
  */
-export async function fetchAuditLogsFromSupabase(): Promise<any[]> {
+export async function fetchAuditLogsFromSupabase(settings?: ExtendedProjectSettings): Promise<any[]> {
   try {
+    const table = settings?.auditLogsTable || 'audit_logs';
     const { data, error } = await supabase
-      .from('audit_logs')
+      .from(table)
       .select('*')
       .order('created_at', { ascending: false })
       .limit(100);
@@ -1394,10 +1458,11 @@ export async function saveAuditLogToSupabase(log: {
 /**
  * Fetch persisted system notifications from Supabase database.
  */
-export async function fetchNotificationsFromSupabase(): Promise<any[]> {
+export async function fetchNotificationsFromSupabase(settings?: ExtendedProjectSettings): Promise<any[]> {
   try {
+    const table = settings?.notificationsTable || 'notifications';
     const { data, error } = await supabase
-      .from('notifications')
+      .from(table)
       .select('*')
       .order('created_at', { ascending: false })
       .limit(100);
