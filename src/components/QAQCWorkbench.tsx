@@ -2183,7 +2183,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                   {(activeRunningSubgrid || selectedSubgrid) ? (
                     <iframe
                       ref={mapIframeRef}
-                      src={`${import.meta.env.VITE_MAP_URL || 'https://mobilemapping-nine.vercel.app'}/?embed=true&dashboard=true&qaqcWorkbench=true&basemap=${encodeURIComponent(projectSettings?.defaultBasemap || 'positron')}&subgrid=${encodeURIComponent(activeRunningSubgrid || selectedSubgrid)}`}
+                      src={`${import.meta.env.VITE_MAP_URL || 'https://mobilemapping-nine.vercel.app'}/?embed=true&dashboard=true&qaqcWorkbench=true&basemap=${encodeURIComponent(projectSettings?.defaultBasemap || 'positron')}&subgrid=${encodeURIComponent(activeRunningSubgrid || selectedSubgrid)}${selectedRunId ? `&runId=${encodeURIComponent(selectedRunId)}&isSingleRun=true` : ''}`}
                       className="w-full h-full border-0"
                       title="QAQC Synchronized Trajectory Map"
                       onLoad={() => {
