@@ -1468,8 +1468,8 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                 const isSelected = selectedSubgrid === item.subgrid && (targetTab === 'masterlist' || selectedRunId === item.runId);
                 const isZeroFrames = item.frameCount === 0;
                 const cached = auditCache[`${item.subgrid.toUpperCase()}_${item.runId || 'default'}`];
-                const hasAudit = Boolean(cached || item.qaqcStatus === 'QA/QC Approved');
-                const auditDefects = cached ? cached.defectCount : item.defectCount;
+                const hasAudit = Boolean(item.defectCount > 0 || (cached && typeof cached.defectCount === 'number') || item.qaqcStatus === 'QA/QC Approved' || (item.qaqcStatus && item.qaqcStatus.includes('Defect')));
+                const auditDefects = item.defectCount;
 
                 return (
                   <div
