@@ -321,29 +321,22 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
 
         const cachedAudit = (runId ? auditCache[`${sg}_${runId}`] : undefined) || auditCache[`${sg}_default`] || Object.entries(auditCache).find(([k]) => k.startsWith(`${sg}_`))?.[1];
         let parsedDefects: number | undefined;
-        if (d.qaqcStatus) {
-          const m = d.qaqcStatus.match(/(\d+)\s+Defect/i);
-          if (m) parsedDefects = parseInt(m[1], 10);
-        }
-
-        const matchingDefectsFromList = Array.isArray(defectsList)
-          ? defectsList.filter((defItem: any) => {
-              const dSg = (extractSubgridName(defItem.subgrid || '') || defItem.subgrid || '').toUpperCase().trim();
-              const dRunId = defItem.run_id || defItem.runId;
-              if (runId && dRunId) return dSg === sg && dRunId === runId;
-              return dSg === sg;
-            }).length
+        // Exact 1-to-1 alignment with Processing Table and Admin Daily Progress values
+        let defectCount = (typeof d.defectCount === 'number')
+          ? d.defectCount
+          : (typeof d.imagesDefected === 'number')
+          ? d.imagesDefected
           : 0;
 
-        const defectCount = frameCount === 0
-          ? 0
-          : Math.max(
-              (cachedAudit && typeof cachedAudit.defectCount === 'number') ? cachedAudit.defectCount : 0,
-              parsedDefects || 0,
-              d.imagesDefected || 0,
-              d.defectCount || 0,
-              matchingDefectsFromList || 0
-            );
+        if (defectCount === 0 && cachedAudit && typeof cachedAudit.defectCount === 'number') {
+          defectCount = cachedAudit.defectCount;
+        }
+        if (defectCount === 0 && parsedDefects !== undefined && parsedDefects > 0) {
+          defectCount = parsedDefects;
+        }
+        if (frameCount > 0) {
+          defectCount = Math.min(defectCount, frameCount);
+        }
 
         const isPublished = d.publishToWebGIS === 'yes' || d.qaqcStatus === 'QA/QC Approved' || Boolean(d.isSyncedWithSupabase) || d.status === 'published';
         const isRecheck = d.publishToWebGIS === 'need to recheck';
@@ -368,7 +361,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
           publishStatus
         };
       });
-  }, [dailyData, batchLogs, auditCache, activeUserName, defectsList]);
+  }, [dailyData, batchLogs, auditCache, activeUserName]);
 
   // Processed list for Masterlist / Batches Tab (matches exact order and logic of Processing Admin Masterlist table)
   const processedBatchLogs: TargetDatasetItem[] = useMemo(() => {
@@ -390,20 +383,17 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
         if (m) parsedDefects = parseInt(m[1], 10);
       }
 
-      // Aggregate defect counts from all daily runs matching this master subgrid
-      const matchingDailyRuns = processedDailyRuns.filter(d => d.subgrid.toUpperCase().trim() === sg);
-      const dailyDefectsSum = matchingDailyRuns.reduce((sum, d) => sum + (d.defectCount || 0), 0);
-      const matchingDefectsFromList = Array.isArray(defectsList)
-        ? defectsList.filter((defItem: any) => (extractSubgridName(defItem.subgrid || '') || defItem.subgrid || '').toUpperCase().trim() === sg).length
-        : 0;
-
-      const defectCount = Math.max(
-        dailyDefectsSum,
-        matchingDefectsFromList,
-        b.defects || 0,
-        (cachedAudit && typeof cachedAudit.defectCount === 'number') ? cachedAudit.defectCount : 0,
-        parsedDefects || 0
-      );
+      // Exact 1-to-1 alignment with Processing Table and Admin Masterlist values (b.defects)
+      let defectCount = typeof b.defects === 'number' ? b.defects : 0;
+      if (defectCount === 0 && cachedAudit && typeof cachedAudit.defectCount === 'number') {
+        defectCount = cachedAudit.defectCount;
+      }
+      if (defectCount === 0 && parsedDefects !== undefined && parsedDefects > 0) {
+        defectCount = parsedDefects;
+      }
+      if (frameCount > 0) {
+        defectCount = Math.min(defectCount, frameCount);
+      }
 
       const isPublished = b.publishToWebGIS === 'yes' || b.qaqcStatus === 'QA/QC Approved' || Boolean(b.isSyncedWithSupabase) || b.status === 'published';
       const isRecheck = b.publishToWebGIS === 'need to recheck';
@@ -425,7 +415,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
         publishStatus
       };
     });
-  }, [dailyData, batchLogs, auditCache, activeUserName, processedDailyRuns, defectsList]);
+  }, [dailyData, batchLogs, auditCache, activeUserName]);
 
   // Counts for Category Switcher
   const stagingCount = useMemo(() => {
