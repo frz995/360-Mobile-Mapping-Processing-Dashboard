@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import {
   Activity,
   AlertTriangle,
@@ -24,7 +24,11 @@ import {
   Calendar,
   Camera,
   Clock,
-  MapPin
+  MapPin,
+  Columns,
+  Maximize2,
+  Map,
+  Minimize
 } from 'lucide-react';
 import type { QAQCWorkerState, StationInspectionRecord, StationNode } from '../hooks/useQAQCWorker';
 import type { QAQCConfig, ExtendedProjectSettings, QADefectRecord } from '../types/admin';
@@ -154,6 +158,14 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
   const [inspectorPic, setInspectorPic] = useState<string>(activeUserName || 'Operator');
 
   // Telemetry stream history selection & filtering
+  // Viewport Layout Mode (Split 50/50 Map, Floating Minimap PiP, Full 360)
+  const [viewportMode, setViewportMode] = useState<'split' | 'pip' | 'full'>('split');
+  const [isPipCollapsed, setIsPipCollapsed] = useState<boolean>(false);
+  const mapIframeRef = useRef<HTMLIFrameElement | null>(null);
+  const [_isMapReady, setIsMapReady] = useState<boolean>(false);
+
+
+
   const [selectedStationIndex, setSelectedStationIndex] = useState<number | null>(null);
   const [filterMode, setFilterMode] = useState<'all' | 'flagged'>('all');
 
@@ -514,6 +526,79 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
     Math.max(1, activeRecord ? activeRecord.index : isRunning || isCompleted ? currentIndex + 1 : 1)
   );
 
+  // Sync synchronized map iframe with active subgrid, current station node & vehicle bearing
+  const syncWorkbenchMap = useCallback(() => {
+    if (!mapIframeRef.current?.contentWindow) return;
+    const activeSg = (activeRunningSubgrid || selectedSubgrid || '').toUpperCase().trim();
+    if (!activeSg) return;
+
+    try {
+      // 1. Set subgrid filter
+      mapIframeRef.current.contentWindow.postMessage({
+        type: 'FILTER_SUBGRID',
+        subgrid: activeSg,
+        runId: selectedRunId || ''
+      }, '*');
+
+      // 2. Transmit strictly only the selected survey track points
+      const activeDailyRun = dailyData.find(d =>
+        (selectedRunId && getItemId(d) === selectedRunId) ||
+        (extractSubgridName(d.subgrid) || '').toUpperCase().trim() === activeSg
+      );
+      if (activeDailyRun) {
+        mapIframeRef.current.contentWindow.postMessage({
+          type: 'SET_STAGED_DATA',
+          stagedItems: [activeDailyRun]
+        }, '*');
+      }
+
+      // 3. Highlight current station, pan map & update vehicle sonar heading cone
+      if (activeDisplayCoords.lat && activeDisplayCoords.lng) {
+        mapIframeRef.current.contentWindow.postMessage({
+          type: 'MAP_POINT_SELECTED',
+          point: {
+            filename: activeDisplayPointId,
+            image_url: activeDisplayThumbnail,
+            subgrid: activeSg,
+            lat: activeDisplayCoords.lat,
+            lon: activeDisplayCoords.lng,
+            lng: activeDisplayCoords.lng,
+            bearing: activeDisplayBearing
+          }
+        }, '*');
+
+        mapIframeRef.current.contentWindow.postMessage({
+          type: 'SET_CAMERA_HEADING',
+          bearing: activeDisplayBearing,
+          heading: activeDisplayBearing
+        }, '*');
+      }
+
+      // 4. Broadcast discovered defect markers in real-time
+      if (effectiveDefectsList.length > 0) {
+        mapIframeRef.current.contentWindow.postMessage({
+          type: 'QAQC_DEFECTS_SYNC',
+          defects: effectiveDefectsList
+        }, '*');
+      }
+    } catch (_) {}
+  }, [activeRunningSubgrid, selectedSubgrid, selectedRunId, dailyData, activeDisplayCoords, activeDisplayPointId, activeDisplayThumbnail, activeDisplayBearing, effectiveDefectsList]);
+
+  useEffect(() => {
+    syncWorkbenchMap();
+  }, [syncWorkbenchMap, activeDisplayIndex, selectedSubgrid, selectedRunId, viewportMode]);
+
+  useEffect(() => {
+    const handleMessage = (e: MessageEvent) => {
+      if (e.data?.type === 'VIEWER_READY' || e.data?.type === 'MAP_READY') {
+        setIsMapReady(true);
+        syncWorkbenchMap();
+      }
+    };
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [syncWorkbenchMap]);
+
   // Filtered station history stream
   const filteredHistory = useMemo(() => {
     if (filterMode === 'flagged') {
@@ -708,6 +793,50 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
 
         {/* Right: Main View Navigation Switcher & Actions */}
         <div className="flex items-center gap-2 shrink-0">
+          {/* Viewport Layout Mode Switcher (Split Map, Minimap PiP, 360 Only) */}
+          {workbenchTab === 'console' && (
+            <div className="hidden sm:flex items-center p-1 rounded-xl bg-inner border border-subtle gap-0.5">
+              <button
+                type="button"
+                onClick={() => setViewportMode('split')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  viewportMode === 'split'
+                    ? 'bg-card text-text-base shadow-sm border border-subtle'
+                    : 'text-text-muted hover:text-text-base'
+                }`}
+                title="50/50 Split View (360° Photo + Synchronized Map)"
+              >
+                <Columns size={12} />
+                <span className="hidden xl:inline">Split Map</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewportMode('pip')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  viewportMode === 'pip'
+                    ? 'bg-card text-text-base shadow-sm border border-subtle'
+                    : 'text-text-muted hover:text-text-base'
+                }`}
+                title="Picture-in-Picture Floating Minimap"
+              >
+                <Layers size={12} />
+                <span className="hidden xl:inline">Minimap PiP</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewportMode('full')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  viewportMode === 'full'
+                    ? 'bg-card text-text-base shadow-sm border border-subtle'
+                    : 'text-text-muted hover:text-text-base'
+                }`}
+                title="Full 360° Photo Only"
+              >
+                <Maximize2 size={12} />
+                <span className="hidden xl:inline">360 Only</span>
+              </button>
+            </div>
+          )}
           {/* Main Navigation Segmented Switcher */}
           <div className="flex items-center p-1 rounded-xl bg-inner border border-subtle">
             <button
@@ -1251,142 +1380,232 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
             </div>
           )}
 
-          {/* Main Equirectangular / Viewport Area */}
-          <div className="flex-1 relative w-full h-full min-h-[260px] overflow-hidden bg-app flex items-center justify-center">
-            {activeDisplayThumbnail ? (
-              <img
-                src={activeDisplayThumbnail}
-                alt={`Station ${activeDisplayIndex}`}
-                className="w-full h-full object-cover select-none pointer-events-none"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).src = '';
-                }}
-              />
-            ) : (
-              <div className="w-full h-full flex flex-col items-center justify-center gap-3 p-6 sm:p-8 text-center select-none bg-app">
-                <div className="w-12 h-12 rounded-xl bg-card border border-subtle flex items-center justify-center text-text-muted shadow-sm">
-                  <Crosshair size={22} className="text-text-muted" />
+          {/* Main Dual-Viewport Area (Split-Screen or Full 360 + PiP) */}
+          <div className="flex-1 relative w-full h-full min-h-[280px] overflow-hidden flex flex-col lg:flex-row bg-app">
+            
+            {/* LEFT / MAIN VIEWPORT: 360° PANORAMA CANVAS */}
+            <div className={`relative w-full h-full min-h-[260px] overflow-hidden flex items-center justify-center bg-black ${
+              viewportMode === 'split' ? 'lg:w-[55%] xl:w-1/2 border-b lg:border-b-0 lg:border-r border-subtle' : 'w-full'
+            }`}>
+              {activeDisplayThumbnail ? (
+                <img
+                  src={activeDisplayThumbnail}
+                  alt={`Station ${activeDisplayIndex}`}
+                  className="w-full h-full object-cover select-none pointer-events-none"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src = '';
+                  }}
+                />
+              ) : (
+                <div className="w-full h-full flex flex-col items-center justify-center gap-3 p-6 sm:p-8 text-center select-none bg-app">
+                  <div className="w-12 h-12 rounded-xl bg-card border border-subtle flex items-center justify-center text-text-muted shadow-sm">
+                    <Crosshair size={22} className="text-text-muted" />
+                  </div>
+                  <div className="space-y-1 max-w-sm">
+                    <h4 className="text-xs sm:text-sm font-semibold text-text-base">
+                      {isRunning ? 'Analyzing Panorama Stream' : 'Inspection Canvas Standby'}
+                    </h4>
+                    <p className="text-xs text-text-muted leading-relaxed max-w-xs mx-auto">
+                      {selectedSubgrid
+                        ? `Ready to scan ${selectedStations.length} stations in ${selectedSubgrid}`
+                        : 'Select a survey dataset from the targets panel to initialize automated analysis'}
+                    </p>
+                  </div>
+                  {selectedSubgrid && !isRunning && (
+                    <div className="pt-1">
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-card border border-subtle text-text-muted font-mono">
+                        <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+                        {selectedSubgrid} • {selectedStations.length} frames queued
+                      </span>
+                    </div>
+                  )}
                 </div>
-                <div className="space-y-1 max-w-sm">
-                  <h4 className="text-xs sm:text-sm font-semibold text-text-base">
-                    {isRunning ? 'Analyzing Panorama Stream' : 'Inspection Canvas Standby'}
-                  </h4>
-                  <p className="text-xs text-text-muted leading-relaxed max-w-xs mx-auto">
-                    {selectedSubgrid
-                      ? `Ready to scan ${selectedStations.length} stations in ${selectedSubgrid}`
-                      : 'Select a survey dataset from the targets panel to initialize automated analysis'}
-                  </p>
-                </div>
-                {selectedSubgrid && !isRunning && (
-                  <div className="pt-1">
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-card border border-subtle text-text-muted font-mono">
-                      <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
-                      {selectedSubgrid} • {selectedStations.length} frames queued
+              )}
+
+              {/* HUD OVERLAY 1: Top-Left Node Identifier */}
+              {(isRunning || effectiveHistory.length > 0) && (
+                <div className="absolute top-3 left-3 bg-black/85 backdrop-blur-md border border-white/10 rounded-xl px-3 py-2 shadow-md space-y-0.5 max-w-[160px] sm:max-w-[280px] z-10">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-slate-400 shrink-0" />
+                    <span className="font-semibold text-xs text-white tracking-tight truncate font-mono">
+                      {activeDisplayPointId || `Station ${activeDisplayIndex}`}
                     </span>
+                  </div>
+                  <div className="text-[11px] text-slate-300 font-mono font-normal pl-3 truncate">
+                    Frame <strong className="text-white font-bold">{activeDisplayIndex}</strong> / {totalStations}
+                  </div>
+                </div>
+              )}
+
+              {/* HUD OVERLAY 2: Top-Right Diagnostics Stream (GPS & Equipment) */}
+              {(isRunning || effectiveHistory.length > 0) && (
+                <div className="absolute top-3 right-3 bg-black/85 backdrop-blur-md border border-white/10 rounded-xl px-3 py-2 shadow-md space-y-0.5 text-xs min-w-[110px] sm:min-w-[150px] z-10">
+                  <div className="flex items-center justify-between gap-2 text-[11px]">
+                    <span className="text-slate-300 font-medium">GPS:</span>
+                    <span className={`font-semibold font-mono ${
+                      activeRecord
+                        ? (activeRecord.defectType?.includes('GPS') ? 'text-rose-400' : 'text-white')
+                        : liveCheckStatus.gps.status === 'flagged'
+                        ? 'text-rose-400'
+                        : 'text-white'
+                    }`}>
+                      {activeRecord
+                        ? `${activeDisplayStepDistance > 0 ? activeDisplayStepDistance.toFixed(1) : '0.0'}m`
+                        : liveCheckStatus.gps.detail || `${currentStepDistance > 0 ? currentStepDistance.toFixed(1) : '0.0'}m`}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 text-[11px]">
+                    <span className="text-slate-300 font-medium">Equip:</span>
+                    <span className="font-semibold text-white font-mono truncate">
+                      {(() => {
+                        const currentItem = filteredTargetList.find(t => t.subgrid === (activeRunningSubgrid || selectedSubgrid));
+                        return currentItem?.raw?.captureEquipment || currentItem?.raw?.equipment || (projectSettings as any)?.captureEquipment || 'MMS';
+                      })()}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* HUD OVERLAY 3: Bottom-Left Spatial Coordinates */}
+              {(isRunning || effectiveHistory.length > 0) && (
+                <div className="absolute bottom-3 left-3 bg-black/85 backdrop-blur-md border border-white/10 rounded-xl px-3 py-2 shadow-md space-y-0.5 z-10 max-w-[170px] sm:max-w-none">
+                  <div className="text-white text-xs tabular-nums font-semibold flex items-center gap-1.5 font-mono truncate">
+                    <Navigation size={11} className="text-slate-300 shrink-0" />
+                    <span>
+                      {activeDisplayCoords.lat && activeDisplayCoords.lng
+                        ? `${Number(activeDisplayCoords.lat).toFixed(4)}°, ${Number(activeDisplayCoords.lng).toFixed(4)}°`
+                        : '0.0000°, 0.0000°'}
+                    </span>
+                  </div>
+                  <div className="text-slate-300 text-[11px] font-normal flex items-center gap-1 font-mono pl-3">
+                    <span className="text-slate-400">Step:</span>
+                    <span className="tabular-nums text-white font-semibold">
+                      {activeDisplayStepDistance > 0 ? `+${activeDisplayStepDistance.toFixed(1)}m` : '0.0m'}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* HUD OVERLAY 4: Bottom-Right Compass Heading & Track State (Only if not in PiP mode) */}
+              {(isRunning || effectiveHistory.length > 0) && viewportMode !== 'pip' && (
+                <div className="absolute bottom-3 right-3 bg-black/85 backdrop-blur-md border border-white/10 rounded-xl px-3 py-2 shadow-md space-y-0.5 text-right z-10">
+                  <div className="text-white text-xs tabular-nums font-semibold flex items-center justify-end gap-1.5 font-mono">
+                    <Compass size={11} className="text-slate-300 shrink-0" />
+                    <span>{activeDisplayBearing.toFixed(0)}°</span>
+                  </div>
+                  <div className="text-slate-300 text-[11px] font-normal flex items-center justify-end gap-1 font-mono">
+                    <span className="text-slate-400">Track:</span>
+                    <span className={`font-semibold ${
+                      !activeDisplayCoords.lat || !activeDisplayCoords.lng
+                        ? 'text-amber-400'
+                        : activeDisplayStepDistance > 50
+                        ? 'text-rose-400'
+                        : 'text-emerald-400'
+                    }`}>
+                      {!activeDisplayCoords.lat || !activeDisplayCoords.lng
+                        ? 'No Fix'
+                        : activeDisplayStepDistance > 50
+                        ? 'Drift'
+                        : 'Locked'}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Return to Live Telemetry Button */}
+              {selectedStationIndex !== null && isRunning && (
+                <button
+                  onClick={() => setSelectedStationIndex(null)}
+                  className="absolute bottom-12 sm:bottom-14 left-1/2 -translate-x-1/2 bg-card hover:bg-inner text-text-base border border-subtle px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer shadow-lg flex items-center gap-1.5 active:scale-95 whitespace-nowrap z-20"
+                >
+                  <RotateCcw size={12} />
+                  <span>Return to Live #{currentIndex + 1}</span>
+                </button>
+              )}
+            </div>
+
+            {/* RIGHT VIEWPORT / SYNCHRONIZED MAP (SPLIT MODE) */}
+            {viewportMode === 'split' && (
+              <div className="w-full lg:w-[45%] xl:w-1/2 h-64 lg:h-full relative bg-app flex flex-col overflow-hidden">
+                {/* Synchronized Map Header Bar */}
+                <div className="h-9 px-3 bg-card/90 backdrop-blur-md border-b border-subtle flex items-center justify-between shrink-0 text-xs z-10">
+                  <div className="flex items-center gap-2">
+                    <Map size={13} className="text-sky-400" />
+                    <span className="font-semibold text-text-base text-xs">Live Vehicle Trajectory Map</span>
+                    <span className="text-text-muted/40">•</span>
+                    <span className="text-text-muted font-mono text-[11px] truncate max-w-[100px] sm:max-w-none">
+                      {activeRunningSubgrid || selectedSubgrid || 'No Target'}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 text-text-muted font-mono text-[11px]">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                    <span className="hidden sm:inline">Auto-Tracking</span>
+                  </div>
+                </div>
+
+                {/* Map Iframe Container */}
+                <div className="flex-1 w-full h-full relative">
+                  <iframe
+                    ref={mapIframeRef}
+                    src={`${import.meta.env.VITE_MAP_URL || 'https://mobilemapping-nine.vercel.app'}/?embed=true&dashboard=true&qaqcWorkbench=true&basemap=${encodeURIComponent(projectSettings?.defaultBasemap || 'positron')}&subgrid=${encodeURIComponent(activeRunningSubgrid || selectedSubgrid)}`}
+                    className="w-full h-full border-0"
+                    title="QAQC Synchronized Trajectory Map"
+                    onLoad={() => {
+                      setIsMapReady(true);
+                      syncWorkbenchMap();
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* FLOATING PICTURE-IN-PICTURE (PIP) SYNCHRONIZED MINIMAP */}
+            {viewportMode === 'pip' && (
+              <div className={`absolute bottom-3 right-3 z-30 transition-all duration-200 bg-card/95 backdrop-blur-md border border-subtle rounded-2xl shadow-2xl overflow-hidden flex flex-col ${
+                isPipCollapsed ? 'w-56 h-10' : 'w-72 sm:w-88 md:w-96 h-56 sm:h-64'
+              }`}>
+                {/* PiP Header */}
+                <div className="h-9 px-3 bg-inner/90 border-b border-subtle flex items-center justify-between shrink-0 text-xs">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="w-2 h-2 rounded-full bg-sky-400 animate-pulse shrink-0" />
+                    <span className="font-semibold text-text-base truncate text-xs">Live Map Follower</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setIsPipCollapsed(!isPipCollapsed)}
+                      className="p-1 text-text-muted hover:text-text-base rounded-md hover:bg-card transition-colors cursor-pointer"
+                      title={isPipCollapsed ? 'Expand Minimap' : 'Collapse Minimap'}
+                    >
+                      {isPipCollapsed ? <Maximize2 size={12} /> : <Minimize size={12} />}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setViewportMode('split')}
+                      className="p-1 text-text-muted hover:text-text-base rounded-md hover:bg-card transition-colors cursor-pointer"
+                      title="Dock to Split Screen"
+                    >
+                      <Columns size={12} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* PiP Map Frame */}
+                {!isPipCollapsed && (
+                  <div className="flex-1 w-full h-full relative">
+                    <iframe
+                      ref={mapIframeRef}
+                      src={`${import.meta.env.VITE_MAP_URL || 'https://mobilemapping-nine.vercel.app'}/?embed=true&dashboard=true&qaqcWorkbench=true&basemap=${encodeURIComponent(projectSettings?.defaultBasemap || 'positron')}&subgrid=${encodeURIComponent(activeRunningSubgrid || selectedSubgrid)}`}
+                      className="w-full h-full border-0"
+                      title="QAQC Minimap PiP"
+                      onLoad={() => {
+                        setIsMapReady(true);
+                        syncWorkbenchMap();
+                      }}
+                    />
                   </div>
                 )}
               </div>
-            )}
-
-            {/* HUD OVERLAY 1: Top-Left Node Identifier */}
-            {(isRunning || effectiveHistory.length > 0) && (
-              <div className="absolute top-3 left-3 bg-black/85 backdrop-blur-md border border-white/10 rounded-xl px-3 py-2 shadow-md space-y-0.5 max-w-[160px] sm:max-w-[280px] z-10">
-                <div className="flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-slate-400 shrink-0" />
-                  <span className="font-semibold text-xs text-white tracking-tight truncate font-mono">
-                    {activeDisplayPointId || `Station ${activeDisplayIndex}`}
-                  </span>
-                </div>
-                <div className="text-[11px] text-slate-300 font-mono font-normal pl-3 truncate">
-                  Frame <strong className="text-white font-bold">{activeDisplayIndex}</strong> / {totalStations}
-                </div>
-              </div>
-            )}
-
-            {/* HUD OVERLAY 2: Top-Right Diagnostics Stream (GPS & Equipment) */}
-            {(isRunning || effectiveHistory.length > 0) && (
-              <div className="absolute top-3 right-3 bg-black/85 backdrop-blur-md border border-white/10 rounded-xl px-3 py-2 shadow-md space-y-0.5 text-xs min-w-[110px] sm:min-w-[150px] z-10">
-                <div className="flex items-center justify-between gap-2 text-[11px]">
-                  <span className="text-slate-300 font-medium">GPS:</span>
-                  <span className={`font-semibold font-mono ${
-                    activeRecord
-                      ? (activeRecord.defectType?.includes('GPS') ? 'text-rose-400' : 'text-white')
-                      : liveCheckStatus.gps.status === 'flagged'
-                      ? 'text-rose-400'
-                      : 'text-white'
-                  }`}>
-                    {activeRecord
-                      ? `${activeDisplayStepDistance > 0 ? activeDisplayStepDistance.toFixed(1) : '0.0'}m`
-                      : liveCheckStatus.gps.detail || `${currentStepDistance > 0 ? currentStepDistance.toFixed(1) : '0.0'}m`}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between gap-2 text-[11px]">
-                  <span className="text-slate-300 font-medium">Equip:</span>
-                  <span className="font-semibold text-white font-mono truncate">
-                    {(() => {
-                      const currentItem = filteredTargetList.find(t => t.subgrid === (activeRunningSubgrid || selectedSubgrid));
-                      return currentItem?.raw?.captureEquipment || currentItem?.raw?.equipment || (projectSettings as any)?.captureEquipment || 'MMS';
-                    })()}
-                  </span>
-                </div>
-              </div>
-            )}
-
-            {/* HUD OVERLAY 3: Bottom-Left Spatial Coordinates */}
-            {(isRunning || effectiveHistory.length > 0) && (
-              <div className="absolute bottom-3 left-3 bg-black/85 backdrop-blur-md border border-white/10 rounded-xl px-3 py-2 shadow-md space-y-0.5 z-10 max-w-[170px] sm:max-w-none">
-                <div className="text-white text-xs tabular-nums font-semibold flex items-center gap-1.5 font-mono truncate">
-                  <Navigation size={11} className="text-slate-300 shrink-0" />
-                  <span>
-                    {activeDisplayCoords.lat && activeDisplayCoords.lng
-                      ? `${Number(activeDisplayCoords.lat).toFixed(4)}°, ${Number(activeDisplayCoords.lng).toFixed(4)}°`
-                      : '0.0000°, 0.0000°'}
-                  </span>
-                </div>
-                <div className="text-slate-300 text-[11px] font-normal flex items-center gap-1 font-mono pl-3">
-                  <span className="text-slate-400">Step:</span>
-                  <span className="tabular-nums text-white font-semibold">
-                    {activeDisplayStepDistance > 0 ? `+${activeDisplayStepDistance.toFixed(1)}m` : '0.0m'}
-                  </span>
-                </div>
-              </div>
-            )}
-
-            {/* HUD OVERLAY 4: Bottom-Right Compass Heading & Track State */}
-            {(isRunning || effectiveHistory.length > 0) && (
-              <div className="absolute bottom-3 right-3 bg-black/85 backdrop-blur-md border border-white/10 rounded-xl px-3 py-2 shadow-md space-y-0.5 text-right z-10">
-                <div className="text-white text-xs tabular-nums font-semibold flex items-center justify-end gap-1.5 font-mono">
-                  <Compass size={11} className="text-slate-300 shrink-0" />
-                  <span>{activeDisplayBearing.toFixed(0)}°</span>
-                </div>
-                <div className="text-slate-300 text-[11px] font-normal flex items-center justify-end gap-1 font-mono">
-                  <span className="text-slate-400">Track:</span>
-                  <span className={`font-semibold ${
-                    !activeDisplayCoords.lat || !activeDisplayCoords.lng
-                      ? 'text-amber-400'
-                      : activeDisplayStepDistance > 50
-                      ? 'text-rose-400'
-                      : 'text-emerald-400'
-                  }`}>
-                    {!activeDisplayCoords.lat || !activeDisplayCoords.lng
-                      ? 'No Fix'
-                      : activeDisplayStepDistance > 50
-                      ? 'Drift'
-                      : 'Locked'}
-                  </span>
-                </div>
-              </div>
-            )}
-
-            {/* Return to Live Telemetry Button */}
-            {selectedStationIndex !== null && isRunning && (
-              <button
-                onClick={() => setSelectedStationIndex(null)}
-                className="absolute bottom-12 sm:bottom-14 left-1/2 -translate-x-1/2 bg-card hover:bg-inner text-text-base border border-subtle px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer shadow-lg flex items-center gap-1.5 active:scale-95 whitespace-nowrap z-20"
-              >
-                <RotateCcw size={12} />
-                <span>Return to Live #{currentIndex + 1}</span>
-              </button>
             )}
 
           </div>
