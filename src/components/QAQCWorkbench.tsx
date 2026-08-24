@@ -28,7 +28,7 @@ import {
 } from 'lucide-react';
 import type { QAQCWorkerState, StationInspectionRecord, StationNode } from '../hooks/useQAQCWorker';
 import type { QAQCConfig, ExtendedProjectSettings, QADefectRecord } from '../types/admin';
-import { saveProjectSettingsToSupabase } from '../services/supabase';
+import { saveProjectSettingsToSupabase, resolvePanoramaUrl } from '../services/supabase';
 import { QAQCThresholdStudioView } from './QAQCThresholdStudioModal';
 import {
   getImagesProcessedCount,
@@ -474,7 +474,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
   const remainingStations = Math.max(0, totalStations - (currentIndex + 1));
   const estimatedSecondsLeft = Math.ceil((remainingStations * stepIntervalMs) / 1000);
 
-  // Selected station preview if clicked from history feed, otherwise live current node
+  // Selected station preview if clicked from history feed, otherwise live current node or fallback to first station
   const activeRecord: StationInspectionRecord | null = useMemo(() => {
     if (selectedStationIndex !== null) {
       return effectiveHistory.find(h => h.index === selectedStationIndex) || null;
@@ -482,25 +482,35 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
     return null;
   }, [selectedStationIndex, effectiveHistory]);
 
+  const defaultStation = selectedStations[0];
+  const defaultThumbnail = defaultStation
+    ? resolvePanoramaUrl(defaultStation.image_url || defaultStation.filename || defaultStation.thumbnailUrl || (selectedSubgrid ? `${selectedSubgrid}-0001.jpg` : ''), projectSettings)
+    : '';
+
   const activeDisplayThumbnail = activeRecord
-    ? activeRecord.thumbnailUrl
-    : currentThumbnail || (cachedAudit && cachedAudit.history[0]?.thumbnailUrl) || (selectedStations[0]?.thumbnailUrl);
+    ? (activeRecord.thumbnailUrl ? resolvePanoramaUrl(activeRecord.thumbnailUrl, projectSettings) : defaultThumbnail)
+    : currentThumbnail
+    ? resolvePanoramaUrl(currentThumbnail, projectSettings)
+    : (cachedAudit && cachedAudit.history?.[0]?.thumbnailUrl
+        ? resolvePanoramaUrl(cachedAudit.history[0].thumbnailUrl, projectSettings)
+        : defaultThumbnail);
+
   const activeDisplayPointId = activeRecord
     ? activeRecord.pointId
-    : currentPointId || (cachedAudit && cachedAudit.history[0]?.pointId) || (selectedStations[0]?.id);
+    : currentPointId || (cachedAudit && cachedAudit.history?.[0]?.pointId) || (selectedStations[0]?.point_id || selectedStations[0]?.filename || selectedStations[0]?.id || (selectedSubgrid ? `${selectedSubgrid}-0001` : ''));
   const activeDisplayCoords = activeRecord
     ? { lat: activeRecord.lat, lng: activeRecord.lng }
     : currentCoords.lat && currentCoords.lng
     ? currentCoords
-    : { lat: selectedStations[0]?.lat || null, lng: selectedStations[0]?.lng || null };
+    : { lat: selectedStations[0]?.lat || (selectedStations[0] as any)?.latitude || null, lng: selectedStations[0]?.lng || (selectedStations[0] as any)?.longitude || (selectedStations[0] as any)?.lon || null };
   const activeDisplayBearing = activeRecord
     ? activeRecord.bearing
-    : currentBearing || selectedStations[0]?.bearing || 0;
+    : currentBearing || selectedStations[0]?.bearing || (selectedStations[0] as any)?.heading || 0;
   const activeDisplayStepDistance = activeRecord
     ? activeRecord.stepDistance
     : currentStepDistance;
   const activeDisplayIndex = Math.min(
-    totalStations,
+    totalStations > 0 ? totalStations : Math.max(1, selectedStations.length),
     Math.max(1, activeRecord ? activeRecord.index : isRunning || isCompleted ? currentIndex + 1 : 1)
   );
 
