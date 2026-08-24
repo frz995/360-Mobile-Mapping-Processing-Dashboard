@@ -27,15 +27,18 @@ import {
   MapPin,
   Columns,
   Rows,
-  Maximize2,
-  Map,
-  Minimize,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Zap,
+  Cpu,
+  Map as MapIcon,
+  Maximize2,
+  Minimize
 } from 'lucide-react';
 import type { QAQCWorkerState, StationInspectionRecord, StationNode } from '../hooks/useQAQCWorker';
 import type { QAQCConfig, ExtendedProjectSettings, QADefectRecord } from '../types/admin';
 import { saveProjectSettingsToSupabase, resolvePanoramaUrl } from '../services/supabase';
+import { isGpuAccelerationSupported, getGpuHardwareName } from '../utils/qaqcAnalyzer';
 import { QAQCThresholdStudioView } from './QAQCThresholdStudioModal';
 import {
   getImagesProcessedCount,
@@ -1563,8 +1566,27 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
           {/* Bottom Dock: Inspection Rules, 4 Pacing Options & Operator Hub */}
           <div className="p-3.5 border-t border-subtle bg-inner space-y-3">
             <div className="flex items-center justify-between text-xs text-text-base font-semibold">
-              <span>Inspection Parameters</span>
-              <span className="text-text-muted text-[11px] font-mono font-normal">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span>Inspection Parameters</span>
+                {isGpuAccelerationSupported() ? (
+                  <span
+                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 truncate max-w-[130px] sm:max-w-none"
+                    title={`Hardware Engine: ${getGpuHardwareName()}`}
+                  >
+                    <Zap size={10} className="fill-current text-emerald-400 shrink-0" />
+                    <span>GPU (WebGL)</span>
+                  </span>
+                ) : (
+                  <span
+                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-slate-500/10 text-slate-400 border border-slate-500/20"
+                    title="Hardware Engine: CPU Multi-Sector"
+                  >
+                    <Cpu size={10} className="text-slate-400 shrink-0" />
+                    <span>CPU</span>
+                  </span>
+                )}
+              </div>
+              <span className="text-text-muted text-[11px] font-mono font-normal shrink-0">
                 {selectedSubgrid ? `${selectedStations.length} Frames Queued` : 'No Target'}
               </span>
             </div>
@@ -1949,7 +1971,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                 {/* Synchronized Map Header Bar */}
                 <div className="h-8 px-3 bg-card/90 backdrop-blur-md border-b border-subtle flex items-center justify-between shrink-0 text-xs z-10">
                   <div className="flex items-center gap-2">
-                    <Map size={13} className="text-sky-400" />
+                    <MapIcon size={13} className="text-sky-400" />
                     <span className="font-semibold text-text-base text-xs">Vehicle Trajectory Map</span>
                     <span className="text-text-muted/40">•</span>
                     <span className="text-text-muted font-mono text-[11px] truncate max-w-[120px] sm:max-w-none">
@@ -1978,7 +2000,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                   ) : (
                     <div className="w-full h-full flex flex-col items-center justify-center gap-2 p-6 text-center select-none bg-app">
                       <div className="w-10 h-10 rounded-xl bg-card border border-subtle flex items-center justify-center text-text-muted">
-                        <Map size={20} className="text-text-muted" />
+                        <MapIcon size={20} className="text-text-muted" />
                       </div>
                       <div className="space-y-0.5 max-w-xs">
                         <h5 className="text-xs font-semibold text-text-base">Trajectory Map Standby</h5>

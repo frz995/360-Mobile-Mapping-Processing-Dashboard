@@ -6,6 +6,9 @@
  * 3. Lens obstruction, solar glare, and severe clipping using luminance histograms
  */
 
+import { gpuAnalyzer, isGpuAccelerationSupported, getGpuHardwareName } from './gpuAnalyzer';
+export { gpuAnalyzer, isGpuAccelerationSupported, getGpuHardwareName };
+
 export interface GeoPoint {
   lat?: number | null;
   lng?: number | null;
@@ -527,6 +530,9 @@ export interface SharpnessAnalysisResult {
   obstructionReason?: string;
   reason?: string;
   status: 'success' | 'skipped' | 'error';
+  hardwareEngine?: 'gpu' | 'cpu';
+  executionMs?: number;
+  gpuRenderer?: string;
 }
 
 /**
@@ -698,6 +704,63 @@ export async function analyzeImageSharpness(
     };
   }
 
+  // 2. Fast GPU-Accelerated WebGL Pipeline (sub-5ms parallel execution)
+  if (gpuAnalyzer.isAvailable()) {
+    try {
+      const gpuRes = gpuAnalyzer.analyze(imgData, {
+        targetWidth: sampleWidth,
+        targetHeight: sampleHeight,
+        roiTopRatio: deliverableModel === 'generative_fill' ? 0.15 : 0.10,
+        roiBottomRatio: deliverableModel === 'generative_fill' ? 0.80 : 0.52
+      });
+
+      if (gpuRes) {
+        const darkThresh = options?.darkThreshold ?? 15.0;
+        const glareRatioLimit = options?.glareThresholdRatio ?? 0.40;
+        const glareThresh = options?.glareThreshold ?? 240.0;
+        let isObstruction = false;
+        let obstructionReason: string | undefined;
+
+        if (gpuRes.avgBrightness < darkThresh) {
+          isObstruction = true;
+          obstructionReason = `Lens occlusion / underexposed frame (Brightness: ${gpuRes.avgBrightness.toFixed(1)} < ${darkThresh})`;
+        } else if (gpuRes.clippedRatio > glareRatioLimit) {
+          isObstruction = true;
+          obstructionReason = `Severe solar glare / overexposure clipping (${(gpuRes.clippedRatio * 100).toFixed(1)}% clipped >= ${glareThresh})`;
+        }
+
+        const isBlurry = gpuRes.minScore < blurThreshold;
+        const blurReason = isBlurry
+          ? `Directional Blur in ${gpuRes.worstSector} Sector (${gpuRes.minScore.toFixed(1)} < ${blurThreshold.toFixed(1)})`
+          : undefined;
+
+        const combinedReason = isObstruction && isBlurry
+          ? `${obstructionReason} & ${blurReason}`
+          : obstructionReason || blurReason;
+
+        return {
+          isBlurry,
+          minScore: gpuRes.minScore,
+          meanScore: gpuRes.meanScore,
+          worstSector: gpuRes.worstSector,
+          sectorScores: gpuRes.sectorScores,
+          avgBrightness: gpuRes.avgBrightness,
+          clippedRatio: gpuRes.clippedRatio,
+          isObstruction,
+          obstructionReason,
+          reason: combinedReason,
+          status: 'success',
+          hardwareEngine: 'gpu',
+          executionMs: gpuRes.executionMs,
+          gpuRenderer: gpuRes.gpuRenderer
+        };
+      }
+    } catch (gpuErr) {
+      console.warn('[GPU Engine] Fallback to CPU pipeline:', gpuErr);
+    }
+  }
+
+  // 3. Robust CPU Fallback Pipeline
   try {
     const data = imgData.data;
     const totalPixels = sampleWidth * sampleHeight;
