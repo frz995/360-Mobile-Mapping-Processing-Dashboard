@@ -590,26 +590,44 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
   return (
     <div className={`w-full h-full flex flex-col min-h-0 overflow-y-auto space-y-4 p-4 ${themeMode === 'light' ? 'text-slate-900' : 'text-text-base'}`}>
 
-      {/* RESTRICTED / READ-ONLY MODE BANNER FOR NON-ADMINS (Neutral Monochrome) */}
+      {/* RBAC READ-ONLY NOTICE FOR NON-ADMINISTRATORS / GUESTS */}
       {!isAdmin && (
-        <div className={`p-3.5 rounded-xl border flex flex-wrap items-center justify-between gap-3 shrink-0 shadow-sm animate-in fade-in duration-200 ${themeMode === 'light'
-          ? 'bg-slate-100 border-slate-300 text-slate-700'
-          : 'bg-app border-subtle text-slate-300'
-          }`}>
-          <div className="flex items-center gap-2.5">
-            <Lock size={15} className="text-text-muted shrink-0" />
+        <div className={`p-3.5 rounded-xl border flex flex-wrap items-center justify-between gap-3 shrink-0 shadow-sm animate-in fade-in duration-200 ${
+          isGuest
+            ? 'bg-gradient-to-r from-amber-950/40 via-card to-card border-amber-500/30 text-amber-200'
+            : themeMode === 'light'
+              ? 'bg-slate-100 border-slate-300 text-slate-700'
+              : 'bg-app border-subtle text-slate-300'
+        }`}>
+          <div className="flex items-center gap-3">
+            {isGuest ? (
+              <div className="w-7 h-7 rounded-lg bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0">
+                <Eye size={15} />
+              </div>
+            ) : (
+              <Lock size={15} className="text-text-muted shrink-0" />
+            )}
             <div>
-              <p className="font-semibold text-text-base text-xs">Project Settings &bull; Read-Only Mode</p>
+              <p className="font-semibold text-text-base text-xs">
+                {isGuest ? 'Admin Settings & Analytics • Guest Mode (Viewer)' : 'Project Settings • Read-Only Mode'}
+              </p>
               <p className="text-[11px] text-text-muted mt-0.5">
-                Current account role: <span className="font-mono font-semibold text-slate-300">{currentUserRecord?.role || (authSession?.user?.role) || 'Survey Operator'}</span>. Configuration controls and user management are restricted to Administrators.
+                {isGuest
+                  ? 'You are viewing live system performance, audit logs, and metrics in guest viewer mode. System parameter changes, database overrides, and user management require Administrator authorization.'
+                  : (
+                    <>Current account role: <span className="font-mono font-semibold text-slate-300">{currentUserRecord?.role || (authSession?.user?.role) || 'Survey Operator'}</span>. Configuration controls and user management are restricted to Administrators.</>
+                  )}
               </p>
             </div>
           </div>
-          <span className={`px-2.5 py-1 rounded-md text-[10px] font-mono font-semibold border ${themeMode === 'light'
-            ? 'bg-slate-200 text-slate-700 border-slate-300'
-            : 'bg-inner text-text-muted border-subtle'
-            }`}>
-            Read-Only
+          <span className={`px-2.5 py-1 rounded-md text-[10px] font-mono font-semibold border ${
+            isGuest
+              ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+              : themeMode === 'light'
+                ? 'bg-slate-200 text-slate-700 border-slate-300'
+                : 'bg-inner text-text-muted border-subtle'
+          }`}>
+            {isGuest ? 'Guest Viewer' : 'Read-Only'}
           </span>
         </div>
       )}

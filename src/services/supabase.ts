@@ -62,6 +62,14 @@ export interface SupabasePanoramaRecord {
 // Subgrid centroid coordinates (longitude, latitude) populated dynamically
 export const SUBGRID_COORDINATES: Record<string, [number, number]> = {};
 
+// Helper: Format PIC name
+export function formatPIC(name?: string | null, fallback: string = 'Fariz.farhan95'): string {
+  if (!name) return fallback;
+  const clean = name.trim();
+  if (!clean || clean.toLowerCase() === 'unassigned' || clean.toLowerCase() === 'operator') return fallback;
+  return clean.charAt(0).toUpperCase() + clean.slice(1);
+}
+
 // Helper: Extract subgrid name (e.g. 'N93E70-0158.jpg' -> 'N93E70')
 function extractSubgrid(filename: string): string {
   if (!filename) return '';
@@ -392,7 +400,7 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
       const finalImageCount = poiCount > 0 ? Math.min(poiCount, verifiedImagesCount) : verifiedImagesCount;
 
       const grid = g.grid || '1';
-      const pic = g.pic || knownMetadata[subgrid]?.pic || 'Unassigned';
+      const pic = formatPIC(g.pic || knownMetadata[subgrid]?.pic || 'Unassigned');
       const equipment = 'MMS';
 
       const calcKm = calculateDistance(g.points);
@@ -400,11 +408,10 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
       
       const normSubgrid = subgrid.toUpperCase().trim();
       const runId = `sp-d-${runKey}`;
-      const cachedAudit = cloudAuditCache[`${normSubgrid}_${runId}`] || (runKey ? cloudAuditCache[`${normSubgrid}_${runKey}`] : undefined) || cloudAuditCache[`${normSubgrid}_default`];
+      const cachedAudit = cloudAuditCache[`${normSubgrid}_${runId}`] || (runKey ? cloudAuditCache[`${normSubgrid}_${runKey}`] : undefined);
       const cachedDefectCount = cachedAudit && typeof cachedAudit.defectCount === 'number' ? cachedAudit.defectCount : 0;
-      const explicitDefectCount = g.recordDefects !== undefined ? g.recordDefects : 0;
-      const defects = finalImageCount === 0 ? 0 : Math.max(cachedDefectCount, explicitDefectCount);
-      const qaqcStatus = finalImageCount === 0 ? undefined : (cachedAudit ? `QAQC Completed (${cachedDefectCount} Defect${cachedDefectCount === 1 ? '' : 's'} Found)` : (defects > 0 ? `QAQC Completed (${defects} Defects Found)` : undefined));
+      const defects = (finalImageCount === 0 || !cachedAudit) ? 0 : Math.min(cachedDefectCount, finalImageCount);
+      const qaqcStatus = finalImageCount === 0 ? undefined : (cachedAudit ? (cachedDefectCount === 0 ? 'Published (QAQC Verified)' : `Published (${cachedDefectCount} Defect${cachedDefectCount === 1 ? '' : 's'} Found)`) : undefined);
 
       let dateFormatted = g.dateStr;
       const d = new Date(g.dateStr);
@@ -557,15 +564,21 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
           }
 
           const finalImgCount = verifiedCount;
-          const picName = g.pic || knownMetadata[sg]?.pic || 'Unassigned';
-
+          const picName = formatPIC(g.pic || knownMetadata[sg]?.pic || 'Unassigned');
           const normSg = sg.toUpperCase().trim();
           const runId = `staging-d-${runKey}`;
-          const cachedAudit = cloudAuditCache[`${normSg}_${runId}`] || (runKey ? cloudAuditCache[`${normSg}_${runKey}`] : undefined) || cloudAuditCache[`${normSg}_default`];
+          const cachedAudit = cloudAuditCache[`${normSg}_${runId}`] || (runKey ? cloudAuditCache[`${normSg}_${runKey}`] : undefined);
           const cachedDefectCount = cachedAudit && typeof cachedAudit.defectCount === 'number' ? cachedAudit.defectCount : 0;
-          const explicitDefectCount = typeof g.defectCount === 'number' ? g.defectCount : 0;
-          const finalDefectCount = finalImgCount === 0 ? 0 : Math.max(cachedDefectCount, explicitDefectCount);
-          const qaqcStatus = finalImgCount === 0 ? undefined : (cachedAudit ? `QAQC Completed (${cachedDefectCount} Defect${cachedDefectCount === 1 ? '' : 's'} Found)` : (finalDefectCount > 0 ? `QAQC Completed (${finalDefectCount} Defects Found)` : undefined));
+          const finalDefectCount = (finalImgCount === 0 || !cachedAudit) ? 0 : Math.min(cachedDefectCount, finalImgCount);
+          const isPub = g.status === 'yes';
+          const qaqcStatus = finalImgCount === 0 ? undefined : (
+            cachedAudit
+              ? (isPub
+                  ? (cachedDefectCount === 0 ? 'Published (QAQC Verified)' : `Published (${cachedDefectCount} Defect${cachedDefectCount === 1 ? '' : 's'} Found)`)
+                  : (cachedDefectCount === 0 ? 'QAQC Passed (Ready to Publish)' : `QAQC Flagged (${cachedDefectCount} Defect${cachedDefectCount === 1 ? '' : 's'} Found)`)
+                )
+              : undefined
+          );
 
           dailyData.push({
             id: `staging-d-${runKey}`,
@@ -590,7 +603,7 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
             points: g.points,
             panoramas: g.points.map((pt: any, pIdx: number) => {
               const fn = g.imageFilenames[pIdx] || `${sg}-${String(pIdx + 1).padStart(4, '0')}.jpg`;
-              const isAvail = verifiedFiles.length > 0 ? (verifiedFiles.includes(fn) || verifiedFiles.some(vf => vf.toLowerCase() === fn.toLowerCase())) : true;
+              const isAvail = verifiedFiles.length > 0 ? (verifiedFiles.includes(fn) || verifiedFiles.some((vf: string) => vf.toLowerCase() === fn.toLowerCase())) : false;
               return {
                 filename: fn,
                 latitude: pt.lat,
@@ -598,14 +611,25 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
                 lat: pt.lat,
                 lon: pt.lon,
                 subgrid: sg,
-                isAvailable: isAvail
+                status: 'in process',
+                qa_status: 'in process',
+                publishToWebGIS: 'in process',
+                publishToUSVPRO: 'in process',
+                isPublished: false,
+                published: false,
+                isAvailable: isAvail,
+                opacity: 0.5,
+                color: '#f59e0b',
+                statusColor: '#f59e0b',
+                strokeColor: '#f59e0b',
+                fillColor: '#f59e0b'
               };
             })
           });
         }
       }
-    } catch (stgErr) {
-      console.warn('staging_panoramas fetch notice (table may be pending creation):', stgErr);
+    } catch (e) {
+      console.warn('Error reading staging_panoramas:', e);
     }
 
     // 3. Build masterlist Batch Logs by aggregating all dailyData runs per subgrid
@@ -616,13 +640,14 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
 
       const isPublished = d.publishToWebGIS === 'yes' || d.isSyncedWithSupabase === true;
       const singlePoi = d.poiCount || 0;
-      const singleImg = isPublished ? (d.imagesProcessed || 0) : 0;
+      const singleImg = typeof d.imagesProcessed === 'number' ? d.imagesProcessed : (typeof d.availableImagesCount === 'number' ? d.availableImagesCount : 0);
       const kmVal = Number(d.kmProcessed || 0);
       const defCount = Number(d.imagesDefected || d.defectCount || 0);
 
       const existing = batchMap.get(sg);
       if (existing) {
         existing.totalPoi += singlePoi;
+        existing.totalImages += singleImg;
         existing.totalKm = Math.round((existing.totalKm + kmVal) * 100) / 100;
         if (isPublished) {
           existing.publishedPoi += singlePoi;
@@ -630,7 +655,7 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
           existing.publishedKm = Math.round((existing.publishedKm + kmVal) * 100) / 100;
           existing.publishedRunsCount += 1;
         }
-        existing.defects = Math.max(existing.defects, defCount);
+        existing.defects += defCount;
         if (d.qaqcStatus) existing.qaqcStatus = d.qaqcStatus;
         existing.runsCount += 1;
         if (d.availableFilenames && Array.isArray(d.availableFilenames)) {
@@ -644,7 +669,7 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
           ? [...d.availableFilenames]
           : (d.panoramas ? d.panoramas.filter((p: any) => p.isAvailable !== false).map((p: any) => p.filename).filter(Boolean) : []);
 
-        const adminPic = knownMetadata[sg]?.pic || 'Admin';
+        const adminPic = formatPIC(knownMetadata[sg]?.pic || 'Admin');
 
         batchMap.set(sg, {
           id: `BATCH-${sg}`,
@@ -652,7 +677,8 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
           grid: d.grid || '',
           date: d.date || new Date().toISOString().slice(0, 10),
           imageFilename: (d.panoramas?.[0]?.filename) || `${sg}-0001.jpg`,
-          publishedImages: singleImg,
+          totalImages: singleImg,
+          publishedImages: isPublished ? singleImg : 0,
           totalPoi: singlePoi,
           publishedPoi: isPublished ? singlePoi : 0,
           publishedKm: isPublished ? kmVal : 0,
@@ -671,22 +697,23 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
 
     const batchLogs: any[] = [];
     batchMap.forEach((entry, sg) => {
-      const isComplete = entry.publishedRunsCount > 0 && entry.publishedRunsCount === entry.runsCount && entry.publishedPoi >= entry.totalPoi;
+      const finalImages = typeof entry.totalImages === 'number' ? entry.totalImages : (typeof entry.publishedImages === 'number' ? entry.publishedImages : 0);
+      const isComplete = entry.publishedRunsCount > 0 && entry.publishedRunsCount === entry.runsCount && finalImages >= entry.totalPoi && entry.totalPoi > 0;
       batchLogs.push({
         id: `BATCH-${sg}`,
         date: entry.date,
         grid: entry.grid,
         subgrid: sg,
         imageFilename: entry.imageFilename,
-        images: entry.publishedImages,
+        images: finalImages,
         poiCount: entry.totalPoi,
-        availableImagesCount: entry.publishedImages,
+        availableImagesCount: finalImages,
         availableFilenames: entry.availableFilenames && entry.availableFilenames.length > 0 ? entry.availableFilenames : undefined,
         defects: entry.defects,
-        kmProcessed: entry.publishedKm,
+        kmProcessed: entry.totalKm,
         status: isComplete ? 'Complete' : 'Ongoing',
         captureEquipment: entry.captureEquipment,
-        pic: entry.adminPic || knownMetadata[sg]?.pic || 'Admin',
+        pic: 'Admin',
         isSyncedWithSupabase: entry.publishedRunsCount > 0,
         panoramas: entry.panoramas
       });
