@@ -207,9 +207,12 @@ export function getImagesProcessedCount(item?: {
   } else if (item.availableFilenames && Array.isArray(item.availableFilenames)) {
     rawCount = item.availableFilenames.length;
   } else if (item.panoramas && item.panoramas.length > 0) {
-    // Count only items explicitly verified as available
     const availablePans = item.panoramas.filter((p: any) => p.isAvailable === true);
-    rawCount = availablePans.length;
+    rawCount = availablePans.length > 0 ? availablePans.length : item.panoramas.filter((p: any) => p.isAvailable !== false).length;
+  } else if (typeof item.imagesProcessed === 'number') {
+    rawCount = item.imagesProcessed;
+  } else if (typeof item.images === 'number') {
+    rawCount = item.images;
   }
 
   if (rawPoi > 0 && rawCount > rawPoi) {
@@ -545,6 +548,7 @@ export function reconcileBatchLogs(dailyItems: DailyTimeSeries[], baseBatches?: 
     grid: string;
     date: string;
     imageFilename: string;
+    totalImages: number;
     publishedImages: number;
     totalPoi: number;
     publishedPoi: number;
@@ -566,7 +570,7 @@ export function reconcileBatchLogs(dailyItems: DailyTimeSeries[], baseBatches?: 
 
     const isPublished = d.publishToWebGIS === 'yes' || d.isSyncedWithSupabase === true;
     const singlePoi = d.poiCount || (d.panoramas?.length) || 0;
-    const singleImg = isPublished ? getImagesProcessedCount(d) : 0;
+    const singleImg = getImagesProcessedCount(d);
     const kmVal = Number(d.kmProcessed || 0);
     let parsedStatusDefects = 0;
     if (d.qaqcStatus) {
@@ -585,6 +589,7 @@ export function reconcileBatchLogs(dailyItems: DailyTimeSeries[], baseBatches?: 
     const existing = batchMap.get(normSub);
     if (existing) {
       existing.totalPoi += singlePoi;
+      existing.totalImages += singleImg;
       existing.totalKm = Math.round((existing.totalKm + kmVal) * 100) / 100;
       if (isPublished) {
         existing.publishedPoi += singlePoi;
@@ -618,7 +623,8 @@ export function reconcileBatchLogs(dailyItems: DailyTimeSeries[], baseBatches?: 
         grid: d.grid || '1',
         date: d.date || new Date().toISOString().slice(0, 10),
         imageFilename: (d.panoramas?.[0]?.filename) || `${normSub}-0001.jpg`,
-        publishedImages: singleImg,
+        totalImages: singleImg,
+        publishedImages: isPublished ? singleImg : 0,
         totalPoi: singlePoi,
         publishedPoi: isPublished ? singlePoi : 0,
         publishedKm: isPublished ? kmVal : 0,
@@ -639,6 +645,7 @@ export function reconcileBatchLogs(dailyItems: DailyTimeSeries[], baseBatches?: 
   for (const [normSub, entry] of batchMap.entries()) {
     const isComplete = entry.publishedRunsCount > 0 && entry.publishedRunsCount === entry.runsCount && entry.publishedPoi >= entry.totalPoi;
     const finalStatus: 'Complete' | 'Ongoing' = isComplete ? 'Complete' : 'Ongoing';
+    const finalImages = entry.totalImages > 0 ? entry.totalImages : (entry.publishedImages > 0 ? entry.publishedImages : entry.totalPoi);
 
     result.push({
       id: `BATCH-${normSub}`,
@@ -646,11 +653,11 @@ export function reconcileBatchLogs(dailyItems: DailyTimeSeries[], baseBatches?: 
       grid: entry.grid,
       subgrid: normSub,
       imageFilename: entry.imageFilename,
-      images: entry.publishedImages,
+      images: finalImages,
       poiCount: entry.totalPoi,
-      availableImagesCount: entry.publishedImages,
+      availableImagesCount: finalImages,
       availableFilenames: entry.availableFilenames && entry.availableFilenames.length > 0 ? entry.availableFilenames : undefined,
-      kmProcessed: entry.publishedKm,
+      kmProcessed: entry.totalKm,
       defects: entry.defects,
       pic: entry.adminPic || baseBatchPicMap.get(normSub) || 'Admin',
       status: finalStatus,

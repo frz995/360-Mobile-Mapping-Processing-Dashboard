@@ -155,41 +155,133 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
     // Count actual available images in storage bucket if accessible
     const storageImageCounts = new Map<string, number>();
     const storageFileSet = new Set<string>();
-    const storageBucketName = import.meta.env.VITE_SUPABASE_BUCKET || import.meta.env.VITE_STORAGE_BUCKET || 'MMS_PIC';
+    const primaryBucket = settings?.supabaseBucket || (settings as any)?.storageBucket || import.meta.env.VITE_SUPABASE_BUCKET || import.meta.env.VITE_STORAGE_BUCKET || 'MMS_PIC';
+    const candidateLocations: Array<{ bucket: string; path: string }> = [
+      { bucket: primaryBucket, path: '' },
+      { bucket: primaryBucket, path: 'MMS_PIC' },
+      { bucket: 'MMS_PIC', path: '' },
+      { bucket: 'panoramas', path: '' },
+      { bucket: 'panoramas', path: 'MMS_PIC' }
+    ];
 
-    try {
-      let offset = 0;
-      const limit = 100;
-      let hasMore = true;
-      let totalFetched = 0;
+    const uniqueLocations = candidateLocations.filter((loc, idx, self) =>
+      idx === self.findIndex(t => t.bucket === loc.bucket && t.path === loc.path)
+    );
 
-      while (hasMore && totalFetched < 10000) {
-        const { data: storageFiles, error: storageError } = await supabase.storage.from(storageBucketName).list('', { limit, offset });
-        if (storageError || !storageFiles || storageFiles.length === 0) {
-          break;
-        }
-        totalFetched += storageFiles.length;
-        storageFiles.forEach(file => {
-          if (file.name && file.name.includes('.') && !file.name.startsWith('.')) {
-            storageFileSet.add(file.name.toLowerCase().trim());
-            const clean = file.name.split('/').pop()?.toLowerCase().trim();
-            if (clean) storageFileSet.add(clean);
+    for (const loc of uniqueLocations) {
+      try {
+        let offset = 0;
+        const limit = 100;
+        let hasMore = true;
+        let totalFetched = 0;
 
-            const sg = extractSubgrid(file.name);
-            if (sg && sg !== 'N/A') {
-              storageImageCounts.set(sg, (storageImageCounts.get(sg) || 0) + 1);
+        while (hasMore && totalFetched < 10000) {
+          const { data: storageFiles, error: storageError } = await supabase.storage.from(loc.bucket).list(loc.path, { limit, offset });
+          if (storageError || !storageFiles || storageFiles.length === 0) {
+            break;
+          }
+          totalFetched += storageFiles.length;
+          storageFiles.forEach(file => {
+            if (file.name && file.name.includes('.') && !file.name.startsWith('.')) {
+              const fullClean = file.name.toLowerCase().trim();
+              const baseName = file.name.split('/').pop()?.toLowerCase().trim();
+              storageFileSet.add(fullClean);
+              if (baseName) storageFileSet.add(baseName);
+
+              const sg = extractSubgrid(file.name);
+              if (sg && sg !== 'N/A') {
+                const normSg = sg.toUpperCase().trim();
+                storageImageCounts.set(normSg, (storageImageCounts.get(normSg) || 0) + 1);
+              }
             }
+          });
+          if (storageFiles.length < limit) {
+            hasMore = false;
+          } else {
+            offset += limit;
+          }
+        }
+      } catch (_) {}
+    }
+
+    console.log('Verified Supabase storage file count:', storageFileSet.size, 'Subgrid counts:', Object.fromEntries(storageImageCounts));
+
+    // Helper to verify image filenames directly against storage
+    function verifyFilenamesAgainstStorage(
+      filenames: string[],
+      subgridKey?: string
+    ): { count: number; verifiedFilenames: string[] } {
+      if (!filenames || filenames.length === 0) {
+        return { count: 0, verifiedFilenames: [] };
+      }
+
+      // 1. If storage file set is available, match exact filenames against bucket
+      if (storageFileSet.size > 0) {
+        const verified = filenames.filter((fn) => {
+          const cleanFn = fn.split('/').pop()?.toLowerCase().trim() || fn.toLowerCase().trim();
+          return storageFileSet.has(cleanFn) || storageFileSet.has(fn.toLowerCase().trim());
+        });
+        return { count: verified.length, verifiedFilenames: verified };
+      }
+
+      // 2. If storage has counts per subgrid
+      const norm = (subgridKey || '').toUpperCase().trim();
+      if (norm && storageImageCounts.has(norm)) {
+        const count = storageImageCounts.get(norm) || 0;
+        return { count: Math.min(filenames.length, count), verifiedFilenames: [] };
+      }
+
+      // 3. Fallback: 0 verified frames if storage is empty or unreachable
+      return { count: 0, verifiedFilenames: [] };
+    }
+
+    // Query qa_defects table to aggregate actual defect counts per subgrid
+    const qaDefectsPerSubgrid = new Map<string, number>();
+    try {
+      const { data: qdRows } = await supabase.from('qa_defects').select('subgrid, qa_status, defect_flags, defect_count');
+      if (qdRows && qdRows.length > 0) {
+        qdRows.forEach((r: any) => {
+          const isFlagged = r.qa_status === 'flagged' ||
+            (r.defect_flags && typeof r.defect_flags === 'object' && Object.values(r.defect_flags).some(Boolean)) ||
+            (r.defect_count && Number(r.defect_count) > 0);
+          if (isFlagged && r.subgrid) {
+            const norm = (extractSubgrid(r.subgrid) || r.subgrid).toUpperCase().trim();
+            qaDefectsPerSubgrid.set(norm, (qaDefectsPerSubgrid.get(norm) || 0) + 1);
           }
         });
-        if (storageFiles.length < limit) {
-          hasMore = false;
-        } else {
-          offset += limit;
-        }
       }
-    } catch (err) {
-      console.warn('MMS_PIC storage list exception:', err);
-    }
+    } catch (_) {}
+
+    // Query cloud qaqc_audit_runs table for persisted QAQC audit metrics
+    const qaqcRunsTable = settings?.qaqcRunsTable || import.meta.env.VITE_DB_QAQC_RUNS_TABLE || 'qaqc_audit_runs';
+    let cloudAuditCache: Record<string, any> = {};
+    try {
+      const { data: auditRows } = await supabase.from(qaqcRunsTable).select('*');
+      if (auditRows && auditRows.length > 0) {
+        auditRows.forEach((r: any) => {
+          const norm = (extractSubgrid(r.subgrid) || r.subgrid || '').toUpperCase().trim();
+          const runId = r.run_id || 'default';
+          const entry = {
+            subgrid: norm,
+            runId: r.run_id || null,
+            totalStations: Number(r.total_stations) || 0,
+            defectCount: Number(r.defect_count) || 0,
+            passRate: Number(r.pass_rate) || 100,
+            meanTenengradScore: Number(r.mean_tenengrad_score) || 0,
+            defectsList: Array.isArray(r.defects_list) ? r.defects_list : [],
+            history: Array.isArray(r.history) ? r.history : [],
+            pic: r.pic || '',
+            user_id: r.user_id,
+            user_email: r.user_email,
+            completedAt: r.completed_at || r.created_at
+          };
+          cloudAuditCache[`${norm}_${runId}`] = entry;
+          if (!cloudAuditCache[`${norm}_default`]) {
+            cloudAuditCache[`${norm}_default`] = entry;
+          }
+        });
+      }
+    } catch (_) {}
 
     // Group published database records by individual survey run (runKey) so daily journeys remain separate
     const publishedGrouped = new Map<string, {
@@ -206,7 +298,7 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
     }>();
     const publishedFilenamesSet = new Set<string>();
 
-    // 1. Process published records
+    // Process published rows
     publishedRows.forEach(r => {
       const filename = r.filename || r.image_url || '';
       const sg = (r.subgrid || extractSubgrid(filename) || extractSubgrid(r.description) || 'UNKNOWN').toUpperCase().trim();
@@ -276,78 +368,6 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
         g.points.push({ lat, lon });
       }
     });
-
-    console.log('Verified Supabase MMS_PIC storage counts:', Object.fromEntries(storageImageCounts));
-
-    // Helper to verify image filenames directly against storage
-    function verifyFilenamesAgainstStorage(
-      filenames: string[],
-      _subgridKey?: string
-    ): { count: number; verifiedFilenames: string[] } {
-      if (!filenames || filenames.length === 0) {
-        return { count: 0, verifiedFilenames: [] };
-      }
-
-      // 1. Priority: Check in-memory storage file set from bucket list API
-      if (storageFileSet.size > 0) {
-        const verified = filenames.filter((fn) => {
-          const cleanFn = fn.split('/').pop()?.toLowerCase().trim() || fn.toLowerCase().trim();
-          return storageFileSet.has(cleanFn) || storageFileSet.has(fn.toLowerCase().trim());
-        });
-        return { count: verified.length, verifiedFilenames: verified };
-      }
-
-      // 2. Safe fallback: Return existing filenames without firing thousands of HTTP HEAD probes
-      return { count: filenames.length, verifiedFilenames: filenames };
-    }
-
-    // Query qa_defects table to aggregate actual defect counts per subgrid
-    const qaDefectsPerSubgrid = new Map<string, number>();
-    try {
-      const { data: qdRows } = await supabase.from('qa_defects').select('subgrid, qa_status, defect_flags, defect_count');
-      if (qdRows && qdRows.length > 0) {
-        qdRows.forEach((r: any) => {
-          const isFlagged = r.qa_status === 'flagged' ||
-            (r.defect_flags && typeof r.defect_flags === 'object' && Object.values(r.defect_flags).some(Boolean)) ||
-            (r.defect_count && Number(r.defect_count) > 0);
-          if (isFlagged && r.subgrid) {
-            const norm = (extractSubgrid(r.subgrid) || r.subgrid).toUpperCase().trim();
-            qaDefectsPerSubgrid.set(norm, (qaDefectsPerSubgrid.get(norm) || 0) + 1);
-          }
-        });
-      }
-    } catch (_) {}
-
-    // Query cloud qaqc_audit_runs table for persisted QAQC audit metrics
-    const qaqcRunsTable = settings?.qaqcRunsTable || import.meta.env.VITE_DB_QAQC_RUNS_TABLE || 'qaqc_audit_runs';
-    let cloudAuditCache: Record<string, any> = {};
-    try {
-      const { data: auditRows } = await supabase.from(qaqcRunsTable).select('*');
-      if (auditRows && auditRows.length > 0) {
-        auditRows.forEach((r: any) => {
-          const norm = (extractSubgrid(r.subgrid) || r.subgrid || '').toUpperCase().trim();
-          const runId = r.run_id || 'default';
-          const entry = {
-            subgrid: norm,
-            runId: r.run_id || null,
-            totalStations: Number(r.total_stations) || 0,
-            defectCount: Number(r.defect_count) || 0,
-            passRate: Number(r.pass_rate) || 100,
-            meanTenengradScore: Number(r.mean_tenengrad_score) || 0,
-            defectsList: Array.isArray(r.defects_list) ? r.defects_list : [],
-            history: Array.isArray(r.history) ? r.history : [],
-            pic: r.pic || '',
-            user_id: r.user_id,
-            user_email: r.user_email,
-            completedAt: r.completed_at || r.created_at
-          };
-          cloudAuditCache[`${norm}_${runId}`] = entry;
-          if (!cloudAuditCache[`${norm}_default`]) {
-            cloudAuditCache[`${norm}_default`] = entry;
-          }
-        });
-      }
-    } catch (_) {}
 
     const dailyData: any[] = [];
 
@@ -1196,51 +1216,62 @@ export async function saveQaAuditRunToSupabase(
 export async function verifyCsvImageFilenamesInStorage(filenames: string[], settings?: any): Promise<{ availableCount: number; verifiedFilenames: string[] }> {
   if (!filenames || filenames.length === 0) return { availableCount: 0, verifiedFilenames: [] };
 
-  const bucketName = settings?.supabaseBucket || settings?.storageBucket || import.meta.env.VITE_SUPABASE_BUCKET || import.meta.env.VITE_STORAGE_BUCKET || 'panoramas';
+  const primaryBucket = settings?.supabaseBucket || (settings as any)?.storageBucket || import.meta.env.VITE_SUPABASE_BUCKET || import.meta.env.VITE_STORAGE_BUCKET || 'MMS_PIC';
+  const candidateLocations: Array<{ bucket: string; path: string }> = [
+    { bucket: primaryBucket, path: '' },
+    { bucket: primaryBucket, path: 'MMS_PIC' },
+    { bucket: 'MMS_PIC', path: '' },
+    { bucket: 'panoramas', path: '' },
+    { bucket: 'panoramas', path: 'MMS_PIC' }
+  ];
 
-  // 1. Primary method: Query Supabase Storage bucket for uploaded file list and match explicit row filenames
-  try {
-    const fileSet = new Set<string>();
-    let offset = 0;
-    const limit = 100;
-    let hasMore = true;
-    let totalFetched = 0;
+  const uniqueLocations = candidateLocations.filter((loc, idx, self) =>
+    idx === self.findIndex(t => t.bucket === loc.bucket && t.path === loc.path)
+  );
 
-    while (hasMore && totalFetched < 10000) {
-      const { data, error } = await supabase.storage.from(bucketName).list('', { limit, offset });
-      if (error || !data || data.length === 0) break;
-      totalFetched += data.length;
+  const fileSet = new Set<string>();
 
-      data.forEach(item => {
-        if (item.name) {
-          fileSet.add(item.name.toLowerCase().trim());
-          const cleanName = item.name.split('/').pop()?.toLowerCase().trim();
-          if (cleanName) fileSet.add(cleanName);
-        }
-      });
+  for (const loc of uniqueLocations) {
+    try {
+      let offset = 0;
+      const limit = 100;
+      let hasMore = true;
+      let totalFetched = 0;
 
-      if (data.length < limit) hasMore = false;
-      else offset += limit;
-    }
+      while (hasMore && totalFetched < 10000) {
+        const { data, error } = await supabase.storage.from(loc.bucket).list(loc.path, { limit, offset });
+        if (error || !data || data.length === 0) break;
+        totalFetched += data.length;
 
-    if (fileSet.size > 0) {
-      const verifiedFilenames: string[] = [];
-      let availableCount = 0;
-      filenames.forEach(fn => {
-        const cleanFn = fn.split('/').pop()?.toLowerCase().trim() || fn.toLowerCase().trim();
-        if (fileSet.has(cleanFn) || fileSet.has(fn.toLowerCase().trim())) {
-          availableCount++;
-          verifiedFilenames.push(fn);
-        }
-      });
-      return { availableCount, verifiedFilenames };
-    }
-  } catch (e) {
-    console.warn('Storage bucket listing notice:', e);
+        data.forEach(item => {
+          if (item.name && item.name.includes('.') && !item.name.startsWith('.')) {
+            const fullClean = item.name.toLowerCase().trim();
+            const baseName = item.name.split('/').pop()?.toLowerCase().trim();
+            fileSet.add(fullClean);
+            if (baseName) fileSet.add(baseName);
+          }
+        });
+
+        if (data.length < limit) hasMore = false;
+        else offset += limit;
+      }
+    } catch (_) {}
   }
 
-  // 2. Safe fallback: Return input count without flooding storage API with thousands of HTTP HEAD probes
-  return { availableCount: filenames.length, verifiedFilenames: filenames };
+  if (fileSet.size > 0) {
+    const verifiedFilenames: string[] = [];
+    let availableCount = 0;
+    filenames.forEach(fn => {
+      const cleanFn = fn.split('/').pop()?.toLowerCase().trim() || fn.toLowerCase().trim();
+      if (fileSet.has(cleanFn) || fileSet.has(fn.toLowerCase().trim())) {
+        availableCount++;
+        verifiedFilenames.push(fn);
+      }
+    });
+    return { availableCount, verifiedFilenames };
+  }
+
+  return { availableCount: 0, verifiedFilenames: [] };
 }
 
 export interface DatabaseTableMapping {
