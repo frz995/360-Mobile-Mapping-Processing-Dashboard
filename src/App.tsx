@@ -641,9 +641,9 @@ export function reconcileBatchLogs(dailyItems: DailyTimeSeries[], baseBatches?: 
   // Convert map to BatchLog array
   const result: BatchLog[] = [];
   for (const [normSub, entry] of batchMap.entries()) {
-    const isComplete = entry.publishedRunsCount > 0 && entry.publishedRunsCount === entry.runsCount && entry.publishedPoi >= entry.totalPoi;
+    const finalImages = typeof entry.totalImages === 'number' ? entry.totalImages : (typeof entry.publishedImages === 'number' ? entry.publishedImages : 0);
+    const isComplete = entry.publishedRunsCount > 0 && entry.publishedRunsCount === entry.runsCount && finalImages >= entry.totalPoi && entry.totalPoi > 0;
     const finalStatus: 'Complete' | 'Ongoing' = isComplete ? 'Complete' : 'Ongoing';
-    const finalImages = entry.totalImages > 0 ? entry.totalImages : (entry.publishedImages > 0 ? entry.publishedImages : entry.totalPoi);
 
     result.push({
       id: `BATCH-${normSub}`,
