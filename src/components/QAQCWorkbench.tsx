@@ -527,11 +527,17 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
     Math.max(1, activeRecord ? activeRecord.index : isRunning || isCompleted ? currentIndex + 1 : 1)
   );
 
-  // Sync synchronized map iframe with active subgrid, current station node & vehicle bearing
-  const syncWorkbenchMap = useCallback(() => {
+    const lastLoadedSubgridRef = useRef<string>('');
+
+  // 1. Initialize track dataset on the map ONCE per subgrid selection (avoids layer recreation stutter)
+  const initWorkbenchMapTrack = useCallback(() => {
     if (!mapIframeRef.current?.contentWindow) return;
     const activeSg = (activeRunningSubgrid || selectedSubgrid || '').toUpperCase().trim();
     if (!activeSg) return;
+
+    const cacheKey = `${activeSg}_${selectedRunId || 'default'}`;
+    if (lastLoadedSubgridRef.current === cacheKey) return;
+    lastLoadedSubgridRef.current = cacheKey;
 
     try {
       // 1. Set subgrid filter
@@ -553,29 +559,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
         }, '*');
       }
 
-      // 3. Highlight current station, pan map & update vehicle sonar heading cone
-      if (activeDisplayCoords.lat && activeDisplayCoords.lng) {
-        mapIframeRef.current.contentWindow.postMessage({
-          type: 'MAP_POINT_SELECTED',
-          point: {
-            filename: activeDisplayPointId,
-            image_url: activeDisplayThumbnail,
-            subgrid: activeSg,
-            lat: activeDisplayCoords.lat,
-            lon: activeDisplayCoords.lng,
-            lng: activeDisplayCoords.lng,
-            bearing: activeDisplayBearing
-          }
-        }, '*');
-
-        mapIframeRef.current.contentWindow.postMessage({
-          type: 'SET_CAMERA_HEADING',
-          bearing: activeDisplayBearing,
-          heading: activeDisplayBearing
-        }, '*');
-      }
-
-      // 4. Broadcast discovered defect markers in real-time
+      // 3. Broadcast discovered defect markers
       if (effectiveDefectsList.length > 0) {
         mapIframeRef.current.contentWindow.postMessage({
           type: 'QAQC_DEFECTS_SYNC',
@@ -583,22 +567,76 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
         }, '*');
       }
     } catch (_) {}
-  }, [activeRunningSubgrid, selectedSubgrid, selectedRunId, dailyData, activeDisplayCoords, activeDisplayPointId, activeDisplayThumbnail, activeDisplayBearing, effectiveDefectsList]);
+  }, [activeRunningSubgrid, selectedSubgrid, selectedRunId, dailyData, effectiveDefectsList]);
 
+  // Load track dataset only when target subgrid changes or map loads
   useEffect(() => {
-    syncWorkbenchMap();
-  }, [syncWorkbenchMap, activeDisplayIndex, selectedSubgrid, selectedRunId, viewportMode]);
+    initWorkbenchMapTrack();
+  }, [initWorkbenchMapTrack, selectedSubgrid, selectedRunId, viewportMode]);
 
+  // 2. Only stream node updates when QC is actively RUNNING (no continuous pan/focus when idle or completed)
+  useEffect(() => {
+    if (!isRunning) return;
+    if (!mapIframeRef.current?.contentWindow) return;
+    if (!activeDisplayCoords.lat || !activeDisplayCoords.lng) return;
+
+    try {
+      mapIframeRef.current.contentWindow.postMessage({
+        type: 'MAP_POINT_SELECTED',
+        point: {
+          filename: activeDisplayPointId,
+          subgrid: activeRunningSubgrid || selectedSubgrid,
+          lat: activeDisplayCoords.lat,
+          lon: activeDisplayCoords.lng,
+          lng: activeDisplayCoords.lng,
+          bearing: activeDisplayBearing
+        },
+        isLiveTracking: true,
+        noAnimation: true
+      }, '*');
+
+      mapIframeRef.current.contentWindow.postMessage({
+        type: 'SET_CAMERA_HEADING',
+        bearing: activeDisplayBearing,
+        heading: activeDisplayBearing
+      }, '*');
+    } catch (_) {}
+  }, [isRunning, activeDisplayIndex, activeDisplayCoords, activeDisplayBearing, activeDisplayPointId, activeRunningSubgrid, selectedSubgrid]);
+
+  // 3. Single click preview if user manually clicks a historical station in the feed
+  useEffect(() => {
+    if (selectedStationIndex === null || isRunning) return;
+    if (!activeRecord || !activeRecord.lat || !activeRecord.lng) return;
+    if (!mapIframeRef.current?.contentWindow) return;
+
+    try {
+      mapIframeRef.current.contentWindow.postMessage({
+        type: 'MAP_POINT_SELECTED',
+        point: {
+          filename: activeRecord.pointId,
+          subgrid: activeRunningSubgrid || selectedSubgrid,
+          lat: activeRecord.lat,
+          lon: activeRecord.lng,
+          lng: activeRecord.lng,
+          bearing: activeRecord.bearing
+        },
+        isUserSelect: true
+      }, '*');
+    } catch (_) {}
+  }, [selectedStationIndex, activeRecord, isRunning, activeRunningSubgrid, selectedSubgrid]);
+
+  // 4. Map handshake listener
   useEffect(() => {
     const handleMessage = (e: MessageEvent) => {
       if (e.data?.type === 'VIEWER_READY' || e.data?.type === 'MAP_READY') {
         setIsMapReady(true);
-        syncWorkbenchMap();
+        lastLoadedSubgridRef.current = ''; // Reset to force clean reload on new ready
+        initWorkbenchMapTrack();
       }
     };
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [syncWorkbenchMap]);
+  }, [initWorkbenchMapTrack]);
 
   // Filtered station history stream
   const filteredHistory = useMemo(() => {
@@ -614,6 +652,31 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
 
     setSelectedStationIndex(null);
     setMobileConsoleTab('canvas');
+
+    // Execute ONE initial zoom and pan to start node
+    const firstStation = selectedStations[0];
+    if (firstStation && firstStation.lat && firstStation.lng && mapIframeRef.current?.contentWindow) {
+      try {
+        mapIframeRef.current.contentWindow.postMessage({
+          type: 'MAP_POINT_SELECTED',
+          point: {
+            filename: firstStation.filename || firstStation.id,
+            image_url: firstStation.image_url,
+            subgrid: selectedSubgrid,
+            lat: firstStation.lat,
+            lon: firstStation.lng,
+            lng: firstStation.lng,
+            bearing: firstStation.bearing || 0
+          },
+          zoom: 18
+        }, '*');
+        mapIframeRef.current.contentWindow.postMessage({
+          type: 'SET_CAMERA_HEADING',
+          bearing: firstStation.bearing || 0,
+          heading: firstStation.bearing || 0
+        }, '*');
+      } catch (_) {}
+    }
     onStartInspection({
       subgrid: selectedSubgrid,
       runId: selectedRunId,
@@ -1577,7 +1640,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                     title="QAQC Synchronized Trajectory Map"
                     onLoad={() => {
                       setIsMapReady(true);
-                      syncWorkbenchMap();
+                      initWorkbenchMapTrack();
                     }}
                   />
                 </div>
@@ -1625,7 +1688,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                       title="QAQC Minimap PiP"
                       onLoad={() => {
                         setIsMapReady(true);
-                        syncWorkbenchMap();
+                        initWorkbenchMapTrack();
                       }}
                     />
                   </div>
