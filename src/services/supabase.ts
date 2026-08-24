@@ -342,7 +342,7 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
         : (r.date || r.survey_date || (r.created_at ? new Date(r.created_at).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10)));
       const extractedBatchId = r.description ? (r.description.match(/\[(.*?)\]/)?.[1] || r.description.match(/daily-[\w-]+/)?.[0] || r.description.match(/staging-[\w-]+/)?.[0]) : null;
       const extractedPublishSignature = r.description ? r.description.match(/Published Batch \([^)]+\) - ([\d\-: ]+)/)?.[0] : null;
-      const runKey = r.batch_id || r.run_id || extractedBatchId || (extractedPublishSignature ? `${sg}_${extractedPublishSignature}` : `${sg}_${r.id || `${rawDate}_${r.poi_count || r.images_processed || 0}_${r.km_processed || 0}`}`);
+      const runKey = r.batch_id || r.run_id || extractedBatchId || (extractedPublishSignature ? `${sg}_${extractedPublishSignature}` : `${sg}_${rawDate}`);
 
       const rowPic = r.pic || r.person_in_charge || r.operator || r.surveyor || r.created_by || r.pic_name || knownMetadata[sg]?.pic || '';
 
@@ -668,6 +668,10 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
         existing.defects += defCount;
         if (d.qaqcStatus) existing.qaqcStatus = d.qaqcStatus;
         existing.runsCount += 1;
+        if (d.panoramas && d.panoramas.length > 0) {
+          if (!existing.panoramas) existing.panoramas = [];
+          existing.panoramas.push(...d.panoramas);
+        }
         if (d.availableFilenames && Array.isArray(d.availableFilenames)) {
           if (!existing.availableFilenames) existing.availableFilenames = [];
           d.availableFilenames.forEach((fn: string) => {

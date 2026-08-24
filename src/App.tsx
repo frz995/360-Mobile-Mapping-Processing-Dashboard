@@ -91,6 +91,8 @@ interface DailyTimeSeries {
   _alreadySyncedToBatch?: boolean;
   panoramas?: PanoramaItem[];
   qaqcStatus?: string;
+  runsCount?: number;
+  publishedRunsCount?: number;
 }
 
 interface BatchLog {
@@ -112,6 +114,9 @@ interface BatchLog {
   isFromSupabase?: boolean;
   panoramas?: PanoramaItem[];
   qaqcStatus?: string;
+  publishToWebGIS?: 'yes' | 'no' | 'in process' | 'need to recheck' | string;
+  runsCount?: number;
+  publishedRunsCount?: number;
 }
 
 export interface NotificationItem {
@@ -572,7 +577,7 @@ export function reconcileBatchLogs(dailyItems: DailyTimeSeries[], baseBatches?: 
     const kmVal = Number(d.kmProcessed || 0);
     let parsedStatusDefects = 0;
     if (d.qaqcStatus) {
-      const m = d.qaqcStatus.match(/(\d+)\s+Defect/i);
+      const m = d.qaqcStatus.match(/(\\d+)\\s+Defect/i);
       if (m) parsedStatusDefects = parseInt(m[1], 10);
     }
 
@@ -616,11 +621,11 @@ export function reconcileBatchLogs(dailyItems: DailyTimeSeries[], baseBatches?: 
       const designatedAdminPic = baseBatchPicMap.get(normSub) || 'Admin';
 
       batchMap.set(normSub, {
-        id: `BATCH-${normSub}`,
+        id: 'BATCH-' + normSub,
         subgrid: normSub,
         grid: d.grid || '1',
         date: d.date || new Date().toISOString().slice(0, 10),
-        imageFilename: (d.panoramas?.[0]?.filename) || `${normSub}-0001.jpg`,
+        imageFilename: (d.panoramas?.[0]?.filename) || (normSub + '-0001.jpg'),
         totalImages: singleImg,
         publishedImages: isPublished ? singleImg : 0,
         totalPoi: singlePoi,
@@ -646,8 +651,8 @@ export function reconcileBatchLogs(dailyItems: DailyTimeSeries[], baseBatches?: 
     const finalStatus: 'Complete' | 'Ongoing' = isComplete ? 'Complete' : 'Ongoing';
 
     result.push({
-      id: `BATCH-${normSub}`,
-      date: entry.date.length <= 10 ? `${entry.date} 00:43` : entry.date,
+      id: 'BATCH-' + normSub,
+      date: entry.date.length <= 10 ? (entry.date + ' 00:43') : entry.date,
       grid: entry.grid,
       subgrid: normSub,
       imageFilename: entry.imageFilename,
@@ -661,7 +666,10 @@ export function reconcileBatchLogs(dailyItems: DailyTimeSeries[], baseBatches?: 
       status: finalStatus,
       captureEquipment: entry.captureEquipment,
       panoramas: entry.panoramas,
-      isSyncedWithSupabase: entry.publishedRunsCount > 0
+      publishToWebGIS: isComplete ? 'yes' : 'in process',
+      isSyncedWithSupabase: isComplete,
+      runsCount: entry.runsCount,
+      publishedRunsCount: entry.publishedRunsCount
     });
   }
 
@@ -6646,62 +6654,157 @@ export default function App() {
     const cleanSg = (extractSubgridName(targetSubgrid) || targetSubgrid || '').toUpperCase().trim();
     if (!cleanSg) return [];
 
-    // Prioritize the specific selected daily survey run if present
-    const targetRunId = runId !== undefined ? runId : selectedDailyRunId;
-    const matchDaily = targetRunId
-      ? dailyData.find(d => getItemId(d) === targetRunId || d.id === targetRunId || (d as any)._id === targetRunId || (d as any).runId === targetRunId)
-      : dailyData.find(d => (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim() === cleanSg);
+    // Prioritize the specific selected daily survey run if a specific runId is given
+    if (runId) {
+      const matchDaily = dailyData.find(d => getItemId(d) === runId || d.id === runId || (d as any)._id === runId || (d as any).runId === runId);
+      if (matchDaily) {
+        const exactFrameCount = getImagesProcessedCount(matchDaily);
+        if (matchDaily.panoramas && matchDaily.panoramas.length > 0) {
+          const availPanoramas = matchDaily.availableFilenames && matchDaily.availableFilenames.length > 0
+            ? matchDaily.panoramas.filter((p: any) => {
+                const pfn = (p.filename || '').split('/').pop()?.toLowerCase().trim();
+                return matchDaily.availableFilenames!.some(af => af.toLowerCase().trim() === pfn || af.toLowerCase().trim() === (p.filename || '').toLowerCase().trim());
+              })
+            : (matchDaily.panoramas.some((p: any) => p.isAvailable !== undefined)
+              ? matchDaily.panoramas.filter((p: any) => p.isAvailable === true)
+              : matchDaily.panoramas);
 
-    const matchBatch = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || b.subgrid || '').toUpperCase().trim() === cleanSg);
+          const pansToUse = availPanoramas.length > 0
+            ? (exactFrameCount > 0 ? availPanoramas.slice(0, exactFrameCount) : availPanoramas)
+            : matchDaily.panoramas.slice(0, exactFrameCount || matchDaily.panoramas.length);
 
-    const targetItem = matchDaily || matchBatch;
-    const exactFrameCount = targetItem ? getImagesProcessedCount(targetItem) : 0;
+          if (pansToUse.length > 0) {
+            return pansToUse.map((p, idx) => ({
+              filename: p.filename || `${cleanSg}-${String(idx + 1).padStart(4, '0')}.jpg`,
+              point_id: p.filename || `${cleanSg}-${String(idx + 1).padStart(4, '0')}.jpg`,
+              latitude: p.latitude ?? (p as any).lat ?? (p as any).y,
+              longitude: p.longitude ?? (p as any).lon ?? (p as any).lng ?? (p as any).x,
+              lat: p.latitude ?? (p as any).lat ?? (p as any).y,
+              lng: p.longitude ?? (p as any).lon ?? (p as any).lng ?? (p as any).x,
+              bearing: p.bearing ?? p.heading ?? ((idx * 15) % 360),
+              image_url: resolvePanoramaUrl(p.filename || `${cleanSg}-${String(idx + 1).padStart(4, '0')}.jpg`, projectSettings)
+            }));
+          }
+        }
 
-    // 1. Existing station arrays if present in the target daily run
-    if (matchDaily?.panoramas && matchDaily.panoramas.length > 0) {
-      const availPanoramas = matchDaily.availableFilenames && matchDaily.availableFilenames.length > 0
-        ? matchDaily.panoramas.filter((p: any) => matchDaily.availableFilenames!.includes(p.filename))
-        : (matchDaily.panoramas.some((p: any) => p.isAvailable !== undefined)
-          ? matchDaily.panoramas.filter((p: any) => p.isAvailable === true)
-          : matchDaily.panoramas);
+        const totalCount = exactFrameCount > 0
+          ? exactFrameCount
+          : (matchDaily.availableImagesCount || (matchDaily.availableFilenames?.length) || matchDaily.imagesProcessed || matchDaily.poiCount || 0);
 
-      const pansToUse = availPanoramas.length > 0
-        ? (exactFrameCount > 0 ? availPanoramas.slice(0, exactFrameCount) : availPanoramas)
-        : matchDaily.panoramas.slice(0, exactFrameCount || matchDaily.panoramas.length);
-
-      if (pansToUse.length > 0) {
-        return pansToUse.map((p, idx) => ({
-          filename: p.filename || `${cleanSg}-${String(idx + 1).padStart(4, '0')}.jpg`,
-          point_id: p.filename || `${cleanSg}-${String(idx + 1).padStart(4, '0')}.jpg`,
-          latitude: p.latitude ?? (p as any).lat,
-          longitude: p.longitude ?? (p as any).lon ?? (p as any).lng,
-          lat: p.latitude ?? (p as any).lat,
-          lng: p.longitude ?? (p as any).lon ?? (p as any).lng,
-          bearing: p.bearing ?? p.heading ?? ((idx * 15) % 360),
-          image_url: resolvePanoramaUrl(p.filename || `${cleanSg}-${String(idx + 1).padStart(4, '0')}.jpg`, projectSettings)
-        }));
+        if (totalCount > 0) {
+          const baseCoords = SUBGRID_COORDINATES[cleanSg] || [102.807800, 2.542429];
+          const baseLon = baseCoords[0];
+          const baseLat = baseCoords[1];
+          const customFilenames = matchDaily.availableFilenames;
+          return Array.from({ length: totalCount }, (_, i) => {
+            const latOffset = i * 0.00012;
+            const lngOffset = i * 0.00008;
+            const fn = (customFilenames && customFilenames[i]) || `${cleanSg}-${String(i + 1).padStart(4, '0')}.jpg`;
+            return {
+              filename: fn,
+              point_id: fn,
+              latitude: baseLat + latOffset,
+              longitude: baseLon + lngOffset,
+              lat: baseLat + latOffset,
+              lng: baseLon + lngOffset,
+              bearing: (45 + i * 2) % 360,
+              image_url: resolvePanoramaUrl(fn, projectSettings)
+            };
+          });
+        }
       }
     }
 
-    // 2. Existing station arrays in batch logs if no specific daily run was selected
-    if (!targetRunId && matchBatch?.panoramas && matchBatch.panoramas.length > 0) {
-      const pansToUse = exactFrameCount > 0 ? matchBatch.panoramas.slice(0, exactFrameCount) : matchBatch.panoramas;
+    // MASTER SUBGRID SELECTION (or runId is null/undefined):
+    // Collect all available stations across all daily survey tracks belonging to this subgrid
+    const matchingDailies = dailyData.filter(d => (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim() === cleanSg);
+    const matchBatch = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || b.subgrid || '').toUpperCase().trim() === cleanSg);
+
+    const collectedStations: StationNode[] = [];
+    const seenFilenames = new Set<string>();
+
+    for (const d of matchingDailies) {
+      const exactFrameCount = getImagesProcessedCount(d);
+      if (d.panoramas && d.panoramas.length > 0) {
+        const availPanoramas = d.availableFilenames && d.availableFilenames.length > 0
+          ? d.panoramas.filter((p: any) => {
+              const pfn = (p.filename || '').split('/').pop()?.toLowerCase().trim();
+              return d.availableFilenames!.some(af => af.toLowerCase().trim() === pfn || af.toLowerCase().trim() === (p.filename || '').toLowerCase().trim());
+            })
+          : (d.panoramas.some((p: any) => p.isAvailable !== undefined)
+            ? d.panoramas.filter((p: any) => p.isAvailable === true)
+            : d.panoramas);
+
+        const pansToUse = availPanoramas.length > 0
+          ? (exactFrameCount > 0 ? availPanoramas.slice(0, exactFrameCount) : availPanoramas)
+          : d.panoramas.slice(0, exactFrameCount || d.panoramas.length);
+
+        for (const p of pansToUse) {
+          const fn = (p.filename || '').split('/').pop() || p.filename || `${cleanSg}-${String(collectedStations.length + 1).padStart(4, '0')}.jpg`;
+          const key = fn.toLowerCase().trim();
+          if (!seenFilenames.has(key)) {
+            seenFilenames.add(key);
+            collectedStations.push({
+              filename: p.filename || fn,
+              point_id: p.filename || (p as any).point_id || fn,
+              latitude: p.latitude ?? (p as any).lat ?? (p as any).y,
+              longitude: p.longitude ?? (p as any).lon ?? (p as any).lng ?? (p as any).x,
+              lat: p.latitude ?? (p as any).lat ?? (p as any).y,
+              lng: p.longitude ?? (p as any).lon ?? (p as any).lng ?? (p as any).x,
+              bearing: p.bearing ?? p.heading ?? ((collectedStations.length * 15) % 360),
+              image_url: resolvePanoramaUrl(p.filename || fn, projectSettings)
+            });
+          }
+        }
+      } else if (d.availableFilenames && d.availableFilenames.length > 0) {
+        d.availableFilenames.forEach((fn: string, pIdx: number) => {
+          const cleanFn = fn.split('/').pop() || fn;
+          const key = cleanFn.toLowerCase().trim();
+          if (!seenFilenames.has(key)) {
+            seenFilenames.add(key);
+            const pt = (d as any).points?.[pIdx];
+            const baseCoords = SUBGRID_COORDINATES[cleanSg] || [102.807800, 2.542429];
+            const lat = pt?.lat ?? (baseCoords[1] + collectedStations.length * 0.00012);
+            const lng = pt?.lon ?? (baseCoords[0] + collectedStations.length * 0.00008);
+            collectedStations.push({
+              filename: fn,
+              point_id: fn,
+              latitude: lat,
+              longitude: lng,
+              lat: lat,
+              lng: lng,
+              bearing: (45 + collectedStations.length * 2) % 360,
+              image_url: resolvePanoramaUrl(fn, projectSettings)
+            });
+          }
+        });
+      }
+    }
+
+    if (collectedStations.length > 0) {
+      return collectedStations;
+    }
+
+    // Fallback to matchBatch panoramas if dailyData had no valid panoramas
+    if (matchBatch?.panoramas && matchBatch.panoramas.length > 0) {
+      const batchFrameCount = getImagesProcessedCount(matchBatch);
+      const pansToUse = batchFrameCount > 0 ? matchBatch.panoramas.slice(0, batchFrameCount) : matchBatch.panoramas;
       return pansToUse.map((p, idx) => ({
         filename: p.filename || `${cleanSg}-${String(idx + 1).padStart(4, '0')}.jpg`,
         point_id: p.filename || `${cleanSg}-${String(idx + 1).padStart(4, '0')}.jpg`,
-        latitude: p.latitude ?? (p as any).lat,
-        longitude: p.longitude ?? (p as any).lon ?? (p as any).lng,
-        lat: p.latitude ?? (p as any).lat,
-        lng: p.longitude ?? (p as any).lon ?? (p as any).lng,
+        latitude: p.latitude ?? (p as any).lat ?? (p as any).y,
+        longitude: p.longitude ?? (p as any).lon ?? (p as any).lng ?? (p as any).x,
+        lat: p.latitude ?? (p as any).lat ?? (p as any).y,
+        lng: p.longitude ?? (p as any).lon ?? (p as any).lng ?? (p as any).x,
         bearing: p.bearing ?? p.heading ?? ((idx * 15) % 360),
         image_url: resolvePanoramaUrl(p.filename || `${cleanSg}-${String(idx + 1).padStart(4, '0')}.jpg`, projectSettings)
       }));
     }
 
-    // 3. Generate sequential station array strictly based on the target run's exact frame count
-    const totalCount = exactFrameCount > 0
-      ? exactFrameCount
-      : (matchDaily?.availableImagesCount || (matchDaily?.availableFilenames?.length) || matchDaily?.imagesProcessed || matchDaily?.poiCount || matchBatch?.images || matchBatch?.poiCount || 0);
+    // Final fallback: Generate sequential stations matching total subgrid frame count
+    const totalCount = matchBatch
+      ? getImagesProcessedCount(matchBatch)
+      : matchingDailies.reduce((sum, d) => sum + getImagesProcessedCount(d), 0);
 
     if (totalCount === 0) return [];
 
@@ -6709,13 +6812,11 @@ export default function App() {
     const baseLon = baseCoords[0];
     const baseLat = baseCoords[1];
 
-    const generated = [];
-    const customFilenames = matchDaily?.availableFilenames;
-    for (let i = 0; i < totalCount; i++) {
+    return Array.from({ length: totalCount }, (_, i) => {
       const latOffset = i * 0.00012;
       const lngOffset = i * 0.00008;
-      const fn = (customFilenames && customFilenames[i]) || `${cleanSg}-${String(i + 1).padStart(4, '0')}.jpg`;
-      generated.push({
+      const fn = `${cleanSg}-${String(i + 1).padStart(4, '0')}.jpg`;
+      return {
         filename: fn,
         point_id: fn,
         latitude: baseLat + latOffset,
@@ -6724,10 +6825,8 @@ export default function App() {
         lng: baseLon + lngOffset,
         bearing: (45 + i * 2) % 360,
         image_url: resolvePanoramaUrl(fn, projectSettings)
-      });
-    }
-
-    return generated;
+      };
+    });
   };
 
   const handleStartInspectionFromWorkbench = (params: {
@@ -6785,7 +6884,6 @@ export default function App() {
           }));
         } else if (cleanSub) {
           setDailyData(prev => {
-            // If multiple rows have the same subgrid, only update the one that has frames / is currently selected
             const matchingRows = prev.filter(d => (extractSubgridName(d.subgrid) || '').toUpperCase().trim() === cleanSub);
             const targetRow = matchingRows.find(d => getImagesProcessedCount(d) > 0) || matchingRows[0];
             return prev.map(d => {

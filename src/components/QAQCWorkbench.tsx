@@ -18,7 +18,6 @@ import {
   RotateCcw,
   Download,
   FileSpreadsheet,
-  Check,
   SlidersHorizontal,
   User,
   Calendar,
@@ -37,7 +36,7 @@ import {
 } from 'lucide-react';
 import type { QAQCWorkerState, StationInspectionRecord, StationNode } from '../hooks/useQAQCWorker';
 import type { QAQCConfig, ExtendedProjectSettings, QADefectRecord } from '../types/admin';
-import { saveProjectSettingsToSupabase, resolvePanoramaUrl } from '../services/supabase';
+import { saveProjectSettingsToSupabase, resolvePanoramaUrl, SUBGRID_COORDINATES } from '../services/supabase';
 import { isGpuAccelerationSupported, getGpuHardwareName } from '../utils/qaqcAnalyzer';
 import { QAQCThresholdStudioView } from './QAQCThresholdStudioModal';
 import {
@@ -108,6 +107,7 @@ interface TargetDatasetItem {
   date: string;
   rawDate: any;
   frameCount: number;
+  poiCount?: number;
   km: number;
   pic: string;
   defectCount: number;
@@ -346,6 +346,8 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
           ? (isPublished ? 'QA/QC Approved' : '')
           : (d.qaqcStatus || (cachedAudit || defectCount > 0 ? `QAQC Completed (${defectCount} Defect${defectCount === 1 ? '' : 's'} Found)` : isPublished ? 'QA/QC Approved' : ''));
 
+        const poiCount = typeof d.poiCount === 'number' ? d.poiCount : (d.panoramas ? d.panoramas.length : frameCount);
+
         return {
           raw: d,
           runId,
@@ -353,6 +355,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
           date: formattedDate,
           rawDate: d.date,
           frameCount,
+          poiCount,
           km,
           pic,
           defectCount,
@@ -371,6 +374,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
     return sourceBatches.map((b, idx) => {
       const sg = (extractSubgridName(b.subgrid || b.imageFilename) || b.subgrid || '').toUpperCase().trim();
       const frameCount = getImagesProcessedCount(b);
+      const poiCount = typeof b.poiCount === 'number' ? b.poiCount : (b.panoramas ? b.panoramas.length : frameCount);
       const km = b.kmProcessed ? Number(b.kmProcessed) : 0;
       const formattedBatchId = formatBatchIdDisplay(b, idx);
       const pic = (b.pic && b.pic.trim().toLowerCase() !== 'unassigned') ? b.pic : ((b as any).adminPic || activeUserName || 'Admin');
@@ -395,8 +399,10 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
         defectCount = Math.min(defectCount, frameCount);
       }
 
-      const isPublished = b.publishToWebGIS === 'yes' || b.qaqcStatus === 'QA/QC Approved' || Boolean(b.isSyncedWithSupabase) || b.status === 'published';
+      // For Master Subgrid: Only mark as published if the entire aggregated subgrid is Complete with all survey tracks published
+      const isComplete = (b.status === 'Complete' || b.status === 'published') && b.publishToWebGIS !== 'in process' && b.publishToWebGIS !== 'need to recheck';
       const isRecheck = b.publishToWebGIS === 'need to recheck';
+      const isPublished = isComplete && !isRecheck;
       const publishStatus: 'published' | 'staging' | 'recheck' = isPublished ? 'published' : isRecheck ? 'recheck' : 'staging';
 
       return {
@@ -407,6 +413,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
         date: formattedDate,
         rawDate: b.date,
         frameCount,
+        poiCount,
         km,
         pic,
         defectCount,
@@ -518,7 +525,83 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
   // Effective Active Telemetry Data (live runner if active, else cached audit or synthesized defect feed)
   const effectiveHistory = useMemo((): StationInspectionRecord[] => {
     if (isRunning || liveHistory.length > 0) return liveHistory;
+
+    // Build lookup maps of known defect records matching this subgrid and optional run
+    const defectMap = new Map<string, any>();
+    const indexDefectMap = new Map<number, any>();
+
+    effectiveDefectsList.forEach((d: any) => {
+      const fn = (d.point_id || d.filename || d.pointId || d.image_url || '').split('/').pop()?.toUpperCase().trim();
+      const ptId = (d.point_id || d.pointId || '').toUpperCase().trim();
+      if (fn) defectMap.set(fn, d);
+      if (ptId) defectMap.set(ptId, d);
+      const fIdx = d.frame_index || d.index;
+      if (typeof fIdx === 'number') indexDefectMap.set(fIdx, d);
+    });
+
+    // If we have selected stations for this subgrid, produce a complete history sequence representing ALL stations
+    if (selectedStations.length > 0) {
+      return selectedStations.map((station, idx) => {
+        const frameIdx = idx + 1;
+        const fnClean = (station.filename || station.point_id || '').split('/').pop()?.toUpperCase().trim();
+        const ptIdClean = (station.point_id || station.filename || '').toUpperCase().trim();
+
+        const defect = (fnClean && defectMap.get(fnClean)) || (ptIdClean && defectMap.get(ptIdClean)) || indexDefectMap.get(frameIdx);
+
+        if (defect) {
+          const reasons = defect.defect_flags?.reasons || defect.reasons || [defect.defect_type || 'Defect Flagged'];
+          const blurVariance = defect.defect_flags?.blurScore ?? defect.blurVariance ?? 35.0;
+
+          return {
+            index: frameIdx,
+            pointId: station.point_id || station.filename || `Station ${frameIdx}`,
+            timestamp: defect.created_at ? new Date(defect.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : (cachedAudit?.completedAt || 'Logged'),
+            lat: station.lat ?? station.latitude ?? Number(defect.lat || defect.latitude || 0),
+            lng: station.lng ?? station.longitude ?? Number(defect.lng || defect.lon || defect.longitude || 0),
+            bearing: station.bearing ?? defect.bearing ?? 0,
+            stepDistance: station.stepDistance ?? defect.step_distance ?? 0,
+            status: 'flagged' as const,
+            defectType: defect.defect_type || defect.defectType || 'Defect Flagged',
+            deliverableModel: (defect.defect_flags?.deliverableModel || projectSettings?.deliverableModel || 'masked_car') as 'masked_car' | 'generative_fill',
+            reasons: Array.isArray(reasons) ? reasons : [String(reasons)],
+            blurVariance,
+            thumbnailUrl: station.image_url || station.filename || defect.filename || defect.image_url || ''
+          };
+        }
+
+        // Check if there is a cached audit history record for this station
+        const cachedH = cachedAudit?.history?.find(h => h.index === frameIdx || (h.pointId && h.pointId.toUpperCase().trim() === ptIdClean));
+        if (cachedH) {
+          return {
+            ...cachedH,
+            index: frameIdx,
+            pointId: station.point_id || station.filename || cachedH.pointId,
+            thumbnailUrl: station.image_url || station.filename || cachedH.thumbnailUrl || ''
+          };
+        }
+
+        // Passed / Nominal station
+        const isAudited = Boolean(cachedAudit || effectiveDefectsList.length > 0);
+        return {
+          index: frameIdx,
+          pointId: station.point_id || station.filename || `Station ${frameIdx}`,
+          timestamp: isAudited ? (cachedAudit?.completedAt || 'Passed') : 'Ready',
+          lat: station.lat ?? station.latitude ?? 0,
+          lng: station.lng ?? station.longitude ?? 0,
+          bearing: station.bearing ?? ((idx * 15) % 360),
+          stepDistance: station.stepDistance ?? 0,
+          status: 'passed' as const,
+          defectType: undefined,
+          deliverableModel: (projectSettings?.deliverableModel || 'masked_car') as 'masked_car' | 'generative_fill',
+          reasons: [],
+          blurVariance: 85.0,
+          thumbnailUrl: station.image_url || station.filename || ''
+        };
+      });
+    }
+
     if (cachedAudit && cachedAudit.history && cachedAudit.history.length > 0) return cachedAudit.history;
+
     if (effectiveDefectsList.length > 0) {
       return effectiveDefectsList.map((d: any, idx: number) => {
         const ptId = d.point_id || d.pointId || d.filename || `Station ${idx + 1}`;
@@ -547,10 +630,10 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
       });
     }
     return [];
-  }, [isRunning, liveHistory, cachedAudit, effectiveDefectsList, projectSettings?.deliverableModel]);
+  }, [isRunning, liveHistory, cachedAudit, effectiveDefectsList, selectedStations, projectSettings?.deliverableModel]);
 
   // Telemetry station metrics
-  const totalStations = rawTotalStations || (cachedAudit ? cachedAudit.totalStations : selectedStations.length) || 1;
+  const totalStations = rawTotalStations || (selectedStations.length > 0 ? selectedStations.length : (cachedAudit ? cachedAudit.totalStations : 0)) || 1;
   const progressPct = isRunning || isCompleted
     ? Math.min(100, Math.round(((currentIndex + 1) / totalStations) * 100))
     : cachedAudit
@@ -622,10 +705,10 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
     if (!mapIframeRef.current?.contentWindow) return;
     const activeSg = (activeRunningSubgrid || selectedSubgrid || '').toUpperCase().trim();
     if (!activeSg) return;
+    const activeSgNorm = activeSg.toUpperCase().trim();
 
     const allDefectsMerged = [...(defectsList || []), ...(effectiveDefectsList || [])];
     const cacheKey = `${activeSg}_${selectedRunId || 'default'}_${allDefectsMerged.length}`;
-    if (lastLoadedSubgridRef.current === cacheKey) return;
     lastLoadedSubgridRef.current = cacheKey;
 
     const knownDefectFilenames = new Set<string>();
@@ -644,9 +727,20 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
         ? '#10b981'
         : (statusVal === 'need to recheck' || statusVal === 'no' ? '#ef4444' : '#f59e0b');
 
-      const pans = item.panoramas || item.points || [];
+      let pans = item.panoramas || item.points || [];
+      if (pans.length === 0 && (item.poiCount || item.availableImagesCount)) {
+        const count = item.poiCount || item.availableImagesCount || 0;
+        pans = Array.from({ length: count }, (_, idx) => {
+          const fn = (item.availableFilenames && item.availableFilenames[idx]) || `${activeSgNorm}-${String(idx + 1).padStart(4, '0')}.jpg`;
+          return {
+            filename: fn,
+            point_id: fn,
+            isAvailable: Boolean(item.availableFilenames && item.availableFilenames[idx])
+          };
+        });
+      }
 
-      const formattedPans = pans.map((p: any) => {
+      const formattedPans = pans.map((p: any, idx: number) => {
         const fnClean = (p.filename || p.image_url || '').split('/').pop()?.toUpperCase().trim();
         const ptClean = (p.point_id || p.pointId || '').toUpperCase().trim();
         const isPointDefect = Boolean(
@@ -663,19 +757,33 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
         const pointStatusVal = isPointDefect ? 'defect' : statusVal;
         const pointOp = isPointDefect ? 1.0 : op;
 
+        const rawLat = p.lat ?? p.latitude ?? p.y;
+        const rawLon = p.lon ?? p.longitude ?? p.lng ?? p.x;
+
+        let finalLat = typeof rawLat === 'number' && !isNaN(rawLat) && rawLat !== 0 ? rawLat : (typeof rawLat === 'string' ? parseFloat(rawLat) : null);
+        let finalLon = typeof rawLon === 'number' && !isNaN(rawLon) && rawLon !== 0 ? rawLon : (typeof rawLon === 'string' ? parseFloat(rawLon) : null);
+
+        if (finalLat === null || isNaN(finalLat) || finalLon === null || isNaN(finalLon)) {
+          const baseCoords = SUBGRID_COORDINATES[activeSgNorm] || [102.807800, 2.542429];
+          const seqMatch = (fnClean || '').match(/-(\d+)\./);
+          const seqNum = seqMatch ? parseInt(seqMatch[1], 10) : (idx + 1);
+          finalLat = baseCoords[1] + (seqNum - 1) * 0.00012;
+          finalLon = baseCoords[0] + (seqNum - 1) * 0.00008;
+        }
+
         return {
           ...p,
-          filename: p.filename || p.image_url,
+          filename: p.filename || p.image_url || `${activeSgNorm}-${String(idx + 1).padStart(4, '0')}.jpg`,
           image_url: p.image_url || p.filename,
-          subgrid: p.subgrid || item.subgrid,
+          subgrid: p.subgrid || item.subgrid || activeSgNorm,
           grid: p.grid || item.grid,
-          latitude: p.latitude ?? p.lat ?? p.y,
-          longitude: p.longitude ?? p.lon ?? p.lng ?? p.x,
-          lat: p.lat ?? p.latitude ?? p.y,
-          lon: p.lon ?? p.longitude ?? p.lng ?? p.x,
-          lng: p.lng ?? p.longitude ?? p.lon ?? p.x,
-          y: p.y ?? p.latitude ?? p.lat,
-          x: p.x ?? p.longitude ?? p.lon ?? p.lng,
+          latitude: finalLat,
+          longitude: finalLon,
+          lat: finalLat,
+          lon: finalLon,
+          lng: finalLon,
+          y: finalLat,
+          x: finalLon,
           date: p.date ?? p.captured_at,
           captured_at: p.captured_at ?? p.date,
           status: pointStatusVal,
@@ -707,11 +815,14 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
     };
 
     try {
+      const isSingleDailyRun = Boolean(selectedRunId);
+
       // 1. Set subgrid filter
       mapIframeRef.current.contentWindow.postMessage({
         type: 'FILTER_SUBGRID',
         subgrid: activeSg,
-        runId: selectedRunId || ''
+        runId: selectedRunId || '',
+        isSingleRun: isSingleDailyRun
       }, '*');
 
       // 2. Transmit strictly only the selected survey track points with exact status colors & defect flags
@@ -728,7 +839,9 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
         const formattedItems = runsToSend.map(formatTrackItem);
         mapIframeRef.current.contentWindow.postMessage({
           type: 'SET_STAGED_DATA',
-          stagedItems: formattedItems
+          stagedItems: formattedItems,
+          isSingleRun: isSingleDailyRun,
+          runId: selectedRunId || ''
         }, '*');
       }
 
@@ -746,6 +859,18 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
   useEffect(() => {
     initWorkbenchMapTrack();
   }, [initWorkbenchMapTrack, selectedSubgrid, selectedRunId, viewportMode]);
+
+  // Listen for map readiness messages from the iframe
+  useEffect(() => {
+    const handleMapMessage = (e: MessageEvent) => {
+      if (e.data?.type === 'VIEWER_READY' || e.data?.type === 'MAP_READY' || e.data?.type === 'MAP_LOADED' || e.data?.type === 'REQUEST_STAGED_DATA') {
+        lastLoadedSubgridRef.current = '';
+        initWorkbenchMapTrack();
+      }
+    };
+    window.addEventListener('message', handleMapMessage);
+    return () => window.removeEventListener('message', handleMapMessage);
+  }, [initWorkbenchMapTrack]);
 
   // Real-time defect marker synchronization to ensure defects never revert to green during QC
   useEffect(() => {
@@ -1432,28 +1557,28 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
               </button>
               <button
                 type="button"
-                onClick={() => setCategoryFilter('staging')}
+                onClick={() => setCategoryFilter(prev => prev === 'staging' ? 'all' : 'staging')}
                 className={`py-1 text-center font-medium rounded-lg transition-all cursor-pointer text-[11px] flex items-center justify-center gap-1.5 ${
                   categoryFilter === 'staging'
                     ? 'bg-card text-text-base font-semibold shadow-sm border border-subtle'
                     : 'text-text-muted hover:text-text-base'
                 }`}
               >
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
-                <span>Staging</span>
+                <Clock size={11} className="text-amber-400 shrink-0" />
+                <span>{targetTab === 'masterlist' ? 'Ongoing' : 'Staging'}</span>
                 <span className="px-1.5 py-0.2 rounded-full bg-inner text-[10px] font-mono text-text-muted border border-subtle">{stagingCount}</span>
               </button>
               <button
                 type="button"
-                onClick={() => setCategoryFilter('published')}
+                onClick={() => setCategoryFilter(prev => prev === 'published' ? 'all' : 'published')}
                 className={`py-1 text-center font-medium rounded-lg transition-all cursor-pointer text-[11px] flex items-center justify-center gap-1.5 ${
                   categoryFilter === 'published'
                     ? 'bg-card text-text-base font-semibold shadow-sm border border-subtle'
                     : 'text-text-muted hover:text-text-base'
                 }`}
               >
-                <Check size={11} className="text-emerald-400 shrink-0" />
-                <span>Published</span>
+                <CheckCircle2 size={11} className="text-emerald-400 shrink-0" />
+                <span>{targetTab === 'masterlist' ? 'Complete' : 'Published'}</span>
                 <span className="px-1.5 py-0.2 rounded-full bg-inner text-[10px] font-mono text-text-muted border border-subtle">{publishedCount}</span>
               </button>
             </div>
@@ -1473,7 +1598,23 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
           </div>
 
           {/* High-Density Target Dataset List */}
-          <div className="flex-1 overflow-y-auto p-2.5 space-y-1.5">
+          <div
+            className="flex-1 overflow-y-auto p-2.5 space-y-1.5"
+            onClick={(e) => {
+              if (e.target === e.currentTarget && selectedSubgrid) {
+                setSelectedSubgrid('');
+                setSelectedRunId(null);
+                setSelectedStationIndex(null);
+                if (mapIframeRef.current?.contentWindow) {
+                  mapIframeRef.current.contentWindow.postMessage({
+                    type: 'FILTER_SUBGRID',
+                    subgrid: '',
+                    runId: ''
+                  }, '*');
+                }
+              }
+            }}
+          >
             {filteredTargetList.length === 0 ? (
               <div className="p-6 text-center text-text-muted text-xs space-y-1.5">
                 <Layers size={20} className="mx-auto text-text-muted/60" />
@@ -1492,6 +1633,20 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                     key={`${item.subgrid}-${item.runId || item.date}`}
                     onClick={() => {
                       if (isZeroFrames) return;
+                      if (isSelected) {
+                        // Toggle / Deselect on second click (dissclick)
+                        setSelectedSubgrid('');
+                        setSelectedRunId(null);
+                        setSelectedStationIndex(null);
+                        if (mapIframeRef.current?.contentWindow) {
+                          mapIframeRef.current.contentWindow.postMessage({
+                            type: 'FILTER_SUBGRID',
+                            subgrid: '',
+                            runId: ''
+                          }, '*');
+                        }
+                        return;
+                      }
                       setSelectedSubgrid(item.subgrid);
                       setSelectedRunId(item.runId);
                       setSelectedStationIndex(null);
@@ -1524,18 +1679,18 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                         {/* Publish Category */}
                         {item.isPublished ? (
                           <span className="text-emerald-400 font-medium flex items-center gap-1">
-                            <Check size={11} className="text-emerald-400 shrink-0" />
-                            <span>Published</span>
+                            <CheckCircle2 size={11} className="text-emerald-400 shrink-0" />
+                            <span>{targetTab === 'masterlist' ? 'Complete' : 'Published'}</span>
                           </span>
                         ) : item.publishStatus === 'recheck' ? (
                           <span className="text-amber-400 font-medium flex items-center gap-1">
-                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+                            <Clock size={11} className="text-amber-400 shrink-0" />
                             <span>Recheck</span>
                           </span>
                         ) : (
                           <span className="text-amber-400 font-medium flex items-center gap-1">
-                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
-                            <span>Staging</span>
+                            <Clock size={11} className="text-amber-400 shrink-0" />
+                            <span>{targetTab === 'masterlist' ? 'Ongoing' : 'Staging'}</span>
                           </span>
                         )}
 
@@ -1560,6 +1715,15 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                           </span>
                         )}
 
+                        {typeof item.poiCount === 'number' && item.poiCount > 0 && (
+                          <>
+                            <span className="text-text-muted/40">•</span>
+                            <span className="text-text-muted font-mono text-[11px]">
+                              {item.poiCount} POI
+                            </span>
+                          </>
+                        )}
+
                         <span className="text-text-muted/40">•</span>
 
                         <span className="text-text-muted">
@@ -1569,8 +1733,24 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                     </div>
 
                     <div className="text-right shrink-0">
-                      <span className="px-2.5 py-1 rounded-lg bg-inner border border-subtle text-[11px] text-text-muted font-mono font-medium">
-                        {item.frameCount.toLocaleString()} Frames
+                      <span className="px-2.5 py-1 rounded-lg bg-inner border border-subtle text-[11px] text-text-muted font-mono font-medium inline-flex items-center gap-1">
+                        {targetTab === 'masterlist' && typeof item.poiCount === 'number' && item.poiCount > 0 ? (
+                          item.frameCount < item.poiCount ? (
+                            <>
+                              <span className="text-amber-400 font-semibold">{item.frameCount.toLocaleString()}</span>
+                              <span className="text-text-muted/50">/</span>
+                              <span className="text-text-base font-semibold">{item.poiCount.toLocaleString()}</span>
+                              <span className="text-text-muted text-[10px] ml-0.5">POI</span>
+                            </>
+                          ) : (
+                            <>
+                              <span className="text-text-base font-semibold">{item.frameCount.toLocaleString()}</span>
+                              <span className="text-text-muted text-[10px] ml-0.5">POI</span>
+                            </>
+                          )
+                        ) : (
+                          <span>{item.frameCount.toLocaleString()} Frames</span>
+                        )}
                       </span>
                     </div>
                   </div>
