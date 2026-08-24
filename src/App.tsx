@@ -799,8 +799,10 @@ const MapComponent = ({
 
     if (Array.isArray(defectsList)) {
       defectsList.forEach((d: any) => {
-        const fn = (d.point_id || d.filename || d.pointId || '').split('/').pop()?.toUpperCase().trim();
+        const fn = (d.point_id || d.filename || d.pointId || d.image_url || '').split('/').pop()?.toUpperCase().trim();
+        const ptId = (d.point_id || d.pointId || '').toUpperCase().trim();
         if (fn) knownDefectFilenames.add(fn);
+        if (ptId) knownDefectFilenames.add(ptId);
       });
     }
 
@@ -831,8 +833,10 @@ const MapComponent = ({
 
       const formattedPans = pans.map((p: any) => {
         const fnClean = (p.filename || p.image_url || '').split('/').pop()?.toUpperCase().trim();
+        const ptClean = (p.point_id || p.pointId || '').toUpperCase().trim();
         const isPointDefect = Boolean(
           (fnClean && knownDefectFilenames.has(fnClean)) ||
+          (ptClean && knownDefectFilenames.has(ptClean)) ||
           p.isDefect ||
           p.is_defect ||
           p.defectType ||
@@ -5651,6 +5655,55 @@ export default function App() {
     }, 0);
   }, [dailyData, batchLogs, qaqcWorkerState.isRunning, qaqcWorkerState.isCompleted, qaqcWorkerState.defectsList.length, qaqcWorkerState.runId, qaqcWorkerState.subgrid, qaqcAuditVersion, qaqcAuditRuns]);
 
+    const allKnownDefects = React.useMemo(() => {
+    const list: any[] = [];
+    const seen = new Set<string>();
+
+    const addDefect = (d: any) => {
+      if (!d) return;
+      const fn = (d.point_id || d.filename || d.pointId || d.image_url || '').split('/').pop()?.toUpperCase().trim();
+      const ptId = (d.point_id || d.pointId || '').toUpperCase().trim();
+      const key = fn || ptId;
+      if (key && !seen.has(key)) {
+        seen.add(key);
+        list.push({
+          ...d,
+          filename: fn || ptId,
+          point_id: ptId || fn,
+          is_defect: true,
+          isDefect: true,
+          color: '#ef4444'
+        });
+      }
+    };
+
+    if (qaqcWorkerState.defectsList && qaqcWorkerState.defectsList.length > 0) {
+      qaqcWorkerState.defectsList.forEach(addDefect);
+    }
+
+    Object.values(qaqcAuditRuns || {}).forEach((audit: any) => {
+      if (audit?.defectsList && Array.isArray(audit.defectsList)) {
+        audit.defectsList.forEach(addDefect);
+      }
+    });
+
+    Object.values(qaSubgridRecords || {}).forEach((qa: any) => {
+      if (qa?.defectsList && Array.isArray(qa.defectsList)) {
+        qa.defectsList.forEach(addDefect);
+      }
+    });
+
+    (dailyData || []).forEach((item: any) => {
+      (item.panoramas || item.points || []).forEach((p: any) => {
+        if (p.isDefect || p.is_defect || p.status === 'defect' || p.qa_status === 'defect') {
+          addDefect(p);
+        }
+      });
+    });
+
+    return list;
+  }, [qaqcWorkerState.defectsList, qaqcAuditRuns, qaSubgridRecords, dailyData]);
+
   const totalFramesForHealth = useMemo(() => {
     const dailyTotal = dailyData.reduce((sum, d) => sum + (d.imagesProcessed || d.panoramas?.length || d.poiCount || 0), 0);
     if (dailyTotal > 0) return dailyTotal;
@@ -8232,7 +8285,7 @@ export default function App() {
                           : dailyData
                       }
                       projectSettings={projectSettings}
-                      defectsList={qaqcWorkerState.defectsList}
+                      defectsList={allKnownDefects}
                     />
                   </div>
                 </div>
