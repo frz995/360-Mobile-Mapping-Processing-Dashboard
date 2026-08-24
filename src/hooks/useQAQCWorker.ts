@@ -84,6 +84,7 @@ export interface StartInspectionParams {
   config: QAQCConfig;
   stepIntervalMs?: number;
   pic?: string;
+  authUser?: { id?: string; email?: string; name?: string };
   projectSettings?: ExtendedProjectSettings;
   customThresholds?: Partial<QAQCThresholdSettings>;
   onProgress?: (progress: {
@@ -336,6 +337,7 @@ export function useQAQCWorker() {
       config,
       stepIntervalMs = 250,
       pic = 'Operator',
+      authUser,
       projectSettings,
       customThresholds,
       onProgress,
@@ -619,20 +621,24 @@ export function useQAQCWorker() {
             onDefectFound(defectRecord, accumulatedDefects.length);
           }
 
-          // Asynchronously upsert defect to Supabase
+          // Asynchronously upsert defect to Supabase with user auth context
           try {
-            const { error: upsertErr } = await supabase.from('qa_defects').upsert({
+            const qaDefectsTable = projectSettings?.qaDefectsTable || import.meta.env.VITE_DB_QA_DEFECTS_TABLE || 'qa_defects';
+            const { error: upsertErr } = await supabase.from(qaDefectsTable).upsert({
               subgrid: defectRecord.subgrid,
               point_id: defectRecord.point_id,
               frame_index: defectRecord.frame_index,
               defect_flags: defectRecord.defect_flags,
               defect_type: defectRecord.defect_type,
-              pic: defectRecord.pic,
+              pic: defectRecord.pic || authUser?.name || 'Operator',
+              user_id: defectRecord.user_id || authUser?.id || null,
+              user_email: defectRecord.user_email || authUser?.email || null,
               image_url: defectRecord.image_url,
               lat: defectRecord.lat,
               lng: defectRecord.lng,
               bearing: defectRecord.bearing,
-              created_at: defectRecord.created_at
+              created_at: defectRecord.created_at,
+              updated_at: new Date().toISOString()
             }, { onConflict: 'subgrid,point_id' });
 
             if (!upsertErr) {

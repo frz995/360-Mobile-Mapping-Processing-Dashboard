@@ -44,7 +44,8 @@ import {
   Play,
   StopCircle
 } from 'lucide-react';
-import { supabase, publishToSupabase, saveToStagingSupabase, deleteFromStagingSupabase, fetchSupabaseData, deleteFromSupabase, updateDefectStatusInSupabase, fetchQaRecordsFromSupabase, verifyCsvImageFilenamesInStorage, fetchAuditLogsFromSupabase, saveAuditLogToSupabase, fetchNotificationsFromSupabase, saveNotificationToSupabase, fetchProjectSettingsFromSupabase, saveProjectSettingsToSupabase, resolvePanoramaUrl, getDatabaseTableMapping, SUBGRID_COORDINATES } from './services/supabase';
+import { supabase, publishToSupabase, saveToStagingSupabase, deleteFromStagingSupabase, fetchSupabaseData, deleteFromSupabase, updateDefectStatusInSupabase, fetchQaRecordsFromSupabase, fetchQaAuditRunsFromSupabase, saveQaAuditRunToSupabase, verifyCsvImageFilenamesInStorage, fetchAuditLogsFromSupabase, saveAuditLogToSupabase, fetchNotificationsFromSupabase, saveNotificationToSupabase, fetchProjectSettingsFromSupabase, saveProjectSettingsToSupabase, resolvePanoramaUrl, getDatabaseTableMapping, SUBGRID_COORDINATES } from './services/supabase';
+import type { QAQCAuditRunRecord } from './types/admin';
 import { AdminSettingsView } from './components/AdminSettingsView';
 import { QAQCWorkbench } from './components/QAQCWorkbench';
 import { DefectsGalleryModal } from './components/DefectsGalleryModal';
@@ -567,15 +568,6 @@ export function reconcileBatchLogs(dailyItems: DailyTimeSeries[], baseBatches?: 
     const singlePoi = d.poiCount || (d.panoramas?.length) || 0;
     const singleImg = isPublished ? getImagesProcessedCount(d) : 0;
     const kmVal = Number(d.kmProcessed || 0);
-    let cachedDefects: number | undefined;
-    try {
-      const cachedMap = JSON.parse(localStorage.getItem('app_qaqc_audit_cache_v2') || '{}');
-      const cached = cachedMap[`${normSub}_${getItemId(d) || 'default'}`] || cachedMap[`${normSub}_default`];
-      if (cached && typeof cached.defectCount === 'number') {
-        cachedDefects = cached.defectCount;
-      }
-    } catch (_) { }
-
     let parsedStatusDefects = 0;
     if (d.qaqcStatus) {
       const m = d.qaqcStatus.match(/(\d+)\s+Defect/i);
@@ -586,11 +578,9 @@ export function reconcileBatchLogs(dailyItems: DailyTimeSeries[], baseBatches?: 
       ? d.imagesDefected
       : (d.defectCount && d.defectCount > 0)
         ? d.defectCount
-        : (cachedDefects !== undefined && cachedDefects > 0)
-          ? cachedDefects
-          : (parsedStatusDefects > 0)
-            ? parsedStatusDefects
-            : 0;
+        : (parsedStatusDefects > 0)
+          ? parsedStatusDefects
+          : 0;
 
     const existing = batchMap.get(normSub);
     if (existing) {
@@ -802,18 +792,6 @@ const MapComponent = ({
     const publishedPointKeys = new Set<string>();
     const knownDefectFilenames = new Set<string>();
 
-    try {
-      const cachedMap = JSON.parse(localStorage.getItem('app_qaqc_audit_cache_v2') || '{}');
-      Object.values(cachedMap).forEach((rec: any) => {
-        if (rec && Array.isArray(rec.defectsList)) {
-          rec.defectsList.forEach((d: any) => {
-            const fn = (d.point_id || d.filename || d.pointId || '').split('/').pop()?.toUpperCase().trim();
-            if (fn) knownDefectFilenames.add(fn);
-          });
-        }
-      });
-    } catch (_) { }
-
     if (Array.isArray(defectsList)) {
       defectsList.forEach((d: any) => {
         const fn = (d.point_id || d.filename || d.pointId || '').split('/').pop()?.toUpperCase().trim();
@@ -942,14 +920,6 @@ const MapComponent = ({
 
         // 4. Send QAQC_DEFECTS_SYNC with all known defect items
         const defectsArray: any[] = [];
-        try {
-          const cachedMap = JSON.parse(localStorage.getItem('app_qaqc_audit_cache_v2') || '{}');
-          Object.values(cachedMap).forEach((rec: any) => {
-            if (rec && Array.isArray(rec.defectsList)) {
-              defectsArray.push(...rec.defectsList);
-            }
-          });
-        } catch (_) { }
         if (Array.isArray(defectsList)) {
           defectsArray.push(...defectsList);
         }
@@ -3366,24 +3336,7 @@ const DataManagementPage = ({
                                   </button>
                                 </td>
                                 <td className="px-4 py-3.5 text-slate-300 font-medium whitespace-nowrap">
-                                  {(() => {
-                                    let cachedDefects: number | undefined;
-                                    try {
-                                      const cachedMap = JSON.parse(localStorage.getItem('app_qaqc_audit_cache_v2') || '{}');
-                                      const cached = cachedMap[`${batchSubgrid}_default`] || Object.entries(cachedMap).find(([k]) => k.startsWith(`${batchSubgrid}_`))?.[1];
-                                      if (cached && typeof cached.defectCount === 'number') {
-                                        cachedDefects = cached.defectCount;
-                                      }
-                                    } catch (_) { }
-
-                                    const count = (cachedDefects !== undefined && cachedDefects > 0)
-                                      ? cachedDefects
-                                      : (batch.defects && batch.defects > 0)
-                                        ? batch.defects
-                                        : 0;
-
-                                    return count;
-                                  })()}
+                                  {batch.defects || 0}
                                 </td>
                                 <td className="px-4 py-3.5 text-slate-300 font-medium whitespace-nowrap">
                                   {(batch.pic && batch.pic.trim().toLowerCase() !== 'unassigned') ? batch.pic : (activeAuthUserName || 'Admin')}
@@ -3531,31 +3484,7 @@ const DataManagementPage = ({
                                   </select>
                                 </td>
                                 <td className="px-4 py-3.5 text-slate-300 font-medium whitespace-nowrap">
-                                  {(() => {
-                                    const runId = getItemId(daily);
-                                    let cachedDefects: number | undefined;
-                                    try {
-                                      const cachedMap = JSON.parse(localStorage.getItem('app_qaqc_audit_cache_v2') || '{}');
-                                      const cached = (runId && cachedMap[`${dailySubgrid}_${runId}`]) || cachedMap[`${dailySubgrid}_default`];
-                                      if (cached && typeof cached.defectCount === 'number') {
-                                        cachedDefects = cached.defectCount;
-                                      }
-                                    } catch (_) { }
-
-                                    const matchBatch = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === dailySubgrid);
-
-                                    const count = (cachedDefects !== undefined && cachedDefects > 0)
-                                      ? cachedDefects
-                                      : (daily.imagesDefected !== undefined && daily.imagesDefected > 0)
-                                        ? daily.imagesDefected
-                                        : (daily.defectCount !== undefined && daily.defectCount > 0)
-                                          ? daily.defectCount
-                                          : (matchBatch?.defects && matchBatch.defects > 0)
-                                            ? matchBatch.defects
-                                            : 0;
-
-                                    return count;
-                                  })()}
+                                  {daily.imagesDefected || daily.defectCount || 0}
                                 </td>
                                 <td className="px-4 py-3.5 text-slate-300 font-medium whitespace-nowrap">
                                   {(daily.pic && daily.pic.trim().toLowerCase() !== 'unassigned')
@@ -4989,6 +4918,7 @@ export default function App() {
   const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>([]);
   const [dailyData, setDailyData] = useState<DailyTimeSeries[]>([]);
   const [batchLogs, setBatchLogs] = useState<BatchLog[]>([]);
+  const [qaqcAuditRuns, setQaqcAuditRuns] = useState<Record<string, QAQCAuditRunRecord>>({});
   const [qaSubgridRecords, setQaSubgridRecords] = useState<Record<string, {
     flags: { blurry: boolean; obstruction: boolean; badGps: boolean };
     answer: 'yes' | 'no' | null;
@@ -5403,18 +5333,26 @@ export default function App() {
 
       try {
         // Fetch all data sources concurrently in parallel
-        const [supabaseDataRes, qaRes, fetchedQa, dbAuditLogs, dbNotifications, dbSettingsRes] = await Promise.allSettled([
-          fetchSupabaseData(),
-          supabase.from('qa_defects').select('qa_status, defect_flags, defect_count, subgrid'),
-          fetchQaRecordsFromSupabase(),
-          fetchAuditLogsFromSupabase(),
-          fetchNotificationsFromSupabase(),
+        const [supabaseDataRes, qaRes, fetchedQa, fetchedAuditRuns, dbAuditLogs, dbNotifications, dbSettingsRes] = await Promise.allSettled([
+          fetchSupabaseData(projectSettings),
+          supabase.from(projectSettings?.qaDefectsTable || 'qa_defects').select('qa_status, defect_flags, defect_count, subgrid'),
+          fetchQaRecordsFromSupabase(projectSettings),
+          fetchQaAuditRunsFromSupabase(projectSettings),
+          fetchAuditLogsFromSupabase(projectSettings),
+          fetchNotificationsFromSupabase(projectSettings),
           fetchProjectSettingsFromSupabase()
         ]);
 
         // Process Project Settings
         if (dbSettingsRes.status === 'fulfilled' && dbSettingsRes.value) {
           setProjectSettings((prev: any) => ({ ...prev, ...dbSettingsRes.value }));
+        }
+
+        // Process Cloud QAQC Audit Runs
+        let cloudAuditMap: Record<string, QAQCAuditRunRecord> = {};
+        if (fetchedAuditRuns.status === 'fulfilled' && fetchedAuditRuns.value) {
+          cloudAuditMap = fetchedAuditRuns.value;
+          setQaqcAuditRuns(fetchedAuditRuns.value);
         }
 
         // Process QA Defects map first from qaRes
@@ -5438,12 +5376,6 @@ export default function App() {
           setLiveDefectCount(totalFlaggedCount);
         }
 
-        // Also read localStorage audit cache
-        let localAuditCache: Record<string, any> = {};
-        try {
-          localAuditCache = JSON.parse(localStorage.getItem('app_qaqc_audit_cache_v2') || '{}');
-        } catch (_) {}
-
         // Process Core Daily & Batch Data directly from Supabase with defect & status hydration
         if (supabaseDataRes.status === 'fulfilled') {
           const { dailyData: sDaily, batchLogs: sBatches } = supabaseDataRes.value;
@@ -5452,7 +5384,7 @@ export default function App() {
             const sg = (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim();
             const runId = getItemId(d);
             const frameCount = getImagesProcessedCount(d);
-            const cachedAudit = runId ? localAuditCache[`${sg}_${runId}`] : undefined;
+            const cachedAudit = (runId && cloudAuditMap[`${sg}_${runId}`]) || cloudAuditMap[`${sg}_default`];
             const cachedDefects = cachedAudit && typeof cachedAudit.defectCount === 'number' ? cachedAudit.defectCount : 0;
             const explicitDefects = (typeof d.imagesDefected === 'number' && d.imagesDefected > 0) ? d.imagesDefected : (typeof d.defectCount === 'number' && d.defectCount > 0) ? d.defectCount : 0;
             const finalDefects = frameCount === 0 ? 0 : Math.max(cachedDefects, explicitDefects);
@@ -5471,7 +5403,7 @@ export default function App() {
 
           const hydratedBatches = (sBatches || []).map((b: any) => {
             const sg = (extractSubgridName(b.subgrid || b.imageFilename) || b.subgrid || '').toUpperCase().trim();
-            const cachedAudit = localAuditCache[`${sg}_default`] || Object.entries(localAuditCache).find(([k]) => k.startsWith(`${sg}_`))?.[1];
+            const cachedAudit = cloudAuditMap[`${sg}_default`] || Object.entries(cloudAuditMap).find(([k]) => k.startsWith(`${sg}_`))?.[1];
             const dbDefects = defectsPerSubgrid.get(sg) || 0;
             const cachedDefects = cachedAudit && typeof cachedAudit.defectCount === 'number' ? cachedAudit.defectCount : 0;
             const explicitDefects = (typeof b.defects === 'number' && b.defects > 0) ? b.defects : 0;
@@ -5572,10 +5504,16 @@ export default function App() {
     const channelName = `live-dashboard-sync-${Date.now()}`;
     const liveChannel = supabase
       .channel(channelName)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'panoramas' }, () => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: projectSettings?.panoramasTable || 'panoramas' }, () => {
         initLiveSupabaseData(true);
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'qa_defects' }, () => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: projectSettings?.qaDefectsTable || 'qa_defects' }, () => {
+        initLiveSupabaseData(true);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: projectSettings?.qaqcRunsTable || 'qaqc_audit_runs' }, () => {
+        initLiveSupabaseData(true);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'project_settings' }, () => {
         initLiveSupabaseData(true);
       });
 
@@ -5638,11 +5576,6 @@ export default function App() {
   }, []);
 
   const totalDefects = useMemo(() => {
-    let cachedMap: Record<string, any> = {};
-    try {
-      cachedMap = JSON.parse(localStorage.getItem('app_qaqc_audit_cache_v2') || '{}');
-    } catch (_) { }
-
     if (dailyData.length > 0) {
       return dailyData.reduce((sum, d) => {
         const dailySubgrid = (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim();
@@ -5655,7 +5588,7 @@ export default function App() {
         );
 
         let cachedDefects: number | undefined;
-        const cached = runId ? cachedMap[`${dailySubgrid}_${runId}`] : undefined;
+        const cached = (runId && qaqcAuditRuns[`${dailySubgrid}_${runId}`]) || qaqcAuditRuns[`${dailySubgrid}_default`];
         if (cached && typeof cached.defectCount === 'number') {
           cachedDefects = cached.defectCount;
         }
@@ -5688,7 +5621,7 @@ export default function App() {
       if (bFrames === 0) return sum;
 
       let cachedDefects: number | undefined;
-      const cached = cachedMap[`${sg}_default`] || Object.entries(cachedMap).find(([k]) => k.startsWith(`${sg}_`))?.[1];
+      const cached = qaqcAuditRuns[`${sg}_default`] || Object.entries(qaqcAuditRuns).find(([k]) => k.startsWith(`${sg}_`))?.[1];
       if (cached && typeof cached.defectCount === 'number') {
         cachedDefects = cached.defectCount;
       }
@@ -5707,7 +5640,7 @@ export default function App() {
 
       return sum + Math.min(count, bFrames);
     }, 0);
-  }, [dailyData, batchLogs, qaqcWorkerState.isRunning, qaqcWorkerState.isCompleted, qaqcWorkerState.defectsList.length, qaqcWorkerState.runId, qaqcWorkerState.subgrid, qaqcAuditVersion]);
+  }, [dailyData, batchLogs, qaqcWorkerState.isRunning, qaqcWorkerState.isCompleted, qaqcWorkerState.defectsList.length, qaqcWorkerState.runId, qaqcWorkerState.subgrid, qaqcAuditVersion, qaqcAuditRuns]);
 
   const totalFramesForHealth = useMemo(() => {
     const dailyTotal = dailyData.reduce((sum, d) => sum + (d.imagesProcessed || d.panoramas?.length || d.poiCount || 0), 0);
@@ -5726,11 +5659,8 @@ export default function App() {
   const [mapRefreshKey, setMapRefreshKey] = useState<number>(Date.now());
   const handleRefreshMap = () => {
     setMapRefreshKey(Date.now());
-    fetchSupabaseData().then(({ dailyData: sDaily, batchLogs: sBatches }) => {
-      let localCache: Record<string, any> = {};
-      try { localCache = JSON.parse(localStorage.getItem('app_qaqc_audit_cache_v2') || '{}'); } catch (_) {}
-
-      // Merge while preserving ongoing QA/QC inspection state and local defect records
+    fetchSupabaseData(projectSettings).then(({ dailyData: sDaily, batchLogs: sBatches }) => {
+      // Merge while preserving ongoing QA/QC inspection state and defect records
       setDailyData(prev => {
         if (!sDaily || sDaily.length === 0) return prev;
         return sDaily.map(sd => {
@@ -5738,7 +5668,7 @@ export default function App() {
           const sg = (extractSubgridName(sd.subgrid) || sd.subgrid || '').toUpperCase().trim();
           const runId = getItemId(sd);
           const frameCount = getImagesProcessedCount(sd);
-          const cachedAudit = runId ? localCache[`${sg}_${runId}`] : undefined;
+          const cachedAudit = (runId && qaqcAuditRuns[`${sg}_${runId}`]) || qaqcAuditRuns[`${sg}_default`];
           const cachedCount = cachedAudit && typeof cachedAudit.defectCount === 'number' ? cachedAudit.defectCount : 0;
           const prevCount = (matchedPrev && typeof matchedPrev.defectCount === 'number') ? matchedPrev.defectCount : 0;
           const finalCount = frameCount === 0 ? 0 : Math.min(frameCount, Math.max(sd.defectCount || 0, prevCount, cachedCount));
@@ -5768,7 +5698,7 @@ export default function App() {
             const fCount = getImagesProcessedCount(d);
             if (fCount === 0) return;
             const runId = getItemId(d);
-            const runCache = runId ? localCache[`${sg}_${runId}`] : undefined;
+            const runCache = (runId && qaqcAuditRuns[`${sg}_${runId}`]) || qaqcAuditRuns[`${sg}_default`];
             const def = (runCache && typeof runCache.defectCount === 'number')
               ? runCache.defectCount
               : (typeof d.imagesDefected === 'number' && d.imagesDefected > 0)
@@ -5782,7 +5712,7 @@ export default function App() {
             }
           });
 
-          const cachedAudit = localCache[`${sg}_default`];
+          const cachedAudit = qaqcAuditRuns[`${sg}_default`];
           const cachedCount = cachedAudit && typeof cachedAudit.defectCount === 'number' ? cachedAudit.defectCount : 0;
           const prevCount = (matchedPrev && typeof matchedPrev.defects === 'number') ? matchedPrev.defects : 0;
 
@@ -6853,29 +6783,35 @@ export default function App() {
           }));
         }
 
-        // 3. Persist audit run to localStorage audit cache under both run-specific and default keys
+        // 3. Persist audit run directly to Supabase cloud database with user context
         if (normSg) {
-          try {
-            const currentCache = JSON.parse(localStorage.getItem('app_qaqc_audit_cache_v2') || '{}');
-            const cacheRecord = {
-              subgrid: normSg,
-              runId: targetRunId || null,
-              totalStations: summary.totalInspected,
-              defectCount: summary.defectsCount,
-              passRate: summary.totalInspected > 0 ? Math.round(((summary.totalInspected - summary.defectsCount) / summary.totalInspected) * 100) : 100,
-              completedAt: new Date().toISOString(),
-              pic: effectivePic,
-              defectsList: summary.defects
-            };
-            if (targetRunId) {
-              currentCache[`${normSg}_${targetRunId}`] = cacheRecord;
-            }
-            currentCache[`${normSg}_default`] = cacheRecord;
-            localStorage.setItem('app_qaqc_audit_cache_v2', JSON.stringify(currentCache));
-            window.dispatchEvent(new CustomEvent('qaqc_audit_updated', { detail: { subgrid: normSg, record: cacheRecord } }));
-          } catch (_) {}
+          const cacheRecord: QAQCAuditRunRecord = {
+            subgrid: normSg,
+            runId: targetRunId || null,
+            totalStations: summary.totalInspected,
+            defectCount: summary.defectsCount,
+            passRate: summary.totalInspected > 0 ? Math.round(((summary.totalInspected - summary.defectsCount) / summary.totalInspected) * 100) : 100,
+            completedAt: new Date().toISOString(),
+            pic: effectivePic,
+            defectsList: summary.defects,
+            user_id: authSession?.user?.id,
+            user_email: authSession?.user?.email
+          };
 
-          // 4. Asynchronously persist defect count and QA status to Supabase
+          setQaqcAuditRuns(prev => ({
+            ...prev,
+            ...(targetRunId ? { [`${normSg}_${targetRunId}`]: cacheRecord } : {}),
+            [`${normSg}_default`]: cacheRecord
+          }));
+          window.dispatchEvent(new CustomEvent('qaqc_audit_updated', { detail: { subgrid: normSg, record: cacheRecord } }));
+
+          // Asynchronously persist audit run and staging update to Supabase
+          saveQaAuditRunToSupabase(cacheRecord, {
+            id: authSession?.user?.id,
+            email: authSession?.user?.email,
+            name: activeAuthUserName
+          }, projectSettings).catch(() => {});
+
           try {
             const stagingTable = projectSettings?.stagingTable || 'staging_panoramas';
             Promise.resolve(
@@ -8503,13 +8439,7 @@ export default function App() {
                                         const isWholeSubgridActive = isThisMasterlistActive && !qaqcWorkerState.runId;
 
                                         const batchFrames = getImagesProcessedCount(log);
-
-                                        let cachedMap: Record<string, any> = {};
-                                        try {
-                                          cachedMap = JSON.parse(localStorage.getItem('app_qaqc_audit_cache_v2') || '{}');
-                                        } catch (_) { }
-
-                                        const cached = cachedMap[`${batchSubgrid}_default`];
+                                        const cached = qaqcAuditRuns[`${batchSubgrid}_default`];
                                         const cachedDefects = (cached && typeof cached.defectCount === 'number') ? cached.defectCount : undefined;
 
                                         let parsedDefects: number | undefined;
@@ -8532,7 +8462,7 @@ export default function App() {
 
                                               const runId = getItemId(d);
                                               const isThisDailyActive = isSpecificRunActive && qaqcWorkerState.runId === runId;
-                                              const dailyCached = runId ? cachedMap[`${batchSubgrid}_${runId}`] : undefined;
+                                              const dailyCached = (runId && qaqcAuditRuns[`${batchSubgrid}_${runId}`]) || qaqcAuditRuns[`${batchSubgrid}_default`];
                                               const dailyCachedCount = (dailyCached && typeof dailyCached.defectCount === 'number') ? dailyCached.defectCount : 0;
 
                                               let runDefects = 0;
@@ -8697,14 +8627,10 @@ export default function App() {
                                   );
 
                                   let cachedDefects: number | undefined;
-                                  let cachedAuditObj: any = undefined;
-                                  try {
-                                    const cachedMap = JSON.parse(localStorage.getItem('app_qaqc_audit_cache_v2') || '{}');
-                                    cachedAuditObj = runId ? cachedMap[`${dailySubgrid}_${runId}`] : undefined;
-                                    if (cachedAuditObj && typeof cachedAuditObj.defectCount === 'number') {
-                                      cachedDefects = cachedAuditObj.defectCount;
-                                    }
-                                  } catch (_) { }
+                                  const cachedAuditObj = (runId && qaqcAuditRuns[`${dailySubgrid}_${runId}`]) || qaqcAuditRuns[`${dailySubgrid}_default`];
+                                  if (cachedAuditObj && typeof cachedAuditObj.defectCount === 'number') {
+                                    cachedDefects = cachedAuditObj.defectCount;
+                                  }
 
                                   let parsedStatusDefects: number | undefined;
                                   if (log.qaqcStatus) {
@@ -9689,6 +9615,7 @@ export default function App() {
               dailyData={dailyData}
               batchLogs={batchLogs}
               projectSettings={projectSettings}
+              qaqcAuditRuns={qaqcAuditRuns}
               activeUserName={activeAuthUserName || (authSession?.user?.email ? authSession.user.email.split('@')[0] : '') || 'Operator'}
               surveyDate={selectedDateFilter || undefined}
               getStationsForSubgrid={getStationsForSubgrid}
