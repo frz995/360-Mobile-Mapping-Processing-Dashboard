@@ -497,7 +497,7 @@ export function useQAQCWorker() {
           };
         }
 
-        // 2. Directional Multi-Quadrant Blur & Obstruction Check
+        // 2. Directional Multi-Quadrant Blur & Obstruction Check (Single Fast Pass)
         let isBlur = false;
         let isObstruction = false;
         let isSkippedImg = false;
@@ -507,24 +507,38 @@ export function useQAQCWorker() {
         let avgBrightness = 128.0;
 
         if ((config.checkBlur || config.checkObstruction) && imgUrl) {
-          if (config.checkBlur) {
-            const blurResult = await analyzeImageSharpness(imgUrl, blurThreshold, deliverableModel, {
-              timeoutMs: 4000
-            });
+          const analysis = await detectBlurAndObstruction(imgUrl, {
+            blurThreshold,
+            darkThreshold,
+            glareLuminanceThreshold: glareThreshold,
+            timeoutMs: 2500,
+            thresholds: {
+              blurVarianceThreshold: blurThreshold,
+              obstructionMinBrightness: darkThreshold,
+              glareLuminanceThreshold: glareThreshold,
+              deliverableModel
+            }
+          });
 
-            if (blurResult.status === 'skipped') {
-              isSkippedImg = true;
-              blurVariance = 0;
-              currentLiveCheck.blur = {
-                active: true,
-                status: 'skipped',
-                detail: `SKIPPED (${blurResult.reason || 'Timeout'})`
-              };
-            } else {
-              isBlur = blurResult.isBlurry;
-              blurVariance = blurResult.minScore;
+          if (analysis.analysisStatus === 'skipped') {
+            isSkippedImg = true;
+            blurVariance = 0;
+            currentLiveCheck.blur = {
+              active: true,
+              status: 'skipped',
+              detail: `SKIPPED (${analysis.reason || 'Timeout'})`
+            };
+            currentLiveCheck.obstruction = {
+              active: true,
+              status: 'skipped',
+              detail: `SKIPPED (${analysis.reason || 'Timeout'})`
+            };
+          } else {
+            if (config.checkBlur) {
+              isBlur = analysis.isBlur;
+              blurVariance = analysis.blurVariance;
               if (isBlur) {
-                blurDetail = blurResult.reason || `Blurry Frame in ${blurResult.worstSector} sector (Sharpness score ${blurVariance.toFixed(1)} below threshold ${blurThreshold.toFixed(1)})`;
+                blurDetail = analysis.reason || `Blurry Frame (${blurVariance.toFixed(1)} below threshold ${blurThreshold.toFixed(1)})`;
               } else if (blurVariance < 55.0) {
                 blurDetail = `Sharp ${blurVariance.toFixed(1)} (Marginal)`;
               } else {
@@ -536,25 +550,11 @@ export function useQAQCWorker() {
                 detail: blurDetail
               };
             }
-          }
 
-          if (config.checkObstruction) {
-            const obsAnalysis = await analyzeEquirectangularBlur(imgUrl, blurThreshold, deliverableModel, {
-              timeoutMs: 4000,
-              obstructionMinBrightness: darkThreshold,
-              glareLuminanceThreshold: glareThreshold
-            });
-
-            if (obsAnalysis.status === 'skipped') {
-              currentLiveCheck.obstruction = {
-                active: true,
-                status: 'skipped',
-                detail: `SKIPPED (${obsAnalysis.reason || 'Timeout'})`
-              };
-            } else {
-              isObstruction = obsAnalysis.isObstruction;
-              avgBrightness = obsAnalysis.avgBrightness;
-              obstructionDetail = isObstruction ? (obsAnalysis.reason || `Luma ${avgBrightness.toFixed(1)}`) : `Luma ${avgBrightness.toFixed(1)}`;
+            if (config.checkObstruction) {
+              isObstruction = analysis.isObstruction;
+              avgBrightness = analysis.avgBrightness;
+              obstructionDetail = isObstruction ? (analysis.reason || `Luma ${avgBrightness.toFixed(1)}`) : `Luma ${avgBrightness.toFixed(1)}`;
               currentLiveCheck.obstruction = {
                 active: true,
                 status: isObstruction ? 'flagged' : 'passed',
@@ -621,32 +621,34 @@ export function useQAQCWorker() {
             onDefectFound(defectRecord, accumulatedDefects.length);
           }
 
-          // Asynchronously upsert defect to Supabase with user auth context
-          try {
-            const qaDefectsTable = projectSettings?.qaDefectsTable || import.meta.env.VITE_DB_QA_DEFECTS_TABLE || 'qa_defects';
-            const { error: upsertErr } = await supabase.from(qaDefectsTable).upsert({
-              subgrid: defectRecord.subgrid,
-              point_id: defectRecord.point_id,
-              frame_index: defectRecord.frame_index,
-              defect_flags: defectRecord.defect_flags,
-              defect_type: defectRecord.defect_type,
-              pic: defectRecord.pic || authUser?.name || 'Operator',
-              user_id: defectRecord.user_id || authUser?.id || null,
-              user_email: defectRecord.user_email || authUser?.email || null,
-              image_url: defectRecord.image_url,
-              lat: defectRecord.lat,
-              lng: defectRecord.lng,
-              bearing: defectRecord.bearing,
-              created_at: defectRecord.created_at,
-              updated_at: new Date().toISOString()
-            }, { onConflict: 'subgrid,point_id' });
+          // Asynchronously upsert defect to Supabase without blocking the loop
+          (async () => {
+            try {
+              const qaDefectsTable = projectSettings?.qaDefectsTable || import.meta.env.VITE_DB_QA_DEFECTS_TABLE || 'qa_defects';
+              const { error: upsertErr } = await supabase.from(qaDefectsTable).upsert({
+                subgrid: defectRecord.subgrid,
+                point_id: defectRecord.point_id,
+                frame_index: defectRecord.frame_index,
+                defect_flags: defectRecord.defect_flags,
+                defect_type: defectRecord.defect_type,
+                pic: defectRecord.pic || authUser?.name || 'Operator',
+                user_id: defectRecord.user_id || authUser?.id || null,
+                user_email: defectRecord.user_email || authUser?.email || null,
+                image_url: defectRecord.image_url,
+                lat: defectRecord.lat,
+                lng: defectRecord.lng,
+                bearing: defectRecord.bearing,
+                created_at: defectRecord.created_at,
+                updated_at: new Date().toISOString()
+              }, { onConflict: 'subgrid,point_id' });
 
-            if (!upsertErr) {
-              setWorkerState(prev => ({ ...prev, syncedCount: prev.syncedCount + 1 }));
+              if (!upsertErr) {
+                setWorkerState(prev => ({ ...prev, syncedCount: prev.syncedCount + 1 }));
+              }
+            } catch (err) {
+              console.warn('qa_defects sync notice:', err);
             }
-          } catch (err) {
-            console.warn('qa_defects sync notice:', err);
-          }
+          })();
         }
 
         // 4. Inspection History Record
