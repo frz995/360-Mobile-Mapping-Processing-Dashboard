@@ -5393,9 +5393,12 @@ export default function App() {
             const sg = (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim();
             const runId = getItemId(d);
             const frameCount = getImagesProcessedCount(d);
-            const cachedAudit = runId ? cloudAuditMap[`${sg}_${runId}`] : undefined;
-            const cachedDefects = cachedAudit && typeof cachedAudit.defectCount === 'number' ? cachedAudit.defectCount : 0;
-            const finalDefects = (frameCount === 0 || !cachedAudit) ? 0 : Math.min(cachedDefects, frameCount);
+            const subgridDefectsFromDb = defectsPerSubgrid.get(sg) || 0;
+            const cachedAudit = (runId ? cloudAuditMap[`${sg}_${runId}`] : undefined) || cloudAuditMap[`${sg}_default`] || Object.entries(cloudAuditMap).find(([k]) => k.startsWith(`${sg}_`))?.[1];
+            const cachedDefects = (cachedAudit && typeof cachedAudit.defectCount === 'number')
+              ? cachedAudit.defectCount
+              : (d.defectCount || d.imagesDefected || subgridDefectsFromDb || 0);
+            const finalDefects = frameCount === 0 ? 0 : Math.min(cachedDefects, frameCount);
             const isPub = d.publishToWebGIS === 'yes' || d.isSyncedWithSupabase === true;
 
             const qaqcStatus = frameCount === 0
@@ -9702,6 +9705,9 @@ export default function App() {
               batchLogs={batchLogs}
               projectSettings={projectSettings}
               qaqcAuditRuns={qaqcAuditRuns}
+              defectsList={allKnownDefects}
+              initialSubgrid={selectedSubgridFilter || qaqcWorkerState.subgrid || undefined}
+              initialRunId={selectedDailyRunId || qaqcWorkerState.runId || undefined}
               activeUserName={activeAuthUserName || (authSession?.user?.email ? authSession.user.email.split('@')[0] : '') || 'Operator'}
               surveyDate={selectedDateFilter || undefined}
               getStationsForSubgrid={getStationsForSubgrid}
