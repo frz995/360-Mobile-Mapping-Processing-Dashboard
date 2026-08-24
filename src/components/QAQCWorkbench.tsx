@@ -480,18 +480,39 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
   // Effective Active Defects List
   const effectiveDefectsList = useMemo(() => {
     if (isRunning || liveHistory.length > 0) return liveDefectsList;
-    if (cachedAudit && cachedAudit.defectsList && cachedAudit.defectsList.length > 0) return cachedAudit.defectsList;
+
+    const list: any[] = [];
+    const seen = new Set<string>();
+
+    const addDef = (d: any) => {
+      if (!d) return;
+      const fn = (d.point_id || d.filename || d.pointId || d.image_url || '').split('/').pop()?.toUpperCase().trim();
+      const ptId = (d.point_id || d.pointId || '').toUpperCase().trim();
+      const key = fn || ptId;
+      if (key && !seen.has(key)) {
+        seen.add(key);
+        list.push(d);
+      }
+    };
+
+    if (cachedAudit && Array.isArray(cachedAudit.defectsList)) {
+      cachedAudit.defectsList.forEach(addDef);
+    }
+
     if (selectedSubgrid && Array.isArray(defectsList)) {
       const curSg = selectedSubgrid.toUpperCase().trim();
-      const filtered = defectsList.filter((d: any) => {
+      defectsList.forEach((d: any) => {
         const dSg = (extractSubgridName(d.subgrid || '') || d.subgrid || '').toUpperCase().trim();
         const dRunId = d.run_id || d.runId;
-        if (selectedRunId && dRunId) return dSg === curSg && dRunId === selectedRunId;
-        return dSg === curSg;
+        if (selectedRunId && dRunId) {
+          if (dSg === curSg && dRunId === selectedRunId) addDef(d);
+        } else if (dSg === curSg) {
+          addDef(d);
+        }
       });
-      if (filtered.length > 0) return filtered;
     }
-    return [];
+
+    return list;
   }, [isRunning, liveHistory, liveDefectsList, cachedAudit, selectedSubgrid, selectedRunId, defectsList]);
 
   // Effective Active Telemetry Data (live runner if active, else cached audit or synthesized defect feed)
@@ -694,15 +715,20 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
       }, '*');
 
       // 2. Transmit strictly only the selected survey track points with exact status colors & defect flags
-      const activeDailyRun = dailyData.find(d =>
-        (selectedRunId && getItemId(d) === selectedRunId) ||
-        (extractSubgridName(d.subgrid) || '').toUpperCase().trim() === activeSg
-      );
-      if (activeDailyRun) {
-        const formatted = formatTrackItem(activeDailyRun);
+      const activeSgNorm = activeSg.toUpperCase().trim();
+      const matchingRuns = selectedRunId
+        ? dailyData.filter(d => (getItemId(d) === selectedRunId || d.id === selectedRunId || (d as any)._id === selectedRunId))
+        : dailyData.filter(d => (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim() === activeSgNorm);
+
+      const runsToSend = matchingRuns.length > 0
+        ? matchingRuns
+        : dailyData.filter(d => (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim() === activeSgNorm);
+
+      if (runsToSend.length > 0) {
+        const formattedItems = runsToSend.map(formatTrackItem);
         mapIframeRef.current.contentWindow.postMessage({
           type: 'SET_STAGED_DATA',
-          stagedItems: [formatted]
+          stagedItems: formattedItems
         }, '*');
       }
 
@@ -1729,14 +1755,14 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
               <div className="flex items-center gap-2.5 sm:gap-3 flex-wrap">
                 <CheckCircle2 size={15} className="text-emerald-400 shrink-0" />
                 <span className="font-semibold text-text-base text-xs">
-                  Audit Completed ({effectiveHistory.length} Stations)
+                  Audit Completed ({selectedStations.length > 0 ? selectedStations.length : effectiveHistory.length} Stations)
                 </span>
                 <span className="text-text-muted/40">•</span>
                 <span className={`font-medium text-xs ${effectiveDefectsList.length > 0 ? 'text-rose-400 font-semibold' : 'text-emerald-400'}`}>
                   {effectiveDefectsList.length === 0 ? 'Zero Defects' : `${effectiveDefectsList.length} Defect(s)`}
                 </span>
                 <span className="text-text-muted/40">•</span>
-                <span className="text-text-muted text-xs">Pass Rate: <strong className="text-text-base font-bold font-mono">{auditPassRate}%</strong></span>
+                <span className="text-text-muted text-xs">Pass Rate: <strong className="text-text-base font-bold font-mono">{selectedStations.length > 0 ? Math.max(0, Math.round(((selectedStations.length - effectiveDefectsList.length) / selectedStations.length) * 100)) : auditPassRate}%</strong></span>
               </div>
 
               <div className="flex items-center gap-2 text-text-muted text-xs font-mono shrink-0">
