@@ -26,6 +26,7 @@ import {
   Clock,
   MapPin,
   Columns,
+  Rows,
   Maximize2,
   Map,
   Minimize
@@ -159,7 +160,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
 
   // Telemetry stream history selection & filtering
   // Viewport Layout Mode (Split 50/50 Map, Floating Minimap PiP, Full 360)
-  const [viewportMode, setViewportMode] = useState<'split' | 'pip' | 'full'>('split');
+  const [viewportMode, setViewportMode] = useState<'horizontal' | 'vertical' | 'pip' | 'full'>('horizontal');
   const [isPipCollapsed, setIsPipCollapsed] = useState<boolean>(false);
   const mapIframeRef = useRef<HTMLIFrameElement | null>(null);
   const [_isMapReady, setIsMapReady] = useState<boolean>(false);
@@ -793,21 +794,34 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
 
         {/* Right: Main View Navigation Switcher & Actions */}
         <div className="flex items-center gap-2 shrink-0">
-          {/* Viewport Layout Mode Switcher (Split Map, Minimap PiP, 360 Only) */}
+          {/* Viewport Layout Mode Switcher (Horizontal Split, Vertical Split, Minimap PiP, 360 Only) */}
           {workbenchTab === 'console' && (
             <div className="hidden sm:flex items-center p-1 rounded-xl bg-inner border border-subtle gap-0.5">
               <button
                 type="button"
-                onClick={() => setViewportMode('split')}
+                onClick={() => setViewportMode('horizontal')}
                 className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
-                  viewportMode === 'split'
+                  viewportMode === 'horizontal'
                     ? 'bg-card text-text-base shadow-sm border border-subtle'
                     : 'text-text-muted hover:text-text-base'
                 }`}
-                title="50/50 Split View (360° Photo + Synchronized Map)"
+                title="Horizontal Split View (Top 360° Photo + Bottom Synchronized Map)"
+              >
+                <Rows size={12} />
+                <span className="hidden xl:inline">Horizontal Split</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewportMode('vertical')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  viewportMode === 'vertical'
+                    ? 'bg-card text-text-base shadow-sm border border-subtle'
+                    : 'text-text-muted hover:text-text-base'
+                }`}
+                title="Vertical Split View (Left 360° Photo + Right Synchronized Map)"
               >
                 <Columns size={12} />
-                <span className="hidden xl:inline">Split Map</span>
+                <span className="hidden xl:inline">Vertical Split</span>
               </button>
               <button
                 type="button"
@@ -837,6 +851,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
               </button>
             </div>
           )}
+
           {/* Main Navigation Segmented Switcher */}
           <div className="flex items-center p-1 rounded-xl bg-inner border border-subtle">
             <button
@@ -1380,12 +1395,18 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
             </div>
           )}
 
-          {/* Main Dual-Viewport Area (Split-Screen or Full 360 + PiP) */}
-          <div className="flex-1 relative w-full h-full min-h-[280px] overflow-hidden flex flex-col lg:flex-row bg-app">
+          {/* Main Dual-Viewport Area (Horizontal Split, Vertical Split, Full 360 or PiP) */}
+          <div className={`flex-1 relative w-full h-full min-h-[300px] overflow-hidden flex bg-app ${
+            viewportMode === 'vertical' ? 'flex-col lg:flex-row' : 'flex-col'
+          }`}>
             
-            {/* LEFT / MAIN VIEWPORT: 360° PANORAMA CANVAS */}
-            <div className={`relative w-full h-full min-h-[260px] overflow-hidden flex items-center justify-center bg-black ${
-              viewportMode === 'split' ? 'lg:w-[55%] xl:w-1/2 border-b lg:border-b-0 lg:border-r border-subtle' : 'w-full'
+            {/* 360° PANORAMA CANVAS VIEWPORT */}
+            <div className={`relative w-full overflow-hidden flex items-center justify-center bg-black ${
+              viewportMode === 'horizontal'
+                ? 'h-1/2 sm:h-[55%] border-b border-subtle'
+                : viewportMode === 'vertical'
+                ? 'h-1/2 lg:h-full lg:w-1/2 border-b lg:border-b-0 lg:border-r border-subtle'
+                : 'h-full w-full'
             }`}>
               {activeDisplayThumbnail ? (
                 <img
@@ -1486,7 +1507,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                 </div>
               )}
 
-              {/* HUD OVERLAY 4: Bottom-Right Compass Heading & Track State (Only if not in PiP mode) */}
+              {/* HUD OVERLAY 4: Bottom-Right Compass Heading & Track State */}
               {(isRunning || effectiveHistory.length > 0) && viewportMode !== 'pip' && (
                 <div className="absolute bottom-3 right-3 bg-black/85 backdrop-blur-md border border-white/10 rounded-xl px-3 py-2 shadow-md space-y-0.5 text-right z-10">
                   <div className="text-white text-xs tabular-nums font-semibold flex items-center justify-end gap-1.5 font-mono">
@@ -1524,22 +1545,26 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
               )}
             </div>
 
-            {/* RIGHT VIEWPORT / SYNCHRONIZED MAP (SPLIT MODE) */}
-            {viewportMode === 'split' && (
-              <div className="w-full lg:w-[45%] xl:w-1/2 h-64 lg:h-full relative bg-app flex flex-col overflow-hidden">
+            {/* SYNCHRONIZED MAP VIEWPORT (HORIZONTAL OR VERTICAL SPLIT) */}
+            {(viewportMode === 'horizontal' || viewportMode === 'vertical') && (
+              <div className={`relative bg-app flex flex-col overflow-hidden ${
+                viewportMode === 'horizontal'
+                  ? 'w-full h-1/2 sm:h-[45%]'
+                  : 'w-full lg:w-1/2 h-1/2 lg:h-full'
+              }`}>
                 {/* Synchronized Map Header Bar */}
-                <div className="h-9 px-3 bg-card/90 backdrop-blur-md border-b border-subtle flex items-center justify-between shrink-0 text-xs z-10">
+                <div className="h-8 px-3 bg-card/90 backdrop-blur-md border-b border-subtle flex items-center justify-between shrink-0 text-xs z-10">
                   <div className="flex items-center gap-2">
                     <Map size={13} className="text-sky-400" />
                     <span className="font-semibold text-text-base text-xs">Live Vehicle Trajectory Map</span>
                     <span className="text-text-muted/40">•</span>
-                    <span className="text-text-muted font-mono text-[11px] truncate max-w-[100px] sm:max-w-none">
+                    <span className="text-text-muted font-mono text-[11px] truncate max-w-[120px] sm:max-w-none">
                       {activeRunningSubgrid || selectedSubgrid || 'No Target'}
                     </span>
                   </div>
                   <div className="flex items-center gap-2 text-text-muted font-mono text-[11px]">
                     <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                    <span className="hidden sm:inline">Auto-Tracking</span>
+                    <span className="hidden sm:inline">Auto-Tracking Active</span>
                   </div>
                 </div>
 
@@ -1581,11 +1606,11 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                     </button>
                     <button
                       type="button"
-                      onClick={() => setViewportMode('split')}
+                      onClick={() => setViewportMode('horizontal')}
                       className="p-1 text-text-muted hover:text-text-base rounded-md hover:bg-card transition-colors cursor-pointer"
-                      title="Dock to Split Screen"
+                      title="Dock to Horizontal Split View"
                     >
-                      <Columns size={12} />
+                      <Rows size={12} />
                     </button>
                   </div>
                 </div>
