@@ -1059,7 +1059,7 @@ const MapComponent = ({
       <iframe
         ref={iframeRef}
         key={`${refreshKey || 0}-${effectiveSettings?.defaultBasemap || 'positron'}`}
-        src={`${import.meta.env.VITE_MAP_URL || 'https://mobilemapping-nine.vercel.app'}/?embed=true&dashboard=true&basemap=${encodeURIComponent(effectiveSettings?.defaultBasemap || 'positron')}${selectedSubgridFilter ? `&subgrid=${encodeURIComponent(selectedSubgridFilter)}` : ''}${selectedDailyRunId ? `&isSingleRun=true&runId=${encodeURIComponent(selectedDailyRunId)}` : ''}${selectedDateFilter ? `&date=${encodeURIComponent(selectedDateFilter)}` : ''}${refreshKey ? `&t=${refreshKey}` : ''}`}
+        src={`${import.meta.env.VITE_MAP_URL || 'https://mobilemapping-nine.vercel.app'}/?embed=true&dashboard=true&basemap=${encodeURIComponent(effectiveSettings?.defaultBasemap || 'positron')}${refreshKey ? `&t=${refreshKey}` : ''}`}
         onLoad={() => {
           if (iframeRef.current && iframeRef.current.contentWindow) {
             iframeRef.current.contentWindow.postMessage({
