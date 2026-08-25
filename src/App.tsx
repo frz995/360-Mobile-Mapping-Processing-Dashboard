@@ -90,6 +90,7 @@ interface DailyTimeSeries {
   isFromSupabase?: boolean;
   _alreadySyncedToBatch?: boolean;
   panoramas?: PanoramaItem[];
+  points?: any[];
   qaqcStatus?: string;
   runsCount?: number;
   publishedRunsCount?: number;
@@ -113,6 +114,7 @@ interface BatchLog {
   isSyncedWithSupabase?: boolean;
   isFromSupabase?: boolean;
   panoramas?: PanoramaItem[];
+  points?: any[];
   qaqcStatus?: string;
   publishToWebGIS?: 'yes' | 'no' | 'in process' | 'need to recheck' | string;
   runsCount?: number;
@@ -778,6 +780,8 @@ const MapComponent = ({
   dataManagement = false,
   refreshKey,
   selectedSubgridFilter,
+  selectedDailyRunId,
+  selectedDateFilter,
   stagedItems,
   projectSettings: passedSettings,
   defectsList
@@ -787,6 +791,8 @@ const MapComponent = ({
   refreshKey?: number;
   onManualRefresh?: () => void;
   selectedSubgridFilter?: string | null;
+  selectedDailyRunId?: string | null;
+  selectedDateFilter?: string | null;
   stagedItems?: any[];
   projectSettings?: any;
   defectsList?: any[];
@@ -801,8 +807,6 @@ const MapComponent = ({
   const formattedStagedItems = React.useMemo(() => {
     if (!stagedItems || stagedItems.length === 0) return [];
 
-    // Track published point keys to prevent orange staging duplicates from overlapping green published points
-    const publishedPointKeys = new Set<string>();
     const knownDefectFilenames = new Set<string>();
 
     if (Array.isArray(defectsList)) {
@@ -813,21 +817,6 @@ const MapComponent = ({
         if (ptId) knownDefectFilenames.add(ptId);
       });
     }
-
-    stagedItems.forEach(item => {
-      const isPub = item.publishToWebGIS === 'yes' || item.publishToUSVPRO === 'yes' || Boolean(item.isSyncedWithSupabase) || item.isFromSupabase === true;
-      if (isPub) {
-        (item.panoramas || item.points || []).forEach((p: any) => {
-          const fn = (p.filename || p.image_url || '').split('/').pop()?.toLowerCase().trim();
-          if (fn) publishedPointKeys.add(fn);
-          const lat = p.latitude ?? p.lat;
-          const lon = p.longitude ?? p.lon ?? p.lng;
-          if (typeof lat === 'number' && typeof lon === 'number') {
-            publishedPointKeys.add(`${lat.toFixed(5)}_${lon.toFixed(5)}`);
-          }
-        });
-      }
-    });
 
     return stagedItems.map(item => {
       const isPub = item.publishToWebGIS === 'yes' || item.publishToUSVPRO === 'yes' || Boolean(item.isSyncedWithSupabase) || item.isFromSupabase === true;
@@ -914,18 +903,23 @@ const MapComponent = ({
   const sendStagedData = React.useCallback(() => {
     if (iframeRef.current && iframeRef.current.contentWindow && formattedStagedItems.length > 0) {
       try {
+        const isSingle = Boolean(selectedDailyRunId);
         // 1. Send SET_STAGED_DATA
         iframeRef.current.contentWindow.postMessage({
           type: 'SET_STAGED_DATA',
           isStagingPreview: Boolean(dataManagement),
-          stagedItems: formattedStagedItems
+          stagedItems: formattedStagedItems,
+          isSingleRun: isSingle,
+          runId: selectedDailyRunId || null
         }, '*');
 
         // 2. Send STAGED_DATA_PREVIEW fallback
         iframeRef.current.contentWindow.postMessage({
           type: 'STAGED_DATA_PREVIEW',
           isStagingPreview: Boolean(dataManagement),
-          stagedItems: formattedStagedItems
+          stagedItems: formattedStagedItems,
+          isSingleRun: isSingle,
+          runId: selectedDailyRunId || null
         }, '*');
 
         // 3. Send FILTER_STATUS_TYPES to ensure stitching/in-progress trajectory filter is active
@@ -948,7 +942,7 @@ const MapComponent = ({
         }
       } catch (e) { }
     }
-  }, [formattedStagedItems, dataManagement, defectsList]);
+  }, [formattedStagedItems, dataManagement, defectsList, selectedDailyRunId]);
 
   const syncMapSettings = React.useCallback(() => {
     if (!iframeRef.current || !iframeRef.current.contentWindow) return;
@@ -1002,10 +996,13 @@ const MapComponent = ({
     if (iframeRef.current && iframeRef.current.contentWindow) {
       iframeRef.current.contentWindow.postMessage({
         type: 'SET_SUBGRID_FILTER',
-        subgrid: selectedSubgridFilter || ''
+        subgrid: selectedSubgridFilter || '',
+        isSingleRun: Boolean(selectedDailyRunId),
+        runId: selectedDailyRunId || null,
+        date: selectedDateFilter || ''
       }, '*');
     }
-  }, [selectedSubgridFilter]);
+  }, [selectedSubgridFilter, selectedDailyRunId, selectedDateFilter]);
 
   useEffect(() => {
     syncMapSettings();
@@ -1062,12 +1059,15 @@ const MapComponent = ({
       <iframe
         ref={iframeRef}
         key={`${refreshKey || 0}-${effectiveSettings?.defaultBasemap || 'positron'}`}
-        src={`${import.meta.env.VITE_MAP_URL || 'https://mobilemapping-nine.vercel.app'}/?embed=true&dashboard=true&basemap=${encodeURIComponent(effectiveSettings?.defaultBasemap || 'positron')}${selectedSubgridFilter ? `&subgrid=${encodeURIComponent(selectedSubgridFilter)}` : ''}${refreshKey ? `&t=${refreshKey}` : ''}`}
+        src={`${import.meta.env.VITE_MAP_URL || 'https://mobilemapping-nine.vercel.app'}/?embed=true&dashboard=true&basemap=${encodeURIComponent(effectiveSettings?.defaultBasemap || 'positron')}${selectedSubgridFilter ? `&subgrid=${encodeURIComponent(selectedSubgridFilter)}` : ''}${selectedDailyRunId ? `&isSingleRun=true&runId=${encodeURIComponent(selectedDailyRunId)}` : ''}${selectedDateFilter ? `&date=${encodeURIComponent(selectedDateFilter)}` : ''}${refreshKey ? `&t=${refreshKey}` : ''}`}
         onLoad={() => {
           if (iframeRef.current && iframeRef.current.contentWindow) {
             iframeRef.current.contentWindow.postMessage({
               type: 'SET_SUBGRID_FILTER',
-              subgrid: selectedSubgridFilter || ''
+              subgrid: selectedSubgridFilter || '',
+              isSingleRun: Boolean(selectedDailyRunId),
+              runId: selectedDailyRunId || null,
+              date: selectedDateFilter || ''
             }, '*');
             syncMapSettings();
             sendStagedData();
@@ -5002,7 +5002,7 @@ export default function App() {
       });
       localStorage.setItem('app_read_audit_ids', JSON.stringify(Array.from(currentRead)));
       localStorage.setItem('app_last_read_audit_time', Date.now().toString());
-    } catch (_) {}
+    } catch (_) { }
     setAuditLogs(old => old.map(a => ({ ...a, read: true })));
   }, [auditLogs]);
 
@@ -5016,7 +5016,7 @@ export default function App() {
       });
       localStorage.setItem('app_read_notif_ids', JSON.stringify(Array.from(currentRead)));
       localStorage.setItem('app_last_read_notif_time', Date.now().toString());
-    } catch (_) {}
+    } catch (_) { }
     setNotifications(old => old.map(n => ({ ...n, read: true })));
   }, [notifications]);
 
@@ -5030,7 +5030,7 @@ export default function App() {
       });
       localStorage.setItem('app_read_notif_ids', JSON.stringify(Array.from(currentRead)));
       localStorage.setItem('app_cleared_notif_time', Date.now().toString());
-    } catch (_) {}
+    } catch (_) { }
     setNotifications([]);
   }, [notifications]);
 
@@ -5412,12 +5412,12 @@ export default function App() {
             const qaqcStatus = frameCount === 0
               ? (isPub ? 'Published' : undefined)
               : (cachedAudit
-                  ? (isPub
-                      ? (cachedDefects === 0 ? 'Published (QAQC Verified)' : `Published (${cachedDefects} Defect${cachedDefects === 1 ? '' : 's'} Found)`)
-                      : (cachedDefects === 0 ? 'QAQC Passed (Ready to Publish)' : `QAQC Flagged (${cachedDefects} Defect${cachedDefects === 1 ? '' : 's'} Found)`)
-                    )
-                  : (isPub ? 'Published' : undefined)
-                );
+                ? (isPub
+                  ? (cachedDefects === 0 ? 'Published (QAQC Verified)' : `Published (${cachedDefects} Defect${cachedDefects === 1 ? '' : 's'} Found)`)
+                  : (cachedDefects === 0 ? 'QAQC Passed (Ready to Publish)' : `QAQC Flagged (${cachedDefects} Defect${cachedDefects === 1 ? '' : 's'} Found)`)
+                )
+                : (isPub ? 'Published' : undefined)
+              );
 
             return {
               ...d,
@@ -5458,7 +5458,7 @@ export default function App() {
           try {
             readAuditSet = new Set(JSON.parse(localStorage.getItem('app_read_audit_ids') || '[]'));
             lastReadAuditTime = Number(localStorage.getItem('app_last_read_audit_time') || '0');
-          } catch (_) {}
+          } catch (_) { }
 
           setAuditLogs(prev => {
             return dbAuditLogs.value.map((a: any) => {
@@ -5486,7 +5486,7 @@ export default function App() {
             readNotifSet = new Set(JSON.parse(localStorage.getItem('app_read_notif_ids') || '[]'));
             lastReadNotifTime = Number(localStorage.getItem('app_last_read_notif_time') || '0');
             clearedNotifTime = Number(localStorage.getItem('app_cleared_notif_time') || '0');
-          } catch (_) {}
+          } catch (_) { }
 
           setNotifications(prev => {
             return dbNotifications.value
@@ -5666,7 +5666,7 @@ export default function App() {
     }, 0);
   }, [dailyData, batchLogs, qaqcWorkerState.isRunning, qaqcWorkerState.isCompleted, qaqcWorkerState.defectsList.length, qaqcWorkerState.runId, qaqcWorkerState.subgrid, qaqcAuditVersion, qaqcAuditRuns]);
 
-    const allKnownDefects = React.useMemo(() => {
+  const allKnownDefects = React.useMemo(() => {
     const list: any[] = [];
     const seen = new Set<string>();
 
@@ -6662,9 +6662,9 @@ export default function App() {
         if (matchDaily.panoramas && matchDaily.panoramas.length > 0) {
           const availPanoramas = matchDaily.availableFilenames && matchDaily.availableFilenames.length > 0
             ? matchDaily.panoramas.filter((p: any) => {
-                const pfn = (p.filename || '').split('/').pop()?.toLowerCase().trim();
-                return matchDaily.availableFilenames!.some(af => af.toLowerCase().trim() === pfn || af.toLowerCase().trim() === (p.filename || '').toLowerCase().trim());
-              })
+              const pfn = (p.filename || '').split('/').pop()?.toLowerCase().trim();
+              return matchDaily.availableFilenames!.some(af => af.toLowerCase().trim() === pfn || af.toLowerCase().trim() === (p.filename || '').toLowerCase().trim());
+            })
             : (matchDaily.panoramas.some((p: any) => p.isAvailable !== undefined)
               ? matchDaily.panoramas.filter((p: any) => p.isAvailable === true)
               : matchDaily.panoramas);
@@ -6729,9 +6729,9 @@ export default function App() {
       if (d.panoramas && d.panoramas.length > 0) {
         const availPanoramas = d.availableFilenames && d.availableFilenames.length > 0
           ? d.panoramas.filter((p: any) => {
-              const pfn = (p.filename || '').split('/').pop()?.toLowerCase().trim();
-              return d.availableFilenames!.some(af => af.toLowerCase().trim() === pfn || af.toLowerCase().trim() === (p.filename || '').toLowerCase().trim());
-            })
+            const pfn = (p.filename || '').split('/').pop()?.toLowerCase().trim();
+            return d.availableFilenames!.some(af => af.toLowerCase().trim() === pfn || af.toLowerCase().trim() === (p.filename || '').toLowerCase().trim());
+          })
           : (d.panoramas.some((p: any) => p.isAvailable !== undefined)
             ? d.panoramas.filter((p: any) => p.isAvailable === true)
             : d.panoramas);
@@ -6978,7 +6978,7 @@ export default function App() {
             id: authSession?.user?.id,
             email: authSession?.user?.email,
             name: activeAuthUserName
-          }, projectSettings).catch(() => {});
+          }, projectSettings).catch(() => { });
 
           try {
             const stagingTable = projectSettings?.stagingTable || 'staging_panoramas';
@@ -6988,8 +6988,8 @@ export default function App() {
                 qa_status: statusText,
                 updated_at: new Date().toISOString()
               }).ilike('subgrid', normSg.replace(/\s+/g, '_'))
-            ).catch(() => {});
-          } catch (_) {}
+            ).catch(() => { });
+          } catch (_) { }
         }
       }
     });
@@ -7135,6 +7135,9 @@ export default function App() {
       setIsQaLocked(false);
     }
 
+    // Always clear single daily run mode when selecting masterlist subgrid
+    setSelectedDailyRunId(null);
+
     setSelectedSubgridFilter(prevSubgrid => {
       const isSameSubgrid = prevSubgrid === sg;
       const isSameDate = selectedDateFilter === dateStr;
@@ -7169,10 +7172,51 @@ export default function App() {
         setInspectorSubgrid(nextSubgrid);
         setHasSelectedPoint(Boolean(imgUrl || (def.lat && def.lng)));
 
+        const subgridDaily = dailyData.filter(d => (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim() === nextSubgrid);
+        const formattedSubgridData = (subgridDaily.length > 0 ? subgridDaily : dailyData).map(d => {
+          const isPub = d.publishToWebGIS === 'yes' || d.isSyncedWithSupabase === true;
+          return {
+            ...d,
+            isPublished: isPub,
+            status: isPub ? 'yes' : (d.publishToWebGIS || 'in process'),
+            opacity: isPub ? 1.0 : 0.7,
+            statusColor: isPub ? '#10b981' : '#f59e0b',
+            panoramas: (d.panoramas || []).map((p: any) => {
+              const fnClean = (p.filename || p.image_url || '').split('/').pop()?.toUpperCase().trim();
+              const isPtDefect = Boolean(
+                p.isDefect ||
+                p.is_defect ||
+                (fnClean && allKnownDefects.some((kd: any) => (kd.point_id || kd.filename || '').split('/').pop()?.toUpperCase().trim() === fnClean))
+              );
+              return {
+                ...p,
+                isPublished: isPub,
+                status: isPtDefect ? 'defect' : (isPub ? 'yes' : 'in process'),
+                isDefect: isPtDefect,
+                is_defect: isPtDefect,
+                color: isPtDefect ? '#ef4444' : (isPub ? '#10b981' : '#f59e0b'),
+                opacity: isPtDefect ? 1.0 : (isPub ? 1.0 : 0.7)
+              };
+            })
+          };
+        });
+
         const iframes = document.querySelectorAll('iframe');
         iframes.forEach(f => {
           try {
-            f.contentWindow?.postMessage({ type: 'FILTER_SUBGRID', subgrid: nextSubgrid, date: nextDate || '' }, '*');
+            f.contentWindow?.postMessage({
+              type: 'FILTER_SUBGRID',
+              subgrid: nextSubgrid,
+              date: nextDate || '',
+              isSingleRun: false,
+              runId: null
+            }, '*');
+            f.contentWindow?.postMessage({
+              type: 'SET_STAGED_DATA',
+              stagedItems: formattedSubgridData,
+              isSingleRun: false,
+              runId: null
+            }, '*');
             f.contentWindow?.postMessage({
               type: 'SET_PANORAMA',
               point: {
@@ -7200,10 +7244,33 @@ export default function App() {
           } catch (e) { }
         });
       } else {
+        const formattedAll = dailyData.map(d => {
+          const isPub = d.publishToWebGIS === 'yes' || d.isSyncedWithSupabase === true;
+          return {
+            ...d,
+            isPublished: isPub,
+            status: isPub ? 'yes' : (d.publishToWebGIS || 'in process'),
+            opacity: isPub ? 1.0 : 0.7,
+            statusColor: isPub ? '#10b981' : '#f59e0b'
+          };
+        });
+
         const iframes = document.querySelectorAll('iframe');
         iframes.forEach(f => {
           try {
-            f.contentWindow?.postMessage({ type: 'FILTER_SUBGRID', subgrid: '' }, '*');
+            f.contentWindow?.postMessage({
+              type: 'FILTER_SUBGRID',
+              subgrid: '',
+              date: '',
+              isSingleRun: false,
+              runId: null
+            }, '*');
+            f.contentWindow?.postMessage({
+              type: 'SET_STAGED_DATA',
+              stagedItems: formattedAll,
+              isSingleRun: false,
+              runId: null
+            }, '*');
           } catch (e) { }
         });
       }
@@ -7212,135 +7279,144 @@ export default function App() {
     });
   };
 
-    // Dedicated Handler: Select a single daily survey run
-    const handleSelectDailyRun = (daily: DailyTimeSeries) => {
-      const rowId = getItemId(daily);
+  // Dedicated Handler: Select a single daily survey run
+  const handleSelectDailyRun = (daily: DailyTimeSeries) => {
+    const rowId = getItemId(daily);
 
-      // Toggle off if already selected
-      if (selectedDailyRunId === rowId) {
-        setSelectedDailyRunId(null);
-        setSelectedSubgridFilter(null);
-        setSelectedDateFilter(null);
-
-        const iframes = document.querySelectorAll('iframe');
-        iframes.forEach(f => {
-          try {
-            f.contentWindow?.postMessage({ type: 'FILTER_SUBGRID', subgrid: '', date: '', isSingleRun: false }, '*');
-            const formattedAll = dailyData.map(d => {
-              const isPub = d.publishToWebGIS === 'yes' || d.isSyncedWithSupabase === true;
-              return {
-                ...d,
-                isPublished: isPub,
-                status: isPub ? 'yes' : (d.publishToWebGIS || 'in process'),
-                opacity: isPub ? 1.0 : 0.7,
-                statusColor: isPub ? '#10b981' : '#f59e0b'
-              };
-            });
-            f.contentWindow?.postMessage({
-              type: 'SET_STAGED_DATA',
-              stagedItems: formattedAll,
-              isSingleRun: false
-            }, '*');
-          } catch (e) { }
-        });
-        return;
-      }
-
-      // 1. Set specific Run ID and filters
-      setSelectedDailyRunId(rowId);
-      setSelectedSubgridFilter(daily.subgrid);
-      setSelectedDateFilter(daily.date || null);
-
-      const normSg = (extractSubgridName(daily.subgrid) || daily.subgrid || '').toUpperCase().trim();
-      const firstPan = daily.panoramas?.[0];
-      const fn = firstPan?.filename || daily.availableFilenames?.[0] || (daily as any)?.imageFilename || `${normSg}-0001.jpg`;
-      const lat = firstPan?.latitude ?? (firstPan as any)?.lat ?? (daily as any)?.points?.[0]?.lat ?? (SUBGRID_COORDINATES[normSg]?.[1] ?? 0);
-      const lng = firstPan?.longitude ?? (firstPan as any)?.lon ?? (firstPan as any)?.lng ?? (daily as any)?.points?.[0]?.lon ?? (SUBGRID_COORDINATES[normSg]?.[0] ?? 0);
-      const imgUrl = fn ? resolvePanoramaUrl(fn, projectSettings) : '';
-
-      setActivePanoramaFilename(fn);
-      setActivePanoramaUrl(imgUrl);
-      setInspectorCoords({ lat, lng });
-      setInspectorSubgrid(daily.subgrid);
-      setHasSelectedPoint(Boolean(imgUrl || (lat && lng)));
-
-      // 2. Transmit message restricting map display strictly to this single run
-      const isPub = daily.publishToWebGIS === 'yes' || daily.isSyncedWithSupabase === true;
-      const formattedItem = {
-        ...daily,
-        isPublished: isPub,
-        status: isPub ? 'yes' : (daily.publishToWebGIS || 'in process'),
-        opacity: isPub ? 1.0 : 0.7,
-        statusColor: isPub ? '#10b981' : '#f59e0b',
-        panoramas: (daily.panoramas || []).map((p: any) => {
-          const fnClean = (p.filename || p.image_url || '').split('/').pop()?.toUpperCase().trim();
-          const isPtDefect = Boolean(
-            p.isDefect ||
-            p.is_defect ||
-            (fnClean && allKnownDefects.some((d: any) => (d.point_id || d.filename || '').split('/').pop()?.toUpperCase().trim() === fnClean))
-          );
-          return {
-            ...p,
-            isPublished: isPub,
-            status: isPtDefect ? 'defect' : (isPub ? 'yes' : 'in process'),
-            isDefect: isPtDefect,
-            is_defect: isPtDefect,
-            color: isPtDefect ? '#ef4444' : (isPub ? '#10b981' : '#f59e0b'),
-            opacity: isPtDefect ? 1.0 : (isPub ? 1.0 : 0.7)
-          };
-        })
-      };
+    // Toggle off if already selected
+    if (selectedDailyRunId === rowId) {
+      setSelectedDailyRunId(null);
+      setSelectedSubgridFilter(null);
+      setSelectedDateFilter(null);
 
       const iframes = document.querySelectorAll('iframe');
       iframes.forEach(f => {
         try {
-          // Send single-run filter
-          f.contentWindow?.postMessage({
-            type: 'FILTER_SUBGRID',
-            subgrid: daily.subgrid,
-            date: daily.date || '',
-            runId: rowId,
-            isSingleRun: true
-          }, '*');
-
-          // Send ONLY this single run's formatted panoramas to the map
+          f.contentWindow?.postMessage({ type: 'FILTER_SUBGRID', subgrid: '', date: '', isSingleRun: false }, '*');
+          const formattedAll = dailyData.map(d => {
+            const isPub = d.publishToWebGIS === 'yes' || d.isSyncedWithSupabase === true;
+            return {
+              ...d,
+              isPublished: isPub,
+              status: isPub ? 'yes' : (d.publishToWebGIS || 'in process'),
+              opacity: isPub ? 1.0 : 0.7,
+              statusColor: isPub ? '#10b981' : '#f59e0b'
+            };
+          });
           f.contentWindow?.postMessage({
             type: 'SET_STAGED_DATA',
-            stagedItems: [formattedItem],
-            isSingleRun: true,
-            runId: rowId
-          }, '*');
-
-          // Send SET_PANORAMA to 360 viewer
-          f.contentWindow?.postMessage({
-            type: 'SET_PANORAMA',
-            point: {
-              filename: fn,
-              image_url: imgUrl,
-              subgrid: daily.subgrid,
-              lat,
-              lon: lng,
-              lng,
-              bearing: firstPan?.bearing ?? 0
-            }
-          }, '*');
-
-          // Select the initial node on map
-          f.contentWindow?.postMessage({
-            type: 'MAP_POINT_SELECTED',
-            point: {
-              filename: fn,
-              image_url: imgUrl,
-              subgrid: daily.subgrid,
-              lat,
-              lon: lng,
-              lng,
-              bearing: firstPan?.bearing ?? 0
-            }
+            stagedItems: formattedAll,
+            isSingleRun: false
           }, '*');
         } catch (e) { }
       });
+      return;
+    }
+
+    // 1. Set specific Run ID and filters
+    setSelectedDailyRunId(rowId);
+    setSelectedSubgridFilter(daily.subgrid);
+    setSelectedDateFilter(daily.date || null);
+
+    const normSg = (extractSubgridName(daily.subgrid) || daily.subgrid || '').toUpperCase().trim();
+    const firstPan = daily.panoramas?.[0];
+    const fn = firstPan?.filename || daily.availableFilenames?.[0] || (daily as any)?.imageFilename || `${normSg}-0001.jpg`;
+    const lat = firstPan?.latitude ?? (firstPan as any)?.lat ?? (daily as any)?.points?.[0]?.lat ?? (SUBGRID_COORDINATES[normSg]?.[1] ?? 0);
+    const lng = firstPan?.longitude ?? (firstPan as any)?.lon ?? (firstPan as any)?.lng ?? (daily as any)?.points?.[0]?.lon ?? (SUBGRID_COORDINATES[normSg]?.[0] ?? 0);
+    const imgUrl = fn ? resolvePanoramaUrl(fn, projectSettings) : '';
+
+    setActivePanoramaFilename(fn);
+    setActivePanoramaUrl(imgUrl);
+    setInspectorCoords({ lat, lng });
+    setInspectorSubgrid(daily.subgrid);
+    setHasSelectedPoint(Boolean(imgUrl || (lat && lng)));
+
+    // 2. Transmit message restricting map display strictly to this single run
+    const isPub = daily.publishToWebGIS === 'yes' || daily.isSyncedWithSupabase === true;
+    const pans = (daily.panoramas && daily.panoramas.length > 0) ? daily.panoramas : (daily.points || []);
+    const formattedItem = {
+      ...daily,
+      isPublished: isPub,
+      status: isPub ? 'yes' : (daily.publishToWebGIS || 'in process'),
+      opacity: isPub ? 1.0 : 0.7,
+      statusColor: isPub ? '#10b981' : '#f59e0b',
+      panoramas: pans.map((p: any, pIdx: number) => {
+        const fn = p.filename || p.image_url || daily.availableFilenames?.[pIdx] || `${normSg}-${String(pIdx + 1).padStart(4, '0')}.jpg`;
+        const fnClean = (fn || '').split('/').pop()?.toUpperCase().trim();
+        const isPtDefect = Boolean(
+          p.isDefect ||
+          p.is_defect ||
+          (fnClean && allKnownDefects.some((d: any) => (d.point_id || d.filename || '').split('/').pop()?.toUpperCase().trim() === fnClean))
+        );
+        return {
+          ...p,
+          filename: fn,
+          image_url: p.image_url || fn,
+          lat: p.lat ?? p.latitude ?? p.y,
+          lon: p.lon ?? p.longitude ?? p.lng ?? p.x,
+          latitude: p.latitude ?? p.lat ?? p.y,
+          longitude: p.longitude ?? p.lon ?? p.lng ?? p.x,
+          subgrid: daily.subgrid,
+          isPublished: isPub,
+          status: isPtDefect ? 'defect' : (isPub ? 'yes' : 'in process'),
+          isDefect: isPtDefect,
+          is_defect: isPtDefect,
+          color: isPtDefect ? '#ef4444' : (isPub ? '#10b981' : '#f59e0b'),
+          opacity: isPtDefect ? 1.0 : (isPub ? 1.0 : 0.7)
+        };
+      })
     };
+
+    const iframes = document.querySelectorAll('iframe');
+    iframes.forEach(f => {
+      try {
+        // Send single-run filter
+        f.contentWindow?.postMessage({
+          type: 'FILTER_SUBGRID',
+          subgrid: daily.subgrid,
+          date: daily.date || '',
+          runId: rowId,
+          isSingleRun: true
+        }, '*');
+
+        // Send ONLY this single run's formatted panoramas to the map
+        f.contentWindow?.postMessage({
+          type: 'SET_STAGED_DATA',
+          stagedItems: [formattedItem],
+          isSingleRun: true,
+          runId: rowId
+        }, '*');
+
+        // Send SET_PANORAMA to 360 viewer
+        f.contentWindow?.postMessage({
+          type: 'SET_PANORAMA',
+          point: {
+            filename: fn,
+            image_url: imgUrl,
+            subgrid: daily.subgrid,
+            lat,
+            lon: lng,
+            lng,
+            bearing: firstPan?.bearing ?? 0
+          }
+        }, '*');
+
+        // Select the initial node on map
+        f.contentWindow?.postMessage({
+          type: 'MAP_POINT_SELECTED',
+          point: {
+            filename: fn,
+            image_url: imgUrl,
+            subgrid: daily.subgrid,
+            lat,
+            lon: lng,
+            lng,
+            bearing: firstPan?.bearing ?? 0
+          }
+        }, '*');
+      } catch (e) { }
+    });
+  };
 
   // 1. Loading state during auth verification
   if (authLoading) {
@@ -7884,7 +7960,7 @@ export default function App() {
                                     currentRead.add(strId);
                                     currentRead.add(`notif-${strId}`);
                                     localStorage.setItem('app_read_notif_ids', JSON.stringify(Array.from(currentRead)));
-                                  } catch (_) {}
+                                  } catch (_) { }
                                   setNotifications(prev => prev.filter(n => String(n.id) !== strId));
                                 }}
                                 className="text-text-muted hover:text-rose-400 p-0.5 cursor-pointer opacity-80 hover:opacity-100 transition-opacity"
@@ -8375,36 +8451,75 @@ export default function App() {
 
                     {/* Derived active subgrid item details for clicked row */}
                     {(() => {
+                      const isDailySelected = Boolean(selectedDailyRunId);
                       const activeBatchLog = batchLogs.find(b =>
                         (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === (selectedSubgridFilter || '').toUpperCase().trim()
                       );
-                      const activeDailyLog = dailyData.find(d =>
-                        (d.subgrid || '').toUpperCase().trim() === (selectedSubgridFilter || '').toUpperCase().trim() &&
-                        (!selectedDateFilter || d.date === selectedDateFilter)
-                      ) || dailyData.find(d => (d.subgrid || '').toUpperCase().trim() === (selectedSubgridFilter || '').toUpperCase().trim());
+                      const activeDailyLog = selectedDailyRunId
+                        ? dailyData.find(d => getItemId(d) === selectedDailyRunId || d.id === selectedDailyRunId)
+                        : (selectedDateFilter
+                            ? dailyData.find(d =>
+                                (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim() === (selectedSubgridFilter || '').toUpperCase().trim() &&
+                                (d.date === selectedDateFilter || formatDisplayDate(d.date) === formatDisplayDate(selectedDateFilter))
+                              )
+                            : null);
 
-                      const getSubgridCoords = (subgrid?: string | null) => {
-                        const name = (subgrid || '').toUpperCase().trim();
-                        const matchDaily = dailyData.find(d => (extractSubgridName(d.subgrid) || '').toUpperCase().trim() === name);
-                        const matchBatch = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === name);
-                        const firstPan = matchDaily?.panoramas?.[0] || matchBatch?.panoramas?.[0];
-                        const lat = firstPan?.latitude ?? (firstPan as any)?.lat ?? (matchDaily as any)?.points?.[0]?.lat ?? (SUBGRID_COORDINATES[name]?.[1] ?? 0);
-                        const lng = firstPan?.longitude ?? (firstPan as any)?.lon ?? (firstPan as any)?.lng ?? (matchDaily as any)?.points?.[0]?.lon ?? (SUBGRID_COORDINATES[name]?.[0] ?? 0);
+                      const getSubgridCoords = () => {
+                        const firstPan = activeDailyLog?.panoramas?.[0] || (activeDailyLog as any)?.points?.[0] || activeBatchLog?.panoramas?.[0];
+                        const lat = firstPan?.latitude ?? (firstPan as any)?.lat ?? (SUBGRID_COORDINATES[selectedSubgridFilter || '']?.[1] ?? 0);
+                        const lng = firstPan?.longitude ?? (firstPan as any)?.lon ?? (firstPan as any)?.lng ?? (SUBGRID_COORDINATES[selectedSubgridFilter || '']?.[0] ?? 0);
                         return { lat, lng };
                       };
 
-                      const activeCoords = getSubgridCoords(selectedSubgridFilter);
-                      const activeKm = activeDailyLog?.kmProcessed ? activeDailyLog.kmProcessed.toFixed(1) : activeBatchLog?.kmProcessed ? activeBatchLog.kmProcessed.toFixed(1) : '0.0';
-                      const activeImages = activeDailyLog?.imagesProcessed || activeBatchLog?.images || 0;
-                      const activeDefects = (activeDailyLog?.imagesDefected ?? activeDailyLog?.defectCount) ?? activeBatchLog?.defects ?? 0;
-                      const activePic = activeDailyLog?.pic || activeBatchLog?.pic || '';
-                      const activeStatus = activeBatchLog?.status === 'Complete' || activeDailyLog?.publishToWebGIS === 'yes' ? 'Published to WebGIS' : 'In Progress';
+                      const activeCoords = getSubgridCoords();
+                      const activeKm = isDailySelected && activeDailyLog
+                        ? (activeDailyLog.kmProcessed?.toFixed(1) || '0.0')
+                        : (activeBatchLog?.kmProcessed ? activeBatchLog.kmProcessed.toFixed(1) : '0.0');
+                      const activeImages = isDailySelected && activeDailyLog
+                        ? (activeDailyLog.imagesProcessed || activeDailyLog.availableImagesCount || activeDailyLog.poiCount || 0)
+                        : (activeBatchLog?.images || getPOICount(activeBatchLog) || 0);
+                      const activeDefects = isDailySelected && activeDailyLog
+                        ? ((activeDailyLog.imagesDefected ?? activeDailyLog.defectCount) || 0)
+                        : (activeBatchLog?.defects || 0);
+                      const activePic = (isDailySelected && activeDailyLog ? activeDailyLog.pic : activeBatchLog?.pic) || 'Unassigned';
+                      
+                      const isPublished = isDailySelected && activeDailyLog
+                        ? (activeDailyLog.publishToWebGIS === 'yes' || activeDailyLog.isSyncedWithSupabase === true)
+                        : (activeBatchLog?.status === 'Complete' || activeBatchLog?.publishToWebGIS === 'yes');
+
+                      const activeStatusText = isDailySelected && activeDailyLog
+                        ? (activeDailyLog.publishToWebGIS === 'yes'
+                            ? 'Published to WebGIS'
+                            : (activeDailyLog.qaqcStatus || (activeDefects > 0 ? `QAQC Flagged (${activeDefects} Defects)` : 'In Progress (Staging)')))
+                        : (activeBatchLog?.status === 'Complete' ? 'Published to WebGIS' : 'In Progress (Staging)');
 
                       return selectedSubgridFilter ? (
                         <div className="absolute top-3 right-3 z-20 bg-card backdrop-blur-md border border-subtle rounded-xl p-3 text-xs text-text-base shadow-2xl max-w-xs space-y-1.5 animate-in fade-in zoom-in-95 duration-200">
                           <div className="flex items-center justify-between font-bold pb-1 border-b border-subtle">
-                            <span className="text-sky-400 font-mono text-xs">Subgrid ID: {selectedSubgridFilter} {selectedDateFilter ? `(${selectedDateFilter})` : ''}</span>
-                            <button onClick={() => toggleSubgridFilter(selectedSubgridFilter)} className="text-text-muted hover:text-text-base p-0.5 rounded cursor-pointer transition-colors" title="Close filter">✕</button>
+                            <span className="text-sky-400 font-mono text-xs">
+                              Subgrid ID: {selectedSubgridFilter} {isDailySelected && activeDailyLog ? `(${formatDisplayDate(activeDailyLog.date)})` : (selectedDateFilter ? `(${selectedDateFilter})` : '')}
+                            </span>
+                            <button
+                              onClick={() => {
+                                if (selectedDailyRunId) {
+                                  setSelectedDailyRunId(null);
+                                  setSelectedSubgridFilter(null);
+                                  setSelectedDateFilter(null);
+                                  const iframes = document.querySelectorAll('iframe');
+                                  iframes.forEach(f => {
+                                    try {
+                                      f.contentWindow?.postMessage({ type: 'FILTER_SUBGRID', subgrid: '', date: '', isSingleRun: false, runId: null }, '*');
+                                    } catch (_) { }
+                                  });
+                                } else if (selectedSubgridFilter) {
+                                  toggleSubgridFilter(selectedSubgridFilter);
+                                }
+                              }}
+                              className="text-text-muted hover:text-text-base p-0.5 rounded cursor-pointer transition-colors"
+                              title="Close filter"
+                            >
+                              ✕
+                            </button>
                           </div>
                           <div className="text-slate-300 font-mono text-[11px] flex justify-between gap-4"><span className="text-text-muted">Coordinates:</span> <span>{activeCoords.lat && activeCoords.lng ? `${activeCoords.lat.toFixed(4)}° N, ${activeCoords.lng.toFixed(4)}° E` : '—'}</span></div>
                           <div className="text-slate-300 text-[11px] flex justify-between gap-4"><span className="text-text-muted">Distance from start:</span> <span className="font-semibold text-text-base">{activeKm} km</span></div>
@@ -8425,16 +8540,29 @@ export default function App() {
                                   setInspectorSubgrid(selectedSubgridFilter);
                                 }
                               }}
-                              className="font-semibold text-amber-400 bg-amber-500/10 hover:bg-amber-500/25 px-2 py-0.5 rounded border border-amber-500/30 hover:border-amber-500/60 text-[10px] cursor-pointer transition-all flex items-center gap-1.5 group shadow-sm active:scale-95"
+                              className={`font-semibold px-2 py-0.5 rounded border text-[10px] cursor-pointer transition-all flex items-center gap-1.5 group shadow-sm active:scale-95 ${
+                                activeDefects > 0
+                                  ? 'text-amber-400 bg-amber-500/10 hover:bg-amber-500/25 border-amber-500/30 hover:border-amber-500/60'
+                                  : 'text-slate-400 bg-slate-500/10 border-slate-500/20'
+                              }`}
                               title="Click to filter & select defect data"
                             >
-                              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0"></span>
+                              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${activeDefects > 0 ? 'bg-amber-400' : 'bg-slate-400'}`}></span>
                               <span>{activeDefects} Flagged</span>
-                              <Filter size={10} className="text-amber-400/80 group-hover:text-amber-400 group-hover:scale-110 transition-transform shrink-0" />
+                              <Filter size={10} className="group-hover:scale-110 transition-transform shrink-0" />
                             </button>
                           </div>
                           <div className="text-slate-300 text-[11px] flex justify-between gap-4"><span className="text-text-muted">PIC:</span> <span className="font-semibold text-emerald-400">{activePic}</span></div>
-                          <div className="text-slate-300 text-[11px] flex justify-between items-center pt-1 border-t border-subtle"><span className="text-text-muted">Processing Status:</span> <span className="font-semibold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 text-[10px]">{activeStatus}</span></div>
+                          <div className="text-slate-300 text-[11px] flex justify-between items-center pt-1 border-t border-subtle">
+                            <span className="text-text-muted">Processing Status:</span>
+                            <span className={`font-semibold px-2 py-0.5 rounded border text-[10px] ${
+                              isPublished
+                                ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
+                                : 'text-amber-400 bg-amber-500/10 border-amber-500/20'
+                            }`}>
+                              {activeStatusText}
+                            </span>
+                          </div>
                         </div>
                       ) : null;
                     })()}
@@ -8444,10 +8572,14 @@ export default function App() {
                       refreshKey={mapRefreshKey}
                       onManualRefresh={handleRefreshMap}
                       selectedSubgridFilter={selectedSubgridFilter}
+                      selectedDailyRunId={selectedDailyRunId}
+                      selectedDateFilter={selectedDateFilter}
                       stagedItems={
                         selectedDailyRunId
                           ? dailyData.filter(d => getItemId(d) === selectedDailyRunId)
-                          : dailyData
+                          : (selectedSubgridFilter
+                              ? dailyData.filter(d => (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim() === (selectedSubgridFilter || '').toUpperCase().trim())
+                              : dailyData)
                       }
                       projectSettings={projectSettings}
                       defectsList={allKnownDefects}
