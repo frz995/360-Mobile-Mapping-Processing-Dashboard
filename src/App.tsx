@@ -3302,7 +3302,7 @@ const DataManagementPage = ({
                             <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Date</th>
                             <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Grid</th>
                             <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Subgrid</th>
-                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">POI</th>
+                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Frames</th>
                             <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Distance (km)</th>
                             <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Images</th>
                             <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Defects</th>
@@ -3315,7 +3315,7 @@ const DataManagementPage = ({
                             <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Date</th>
                             <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Grid</th>
                             <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Subgrid</th>
-                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">POI</th>
+                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Frames</th>
                             <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">KM Processed</th>
                             <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Images Processed</th>
                             <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Capture Equipment</th>
@@ -6683,6 +6683,13 @@ export default function App() {
   const [isQAQCRunnerModalOpen, setIsQAQCRunnerModalOpen] = useState<boolean>(false);
   const [isDefectsGalleryOpen, setIsDefectsGalleryOpen] = useState<boolean>(false);
   const [selectedDefectSubgrid, setSelectedDefectSubgrid] = useState<string>('');
+  const [defectGalleryContext, setDefectGalleryContext] = useState<{
+    mode: 'master' | 'daily';
+    subgrid: string;
+    surveyDate?: string;
+    totalPoi?: number;
+    batchFilenames?: string[];
+  } | null>(null);
 
   const getStationsForSubgrid = (targetSubgrid: string, runId?: string | null) => {
     const cleanSg = (extractSubgridName(targetSubgrid) || targetSubgrid || '').toUpperCase().trim();
@@ -8533,11 +8540,11 @@ export default function App() {
                       const activeDailyLog = selectedDailyRunId
                         ? dailyData.find(d => getItemId(d) === selectedDailyRunId || d.id === selectedDailyRunId)
                         : (selectedDateFilter
-                            ? dailyData.find(d =>
-                                (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim() === (selectedSubgridFilter || '').toUpperCase().trim() &&
-                                (d.date === selectedDateFilter || formatDisplayDate(d.date) === formatDisplayDate(selectedDateFilter))
-                              )
-                            : null);
+                          ? dailyData.find(d =>
+                            (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim() === (selectedSubgridFilter || '').toUpperCase().trim() &&
+                            (d.date === selectedDateFilter || formatDisplayDate(d.date) === formatDisplayDate(selectedDateFilter))
+                          )
+                          : null);
 
                       const getSubgridCoords = () => {
                         const firstPan = activeDailyLog?.panoramas?.[0] || (activeDailyLog as any)?.points?.[0] || activeBatchLog?.panoramas?.[0];
@@ -8557,15 +8564,15 @@ export default function App() {
                         ? ((activeDailyLog.imagesDefected ?? activeDailyLog.defectCount) || 0)
                         : (activeBatchLog?.defects || 0);
                       const activePic = (isDailySelected && activeDailyLog ? activeDailyLog.pic : activeBatchLog?.pic) || 'Unassigned';
-                      
+
                       const isPublished = isDailySelected && activeDailyLog
                         ? (activeDailyLog.publishToWebGIS === 'yes' || activeDailyLog.isSyncedWithSupabase === true)
                         : (activeBatchLog?.status === 'Complete' || activeBatchLog?.publishToWebGIS === 'yes');
 
                       const activeStatusText = isDailySelected && activeDailyLog
                         ? (activeDailyLog.publishToWebGIS === 'yes'
-                            ? 'Published to WebGIS'
-                            : (activeDailyLog.qaqcStatus || (activeDefects > 0 ? `QAQC Flagged (${activeDefects} Defects)` : 'In Progress (Staging)')))
+                          ? 'Published to WebGIS'
+                          : (activeDailyLog.qaqcStatus || (activeDefects > 0 ? `QAQC Flagged (${activeDefects} Defects)` : 'In Progress (Staging)')))
                         : (activeBatchLog?.status === 'Complete' ? 'Published to WebGIS' : 'In Progress (Staging)');
 
                       return selectedSubgridFilter ? (
@@ -8615,11 +8622,10 @@ export default function App() {
                                   setInspectorSubgrid(selectedSubgridFilter);
                                 }
                               }}
-                              className={`font-semibold px-2 py-0.5 rounded border text-[10px] cursor-pointer transition-all flex items-center gap-1.5 group shadow-sm active:scale-95 ${
-                                activeDefects > 0
+                              className={`font-semibold px-2 py-0.5 rounded border text-[10px] cursor-pointer transition-all flex items-center gap-1.5 group shadow-sm active:scale-95 ${activeDefects > 0
                                   ? 'text-amber-400 bg-amber-500/10 hover:bg-amber-500/25 border-amber-500/30 hover:border-amber-500/60'
                                   : 'text-slate-400 bg-slate-500/10 border-slate-500/20'
-                              }`}
+                                }`}
                               title="Click to filter & select defect data"
                             >
                               <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${activeDefects > 0 ? 'bg-amber-400' : 'bg-slate-400'}`}></span>
@@ -8630,11 +8636,10 @@ export default function App() {
                           <div className="text-slate-300 text-[11px] flex justify-between gap-4"><span className="text-text-muted">PIC:</span> <span className="font-semibold text-emerald-400">{activePic}</span></div>
                           <div className="text-slate-300 text-[11px] flex justify-between items-center pt-1 border-t border-subtle">
                             <span className="text-text-muted">Processing Status:</span>
-                            <span className={`font-semibold px-2 py-0.5 rounded border text-[10px] ${
-                              isPublished
+                            <span className={`font-semibold px-2 py-0.5 rounded border text-[10px] ${isPublished
                                 ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
                                 : 'text-amber-400 bg-amber-500/10 border-amber-500/20'
-                            }`}>
+                              }`}>
                               {activeStatusText}
                             </span>
                           </div>
@@ -8653,8 +8658,8 @@ export default function App() {
                         selectedDailyRunId
                           ? dailyData.filter(d => getItemId(d) === selectedDailyRunId)
                           : (selectedSubgridFilter
-                              ? dailyData.filter(d => (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim() === (selectedSubgridFilter || '').toUpperCase().trim())
-                              : dailyData)
+                            ? dailyData.filter(d => (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim() === (selectedSubgridFilter || '').toUpperCase().trim())
+                            : dailyData)
                       }
                       projectSettings={projectSettings}
                       defectsList={allKnownDefects}
@@ -8797,7 +8802,7 @@ export default function App() {
                               <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-text-muted whitespace-nowrap">Batch ID</th>
                               <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-text-muted whitespace-nowrap">Grid</th>
                               <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-text-muted whitespace-nowrap">Subgrid</th>
-                              <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-text-muted whitespace-nowrap">POI</th>
+                              <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-text-muted whitespace-nowrap">Frames</th>
                               <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-text-muted whitespace-nowrap">Distance</th>
                               <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-text-muted whitespace-nowrap">Images</th>
                               <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-text-muted whitespace-nowrap">Defects</th>
@@ -8953,10 +8958,15 @@ export default function App() {
                                             onClick={(e) => {
                                               e.stopPropagation();
                                               setSelectedDefectSubgrid(batchSubgrid);
+                                              setDefectGalleryContext({
+                                                mode: 'master',
+                                                subgrid: batchSubgrid,
+                                                totalPoi: (typeof log.poiCount === 'number' && log.poiCount > 0) ? log.poiCount : (log.images || 0)
+                                              });
                                               setIsDefectsGalleryOpen(true);
                                             }}
                                             className="text-amber-400 hover:text-amber-300 font-semibold hover:underline cursor-pointer text-[11px] tabular-nums transition-colors"
-                                            title="Click to open QA/QC Defect Review Gallery"
+                                            title="Click to open Masterlist QA/QC Defect Review Gallery"
                                           >
                                             {dCount}
                                           </button>
@@ -9140,10 +9150,18 @@ export default function App() {
                                             onClick={(e) => {
                                               e.stopPropagation();
                                               setSelectedDefectSubgrid(dailySubgrid);
+                                              const dailyPanos = log.panoramas || [];
+                                              setDefectGalleryContext({
+                                                mode: 'daily',
+                                                subgrid: dailySubgrid,
+                                                surveyDate: log.date || ((log as any).created_at ? new Date((log as any).created_at).toLocaleDateString() : undefined),
+                                                totalPoi: log.poiCount || dailyPanos.length || getImagesProcessedCount(log),
+                                                batchFilenames: dailyPanos.map((p: any) => p.filename || p.id).filter(Boolean)
+                                              });
                                               setIsDefectsGalleryOpen(true);
                                             }}
                                             className="text-amber-400 hover:text-amber-300 font-semibold hover:underline cursor-pointer text-[11px] tabular-nums transition-colors"
-                                            title="Click to open QA/QC Defect Review Gallery"
+                                            title="Click to open Daily QA/QC Defect Review Gallery"
                                           >
                                             {defectCount}
                                           </button>
@@ -10088,49 +10106,57 @@ export default function App() {
           isDefectsGalleryOpen && (
             <DefectsGalleryModal
               isOpen={isDefectsGalleryOpen}
-              subgrid={selectedDefectSubgrid}
+              subgrid={defectGalleryContext?.subgrid || selectedDefectSubgrid}
+              mode={defectGalleryContext?.mode || 'master'}
+              surveyDate={defectGalleryContext?.surveyDate}
+              batchFilenames={defectGalleryContext?.batchFilenames}
+              totalPoi={defectGalleryContext?.totalPoi}
               projectSettings={projectSettings}
               activeUserName={activeAuthUserName || (authSession?.user?.email ? authSession.user.email.split('@')[0] : '') || 'Operator'}
-              onClose={() => setIsDefectsGalleryOpen(false)}
-              onJumpTo360={(target) => {
+              fallbackDefects={allKnownDefects}
+              onClose={() => {
                 setIsDefectsGalleryOpen(false);
-                if (target.imageUrl) {
-                  setActivePanoramaUrl(target.imageUrl);
-                }
-                if (target.pointId) {
-                  setActivePanoramaFilename(target.pointId);
-                  setHasSelectedPoint(true);
-                }
-                if (target.lat && target.lng) {
-                  setInspectorCoords({ lat: target.lat, lng: target.lng });
-                }
-                if (selectedDefectSubgrid) {
-                  setInspectorSubgrid(selectedDefectSubgrid);
-                }
-                if (target.bearing !== undefined) {
-                  setPanoramaTelemetry(prev => ({ ...prev, yaw: target.bearing || 0 }));
-                }
-                setFocusedSection('qa');
-                setTimeout(() => {
-                  setFocusedSection(null);
-                }, 1500);
+                setDefectGalleryContext(null);
               }}
-              onDefectResolved={(_pointId, remainingActiveCount) => {
-                const targetSg = selectedDefectSubgrid.toUpperCase().trim();
-                if (targetSg) {
-                  setDailyData(prev => prev.map(d => {
-                    const dSg = (extractSubgridName(d.subgrid) || '').toUpperCase().trim();
-                    return dSg === targetSg ? { ...d, defectCount: remainingActiveCount, imagesDefected: remainingActiveCount } : d;
-                  }));
-                  setBatchLogs(prev => prev.map(b => {
-                    const bSg = (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim();
-                    return bSg === targetSg ? { ...b, defects: remainingActiveCount } : b;
-                  }));
-                }
-              }}
-            />
-          )
-        }
+                onJumpTo360={(target) => {
+                  setIsDefectsGalleryOpen(false);
+                  if (target.imageUrl) {
+                    setActivePanoramaUrl(target.imageUrl);
+                  }
+                  if (target.pointId) {
+                    setActivePanoramaFilename(target.pointId);
+                    setHasSelectedPoint(true);
+                  }
+                  if (target.lat && target.lng) {
+                    setInspectorCoords({ lat: target.lat, lng: target.lng });
+                  }
+                  if (selectedDefectSubgrid) {
+                    setInspectorSubgrid(selectedDefectSubgrid);
+                  }
+                  if (target.bearing !== undefined) {
+                    setPanoramaTelemetry(prev => ({ ...prev, yaw: target.bearing || 0 }));
+                  }
+                  setFocusedSection('qa');
+                  setTimeout(() => {
+                    setFocusedSection(null);
+                  }, 1500);
+                }}
+                onDefectResolved={(_pointId, remainingActiveCount) => {
+                  const targetSg = selectedDefectSubgrid.toUpperCase().trim();
+                  if (targetSg) {
+                    setDailyData(prev => prev.map(d => {
+                      const dSg = (extractSubgridName(d.subgrid) || '').toUpperCase().trim();
+                      return dSg === targetSg ? { ...d, defectCount: remainingActiveCount, imagesDefected: remainingActiveCount } : d;
+                    }));
+                    setBatchLogs(prev => prev.map(b => {
+                      const bSg = (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim();
+                      return bSg === targetSg ? { ...b, defects: remainingActiveCount } : b;
+                    }));
+                  }
+                }}
+              />
+            )
+          }
 
         {/* QC Audit Modal */}
         {

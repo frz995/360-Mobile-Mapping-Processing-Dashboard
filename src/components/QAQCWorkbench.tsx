@@ -1717,7 +1717,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                           <>
                             <span className="text-text-muted/40">•</span>
                             <span className="text-text-muted font-mono text-[11px]">
-                              {item.poiCount} POI
+                              {item.poiCount} Frames
                             </span>
                           </>
                         )}
@@ -1738,12 +1738,12 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                               <span className="text-amber-400 font-semibold">{item.frameCount.toLocaleString()}</span>
                               <span className="text-text-muted/50">/</span>
                               <span className="text-text-base font-semibold">{item.poiCount.toLocaleString()}</span>
-                              <span className="text-text-muted text-[10px] ml-0.5">POI</span>
+                              <span className="text-text-muted text-[10px] ml-0.5">Frames</span>
                             </>
                           ) : (
                             <>
                               <span className="text-text-base font-semibold">{item.frameCount.toLocaleString()}</span>
-                              <span className="text-text-muted text-[10px] ml-0.5">POI</span>
+                              <span className="text-text-muted text-[10px] ml-0.5">Frames</span>
                             </>
                           )
                         ) : (
