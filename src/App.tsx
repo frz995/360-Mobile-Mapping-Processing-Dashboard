@@ -7336,6 +7336,8 @@ export default function App() {
     const pans = (daily.panoramas && daily.panoramas.length > 0) ? daily.panoramas : (daily.points || []);
     const formattedItem = {
       ...daily,
+      id: rowId,
+      runId: rowId,
       isPublished: isPub,
       status: isPub ? 'yes' : (daily.publishToWebGIS || 'in process'),
       opacity: isPub ? 1.0 : 0.7,
@@ -7350,6 +7352,7 @@ export default function App() {
         );
         return {
           ...p,
+          runId: rowId,
           filename: fn,
           image_url: p.image_url || fn,
           lat: p.lat ?? p.latitude ?? p.y,
