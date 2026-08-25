@@ -1877,33 +1877,79 @@ export async function fetchQADefectsForSubgrid(subgrid: string): Promise<QADefec
     const cleanSub = (subgrid || '').toUpperCase().trim();
     if (!cleanSub) return [];
 
-    const { data, error } = await supabase
-      .from('qa_defects')
-      .select('*')
-      .eq('subgrid', cleanSub)
-      .order('frame_index', { ascending: true });
+    const defectMap = new Map<string, QADefectRecord>();
 
-    if (error) {
-      console.warn('fetchQADefectsForSubgrid notice:', error.message);
-      return [];
-    }
+    // 1. Fetch from dedicated qa_defects table
+    try {
+      const { data: qaRows, error } = await supabase
+        .from('qa_defects')
+        .select('*')
+        .eq('subgrid', cleanSub)
+        .order('frame_index', { ascending: true });
 
-    return (data || []).map((row: any) => ({
-      id: row.id,
-      subgrid: row.subgrid,
-      point_id: row.point_id,
-      frame_index: row.frame_index,
-      defect_flags: typeof row.defect_flags === 'object' ? row.defect_flags : {},
-      defect_type: row.defect_type,
-      pic: row.pic,
-      image_url: row.image_url,
-      lat: row.lat,
-      lng: row.lng,
-      bearing: row.bearing,
-      is_resolved: Boolean(row.is_resolved),
-      resolved_at: row.resolved_at,
-      created_at: row.created_at
-    }));
+      if (!error && Array.isArray(qaRows)) {
+        qaRows.forEach((row: any) => {
+          const ptId = (row.point_id || row.filename || row.item_key || '').replace(/^.*[\\\/]/, '');
+          if (!ptId) return;
+          defectMap.set(ptId.toUpperCase(), {
+            id: row.id,
+            subgrid: row.subgrid || cleanSub,
+            point_id: ptId,
+            frame_index: row.frame_index || 1,
+            defect_flags: typeof row.defect_flags === 'object' ? row.defect_flags : {},
+            defect_type: row.defect_type || 'QA Defect',
+            pic: row.pic || 'Inspector',
+            image_url: row.image_url,
+            lat: row.lat,
+            lng: row.lng,
+            bearing: row.bearing,
+            is_resolved: Boolean(row.is_resolved),
+            resolved_at: row.resolved_at,
+            created_at: row.created_at
+          });
+        });
+      }
+    } catch (_) { }
+
+    // 2. Also fetch from qaqc_audit_runs where defects_list JSON is stored
+    try {
+      const { data: auditRows, error: auditError } = await supabase
+        .from('qaqc_audit_runs')
+        .select('*')
+        .ilike('subgrid', `%${cleanSub}%`)
+        .order('created_at', { ascending: false });
+
+      if (!auditError && Array.isArray(auditRows)) {
+        auditRows.forEach((audit: any) => {
+          if (Array.isArray(audit.defects_list)) {
+            audit.defects_list.forEach((d: any, idx: number) => {
+              const ptId = (d.point_id || d.filename || d.imageFilename || `${cleanSub}-${String(idx + 1).padStart(4, '0')}.jpg`).replace(/^.*[\\\/]/, '');
+              const key = ptId.toUpperCase();
+              if (!defectMap.has(key)) {
+                defectMap.set(key, {
+                  id: d.id || `audit-${audit.id}-${idx}`,
+                  subgrid: d.subgrid || cleanSub,
+                  point_id: ptId,
+                  frame_index: d.frame_index || (idx + 1),
+                  defect_flags: typeof d.defect_flags === 'object' ? d.defect_flags : { blur: d.defect_type?.toLowerCase().includes('blur'), obstruction: d.defect_type?.toLowerCase().includes('obstruction'), badGps: d.defect_type?.toLowerCase().includes('gps') },
+                  defect_type: d.defect_type || 'QA Defect',
+                  pic: d.pic || audit.pic || 'Inspector',
+                  image_url: d.image_url,
+                  lat: d.lat ?? d.latitude,
+                  lng: d.lng ?? d.lon ?? d.longitude,
+                  bearing: d.bearing,
+                  is_resolved: Boolean(d.is_resolved),
+                  resolved_at: d.resolved_at,
+                  created_at: d.created_at || audit.created_at
+                });
+              }
+            });
+          }
+        });
+      }
+    } catch (_) { }
+
+    return Array.from(defectMap.values());
   } catch (err) {
     console.warn('fetchQADefectsForSubgrid catch:', err);
     return [];
