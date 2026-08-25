@@ -54,6 +54,7 @@ import * as shapefile from 'shapefile';
 import * as toGeoJSON from '@tmcw/togeojson';
 import './themes.css';
 import { SystemShowcase } from './components/SystemShowcase';
+import { DailyHandoverModal } from './components/DailyHandoverModal';
 // ==============================================
 // Data Interfaces & Types
 // ==============================================
@@ -4964,6 +4965,13 @@ export default function App() {
   const [pendingModule, setPendingModule] = useState<string | null>(null);
   const [selectedDailyRunId, setSelectedDailyRunId] = useState<string | null>(null);
 
+  // Daily Operations Handover & Briefing Modal State
+  const [isHandoverModalOpen, setIsHandoverModalOpen] = useState<boolean>(() => {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const dismissedDate = localStorage.getItem('geosphere360_handover_dismissed_date');
+    return dismissedDate !== todayStr;
+  });
+
   // 1. Core Dynamic States
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>([]);
@@ -5599,15 +5607,19 @@ export default function App() {
 
   // Dynamic layer catalog managed via live React state
 
-  // Calculated totals: count only verified, published frames & distance for executive KPIs
-  const totalImages = dailyData.reduce((sum, d) => {
-    const isPub = d.publishToWebGIS === 'yes' || d.isSyncedWithSupabase === true;
-    return isPub ? sum + getImagesProcessedCount(d) : sum;
-  }, 0);
-  const totalKm = dailyData.reduce((sum, d) => {
-    const isPub = d.publishToWebGIS === 'yes' || d.isSyncedWithSupabase === true;
-    return isPub ? sum + (d.kmProcessed || 0) : sum;
-  }, 0);
+  // Calculated totals: dynamically compute total frames & trajectory distance from live survey datasets
+  const totalImages = useMemo(() => {
+    const dailyTotal = dailyData.reduce((sum, d) => sum + getImagesProcessedCount(d), 0);
+    if (dailyTotal > 0) return dailyTotal;
+    return batchLogs.reduce((sum, b) => sum + getImagesProcessedCount(b), 0);
+  }, [dailyData, batchLogs]);
+
+  const totalKm = useMemo(() => {
+    const dailyTotal = dailyData.reduce((sum, d) => sum + (Number(d.kmProcessed) || 0), 0);
+    if (dailyTotal > 0) return Math.round(dailyTotal * 100) / 100;
+    const batchTotal = batchLogs.reduce((sum, b) => sum + (Number(b.kmProcessed) || 0), 0);
+    return Math.round(batchTotal * 100) / 100;
+  }, [dailyData, batchLogs]);
 
   // Automated QA/QC Worker Hook
   const {
@@ -5761,7 +5773,8 @@ export default function App() {
     : '100.0';
   const targetKm = Number(projectSettings?.targetKm) || (totalKm > 0 ? totalKm : 0);
   const progressPercent = targetKm > 0 ? Math.min(100, Math.round((totalKm / targetKm) * 100)) : 0;
-  const activeJobsCount = batchLogs.filter(b => b.status === 'Ongoing').length + dailyData.filter(d => (d as any).status === 'Ongoing' || (d as any).status === 'In Progress').length;
+  const ongoingMasterlistCount = batchLogs.filter(b => b.status === 'Ongoing').length;
+  const stagedDailyBatchesCount = dailyData.filter(d => (d.publishToWebGIS || (d as any).publishToUSVPRO) !== 'yes').length;
 
   const [mapRefreshKey, setMapRefreshKey] = useState<number>(Date.now());
   const handleRefreshMap = () => {
@@ -6786,13 +6799,18 @@ export default function App() {
           const key = fn.toLowerCase().trim();
           if (!seenFilenames.has(key)) {
             seenFilenames.add(key);
+            const baseCoords = SUBGRID_COORDINATES[cleanSg];
+            const pLat = Number(p.latitude ?? (p as any).lat ?? (p as any).y);
+            const pLon = Number(p.longitude ?? (p as any).lon ?? (p as any).lng ?? (p as any).x);
+            const lat = !isNaN(pLat) && pLat !== 0 ? pLat : (baseCoords ? baseCoords[1] : 0);
+            const lng = !isNaN(pLon) && pLon !== 0 ? pLon : (baseCoords ? baseCoords[0] : 0);
             collectedStations.push({
               filename: p.filename || fn,
               point_id: p.filename || (p as any).point_id || fn,
-              latitude: p.latitude ?? (p as any).lat ?? (p as any).y ?? 0,
-              longitude: p.longitude ?? (p as any).lon ?? (p as any).lng ?? (p as any).x ?? 0,
-              lat: p.latitude ?? (p as any).lat ?? (p as any).y ?? 0,
-              lng: p.longitude ?? (p as any).lon ?? (p as any).lng ?? (p as any).x ?? 0,
+              latitude: lat,
+              longitude: lng,
+              lat: lat,
+              lng: lng,
               bearing: p.bearing ?? p.heading ?? ((collectedStations.length * 15) % 360),
               image_url: resolvePanoramaUrl(p.filename || fn, projectSettings)
             });
@@ -6824,7 +6842,12 @@ export default function App() {
     }
 
     if (collectedStations.length > 0) {
-      return collectedStations;
+      const maxAllowed = matchBatch
+        ? getImagesProcessedCount(matchBatch)
+        : matchingDailies.reduce((sum, d) => sum + getImagesProcessedCount(d), 0);
+      return maxAllowed > 0 && collectedStations.length > maxAllowed
+        ? collectedStations.slice(0, maxAllowed)
+        : collectedStations;
     }
 
     // Fallback to matchBatch panoramas if dailyData had no valid panoramas
@@ -7813,6 +7836,15 @@ export default function App() {
         {/* Top Right Controls */}
         <div className={`flex items-center gap-1.5 sm:gap-3 text-text-muted relative shrink-0 transition-all duration-300 ${tourStep === 5 ? 'ring-2 ring-sky-400/90 shadow-[0_0_35px_rgba(56,189,248,0.4)] z-30 relative bg-app px-2 py-1 rounded-xl' : tourStep !== null ? 'opacity-30 blur-[1.5px] pointer-events-none' : ''
           }`}>
+          {/* DAILY OPERATIONS BRIEFING ICON */}
+          <button
+            onClick={() => setIsHandoverModalOpen(true)}
+            className="p-1.5 hover:text-sky-400 transition-colors cursor-pointer relative"
+            title="Daily Operations Briefing"
+          >
+            <Clock size={18} />
+          </button>
+
           {/* HELP & USER GUIDE ICON (Interactive Tour & Webmap Manual) */}
           <button
             onClick={() => {
@@ -8313,20 +8345,27 @@ export default function App() {
                     <span className="text-xs font-bold text-slate-300 uppercase tracking-tight">{t('activeJobs')}</span>
                     <Database size={15} className="text-sky-400 shrink-0" />
                   </div>
-                  <div className="my-1">
+                  <div className="my-1 flex items-baseline gap-2 flex-wrap">
                     {isDataLoading ? (
                       <div className="flex items-center gap-2 text-text-muted my-0.5">
                         <Loader2 size={16} className="animate-spin text-sky-400" />
                         <span className="text-sm font-medium">Syncing...</span>
                       </div>
                     ) : (
-                      <span className="text-2xl font-extrabold text-text-base tracking-tight">
-                        {activeJobsCount} {activeJobsCount === 1 ? 'Job' : 'Jobs'} In Progress
-                      </span>
+                      <>
+                        <span className="text-2xl font-extrabold text-text-base tracking-tight">
+                          {ongoingMasterlistCount} Ongoing {ongoingMasterlistCount === 1 ? 'Subgrid' : 'Subgrids'}
+                        </span>
+                        {stagedDailyBatchesCount > 0 && (
+                          <span className="text-xs font-medium text-text-muted">
+                            ({stagedDailyBatchesCount} Staged)
+                          </span>
+                        )}
+                      </>
                     )}
                   </div>
                   <div className="text-[10px] text-text-muted font-medium truncate">
-                    {activeJobsCount > 0 ? `Subgrid batch stitching in progress (${activeJobsCount} active)` : 'All processing runs completed'} &bull; Updated {lastUpdateDate}
+                    {ongoingMasterlistCount} Masterlist {ongoingMasterlistCount === 1 ? 'sector' : 'sectors'} in progress &bull; {stagedDailyBatchesCount} daily {stagedDailyBatchesCount === 1 ? 'pass' : 'passes'} pending
                   </div>
                 </div>
 
@@ -10172,6 +10211,38 @@ export default function App() {
             />
           )
         }
+
+        {/* Daily Handover & Operations Briefing Modal */}
+        <DailyHandoverModal
+          isOpen={isHandoverModalOpen}
+          onClose={() => setIsHandoverModalOpen(false)}
+          dailyData={dailyData}
+          batchLogs={batchLogs}
+          currentUser={authSession?.user?.user_metadata?.full_name || authSession?.user?.email?.split('@')[0] || 'Fariz Farhan'}
+          onSelectSubgrid={(subgridKey) => {
+            setSelectedSubgridFilter(subgridKey);
+            setInspectorSubgrid(subgridKey);
+          }}
+          onOpenQAQCWorkbench={(subgridKey) => {
+            if (subgridKey) {
+              setSelectedSubgridFilter(subgridKey);
+              setInspectorSubgrid(subgridKey);
+              localStorage.setItem('geosphere360_last_active_subgrid', subgridKey);
+            }
+            setCurrentPage('dashboard');
+            setIsQAQCRunnerModalOpen(true);
+            setIsHandoverModalOpen(false);
+          }}
+          onOpenDefectsGallery={(subgridKey) => {
+            if (subgridKey) setSelectedDefectSubgrid(subgridKey);
+            setIsDefectsGalleryOpen(true);
+            setIsHandoverModalOpen(false);
+          }}
+          onOpenBatchProcessing={() => {
+            setCurrentPage('data');
+            setIsHandoverModalOpen(false);
+          }}
+        />
 
       </div >
     </div >
