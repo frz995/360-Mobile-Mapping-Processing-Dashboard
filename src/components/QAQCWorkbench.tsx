@@ -707,9 +707,10 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
     if (!activeSg) return;
     const activeSgNorm = activeSg.toUpperCase().trim();
 
+    // Only use subgrid-scoped defects — effectiveDefectsList is already filtered to selectedSubgrid
     const allDefectsMerged = isRunning
       ? (liveDefectsList || [])
-      : [...(defectsList || []), ...(effectiveDefectsList || [])];
+      : (effectiveDefectsList || []);
     const cacheKey = `${activeSg}_${selectedRunId || 'default'}_${allDefectsMerged.length}`;
     lastLoadedSubgridRef.current = cacheKey;
 
@@ -842,7 +843,10 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
         }, '*');
       }
 
-      // 3. Broadcast discovered defect markers immediately for zero delay
+      // 3. Reset map defect layer, then broadcast only scoped defects
+      mapIframeRef.current.contentWindow.postMessage({
+        type: 'QAQC_DEFECTS_RESET'
+      }, '*');
       if (allDefectsMerged.length > 0) {
         mapIframeRef.current.contentWindow.postMessage({
           type: 'QAQC_DEFECTS_SYNC',
