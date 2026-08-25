@@ -1007,15 +1007,18 @@ const MapComponent = ({
   useEffect(() => {
     syncMapSettings();
     sendStagedData();
-    const t1 = setTimeout(() => { syncMapSettings(); sendStagedData(); }, 400);
-    const t2 = setTimeout(() => { syncMapSettings(); sendStagedData(); }, 1200);
-    const t3 = setTimeout(() => { syncMapSettings(); sendStagedData(); }, 2500);
-    return () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
-      clearTimeout(t3);
-    };
-  }, [syncMapSettings, sendStagedData, refreshKey]);
+    // Only send delayed retries when NOT in single-run mode (to avoid overwriting isolated batch display)
+    if (!selectedDailyRunId) {
+      const t1 = setTimeout(() => { syncMapSettings(); sendStagedData(); }, 400);
+      const t2 = setTimeout(() => { syncMapSettings(); sendStagedData(); }, 1200);
+      const t3 = setTimeout(() => { syncMapSettings(); sendStagedData(); }, 2500);
+      return () => {
+        clearTimeout(t1);
+        clearTimeout(t2);
+        clearTimeout(t3);
+      };
+    }
+  }, [syncMapSettings, sendStagedData, refreshKey, selectedDailyRunId]);
 
   return (
     <div className="relative w-full h-full overflow-hidden bg-app">
