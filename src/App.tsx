@@ -607,7 +607,8 @@ export function reconcileBatchLogs(dailyItems: DailyTimeSeries[], baseBatches?: 
       if (d.date) existing.date = d.date;
       if (d.captureEquipment) existing.captureEquipment = d.captureEquipment;
       if (d.panoramas && d.panoramas.length > 0) {
-        existing.panoramas.push(...d.panoramas);
+        if (!existing.panoramas) existing.panoramas = [];
+        existing.panoramas = [...existing.panoramas, ...d.panoramas];
       }
       if (d.availableFilenames && Array.isArray(d.availableFilenames)) {
         if (!existing.availableFilenames) existing.availableFilenames = [];
@@ -637,7 +638,7 @@ export function reconcileBatchLogs(dailyItems: DailyTimeSeries[], baseBatches?: 
         defects: defCount,
         adminPic: designatedAdminPic,
         captureEquipment: d.captureEquipment || 'MMS',
-        panoramas: d.panoramas || [],
+        panoramas: d.panoramas ? [...d.panoramas] : [],
         availableFilenames: initialAvailFiles.length > 0 ? initialAvailFiles : undefined,
         runsCount: 1,
         publishedRunsCount: isPublished ? 1 : 0
@@ -818,7 +819,7 @@ const MapComponent = ({
       });
     }
 
-    return stagedItems.map(item => {
+    return stagedItems.map((item, itemIdx) => {
       const isPub = item.publishToWebGIS === 'yes' || item.publishToUSVPRO === 'yes' || Boolean(item.isSyncedWithSupabase) || item.isFromSupabase === true;
       const statusVal = isPub ? 'yes' : (item.publishToWebGIS || item.publishToUSVPRO || 'in process');
       const op = isPub ? 1.0 : 0.7;
@@ -826,9 +827,10 @@ const MapComponent = ({
         ? '#10b981'
         : (statusVal === 'need to recheck' || statusVal === 'no' ? '#ef4444' : '#f59e0b');
 
+      const itemRunId = item.runId || item.id || getItemId(item) || `batch-${itemIdx}`;
       const pans = item.panoramas || item.points || [];
 
-      const formattedPans = pans.map((p: any) => {
+      const formattedPans = pans.map((p: any, pIdx: number) => {
         const fnClean = (p.filename || p.image_url || '').split('/').pop()?.toUpperCase().trim();
         const ptClean = (p.point_id || p.pointId || '').toUpperCase().trim();
         const isPointDefect = Boolean(
@@ -847,6 +849,8 @@ const MapComponent = ({
 
         return {
           ...p,
+          id: p.id || `pt-${itemRunId}-${pIdx}`,
+          runId: itemRunId,
           filename: p.filename || p.image_url,
           image_url: p.image_url || p.filename,
           subgrid: p.subgrid || item.subgrid,
@@ -879,6 +883,9 @@ const MapComponent = ({
       });
 
       return {
+        ...item,
+        id: itemRunId,
+        runId: itemRunId,
         subgrid: item.subgrid,
         grid: item.grid,
         status: statusVal,
@@ -904,6 +911,30 @@ const MapComponent = ({
     if (iframeRef.current && iframeRef.current.contentWindow && formattedStagedItems.length > 0) {
       try {
         const isSingle = Boolean(selectedDailyRunId);
+        const allPoints = formattedStagedItems.flatMap(it => it.panoramas || it.points || []);
+        const viewMode = selectedDailyRunId ? 'SINGLE_RUN' : (selectedSubgridFilter ? 'SUBGRID' : 'ALL');
+
+        console.log('[sendStagedData debug breakdown]', {
+          viewMode,
+          totalPoints: allPoints.length,
+          itemsBreakdown: formattedStagedItems.map(it => ({
+            id: it.id,
+            runId: it.runId,
+            subgrid: it.subgrid,
+            count: (it.panoramas || it.points || []).length
+          }))
+        });
+
+        // 0. Send Unified SET_MAP_VIEW_STATE
+        iframeRef.current.contentWindow.postMessage({
+          type: 'SET_MAP_VIEW_STATE',
+          viewMode,
+          subgrid: selectedSubgridFilter || '',
+          runId: selectedDailyRunId || null,
+          date: selectedDateFilter || null,
+          points: allPoints
+        }, '*');
+
         // 1. Send SET_STAGED_DATA
         iframeRef.current.contentWindow.postMessage({
           type: 'SET_STAGED_DATA',
@@ -7207,6 +7238,15 @@ export default function App() {
         const iframes = document.querySelectorAll('iframe');
         iframes.forEach(f => {
           try {
+            const subgridPoints = formattedSubgridData.flatMap(d => d.panoramas || d.points || []);
+            f.contentWindow?.postMessage({
+              type: 'SET_MAP_VIEW_STATE',
+              viewMode: 'SUBGRID',
+              subgrid: nextSubgrid,
+              date: nextDate || '',
+              runId: null,
+              points: subgridPoints
+            }, '*');
             f.contentWindow?.postMessage({
               type: 'FILTER_SUBGRID',
               subgrid: nextSubgrid,
@@ -7261,6 +7301,15 @@ export default function App() {
         const iframes = document.querySelectorAll('iframe');
         iframes.forEach(f => {
           try {
+            const allPoints = dailyData.flatMap(d => (d.panoramas && d.panoramas.length > 0 ? d.panoramas : (d.points || [])));
+            f.contentWindow?.postMessage({
+              type: 'SET_MAP_VIEW_STATE',
+              viewMode: 'ALL',
+              subgrid: '',
+              date: '',
+              runId: null,
+              points: allPoints
+            }, '*');
             f.contentWindow?.postMessage({
               type: 'FILTER_SUBGRID',
               subgrid: '',
@@ -7295,6 +7344,15 @@ export default function App() {
       const iframes = document.querySelectorAll('iframe');
       iframes.forEach(f => {
         try {
+          const allPoints = dailyData.flatMap(d => (d.panoramas && d.panoramas.length > 0 ? d.panoramas : (d.points || [])));
+          f.contentWindow?.postMessage({
+            type: 'SET_MAP_VIEW_STATE',
+            viewMode: 'ALL',
+            subgrid: '',
+            date: '',
+            runId: null,
+            points: allPoints
+          }, '*');
           f.contentWindow?.postMessage({ type: 'FILTER_SUBGRID', subgrid: '', date: '', isSingleRun: false }, '*');
           const formattedAll = dailyData.map(d => {
             const isPub = d.publishToWebGIS === 'yes' || d.isSyncedWithSupabase === true;
@@ -7355,6 +7413,7 @@ export default function App() {
         );
         return {
           ...p,
+          id: p.id || `pt-${rowId}-${pIdx}`,
           runId: rowId,
           filename: fn,
           image_url: p.image_url || fn,
@@ -7376,6 +7435,16 @@ export default function App() {
     const iframes = document.querySelectorAll('iframe');
     iframes.forEach(f => {
       try {
+        // Send DIRECT single-payload view state to all map iframes (Zero point bleed)
+        f.contentWindow?.postMessage({
+          type: 'SET_MAP_VIEW_STATE',
+          viewMode: 'SINGLE_RUN',
+          subgrid: daily.subgrid,
+          runId: rowId,
+          date: daily.date || '',
+          points: formattedItem.panoramas
+        }, '*');
+
         // Send single-run filter
         f.contentWindow?.postMessage({
           type: 'FILTER_SUBGRID',
