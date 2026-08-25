@@ -449,6 +449,8 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
           const fn = g.imageFilenames[pIdx] || `${subgrid}-${String(pIdx + 1).padStart(4, '0')}.jpg`;
           const isAvail = verifiedFiles.length > 0 ? (verifiedFiles.includes(fn) || verifiedFiles.some(vf => vf.toLowerCase() === fn.toLowerCase())) : true;
           return {
+            id: `pub-pt-${runKey}-${pIdx}`,
+            runId: `sp-d-${runKey}`,
             filename: fn,
             latitude: pt.lat,
             longitude: pt.lon,
@@ -615,6 +617,8 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
               const fn = g.imageFilenames[pIdx] || `${sg}-${String(pIdx + 1).padStart(4, '0')}.jpg`;
               const isAvail = verifiedFiles.length > 0 ? (verifiedFiles.includes(fn) || verifiedFiles.some((vf: string) => vf.toLowerCase() === fn.toLowerCase())) : false;
               return {
+                id: `staging-pt-${runKey}-${pIdx}`,
+                runId: `staging-d-${runKey}`,
                 filename: fn,
                 latitude: pt.lat,
                 longitude: pt.lon,
@@ -670,7 +674,7 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
         existing.runsCount += 1;
         if (d.panoramas && d.panoramas.length > 0) {
           if (!existing.panoramas) existing.panoramas = [];
-          existing.panoramas.push(...d.panoramas);
+          existing.panoramas = [...existing.panoramas, ...d.panoramas];
         }
         if (d.availableFilenames && Array.isArray(d.availableFilenames)) {
           if (!existing.availableFilenames) existing.availableFilenames = [];
@@ -701,7 +705,7 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
           qaqcStatus: d.qaqcStatus,
           adminPic: adminPic,
           captureEquipment: d.captureEquipment || 'MMS',
-          panoramas: d.panoramas || [],
+          panoramas: d.panoramas ? [...d.panoramas] : [],
           availableFilenames: initialAvailFiles,
           runsCount: 1,
           publishedRunsCount: isPublished ? 1 : 0
