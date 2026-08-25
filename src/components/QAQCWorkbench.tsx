@@ -707,7 +707,9 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
     if (!activeSg) return;
     const activeSgNorm = activeSg.toUpperCase().trim();
 
-    const allDefectsMerged = [...(defectsList || []), ...(effectiveDefectsList || [])];
+    const allDefectsMerged = isRunning
+      ? (liveDefectsList || [])
+      : [...(defectsList || []), ...(effectiveDefectsList || [])];
     const cacheKey = `${activeSg}_${selectedRunId || 'default'}_${allDefectsMerged.length}`;
     lastLoadedSubgridRef.current = cacheKey;
 
@@ -721,11 +723,9 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
 
     const formatTrackItem = (item: any) => {
       const isPub = item.publishToWebGIS === 'yes' || item.publishToUSVPRO === 'yes' || Boolean(item.isSyncedWithSupabase) || item.isFromSupabase === true;
-      const statusVal = isPub ? 'yes' : (item.publishToWebGIS || item.publishToUSVPRO || 'in process');
+      const statusVal = isPub ? 'yes' : 'in process';
       const op = isPub ? 1.0 : 0.7;
-      const colorHex = isPub
-        ? '#10b981'
-        : (statusVal === 'need to recheck' || statusVal === 'no' ? '#ef4444' : '#f59e0b');
+      const colorHex = isPub ? '#10b981' : '#f59e0b';
 
       let pans = item.panoramas || item.points || [];
       if (pans.length === 0 && (item.poiCount || item.availableImagesCount)) {
@@ -746,9 +746,8 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
         const isPointDefect = Boolean(
           (fnClean && knownDefectFilenames.has(fnClean)) ||
           (ptClean && knownDefectFilenames.has(ptClean)) ||
-          p.isDefect ||
-          p.is_defect ||
-          p.defectType ||
+          p.isDefect === true ||
+          p.is_defect === true ||
           p.status === 'defect' ||
           p.qa_status === 'defect' ||
           (p.defect_flags && typeof p.defect_flags === 'object' && Object.values(p.defect_flags).some(Boolean))
@@ -1676,17 +1675,17 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                       <div className="flex items-center gap-2 flex-wrap text-[11px] text-text-muted">
                         {/* Publish Category */}
                         {item.isPublished ? (
-                          <span className="text-emerald-400 font-medium flex items-center gap-1">
+                          <span className="text-text-muted font-medium flex items-center gap-1">
                             <CheckCircle2 size={11} className="text-emerald-400 shrink-0" />
                             <span>{targetTab === 'masterlist' ? 'Complete' : 'Published'}</span>
                           </span>
                         ) : item.publishStatus === 'recheck' ? (
-                          <span className="text-amber-400 font-medium flex items-center gap-1">
+                          <span className="text-text-muted font-medium flex items-center gap-1">
                             <Clock size={11} className="text-amber-400 shrink-0" />
                             <span>Recheck</span>
                           </span>
                         ) : (
-                          <span className="text-amber-400 font-medium flex items-center gap-1">
+                          <span className="text-text-muted font-medium flex items-center gap-1">
                             <Clock size={11} className="text-amber-400 shrink-0" />
                             <span>{targetTab === 'masterlist' ? 'Ongoing' : 'Staging'}</span>
                           </span>
@@ -1697,13 +1696,13 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                         {/* QA Audit Status */}
                         {hasAudit ? (
                           auditDefects === 0 ? (
-                            <span className="text-emerald-400 font-semibold flex items-center gap-1">
+                            <span className="text-text-muted font-medium flex items-center gap-1">
                               <CheckCircle2 size={11} className="text-emerald-400 shrink-0" />
                               <span>QA Passed</span>
                             </span>
                           ) : (
-                            <span className="text-rose-400 font-semibold flex items-center gap-1">
-                              <AlertTriangle size={11} className="shrink-0" />
+                            <span className="text-text-muted font-medium flex items-center gap-1">
+                              <AlertTriangle size={11} className="text-rose-400 shrink-0" />
                               <span>{auditDefects} Defect{auditDefects > 1 ? 's' : ''}</span>
                             </span>
                           )
@@ -1717,7 +1716,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                           <>
                             <span className="text-text-muted/40">•</span>
                             <span className="text-text-muted font-mono text-[11px]">
-                              {item.poiCount} Frames
+                              {item.poiCount} POI
                             </span>
                           </>
                         )}
@@ -1736,7 +1735,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                           item.frameCount < item.poiCount ? (
                             <>
                               <span className="text-amber-400 font-semibold">{item.frameCount.toLocaleString()}</span>
-                              <span className="text-text-muted/50">/</span>
+                              <span className="text-text-muted/50 mx-0.5">/</span>
                               <span className="text-text-base font-semibold">{item.poiCount.toLocaleString()}</span>
                               <span className="text-text-muted text-[10px] ml-0.5">Frames</span>
                             </>

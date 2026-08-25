@@ -13,21 +13,28 @@ body {
   font-feature-settings: "cv02", "cv03", "cv04", "cv11", "tnum";
 }
 
-.font-mono, code, kbd, samp, pre {
+.font-mono,
+code,
+kbd,
+samp,
+pre {
   font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace !important;
   font-feature-settings: "tnum" 1;
   font-variant-numeric: tabular-nums;
 }
 
 /* Base form inputs inherit active theme color tokens */
-input, select, textarea {
+input,
+select,
+textarea {
   background-color: var(--input-bg, var(--bg-inner));
   color: var(--text-primary);
   border-color: var(--border-subtle);
   font-family: inherit;
 }
 
-input::placeholder, textarea::placeholder {
+input::placeholder,
+textarea::placeholder {
   color: var(--text-muted);
   opacity: 0.8;
 }
