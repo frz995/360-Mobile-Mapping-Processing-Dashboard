@@ -62,12 +62,8 @@ function makeRequest(method, endpoint) {
 
 async function getCount(table) {
   try {
-    const res = await makeRequest('GET', `${table}?select=count`);
-    if (Array.isArray(res.data) && res.data[0] && typeof res.data[0].count === 'number') {
-      return res.data[0].count;
-    }
-    const all = await makeRequest('GET', `${table}?select=id`);
-    return Array.isArray(all.data) ? all.data.length : 0;
+    const res = await makeRequest('GET', `${table}?select=id`);
+    return Array.isArray(res.data) ? res.data.length : 0;
   } catch {
     return 0;
   }
@@ -75,8 +71,11 @@ async function getCount(table) {
 
 async function clearTable(table) {
   try {
-    // Delete all rows where id is not a dummy negative number
-    const res = await makeRequest('DELETE', `${table}?id=neq.-999999`);
+    // Delete all records via UUID-compatible and string-compatible filters
+    let res = await makeRequest('DELETE', `${table}?id=not.is.null`);
+    if (res.status < 200 || res.status >= 300) {
+      res = await makeRequest('DELETE', `${table}?filename=neq.___dummy___`);
+    }
     const count = Array.isArray(res.data) ? res.data.length : 0;
     return { table, count, success: res.status >= 200 && res.status < 300 };
   } catch (err) {
@@ -130,9 +129,9 @@ async function main() {
   console.log('\nSummary:');
   results.forEach(r => {
     if (r.success) {
-      console.log(`  ✅ ${r.table.padEnd(20)}: Cleared (${r.count} deleted)`);
+      console.log(`  ✅ ${r.table.padEnd(22)}: Cleared (${r.count} deleted)`);
     } else {
-      console.log(`  ❌ ${r.table.padEnd(20)}: Failed (${r.error || 'Check RLS permissions'})`);
+      console.log(`  ❌ ${r.table.padEnd(22)}: Failed (${r.error || 'Check table constraints'})`);
     }
   });
 
