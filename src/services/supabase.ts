@@ -839,9 +839,9 @@ export async function publishToSupabase(record: {
         bearing: Number(p.bearing ?? p.heading ?? 0),
         pitch: Number(p.pitch ?? 0),
         roll: Number(p.roll ?? 0),
-        defect_count: typeof record.defects === 'number' ? record.defects : typeof record.defectCount === 'number' ? record.defectCount : 0,
-        qa_status: 'published',
-        defect_flags: {},
+        defect_count: (p.is_defect || (p.defect_flags && typeof p.defect_flags === 'object' && Object.values(p.defect_flags).some(Boolean))) ? 1 : 0,
+        qa_status: p.is_defect ? 'flagged' : 'published',
+        defect_flags: p.defect_flags || {},
         geom: hasCoords ? {
           type: 'Point',
           coordinates: [rawLon, rawLat]
