@@ -8662,8 +8662,8 @@ export default function App() {
                                 }
                               }}
                               className={`font-semibold px-2 py-0.5 rounded border text-[10px] cursor-pointer transition-all flex items-center gap-1.5 group shadow-sm active:scale-95 ${activeDefects > 0
-                                  ? 'text-amber-400 bg-amber-500/10 hover:bg-amber-500/25 border-amber-500/30 hover:border-amber-500/60'
-                                  : 'text-slate-400 bg-slate-500/10 border-slate-500/20'
+                                ? 'text-amber-400 bg-amber-500/10 hover:bg-amber-500/25 border-amber-500/30 hover:border-amber-500/60'
+                                : 'text-slate-400 bg-slate-500/10 border-slate-500/20'
                                 }`}
                               title="Click to filter & select defect data"
                             >
@@ -8676,8 +8676,8 @@ export default function App() {
                           <div className="text-slate-300 text-[11px] flex justify-between items-center pt-1 border-t border-subtle">
                             <span className="text-text-muted">Processing Status:</span>
                             <span className={`font-semibold px-2 py-0.5 rounded border text-[10px] ${isPublished
-                                ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
-                                : 'text-amber-400 bg-amber-500/10 border-amber-500/20'
+                              ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
+                              : 'text-amber-400 bg-amber-500/10 border-amber-500/20'
                               }`}>
                               {activeStatusText}
                             </span>
@@ -10157,45 +10157,45 @@ export default function App() {
                 setIsDefectsGalleryOpen(false);
                 setDefectGalleryContext(null);
               }}
-                onJumpTo360={(target) => {
-                  setIsDefectsGalleryOpen(false);
-                  if (target.imageUrl) {
-                    setActivePanoramaUrl(target.imageUrl);
-                  }
-                  if (target.pointId) {
-                    setActivePanoramaFilename(target.pointId);
-                    setHasSelectedPoint(true);
-                  }
-                  if (target.lat && target.lng) {
-                    setInspectorCoords({ lat: target.lat, lng: target.lng });
-                  }
-                  if (selectedDefectSubgrid) {
-                    setInspectorSubgrid(selectedDefectSubgrid);
-                  }
-                  if (target.bearing !== undefined) {
-                    setPanoramaTelemetry(prev => ({ ...prev, yaw: target.bearing || 0 }));
-                  }
-                  setFocusedSection('qa');
-                  setTimeout(() => {
-                    setFocusedSection(null);
-                  }, 1500);
-                }}
-                onDefectResolved={(_pointId, remainingActiveCount) => {
-                  const targetSg = selectedDefectSubgrid.toUpperCase().trim();
-                  if (targetSg) {
-                    setDailyData(prev => prev.map(d => {
-                      const dSg = (extractSubgridName(d.subgrid) || '').toUpperCase().trim();
-                      return dSg === targetSg ? { ...d, defectCount: remainingActiveCount, imagesDefected: remainingActiveCount } : d;
-                    }));
-                    setBatchLogs(prev => prev.map(b => {
-                      const bSg = (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim();
-                      return bSg === targetSg ? { ...b, defects: remainingActiveCount } : b;
-                    }));
-                  }
-                }}
-              />
-            )
-          }
+              onJumpTo360={(target) => {
+                setIsDefectsGalleryOpen(false);
+                if (target.imageUrl) {
+                  setActivePanoramaUrl(target.imageUrl);
+                }
+                if (target.pointId) {
+                  setActivePanoramaFilename(target.pointId);
+                  setHasSelectedPoint(true);
+                }
+                if (target.lat && target.lng) {
+                  setInspectorCoords({ lat: target.lat, lng: target.lng });
+                }
+                if (selectedDefectSubgrid) {
+                  setInspectorSubgrid(selectedDefectSubgrid);
+                }
+                if (target.bearing !== undefined) {
+                  setPanoramaTelemetry(prev => ({ ...prev, yaw: target.bearing || 0 }));
+                }
+                setFocusedSection('qa');
+                setTimeout(() => {
+                  setFocusedSection(null);
+                }, 1500);
+              }}
+              onDefectResolved={(_pointId, remainingActiveCount) => {
+                const targetSg = selectedDefectSubgrid.toUpperCase().trim();
+                if (targetSg) {
+                  setDailyData(prev => prev.map(d => {
+                    const dSg = (extractSubgridName(d.subgrid) || '').toUpperCase().trim();
+                    return dSg === targetSg ? { ...d, defectCount: remainingActiveCount, imagesDefected: remainingActiveCount } : d;
+                  }));
+                  setBatchLogs(prev => prev.map(b => {
+                    const bSg = (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim();
+                    return bSg === targetSg ? { ...b, defects: remainingActiveCount } : b;
+                  }));
+                }
+              }}
+            />
+          )
+        }
 
         {/* QC Audit Modal */}
         {

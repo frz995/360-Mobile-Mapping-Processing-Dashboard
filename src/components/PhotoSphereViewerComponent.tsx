@@ -36,10 +36,15 @@ export const PhotoSphereViewerComponent: React.FC<PhotoSphereViewerProps> = ({
 
     let viewerInstance: Viewer | null = null;
 
+    let activeUrl = panoramaUrl;
+    if (activeUrl.endsWith('config.json')) {
+      activeUrl = activeUrl.replace(/config\.json$/i, 'fallback/f.jpg');
+    }
+
     try {
       viewerInstance = new Viewer({
         container: containerRef.current,
-        panorama: panoramaUrl,
+        panorama: activeUrl,
         caption: caption || '360° Panorama Inspection',
         navbar: [
           'zoom',

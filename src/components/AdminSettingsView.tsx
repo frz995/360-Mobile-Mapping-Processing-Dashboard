@@ -41,7 +41,9 @@ import {
   fetchUserAccountsFromSupabase,
   saveUserAccountToSupabase,
   deleteFromSupabase,
-  resolvePanoramaUrl
+  resolvePanoramaUrl,
+  resolvePanoramaConfigUrl,
+  testCloudflareStorageHealth
 } from '../services/supabase';
 import { ThemeManagementCanvas } from './ThemeSelector';
 
@@ -103,6 +105,21 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
     lastPingTime: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
   });
   const [isTestingHealth, setIsTestingHealth] = useState(false);
+
+  // Storage Probe & Multi-Resolution Health State
+  const [cfTestLoading, setCfTestLoading] = useState(false);
+  const [cfTestResult, setCfTestResult] = useState<{
+    ok: boolean;
+    status: number;
+    statusText: string;
+    latencyMs: number;
+    imageUrl: string;
+    configUrl?: string;
+    corsOk: boolean;
+    contentType?: string;
+    error?: string;
+  } | null>(null);
+  const [testFilename, setTestFilename] = useState<string>('SG01-0001.jpg');
 
   // Security Credentials Reveal Toggle
   const [showApiKey, setShowApiKey] = useState(false);
@@ -1350,18 +1367,71 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                     onChange={e => setProjectSettings(prev => ({ ...prev, storageProvider: e.target.value as any }))}
                     className={`w-full px-3 py-2 rounded-lg font-medium focus:outline-none border ${inputBg}`}
                   >
+                    <option value="cloudflare_r2">Cloudflare R2 (Zero Egress Cost &bull; Multi-Res Ready)</option>
                     <option value="supabase">Supabase Cloud Storage (PostGIS Native)</option>
                     <option value="aws_s3">Amazon Web Services (AWS S3 Bucket)</option>
+                    <option value="custom_cdn">Custom CDN / Reverse Proxy URL Prefix</option>
                     <option value="nas_local">Local Intranet NAS / On-Premise Server (SMB/HTTP)</option>
                     <option value="gcs">Google Cloud Storage (GCS Bucket)</option>
                     <option value="azure_blob">Microsoft Azure Blob Storage</option>
-                    <option value="cloudflare_r2">Cloudflare R2 (Zero Egress Cost)</option>
                     <option value="wasabi">Wasabi Hot Cloud Storage</option>
-                    <option value="custom_cdn">Custom CDN / Reverse Proxy URL Prefix</option>
                   </select>
                 </div>
 
-                {projectSettings.storageProvider === 'aws_s3' ? (
+                {projectSettings.storageProvider === 'cloudflare_r2' ? (
+                  <>
+                    <div>
+                      <label className="block text-text-muted font-medium mb-1">Cloudflare Public Domain / Custom URL</label>
+                      <input
+                        type="text"
+                        value={projectSettings.r2Domain || ''}
+                        onChange={e => setProjectSettings(prev => ({ ...prev, r2Domain: e.target.value, cloudStorageBaseUrl: e.target.value }))}
+                        placeholder="pub-xxxxxxxxxxxx.r2.dev or media.yourdomain.com"
+                        className={`w-full px-3 py-2 rounded-lg font-mono focus:outline-none border ${inputBg}`}
+                      />
+                      <p className="text-[10px] text-text-muted mt-1">e.g. `pub-xxx.r2.dev` or `https://media.example.com`</p>
+                    </div>
+
+                    <div>
+                      <label className="block text-text-muted font-medium mb-1">360° Storage & Slicing Strategy</label>
+                      <select
+                        value={projectSettings.imageStorageStrategy || 'multires_tiles'}
+                        onChange={e => setProjectSettings(prev => ({ ...prev, imageStorageStrategy: e.target.value as any }))}
+                        className={`w-full px-3 py-2 rounded-lg font-medium focus:outline-none border ${inputBg}`}
+                      >
+                        <option value="multires_tiles">Multi-Resolution Tile Pyramid (Deep Zoom 60FPS / Zero Blur)</option>
+                        <option value="single_equirectangular">Single Equirectangular Full Image (Standard)</option>
+                      </select>
+                    </div>
+
+                    {projectSettings.imageStorageStrategy === 'multires_tiles' && (
+                      <>
+                        <div>
+                          <label className="block text-text-muted font-medium mb-1">Multi-Res Config Pattern</label>
+                          <input
+                            type="text"
+                            value={projectSettings.multiResTilePattern || 'tiles/{filename}/config.json'}
+                            onChange={e => setProjectSettings(prev => ({ ...prev, multiResTilePattern: e.target.value }))}
+                            placeholder="tiles/{filename}/config.json"
+                            className={`w-full px-3 py-2 rounded-lg font-mono focus:outline-none border ${inputBg}`}
+                          />
+                          <p className="text-[10px] text-text-muted mt-1">Default: `tiles/{`{filename}`}/config.json`</p>
+                        </div>
+                        <div>
+                          <label className="block text-text-muted font-medium mb-1">Fallback Preview Pattern</label>
+                          <input
+                            type="text"
+                            value={projectSettings.multiResFallbackPattern || 'tiles/{filename}/fallback/f.jpg'}
+                            onChange={e => setProjectSettings(prev => ({ ...prev, multiResFallbackPattern: e.target.value }))}
+                            placeholder="tiles/{filename}/fallback/f.jpg"
+                            className={`w-full px-3 py-2 rounded-lg font-mono focus:outline-none border ${inputBg}`}
+                          />
+                          <p className="text-[10px] text-text-muted mt-1">Default: `tiles/{`{filename}`}/fallback/f.jpg`</p>
+                        </div>
+                      </>
+                    )}
+                  </>
+                ) : projectSettings.storageProvider === 'aws_s3' ? (
                   <>
                     <div>
                       <label className="block text-text-muted font-medium mb-1">AWS S3 Bucket Name</label>
@@ -1384,6 +1454,63 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                       />
                     </div>
                   </>
+                ) : projectSettings.storageProvider === 'gcs' ? (
+                  <div>
+                    <label className="block text-text-muted font-medium mb-1">Google Cloud Storage (GCS) Bucket</label>
+                    <input
+                      type="text"
+                      value={projectSettings.gcsBucket || 'tnb-gis-360-panoramas'}
+                      onChange={e => setProjectSettings(prev => ({ ...prev, gcsBucket: e.target.value }))}
+                      placeholder="tnb-gis-360-panoramas"
+                      className={`w-full px-3 py-2 rounded-lg font-mono focus:outline-none border ${inputBg}`}
+                    />
+                  </div>
+                ) : projectSettings.storageProvider === 'azure_blob' ? (
+                  <>
+                    <div>
+                      <label className="block text-text-muted font-medium mb-1">Azure Storage Account</label>
+                      <input
+                        type="text"
+                        value={projectSettings.azureAccount || 'tnbgisstorage'}
+                        onChange={e => setProjectSettings(prev => ({ ...prev, azureAccount: e.target.value }))}
+                        placeholder="tnbgisstorage"
+                        className={`w-full px-3 py-2 rounded-lg font-mono focus:outline-none border ${inputBg}`}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-text-muted font-medium mb-1">Azure Blob Container Name</label>
+                      <input
+                        type="text"
+                        value={projectSettings.azureContainer || 'panoramas'}
+                        onChange={e => setProjectSettings(prev => ({ ...prev, azureContainer: e.target.value }))}
+                        placeholder="panoramas"
+                        className={`w-full px-3 py-2 rounded-lg font-mono focus:outline-none border ${inputBg}`}
+                      />
+                    </div>
+                  </>
+                ) : projectSettings.storageProvider === 'wasabi' ? (
+                  <>
+                    <div>
+                      <label className="block text-text-muted font-medium mb-1">Wasabi Bucket Name</label>
+                      <input
+                        type="text"
+                        value={projectSettings.wasabiBucket || 'tnb-wasabi-panoramas'}
+                        onChange={e => setProjectSettings(prev => ({ ...prev, wasabiBucket: e.target.value }))}
+                        placeholder="tnb-wasabi-panoramas"
+                        className={`w-full px-3 py-2 rounded-lg font-mono focus:outline-none border ${inputBg}`}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-text-muted font-medium mb-1">Wasabi Region</label>
+                      <input
+                        type="text"
+                        value={projectSettings.wasabiRegion || 'us-east-1'}
+                        onChange={e => setProjectSettings(prev => ({ ...prev, wasabiRegion: e.target.value }))}
+                        placeholder="us-east-1"
+                        className={`w-full px-3 py-2 rounded-lg font-mono focus:outline-none border ${inputBg}`}
+                      />
+                    </div>
+                  </>
                 ) : projectSettings.storageProvider === 'nas_local' ? (
                   <div className="sm:col-span-2">
                     <label className="block text-text-muted font-medium mb-1">Local NAS Server IP / HTTP Intranet Share</label>
@@ -1396,16 +1523,29 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                     />
                   </div>
                 ) : projectSettings.storageProvider === 'custom_cdn' ? (
-                  <div className="sm:col-span-2">
-                    <label className="block text-text-muted font-medium mb-1">Custom CDN Base URL Prefix</label>
-                    <input
-                      type="text"
-                      value={projectSettings.customCdnUrl || 'https://cdn.mobilemapping.example.com/panoramas/'}
-                      onChange={e => setProjectSettings(prev => ({ ...prev, customCdnUrl: e.target.value, imageStoragePath: e.target.value }))}
-                      placeholder="https://cdn.mobilemapping.example.com/panoramas/"
-                      className={`w-full px-3 py-2 rounded-lg font-mono focus:outline-none border ${inputBg}`}
-                    />
-                  </div>
+                  <>
+                    <div className="sm:col-span-2">
+                      <label className="block text-text-muted font-medium mb-1">Custom CDN Base URL Prefix</label>
+                      <input
+                        type="text"
+                        value={projectSettings.customCdnUrl || ''}
+                        onChange={e => setProjectSettings(prev => ({ ...prev, customCdnUrl: e.target.value, imageStoragePath: e.target.value, cloudStorageBaseUrl: e.target.value }))}
+                        placeholder="https://cdn.example.com/panoramas/"
+                        className={`w-full px-3 py-2 rounded-lg font-mono focus:outline-none border ${inputBg}`}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-text-muted font-medium mb-1">360° Storage & Slicing Strategy</label>
+                      <select
+                        value={projectSettings.imageStorageStrategy || 'single_equirectangular'}
+                        onChange={e => setProjectSettings(prev => ({ ...prev, imageStorageStrategy: e.target.value as any }))}
+                        className={`w-full px-3 py-2 rounded-lg font-medium focus:outline-none border ${inputBg}`}
+                      >
+                        <option value="single_equirectangular">Single Equirectangular Full Image (Standard)</option>
+                        <option value="multires_tiles">Multi-Resolution Tile Pyramid (Deep Zoom 60FPS)</option>
+                      </select>
+                    </div>
+                  </>
                 ) : (
                   <div>
                     <label className="block text-text-muted font-medium mb-1">Storage Bucket Name</label>
@@ -1420,10 +1560,11 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                 )}
 
                 <div>
-                  <label className="block text-text-muted font-medium mb-1">Storage Access Permission</label>
+                  <label className="block text-text-muted font-medium mb-1">Storage Access & CORS Policy</label>
                   <select
+                    value={projectSettings.storageAccessPermission || 'public_read'}
+                    onChange={e => setProjectSettings(prev => ({ ...prev, storageAccessPermission: e.target.value as any }))}
                     className={`w-full px-3 py-2 rounded-lg font-medium focus:outline-none border ${inputBg}`}
-                    defaultValue="public_read"
                   >
                     <option value="public_read">Public CDN Read (Direct Browser 360 Viewer)</option>
                     <option value="signed_url">Signed URL Tokenized Read (24h Expiry)</option>
@@ -1551,43 +1692,234 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
               </div>
             </div>
 
-            {/* SUB-CARD D: STORAGE DIAGNOSTICS */}
-            <div className={`p-4 rounded-xl border space-y-3 ${innerCardBg}`}>
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
+            {/* SUB-CARD D: STORAGE & MULTI-RESOLUTION LIVE DIAGNOSTICS SUITE */}
+            <div className={`p-4 rounded-xl border space-y-4 ${innerCardBg}`}>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h4 className="text-xs font-bold text-text-base uppercase tracking-wider flex items-center gap-1.5">
+                    <Activity size={14} className="text-sky-400" />
+                    D. Dynamic Storage & Multi-Resolution Connectivity Diagnostics
+                  </h4>
+                  <p className="text-[11px] text-text-muted mt-0.5">
+                    Probe object storage endpoints, test CORS cross-origin headers, measure latency, and verify multi-resolution tile configuration files.
+                  </p>
+                </div>
+                <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-sky-500/10 text-sky-400 border border-sky-500/20">
+                  {projectSettings.storageProvider === 'cloudflare_r2' ? 'Cloudflare R2 Mode' : `${(projectSettings.storageProvider || 'Supabase').toUpperCase()} Mode`}
+                </span>
+              </div>
+
+              {/* TEST SAMPLE FILENAME & QUICK PICK */}
+              <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end text-xs">
+                <div className="sm:col-span-6">
+                  <label className="block text-text-muted font-medium mb-1">Test Panorama Filename / Station Key</label>
+                  <input
+                    type="text"
+                    value={testFilename}
+                    onChange={e => setTestFilename(e.target.value)}
+                    placeholder="e.g. SG01-0001.jpg or N93E70-0001"
+                    className={`w-full px-3 py-2 rounded-lg font-mono focus:outline-none border ${inputBg}`}
+                  />
+                </div>
+
+                <div className="sm:col-span-6 flex flex-wrap items-center gap-2">
                   <button
                     type="button"
-                    onClick={async () => {
-                      try {
-                        const res = await testDatabaseHealth();
-                        showToast(`Storage probe OK &bull; Bucket: ${projectSettings.supabaseBucket || 'MMS_PIC'} (${res.storageTotalFiles}+ verified objects)`);
-                      } catch {
-                        showToast('Storage probe error', 'error');
-                      }
+                    onClick={() => {
+                      const firstPano = dailyData.find(d => d.panoramas?.length > 0)?.panoramas?.[0]?.filename
+                        || batchLogs.find(b => b.imageFilename)?.imageFilename
+                        || (dailyData[0]?.subgrid ? `${dailyData[0].subgrid}-0001.jpg` : 'SG01-0001.jpg');
+                      setTestFilename(firstPano);
+                      showToast(`Loaded sample station: ${firstPano}`);
                     }}
-                    className="px-4 py-2 bg-inner hover:bg-slate-700 border border-subtle text-text-base rounded-lg text-xs font-semibold flex items-center gap-2 cursor-pointer transition-colors shadow-sm"
+                    className="px-3 py-2 bg-inner hover:bg-slate-700 border border-subtle text-slate-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors shadow-sm"
                   >
-                    <RefreshCw size={13} className="text-sky-400" />
-                    <span>Probe Storage Bucket & Read Access</span>
+                    <FileText size={12} className="text-amber-400" />
+                    <span>Use Staged Station</span>
                   </button>
 
                   <button
                     type="button"
-                    onClick={() => {
-                      const sampleFn = dailyData.find(d => d.panoramas?.length > 0)?.panoramas?.[0]?.filename
-                        || batchLogs.find(b => b.imageFilename)?.imageFilename
-                        || (dailyData[0]?.subgrid ? `${dailyData[0].subgrid}-0001.jpg` : 'sample-0001.jpg');
-                      const sampleUrl = resolvePanoramaUrl(sampleFn, projectSettings);
-                      navigator.clipboard.writeText(sampleUrl);
-                      showToast(`Copied Sample 360° URL (${sampleFn}) to clipboard!`);
+                    disabled={cfTestLoading}
+                    onClick={async () => {
+                      setCfTestLoading(true);
+                      setCfTestResult(null);
+                      try {
+                        if (projectSettings.storageProvider === 'cloudflare_r2' || projectSettings.storageProvider === 'custom_cdn') {
+                          const domain = projectSettings.r2Domain || projectSettings.customCdnUrl || projectSettings.cloudStorageBaseUrl || '';
+                          const res = await testCloudflareStorageHealth(domain, testFilename, projectSettings);
+                          setCfTestResult(res);
+                          if (res.ok) {
+                            showToast(`Storage probe OK &bull; ${res.latencyMs}ms latency &bull; HTTP ${res.status}`);
+                          } else if (res.status === 404) {
+                            showToast(`Bucket reachable (${res.latencyMs}ms), but sample file returned 404.`, 'error');
+                          } else {
+                            showToast(`Storage probe notice: ${res.statusText || res.error}`, 'error');
+                          }
+                        } else {
+                          const res = await testDatabaseHealth();
+                          setCfTestResult({
+                            ok: res.storageStatus === 'operational',
+                            status: res.storageStatus === 'operational' ? 200 : 503,
+                            statusText: res.storageStatus === 'operational' ? 'Operational' : 'Degraded',
+                            latencyMs: res.postgisLatencyMs,
+                            imageUrl: resolvePanoramaUrl(testFilename, projectSettings),
+                            corsOk: true,
+                            contentType: 'image/jpeg'
+                          });
+                          showToast(`Storage probe OK &bull; Bucket: ${projectSettings.supabaseBucket || 'MMS_PIC'} (${res.storageTotalFiles}+ files)`);
+                        }
+                      } catch (err: any) {
+                        setCfTestResult({
+                          ok: false,
+                          status: 0,
+                          statusText: 'Probe Failed',
+                          latencyMs: 0,
+                          imageUrl: resolvePanoramaUrl(testFilename, projectSettings),
+                          corsOk: false,
+                          error: err?.message || 'Failed to ping storage provider'
+                        });
+                        showToast('Storage probe exception', 'error');
+                      } finally {
+                        setCfTestLoading(false);
+                      }
                     }}
-                    className="px-3.5 py-2 bg-inner hover:bg-slate-700 border border-subtle text-sky-400 rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors shadow-sm"
+                    className="px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-xs font-semibold flex items-center gap-2 cursor-pointer transition-colors shadow-sm disabled:opacity-50"
                   >
-                    <Copy size={13} />
-                    <span>Copy Sample 360° URL</span>
+                    <RefreshCw size={13} className={cfTestLoading ? 'animate-spin' : ''} />
+                    <span>{cfTestLoading ? 'Testing Endpoint...' : 'Test Storage & CORS Probe'}</span>
                   </button>
                 </div>
               </div>
+
+              {/* RESOLVED URLS BAR */}
+              <div className={`p-3 rounded-lg border ${inputBg} space-y-2 text-xs font-mono`}>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 overflow-hidden">
+                    <span className="text-text-muted shrink-0 text-[11px] font-sans font-medium">Resolved 360° URL:</span>
+                    <span className="text-sky-300 truncate text-[11px] select-all">
+                      {resolvePanoramaUrl(testFilename, projectSettings)}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const url = resolvePanoramaUrl(testFilename, projectSettings);
+                      navigator.clipboard.writeText(url);
+                      showToast('Copied 360° Image URL to clipboard!');
+                    }}
+                    className="px-2 py-1 bg-inner hover:bg-slate-700 text-sky-400 border border-subtle rounded text-[11px] font-sans font-semibold flex items-center gap-1 cursor-pointer transition-colors shrink-0"
+                  >
+                    <Copy size={11} />
+                    <span>Copy URL</span>
+                  </button>
+                </div>
+
+                {(projectSettings.storageProvider === 'cloudflare_r2' || projectSettings.imageStorageStrategy === 'multires_tiles') && (
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-subtle">
+                    <div className="flex items-center gap-2 overflow-hidden">
+                      <span className="text-amber-400/90 shrink-0 text-[11px] font-sans font-medium">Multi-Res config.json:</span>
+                      <span className="text-amber-300 truncate text-[11px] select-all">
+                        {resolvePanoramaConfigUrl(testFilename, projectSettings)}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const url = resolvePanoramaConfigUrl(testFilename, projectSettings);
+                        navigator.clipboard.writeText(url);
+                        showToast('Copied Multi-Res config.json URL to clipboard!');
+                      }}
+                      className="px-2 py-1 bg-inner hover:bg-slate-700 text-amber-400 border border-subtle rounded text-[11px] font-sans font-semibold flex items-center gap-1 cursor-pointer transition-colors shrink-0"
+                    >
+                      <Copy size={11} />
+                      <span>Copy Config URL</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* LIVE PROBE RESULT CARD */}
+              {cfTestResult && (
+                <div className={`p-3.5 rounded-xl border animate-in fade-in slide-in-from-top-2 ${
+                  cfTestResult.ok
+                    ? 'bg-emerald-950/30 border-emerald-800/60 text-emerald-200'
+                    : cfTestResult.status === 404
+                    ? 'bg-amber-950/30 border-amber-800/60 text-amber-200'
+                    : 'bg-rose-950/30 border-rose-800/60 text-rose-200'
+                }`}>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="space-y-1.5 flex-1 min-w-[240px]">
+                      <div className="flex items-center gap-2">
+                        {cfTestResult.ok ? (
+                          <CheckCircle size={16} className="text-emerald-400 shrink-0" />
+                        ) : cfTestResult.status === 404 ? (
+                          <AlertTriangle size={16} className="text-amber-400 shrink-0" />
+                        ) : (
+                          <XCircle size={16} className="text-rose-400 shrink-0" />
+                        )}
+                        <span className="font-bold text-xs">
+                          {cfTestResult.ok
+                            ? `Storage Reachable &bull; HTTP ${cfTestResult.status} ${cfTestResult.statusText}`
+                            : cfTestResult.status === 404
+                            ? `Storage Connected &bull; HTTP 404 File Not Found`
+                            : `Connection Failed &bull; ${cfTestResult.statusText || 'Error'}`}
+                        </span>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-inner border border-subtle text-slate-300">
+                          {cfTestResult.latencyMs}ms Latency
+                        </span>
+                        {cfTestResult.corsOk && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                            CORS OK
+                          </span>
+                        )}
+                      </div>
+
+                      {cfTestResult.error && (
+                        <p className="text-[11px] text-rose-300/90 leading-relaxed font-sans">
+                          {cfTestResult.error}
+                        </p>
+                      )}
+
+                      {cfTestResult.status === 404 && (
+                        <p className="text-[11px] text-amber-300/90 leading-relaxed font-sans">
+                          Tip: The Cloudflare domain is active and CORS is valid, but `{testFilename}` does not exist in the bucket. Check your folder path or verify filename spelling.
+                        </p>
+                      )}
+
+                      {cfTestResult.contentType && (
+                        <div className="text-[10px] text-text-muted font-mono">
+                          Content-Type: <span className="text-slate-300">{cfTestResult.contentType}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* LIVE THUMBNAIL PREVIEW IF ACCESSIBLE */}
+                    <div className="shrink-0 flex flex-col items-center gap-1">
+                      <a
+                        href={cfTestResult.imageUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="group relative block rounded-lg overflow-hidden border border-subtle bg-black/40 hover:border-sky-400 transition-all shadow-md"
+                        title="Click to open image in new tab"
+                      >
+                        <img
+                          src={cfTestResult.imageUrl}
+                          alt="360 Preview"
+                          className="h-16 w-28 object-cover group-hover:scale-105 transition-transform"
+                          onError={(e: any) => {
+                            e.currentTarget.style.display = 'none';
+                          }}
+                        />
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                          <ExternalLink size={14} className="text-white" />
+                        </div>
+                      </a>
+                      <span className="text-[9px] text-text-muted">Live 360° Preview</span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 

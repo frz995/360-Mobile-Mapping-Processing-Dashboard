@@ -1351,11 +1351,26 @@ export type StorageProviderType =
   | 'nas_local'
   | 'custom_cdn';
 
+export interface ResolveUrlOptions {
+  asConfigUrl?: boolean;
+  asFallback?: boolean;
+  subgrid?: string;
+}
+
+export function formatCloudflareUrl(domainOrUrl: string): string {
+  let d = (domainOrUrl || '').trim();
+  if (!d) return '';
+  if (!d.startsWith('http://') && !d.startsWith('https://')) {
+    d = `https://${d}`;
+  }
+  return d.replace(/\/+$/, '');
+}
+
 /**
- * Universal Image URL Resolver for GIS Industry Cloud & NAS Storage Providers.
- * Resolves 360° panorama image URLs across Supabase, AWS S3, GCS, Azure Blob, Cloudflare R2, Wasabi, and Local NAS.
+ * Universal Image & Multi-Res Tile URL Resolver for GIS Industry Cloud & NAS Storage Providers.
+ * Resolves 360° panorama image URLs across Cloudflare R2 (Multi-Res & Flat), Supabase, AWS S3, GCS, Azure Blob, Wasabi, and Local NAS.
  */
-export function resolvePanoramaUrl(filename?: string, settings?: any): string {
+export function resolvePanoramaUrl(filename?: string, settings?: any, options?: ResolveUrlOptions): string {
   if (!filename) return '';
   const cleanFn = filename.replace(/^\/+/, '').replace(/^MMS_PIC\//i, '').trim();
   if (!cleanFn) return '';
@@ -1367,49 +1382,192 @@ export function resolvePanoramaUrl(filename?: string, settings?: any): string {
 
   const provider: StorageProviderType = settings?.storageProvider || import.meta.env.VITE_STORAGE_PROVIDER || 'supabase';
   const customBase: string = settings?.cloudStorageBaseUrl || settings?.imageStoragePath || import.meta.env.VITE_IMAGE_CDN_URL || '';
+  const isMultiRes = settings?.imageStorageStrategy === 'multires_tiles' || Boolean(options?.asConfigUrl);
+  const nameWithoutExt = cleanFn.replace(/\.[^/.]+$/, '');
+  const sg = options?.subgrid || (cleanFn.match(/^([A-Za-z0-9_]+)-/)?.[1] || '');
 
-  // 2. Custom CDN / Direct URL prefix provided in Settings or Env
-  if (customBase && (customBase.startsWith('http://') || customBase.startsWith('https://'))) {
+  // 2. Custom CDN / Direct URL prefix provided in Settings or Env (if not overridden by multi-res)
+  if (customBase && (customBase.startsWith('http://') || customBase.startsWith('https://')) && !options?.asConfigUrl && !isMultiRes) {
     return `${customBase.replace(/\/+$/, '')}/${cleanFn}`;
   }
 
   switch (provider) {
+    case 'cloudflare_r2': {
+      const rawDomain = settings?.r2Domain || import.meta.env.VITE_R2_DOMAIN || import.meta.env.VITE_IMAGE_CDN_URL || 'pub-360.r2.dev';
+      const baseUrl = formatCloudflareUrl(rawDomain);
+
+      // A. Multi-resolution Tile Pyramid Mode
+      if (isMultiRes || cleanFn.endsWith('.json')) {
+        if (options?.asConfigUrl || cleanFn.endsWith('.json')) {
+          if (settings?.multiResTilePattern) {
+            const path = settings.multiResTilePattern
+              .replace('{filename}', nameWithoutExt)
+              .replace('{subgrid}', sg)
+              .replace(/^\/+/, '');
+            return `${baseUrl}/${path}`;
+          }
+          return `${baseUrl}/tiles/${nameWithoutExt}/config.json`;
+        }
+
+        // Return fallback preview image for 2D previews / thumbnails
+        if (options?.asFallback || settings?.imageStorageStrategy === 'multires_tiles') {
+          if (settings?.multiResFallbackPattern) {
+            const path = settings.multiResFallbackPattern
+              .replace('{filename}', nameWithoutExt)
+              .replace('{subgrid}', sg)
+              .replace(/^\/+/, '');
+            return `${baseUrl}/${path}`;
+          }
+          return `${baseUrl}/tiles/${nameWithoutExt}/fallback/f.jpg`;
+        }
+      }
+
+      // B. Standard Flat Equirectangular Mode
+      if (settings?.imageStoragePath) {
+        const prefix = settings.imageStoragePath.replace(/^\/+/, '').replace(/\/+$/, '');
+        return prefix ? `${baseUrl}/${prefix}/${cleanFn}` : `${baseUrl}/${cleanFn}`;
+      }
+      return `${baseUrl}/${cleanFn}`;
+    }
+
     case 'aws_s3': {
       const bucket = settings?.s3Bucket || import.meta.env.VITE_S3_BUCKET || 'tnb-mobilemapping-panoramas';
       const region = settings?.s3Region || import.meta.env.VITE_S3_REGION || 'ap-southeast-1';
       return `https://${bucket}.s3.${region}.amazonaws.com/${cleanFn}`;
     }
+
     case 'gcs': {
       const bucket = settings?.gcsBucket || import.meta.env.VITE_GCS_BUCKET || 'tnb-gis-360-panoramas';
       return `https://storage.googleapis.com/${bucket}/${cleanFn}`;
     }
+
     case 'azure_blob': {
       const account = settings?.azureAccount || import.meta.env.VITE_AZURE_ACCOUNT || 'tnbgisstorage';
       const container = settings?.azureContainer || import.meta.env.VITE_AZURE_CONTAINER || 'panoramas';
       return `https://${account}.blob.core.windows.net/${container}/${cleanFn}`;
     }
-    case 'cloudflare_r2': {
-      const r2Domain = settings?.r2Domain || import.meta.env.VITE_R2_DOMAIN || 'pub-360.r2.dev';
-      return `https://${r2Domain.replace(/\/+$/, '')}/${cleanFn}`;
-    }
+
     case 'wasabi': {
       const bucket = settings?.wasabiBucket || import.meta.env.VITE_WASABI_BUCKET || 'tnb-wasabi-panoramas';
       const region = settings?.wasabiRegion || import.meta.env.VITE_WASABI_REGION || 'us-east-1';
       return `https://s3.${region}.wasabisys.com/${bucket}/${cleanFn}`;
     }
+
     case 'nas_local': {
       const nasUrl = settings?.nasServerUrl || import.meta.env.VITE_NAS_SERVER_URL || 'http://192.168.1.100/360_images';
       return `${nasUrl.replace(/\/+$/, '')}/${cleanFn}`;
     }
+
     case 'custom_cdn': {
-      const cdnUrl = settings?.customCdnUrl || import.meta.env.VITE_CUSTOM_CDN_URL || '/MMS_PIC';
-      return `${cdnUrl.replace(/\/+$/, '')}/${cleanFn}`;
+      const rawCdn = settings?.customCdnUrl || settings?.cloudStorageBaseUrl || import.meta.env.VITE_CUSTOM_CDN_URL || '/MMS_PIC';
+      const cdnUrl = formatCloudflareUrl(rawCdn);
+      
+      if (isMultiRes) {
+        if (options?.asConfigUrl) {
+          return `${cdnUrl}/tiles/${nameWithoutExt}/config.json`;
+        }
+        return `${cdnUrl}/tiles/${nameWithoutExt}/fallback/f.jpg`;
+      }
+      return `${cdnUrl}/${cleanFn}`;
     }
+
     case 'supabase':
     default: {
       const bucket = settings?.supabaseBucket || import.meta.env.VITE_SUPABASE_BUCKET || 'MMS_PIC';
       return `${supabaseUrl}/storage/v1/object/public/${bucket}/${cleanFn}`;
     }
+  }
+}
+
+/**
+ * Resolve Multi-Resolution config.json URL for 360 viewer engines (Pannellum / Marzipano / PhotoSphere).
+ */
+export function resolvePanoramaConfigUrl(filename?: string, settings?: any, subgrid?: string): string {
+  return resolvePanoramaUrl(filename, settings, { asConfigUrl: true, subgrid });
+}
+
+/**
+ * Health probe for Cloudflare R2 and Custom CDN storage endpoints.
+ * Verifies HTTP status, CORS headers, latency, and sample file accessibility.
+ */
+export async function testCloudflareStorageHealth(
+  domainOrUrl: string,
+  sampleFilename?: string,
+  settings?: any
+): Promise<{
+  ok: boolean;
+  status: number;
+  statusText: string;
+  latencyMs: number;
+  imageUrl: string;
+  configUrl?: string;
+  corsOk: boolean;
+  contentType?: string;
+  error?: string;
+}> {
+  const cleanDomain = formatCloudflareUrl(domainOrUrl);
+  if (!cleanDomain) {
+    return {
+      ok: false,
+      status: 0,
+      statusText: 'No Domain Provided',
+      latencyMs: 0,
+      imageUrl: '',
+      corsOk: false,
+      error: 'Please enter a valid Cloudflare R2 domain or URL.'
+    };
+  }
+
+  const fn = (sampleFilename || 'SG01-0001.jpg').trim();
+  const testSettings = {
+    ...settings,
+    storageProvider: 'cloudflare_r2',
+    r2Domain: cleanDomain
+  };
+
+  const imageUrl = resolvePanoramaUrl(fn, testSettings);
+  const configUrl = testSettings.imageStorageStrategy === 'multires_tiles'
+    ? resolvePanoramaConfigUrl(fn, testSettings)
+    : undefined;
+
+  const targetUrl = configUrl || imageUrl;
+  const startTime = performance.now();
+
+  try {
+    const response = await fetch(targetUrl, {
+      method: 'GET',
+      mode: 'cors',
+      cache: 'no-cache'
+    });
+
+    const latencyMs = Math.round(performance.now() - startTime);
+    const contentType = response.headers.get('content-type') || '';
+
+    return {
+      ok: response.ok,
+      status: response.status,
+      statusText: response.statusText || (response.ok ? 'OK' : 'Error'),
+      latencyMs,
+      imageUrl,
+      configUrl,
+      corsOk: true,
+      contentType
+    };
+  } catch (err: any) {
+    const latencyMs = Math.round(performance.now() - startTime);
+    const isCors = err?.message?.toLowerCase().includes('failed to fetch') || err?.name === 'TypeError';
+    return {
+      ok: false,
+      status: 0,
+      statusText: isCors ? 'CORS / Network Blocked' : 'Connection Failed',
+      latencyMs,
+      imageUrl,
+      configUrl,
+      corsOk: false,
+      error: isCors
+        ? 'Cross-Origin (CORS) check failed. Please ensure CORS headers (Access-Control-Allow-Origin: *) are configured in your Cloudflare R2 bucket.'
+        : (err?.message || 'Network request failed')
+    };
   }
 }
 
