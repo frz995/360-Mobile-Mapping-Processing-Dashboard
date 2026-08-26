@@ -133,27 +133,38 @@ export const PannellumViewer: React.FC<PannellumViewerProps> = ({
         let viewerConfig: any;
 
         if (configUrl) {
-          // Multi-resolution tile mode: fetch config.json
           try {
-            const res = await fetch(configUrl);
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const res = await fetch(configUrl, { cache: 'no-cache' });
+            if (!res.ok) throw new Error(`HTTP ${res.status} fetching config.json`);
             const config = await res.json();
+
             const basePath = configUrl.substring(0, configUrl.lastIndexOf('/') + 1);
 
             if (config.multiRes) {
               const multiRes = { ...config.multiRes };
 
-              // If basePath in config is relative, prepend the config URL base
+              // 1. Resolve and sanitize basePath (strip all trailing slashes)
+              let resolvedBase = basePath;
               if (multiRes.basePath && !multiRes.basePath.startsWith('http')) {
-                multiRes.basePath = basePath + multiRes.basePath.replace(/^\.\//, '');
-              } else if (!multiRes.basePath) {
-                multiRes.basePath = basePath;
+                resolvedBase = basePath + multiRes.basePath.replace(/^\.\//, '').replace(/^\/+/, '');
+              } else if (multiRes.basePath && multiRes.basePath.startsWith('http')) {
+                resolvedBase = multiRes.basePath;
               }
+
+              // Clean base URL without trailing slash to prevent double slash with path
+              resolvedBase = resolvedBase.replace(/([^:]\/)\/+/g, '$1').replace(/\/+$/, '');
+
+              // 2. Ensure multiRes.path starts with exactly one slash
+              if (multiRes.path) {
+                multiRes.path = '/' + multiRes.path.replace(/^\/+/, '');
+              }
+              multiRes.basePath = resolvedBase;
 
               viewerConfig = {
                 type: 'multires',
-                multiRes,
+                multiRes: multiRes,
                 autoLoad: true,
+                progressive: true,             // Instantly displays base pyramid layer (<50ms)
                 showZoomCtrl: showControls,
                 showFullscreenCtrl: false,
                 mouseZoom: true,
@@ -161,15 +172,14 @@ export const PannellumViewer: React.FC<PannellumViewerProps> = ({
                 compass,
                 yaw: initialYaw,
                 pitch: initialPitch,
-                hfov: initialHfov,
-                minHfov: 30,
+                hfov: initialHfov || 100,
+                minHfov: 45,                   // Prevents initial deep zoom tile choke
                 maxHfov: 120,
                 autoRotate: autoRotate || 0,
                 friction: 0.15,
                 crossOrigin: 'anonymous'
               };
             } else if (config.panorama) {
-              // Single equirectangular from config
               let panoUrl = config.panorama;
               if (!panoUrl.startsWith('http')) {
                 panoUrl = basePath + panoUrl;
@@ -183,39 +193,32 @@ export const PannellumViewer: React.FC<PannellumViewerProps> = ({
                 compass,
                 yaw: initialYaw,
                 pitch: initialPitch,
-                hfov: initialHfov,
-                minHfov: 30,
+                hfov: initialHfov || 100,
+                minHfov: 45,
                 maxHfov: 120,
                 crossOrigin: 'anonymous'
               };
             }
           } catch (fetchErr) {
-            console.warn('PannellumViewer: Failed to fetch config.json:', fetchErr);
-            // Fallback to panoramaUrl if available
-            if (panoramaUrl) {
-              viewerConfig = {
-                type: 'equirectangular',
-                panorama: panoramaUrl,
-                autoLoad: true,
-                showZoomCtrl: showControls,
-                showFullscreenCtrl: false,
-                compass,
-                yaw: initialYaw,
-                pitch: initialPitch,
-                hfov: initialHfov,
-                minHfov: 30,
-                maxHfov: 120,
-                crossOrigin: 'anonymous'
-              };
-            } else {
-              setHasError(true);
-              setErrorMsg('Failed to load multi-resolution tiles');
-              setIsLoading(false);
-              return;
-            }
+            console.warn('PannellumViewer: Loading multi-res fallback tile', fetchErr);
+
+            const dynamicFallback = configUrl.replace(/config\.json$/i, 'fallback/f.jpg');
+            viewerConfig = {
+              type: 'equirectangular',
+              panorama: dynamicFallback || panoramaUrl,
+              autoLoad: true,
+              showZoomCtrl: showControls,
+              showFullscreenCtrl: false,
+              compass,
+              yaw: initialYaw,
+              pitch: initialPitch,
+              hfov: initialHfov || 100,
+              minHfov: 45,
+              maxHfov: 120,
+              crossOrigin: 'anonymous'
+            };
           }
         } else if (panoramaUrl) {
-          // Standard equirectangular mode
           viewerConfig = {
             type: 'equirectangular',
             panorama: panoramaUrl,
@@ -225,8 +228,8 @@ export const PannellumViewer: React.FC<PannellumViewerProps> = ({
             compass,
             yaw: initialYaw,
             pitch: initialPitch,
-            hfov: initialHfov,
-            minHfov: 30,
+            hfov: initialHfov || 100,
+            minHfov: 45,
             maxHfov: 120,
             crossOrigin: 'anonymous'
           };
@@ -249,7 +252,11 @@ export const PannellumViewer: React.FC<PannellumViewerProps> = ({
         viewer.on('error', (msg: string) => {
           console.warn('PannellumViewer error:', msg);
           setHasError(true);
-          setErrorMsg(msg || 'Panorama load error');
+          // Strip raw HTML <a> tags injected by Pannellum
+          const cleanMsg = typeof msg === 'string'
+            ? msg.replace(/<[^>]*>?/gm, '')
+            : 'Panorama load error';
+          setErrorMsg(cleanMsg || 'Panorama load error');
           setIsLoading(false);
         });
 

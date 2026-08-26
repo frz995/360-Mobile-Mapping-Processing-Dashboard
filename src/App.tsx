@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import WebGISViewerIframe from './components/WebGISViewerIframe';
+import { PannellumViewer } from './components/PannellumViewer';
 import {
   AlertTriangle,
   CheckCircle,
@@ -44,7 +45,7 @@ import {
   Play,
   StopCircle
 } from 'lucide-react';
-import { supabase, publishToSupabase, saveToStagingSupabase, deleteFromStagingSupabase, fetchSupabaseData, deleteFromSupabase, updateDefectStatusInSupabase, fetchQaRecordsFromSupabase, fetchQaAuditRunsFromSupabase, saveQaAuditRunToSupabase, verifyCsvImageFilenamesInStorage, fetchAuditLogsFromSupabase, saveAuditLogToSupabase, fetchNotificationsFromSupabase, saveNotificationToSupabase, fetchProjectSettingsFromSupabase, saveProjectSettingsToSupabase, resolvePanoramaUrl, getDatabaseTableMapping, SUBGRID_COORDINATES, formatPIC } from './services/supabase';
+import { supabase, publishToSupabase, saveToStagingSupabase, deleteFromStagingSupabase, fetchSupabaseData, deleteFromSupabase, updateDefectStatusInSupabase, fetchQaRecordsFromSupabase, fetchQaAuditRunsFromSupabase, saveQaAuditRunToSupabase, verifyCsvImageFilenamesInStorage, fetchAuditLogsFromSupabase, saveAuditLogToSupabase, fetchNotificationsFromSupabase, saveNotificationToSupabase, fetchProjectSettingsFromSupabase, saveProjectSettingsToSupabase, resolvePanoramaUrl, resolvePanoramaConfigUrl, getDatabaseTableMapping, SUBGRID_COORDINATES, formatPIC } from './services/supabase';
 import type { QAQCAuditRunRecord } from './types/admin';
 import { AdminSettingsView } from './components/AdminSettingsView';
 import { QAQCWorkbench } from './components/QAQCWorkbench';
@@ -2527,14 +2528,30 @@ const DataManagementPage = ({
 
       if (!('images' in item)) {
         const dailyItem = item as DailyTimeSeries;
+
+        // Dynamically calculate the starting sequence index (e.g. 15 for Track 2)
+        const startIdx = (dailyItem as any).startFrameIndex ||
+          (dailyItem as any).startSequence ||
+          (dailyItem as any).startImageIndex ||
+          1;
+
         const filenames = (dailyItem.panoramas && dailyItem.panoramas.length > 0)
           ? dailyItem.panoramas.map((p: any) => p.filename).filter((fn: any): fn is string => Boolean(fn))
-          : Array.from({ length: dailyItem.poiCount || 1 }, (_, i) => `${dailyItem.subgrid}-${String(i + 1).padStart(4, '0')}.jpg`);
+          : Array.from(
+            { length: dailyItem.poiCount || 1 },
+            (_, i) => `${dailyItem.subgrid}-${String(startIdx + i).padStart(4, '0')}.jpg`
+          );
+
         let matchedCount = 0;
         let verifiedFiles: string[] = [];
+
         if (filenames.length > 0) {
           try {
-            const { availableCount, verifiedFilenames } = await verifyCsvImageFilenamesInStorage(filenames, projectSettings);
+            // Passes projectSettings dynamically to handle R2 vs Supabase
+            const { availableCount, verifiedFilenames } = await verifyCsvImageFilenamesInStorage(
+              filenames,
+              projectSettings
+            );
             matchedCount = availableCount >= 0 ? availableCount : 0;
             verifiedFiles = verifiedFilenames || [];
           } catch {
@@ -6728,16 +6745,21 @@ export default function App() {
             : matchDaily.panoramas.slice(0, exactFrameCount || matchDaily.panoramas.length);
 
           if (pansToUse.length > 0) {
-            return pansToUse.map((p, idx) => ({
-              filename: p.filename || `${cleanSg}-${String(idx + 1).padStart(4, '0')}.jpg`,
-              point_id: p.filename || `${cleanSg}-${String(idx + 1).padStart(4, '0')}.jpg`,
-              latitude: p.latitude ?? (p as any).lat ?? (p as any).y,
-              longitude: p.longitude ?? (p as any).lon ?? (p as any).lng ?? (p as any).x,
-              lat: p.latitude ?? (p as any).lat ?? (p as any).y,
-              lng: p.longitude ?? (p as any).lon ?? (p as any).lng ?? (p as any).x,
-              bearing: p.bearing ?? p.heading ?? ((idx * 15) % 360),
-              image_url: resolvePanoramaUrl(p.filename || `${cleanSg}-${String(idx + 1).padStart(4, '0')}.jpg`, projectSettings)
-            }));
+            return pansToUse.map((p, idx) => {
+              const fn = p.filename || `${cleanSg}-${String(idx + 1).padStart(4, '0')}.jpg`;
+              return {
+                filename: fn,
+                point_id: fn,
+                subgrid: cleanSg,
+                latitude: p.latitude ?? (p as any).lat ?? (p as any).y,
+                longitude: p.longitude ?? (p as any).lon ?? (p as any).lng ?? (p as any).x,
+                lat: p.latitude ?? (p as any).lat ?? (p as any).y,
+                lng: p.longitude ?? (p as any).lon ?? (p as any).lng ?? (p as any).x,
+                bearing: p.bearing ?? p.heading ?? ((idx * 15) % 360),
+                image_url: resolvePanoramaUrl(fn, projectSettings, { subgrid: cleanSg }),
+                config_url: resolvePanoramaConfigUrl(fn, projectSettings, cleanSg)
+              };
+            });
           }
         }
 
@@ -6758,12 +6780,14 @@ export default function App() {
             return {
               filename: fn,
               point_id: fn,
+              subgrid: cleanSg,
               latitude: lat,
               longitude: lng,
               lat: lat,
               lng: lng,
               bearing: (45 + i * 2) % 360,
-              image_url: resolvePanoramaUrl(fn, projectSettings)
+              image_url: resolvePanoramaUrl(fn, projectSettings, { subgrid: cleanSg }),
+              config_url: resolvePanoramaConfigUrl(fn, projectSettings, cleanSg)
             };
           });
         }
@@ -9340,17 +9364,66 @@ export default function App() {
                       <div className="flex-1 bg-app rounded-lg border border-subtle relative overflow-hidden group flex flex-col min-w-0">
                         {hasSelectedPoint ? (
                           <>
-                            <WebGISViewerIframe
-                              panoramaUrl={activePanoramaUrl}
-                              subgrid={selectedSubgridFilter || ''}
-                              bearing={panoramaTelemetry.yaw}
-                              themeMode={themeMode}
-                              isQAQCRunning={qaqcWorkerState.isRunning}
-                              qaqcSubgrid={qaqcWorkerState.subgrid}
-                              qaqcPic={qaqcWorkerState.pic}
-                              className="w-full h-full"
-                            />
-                            <div className="absolute top-2 left-2 bg-app backdrop-blur-md px-2 py-1 rounded-md text-[10px] text-text-base font-mono z-10 border border-subtle flex items-center gap-1.5">
+                            {(() => {
+                              const targetSubgrid = inspectorSubgrid || selectedSubgridFilter || '';
+                              const targetFilename = activePanoramaFilename || '';
+
+                              const provider = projectSettings?.storageProvider || import.meta.env.VITE_STORAGE_PROVIDER || 'cloudflare_r2';
+                              const isMultiResStrategy = projectSettings?.imageStorageStrategy !== 'single_equirectangular';
+
+                              // Automatically use multi-res tile loading for providers hosting tile pyramids
+                              const shouldUseMultiRes = isMultiResStrategy && (
+                                provider === 'cloudflare_r2' ||
+                                provider === 'custom_cdn' ||
+                                provider === 'aws_s3' ||
+                                provider === 'wasabi' ||
+                                provider === 'gcs' ||
+                                provider === 'azure_blob' ||
+                                provider === 'nas_local'
+                              );
+
+                              const dynamicConfigUrl = shouldUseMultiRes && targetFilename
+                                ? resolvePanoramaConfigUrl(targetFilename, projectSettings, targetSubgrid)
+                                : '';
+                              const dynamicPanoUrl = activePanoramaUrl || (targetFilename
+                                ? resolvePanoramaUrl(targetFilename, projectSettings, { subgrid: targetSubgrid })
+                                : '');
+
+                              // Case A: Multi-Resolution Tile Pyramid -> Native PannellumViewer
+                              if (shouldUseMultiRes && dynamicConfigUrl) {
+                                return (
+                                  <PannellumViewer
+                                    key={`${targetSubgrid}-${targetFilename}-${provider}`}
+                                    configUrl={dynamicConfigUrl}
+                                    panoramaUrl={dynamicPanoUrl}
+                                    initialYaw={panoramaTelemetry?.yaw || 0}
+                                    initialPitch={panoramaTelemetry?.pitch || 0}
+                                    initialHfov={panoramaTelemetry?.fov || 100}
+                                    showControls={true}
+                                    className="w-full h-full"
+                                  />
+                                );
+                              }
+
+                              // Case B: Single Equirectangular Image (Supabase / Flat .JPG) -> WebGISViewerIframe
+                              return (
+                                <WebGISViewerIframe
+                                  key={`${targetSubgrid}-${targetFilename}-${provider}`}
+                                  panoramaUrl={dynamicPanoUrl}
+                                  configUrl={dynamicConfigUrl}
+                                  filename={targetFilename}
+                                  subgrid={targetSubgrid}
+                                  bearing={panoramaTelemetry.yaw}
+                                  pitch={panoramaTelemetry.pitch}
+                                  themeMode={themeMode}
+                                  isQAQCRunning={qaqcWorkerState.isRunning}
+                                  qaqcSubgrid={qaqcWorkerState.subgrid}
+                                  qaqcPic={qaqcWorkerState.pic}
+                                  className="w-full h-full"
+                                />
+                              );
+                            })()}
+                            <div className="absolute top-2 left-2 bg-app backdrop-blur-md px-2 py-1 rounded-md text-[10px] text-text-base font-mono z-10 border border-subtle flex items-center gap-1.5 pointer-events-none">
                               <span className="w-2 h-2 rounded-full bg-sky-400"></span>
                               Telemetry: Pitch: {panoramaTelemetry.pitch > 0 ? `+${panoramaTelemetry.pitch}` : panoramaTelemetry.pitch}° | Yaw: {panoramaTelemetry.yaw}°
                             </div>
