@@ -36,7 +36,8 @@ import {
 } from 'lucide-react';
 import type { QAQCWorkerState, StationInspectionRecord, StationNode } from '../hooks/useQAQCWorker';
 import type { QAQCConfig, ExtendedProjectSettings, QADefectRecord } from '../types/admin';
-import { saveProjectSettingsToSupabase, resolvePanoramaUrl, SUBGRID_COORDINATES } from '../services/supabase';
+import { saveProjectSettingsToSupabase, resolvePanoramaUrl, resolvePanoramaConfigUrl, SUBGRID_COORDINATES } from '../services/supabase';
+import { PannellumViewer } from './PannellumViewer';
 import { isGpuAccelerationSupported, getGpuHardwareName } from '../utils/qaqcAnalyzer';
 import { QAQCThresholdStudioView } from './QAQCThresholdStudioModal';
 import {
@@ -1997,13 +1998,17 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                 : 'h-full w-full'
             }`}>
               {(activeRunningSubgrid || selectedSubgrid) && activeDisplayThumbnail ? (
-                <img
-                  src={activeDisplayThumbnail}
-                  alt={`Station ${activeDisplayIndex}`}
-                  className="w-full h-full object-cover select-none pointer-events-none"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).src = '';
-                  }}
+                <PannellumViewer
+                  configUrl={resolvePanoramaConfigUrl(
+                    activeRecord?.thumbnailUrl || activeRecord?.pointId || currentThumbnail || selectedStationFallback?.filename || (selectedSubgrid ? `${selectedSubgrid}-0001.jpg` : ''),
+                    projectSettings,
+                    activeRunningSubgrid || selectedSubgrid
+                  )}
+                  panoramaUrl={activeDisplayThumbnail}
+                  initialYaw={typeof activeDisplayBearing === 'number' ? activeDisplayBearing : 0}
+                  initialHfov={projectSettings?.defaultFov || 100}
+                  className="w-full h-full"
+                  showControls={true}
                 />
               ) : (
                 <div className="w-full h-full flex flex-col items-center justify-center gap-3 p-6 sm:p-8 text-center select-none bg-app">

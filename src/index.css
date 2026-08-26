@@ -549,3 +549,35 @@ textarea::placeholder {
 .light-mode ::-webkit-scrollbar-thumb:hover {
   background-color: rgba(37, 99, 235, 0.6);
 }
+
+/* ═══ PANNELLUM 360° Multi-Res Viewer Overrides ═══ */
+.pnlm-container {
+  background: #000 !important;
+}
+.pnlm-load-box {
+  display: none !important;
+}
+.pnlm-about-msg {
+  display: none !important;
+}
+.pnlm-load-button {
+  display: none !important;
+}
+.pnlm-zoom-controls,
+.pnlm-controls-container {
+  opacity: 0.6;
+  transition: opacity 0.2s ease;
+}
+.pnlm-zoom-controls:hover,
+.pnlm-controls-container:hover {
+  opacity: 1;
+}
+.pnlm-compass {
+  opacity: 0.5;
+}
+.pnlm-error-msg {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  background: rgba(0,0,0,0.8) !important;
+  color: #fbbf24 !important;
+}
