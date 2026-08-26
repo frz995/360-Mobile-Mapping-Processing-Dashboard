@@ -1382,7 +1382,9 @@ export function resolvePanoramaUrl(filename?: string, settings?: any, options?: 
 
   const provider: StorageProviderType = settings?.storageProvider || import.meta.env.VITE_STORAGE_PROVIDER || 'supabase';
   const customBase: string = settings?.cloudStorageBaseUrl || settings?.imageStoragePath || import.meta.env.VITE_IMAGE_CDN_URL || '';
-  const isMultiRes = settings?.imageStorageStrategy === 'multires_tiles' || Boolean(options?.asConfigUrl);
+  const isMultiRes = provider === 'cloudflare_r2'
+    ? settings?.imageStorageStrategy !== 'single_equirectangular'
+    : (settings?.imageStorageStrategy === 'multires_tiles' || Boolean(options?.asConfigUrl));
   const nameWithoutExt = cleanFn.replace(/\.[^/.]+$/, '');
   const sg = options?.subgrid || (cleanFn.match(/^([A-Za-z0-9_]+)-/)?.[1] || '');
 
@@ -1533,10 +1535,9 @@ export async function testCloudflareStorageHealth(
     r2Domain: cleanDomain
   };
 
+  const isMulti = testSettings.imageStorageStrategy !== 'single_equirectangular';
+  const configUrl = isMulti ? resolvePanoramaConfigUrl(fn, testSettings) : undefined;
   const imageUrl = resolvePanoramaUrl(fn, testSettings);
-  const configUrl = testSettings.imageStorageStrategy === 'multires_tiles'
-    ? resolvePanoramaConfigUrl(fn, testSettings)
-    : undefined;
 
   const targetUrl = configUrl || imageUrl;
   const startTime = performance.now();
