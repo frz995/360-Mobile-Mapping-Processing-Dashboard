@@ -609,13 +609,12 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
 
       {/* RBAC READ-ONLY NOTICE FOR NON-ADMINISTRATORS / GUESTS */}
       {!isAdmin && (
-        <div className={`p-3.5 rounded-xl border flex flex-wrap items-center justify-between gap-3 shrink-0 shadow-sm animate-in fade-in duration-200 ${
-          isGuest
-            ? 'bg-gradient-to-r from-amber-950/40 via-card to-card border-amber-500/30 text-amber-200'
-            : themeMode === 'light'
-              ? 'bg-slate-100 border-slate-300 text-slate-700'
-              : 'bg-app border-subtle text-slate-300'
-        }`}>
+        <div className={`p-3.5 rounded-xl border flex flex-wrap items-center justify-between gap-3 shrink-0 shadow-sm animate-in fade-in duration-200 ${isGuest
+          ? 'bg-gradient-to-r from-amber-950/40 via-card to-card border-amber-500/30 text-amber-200'
+          : themeMode === 'light'
+            ? 'bg-slate-100 border-slate-300 text-slate-700'
+            : 'bg-app border-subtle text-slate-300'
+          }`}>
           <div className="flex items-center gap-3">
             {isGuest ? (
               <div className="w-7 h-7 rounded-lg bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0">
@@ -637,13 +636,12 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
               </p>
             </div>
           </div>
-          <span className={`px-2.5 py-1 rounded-md text-[10px] font-mono font-semibold border ${
-            isGuest
-              ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
-              : themeMode === 'light'
-                ? 'bg-slate-200 text-slate-700 border-slate-300'
-                : 'bg-inner text-text-muted border-subtle'
-          }`}>
+          <span className={`px-2.5 py-1 rounded-md text-[10px] font-mono font-semibold border ${isGuest
+            ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+            : themeMode === 'light'
+              ? 'bg-slate-200 text-slate-700 border-slate-300'
+              : 'bg-inner text-text-muted border-subtle'
+            }`}>
             {isGuest ? 'Guest Viewer' : 'Read-Only'}
           </span>
         </div>
@@ -1410,23 +1408,23 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                           <label className="block text-text-muted font-medium mb-1">Multi-Res Config Pattern</label>
                           <input
                             type="text"
-                            value={projectSettings.multiResTilePattern || 'tiles/{filename}/config.json'}
+                            value={projectSettings.multiResTilePattern || 'tiles/{subgrid}/{filename}/config.json'}
                             onChange={e => setProjectSettings(prev => ({ ...prev, multiResTilePattern: e.target.value }))}
-                            placeholder="tiles/{filename}/config.json"
+                            placeholder="tiles/{subgrid}/{filename}/config.json"
                             className={`w-full px-3 py-2 rounded-lg font-mono focus:outline-none border ${inputBg}`}
                           />
-                          <p className="text-[10px] text-text-muted mt-1">Default: `tiles/{`{filename}`}/config.json`</p>
+                          <p className="text-[10px] text-text-muted mt-1">Default: `tiles/&#123;subgrid&#125;/&#123;filename&#125;/config.json`</p>
                         </div>
                         <div>
                           <label className="block text-text-muted font-medium mb-1">Fallback Preview Pattern</label>
                           <input
                             type="text"
-                            value={projectSettings.multiResFallbackPattern || 'tiles/{filename}/fallback/f.jpg'}
+                            value={projectSettings.multiResFallbackPattern || 'tiles/{subgrid}/{filename}/fallback/f.jpg'}
                             onChange={e => setProjectSettings(prev => ({ ...prev, multiResFallbackPattern: e.target.value }))}
-                            placeholder="tiles/{filename}/fallback/f.jpg"
+                            placeholder="tiles/{subgrid}/{filename}/fallback/f.jpg"
                             className={`w-full px-3 py-2 rounded-lg font-mono focus:outline-none border ${inputBg}`}
                           />
-                          <p className="text-[10px] text-text-muted mt-1">Default: `tiles/{`{filename}`}/fallback/f.jpg`</p>
+                          <p className="text-[10px] text-text-muted mt-1">Default: `tiles/&#123;subgrid&#125;/&#123;filename&#125;/fallback/f.jpg`</p>
                         </div>
                       </>
                     )}
@@ -1847,13 +1845,12 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
 
               {/* LIVE PROBE RESULT CARD */}
               {cfTestResult && (
-                <div className={`p-3.5 rounded-xl border animate-in fade-in slide-in-from-top-2 ${
-                  cfTestResult.ok
-                    ? 'bg-emerald-950/30 border-emerald-800/60 text-emerald-200'
-                    : cfTestResult.status === 404
+                <div className={`p-3.5 rounded-xl border animate-in fade-in slide-in-from-top-2 ${cfTestResult.ok
+                  ? 'bg-emerald-950/30 border-emerald-800/60 text-emerald-200'
+                  : cfTestResult.status === 404
                     ? 'bg-amber-950/30 border-amber-800/60 text-amber-200'
                     : 'bg-rose-950/30 border-rose-800/60 text-rose-200'
-                }`}>
+                  }`}>
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="space-y-1.5 flex-1 min-w-[240px]">
                       <div className="flex items-center gap-2">
@@ -1868,8 +1865,8 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                           {cfTestResult.ok
                             ? `Storage Reachable &bull; HTTP ${cfTestResult.status} ${cfTestResult.statusText}`
                             : cfTestResult.status === 404
-                            ? `Storage Connected &bull; HTTP 404 File Not Found`
-                            : `Connection Failed &bull; ${cfTestResult.statusText || 'Error'}`}
+                              ? `Storage Connected &bull; HTTP 404 File Not Found`
+                              : `Connection Failed &bull; ${cfTestResult.statusText || 'Error'}`}
                         </span>
                         <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-inner border border-subtle text-slate-300">
                           {cfTestResult.latencyMs}ms Latency

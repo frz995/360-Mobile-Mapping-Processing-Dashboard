@@ -1,9 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 
 interface WebGISViewerIframeProps {
-  panoramaUrl: string;
+  panoramaUrl?: string;
+  configUrl?: string;
+  filename?: string;
   subgrid?: string;
   bearing?: number;
+  pitch?: number;
   themeMode?: 'dark' | 'light';
   isQAQCRunning?: boolean;
   qaqcSubgrid?: string;
@@ -12,9 +15,12 @@ interface WebGISViewerIframeProps {
 }
 
 export const WebGISViewerIframe: React.FC<WebGISViewerIframeProps> = ({
-  panoramaUrl,
+  panoramaUrl = '',
+  configUrl = '',
+  filename = '',
   subgrid = '',
   bearing = 0,
+  pitch = 0,
   themeMode = 'dark',
   isQAQCRunning = false,
   qaqcSubgrid = '',
@@ -23,7 +29,7 @@ export const WebGISViewerIframe: React.FC<WebGISViewerIframeProps> = ({
 }) => {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
 
-  const webGisBaseUrl = import.meta.env.VITE_MAP_URL || 'https://mobilemapping-nine.vercel.app';
+  const webGisBaseUrl = import.meta.env.VITE_MAP_URL || window.location.origin;
 
   // Static iframe URL created ONCE on mount so iframe never reloads on prop updates
   const staticSrc = useRef(`${webGisBaseUrl}/?embed=true&viewerOnly=true&dashboard=true`).current;
@@ -31,13 +37,18 @@ export const WebGISViewerIframe: React.FC<WebGISViewerIframeProps> = ({
   const postData = React.useCallback(() => {
     if (iframeRef.current && iframeRef.current.contentWindow) {
       try {
-        if (panoramaUrl) {
+        if (panoramaUrl || configUrl || filename) {
+          const resolvedFilename = filename || (panoramaUrl ? panoramaUrl.split('/').pop() : '');
           iframeRef.current.contentWindow.postMessage({
             type: 'SET_PANORAMA',
             point: {
               image_url: panoramaUrl,
+              config_url: configUrl,
+              filename: resolvedFilename,
+              point_id: resolvedFilename,
               subgrid: subgrid,
-              bearing: bearing
+              bearing: bearing,
+              pitch: pitch
             }
           }, '*');
         }
@@ -49,7 +60,7 @@ export const WebGISViewerIframe: React.FC<WebGISViewerIframeProps> = ({
         console.warn('Failed to postMessage to WebGIS viewer iframe:', err);
       }
     }
-  }, [panoramaUrl, subgrid, bearing, themeMode]);
+  }, [panoramaUrl, configUrl, filename, subgrid, bearing, pitch, themeMode]);
 
   const [isLocked, setIsLocked] = useState<boolean>(false);
   const [lockPic, setLockPic] = useState<string>('');
@@ -67,7 +78,7 @@ export const WebGISViewerIframe: React.FC<WebGISViewerIframeProps> = ({
             subgrid: qaqcSubgrid || subgrid,
             pic: qaqcPic
           }, '*');
-        } catch (_) {}
+        } catch (_) { }
       }
     } else if (!isQAQCRunning && isLocked) {
       setIsLocked(false);
@@ -78,7 +89,7 @@ export const WebGISViewerIframe: React.FC<WebGISViewerIframeProps> = ({
             type: 'UNLOCK_SUBGRID',
             subgrid: qaqcSubgrid || subgrid
           }, '*');
-        } catch (_) {}
+        } catch (_) { }
       }
     }
   }, [isQAQCRunning, qaqcSubgrid, subgrid, qaqcPic, isLocked]);
@@ -101,9 +112,9 @@ export const WebGISViewerIframe: React.FC<WebGISViewerIframeProps> = ({
     return () => window.removeEventListener('message', handleMessage);
   }, [postData, subgrid]);
 
-  // Send SET_PANORAMA whenever panoramaUrl, subgrid, or bearing changes
+  // Send SET_PANORAMA whenever panoramaUrl, configUrl, filename, subgrid, or bearing changes
   useEffect(() => {
-    if (!panoramaUrl) return;
+    if (!panoramaUrl && !configUrl && !filename) return;
 
     postData();
 
@@ -117,7 +128,7 @@ export const WebGISViewerIframe: React.FC<WebGISViewerIframeProps> = ({
       clearTimeout(t2);
       clearTimeout(t3);
     };
-  }, [panoramaUrl, subgrid, bearing, postData]);
+  }, [panoramaUrl, configUrl, filename, subgrid, bearing, postData]);
 
   const handleIframeLoad = () => {
     postData();
@@ -131,9 +142,8 @@ export const WebGISViewerIframe: React.FC<WebGISViewerIframeProps> = ({
         src={staticSrc}
         onLoad={handleIframeLoad}
         title="WebGIS 360 Viewer"
-        className={`w-full h-full border-0 rounded-lg transition-opacity duration-300 ${
-          isLocked ? 'opacity-35 pointer-events-none' : 'opacity-100'
-        }`}
+        className={`w-full h-full border-0 rounded-lg transition-opacity duration-300 ${isLocked ? 'opacity-35 pointer-events-none' : 'opacity-100'
+          }`}
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
       />
       {isLocked && (

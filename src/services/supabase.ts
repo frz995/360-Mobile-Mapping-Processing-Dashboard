@@ -60,6 +60,24 @@ export interface SupabasePanoramaRecord {
 }
 
 // Subgrid centroid coordinates (longitude, latitude) populated dynamically from real database records
+
+// Dynamically extracts subgrid prefix from any filename or string
+export function extractSubgridName(filenameOrSubgrid?: string): string {
+  if (!filenameOrSubgrid) return '';
+  const clean = filenameOrSubgrid.split('/').pop()?.trim() || filenameOrSubgrid.trim();
+
+  // 1. Check GIS coordinate syntax: NxxExx / SxxWxx
+  const coordMatch = clean.match(/([NS]\d+[EW]\d+)/i);
+  if (coordMatch) return coordMatch[1].toUpperCase();
+
+  // 2. Check general prefix before hyphen or underscore
+  const prefixMatch = clean.match(/^([A-Za-z0-9]+)[-_]/);
+  if (prefixMatch) return prefixMatch[1].toUpperCase();
+
+  // 3. Fallback: file basename without extension
+  return clean.replace(/\.[^/.]+$/, '').toUpperCase();
+}
+
 export const SUBGRID_COORDINATES: Record<string, [number, number]> = {};
 
 // Helper: Format PIC name
@@ -212,7 +230,7 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
             offset += limit;
           }
         }
-      } catch (_) {}
+      } catch (_) { }
     }
 
     console.log('Verified Supabase storage file count:', storageFileSet.size, 'Subgrid counts:', Object.fromEntries(storageImageCounts));
@@ -254,7 +272,7 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
           }
         });
       }
-    } catch (_) {}
+    } catch (_) { }
 
     // Query cloud qaqc_audit_runs table for persisted QAQC audit metrics
     const qaqcRunsTable = settings?.qaqcRunsTable || import.meta.env.VITE_DB_QAQC_RUNS_TABLE || 'qaqc_audit_runs';
@@ -285,7 +303,7 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
           }
         });
       }
-    } catch (_) {}
+    } catch (_) { }
 
     // Group published database records by individual survey run (runKey) so daily journeys remain separate
     const publishedGrouped = new Map<string, {
@@ -405,7 +423,7 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
 
       const calcKm = calculateDistance(g.points);
       const km = calcKm > 0 ? calcKm : Math.round((poiCount * 0.005) * 100) / 100;
-      
+
       const normSubgrid = subgrid.toUpperCase().trim();
       const runId = `sp-d-${runKey}`;
       const subgridDefectsFromDb = qaDefectsPerSubgrid.get(normSubgrid) || 0;
@@ -417,8 +435,8 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
       const qaqcStatus = finalImageCount === 0
         ? undefined
         : (cachedAudit || defects > 0
-            ? (defects === 0 ? 'Published (QAQC Verified)' : `Published (${defects} Defect${defects === 1 ? '' : 's'} Found)`)
-            : undefined);
+          ? (defects === 0 ? 'Published (QAQC Verified)' : `Published (${defects} Defect${defects === 1 ? '' : 's'} Found)`)
+          : undefined);
 
       let dateFormatted = g.dateStr;
       const d = new Date(g.dateStr);
@@ -586,9 +604,9 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
           const qaqcStatus = finalImgCount === 0 ? undefined : (
             cachedAudit || finalDefectCount > 0
               ? (isPub
-                  ? (finalDefectCount === 0 ? 'Published (QAQC Verified)' : `Published (${finalDefectCount} Defect${finalDefectCount === 1 ? '' : 's'} Found)`)
-                  : (finalDefectCount === 0 ? 'QAQC Passed (Ready to Publish)' : `QAQC Flagged (${finalDefectCount} Defect${finalDefectCount === 1 ? '' : 's'} Found)`)
-                )
+                ? (finalDefectCount === 0 ? 'Published (QAQC Verified)' : `Published (${finalDefectCount} Defect${finalDefectCount === 1 ? '' : 's'} Found)`)
+                : (finalDefectCount === 0 ? 'QAQC Passed (Ready to Publish)' : `QAQC Flagged (${finalDefectCount} Defect${finalDefectCount === 1 ? '' : 's'} Found)`)
+              )
               : undefined
           );
 
@@ -1296,7 +1314,7 @@ export async function verifyCsvImageFilenamesInStorage(filenames: string[], sett
         if (data.length < limit) hasMore = false;
         else offset += limit;
       }
-    } catch (_) {}
+    } catch (_) { }
   }
 
   if (fileSet.size > 0) {
@@ -1370,120 +1388,127 @@ export function formatCloudflareUrl(domainOrUrl: string): string {
  * Universal Image & Multi-Res Tile URL Resolver for GIS Industry Cloud & NAS Storage Providers.
  * Resolves 360° panorama image URLs across Cloudflare R2 (Multi-Res & Flat), Supabase, AWS S3, GCS, Azure Blob, Wasabi, and Local NAS.
  */
-export function resolvePanoramaUrl(filename?: string, settings?: any, options?: ResolveUrlOptions): string {
+export function resolvePanoramaUrl(
+  filename?: string,
+  settings?: any,
+  options?: ResolveUrlOptions
+): string {
   if (!filename) return '';
   const cleanFn = filename.replace(/^\/+/, '').replace(/^MMS_PIC\//i, '').trim();
   if (!cleanFn) return '';
 
-  // 1. Direct absolute URL (e.g. S3/GCS signed URL stored directly in database)
+  // 1. Direct absolute URL
   if (cleanFn.startsWith('http://') || cleanFn.startsWith('https://')) {
     return cleanFn;
   }
 
-  const provider: StorageProviderType = settings?.storageProvider || import.meta.env.VITE_STORAGE_PROVIDER || 'supabase';
-  const customBase: string = settings?.cloudStorageBaseUrl || settings?.imageStoragePath || import.meta.env.VITE_IMAGE_CDN_URL || '';
-  const isMultiRes = provider === 'cloudflare_r2'
-    ? settings?.imageStorageStrategy !== 'single_equirectangular'
-    : (settings?.imageStorageStrategy === 'multires_tiles' || Boolean(options?.asConfigUrl));
+  const provider: StorageProviderType =
+    settings?.storageProvider || import.meta.env.VITE_STORAGE_PROVIDER || 'cloudflare_r2';
+  const isMultiRes = settings?.imageStorageStrategy !== 'single_equirectangular';
   const nameWithoutExt = cleanFn.replace(/\.[^/.]+$/, '');
-  const sg = options?.subgrid || (cleanFn.match(/^([A-Za-z0-9_]+)-/)?.[1] || '');
 
-  // 2. Custom CDN / Direct URL prefix provided in Settings or Env (if not overridden by multi-res)
-  if (customBase && (customBase.startsWith('http://') || customBase.startsWith('https://')) && !options?.asConfigUrl && !isMultiRes) {
-    return `${customBase.replace(/\/+$/, '')}/${cleanFn}`;
-  }
+  // Extract subgrid dynamically: options.subgrid > extracted prefix > basename
+  const targetSubgrid = (
+    options?.subgrid ||
+    extractSubgridName(cleanFn) ||
+    cleanFn.match(/^([A-Za-z0-9_]+)-/)?.[1] ||
+    nameWithoutExt
+  ).toUpperCase().trim();
 
   switch (provider) {
-    case 'cloudflare_r2': {
-      const rawDomain = settings?.r2Domain || import.meta.env.VITE_R2_DOMAIN || import.meta.env.VITE_IMAGE_CDN_URL || 'pub-360.r2.dev';
+    case 'cloudflare_r2':
+    case 'custom_cdn': {
+      const rawDomain =
+        settings?.r2Domain ||
+        settings?.r2PublicUrl ||
+        settings?.customCdnUrl ||
+        settings?.cloudStorageBaseUrl ||
+        import.meta.env.VITE_R2_DOMAIN ||
+        import.meta.env.VITE_IMAGE_CDN_URL ||
+        '';
+
       const baseUrl = formatCloudflareUrl(rawDomain);
 
-      // A. Multi-resolution Tile Pyramid Mode
-      if (isMultiRes || cleanFn.endsWith('.json')) {
-        if (options?.asConfigUrl || cleanFn.endsWith('.json')) {
-          if (settings?.multiResTilePattern) {
-            const path = settings.multiResTilePattern
-              .replace('{filename}', nameWithoutExt)
-              .replace('{subgrid}', sg || nameWithoutExt)
-              .replace(/^\/+/, '');
-            return `${baseUrl}/${path}`;
-          }
-          // Auto-detect subgrid partition if subgrid exists
-          if (sg && settings?.subgridDirectoryHierarchy !== 'flat') {
-            return `${baseUrl}/tiles/${sg}/${nameWithoutExt}/config.json`;
-          }
-          return `${baseUrl}/tiles/${nameWithoutExt}/config.json`;
+      // Multi-res configuration JSON request
+      if (options?.asConfigUrl || cleanFn.endsWith('.json')) {
+        if (settings?.multiResTilePattern) {
+          const path = settings.multiResTilePattern
+            .replace('{filename}', nameWithoutExt)
+            .replace('{subgrid}', targetSubgrid || nameWithoutExt)
+            .replace(/^\/+/, '');
+          return baseUrl ? `${baseUrl}/${path}` : `/${path}`;
         }
 
-        // Return fallback preview image for 2D previews / thumbnails
-        // When in multi-res mode and not requesting config, always use fallback/f.jpg
+        return targetSubgrid
+          ? `${baseUrl}/tiles/${targetSubgrid}/${nameWithoutExt}/config.json`
+          : `${baseUrl}/tiles/${nameWithoutExt}/config.json`;
+      }
+
+      // Preview Thumbnail / Fallback Cube Face request
+      if (isMultiRes) {
         if (settings?.multiResFallbackPattern) {
           const path = settings.multiResFallbackPattern
             .replace('{filename}', nameWithoutExt)
-            .replace('{subgrid}', sg || nameWithoutExt)
+            .replace('{subgrid}', targetSubgrid || nameWithoutExt)
             .replace(/^\/+/, '');
-          return `${baseUrl}/${path}`;
+          return baseUrl ? `${baseUrl}/${path}` : `/${path}`;
         }
-        // Auto-detect subgrid partition if subgrid exists
-        if (sg && settings?.subgridDirectoryHierarchy !== 'flat') {
-          return `${baseUrl}/tiles/${sg}/${nameWithoutExt}/fallback/f.jpg`;
-        }
-        return `${baseUrl}/tiles/${nameWithoutExt}/fallback/f.jpg`;
+
+        return targetSubgrid
+          ? `${baseUrl}/tiles/${targetSubgrid}/${nameWithoutExt}/fallback/f.jpg`
+          : `${baseUrl}/tiles/${nameWithoutExt}/fallback/f.jpg`;
       }
 
-      // B. Standard Flat Equirectangular Mode
-      if (settings?.imageStoragePath) {
-        const prefix = settings.imageStoragePath.replace(/^\/+/, '').replace(/\/+$/, '');
-        return prefix ? `${baseUrl}/${prefix}/${cleanFn}` : `${baseUrl}/${cleanFn}`;
+      // Standard Flat Equirectangular Single Image fallback
+      const prefix = (settings?.imageStoragePath || '').replace(/^\/+/, '').replace(/\/+$/, '');
+      if (prefix) {
+        return baseUrl ? `${baseUrl}/${prefix}/${cleanFn}` : `/${prefix}/${cleanFn}`;
       }
-      return `${baseUrl}/${cleanFn}`;
+      return baseUrl ? `${baseUrl}/${cleanFn}` : `/${cleanFn}`;
     }
 
     case 'aws_s3': {
-      const bucket = settings?.s3Bucket || import.meta.env.VITE_S3_BUCKET || 'tnb-mobilemapping-panoramas';
+      const bucket = settings?.s3Bucket || import.meta.env.VITE_S3_BUCKET || '';
       const region = settings?.s3Region || import.meta.env.VITE_S3_REGION || 'ap-southeast-1';
-      return `https://${bucket}.s3.${region}.amazonaws.com/${cleanFn}`;
+      const baseUrl = `https://${bucket}.s3.${region}.amazonaws.com`;
+      if (options?.asConfigUrl) return `${baseUrl}/tiles/${targetSubgrid}/${nameWithoutExt}/config.json`;
+      return `${baseUrl}/${cleanFn}`;
     }
 
     case 'gcs': {
-      const bucket = settings?.gcsBucket || import.meta.env.VITE_GCS_BUCKET || 'tnb-gis-360-panoramas';
-      return `https://storage.googleapis.com/${bucket}/${cleanFn}`;
+      const bucket = settings?.gcsBucket || import.meta.env.VITE_GCS_BUCKET || '';
+      const baseUrl = `https://storage.googleapis.com/${bucket}`;
+      if (options?.asConfigUrl) return `${baseUrl}/tiles/${targetSubgrid}/${nameWithoutExt}/config.json`;
+      return `${baseUrl}/${cleanFn}`;
     }
 
     case 'azure_blob': {
-      const account = settings?.azureAccount || import.meta.env.VITE_AZURE_ACCOUNT || 'tnbgisstorage';
-      const container = settings?.azureContainer || import.meta.env.VITE_AZURE_CONTAINER || 'panoramas';
-      return `https://${account}.blob.core.windows.net/${container}/${cleanFn}`;
+      const account = settings?.azureAccount || import.meta.env.VITE_AZURE_ACCOUNT || '';
+      const container = settings?.azureContainer || import.meta.env.VITE_AZURE_CONTAINER || '';
+      const baseUrl = `https://${account}.blob.core.windows.net/${container}`;
+      if (options?.asConfigUrl) return `${baseUrl}/tiles/${targetSubgrid}/${nameWithoutExt}/config.json`;
+      return `${baseUrl}/${cleanFn}`;
     }
 
     case 'wasabi': {
-      const bucket = settings?.wasabiBucket || import.meta.env.VITE_WASABI_BUCKET || 'tnb-wasabi-panoramas';
+      const bucket = settings?.wasabiBucket || import.meta.env.VITE_WASABI_BUCKET || '';
       const region = settings?.wasabiRegion || import.meta.env.VITE_WASABI_REGION || 'us-east-1';
-      return `https://s3.${region}.wasabisys.com/${bucket}/${cleanFn}`;
+      const baseUrl = `https://s3.${region}.wasabisys.com/${bucket}`;
+      if (options?.asConfigUrl) return `${baseUrl}/tiles/${targetSubgrid}/${nameWithoutExt}/config.json`;
+      return `${baseUrl}/${cleanFn}`;
     }
 
     case 'nas_local': {
-      const nasUrl = settings?.nasServerUrl || import.meta.env.VITE_NAS_SERVER_URL || 'http://192.168.1.100/360_images';
-      return `${nasUrl.replace(/\/+$/, '')}/${cleanFn}`;
-    }
-
-    case 'custom_cdn': {
-      const rawCdn = settings?.customCdnUrl || settings?.cloudStorageBaseUrl || import.meta.env.VITE_CUSTOM_CDN_URL || '/MMS_PIC';
-      const cdnUrl = formatCloudflareUrl(rawCdn);
-      
-      if (isMultiRes) {
-        if (options?.asConfigUrl) {
-          return `${cdnUrl}/tiles/${nameWithoutExt}/config.json`;
-        }
-        return `${cdnUrl}/tiles/${nameWithoutExt}/fallback/f.jpg`;
-      }
-      return `${cdnUrl}/${cleanFn}`;
+      const nasUrl = (settings?.nasServerUrl || import.meta.env.VITE_NAS_SERVER_URL || '').replace(/\/+$/, '');
+      if (options?.asConfigUrl) return `${nasUrl}/tiles/${targetSubgrid}/${nameWithoutExt}/config.json`;
+      return `${nasUrl}/${cleanFn}`;
     }
 
     case 'supabase':
     default: {
+      const baseSupabaseUrl = (settings?.supabaseUrl || import.meta.env.VITE_SUPABASE_URL || '').replace(/\/+$/, '');
       const bucket = settings?.supabaseBucket || import.meta.env.VITE_SUPABASE_BUCKET || 'MMS_PIC';
-      return `${supabaseUrl}/storage/v1/object/public/${bucket}/${cleanFn}`;
+      return `${baseSupabaseUrl}/storage/v1/object/public/${bucket}/${cleanFn}`;
     }
   }
 }
@@ -2153,7 +2178,7 @@ export async function resolveQADefectInSupabase(subgrid: string, pointId: string
       details: `Defect on node ${pointId} in subgrid ${cleanSub} marked as resolved/dismissed by ${resolvedBy || 'Operator'}.`,
       user: resolvedBy || 'Operator',
       status: 'success'
-    }).catch(() => {});
+    }).catch(() => { });
 
     return true;
   } catch (err) {
