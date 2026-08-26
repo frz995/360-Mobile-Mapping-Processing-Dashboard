@@ -1416,20 +1416,19 @@ export function resolvePanoramaUrl(filename?: string, settings?: any, options?: 
         }
 
         // Return fallback preview image for 2D previews / thumbnails
-        if (options?.asFallback || settings?.imageStorageStrategy === 'multires_tiles') {
-          if (settings?.multiResFallbackPattern) {
-            const path = settings.multiResFallbackPattern
-              .replace('{filename}', nameWithoutExt)
-              .replace('{subgrid}', sg || nameWithoutExt)
-              .replace(/^\/+/, '');
-            return `${baseUrl}/${path}`;
-          }
-          // Auto-detect subgrid partition if subgrid exists
-          if (sg && settings?.subgridDirectoryHierarchy !== 'flat') {
-            return `${baseUrl}/tiles/${sg}/${nameWithoutExt}/fallback/f.jpg`;
-          }
-          return `${baseUrl}/tiles/${nameWithoutExt}/fallback/f.jpg`;
+        // When in multi-res mode and not requesting config, always use fallback/f.jpg
+        if (settings?.multiResFallbackPattern) {
+          const path = settings.multiResFallbackPattern
+            .replace('{filename}', nameWithoutExt)
+            .replace('{subgrid}', sg || nameWithoutExt)
+            .replace(/^\/+/, '');
+          return `${baseUrl}/${path}`;
         }
+        // Auto-detect subgrid partition if subgrid exists
+        if (sg && settings?.subgridDirectoryHierarchy !== 'flat') {
+          return `${baseUrl}/tiles/${sg}/${nameWithoutExt}/fallback/f.jpg`;
+        }
+        return `${baseUrl}/tiles/${nameWithoutExt}/fallback/f.jpg`;
       }
 
       // B. Standard Flat Equirectangular Mode
