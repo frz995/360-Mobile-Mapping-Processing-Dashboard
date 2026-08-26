@@ -1402,9 +1402,13 @@ export function resolvePanoramaUrl(filename?: string, settings?: any, options?: 
           if (settings?.multiResTilePattern) {
             const path = settings.multiResTilePattern
               .replace('{filename}', nameWithoutExt)
-              .replace('{subgrid}', sg)
+              .replace('{subgrid}', sg || nameWithoutExt)
               .replace(/^\/+/, '');
             return `${baseUrl}/${path}`;
+          }
+          // Auto-detect subgrid partition if subgrid exists
+          if (sg && settings?.subgridDirectoryHierarchy !== 'flat') {
+            return `${baseUrl}/tiles/${sg}/${nameWithoutExt}/config.json`;
           }
           return `${baseUrl}/tiles/${nameWithoutExt}/config.json`;
         }
@@ -1414,9 +1418,13 @@ export function resolvePanoramaUrl(filename?: string, settings?: any, options?: 
           if (settings?.multiResFallbackPattern) {
             const path = settings.multiResFallbackPattern
               .replace('{filename}', nameWithoutExt)
-              .replace('{subgrid}', sg)
+              .replace('{subgrid}', sg || nameWithoutExt)
               .replace(/^\/+/, '');
             return `${baseUrl}/${path}`;
+          }
+          // Auto-detect subgrid partition if subgrid exists
+          if (sg && settings?.subgridDirectoryHierarchy !== 'flat') {
+            return `${baseUrl}/tiles/${sg}/${nameWithoutExt}/fallback/f.jpg`;
           }
           return `${baseUrl}/tiles/${nameWithoutExt}/fallback/f.jpg`;
         }

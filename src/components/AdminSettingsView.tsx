@@ -1600,12 +1600,14 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                 <div>
                   <label className="block text-text-muted font-medium mb-1">Directory Folder Hierarchy</label>
                   <select
+                    value={projectSettings.subgridDirectoryHierarchy || 'auto_detect'}
+                    onChange={e => setProjectSettings(prev => ({ ...prev, subgridDirectoryHierarchy: e.target.value as any }))}
                     className={`w-full px-3 py-2 rounded-lg font-medium focus:outline-none border ${inputBg}`}
-                    defaultValue="flat"
                   >
-                    <option value="flat">Flat Root: /MMS_PIC/{`{filename}`}</option>
-                    <option value="subgrid_folder">Subgrid Folder: /MMS_PIC/{`{subgrid}/{filename}`}</option>
-                    <option value="daily_folder">Daily Date Folder: /MMS_PIC/{`{date}/{filename}`}</option>
+                    <option value="auto_detect">⚡ Auto-Detect from Filename / Subgrid (Recommended)</option>
+                    <option value="subgrid_folder">Subgrid Folder: tiles/{`{subgrid}`}/{`{filename}`}/</option>
+                    <option value="flat">Flat Root: tiles/{`{filename}`}/</option>
+                    <option value="daily_folder">Daily Date Folder: /{`{date}`}/{`{filename}`}/</option>
                   </select>
                 </div>
 
