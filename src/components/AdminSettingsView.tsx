@@ -1598,17 +1598,21 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                 </div>
 
                 <div>
-                  <label className="block text-text-muted font-medium mb-1">Directory Folder Hierarchy</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-text-muted font-medium">Directory Folder Hierarchy</label>
+                    <span className="text-[10px] text-sky-400 font-medium">Auto-Managed</span>
+                  </div>
                   <select
-                    value={projectSettings.subgridDirectoryHierarchy || 'auto_detect'}
-                    onChange={e => setProjectSettings(prev => ({ ...prev, subgridDirectoryHierarchy: e.target.value as any }))}
-                    className={`w-full px-3 py-2 rounded-lg font-medium focus:outline-none border ${inputBg}`}
+                    disabled
+                    value="auto_detect"
+                    className="w-full px-3 py-2 rounded-lg font-medium focus:outline-none border opacity-60 cursor-not-allowed bg-inner/50 text-slate-400 border-subtle"
                   >
-                    <option value="auto_detect">⚡ Auto-Detect from Filename / Subgrid (Recommended)</option>
+                    <option value="auto_detect">Auto-Detect from Filename / Subgrid (System Managed)</option>
                     <option value="subgrid_folder">Subgrid Folder: tiles/{`{subgrid}`}/{`{filename}`}/</option>
                     <option value="flat">Flat Root: tiles/{`{filename}`}/</option>
                     <option value="daily_folder">Daily Date Folder: /{`{date}`}/{`{filename}`}/</option>
                   </select>
+                  <p className="text-[10px] text-text-muted mt-1">Automatically detected and managed by active storage provider.</p>
                 </div>
 
                 <div>
