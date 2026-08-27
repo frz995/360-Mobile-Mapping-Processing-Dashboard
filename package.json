@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@photo-sphere-viewer/core": "^5.15.1",
+    "@photo-sphere-viewer/cubemap-tiles-adapter": "^5.15.1",
     "@photo-sphere-viewer/equirectangular-tiles-adapter": "^5.15.1",
     "@supabase/supabase-js": "^2.111.0",
     "@tmcw/togeojson": "^7.1.2",
