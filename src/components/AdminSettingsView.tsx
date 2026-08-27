@@ -1962,7 +1962,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                     <div>
                       <label className="block text-text-muted font-medium mb-1">Default GIS Basemap Provider</label>
                       <select
-                        value={projectSettings.defaultBasemap || 'positron'}
+                        value={projectSettings.defaultBasemap || 'ofm-positron'}
                         onChange={e => {
                           const val = e.target.value as any;
                           setProjectSettings(prev => ({ ...prev, defaultBasemap: val }));
@@ -1970,7 +1970,12 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                         }}
                         className={`w-full px-3 py-2 rounded-lg font-medium focus:outline-none border ${inputBg}`}
                       >
-                        <option value="positron">Positron (Carto Light) &bull; WebGIS Default</option>
+                        <option value="ofm-positron">Positron (OpenFreeMap Vector) • Recommended</option>
+                        <option value="ofm-dark">Dark (OpenFreeMap Vector)</option>
+                        <option value="ofm-fiord">Fiord Nordic Dark (OpenFreeMap Vector)</option>
+                        <option value="ofm-liberty">Liberty (OpenFreeMap Vector)</option>
+                        <option value="ofm-bright">Bright (OpenFreeMap Vector)</option>
+                        <option value="positron">Positron (Carto Light) • Raster Fallback</option>
                         <option value="satellite">Esri World Imagery (Satellite Hybrid)</option>
                         <option value="osm">OpenStreetMap Standard</option>
                         <option value="dark">Dark Matter (Carto Dark)</option>
@@ -1978,8 +1983,6 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                         <option value="google-streets">Google Streets</option>
                         <option value="google-satellite">Google Satellite (Pure)</option>
                         <option value="google-terrain">Google Terrain Elevation</option>
-                        <option value="bright">MapLibre Bright (OpenFreeMap)</option>
-                        <option value="liberty">MapLibre Liberty (OpenFreeMap)</option>
                         <option value="esri-streets">Esri World Streets</option>
                         <option value="esri-topo">Esri World Topographic</option>
                         <option value="esri-natgeo">Esri National Geographic</option>
