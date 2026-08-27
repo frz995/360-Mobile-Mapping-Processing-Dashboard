@@ -84,7 +84,7 @@ async function clearTable(table) {
 }
 
 async function main() {
-  console.log('\n======================================================');
+  console.log('======================================================');
   console.log('   360 Mobile Mapping — Clean Wipe Database Script    ');
   console.log('======================================================\n');
   console.log(`Connecting to Supabase: ${supabaseUrl}\n`);
