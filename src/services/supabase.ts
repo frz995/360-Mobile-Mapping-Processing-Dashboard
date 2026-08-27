@@ -1521,8 +1521,19 @@ export function resolvePanoramaUrl(
 
     case 'supabase':
     default: {
-      const baseSupabaseUrl = (settings?.supabaseUrl || import.meta.env.VITE_SUPABASE_URL || '').replace(/\/+$/, '');
+      const baseSupabaseUrl = (settings?.supabaseUrl || import.meta.env.VITE_SUPABASE_URL || 'https://frz995-360-processing.supabase.co').replace(/\/+$/, '');
       const bucket = settings?.supabaseBucket || import.meta.env.VITE_SUPABASE_BUCKET || 'MMS_PIC';
+
+      const pattern = settings?.singleImagePathPattern || settings?.imageFormatPattern;
+      if (pattern && (pattern.includes('{subgrid}') || pattern.includes('{filename}'))) {
+        const path = pattern
+          .replace('{subgrid}', targetSubgrid || '')
+          .replace('{filename}', cleanFn)
+          .replace(/^\/+/, '');
+        return `${baseSupabaseUrl}/storage/v1/object/public/${bucket}/${path}`;
+      }
+
+      // If cleanFn already includes a folder or if files are at root
       return `${baseSupabaseUrl}/storage/v1/object/public/${bucket}/${cleanFn}`;
     }
   }
