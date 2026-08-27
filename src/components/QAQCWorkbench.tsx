@@ -8,12 +8,14 @@ import {
   StopCircle,
   ShieldCheck,
   Navigation,
+  Compass,
+  ChevronLeft,
+  ChevronRight,
   Database,
   Minimize2,
   X,
   Crosshair,
   Layers,
-  Compass,
   Search,
   RotateCcw,
   Download,
@@ -26,8 +28,6 @@ import {
   MapPin,
   Columns,
   Rows,
-  ChevronLeft,
-  ChevronRight,
   Zap,
   Cpu,
   Map as MapIcon,
@@ -37,7 +37,7 @@ import {
 import type { QAQCWorkerState, StationInspectionRecord, StationNode } from '../hooks/useQAQCWorker';
 import type { QAQCConfig, ExtendedProjectSettings, QADefectRecord } from '../types/admin';
 import { saveProjectSettingsToSupabase, resolvePanoramaUrl, resolvePanoramaConfigUrl, SUBGRID_COORDINATES } from '../services/supabase';
-import { PhotoSphereViewerComponent } from './PhotoSphereViewerComponent';
+import { PhotoSphereViewerComponent, type PhotoSphereViewerHandle } from './PhotoSphereViewerComponent';
 import { usePanoramaViewer } from '../hooks/usePanoramaViewer';
 import { isGpuAccelerationSupported, getGpuHardwareName } from '../utils/qaqcAnalyzer';
 import { QAQCThresholdStudioView } from './QAQCThresholdStudioModal';
@@ -137,15 +137,12 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
   onAbort,
   onClose,
   onOpenDefectsGallery,
-  onSignOffAndPublish: _onSignOffAndPublish
 }) => {
-  // Navigation & Filter Tabs (Default to Daily tab if a specific run was selected, else Masterlist)
   const [targetTab, setTargetTab] = useState<'daily' | 'masterlist'>(initialRunId ? 'daily' : 'masterlist');
   const [categoryFilter, setCategoryFilter] = useState<'all' | 'staging' | 'published'>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [showOnlyWithFrames, setShowOnlyWithFrames] = useState<boolean>(false);
 
-  // Selected Target Dataset in Console strictly scoped to the active selection
   const [selectedSubgrid, setSelectedSubgrid] = useState<string>(initialSubgrid || '');
   const [selectedRunId, setSelectedRunId] = useState<string | null>(initialRunId || null);
 
@@ -157,7 +154,6 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
     }
   }, [initialSubgrid, initialRunId]);
 
-  // Inspection Rules & 4 Pacing Options (Auto + 200ms + 300ms + 500ms)
   const [config, setConfig] = useState<QAQCConfig>({
     checkBlur: true,
     checkObstruction: true,
@@ -167,14 +163,11 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
   const [stepIntervalMs, setStepIntervalMs] = useState<number>(200);
   const [inspectorPic, setInspectorPic] = useState<string>(activeUserName || 'Operator');
 
-  // Telemetry stream history selection & filtering
-  // Viewport Layout Mode (Split 50/50 Map, Floating Minimap PiP, Full 360)
   const [viewportMode, setViewportMode] = useState<'horizontal' | 'vertical' | 'pip' | 'full'>('horizontal');
   const [isPipCollapsed, setIsPipCollapsed] = useState<boolean>(false);
   const mapIframeRef = useRef<HTMLIFrameElement | null>(null);
+  const psvRef = useRef<PhotoSphereViewerHandle | null>(null);
   const [_isMapReady, setIsMapReady] = useState<boolean>(false);
-
-
 
   const [selectedStationIndex, setSelectedStationIndex] = useState<number | null>(null);
   const [filterMode, setFilterMode] = useState<'all' | 'flagged'>('all');
@@ -184,7 +177,6 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
   const [auditLogFilter, setAuditLogFilter] = useState<'all' | 'flagged' | 'passed'>('all');
   const [auditSearchQuery, setAuditSearchQuery] = useState<string>('');
 
-  // Dynamic QA/QC Defect Detection Thresholds (Loaded from Cloud Project Settings)
   const [localThresholds, setLocalThresholds] = useState<{
     blurVarianceThreshold: number;
     gpsMaxJumpDistanceMeters: number;
@@ -199,7 +191,6 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
     deliverableModel: projectSettings?.deliverableModel ?? 'masked_car'
   }));
 
-  // PSV handles both single equirectangular and multi-res tiles dynamically
   const {
     shouldUseMultiRes,
     viewerDisplayName,
@@ -243,7 +234,6 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
     saveProjectSettingsToSupabase(updatedSettings).catch(() => { });
   };
 
-  // Persistent Audit Cache Map populated from Supabase Realtime/Cloud props and session updates
   const [localAuditRuns, setLocalAuditRuns] = useState<Record<string, AuditRunRecord>>({});
   const auditCache = useMemo<Record<string, AuditRunRecord>>(() => {
     return {
@@ -273,14 +263,12 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
     isAborted
   } = workerState;
 
-  // Auto-sync inspector PIC
   useEffect(() => {
     if (activeUserName && (!inspectorPic || inspectorPic === 'Operator')) {
       setInspectorPic(activeUserName);
     }
   }, [activeUserName]);
 
-  // Save completed audit to cache
   useEffect(() => {
     if (isCompleted && activeRunningSubgrid && liveHistory.length > 0) {
       const cacheKey = `${activeRunningSubgrid.toUpperCase()}_${workerState.runId || 'default'}`;
@@ -316,7 +304,6 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
     }
   }, [isCompleted, activeRunningSubgrid, liveHistory, liveDefectsList, elapsedSeconds, activeRunningPic, inspectorPic, workerState.runId]);
 
-  // Processed list for Daily Runs Tab (matches exact order and logic of Processing Admin Daily Progress table)
   const processedDailyRuns: TargetDatasetItem[] = useMemo(() => {
     return [...dailyData]
       .reverse()
@@ -328,17 +315,16 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
         const formattedDate = formatDisplayDate(d.date);
         const pic = (d.pic && d.pic.trim().toLowerCase() !== 'unassigned') ? d.pic : (activeUserName || 'Operator');
 
-        const cachedAudit = (runId ? auditCache[`${sg}_${runId}`] : undefined) || auditCache[`${sg}_default`] || Object.entries(auditCache).find(([k]) => k.startsWith(`${sg}_`))?.[1];
+        const cachedAuditRecord = (runId ? auditCache[`${sg}_${runId}`] : undefined) || auditCache[`${sg}_default`] || Object.entries(auditCache).find(([k]) => k.startsWith(`${sg}_`))?.[1];
         let parsedDefects: number | undefined;
-        // Exact 1-to-1 alignment with Processing Table and Admin Daily Progress values
         let defectCount = (typeof d.defectCount === 'number')
           ? d.defectCount
           : (typeof d.imagesDefected === 'number')
             ? d.imagesDefected
             : 0;
 
-        if (defectCount === 0 && cachedAudit && typeof cachedAudit.defectCount === 'number') {
-          defectCount = cachedAudit.defectCount;
+        if (defectCount === 0 && cachedAuditRecord && typeof cachedAuditRecord.defectCount === 'number') {
+          defectCount = cachedAuditRecord.defectCount;
         }
         if (defectCount === 0 && parsedDefects !== undefined && parsedDefects > 0) {
           defectCount = parsedDefects;
@@ -353,7 +339,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
 
         const qaqcStatus = frameCount === 0
           ? (isPublished ? 'QA/QC Approved' : '')
-          : (d.qaqcStatus || (cachedAudit || defectCount > 0 ? `QAQC Completed (${defectCount} Defect${defectCount === 1 ? '' : 's'} Found)` : isPublished ? 'QA/QC Approved' : ''));
+          : (d.qaqcStatus || (cachedAuditRecord || defectCount > 0 ? `QAQC Completed (${defectCount} Defect${defectCount === 1 ? '' : 's'} Found)` : isPublished ? 'QA/QC Approved' : ''));
 
         const poiCount = typeof d.poiCount === 'number' ? d.poiCount : (d.panoramas ? d.panoramas.length : frameCount);
 
@@ -373,9 +359,8 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
           publishStatus
         };
       });
-  }, [dailyData, batchLogs, auditCache, activeUserName]);
+  }, [dailyData, auditCache, activeUserName]);
 
-  // Processed list for Masterlist / Batches Tab (matches exact order and logic of Processing Admin Masterlist table)
   const processedBatchLogs: TargetDatasetItem[] = useMemo(() => {
     const reconciled = reconcileBatchLogs(dailyData, batchLogs);
     const sourceBatches = reconciled && reconciled.length > 0 ? reconciled : batchLogs;
@@ -389,17 +374,16 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
       const pic = (b.pic && b.pic.trim().toLowerCase() !== 'unassigned') ? b.pic : ((b as any).adminPic || activeUserName || 'Admin');
       const formattedDate = formatDisplayDate(b.date);
 
-      const cachedAudit = auditCache[`${sg}_default`] || Object.entries(auditCache).find(([k]) => k.startsWith(`${sg}_`))?.[1];
+      const cachedAuditRecord = auditCache[`${sg}_default`] || Object.entries(auditCache).find(([k]) => k.startsWith(`${sg}_`))?.[1];
       let parsedDefects: number | undefined;
       if (b.qaqcStatus) {
         const m = b.qaqcStatus.match(/(\d+)\s+Defect/i);
         if (m) parsedDefects = parseInt(m[1], 10);
       }
 
-      // Exact 1-to-1 alignment with Processing Table and Admin Masterlist values (b.defects)
       let defectCount = typeof b.defects === 'number' ? b.defects : 0;
-      if (defectCount === 0 && cachedAudit && typeof cachedAudit.defectCount === 'number') {
-        defectCount = cachedAudit.defectCount;
+      if (defectCount === 0 && cachedAuditRecord && typeof cachedAuditRecord.defectCount === 'number') {
+        defectCount = cachedAuditRecord.defectCount;
       }
       if (defectCount === 0 && parsedDefects !== undefined && parsedDefects > 0) {
         defectCount = parsedDefects;
@@ -408,7 +392,6 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
         defectCount = Math.min(defectCount, frameCount);
       }
 
-      // For Master Subgrid: Only mark as published if the entire aggregated subgrid is Complete with all survey tracks published
       const isComplete = (b.status === 'Complete' || b.status === 'published') && b.publishToWebGIS !== 'in process' && b.publishToWebGIS !== 'need to recheck';
       const isRecheck = b.publishToWebGIS === 'need to recheck';
       const isPublished = isComplete && !isRecheck;
@@ -426,14 +409,13 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
         km,
         pic,
         defectCount,
-        qaqcStatus: b.qaqcStatus || (cachedAudit || defectCount > 0 ? `QAQC Completed (${defectCount} Defect${defectCount === 1 ? '' : 's'} Found)` : isPublished ? 'QA/QC Approved' : ''),
+        qaqcStatus: b.qaqcStatus || (cachedAuditRecord || defectCount > 0 ? `QAQC Completed (${defectCount} Defect${defectCount === 1 ? '' : 's'} Found)` : isPublished ? 'QA/QC Approved' : ''),
         isPublished,
         publishStatus
       };
     });
   }, [dailyData, batchLogs, auditCache, activeUserName]);
 
-  // Counts for Category Switcher
   const stagingCount = useMemo(() => {
     const list = targetTab === 'daily' ? processedDailyRuns : processedBatchLogs;
     return list.filter(i => !i.isPublished).length;
@@ -444,7 +426,6 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
     return list.filter(i => i.isPublished).length;
   }, [targetTab, processedDailyRuns, processedBatchLogs]);
 
-  // Auto-select target dataset strictly when an initial selection was passed from dashboard
   useEffect(() => {
     if (initialSubgrid && !selectedSubgrid && !isRunning) {
       const matchInitial = processedDailyRuns.find(r => (initialRunId && r.runId === initialRunId) || (r.subgrid.toUpperCase() === initialSubgrid.toUpperCase() && r.frameCount > 0));
@@ -458,8 +439,6 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
     }
   }, [processedDailyRuns, selectedSubgrid, isRunning, initialSubgrid, initialRunId]);
 
-
-  // Filtered dataset targets based on search query, category filter & valid frame toggles
   const filteredTargetList: TargetDatasetItem[] = useMemo(() => {
     let list = targetTab === 'daily' ? processedDailyRuns : processedBatchLogs;
     if (categoryFilter === 'staging') {
@@ -479,13 +458,11 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
     );
   }, [targetTab, processedDailyRuns, processedBatchLogs, categoryFilter, searchQuery, showOnlyWithFrames]);
 
-  // Selected Target Dataset Station Array (strictly validated against frame count)
   const selectedStations = useMemo(() => {
     if (!selectedSubgrid) return [];
     return getStationsForSubgrid(selectedSubgrid, selectedRunId);
   }, [selectedSubgrid, selectedRunId, getStationsForSubgrid]);
 
-  // Look up cached audit run for selected dataset
   const cachedAudit: AuditRunRecord | null = useMemo(() => {
     if (!selectedSubgrid) return null;
     const key = `${selectedSubgrid.toUpperCase()}_${selectedRunId || 'default'}`;
@@ -494,7 +471,6 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
     return Object.entries(auditCache).find(([k]) => k.startsWith(`${selectedSubgrid.toUpperCase()}_`))?.[1] || null;
   }, [auditCache, selectedSubgrid, selectedRunId]);
 
-  // Effective Active Defects List
   const effectiveDefectsList = useMemo(() => {
     if (isRunning || liveHistory.length > 0) return liveDefectsList;
 
@@ -517,13 +493,13 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
     }
 
     if (selectedSubgrid && Array.isArray(defectsList)) {
-      const curSg = selectedSubgrid.toUpperCase().trim();
+      const currentSg = selectedSubgrid.toUpperCase().trim();
       defectsList.forEach((d: any) => {
         const dSg = (extractSubgridName(d.subgrid || '') || d.subgrid || '').toUpperCase().trim();
         const dRunId = d.run_id || d.runId;
         if (selectedRunId && dRunId) {
-          if (dSg === curSg && dRunId === selectedRunId) addDef(d);
-        } else if (dSg === curSg) {
+          if (dSg === currentSg && dRunId === selectedRunId) addDef(d);
+        } else if (dSg === currentSg) {
           addDef(d);
         }
       });
@@ -532,11 +508,9 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
     return list;
   }, [isRunning, liveHistory, liveDefectsList, cachedAudit, selectedSubgrid, selectedRunId, defectsList]);
 
-  // Effective Active Telemetry Data (live runner if active, else cached audit or synthesized defect feed)
   const effectiveHistory = useMemo((): StationInspectionRecord[] => {
     if (isRunning || liveHistory.length > 0) return liveHistory;
 
-    // Build lookup maps of known defect records matching this subgrid and optional run
     const defectMap = new Map<string, any>();
     const indexDefectMap = new Map<number, any>();
 
@@ -549,7 +523,6 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
       if (typeof fIdx === 'number') indexDefectMap.set(fIdx, d);
     });
 
-    // If we have selected stations for this subgrid, produce a complete history sequence representing ALL stations
     if (selectedStations.length > 0) {
       return selectedStations.map((station, idx) => {
         const frameIdx = idx + 1;
@@ -579,7 +552,6 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
           };
         }
 
-        // Check if there is a cached audit history record for this station
         const cachedH = cachedAudit?.history?.find(h => h.index === frameIdx || (h.pointId && h.pointId.toUpperCase().trim() === ptIdClean));
         if (cachedH) {
           return {
@@ -590,7 +562,6 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
           };
         }
 
-        // Passed / Nominal station
         const isAudited = Boolean(cachedAudit || effectiveDefectsList.length > 0);
         return {
           index: frameIdx,
@@ -642,7 +613,6 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
     return [];
   }, [isRunning, liveHistory, cachedAudit, effectiveDefectsList, selectedStations, projectSettings?.deliverableModel]);
 
-  // Telemetry station metrics
   const totalStations = rawTotalStations || (selectedStations.length > 0 ? selectedStations.length : (cachedAudit ? cachedAudit.totalStations : 0)) || 1;
   const progressPct = isRunning || isCompleted
     ? Math.min(100, Math.round(((currentIndex + 1) / totalStations) * 100))
@@ -652,8 +622,6 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
   const remainingStations = Math.max(0, totalStations - (currentIndex + 1));
   const estimatedSecondsLeft = Math.ceil((remainingStations * stepIntervalMs) / 1000);
 
-  // Selected station preview if clicked from history feed, otherwise live current node or fallback to first station
-  // Selected station preview if clicked from history feed or stepped manually
   const selectedStationFallback = useMemo(() => {
     if (selectedStationIndex !== null && selectedStations.length >= selectedStationIndex) {
       return selectedStations[selectedStationIndex - 1];
@@ -673,7 +641,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
   const defaultStation = selectedStations[0];
   const defaultThumbnail = defaultStation
     ? resolvePanoramaUrl(
-      defaultStation.image_url || defaultStation.filename || defaultStation.thumbnailUrl || (curSg ? `${curSg}-0001.jpg` : ''),
+      defaultStation.image_url || defaultStation.filename || (defaultStation as any).thumbnailUrl || (curSg ? `${curSg}-0001.jpg` : ''),
       projectSettings,
       { subgrid: curSg }
     )
@@ -712,14 +680,12 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
 
   const lastLoadedSubgridRef = useRef<string>('');
 
-  // 1. Initialize track dataset on the map ONCE per subgrid selection (avoids layer recreation stutter)
   const initWorkbenchMapTrack = useCallback(() => {
     if (!mapIframeRef.current?.contentWindow) return;
     const activeSg = (activeRunningSubgrid || selectedSubgrid || '').toUpperCase().trim();
     if (!activeSg) return;
     const activeSgNorm = activeSg.toUpperCase().trim();
 
-    // Only use subgrid-scoped defects — effectiveDefectsList is already filtered to selectedSubgrid
     const allDefectsMerged = isRunning
       ? (liveDefectsList || [])
       : (effectiveDefectsList || []);
@@ -827,7 +793,28 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
     try {
       const isSingleDailyRun = Boolean(selectedRunId);
 
-      // 1. Set subgrid filter
+      // 1. Force Map to load exact normalized selectedStations
+      const formattedPoints = selectedStations.map((st, idx) => ({
+        id: st.point_id || st.filename || `station-${idx}`,
+        filename: st.filename,
+        image_url: st.image_url,
+        subgrid: activeSgNorm,
+        lat: st.latitude ?? st.lat,
+        lon: st.longitude ?? st.lng,
+        latitude: st.latitude ?? st.lat,
+        longitude: st.longitude ?? st.lng,
+        bearing: st.bearing ?? 0,
+        status: 'in process'
+      }));
+
+      mapIframeRef.current.contentWindow.postMessage({
+        type: 'SET_MAP_VIEW_STATE',
+        viewMode: isSingleDailyRun ? 'SINGLE_RUN' : 'SUBGRID',
+        subgrid: activeSg,
+        runId: selectedRunId || null,
+        points: formattedPoints
+      }, '*');
+
       mapIframeRef.current.contentWindow.postMessage({
         type: 'FILTER_SUBGRID',
         subgrid: activeSg,
@@ -835,8 +822,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
         isSingleRun: isSingleDailyRun
       }, '*');
 
-      // 2. Transmit strictly only the selected survey track points with exact status colors & defect flags
-      const activeSgNorm = activeSg.toUpperCase().trim();
+      // 2. Dispatch staged data (Keeps Defect Colors)
       const matchingRuns = selectedRunId
         ? dailyData.filter(d => (getItemId(d) === selectedRunId || d.id === selectedRunId || (d as any)._id === selectedRunId))
         : dailyData.filter(d => (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim() === activeSgNorm);
@@ -855,7 +841,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
         }, '*');
       }
 
-      // 3. Reset map defect layer, then broadcast only scoped defects
+      // 3. Dispatch Live Defects
       mapIframeRef.current.contentWindow.postMessage({
         type: 'QAQC_DEFECTS_RESET'
       }, '*');
@@ -865,15 +851,36 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
           defects: allDefectsMerged
         }, '*');
       }
-    } catch (_) { }
-  }, [activeRunningSubgrid, selectedSubgrid, selectedRunId, dailyData, defectsList, effectiveDefectsList]);
 
-  // Load track dataset only when target subgrid changes or map loads
+      // 4. Force map to center on active display node
+      if (selectedStations.length > 0) {
+        const activeIdx = Math.max(0, Math.min(activeDisplayIndex - 1, selectedStations.length - 1));
+        const activeNode = selectedStations[activeIdx];
+        if (activeNode) {
+          mapIframeRef.current.contentWindow.postMessage(
+            {
+              type: 'SET_PANORAMA',
+              point: {
+                filename: activeNode.filename,
+                image_url: activeNode.image_url,
+                subgrid: activeSgNorm,
+                lat: activeNode.latitude ?? activeNode.lat,
+                lon: activeNode.longitude ?? activeNode.lng,
+                lng: activeNode.longitude ?? activeNode.lng,
+                bearing: activeNode.bearing ?? 0
+              }
+            },
+            '*'
+          );
+        }
+      }
+    } catch (_) { }
+  }, [activeRunningSubgrid, selectedSubgrid, selectedRunId, dailyData, effectiveDefectsList, isRunning, liveDefectsList, selectedStations, activeDisplayIndex]);
+
   useEffect(() => {
     initWorkbenchMapTrack();
   }, [initWorkbenchMapTrack, selectedSubgrid, selectedRunId, viewportMode]);
 
-  // Listen for map readiness messages from the iframe
   useEffect(() => {
     const handleMapMessage = (e: MessageEvent) => {
       if (e.data?.type === 'VIEWER_READY' || e.data?.type === 'MAP_READY' || e.data?.type === 'MAP_LOADED' || e.data?.type === 'REQUEST_STAGED_DATA') {
@@ -885,7 +892,6 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
     return () => window.removeEventListener('message', handleMapMessage);
   }, [initWorkbenchMapTrack]);
 
-  // Real-time defect marker synchronization to ensure defects never revert to green during QC
   useEffect(() => {
     if (!mapIframeRef.current?.contentWindow) return;
     if (effectiveDefectsList.length === 0) return;
@@ -898,7 +904,6 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
     } catch (_) { }
   }, [effectiveDefectsList, activeRunningSubgrid, selectedSubgrid]);
 
-  // 2. Only stream node updates when QC is actively RUNNING (no continuous pan/focus when idle or completed)
   useEffect(() => {
     if (!isRunning) return;
     if (!mapIframeRef.current?.contentWindow) return;
@@ -938,24 +943,31 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
     } catch (_) { }
   }, [isRunning, activeDisplayIndex, activeDisplayCoords, activeDisplayBearing, activeDisplayPointId, activeRecord, liveCheckStatus, effectiveDefectsList, activeRunningSubgrid, selectedSubgrid]);
 
-  // 3. Highlight station node on map when user manually selects or clicks Prev/Next
   useEffect(() => {
-    if (selectedStationIndex === null || isRunning) return;
-    if (!mapIframeRef.current?.contentWindow) return;
+    if (!mapIframeRef.current?.contentWindow || isRunning) return;
     if (!activeDisplayCoords.lat || !activeDisplayCoords.lng) return;
+
+    const targetSubgrid = (activeRunningSubgrid || selectedSubgrid || '').toUpperCase().trim();
+    const pointPayload = {
+      filename: activeDisplayPointId,
+      image_url: activeDisplayThumbnail,
+      subgrid: targetSubgrid,
+      lat: activeDisplayCoords.lat,
+      lon: activeDisplayCoords.lng,
+      lng: activeDisplayCoords.lng,
+      bearing: activeDisplayBearing,
+      index: activeDisplayIndex
+    };
 
     try {
       mapIframeRef.current.contentWindow.postMessage({
+        type: 'SET_PANORAMA',
+        point: pointPayload
+      }, '*');
+
+      mapIframeRef.current.contentWindow.postMessage({
         type: 'MAP_POINT_SELECTED',
-        point: {
-          filename: activeDisplayPointId,
-          image_url: activeDisplayThumbnail,
-          subgrid: activeRunningSubgrid || selectedSubgrid,
-          lat: activeDisplayCoords.lat,
-          lon: activeDisplayCoords.lng,
-          lng: activeDisplayCoords.lng,
-          bearing: activeDisplayBearing
-        },
+        point: pointPayload,
         isUserSelect: true,
         panTo: true
       }, '*');
@@ -966,34 +978,30 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
         heading: activeDisplayBearing
       }, '*');
     } catch (_) { }
-  }, [selectedStationIndex, isRunning, activeDisplayCoords, activeDisplayPointId, activeDisplayThumbnail, activeDisplayBearing, activeRunningSubgrid, selectedSubgrid]);
+  }, [selectedStationIndex, activeDisplayIndex, isRunning, activeDisplayCoords, activeDisplayPointId, activeDisplayThumbnail, activeDisplayBearing, activeRunningSubgrid, selectedSubgrid]);
 
-  // Prefetch adjacent stations in background thread
   useEffect(() => {
     if (!activeRunningSubgrid || !getStationsForSubgrid) return;
 
     const currentStations = getStationsForSubgrid(activeRunningSubgrid) || [];
     if (currentStations.length === 0) return;
 
-    const currentIndex = currentStations.findIndex(
+    const currentIndexLoc = currentStations.findIndex(
       (item: any) => (item.filename || item.point_id) === (activeDisplayPointId || activeRawFile)
     );
 
-    if (currentIndex === -1) return;
+    if (currentIndexLoc === -1) return;
 
-    // Look ahead (+1) and look behind (-1)
-    const adjacentIndices = [currentIndex + 1, currentIndex - 1];
+    const adjacentIndices = [currentIndexLoc + 1, currentIndexLoc - 1];
 
     adjacentIndices.forEach(idx => {
       if (idx >= 0 && idx < currentStations.length) {
         const neighbor = currentStations[idx];
-        const filename = neighbor.filename || neighbor.point_id || neighbor.raw_image_filename;
+        const filename = neighbor.filename || neighbor.point_id || (neighbor as any).raw_image_filename;
         if (filename) {
           const configUrl = resolvePanoramaConfigUrl(filename, projectSettings, activeRunningSubgrid);
-          // Pre-fetch config.json
           fetch(configUrl, { cache: 'force-cache' }).catch(() => { });
 
-          // Pre-fetch base fallback preview
           const previewUrl = resolvePanoramaUrl(filename, projectSettings, { subgrid: activeRunningSubgrid });
           if (previewUrl) {
             const img = new Image();
@@ -1004,15 +1012,14 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
     });
   }, [activeDisplayPointId, activeRawFile, activeRunningSubgrid, getStationsForSubgrid, projectSettings]);
 
-  // 4. Map handshake and interactive panotrack click listener
   useEffect(() => {
     const handleMessage = (e: MessageEvent) => {
       if (e.data?.type === 'VIEWER_READY' || e.data?.type === 'MAP_READY') {
         setIsMapReady(true);
-        lastLoadedSubgridRef.current = ''; // Reset to force clean reload on new ready
+        lastLoadedSubgridRef.current = '';
         initWorkbenchMapTrack();
       } else if (e.data?.type === 'MAP_POINT_SELECTED' || e.data?.type === 'POINT_SELECTED' || e.data?.type === 'PANORAMA_SELECTED') {
-        if (isRunning) return; // Do not interrupt active automated inspection
+        if (isRunning) return;
         const pt = e.data.point || e.data.payload || e.data;
         if (pt) {
           const fn = (pt.filename || pt.image_url || pt.pointId || pt.point_id || '').split('/').pop()?.toUpperCase().trim();
@@ -1044,7 +1051,6 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
     return () => window.removeEventListener('message', handleMessage);
   }, [initWorkbenchMapTrack, isRunning, selectedStations]);
 
-  // Filtered station history stream
   const filteredHistory = useMemo(() => {
     if (filterMode === 'flagged') {
       return effectiveHistory.filter(h => h.status === 'flagged');
@@ -1052,107 +1058,12 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
     return effectiveHistory;
   }, [effectiveHistory, filterMode]);
 
-  // Handle launch of inspection
-  // Station Navigation Handlers (Prev / Next image matching panotrack)
-  const handlePrevStation = useCallback(() => {
-    if (isRunning) return;
-    const current = activeDisplayIndex;
-    const targetIdx = Math.max(1, current - 1);
-    setSelectedStationIndex(targetIdx);
-
-    const stn = (selectedStations && selectedStations[targetIdx - 1]) || (effectiveHistory && effectiveHistory[targetIdx - 1]);
-    if (stn && mapIframeRef.current?.contentWindow) {
-      const lat = stn.lat || (stn as any)?.latitude;
-      const lng = stn.lng || (stn as any)?.longitude || (stn as any)?.lon;
-      const bearing = stn.bearing || (stn as any)?.heading || 0;
-      const fn = stn.filename || stn.point_id || stn.id || (stn as any)?.pointId;
-      if (lat && lng) {
-        try {
-          mapIframeRef.current.contentWindow.postMessage({
-            type: 'MAP_POINT_SELECTED',
-            point: {
-              filename: fn,
-              subgrid: activeRunningSubgrid || selectedSubgrid,
-              lat,
-              lon: lng,
-              lng,
-              bearing
-            },
-            isUserSelect: true,
-            panTo: true
-          }, '*');
-          mapIframeRef.current.contentWindow.postMessage({
-            type: 'SET_CAMERA_HEADING',
-            bearing,
-            heading: bearing
-          }, '*');
-        } catch (_) { }
-      }
-    }
-  }, [isRunning, activeDisplayIndex, selectedStations, effectiveHistory, activeRunningSubgrid, selectedSubgrid]);
-
-  const handleNextStation = useCallback(() => {
-    if (isRunning) return;
-    const maxIdx = totalStations > 0 ? totalStations : Math.max(1, selectedStations.length);
-    const current = activeDisplayIndex;
-    const targetIdx = Math.min(maxIdx, current + 1);
-    setSelectedStationIndex(targetIdx);
-
-    const stn = (selectedStations && selectedStations[targetIdx - 1]) || (effectiveHistory && effectiveHistory[targetIdx - 1]);
-    if (stn && mapIframeRef.current?.contentWindow) {
-      const lat = stn.lat || (stn as any)?.latitude;
-      const lng = stn.lng || (stn as any)?.longitude || (stn as any)?.lon;
-      const bearing = stn.bearing || (stn as any)?.heading || 0;
-      const fn = stn.filename || stn.point_id || stn.id || (stn as any)?.pointId;
-      if (lat && lng) {
-        try {
-          mapIframeRef.current.contentWindow.postMessage({
-            type: 'MAP_POINT_SELECTED',
-            point: {
-              filename: fn,
-              subgrid: activeRunningSubgrid || selectedSubgrid,
-              lat,
-              lon: lng,
-              lng,
-              bearing
-            },
-            isUserSelect: true,
-            panTo: true
-          }, '*');
-          mapIframeRef.current.contentWindow.postMessage({
-            type: 'SET_CAMERA_HEADING',
-            bearing,
-            heading: bearing
-          }, '*');
-        } catch (_) { }
-      }
-    }
-  }, [isRunning, totalStations, selectedStations, effectiveHistory, activeDisplayIndex, activeRunningSubgrid, selectedSubgrid]);
-
-  // Keyboard shortcut listener for ArrowLeft / ArrowRight navigation
-  useEffect(() => {
-    if (!isOpen || isRunning) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
-        e.preventDefault();
-        handlePrevStation();
-      } else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
-        e.preventDefault();
-        handleNextStation();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, isRunning, handlePrevStation, handleNextStation]);
-
   const handleLaunchInspection = () => {
     if (!selectedSubgrid || selectedStations.length === 0) return;
 
     setSelectedStationIndex(null);
     setMobileConsoleTab('canvas');
 
-    // Execute ONE initial zoom and pan to start node
     const firstStation = selectedStations[0];
     if (firstStation && firstStation.lat && firstStation.lng && mapIframeRef.current?.contentWindow) {
       try {
@@ -1187,7 +1098,6 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
     });
   };
 
-  // Export Audit CSV Functionality
   const handleExportCSV = () => {
     const targetSg = activeRunningSubgrid || selectedSubgrid || 'QAQC_Audit';
     const list = effectiveHistory;
@@ -1235,7 +1145,6 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
     document.body.removeChild(link);
   };
 
-  // Mean Tenengrad Sharpness across inspected history
   const meanSharpnessScore = useMemo(() => {
     if (effectiveHistory.length === 0) return 0;
     const sum = effectiveHistory.reduce((acc, h) => acc + (h.blurVariance || 0), 0);
@@ -1252,13 +1161,8 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
 
   return (
     <div className="fixed inset-0 z-[99999] bg-app flex flex-col text-text-base select-none font-sans overflow-hidden">
-
-      {/* ========================================================= */}
       {/* 1. TOP PRECISION CONSOLE HEADER BAR */}
-      {/* ========================================================= */}
       <header className="h-14 px-4 bg-card border-b border-subtle flex items-center justify-between shrink-0 relative z-30 shadow-sm gap-2">
-
-        {/* Left: Breadcrumbs & Target Identifier */}
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           <div className="flex items-center gap-1.5 sm:gap-2 text-xs truncate">
             <span className="text-text-muted font-medium tracking-tight hidden md:inline">GeoSphere 360</span>
@@ -1312,7 +1216,6 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
             )}
           </div>
 
-          {/* Engine Status Tag */}
           {workbenchTab === 'console' && (
             <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-inner border border-subtle text-[11px] shrink-0">
               <span className={`w-2 h-2 rounded-full ${isRunning && !isPaused
@@ -1336,7 +1239,6 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
           )}
         </div>
 
-        {/* Center: Live Station Progress Telemetry */}
         {workbenchTab === 'console' && (isRunning || isCompleted || cachedAudit) && (
           <div className="hidden lg:flex items-center gap-3 text-xs text-text-base bg-inner px-3.5 py-1.5 rounded-xl border border-subtle shrink-0 absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10 pointer-events-auto shadow-sm">
             <span className="text-text-muted font-normal text-xs">
@@ -1353,9 +1255,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
           </div>
         )}
 
-        {/* Right: Main View Navigation Switcher & Actions */}
         <div className="flex items-center gap-2 shrink-0">
-          {/* Viewport Layout Mode Switcher (Horizontal Split, Vertical Split, Minimap PiP, 360 Only) */}
           {workbenchTab === 'console' && (
             <div className="hidden sm:flex items-center p-1 rounded-xl bg-inner border border-subtle gap-0.5">
               <button
@@ -1365,7 +1265,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                   ? 'bg-card text-text-base shadow-sm border border-subtle'
                   : 'text-text-muted hover:text-text-base'
                   }`}
-                title="Horizontal Split View (Top 360° Photo + Bottom Synchronized Map)"
+                title="Horizontal Split View"
               >
                 <Rows size={12} />
                 <span className="hidden xl:inline">Horizontal Split</span>
@@ -1377,7 +1277,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                   ? 'bg-card text-text-base shadow-sm border border-subtle'
                   : 'text-text-muted hover:text-text-base'
                   }`}
-                title="Vertical Split View (Left 360° Photo + Right Synchronized Map)"
+                title="Vertical Split View"
               >
                 <Columns size={12} />
                 <span className="hidden xl:inline">Vertical Split</span>
@@ -1389,7 +1289,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                   ? 'bg-card text-text-base shadow-sm border border-subtle'
                   : 'text-text-muted hover:text-text-base'
                   }`}
-                title="Picture-in-Picture Floating Minimap"
+                title="Minimap PiP"
               >
                 <Layers size={12} />
                 <span className="hidden xl:inline">Minimap PiP</span>
@@ -1401,7 +1301,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                   ? 'bg-card text-text-base shadow-sm border border-subtle'
                   : 'text-text-muted hover:text-text-base'
                   }`}
-                title="Full 360° Photo Only"
+                title="Full 360 Only"
               >
                 <Maximize2 size={12} />
                 <span className="hidden xl:inline">360 Only</span>
@@ -1409,7 +1309,6 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
             </div>
           )}
 
-          {/* Main Navigation Segmented Switcher */}
           <div className="flex items-center p-1 rounded-xl bg-inner border border-subtle">
             <button
               type="button"
@@ -1418,7 +1317,6 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                 ? 'bg-card text-text-base shadow-sm border border-subtle'
                 : 'text-text-muted hover:text-text-base'
                 }`}
-              title="Return to Live QA/QC Inspection Console"
             >
               <Activity size={13} className={workbenchTab === 'console' ? 'text-text-base' : 'text-text-muted'} />
               <span className="hidden xs:inline">Console</span>
@@ -1431,7 +1329,6 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                 ? 'bg-card text-text-base shadow-sm border border-subtle'
                 : 'text-text-muted hover:text-text-base'
                 }`}
-              title="Configure and Calibrate Detection Thresholds"
             >
               <SlidersHorizontal size={13} className={workbenchTab === 'thresholds' ? 'text-text-base' : 'text-text-muted'} />
               <span className="hidden xs:inline">Thresholds</span>
@@ -1444,14 +1341,12 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                 ? 'bg-card text-text-base shadow-sm border border-subtle'
                 : 'text-text-muted hover:text-text-base'
                 }`}
-              title="View Complete Audit Metrics & Defect Report"
             >
               <FileSpreadsheet size={13} className={workbenchTab === 'audit' ? 'text-text-base' : 'text-text-muted'} />
               <span className="hidden xs:inline">Audit</span>
             </button>
           </div>
 
-          {/* Contextual Action: Console Live Inspection */}
           {workbenchTab === 'console' && isRunning && (
             <button
               onClick={isPaused ? onResume : onPause}
@@ -1493,13 +1388,9 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
         </div>
       </header>
 
-      {/* ========================================================= */}
-      {/* 2. BODY CONTENT: CONSOLE / THRESHOLDS / AUDIT SUMMARY */}
-      {/* ========================================================= */}
+      {/* 2. BODY CONTENT */}
       {workbenchTab === 'console' && (
         <div className="flex-1 p-2 sm:p-3 gap-2 sm:gap-3 flex flex-col lg:flex-row overflow-hidden bg-app min-h-0">
-
-          {/* MOBILE SEGMENTED VIEWPORT SWITCHER */}
           <div className="flex lg:hidden items-center justify-between p-1 rounded-xl bg-card border border-subtle shrink-0 shadow-sm gap-1">
             <button
               type="button"
@@ -1536,12 +1427,8 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
             </button>
           </div>
 
-          {/* --------------------------------------------------------- */}
-          {/* COLUMN 1: TARGET SELECTION & CONFIG HUB (CARD CONTAINER) */}
-          {/* --------------------------------------------------------- */}
+          {/* COLUMN 1: TARGET SELECTION */}
           <aside className={`w-full lg:w-[380px] bg-card border border-subtle rounded-2xl flex flex-col shrink-0 overflow-hidden shadow-sm text-xs ${mobileConsoleTab === 'targets' ? 'flex-1' : 'hidden lg:flex'}`}>
-
-            {/* Header Navigation Tabs */}
             <div className="p-3 border-b border-subtle bg-card">
               <div className="grid grid-cols-2 gap-1.5 bg-inner p-1 rounded-xl border border-subtle">
                 <button
@@ -1565,7 +1452,6 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
               </div>
             </div>
 
-            {/* Search, Category Filter & Quick Frame Toggles */}
             <div className="p-3 border-b border-subtle space-y-2.5 bg-card">
               <div className="relative">
                 <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
@@ -1578,7 +1464,6 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                 />
               </div>
 
-              {/* Category Filter Pills: All | Staging | Published */}
               <div className="grid grid-cols-3 gap-1.5 bg-inner p-1 rounded-xl border border-subtle text-xs">
                 <button
                   type="button"
@@ -1630,7 +1515,6 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
               </div>
             </div>
 
-            {/* High-Density Target Dataset List */}
             <div
               className="flex-1 overflow-y-auto p-2.5 space-y-1.5"
               onClick={(e) => {
@@ -1667,7 +1551,6 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                       onClick={() => {
                         if (isZeroFrames) return;
                         if (isSelected) {
-                          // Toggle / Deselect on second click (dissclick)
                           setSelectedSubgrid('');
                           setSelectedRunId(null);
                           setSelectedStationIndex(null);
@@ -1706,9 +1589,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                           </span>
                         </div>
 
-                        {/* Category & Status Indicators */}
                         <div className="flex items-center gap-2 flex-wrap text-[11px] text-text-muted">
-                          {/* Publish Category */}
                           {item.isPublished ? (
                             <span className="text-text-muted font-medium flex items-center gap-1">
                               <CheckCircle2 size={11} className="text-emerald-400 shrink-0" />
@@ -1728,7 +1609,6 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
 
                           <span className="text-text-muted/40">•</span>
 
-                          {/* QA Audit Status */}
                           {hasAudit ? (
                             auditDefects === 0 ? (
                               <span className="text-text-muted font-medium flex items-center gap-1">
@@ -1791,7 +1671,6 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
               )}
             </div>
 
-            {/* Bottom Dock: Inspection Rules, 4 Pacing Options & Operator Hub */}
             <div className="p-3.5 border-t border-subtle bg-inner space-y-3">
               <div className="flex items-center justify-between text-xs text-text-base font-semibold">
                 <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
@@ -1826,7 +1705,6 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                 </span>
               </div>
 
-              {/* Exact Defect Rule Toggles */}
               <div className="grid grid-cols-3 gap-1.5 text-xs">
                 <button
                   type="button"
@@ -1857,7 +1735,6 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                 </button>
               </div>
 
-              {/* 4 Pacing Options: Auto, 200ms, 300ms, 500ms */}
               <div className="space-y-1.5 text-xs">
                 <div className="flex items-center justify-between text-[11px] text-text-muted">
                   <span>Pacing Rate:</span>
@@ -1876,7 +1753,6 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                       ? 'bg-card border-slate-500 text-text-base shadow-sm'
                       : 'bg-card hover:bg-inner border-subtle text-text-muted hover:text-text-base'
                       }`}
-                    title="Adaptive hardware pacing"
                   >
                     <span>Auto</span>
                   </button>
@@ -1906,7 +1782,6 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                 </div>
               </div>
 
-              {/* QA/QC Operator in Dashboard */}
               <div className="space-y-1.5 text-xs">
                 <div className="flex items-center justify-between text-[11px]">
                   <span className="text-text-muted">QA/QC Operator (PIC):</span>
@@ -1923,7 +1798,6 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                 />
               </div>
 
-              {/* Primary Action Button (Start or Re-run) */}
               <div className="pt-1">
                 <button
                   onClick={handleLaunchInspection}
@@ -1954,15 +1828,10 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                 </button>
               </div>
             </div>
-
           </aside>
 
-          {/* --------------------------------------------------------- */}
-          {/* COLUMN 2: CENTER STAGE (EXPANSIVE VIEWPORT) */}
-          {/* --------------------------------------------------------- */}
+          {/* COLUMN 2: CENTER STAGE VIEWPORT */}
           <div className={`w-full lg:flex-1 bg-black border border-subtle rounded-2xl relative flex flex-col justify-between overflow-hidden shadow-sm min-w-0 ${mobileConsoleTab === 'canvas' ? 'flex-1' : 'hidden lg:flex'}`}>
-
-            {/* Floating Top Completion / Post-Scan Banner */}
             {(isCompleted || (progressPct === 100 && !isRunning && effectiveHistory.length > 0)) && (
               <div className="m-3 px-3.5 py-2.5 bg-card/95 backdrop-blur-md border border-subtle rounded-xl shadow-md flex items-center justify-between shrink-0 text-xs z-20 animate-in slide-in-from-top-2 duration-200">
                 <div className="flex items-center gap-2.5 sm:gap-3 flex-wrap">
@@ -1984,7 +1853,6 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
               </div>
             )}
 
-            {/* Floating Top HUD Telemetry Bar (if not completed banner) */}
             {!(isCompleted || (progressPct === 100 && !isRunning && effectiveHistory.length > 0)) && (
               <div className="m-3 px-3.5 py-2 bg-card/90 backdrop-blur-md border border-subtle rounded-xl flex items-center justify-between shrink-0 text-xs z-10 shadow-sm gap-2">
                 <div className="flex items-center gap-2 min-w-0">
@@ -2015,33 +1883,192 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
               </div>
             )}
 
-            {/* Main Dual-Viewport Area (Horizontal Split, Vertical Split, Full 360 or PiP) */}
+            {/* Main Dual-Viewport Area */}
             <div className={`flex-1 relative w-full h-full min-h-[300px] overflow-hidden flex bg-app ${viewportMode === 'vertical' ? 'flex-col lg:flex-row' : 'flex-col'
               }`}>
-
               {/* 360° PANORAMA CANVAS VIEWPORT */}
-              <div className={`relative w-full overflow-hidden flex items-center justify-center bg-black ${viewportMode === 'horizontal'
-                ? 'h-1/2 sm:h-[55%] border-b border-subtle'
-                : viewportMode === 'vertical'
-                  ? 'h-1/2 lg:h-full lg:w-1/2 border-b lg:border-b-0 lg:border-r border-subtle'
-                  : 'h-full w-full'
-                }`}>
+              <div
+                className={`relative w-full overflow-hidden flex items-center justify-center bg-black ${viewportMode === 'horizontal'
+                  ? 'h-1/2 sm:h-[55%] border-b border-subtle'
+                  : viewportMode === 'vertical'
+                    ? 'h-1/2 lg:h-full lg:w-1/2 border-b lg:border-b-0 lg:border-r border-subtle'
+                    : 'h-full w-full'
+                  }`}
+              >
                 {(activeRunningSubgrid || selectedSubgrid) && activeDisplayThumbnail ? (
                   <>
-                    {/* PSV handles both modes: configUrl for multi-res tiles, panoramaUrl for single equirectangular */}
                     <PhotoSphereViewerComponent
+                      ref={psvRef}
                       key={`pano-psv-${activeDisplayPointId || activeRawFile}-${projectSettings?.storageProvider || 'dynamic'}`}
-                      configUrl={shouldUseMultiRes ? resolvePanoramaConfigUrl(
-                        activeDisplayPointId || activeRawFile,
-                        projectSettings,
-                        activeRunningSubgrid || selectedSubgrid
-                      ) : undefined}
+                      configUrl={
+                        shouldUseMultiRes
+                          ? resolvePanoramaConfigUrl(
+                            activeDisplayPointId || activeRawFile,
+                            projectSettings,
+                            activeRunningSubgrid || selectedSubgrid
+                          )
+                          : undefined
+                      }
                       panoramaUrl={!shouldUseMultiRes ? activeDisplayThumbnail : undefined}
-                      onPositionChange={(_pos) => {
-                        // Optional: track camera position for telemetry
-                      }}
+                      onPositionChange={(_pos) => { }}
                       className="w-full h-full"
                     />
+
+                    {/* HUD OVERLAY 1: Top-Left Node Identifier */}
+                    {(isRunning || effectiveHistory.length > 0) && (
+                      <div className="absolute top-3 left-3 bg-black/85 backdrop-blur-md border border-white/10 rounded-xl px-3.5 py-2 shadow-md space-y-0.5 max-w-[200px] sm:max-w-[320px] z-10">
+                        <div className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-sky-400 shrink-0 animate-pulse" />
+                          <span className="font-semibold text-xs text-white tracking-tight truncate font-mono">
+                            {activeDisplayPointId || `Station ${activeDisplayIndex}`}
+                          </span>
+                        </div>
+                        <div className="text-xs text-slate-300 font-mono font-normal pl-4 truncate">
+                          Station <strong className="text-white font-bold">{activeDisplayIndex}</strong> of {totalStations}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* HUD OVERLAY 2: Top-Right Diagnostics Stream */}
+                    {(isRunning || effectiveHistory.length > 0) && (
+                      <div className="absolute top-3 right-3 bg-black/85 backdrop-blur-md border border-white/10 rounded-xl px-3.5 py-2 shadow-md space-y-0.5 text-xs min-w-[120px] sm:min-w-[160px] z-10">
+                        <div className="flex items-center justify-between gap-2 text-xs">
+                          <span className="text-slate-300 font-medium">GPS:</span>
+                          <span
+                            className={`font-bold font-mono ${activeRecord
+                              ? activeRecord.defectType?.includes('GPS')
+                                ? 'text-rose-400'
+                                : 'text-sky-400'
+                              : liveCheckStatus.gps.status === 'flagged'
+                                ? 'text-rose-400'
+                                : 'text-sky-400'
+                              }`}
+                          >
+                            {activeRecord
+                              ? `${activeDisplayStepDistance > 0 ? activeDisplayStepDistance.toFixed(1) : '0.0'}m`
+                              : liveCheckStatus.gps.detail || `${currentStepDistance > 0 ? currentStepDistance.toFixed(1) : '0.0'}m`}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between gap-2 text-xs">
+                          <span className="text-slate-300 font-medium">Equip:</span>
+                          <span className="font-bold text-white font-mono truncate">
+                            {(() => {
+                              const currentItem = filteredTargetList.find(
+                                (t) => t.subgrid === (activeRunningSubgrid || selectedSubgrid)
+                              );
+                              return (
+                                currentItem?.raw?.captureEquipment ||
+                                currentItem?.raw?.equipment ||
+                                (projectSettings as any)?.captureEquipment ||
+                                'MMS'
+                              );
+                            })()}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* HUD OVERLAY 3: Bottom-Left Spatial Coordinates */}
+                    {(isRunning || effectiveHistory.length > 0) && (
+                      <div className="absolute bottom-3 left-3 bg-black/85 backdrop-blur-md border border-white/10 rounded-xl px-3.5 py-2 shadow-md space-y-0.5 z-10">
+                        <div className="text-white text-xs tabular-nums font-semibold flex items-center gap-1.5 font-mono">
+                          <Navigation size={13} className="text-sky-400 shrink-0 rotate-45" />
+                          <span>
+                            {activeDisplayCoords.lat && activeDisplayCoords.lng
+                              ? `${Number(activeDisplayCoords.lat).toFixed(4)}°, ${Number(activeDisplayCoords.lng).toFixed(4)}°`
+                              : '0.0000°, 0.0000°'}
+                          </span>
+                        </div>
+                        <div className="text-slate-300 text-xs font-normal flex items-center gap-1 font-mono pl-4">
+                          <span className="text-slate-400">Step:</span>
+                          <span className="tabular-nums text-white font-semibold">
+                            {activeDisplayStepDistance > 0 ? `+${activeDisplayStepDistance.toFixed(1)}m` : '0.0m'}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* HUD OVERLAY 4: Bottom-Right Compass Heading */}
+                    {(isRunning || effectiveHistory.length > 0) && viewportMode !== 'pip' && (
+                      <div className="absolute bottom-3 right-3 bg-black/85 backdrop-blur-md border border-white/10 rounded-xl px-3.5 py-2 shadow-md space-y-0.5 text-right z-10">
+                        <div className="text-white text-xs tabular-nums font-semibold flex items-center justify-end gap-1.5 font-mono">
+                          <Compass size={13} className="text-amber-400 shrink-0" />
+                          <span>{activeDisplayBearing.toFixed(0)}°</span>
+                        </div>
+                        <div className="text-slate-300 text-xs font-normal flex items-center justify-end gap-1 font-mono">
+                          <span className="text-slate-400">Track:</span>
+                          <span
+                            className={`font-semibold ${!activeDisplayCoords.lat || !activeDisplayCoords.lng
+                              ? 'text-amber-400'
+                              : activeDisplayStepDistance > 50
+                                ? 'text-rose-400'
+                                : 'text-sky-400'
+                              }`}
+                          >
+                            {!activeDisplayCoords.lat || !activeDisplayCoords.lng
+                              ? 'No Fix'
+                              : activeDisplayStepDistance > 50
+                                ? 'Drift'
+                                : 'Locked'}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Large Circular Navigation Buttons */}
+                    <button
+                      type="button"
+                      onClick={() => setSelectedStationIndex(Math.max(1, activeDisplayIndex - 1))}
+                      disabled={activeDisplayIndex <= 1 || isRunning}
+                      aria-label="Previous Station"
+                      className={`absolute left-4 top-1/2 -translate-y-1/2 z-20 w-11 h-11 rounded-full bg-black/80 hover:bg-black text-white border border-white/20 hover:border-white/50 shadow-2xl flex items-center justify-center transition-all cursor-pointer backdrop-blur-md active:scale-90 ${activeDisplayIndex <= 1 || isRunning
+                        ? 'opacity-20 pointer-events-none'
+                        : 'opacity-85 hover:opacity-100 hover:scale-105'
+                        }`}
+                      title={`Previous Station (Frame ${Math.max(1, activeDisplayIndex - 1)})`}
+                    >
+                      <ChevronLeft size={24} className="shrink-0 -translate-x-0.5" />
+                    </button>
+
+                    {/* Large Circular Next Station Button */}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSelectedStationIndex(
+                          Math.min(
+                            totalStations > 0 ? totalStations : selectedStations.length,
+                            activeDisplayIndex + 1
+                          )
+                        )
+                      }
+                      disabled={
+                        activeDisplayIndex >= (totalStations > 0 ? totalStations : selectedStations.length) ||
+                        isRunning
+                      }
+                      aria-label="Next Station"
+                      className={`absolute right-4 top-1/2 -translate-y-1/2 z-20 w-11 h-11 rounded-full bg-black/80 hover:bg-black text-white border border-white/20 hover:border-white/50 shadow-2xl flex items-center justify-center transition-all cursor-pointer backdrop-blur-md active:scale-90 ${activeDisplayIndex >= (totalStations > 0 ? totalStations : selectedStations.length) ||
+                        isRunning
+                        ? 'opacity-20 pointer-events-none'
+                        : 'opacity-85 hover:opacity-100 hover:scale-105'
+                        }`}
+                      title={`Next Station (Frame ${Math.min(
+                        totalStations > 0 ? totalStations : selectedStations.length,
+                        activeDisplayIndex + 1
+                      )})`}
+                    >
+                      <ChevronRight size={24} className="shrink-0 translate-x-0.5" />
+                    </button>
+
+                    {/* Return to Live Telemetry Button */}
+                    {selectedStationIndex !== null && isRunning && (
+                      <button
+                        onClick={() => setSelectedStationIndex(null)}
+                        className="absolute bottom-14 left-1/2 -translate-x-1/2 bg-card hover:bg-inner text-text-base border border-subtle px-4 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer shadow-lg flex items-center gap-1.5 active:scale-95 whitespace-nowrap z-20"
+                      >
+                        <RotateCcw size={13} />
+                        <span>Return to Live #{currentIndex + 1}</span>
+                      </button>
+                    )}
                   </>
                 ) : (
                   <div className="w-full h-full flex flex-col items-center justify-center gap-3 p-6 sm:p-8 text-center select-none bg-app">
@@ -2058,147 +2085,16 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                           : 'Select a survey dataset from the targets panel to initialize automated analysis'}
                       </p>
                     </div>
-                    {selectedSubgrid && !isRunning && (
-                      <div className="pt-1">
-                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-card border border-subtle text-text-muted font-mono">
-                          <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
-                          {selectedSubgrid} • {selectedStations.length} frames queued
-                        </span>
-                      </div>
-                    )}
                   </div>
-                )}
-
-                {/* HUD OVERLAY 1: Top-Left Node Identifier */}
-                {(isRunning || effectiveHistory.length > 0) && (
-                  <div className="absolute top-3 left-3 bg-black/85 backdrop-blur-md border border-white/10 rounded-xl px-3 py-2 shadow-md space-y-0.5 max-w-[160px] sm:max-w-[280px] z-10">
-                    <div className="flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-slate-400 shrink-0" />
-                      <span className="font-semibold text-xs text-white tracking-tight truncate font-mono">
-                        {activeDisplayPointId || `Station ${activeDisplayIndex}`}
-                      </span>
-                    </div>
-                    <div className="text-[11px] text-slate-300 font-mono font-normal pl-3 truncate">
-                      Frame <strong className="text-white font-bold">{activeDisplayIndex}</strong> / {totalStations}
-                    </div>
-                  </div>
-                )}
-
-                {/* HUD OVERLAY 2: Top-Right Diagnostics Stream (GPS & Equipment) */}
-                {(isRunning || effectiveHistory.length > 0) && (
-                  <div className="absolute top-3 right-3 bg-black/85 backdrop-blur-md border border-white/10 rounded-xl px-3 py-2 shadow-md space-y-0.5 text-xs min-w-[110px] sm:min-w-[150px] z-10">
-                    <div className="flex items-center justify-between gap-2 text-[11px]">
-                      <span className="text-slate-300 font-medium">GPS:</span>
-                      <span className={`font-semibold font-mono ${activeRecord
-                        ? (activeRecord.defectType?.includes('GPS') ? 'text-rose-400' : 'text-white')
-                        : liveCheckStatus.gps.status === 'flagged'
-                          ? 'text-rose-400'
-                          : 'text-white'
-                        }`}>
-                        {activeRecord
-                          ? `${activeDisplayStepDistance > 0 ? activeDisplayStepDistance.toFixed(1) : '0.0'}m`
-                          : liveCheckStatus.gps.detail || `${currentStepDistance > 0 ? currentStepDistance.toFixed(1) : '0.0'}m`}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between gap-2 text-[11px]">
-                      <span className="text-slate-300 font-medium">Equip:</span>
-                      <span className="font-semibold text-white font-mono truncate">
-                        {(() => {
-                          const currentItem = filteredTargetList.find(t => t.subgrid === (activeRunningSubgrid || selectedSubgrid));
-                          return currentItem?.raw?.captureEquipment || currentItem?.raw?.equipment || (projectSettings as any)?.captureEquipment || 'MMS';
-                        })()}
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-                {/* HUD OVERLAY 3: Bottom-Left Spatial Coordinates */}
-                {(isRunning || effectiveHistory.length > 0) && (
-                  <div className="absolute bottom-3 left-3 bg-black/85 backdrop-blur-md border border-white/10 rounded-xl px-3 py-2 shadow-md space-y-0.5 z-10 max-w-[170px] sm:max-w-none">
-                    <div className="text-white text-xs tabular-nums font-semibold flex items-center gap-1.5 font-mono truncate">
-                      <Navigation size={11} className="text-slate-300 shrink-0" />
-                      <span>
-                        {activeDisplayCoords.lat && activeDisplayCoords.lng
-                          ? `${Number(activeDisplayCoords.lat).toFixed(4)}°, ${Number(activeDisplayCoords.lng).toFixed(4)}°`
-                          : '0.0000°, 0.0000°'}
-                      </span>
-                    </div>
-                    <div className="text-slate-300 text-[11px] font-normal flex items-center gap-1 font-mono pl-3">
-                      <span className="text-slate-400">Step:</span>
-                      <span className="tabular-nums text-white font-semibold">
-                        {activeDisplayStepDistance > 0 ? `+${activeDisplayStepDistance.toFixed(1)}m` : '0.0m'}
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-                {/* HUD OVERLAY 4: Bottom-Right Compass Heading & Track State */}
-                {(isRunning || effectiveHistory.length > 0) && viewportMode !== 'pip' && (
-                  <div className="absolute bottom-3 right-3 bg-black/85 backdrop-blur-md border border-white/10 rounded-xl px-3 py-2 shadow-md space-y-0.5 text-right z-10">
-                    <div className="text-white text-xs tabular-nums font-semibold flex items-center justify-end gap-1.5 font-mono">
-                      <Compass size={11} className="text-slate-300 shrink-0" />
-                      <span>{activeDisplayBearing.toFixed(0)}°</span>
-                    </div>
-                    <div className="text-slate-300 text-[11px] font-normal flex items-center justify-end gap-1 font-mono">
-                      <span className="text-slate-400">Track:</span>
-                      <span className={`font-semibold ${!activeDisplayCoords.lat || !activeDisplayCoords.lng
-                        ? 'text-amber-400'
-                        : activeDisplayStepDistance > 50
-                          ? 'text-rose-400'
-                          : 'text-emerald-400'
-                        }`}>
-                        {!activeDisplayCoords.lat || !activeDisplayCoords.lng
-                          ? 'No Fix'
-                          : activeDisplayStepDistance > 50
-                            ? 'Drift'
-                            : 'Locked'}
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-                {/* FLOATING PREV / NEXT PANOTRACK BUTTONS OVERLAY */}
-                <button
-                  type="button"
-                  onClick={handlePrevStation}
-                  disabled={activeDisplayIndex <= 1 || isRunning}
-                  className={`absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 z-20 w-10 sm:w-12 h-10 sm:h-12 rounded-full bg-black/75 hover:bg-black/95 text-white/90 hover:text-white border border-white/20 hover:border-white/40 shadow-2xl flex items-center justify-center transition-all cursor-pointer backdrop-blur-md active:scale-90 ${activeDisplayIndex <= 1 || isRunning ? 'opacity-30 pointer-events-none' : 'opacity-85 hover:opacity-100 hover:scale-105'
-                    }`}
-                  title={`Previous Station (Frame ${Math.max(1, activeDisplayIndex - 1)})`}
-                >
-                  <ChevronLeft size={22} className="shrink-0 -translate-x-0.5" />
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleNextStation}
-                  disabled={activeDisplayIndex >= (totalStations > 0 ? totalStations : selectedStations.length) || isRunning}
-                  className={`absolute right-3 sm:right-4 top-1/2 -translate-y-1/2 z-20 w-10 sm:w-12 h-10 sm:h-12 rounded-full bg-black/75 hover:bg-black/95 text-white/90 hover:text-white border border-white/20 hover:border-white/40 shadow-2xl flex items-center justify-center transition-all cursor-pointer backdrop-blur-md active:scale-90 ${activeDisplayIndex >= (totalStations > 0 ? totalStations : selectedStations.length) || isRunning ? 'opacity-30 pointer-events-none' : 'opacity-85 hover:opacity-100 hover:scale-105'
-                    }`}
-                  title={`Next Station (Frame ${Math.min(totalStations > 0 ? totalStations : selectedStations.length, activeDisplayIndex + 1)})`}
-                >
-                  <ChevronRight size={22} className="shrink-0 translate-x-0.5" />
-                </button>
-
-                {/* Return to Live Telemetry Button */}
-                {selectedStationIndex !== null && isRunning && (
-                  <button
-                    onClick={() => setSelectedStationIndex(null)}
-                    className="absolute bottom-12 sm:bottom-14 left-1/2 -translate-x-1/2 bg-card hover:bg-inner text-text-base border border-subtle px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer shadow-lg flex items-center gap-1.5 active:scale-95 whitespace-nowrap z-20"
-                  >
-                    <RotateCcw size={12} />
-                    <span>Return to Live #{currentIndex + 1}</span>
-                  </button>
                 )}
               </div>
 
-              {/* SYNCHRONIZED MAP VIEWPORT (HORIZONTAL OR VERTICAL SPLIT) */}
+              {/* SYNCHRONIZED MAP VIEWPORT */}
               {(viewportMode === 'horizontal' || viewportMode === 'vertical') && (
                 <div className={`relative bg-app flex flex-col overflow-hidden ${viewportMode === 'horizontal'
                   ? 'w-full h-1/2 sm:h-[45%]'
                   : 'w-full lg:w-1/2 h-1/2 lg:h-full'
                   }`}>
-                  {/* Synchronized Map Header Bar */}
                   <div className="h-8 px-3 bg-card/90 backdrop-blur-md border-b border-subtle flex items-center justify-between shrink-0 text-xs z-10">
                     <div className="flex items-center gap-2">
                       <MapIcon size={13} className="text-sky-400" />
@@ -2214,7 +2110,6 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                     </div>
                   </div>
 
-                  {/* Map Iframe Container */}
                   <div className="flex-1 w-full h-full relative">
                     {(activeRunningSubgrid || selectedSubgrid) ? (
                       <iframe
@@ -2242,11 +2137,10 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                 </div>
               )}
 
-              {/* FLOATING PICTURE-IN-PICTURE (PIP) SYNCHRONIZED MINIMAP */}
+              {/* FLOATING PICTURE-IN-PICTURE MINIMAP */}
               {viewportMode === 'pip' && (
                 <div className={`absolute bottom-3 right-3 z-30 transition-all duration-200 bg-card/95 backdrop-blur-md border border-subtle rounded-2xl shadow-2xl overflow-hidden flex flex-col ${isPipCollapsed ? 'w-56 h-10' : 'w-72 sm:w-88 md:w-96 h-56 sm:h-64'
                   }`}>
-                  {/* PiP Header */}
                   <div className="h-9 px-3 bg-inner/90 border-b border-subtle flex items-center justify-between shrink-0 text-xs">
                     <div className="flex items-center gap-2 min-w-0">
                       <span className="w-2 h-2 rounded-full bg-sky-400 animate-pulse shrink-0" />
@@ -2272,7 +2166,6 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                     </div>
                   </div>
 
-                  {/* PiP Map Frame */}
                   {!isPipCollapsed && (
                     <div className="flex-1 w-full h-full relative">
                       <iframe
@@ -2289,10 +2182,8 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                   )}
                 </div>
               )}
-
             </div>
 
-            {/* Aborted Banner */}
             {isAborted && (
               <div className="m-3 p-3 bg-card border border-rose-500/30 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 shrink-0 text-xs shadow-md">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -2320,15 +2211,10 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                 </div>
               </div>
             )}
-
           </div>
 
-          {/* --------------------------------------------------------- */}
-          {/* COLUMN 3: TELEMETRY & DEFECT STREAM */}
-          {/* --------------------------------------------------------- */}
+          {/* COLUMN 3: TELEMETRY STREAM */}
           <aside className={`w-full lg:w-[340px] bg-card border border-subtle rounded-2xl flex flex-col shrink-0 overflow-hidden shadow-sm text-xs ${mobileConsoleTab === 'telemetry' ? 'flex-1' : 'hidden lg:flex'}`}>
-
-            {/* Header with Filter & SLA Pill */}
             <div className="p-3.5 border-b border-subtle flex items-center justify-between shrink-0 bg-card">
               <div className="flex items-center gap-2">
                 <Activity size={14} className="text-text-muted" />
@@ -2337,7 +2223,6 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                 </span>
               </div>
 
-              {/* SLA Nominal or Anomalies Pill */}
               {effectiveDefectsList.length === 0 ? (
                 <span className="px-2.5 py-0.5 rounded-full bg-inner text-text-muted border border-subtle text-[10px] font-medium font-mono">
                   SLA Nominal
@@ -2349,7 +2234,6 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
               )}
             </div>
 
-            {/* Filter Switcher */}
             <div className="p-3 border-b border-subtle bg-card">
               <div className="grid grid-cols-2 gap-1.5 bg-inner p-1 rounded-xl border border-subtle">
                 <button
@@ -2369,7 +2253,6 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
               </div>
             </div>
 
-            {/* Scanned Nodes Feed List */}
             <div className="flex-1 overflow-y-auto p-2.5 space-y-1.5">
               {filteredHistory.length === 0 ? (
                 <div className="p-8 text-center text-text-muted space-y-2 text-xs">
@@ -2394,7 +2277,6 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                             : 'bg-card hover:bg-slate-800/40 text-text-muted hover:text-text-base border-subtle'
                         }`}
                     >
-                      {/* Row 1: Node Station Number, Filename & Timestamp */}
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-1.5 min-w-0">
                           <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${item.status === 'flagged' ? 'bg-rose-400' : 'bg-slate-500'
@@ -2412,7 +2294,6 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                         </span>
                       </div>
 
-                      {/* Row 2: Diagnostics or Geocoordinates */}
                       {item.status === 'flagged' ? (
                         <div className="space-y-0.5 pt-0.5">
                           <span className="text-[11px] font-semibold text-rose-400 flex items-center gap-1">
@@ -2446,7 +2327,6 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
               )}
             </div>
 
-            {/* Telemetry Footer with Database Sync Indicator */}
             <div className="p-3 bg-inner border-t border-subtle flex items-center justify-between text-[11px] text-text-muted">
               <div className="flex items-center gap-1.5 font-medium">
                 <Database size={12} className="text-text-muted" />
@@ -2456,15 +2336,11 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                 {syncedCount} records upserted
               </span>
             </div>
-
           </aside>
-
         </div>
       )}
 
-      {/* ========================================================= */}
-      {/* 2B. THRESHOLD CALIBRATION STUDIO VIEW (SEAMLESS TAB) */}
-      {/* ========================================================= */}
+      {/* 2B. THRESHOLD CALIBRATION STUDIO VIEW */}
       {workbenchTab === 'thresholds' && (
         <QAQCThresholdStudioView
           thresholds={localThresholds}
@@ -2474,20 +2350,18 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
         />
       )}
 
-      {/* ========================================================= */}
-      {/* 2C. AUDIT SUMMARY VIEW (SEAMLESS TAB) */}
-      {/* ========================================================= */}
+      {/* 2C. AUDIT SUMMARY VIEW */}
       {workbenchTab === 'audit' && (() => {
         const targetSub = (activeRunningSubgrid || selectedSubgrid || '').toUpperCase().trim();
         const activeItem = filteredTargetList.find(t => t.subgrid.toUpperCase().trim() === targetSub);
-        const cachedAudit = auditCache[`${targetSub}_${activeItem?.runId || 'default'}`] || auditCache[`${targetSub}_default`];
+        const cachedAuditRecord = auditCache[`${targetSub}_${activeItem?.runId || 'default'}`] || auditCache[`${targetSub}_default`];
 
         const currentSubgrid = targetSub || 'GENERAL';
-        const currentDate = surveyDate || activeItem?.date || (cachedAudit as any)?.surveyDate || (cachedAudit ? new Date(cachedAudit.completedAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }));
-        const currentPic = activeRunningPic || inspectorPic || activeItem?.pic || cachedAudit?.pic || 'Operator';
+        const currentDate = surveyDate || activeItem?.date || (cachedAuditRecord as any)?.surveyDate || (cachedAuditRecord ? new Date(cachedAuditRecord.completedAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }));
+        const currentPic = activeRunningPic || inspectorPic || activeItem?.pic || cachedAuditRecord?.pic || 'Operator';
         const currentEquipment = (activeItem?.raw?.captureEquipment || activeItem?.raw?.equipment || (projectSettings as any)?.captureEquipment || 'MMS 360 Survey Sensor');
-        const currentDistance = activeItem?.raw?.kmProcessed ? `${activeItem.raw.kmProcessed.toFixed(1)} km` : (cachedAudit as any)?.trajectoryDistance ? `${(cachedAudit as any).trajectoryDistance.toFixed(1)} km` : '—';
-        const currentRunId = activeItem?.runId || cachedAudit?.runId || 'RUN-AUDIT-ACTIVE';
+        const currentDistance = activeItem?.raw?.kmProcessed ? `${activeItem.raw.kmProcessed.toFixed(1)} km` : (cachedAuditRecord as any)?.trajectoryDistance ? `${(cachedAuditRecord as any).trajectoryDistance.toFixed(1)} km` : '—';
+        const currentRunId = activeItem?.runId || cachedAuditRecord?.runId || 'RUN-AUDIT-ACTIVE';
         const currentModel = (localThresholds.deliverableModel || projectSettings?.deliverableModel || 'masked_car') === 'generative_fill' ? 'Generative Fill (Full 80% ROI)' : 'Vehicle Nadir Mask (Top 52% ROI)';
 
         const blurCount = effectiveDefectsList.filter((d: any) => (d.defectType || d.defectCategory || '').toLowerCase().includes('blur') || (Array.isArray(d.reasons) && d.reasons.some((r: string) => r.toLowerCase().includes('blur')))).length;
@@ -2495,7 +2369,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
         const gpsCount = effectiveDefectsList.filter((d: any) => (d.defectType || d.defectCategory || '').toLowerCase().includes('gps') || (Array.isArray(d.reasons) && d.reasons.some((r: string) => r.toLowerCase().includes('gps')))).length;
         const passedCount = Math.max(0, effectiveHistory.length - effectiveDefectsList.length);
 
-        const filteredHistory = effectiveHistory.filter(item => {
+        const filteredAuditHistory = effectiveHistory.filter(item => {
           if (auditLogFilter === 'flagged' && item.status !== 'flagged') return false;
           if (auditLogFilter === 'passed' && item.status === 'flagged') return false;
           if (auditSearchQuery.trim()) {
@@ -2509,8 +2383,6 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
 
         return (
           <div className="flex-1 flex flex-col p-3 sm:p-6 bg-app overflow-y-auto space-y-4 sm:space-y-6 max-w-7xl mx-auto w-full">
-
-            {/* Top Scope & Action Header Card */}
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-4 rounded-2xl bg-card border border-subtle shadow-sm">
               <div className="flex items-center gap-3 min-w-0">
                 <div className="p-2 rounded-xl bg-inner text-text-base border border-subtle shrink-0">
@@ -2539,10 +2411,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
               </div>
             </div>
 
-            {/* Detailed Survey Run & Operator Identification Grid */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-
-              {/* Card 1: Survey Dataset & Geodata */}
               <div className="p-3.5 bg-card border border-subtle rounded-xl space-y-2.5 shadow-sm">
                 <div className="flex items-center justify-between border-b border-subtle pb-2">
                   <span className="text-xs font-bold text-text-base uppercase tracking-wider flex items-center gap-1.5">
@@ -2574,7 +2443,6 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                 </div>
               </div>
 
-              {/* Card 2: Operational Ownership & Equipment */}
               <div className="p-3.5 bg-card border border-subtle rounded-xl space-y-2.5 shadow-sm">
                 <div className="flex items-center justify-between border-b border-subtle pb-2">
                   <span className="text-xs font-bold text-text-base uppercase tracking-wider flex items-center gap-1.5">
@@ -2601,7 +2469,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                     <span className="text-text-muted">Audit Completed:</span>
                     <span className="text-text-base flex items-center gap-1 font-mono text-[11px]">
                       <Clock size={12} className="text-text-muted" />
-                      {cachedAudit?.completedAt || (isCompleted ? 'Just now' : isRunning ? 'In Progress' : '—')}
+                      {cachedAuditRecord?.completedAt || (isCompleted ? 'Just now' : isRunning ? 'In Progress' : '—')}
                     </span>
                   </div>
                   <div className="flex justify-between items-center">
@@ -2613,7 +2481,6 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                 </div>
               </div>
 
-              {/* Card 3: Applied Calibration Parameters */}
               <div className="p-3.5 bg-card border border-subtle rounded-xl space-y-2.5 shadow-sm">
                 <div className="flex items-center justify-between border-b border-subtle pb-2">
                   <span className="text-xs font-bold text-text-base uppercase tracking-wider flex items-center gap-1.5">
@@ -2643,10 +2510,8 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                   </div>
                 </div>
               </div>
-
             </div>
 
-            {/* Key Metrics & Defect Distribution Grid */}
             <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2.5">
               <div className="p-3 bg-card border border-subtle rounded-xl space-y-1 shadow-sm">
                 <span className="text-[11px] text-text-muted font-medium">SLA Pass Rate</span>
@@ -2695,11 +2560,8 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
               </div>
             </div>
 
-            {/* Station-by-Station Scanned Diagnostics Log */}
             <div className="bg-card border border-subtle rounded-2xl overflow-hidden shadow-sm flex flex-col">
               <div className="px-4 py-3 border-b border-subtle bg-inner flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-
-                {/* Log Header & Filter Tabs */}
                 <div className="flex items-center gap-3 flex-wrap">
                   <span className="font-bold text-xs text-text-base uppercase tracking-wider flex items-center gap-1.5">
                     <Activity size={14} className="text-text-muted" />
@@ -2733,7 +2595,6 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                   </div>
                 </div>
 
-                {/* Quick Search */}
                 <div className="relative min-w-[200px]">
                   <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
                   <input
@@ -2744,12 +2605,10 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                     className="w-full pl-8 pr-3 py-1.5 bg-card border border-subtle rounded-xl text-xs text-text-base placeholder-text-muted focus:outline-none focus:border-subtle transition-colors font-sans"
                   />
                 </div>
-
               </div>
 
-              {/* Station Diagnostics Structured Table */}
               <div className="max-h-[500px] overflow-x-auto overflow-y-auto">
-                {filteredHistory.length === 0 ? (
+                {filteredAuditHistory.length === 0 ? (
                   <div className="p-12 text-center text-xs text-text-muted flex flex-col items-center justify-center gap-2">
                     <Activity size={24} className="text-text-muted" />
                     <span>No station records matching the current filter.</span>
@@ -2770,7 +2629,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-subtle">
-                      {filteredHistory.map((item) => {
+                      {filteredAuditHistory.map((item) => {
                         const isFlagged = item.status === 'flagged';
                         const timeStr = item.timestamp ? (item.timestamp.includes(',') ? item.timestamp.split(',').pop()?.trim() : item.timestamp) : '—';
                         const itemSubgrid = extractSubgridName(item.pointId) || currentSubgrid;
@@ -2825,11 +2684,9 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                 )}
               </div>
             </div>
-
           </div>
         );
       })()}
-
     </div>
   );
 };
