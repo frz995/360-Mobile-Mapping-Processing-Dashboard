@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { PhotoSphereViewerComponent } from './components/PhotoSphereViewerComponent';
+import { PhotoSphereViewerComponent, type PhotoSphereViewerHandle } from './components/PhotoSphereViewerComponent';
+import { WebGISHUDViewerOverlay } from './components/WebGISHUDViewerOverlay';
 import {
   AlertTriangle,
   CheckCircle,
@@ -4975,6 +4976,7 @@ const DataForm = ({
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState<'dashboard' | 'data' | 'settings'>('dashboard');
+  const dashboardPsvRef = useRef<PhotoSphereViewerHandle | null>(null);
   const [showLanding, setShowLanding] = useState<boolean>(true);
   const [authSession, setAuthSession] = useState<any>(null);
   const [pendingModule, setPendingModule] = useState<string | null>(null);
@@ -6722,75 +6724,57 @@ export default function App() {
     batchFilenames?: string[];
   } | null>(null);
 
-  const getStationsForSubgrid = (targetSubgrid: string, runId?: string | null) => {
+  const getStationsForSubgrid = (targetSubgrid: string, runId?: string | null): StationNode[] => {
     const cleanSg = (extractSubgridName(targetSubgrid) || targetSubgrid || '').toUpperCase().trim();
     if (!cleanSg) return [];
 
-    // Prioritize the specific selected daily survey run if a specific runId is given
+    // 1. SINGLE DAILY RUN SELECTION (Used by QA/QC Workbench)
     if (runId) {
-      const matchDaily = dailyData.find(d => getItemId(d) === runId || d.id === runId || (d as any)._id === runId || (d as any).runId === runId);
+      const matchDaily = dailyData.find(
+        (d: any) => getItemId(d) === runId || d.id === runId || (d as any)._id === runId || (d as any).runId === runId
+      );
+
       if (matchDaily) {
-        const exactFrameCount = getImagesProcessedCount(matchDaily);
-        if (matchDaily.panoramas && matchDaily.panoramas.length > 0) {
-          const availPanoramas = matchDaily.availableFilenames && matchDaily.availableFilenames.length > 0
-            ? matchDaily.panoramas.filter((p: any) => {
-              const pfn = (p.filename || '').split('/').pop()?.toLowerCase().trim();
-              return matchDaily.availableFilenames!.some(af => af.toLowerCase().trim() === pfn || af.toLowerCase().trim() === (p.filename || '').toLowerCase().trim());
-            })
-            : (matchDaily.panoramas.some((p: any) => p.isAvailable !== undefined)
-              ? matchDaily.panoramas.filter((p: any) => p.isAvailable === true)
-              : matchDaily.panoramas);
+        let pans: any[] = (matchDaily.panoramas && matchDaily.panoramas.length > 0)
+          ? matchDaily.panoramas
+          : ((matchDaily as any).points || []);
 
-          const pansToUse = availPanoramas.length > 0
-            ? (exactFrameCount > 0 ? availPanoramas.slice(0, exactFrameCount) : availPanoramas)
-            : matchDaily.panoramas.slice(0, exactFrameCount || matchDaily.panoramas.length);
-
-          if (pansToUse.length > 0) {
-            return pansToUse.map((p, idx) => {
-              const fn = p.filename || `${cleanSg}-${String(idx + 1).padStart(4, '0')}.jpg`;
-              return {
-                filename: fn,
-                point_id: fn,
-                subgrid: cleanSg,
-                latitude: p.latitude ?? (p as any).lat ?? (p as any).y,
-                longitude: p.longitude ?? (p as any).lon ?? (p as any).lng ?? (p as any).x,
-                lat: p.latitude ?? (p as any).lat ?? (p as any).y,
-                lng: p.longitude ?? (p as any).lon ?? (p as any).lng ?? (p as any).x,
-                bearing: p.bearing ?? p.heading ?? ((idx * 15) % 360),
-                image_url: resolvePanoramaUrl(fn, projectSettings, { subgrid: cleanSg }),
-                config_url: resolvePanoramaConfigUrl(fn, projectSettings, cleanSg)
-              };
-            });
-          }
+        if (pans.length === 0 && matchDaily.availableFilenames && matchDaily.availableFilenames.length > 0) {
+          pans = matchDaily.availableFilenames.map((fn: string) => ({ filename: fn, point_id: fn }));
         }
 
-        const totalCount = exactFrameCount > 0
-          ? exactFrameCount
-          : (matchDaily.availableImagesCount || (matchDaily.availableFilenames?.length) || matchDaily.imagesProcessed || matchDaily.poiCount || 0);
+        if (pans.length > 0) {
+          const runStations: StationNode[] = pans.map((p: any, idx: number) => {
+            const rawFn = p.filename || p.point_id || p.image_url || (matchDaily.availableFilenames && matchDaily.availableFilenames[idx]) || `${cleanSg}-${String(idx + 1).padStart(4, '0')}.jpg`;
+            const cleanFn = (rawFn || '').split('/').pop() || rawFn;
+            const pLat = Number(p.latitude ?? p.lat ?? p.y);
+            const pLon = Number(p.longitude ?? p.lon ?? p.lng ?? p.x);
+            const baseCoords = SUBGRID_COORDINATES[cleanSg];
+            const lat = !isNaN(pLat) && pLat !== 0 ? pLat : (baseCoords ? baseCoords[1] : 0);
+            const lng = !isNaN(pLon) && pLon !== 0 ? pLon : (baseCoords ? baseCoords[0] : 0);
 
-        if (totalCount > 0) {
-          const baseCoords = SUBGRID_COORDINATES[cleanSg];
-          const baseLon = baseCoords ? baseCoords[0] : 0;
-          const baseLat = baseCoords ? baseCoords[1] : 0;
-          const customFilenames = matchDaily.availableFilenames;
-          return Array.from({ length: totalCount }, (_, i) => {
-            const pt = (matchDaily as any).points?.[i];
-            const lat = pt?.lat ?? baseLat;
-            const lng = pt?.lon ?? baseLon;
-            const fn = (customFilenames && customFilenames[i]) || `${cleanSg}-${String(i + 1).padStart(4, '0')}.jpg`;
             return {
-              filename: fn,
-              point_id: fn,
+              filename: cleanFn,
+              point_id: p.point_id || cleanFn,
               subgrid: cleanSg,
               latitude: lat,
               longitude: lng,
               lat: lat,
               lng: lng,
-              bearing: (45 + i * 2) % 360,
-              image_url: resolvePanoramaUrl(fn, projectSettings, { subgrid: cleanSg }),
-              config_url: resolvePanoramaConfigUrl(fn, projectSettings, cleanSg)
+              bearing: Number(p.bearing ?? p.heading ?? ((idx * 15) % 360)),
+              image_url: p.image_url || resolvePanoramaUrl(cleanFn, projectSettings, { subgrid: cleanSg }),
+              config_url: resolvePanoramaConfigUrl(cleanFn, projectSettings, cleanSg)
             };
           });
+
+          // Sort naturally by frame number (0001 -> 0002 -> ...)
+          runStations.sort((a: any, b: any) => {
+            const numA = parseInt((a.filename || '').match(/\d+/g)?.pop() || '0', 10);
+            const numB = parseInt((b.filename || '').match(/\d+/g)?.pop() || '0', 10);
+            return numA - numB;
+          });
+
+          return runStations;
         }
       }
     }
@@ -6804,44 +6788,36 @@ export default function App() {
     const seenFilenames = new Set<string>();
 
     for (const d of matchingDailies) {
-      const exactFrameCount = getImagesProcessedCount(d);
       if (d.panoramas && d.panoramas.length > 0) {
-        const availPanoramas = d.availableFilenames && d.availableFilenames.length > 0
-          ? d.panoramas.filter((p: any) => {
-            const pfn = (p.filename || '').split('/').pop()?.toLowerCase().trim();
-            return d.availableFilenames!.some(af => af.toLowerCase().trim() === pfn || af.toLowerCase().trim() === (p.filename || '').toLowerCase().trim());
-          })
-          : (d.panoramas.some((p: any) => p.isAvailable !== undefined)
-            ? d.panoramas.filter((p: any) => p.isAvailable === true)
-            : d.panoramas);
+        // 1. Process all survey points directly from the CSV track
+        for (let pIdx = 0; pIdx < d.panoramas.length; pIdx++) {
+          const p: any = d.panoramas[pIdx];
+          const rawFn = p.filename || p.point_id || p.image_url || (d.availableFilenames && d.availableFilenames[pIdx]) || `${cleanSg}-${String(pIdx + 1).padStart(4, '0')}.jpg`;
+          const cleanFn = (rawFn || '').split('/').pop() || rawFn;
+          const key = cleanFn.toLowerCase().trim();
 
-        const pansToUse = availPanoramas.length > 0
-          ? (exactFrameCount > 0 ? availPanoramas.slice(0, exactFrameCount) : availPanoramas)
-          : d.panoramas.slice(0, exactFrameCount || d.panoramas.length);
-
-        for (const p of pansToUse) {
-          const fn = (p.filename || '').split('/').pop() || p.filename || `${cleanSg}-${String(collectedStations.length + 1).padStart(4, '0')}.jpg`;
-          const key = fn.toLowerCase().trim();
           if (!seenFilenames.has(key)) {
             seenFilenames.add(key);
             const baseCoords = SUBGRID_COORDINATES[cleanSg];
-            const pLat = Number(p.latitude ?? (p as any).lat ?? (p as any).y);
-            const pLon = Number(p.longitude ?? (p as any).lon ?? (p as any).lng ?? (p as any).x);
+            const pLat = Number(p.latitude ?? p.lat ?? p.y);
+            const pLon = Number(p.longitude ?? p.lon ?? p.lng ?? p.x);
             const lat = !isNaN(pLat) && pLat !== 0 ? pLat : (baseCoords ? baseCoords[1] : 0);
             const lng = !isNaN(pLon) && pLon !== 0 ? pLon : (baseCoords ? baseCoords[0] : 0);
+
             collectedStations.push({
-              filename: p.filename || fn,
-              point_id: p.filename || (p as any).point_id || fn,
+              filename: cleanFn,
+              point_id: p.point_id || cleanFn,
               latitude: lat,
               longitude: lng,
               lat: lat,
               lng: lng,
-              bearing: p.bearing ?? p.heading ?? ((collectedStations.length * 15) % 360),
-              image_url: resolvePanoramaUrl(p.filename || fn, projectSettings)
+              bearing: Number(p.bearing ?? p.heading ?? ((collectedStations.length * 15) % 360)),
+              image_url: p.image_url || resolvePanoramaUrl(cleanFn, projectSettings, { subgrid: cleanSg })
             });
           }
         }
       } else if (d.availableFilenames && d.availableFilenames.length > 0) {
+        // 2. Fallback when only availableFilenames array exists
         d.availableFilenames.forEach((fn: string, pIdx: number) => {
           const cleanFn = fn.split('/').pop() || fn;
           const key = cleanFn.toLowerCase().trim();
@@ -6849,17 +6825,20 @@ export default function App() {
             seenFilenames.add(key);
             const pt = (d as any).points?.[pIdx];
             const baseCoords = SUBGRID_COORDINATES[cleanSg];
-            const lat = pt?.lat ?? (baseCoords ? baseCoords[1] : 0);
-            const lng = pt?.lon ?? (baseCoords ? baseCoords[0] : 0);
+            const pLat = Number(pt?.lat ?? pt?.latitude);
+            const pLon = Number(pt?.lon ?? pt?.longitude ?? pt?.lng);
+            const lat = !isNaN(pLat) && pLat !== 0 ? pLat : (baseCoords ? baseCoords[1] : 0);
+            const lng = !isNaN(pLon) && pLon !== 0 ? pLon : (baseCoords ? baseCoords[0] : 0);
+
             collectedStations.push({
-              filename: fn,
-              point_id: fn,
+              filename: cleanFn,
+              point_id: cleanFn,
               latitude: lat,
               longitude: lng,
               lat: lat,
               lng: lng,
-              bearing: (45 + collectedStations.length * 2) % 360,
-              image_url: resolvePanoramaUrl(fn, projectSettings)
+              bearing: Number((45 + collectedStations.length * 2) % 360),
+              image_url: resolvePanoramaUrl(cleanFn, projectSettings, { subgrid: cleanSg })
             });
           }
         });
@@ -6867,6 +6846,13 @@ export default function App() {
     }
 
     if (collectedStations.length > 0) {
+      // Sort numerically by filename index so consecutive clicks advance frame-by-frame (e.g., 0015 -> 0016)
+      collectedStations.sort((a, b) => {
+        const numA = parseInt((a.filename || '').match(/\d+/g)?.pop() || '0', 10);
+        const numB = parseInt((b.filename || '').match(/\d+/g)?.pop() || '0', 10);
+        return numA - numB;
+      });
+
       const maxAllowed = matchBatch
         ? getImagesProcessedCount(matchBatch)
         : matchingDailies.reduce((sum, d) => sum + getImagesProcessedCount(d), 0);
@@ -7459,8 +7445,8 @@ export default function App() {
       opacity: isPub ? 1.0 : 0.7,
       statusColor: isPub ? '#10b981' : '#f59e0b',
       panoramas: pans.map((p: any, pIdx: number) => {
-        const fn = p.filename || p.image_url || daily.availableFilenames?.[pIdx] || `${normSg}-${String(pIdx + 1).padStart(4, '0')}.jpg`;
-        const fnClean = (fn || '').split('/').pop()?.toUpperCase().trim();
+        const actualFn = p.filename || p.image_url || p.point_id || daily.availableFilenames?.[pIdx] || `${normSg}-${String(pIdx + 1).padStart(4, '0')}.jpg`;
+        const fnClean = (actualFn || '').split('/').pop()?.toUpperCase().trim();
         const isPtDefect = Boolean(
           p.isDefect ||
           p.is_defect ||
@@ -7470,8 +7456,8 @@ export default function App() {
           ...p,
           id: p.id || `pt-${rowId}-${pIdx}`,
           runId: rowId,
-          filename: fn,
-          image_url: p.image_url || fn,
+          filename: actualFn,
+          image_url: p.image_url || resolvePanoramaUrl(actualFn, projectSettings, { subgrid: normSg }),
           lat: p.lat ?? p.latitude ?? p.y,
           lon: p.lon ?? p.longitude ?? p.lng ?? p.x,
           latitude: p.latitude ?? p.lat ?? p.y,
@@ -9291,13 +9277,15 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* BOTTOM RIGHT PANEL: 360 VIEW INSPECTOR & QA */}
+                  {/* 360 INSPECTOR VIEWER & QAQC CARD */}
                   <div className={`flex-1 bg-card border border-[rgba(255,255,255,0.08)] backdrop-blur-md rounded-xl flex flex-col overflow-hidden transition-all duration-700 ${focusedSection === 'qa'
                     ? 'relative z-30 ring-4 ring-indigo-400 shadow-[0_0_50px_rgba(129,140,248,0.5)] scale-[1.005]'
                     : focusedSection
                       ? 'filter blur-[4px] opacity-25 pointer-events-none'
                       : ''
                     }`}>
+
+                    {/* Card Header */}
                     <div className="px-3.5 py-2 border-b border-subtle bg-card flex flex-wrap items-center justify-between shrink-0 gap-2">
                       <span className="text-xs font-bold uppercase tracking-wider text-text-base flex items-center gap-2 shrink-0">
                         <Camera size={14} className="text-accent" />
@@ -9305,7 +9293,6 @@ export default function App() {
                       </span>
 
                       <div className="flex items-center gap-2 min-w-0">
-                        {/* Live Processing Status Run or Completed Badge */}
                         {qaqcWorkerState.isRunning ? (
                           <div className="flex items-center gap-2.5 px-3 py-1 bg-inner border border-subtle rounded-xl text-xs shadow-sm animate-in fade-in duration-200">
                             <span className="relative flex h-2 w-2 shrink-0">
@@ -9330,6 +9317,7 @@ export default function App() {
                               ({Math.min(qaqcWorkerState.totalStations || 1, qaqcWorkerState.currentIndex + 1)}/{qaqcWorkerState.totalStations || 1})
                             </span>
                             <button
+                              type="button"
                               onClick={() => setIsQAQCRunnerModalOpen(true)}
                               className="px-2 py-0.5 bg-card hover:bg-card text-slate-300 hover:text-text-base border border-[rgba(255,255,255,0.12)] rounded text-[10px] font-medium transition-all cursor-pointer flex items-center gap-1 shadow-sm active:scale-95 shrink-0"
                             >
@@ -9337,6 +9325,7 @@ export default function App() {
                               <span>Open HUD</span>
                             </button>
                             <button
+                              type="button"
                               onClick={abortQAQCInspection}
                               className="px-2 py-0.5 bg-card hover:bg-red-950/30 text-slate-300 hover:text-rose-400 border border-[rgba(255,255,255,0.12)] hover:border-red-800/50 rounded text-[10px] font-medium transition-all cursor-pointer flex items-center gap-1 shadow-sm active:scale-95 shrink-0"
                               title="Abort inspection"
@@ -9347,6 +9336,7 @@ export default function App() {
                           </div>
                         ) : (
                           <button
+                            type="button"
                             onClick={() => {
                               setIsQAQCRunnerModalOpen(true);
                             }}
@@ -9360,8 +9350,9 @@ export default function App() {
                       </div>
                     </div>
 
+                    {/* Card Body */}
                     <div className="flex-1 flex gap-2.5 p-2.5 min-h-0">
-                      {/* Embedded WebGIS 360 Viewer directly from 360 web mapping */}
+                      {/* Left: 360 Panorama Canvas + Floating HUD Overlay */}
                       <div className="flex-1 bg-app rounded-lg border border-subtle relative overflow-hidden group flex flex-col min-w-0">
                         {hasSelectedPoint ? (
                           <>
@@ -9372,7 +9363,6 @@ export default function App() {
                               const provider = projectSettings?.storageProvider || import.meta.env.VITE_STORAGE_PROVIDER || 'cloudflare_r2';
                               const isMultiResStrategy = projectSettings?.imageStorageStrategy !== 'single_equirectangular';
 
-                              // Automatically use multi-res tile loading for providers hosting tile pyramids
                               const shouldUseMultiRes = isMultiResStrategy && (
                                 provider === 'cloudflare_r2' ||
                                 provider === 'custom_cdn' ||
@@ -9390,23 +9380,121 @@ export default function App() {
                                 ? resolvePanoramaUrl(targetFilename, projectSettings, { subgrid: targetSubgrid })
                                 : '');
 
-                              // PSV handles both modes: configUrl for multi-res tiles, panoramaUrl for single equirectangular
                               return (
                                 <PhotoSphereViewerComponent
+                                  ref={dashboardPsvRef}
                                   key={`pano-psv-${targetSubgrid}-${targetFilename}-${provider}`}
                                   configUrl={shouldUseMultiRes && dynamicConfigUrl ? dynamicConfigUrl : undefined}
                                   panoramaUrl={!shouldUseMultiRes ? dynamicPanoUrl : undefined}
                                   onPositionChange={(pos) => {
-                                    setPanoramaTelemetry({ yaw: pos.yaw, pitch: pos.pitch, fov: pos.fov });
+                                    setPanoramaTelemetry(prev => ({
+                                      ...prev,
+                                      yaw: pos.yaw,
+                                      pitch: pos.pitch,
+                                      fov: pos.fov ?? prev.fov
+                                    }));
                                   }}
                                   className="w-full h-full"
                                 />
                               );
                             })()}
-                            <div className="absolute top-2 left-2 bg-app backdrop-blur-md px-2 py-1 rounded-md text-[10px] text-text-base font-mono z-10 border border-subtle flex items-center gap-1.5 pointer-events-none">
-                              <span className="w-2 h-2 rounded-full bg-sky-400"></span>
-                              Telemetry: Pitch: {panoramaTelemetry.pitch > 0 ? `+${panoramaTelemetry.pitch}` : panoramaTelemetry.pitch}° | Yaw: {panoramaTelemetry.yaw}°
-                            </div>
+
+                            {/* Dashboard-only Compact Floating HUD */}
+                            <WebGISHUDViewerOverlay
+                              imageName={activePanoramaFilename || (inspectorSubgrid ? `${inspectorSubgrid}-0001.jpg` : 'Inspection Node')}
+                              currentIndex={
+                                (() => {
+                                  const cleanSg = (inspectorSubgrid || selectedSubgridFilter || 'N93E70').toUpperCase().trim();
+                                  const stations = getStationsForSubgrid(cleanSg, selectedDailyRunId);
+
+                                  // 1. Match by exact filename in the sorted stations list
+                                  const currentClean = (activePanoramaFilename || '').split('/').pop()?.toLowerCase().trim();
+                                  const foundIdx = stations.findIndex(
+                                    (s) => (s.filename || '').split('/').pop()?.toLowerCase().trim() === currentClean
+                                  );
+                                  if (foundIdx >= 0) return foundIdx;
+
+                                  // 2. Fallback: Parse sequence number (1-based -> 0-based)
+                                  const match = (activePanoramaFilename || '').match(/(\d+)\.jpg$/i);
+                                  return match ? Math.max(0, parseInt(match[1], 10) - 1) : 0;
+                                })()
+                              }
+                              totalFrames={
+                                (() => {
+                                  const cleanSg = (inspectorSubgrid || selectedSubgridFilter || 'N93E70').toUpperCase().trim();
+                                  const stations = getStationsForSubgrid(cleanSg, selectedDailyRunId);
+                                  if (stations.length > 0) return stations.length;
+                                  const currentItem = dailyData.find(
+                                    (d) => (extractSubgridName(d.subgrid) || '').toUpperCase() === cleanSg
+                                  );
+                                  return currentItem ? getImagesProcessedCount(currentItem) : (totalImages > 0 ? totalImages : 104);
+                                })()
+                              }
+                              coordinates={inspectorCoords}
+                              heading={panoramaTelemetry.yaw}
+                              gpsAccuracy="0.0m"
+                              equipType={projectSettings?.defaultEquipment || 'MMS 360'}
+                              onIndexChange={(newIdx: number) => {
+                                const cleanSg = (inspectorSubgrid || selectedSubgridFilter || 'N93E70').toUpperCase().trim();
+
+                                // Retrieve sorted sequential station track
+                                const stations = getStationsForSubgrid(cleanSg, selectedDailyRunId);
+                                const total = stations.length > 0 ? stations.length : (totalImages > 0 ? totalImages : 1);
+
+                                // Clamp strictly to array boundaries
+                                const targetIdx = Math.max(0, Math.min(newIdx, total - 1));
+                                const targetStation = stations[targetIdx];
+
+                                // Exact filename from station object without manual addition
+                                const nextFn = targetStation?.filename || `${cleanSg}-${String(targetIdx + 1).padStart(4, '0')}.jpg`;
+                                const nextUrl = targetStation?.image_url || resolvePanoramaUrl(nextFn, projectSettings, { subgrid: cleanSg });
+                                const nextLat = Number(targetStation?.latitude ?? (targetStation as any)?.lat ?? inspectorCoords.lat);
+                                const nextLng = Number(targetStation?.longitude ?? (targetStation as any)?.lng ?? (targetStation as any)?.lon ?? inspectorCoords.lng);
+                                const nextBearing = targetStation?.bearing ?? (targetStation as any)?.heading ?? ((targetIdx * 12) % 360);
+
+                                // Update Dashboard State
+                                setActivePanoramaFilename(nextFn);
+                                setActivePanoramaUrl(nextUrl);
+                                if (nextLat !== 0 && nextLng !== 0) {
+                                  setInspectorCoords({ lat: nextLat, lng: nextLng });
+                                }
+
+                                // Synchronize Map Marker & View
+                                const pointPayload = {
+                                  filename: nextFn,
+                                  image_url: nextUrl,
+                                  subgrid: cleanSg,
+                                  lat: nextLat,
+                                  lng: nextLng,
+                                  lon: nextLng,
+                                  bearing: nextBearing,
+                                  index: targetIdx + 1
+                                };
+
+                                const iframes = document.querySelectorAll('iframe');
+                                iframes.forEach((f) => {
+                                  try {
+                                    f.contentWindow?.postMessage(
+                                      {
+                                        type: 'SET_PANORAMA',
+                                        point: pointPayload
+                                      },
+                                      '*'
+                                    );
+                                    f.contentWindow?.postMessage(
+                                      {
+                                        type: 'MAP_POINT_SELECTED',
+                                        point: pointPayload
+                                      },
+                                      '*'
+                                    );
+                                  } catch (e) { }
+                                });
+                              }}
+                              onZoomIn={() => dashboardPsvRef.current?.zoomIn()}
+                              onZoomOut={() => dashboardPsvRef.current?.zoomOut()}
+                              onFullscreen={() => dashboardPsvRef.current?.toggleFullscreen()}
+                            />
                           </>
                         ) : (
                           <div className="w-full h-full bg-card flex flex-col items-center justify-center p-4 text-center select-none">
@@ -9421,7 +9509,7 @@ export default function App() {
                         )}
                       </div>
 
-                      {/* OPERATOR QA panel block */}
+                      {/* Right: Operator QA Defect Flags Panel */}
                       <div className="w-52 sm:w-56 shrink-0 bg-card rounded-lg border border-subtle p-3 flex flex-col justify-between overflow-y-auto">
                         <div>
                           <div className="flex items-center justify-between gap-1 pb-2 border-b border-subtle mb-2.5">
@@ -9488,6 +9576,7 @@ export default function App() {
                                 <span className="text-[8.5px] font-semibold text-amber-500/80 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded">Guest</span>
                               ) : isQaLocked ? (
                                 <button
+                                  type="button"
                                   onClick={() => {
                                     const defaultSg = (dailyData[0]?.subgrid) || (batchLogs[0]?.subgrid) || '';
                                     const itemKey = activePanoramaFilename || inspectorSubgrid || selectedSubgridFilter || defaultSg;
@@ -9507,7 +9596,6 @@ export default function App() {
                             </div>
 
                             {isGuestUser ? (
-                              /* Guest: show flags as view-only, no interaction */
                               <div className="space-y-1.5 pointer-events-none opacity-40 select-none">
                                 {[
                                   { label: projectSettings.qaFlag1 || 'Blurry Frame', color: 'red' },
@@ -9528,6 +9616,7 @@ export default function App() {
                               <>
                                 {(!isQaLocked || selectedQaFlags.blurry) && (
                                   <button
+                                    type="button"
                                     disabled={isQaLocked}
                                     onClick={() => {
                                       if (isQaLocked) return;
@@ -9555,6 +9644,7 @@ export default function App() {
 
                                 {(!isQaLocked || selectedQaFlags.obstruction) && (
                                   <button
+                                    type="button"
                                     disabled={isQaLocked}
                                     onClick={() => {
                                       if (isQaLocked) return;
@@ -9582,6 +9672,7 @@ export default function App() {
 
                                 {(!isQaLocked || selectedQaFlags.badGps) && (
                                   <button
+                                    type="button"
                                     disabled={isQaLocked}
                                     onClick={() => {
                                       if (isQaLocked) return;
@@ -9610,7 +9701,7 @@ export default function App() {
                             )}
                           </div>
 
-                          {/* QA Questionnaire Box: Update Status? (Hidden after status confirmation and for guests) */}
+                          {/* QA Questionnaire Box */}
                           {!isGuestUser && !isQaLocked && (selectedQaFlags.blurry || selectedQaFlags.obstruction || selectedQaFlags.badGps) && (
                             <div className="bg-app rounded-md p-2 border border-subtle space-y-1.5 text-[10px] mt-2.5 animate-in fade-in slide-in-from-top-2 duration-200">
                               <div className="flex items-center justify-between text-slate-300 font-medium">

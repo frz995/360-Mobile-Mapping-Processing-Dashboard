@@ -1,262 +1,204 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useImperativeHandle, forwardRef } from 'react';
 import { Viewer } from '@photo-sphere-viewer/core';
-import { EquirectangularTilesAdapter } from '@photo-sphere-viewer/equirectangular-tiles-adapter';
+import { CubemapTilesAdapter } from '@photo-sphere-viewer/cubemap-tiles-adapter';
 import '@photo-sphere-viewer/core/index.css';
 
-interface PhotoSphereViewerProps {
-  /** Direct equirectangular panorama URL (e.g., Supabase Storage single image) */
-  panoramaUrl?: string;
-  /** Multi-res tile config.json URL (e.g., Cloudflare R2 with config.json) */
-  configUrl?: string;
-  caption?: string;
-  onPositionChange?: (pos: { yaw: number; pitch: number; fov: number }) => void;
-  className?: string;
+export interface PhotoSphereViewerHandle {
+  zoomIn: () => void;
+  zoomOut: () => void;
+  toggleFullscreen: () => void;
+  getPosition: () => { yaw: number; pitch: number; fov: number } | null;
 }
 
-export const PhotoSphereViewerComponent: React.FC<PhotoSphereViewerProps> = ({
-  panoramaUrl,
-  configUrl,
-  caption,
-  onPositionChange,
-  className = 'w-full h-full'
-}) => {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const viewerRef = useRef<Viewer | null>(null);
-  const [hasError, setHasError] = useState<boolean>(false);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
+export interface PhotoSphereViewerProps {
+  panoramaUrl?: string;
+  configUrl?: string;
+  caption?: string;
+  className?: string;
+  onPositionChange?: (position: { yaw: number; pitch: number; fov?: number }) => void;
+}
 
-  useEffect(() => {
-    setHasError(false);
-  }, [panoramaUrl, configUrl]);
+export const PhotoSphereViewerComponent = forwardRef<PhotoSphereViewerHandle, PhotoSphereViewerProps>(
+  ({ panoramaUrl, configUrl, caption, className = 'w-full h-full min-h-[300px]', onPositionChange }, ref) => {
+    const containerRef = useRef<HTMLDivElement>(null);
+    const viewerRef = useRef<Viewer | null>(null);
 
-  useEffect(() => {
-    const activeSource = configUrl || panoramaUrl;
-    if (!containerRef.current || !activeSource) {
+    const onPositionChangeRef = useRef(onPositionChange);
+    useEffect(() => {
+      onPositionChangeRef.current = onPositionChange;
+    }, [onPositionChange]);
+
+    useImperativeHandle(ref, () => ({
+      zoomIn: () => {
+        if (viewerRef.current) {
+          viewerRef.current.zoom(viewerRef.current.getZoomLevel() + 15);
+        }
+      },
+      zoomOut: () => {
+        if (viewerRef.current) {
+          viewerRef.current.zoom(viewerRef.current.getZoomLevel() - 15);
+        }
+      },
+      toggleFullscreen: () => {
+        if (viewerRef.current) {
+          viewerRef.current.toggleFullscreen();
+        }
+      },
+      getPosition: () => {
+        if (!viewerRef.current) return null;
+        const pos = viewerRef.current.getPosition();
+        return {
+          yaw: (pos.yaw * 180) / Math.PI,
+          pitch: (pos.pitch * 180) / Math.PI,
+          fov: viewerRef.current.getZoomLevel(),
+        };
+      },
+    }));
+
+    useEffect(() => {
+      if (!containerRef.current) return;
+
       if (viewerRef.current) {
-        try {
-          viewerRef.current.destroy();
-        } catch (_) { }
+        viewerRef.current.destroy();
         viewerRef.current = null;
       }
-      return;
-    }
 
-    let viewerInstance: Viewer | null = null;
+      let isMounted = true;
+      let viewerInstance: Viewer | null = null;
 
-    const initViewer = async () => {
-      try {
-        setIsLoading(true);
-        setHasError(false);
-
-        // Destroy previous instance
-        if (viewerRef.current) {
-          try {
-            viewerRef.current.destroy();
-          } catch (_) { }
-          viewerRef.current = null;
-        }
-
-        // Multi-res tiles via config.json (Cloudflare R2 / Custom CDN)
-        if (configUrl) {
-          try {
-            // Trim whitespace and spaces from configUrl string
+      const initViewer = async () => {
+        try {
+          if (configUrl) {
             const cleanConfigUrl = configUrl.trim();
-            const res = await fetch(cleanConfigUrl, { cache: 'no-cache' });
-            if (!res.ok) throw new Error(`HTTP ${res.status} fetching config.json`);
-            const config = await res.json();
-
-            // Extract base directory path from cleanConfigUrl
             const rawBasePath = cleanConfigUrl.substring(0, cleanConfigUrl.lastIndexOf('/') + 1).trim();
+            const cleanBasePath = rawBasePath.replace(/([^:]\/)\/+/g, '$1').replace(/\/+$/, '');
 
-            if (config.multiRes) {
-              const multiRes = config.multiRes;
+            try {
+              await fetch(cleanConfigUrl, { cache: 'no-cache' });
+              if (!isMounted) return;
 
-              // Sanitize multiRes JSON string properties directly
-              let rawMultiBasePath = (multiRes.basePath || '').trim();
-              let rawMultiPath = (multiRes.path || '').trim();
-
-              // Remove stray underscores or non-path placeholder characters
-              if (rawMultiPath === '_' || rawMultiPath === '%20') rawMultiPath = '';
-              if (rawMultiBasePath === '_' || rawMultiBasePath === '%20') rawMultiBasePath = '';
-
-              // Build tile URL resolver
-              const tileBasePath = rawMultiBasePath
-                ? (rawMultiBasePath.startsWith('http')
-                  ? rawMultiBasePath
-                  : `${rawBasePath}/${rawMultiBasePath.replace(/^\.\//, '')}`)
-                : rawBasePath;
-
-              // Clean base path: strip invalid path segments, spaces, underscores, and duplicate slashes
-              const cleanBasePath = tileBasePath
-                .replace(/%[a-zA-Z0-9]+/g, '')
-                .replace(/[\s_]+/g, '')
-                .replace(/([^:]\/)\/+/g, '$1')
-                .replace(/\/+$/, '');
-
-              const cleanTilePath = rawMultiPath
-                .replace(/%[a-zA-Z0-9]+/g, '')
-                .replace(/[\s_]+/g, '')
-                .replace(/^\/+/, '')
-                .replace(/\/+$/, '');
-
-              const fullTilePrefix = cleanTilePath
-                ? `${cleanBasePath}/${cleanTilePath}`.replace(/([^:]\/)\/+/g, '$1').replace(/\/+$/, '')
-                : cleanBasePath;
-
-              // Extract dimensions from config
-              const width = multiRes.tileSize ? multiRes.tileSize * (multiRes.columns || 16) : 12000;
-              const cols = multiRes.columns || 16;
-              const rows = multiRes.rows || 8;
-
-              // Build base URL for low-res preview
-              const baseUrl = `${fullTilePrefix}/fallback/f.jpg`;
+              const FACE_MAP: Record<string, string> = {
+                front: 'b',
+                back: 'f',
+                left: 'r',
+                right: 'l',
+                top: 'u',
+                bottom: 'd',
+              };
 
               viewerInstance = new Viewer({
                 container: containerRef.current!,
-                adapter: EquirectangularTilesAdapter,
+                adapter: CubemapTilesAdapter,
+                sphereCorrection: { pan: '180deg' },
+                navbar: false,
                 panorama: {
-                  width: width,
-                  cols: cols,
-                  rows: rows,
-                  baseUrl: baseUrl,
-                  tileUrl: (col: number, row: number, level?: number) => {
-                    const currentLevel = level || 1;
-                    return `${fullTilePrefix}/${currentLevel}/${col}/${row}.jpg`;
+                  baseUrl: {
+                    front: `${cleanBasePath}/fallback/b.jpg`,
+                    back: `${cleanBasePath}/fallback/f.jpg`,
+                    left: `${cleanBasePath}/fallback/r.jpg`,
+                    right: `${cleanBasePath}/fallback/l.jpg`,
+                    top: `${cleanBasePath}/fallback/u.jpg`,
+                    bottom: `${cleanBasePath}/fallback/d.jpg`,
+                  },
+                  levels: [
+                    { faceSize: 512, nbTiles: 1 },
+                    { faceSize: 1024, nbTiles: 2 },
+                    { faceSize: 2048, nbTiles: 4 },
+                  ],
+                  tileUrl: (face: string, col: number, row: number, level: number) => {
+                    const faceKey = FACE_MAP[face] || face[0];
+                    const levelNum = (typeof level === 'number' ? level : 0) + 1;
+                    return `${cleanBasePath}/${levelNum}/${faceKey}${row}_${col}.jpg`;
                   },
                 },
-                caption: caption || '360° Multi-Res Tiles',
-                navbar: ['zoom', 'move', 'download', 'fullscreen'],
+                caption: caption || '360° Multi-Res Inspection',
                 defaultYaw: '0deg',
                 defaultPitch: '0deg',
-                touchmoveTwoFingers: true,
+                touchmoveTwoFingers: false,
+                mousewheel: true,
                 mousewheelCtrlKey: false,
               });
-            } else if (config.panorama) {
-              // Fallback: config.json has single panorama URL
-              let panoUrl = (config.panorama || '').trim();
-              if (!panoUrl.startsWith('http')) {
-                panoUrl = rawBasePath + panoUrl;
-              }
+            } catch (fetchErr) {
+              console.warn('Config fetch failed, using fallback cubemap:', fetchErr);
+              if (!isMounted) return;
 
               viewerInstance = new Viewer({
                 container: containerRef.current!,
-                panorama: panoUrl,
+                sphereCorrection: { pan: '180deg' },
+                navbar: false,
+                panorama: {
+                  front: `${cleanBasePath}/fallback/b.jpg`,
+                  back: `${cleanBasePath}/fallback/f.jpg`,
+                  left: `${cleanBasePath}/fallback/r.jpg`,
+                  right: `${cleanBasePath}/fallback/l.jpg`,
+                  top: `${cleanBasePath}/fallback/u.jpg`,
+                  bottom: `${cleanBasePath}/fallback/d.jpg`,
+                },
                 caption: caption || '360° Panorama Inspection',
-                navbar: ['zoom', 'move', 'download', 'fullscreen'],
                 defaultYaw: '0deg',
                 defaultPitch: '0deg',
-                touchmoveTwoFingers: true,
+                touchmoveTwoFingers: false,
+                mousewheel: true,
                 mousewheelCtrlKey: false,
               });
             }
-          } catch (fetchErr) {
-            console.warn('PhotoSphereViewer: Multi-res config.json load failed, falling back to single image', fetchErr);
-
-            // Fallback to single equirectangular
-            const fallbackUrl = configUrl.trim().replace(/config\.json$/i, 'fallback/f.jpg');
+          } else if (panoramaUrl) {
+            if (!isMounted) return;
             viewerInstance = new Viewer({
               container: containerRef.current!,
-              panorama: fallbackUrl,
+              navbar: false,
+              panorama: panoramaUrl.trim(),
               caption: caption || '360° Panorama Inspection',
-              navbar: ['zoom', 'move', 'download', 'fullscreen'],
               defaultYaw: '0deg',
               defaultPitch: '0deg',
-              touchmoveTwoFingers: true,
+              touchmoveTwoFingers: false,
+              mousewheel: true,
               mousewheelCtrlKey: false,
             });
           }
-        }
-        // Single equirectangular image (Supabase Storage / S3)
-        else if (panoramaUrl) {
-          viewerInstance = new Viewer({
-            container: containerRef.current!,
-            panorama: panoramaUrl.trim(),
-            caption: caption || '360° Panorama Inspection',
-            navbar: ['zoom', 'move', 'download', 'fullscreen'],
-            defaultYaw: '0deg',
-            defaultPitch: '0deg',
-            touchmoveTwoFingers: true,
-            mousewheelCtrlKey: false,
-          });
-        }
 
-        if (!viewerInstance) {
-          throw new Error('No valid panorama source provided');
-        }
-
-        viewerRef.current = viewerInstance;
-
-        if (onPositionChange) {
-          viewerInstance.addEventListener('position-updated', ({ position }) => {
-            if (viewerInstance) {
-              onPositionChange({
-                yaw: Math.round((position.yaw * 180) / Math.PI),
-                pitch: Math.round((position.pitch * 180) / Math.PI),
-                fov: Math.round(viewerInstance.getZoomLevel()),
+          if (viewerInstance) {
+            viewerInstance.addEventListener('position-updated', ({ position }) => {
+              onPositionChangeRef.current?.({
+                yaw: (position.yaw * 180) / Math.PI,
+                pitch: (position.pitch * 180) / Math.PI,
+                fov: viewerInstance?.getZoomLevel() ?? 50,
               });
-            }
-          });
-        }
+            });
 
-        // Add panorama error listener
-        (viewerInstance as unknown as { addEventListener: (evt: string, cb: () => void) => void }).addEventListener(
-          'panorama-load-error',
-          () => {
-            console.warn('Panorama load error for:', configUrl || panoramaUrl);
-            setHasError(true);
-            setIsLoading(false);
+            viewerInstance.addEventListener('zoom-updated', ({ zoomLevel }) => {
+              const pos = viewerInstance?.getPosition();
+              if (pos) {
+                onPositionChangeRef.current?.({
+                  yaw: (pos.yaw * 180) / Math.PI,
+                  pitch: (pos.pitch * 180) / Math.PI,
+                  fov: zoomLevel,
+                });
+              }
+            });
+
+            viewerRef.current = viewerInstance;
           }
-        );
-
-        // Success - clear loading state
-        setIsLoading(false);
-      } catch (err) {
-        console.error('Failed to initialize PhotoSphereViewer:', err);
-        setHasError(true);
-        setIsLoading(false);
-      }
-    };
-
-    initViewer();
-
-    return () => {
-      if (viewerRef.current) {
-        try {
-          viewerRef.current.destroy();
-        } catch (e) {
-          // cleanup
+        } catch (err) {
+          console.error('Failed to initialize PhotoSphereViewer:', err);
         }
-        viewerRef.current = null;
-      }
-    };
-  }, [panoramaUrl, configUrl, caption, onPositionChange]);
+      };
 
-  return (
-    <div className={`relative overflow-hidden rounded-lg ${className}`}>
-      <div ref={containerRef} className="w-full h-full min-h-[120px]" />
+      initViewer();
 
-      {/* Loading overlay */}
-      {isLoading && !hasError && (
-        <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-20">
-          <div className="flex flex-col items-center gap-2">
-            <div className="w-8 h-8 border-2 border-sky-400 border-t-transparent rounded-full animate-spin" />
-            <span className="text-[11px] text-slate-300 font-medium">
-              {configUrl ? 'Loading Multi-Res Tiles...' : 'Loading Panorama...'}
-            </span>
-          </div>
-        </div>
-      )}
+      return () => {
+        isMounted = false;
+        if (viewerRef.current) {
+          viewerRef.current.destroy();
+          viewerRef.current = null;
+        }
+      };
+    }, [panoramaUrl, configUrl, caption]);
 
-      {/* Error overlay */}
-      {(!panoramaUrl && !configUrl) || hasError ? (
-        <div className="absolute inset-0 bg-app backdrop-blur-md flex items-center justify-center p-4 text-center z-20">
-          <span className="text-xs text-amber-400 font-medium">
-            {hasError ? 'Panorama Load Failed' : 'No 360° Panorama Available'}
-          </span>
-        </div>
-      ) : null}
-    </div>
-  );
-};
+    return <div ref={containerRef} className={className} />;
+  }
+);
+
+PhotoSphereViewerComponent.displayName = 'PhotoSphereViewerComponent';
 
 export default PhotoSphereViewerComponent;
