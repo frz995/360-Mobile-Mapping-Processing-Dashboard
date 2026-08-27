@@ -10,6 +10,7 @@ import {
     FileText,
     Workflow
 } from 'lucide-react';
+import { usePanoramaViewer } from '../hooks/usePanoramaViewer';
 
 export interface SystemShowcaseProps {
     onEnterDashboard?: (targetView?: string) => void;
@@ -48,6 +49,9 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
     const [activeIndex, setActiveIndex] = useState(0);
     const [activePhotoIdx, setActivePhotoIdx] = useState(0);
     const [isAnimating, setIsAnimating] = useState(false);
+
+    // Dynamic Viewer Selection (Zero Hardcode)
+    const { viewerDisplayName, engineName: viewerEngineName } = usePanoramaViewer(projectSettings);
 
     // Mobile swipe handlers
     const [touchStartX, setTouchStartX] = useState<number | null>(null);
@@ -440,7 +444,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                                 </div>
                                 <div className="flex items-center gap-1.5">
                                     <span className="text-[var(--text-muted,#94a3b8)] opacity-70">Renderer:</span>
-                                    <span className="font-semibold text-[var(--text-primary,#f8fafc)]">MapLibre GL + Pannellum</span>
+                                    <span className="font-semibold text-[var(--text-primary,#f8fafc)]">MapLibre GL + {viewerDisplayName}</span>
                                 </div>
                             </div>
 

@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import WebGISViewerIframe from './components/WebGISViewerIframe';
-import { PannellumViewer } from './components/PannellumViewer';
+import { PhotoSphereViewerComponent } from './components/PhotoSphereViewerComponent';
 import {
   AlertTriangle,
   CheckCircle,
@@ -779,7 +778,7 @@ function getFlatFolderList(items: (Layer | Folder)[], path: string = ''): Array<
 // Helper Components
 // ==============================================
 
-const MapComponent = ({
+export const MapComponent = ({
   dataManagement = false,
   refreshKey,
   selectedSubgridFilter,
@@ -1116,7 +1115,6 @@ const MapComponent = ({
     </div>
   );
 };
-
 
 // ==============================================
 // QC Audit Modal Component (Missing Image Inspector)
@@ -5293,6 +5291,9 @@ export default function App() {
     csvTimestampFormat: 'auto'
   }));
 
+  // PSV handles both single equirectangular and multi-res tiles dynamically
+  //const { shouldUseMultiRes } = usePanoramaViewer(projectSettings);
+
   const [imagesListModal, setImagesListModal] = useState<{
     isOpen: boolean;
     subgrid: string;
@@ -9389,36 +9390,15 @@ export default function App() {
                                 ? resolvePanoramaUrl(targetFilename, projectSettings, { subgrid: targetSubgrid })
                                 : '');
 
-                              // Case A: Multi-Resolution Tile Pyramid -> Native PannellumViewer
-                              if (shouldUseMultiRes && dynamicConfigUrl) {
-                                return (
-                                  <PannellumViewer
-                                    key={`${targetSubgrid}-${targetFilename}-${provider}`}
-                                    configUrl={dynamicConfigUrl}
-                                    panoramaUrl={dynamicPanoUrl}
-                                    initialYaw={panoramaTelemetry?.yaw || 0}
-                                    initialPitch={panoramaTelemetry?.pitch || 0}
-                                    initialHfov={panoramaTelemetry?.fov || 100}
-                                    showControls={true}
-                                    className="w-full h-full"
-                                  />
-                                );
-                              }
-
-                              // Case B: Single Equirectangular Image (Supabase / Flat .JPG) -> WebGISViewerIframe
+                              // PSV handles both modes: configUrl for multi-res tiles, panoramaUrl for single equirectangular
                               return (
-                                <WebGISViewerIframe
-                                  key={`${targetSubgrid}-${targetFilename}-${provider}`}
-                                  panoramaUrl={dynamicPanoUrl}
-                                  configUrl={dynamicConfigUrl}
-                                  filename={targetFilename}
-                                  subgrid={targetSubgrid}
-                                  bearing={panoramaTelemetry.yaw}
-                                  pitch={panoramaTelemetry.pitch}
-                                  themeMode={themeMode}
-                                  isQAQCRunning={qaqcWorkerState.isRunning}
-                                  qaqcSubgrid={qaqcWorkerState.subgrid}
-                                  qaqcPic={qaqcWorkerState.pic}
+                                <PhotoSphereViewerComponent
+                                  key={`pano-psv-${targetSubgrid}-${targetFilename}-${provider}`}
+                                  configUrl={shouldUseMultiRes && dynamicConfigUrl ? dynamicConfigUrl : undefined}
+                                  panoramaUrl={!shouldUseMultiRes ? dynamicPanoUrl : undefined}
+                                  onPositionChange={(pos) => {
+                                    setPanoramaTelemetry({ yaw: pos.yaw, pitch: pos.pitch, fov: pos.fov });
+                                  }}
                                   className="w-full h-full"
                                 />
                               );
@@ -10114,7 +10094,14 @@ export default function App() {
                       </div>
                       <div className="p-3 rounded-xl bg-card border border-subtle space-y-1">
                         <span className="text-text-muted block text-[10px] uppercase">360° Inspection Engine</span>
-                        <span className="text-text-base font-bold">Pannellum Equirectangular VR</span>
+                        <span className="text-text-base font-bold">
+                          {projectSettings?.useMultiRes
+                            ? 'PhotoSphereViewer (Multi-Res Tile Engine)'
+                            : 'PhotoSphereViewer (Equirectangular)'}
+                        </span>
+                        <span className="text-text-muted text-[9px] font-mono">
+                          {projectSettings?.storageProvider?.toUpperCase() || 'DYNAMIC'} · {projectSettings?.imageStorageStrategy || 'single_equirectangular'}
+                        </span>
                       </div>
                     </div>
                   </div>
