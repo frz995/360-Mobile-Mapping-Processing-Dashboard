@@ -37,7 +37,8 @@ import {
 import type { QAQCWorkerState, StationInspectionRecord, StationNode } from '../hooks/useQAQCWorker';
 import type { QAQCConfig, ExtendedProjectSettings, QADefectRecord } from '../types/admin';
 import { saveProjectSettingsToSupabase, resolvePanoramaUrl, resolvePanoramaConfigUrl, SUBGRID_COORDINATES } from '../services/supabase';
-import { PannellumViewer } from './PannellumViewer';
+import { PhotoSphereViewerComponent } from './PhotoSphereViewerComponent';
+import { usePanoramaViewer } from '../hooks/usePanoramaViewer';
 import { isGpuAccelerationSupported, getGpuHardwareName } from '../utils/qaqcAnalyzer';
 import { QAQCThresholdStudioView } from './QAQCThresholdStudioModal';
 import {
@@ -197,6 +198,13 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
     glareLuminanceThreshold: projectSettings?.glareLuminanceThreshold ?? 240.0,
     deliverableModel: projectSettings?.deliverableModel ?? 'masked_car'
   }));
+
+  // PSV handles both single equirectangular and multi-res tiles dynamically
+  const {
+    shouldUseMultiRes,
+    viewerDisplayName,
+    engineName: viewerEngineName
+  } = usePanoramaViewer(projectSettings);
 
   useEffect(() => {
     if (projectSettings) {
@@ -1786,7 +1794,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
             {/* Bottom Dock: Inspection Rules, 4 Pacing Options & Operator Hub */}
             <div className="p-3.5 border-t border-subtle bg-inner space-y-3">
               <div className="flex items-center justify-between text-xs text-text-base font-semibold">
-                <div className="flex items-center gap-1.5 min-w-0">
+                <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
                   <span>Inspection Parameters</span>
                   {isGpuAccelerationSupported() ? (
                     <span
@@ -1805,6 +1813,13 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                       <span>CPU</span>
                     </span>
                   )}
+                  <span
+                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-sky-500/10 text-sky-400 border border-sky-500/20"
+                    title={`${viewerEngineName} • ${projectSettings?.storageProvider || 'dynamic'}`}
+                  >
+                    <Camera size={10} className="text-sky-400 shrink-0" />
+                    <span>{viewerDisplayName}</span>
+                  </span>
                 </div>
                 <span className="text-text-muted text-[11px] font-mono font-normal shrink-0">
                   {selectedSubgrid ? `${selectedStations.length} Frames Queued` : 'No Target'}
@@ -2012,19 +2027,22 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                   : 'h-full w-full'
                 }`}>
                 {(activeRunningSubgrid || selectedSubgrid) && activeDisplayThumbnail ? (
-                  <PannellumViewer
-                    key={`pano-${activeDisplayPointId || activeRawFile}-${projectSettings?.storageProvider || 'r2'}`}
-                    configUrl={resolvePanoramaConfigUrl(
-                      activeDisplayPointId || activeRawFile,
-                      projectSettings,
-                      activeRunningSubgrid || selectedSubgrid
-                    )}
-                    panoramaUrl={activeDisplayThumbnail}
-                    initialYaw={typeof activeDisplayBearing === 'number' ? activeDisplayBearing : 0}
-                    initialHfov={projectSettings?.defaultFov || 100}
-                    className="w-full h-full"
-                    showControls={true}
-                  />
+                  <>
+                    {/* PSV handles both modes: configUrl for multi-res tiles, panoramaUrl for single equirectangular */}
+                    <PhotoSphereViewerComponent
+                      key={`pano-psv-${activeDisplayPointId || activeRawFile}-${projectSettings?.storageProvider || 'dynamic'}`}
+                      configUrl={shouldUseMultiRes ? resolvePanoramaConfigUrl(
+                        activeDisplayPointId || activeRawFile,
+                        projectSettings,
+                        activeRunningSubgrid || selectedSubgrid
+                      ) : undefined}
+                      panoramaUrl={!shouldUseMultiRes ? activeDisplayThumbnail : undefined}
+                      onPositionChange={(_pos) => {
+                        // Optional: track camera position for telemetry
+                      }}
+                      className="w-full h-full"
+                    />
+                  </>
                 ) : (
                   <div className="w-full h-full flex flex-col items-center justify-center gap-3 p-6 sm:p-8 text-center select-none bg-app">
                     <div className="w-12 h-12 rounded-xl bg-card border border-subtle flex items-center justify-center text-text-muted shadow-sm">

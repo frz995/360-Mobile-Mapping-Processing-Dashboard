@@ -1421,6 +1421,7 @@ export function resolvePanoramaUrl(
       const rawDomain =
         settings?.r2Domain ||
         settings?.r2PublicUrl ||
+        settings?.r2PublicDomain ||
         settings?.customCdnUrl ||
         settings?.cloudStorageBaseUrl ||
         import.meta.env.VITE_R2_DOMAIN ||
@@ -1431,8 +1432,10 @@ export function resolvePanoramaUrl(
 
       // Multi-res configuration JSON request
       if (options?.asConfigUrl || cleanFn.endsWith('.json')) {
-        if (settings?.multiResTilePattern) {
-          const path = settings.multiResTilePattern
+        const pattern = settings?.multiResTilePattern || settings?.tilePathPattern;
+        if (pattern) {
+          const path = pattern
+            .replace('{pointFolder}', nameWithoutExt)
             .replace('{filename}', nameWithoutExt)
             .replace('{subgrid}', targetSubgrid || nameWithoutExt)
             .replace(/^\/+/, '');
@@ -1446,8 +1449,10 @@ export function resolvePanoramaUrl(
 
       // Preview Thumbnail / Fallback Cube Face request
       if (isMultiRes) {
-        if (settings?.multiResFallbackPattern) {
-          const path = settings.multiResFallbackPattern
+        const fallbackPattern = settings?.multiResFallbackPattern;
+        if (fallbackPattern) {
+          const path = fallbackPattern
+            .replace('{pointFolder}', nameWithoutExt)
             .replace('{filename}', nameWithoutExt)
             .replace('{subgrid}', targetSubgrid || nameWithoutExt)
             .replace(/^\/+/, '');
@@ -1460,6 +1465,16 @@ export function resolvePanoramaUrl(
       }
 
       // Standard Flat Equirectangular Single Image fallback
+      const singlePattern = settings?.singleImagePathPattern || settings?.imageFormatPattern;
+      if (singlePattern && (singlePattern.includes('{subgrid}') || singlePattern.includes('{filename}'))) {
+        const path = singlePattern
+          .replace('{pointFolder}', nameWithoutExt)
+          .replace('{filename}', cleanFn)
+          .replace('{subgrid}', targetSubgrid || nameWithoutExt)
+          .replace(/^\/+/, '');
+        return baseUrl ? `${baseUrl}/${path}` : `/${path}`;
+      }
+
       const prefix = (settings?.imageStoragePath || '').replace(/^\/+/, '').replace(/\/+$/, '');
       if (prefix) {
         return baseUrl ? `${baseUrl}/${prefix}/${cleanFn}` : `/${prefix}/${cleanFn}`;
@@ -1516,8 +1531,47 @@ export function resolvePanoramaUrl(
 /**
  * Resolve Multi-Resolution config.json URL for 360 viewer engines (Pannellum / Marzipano / PhotoSphere).
  */
-export function resolvePanoramaConfigUrl(filename?: string, settings?: any, subgrid?: string): string {
-  return resolvePanoramaUrl(filename, settings, { asConfigUrl: true, subgrid });
+export function resolvePanoramaConfigUrl(
+  filename?: string,
+  settings?: any,
+  subgrid?: string
+): string {
+  if (!filename) return '';
+
+  // 1. Resolve base domain dynamically from user settings
+  const provider = (settings?.storageProvider || '').toLowerCase().trim();
+  let baseUrl = '';
+
+  if (provider === 'cloudflare_r2' || provider === 'r2') {
+    baseUrl = (settings?.r2Domain || settings?.r2PublicDomain || settings?.cloudStorageBaseUrl || '').trim();
+  } else if (provider === 'supabase') {
+    const sbUrl = (settings?.supabaseUrl || '').replace(/\/+$/, '');
+    const bucket = settings?.supabaseBucket || 'MMS_PIC';
+    baseUrl = sbUrl ? `${sbUrl}/storage/v1/object/public/${bucket}` : '';
+  } else {
+    baseUrl = (settings?.customCdnUrl || settings?.customStorageUrl || settings?.cloudStorageBaseUrl || '').trim();
+  }
+
+  baseUrl = baseUrl.replace(/\/+$/, '');
+  if (baseUrl && !baseUrl.startsWith('http://') && !baseUrl.startsWith('https://')) {
+    baseUrl = `https://${baseUrl}`;
+  }
+
+  // 2. Extract clean identifiers
+  const cleanFilename = filename.split('/').pop()?.trim() || '';
+  const pointFolder = cleanFilename.replace(/\.[a-zA-Z0-9]+$/i, ''); // e.g. "N93E70-0001"
+  const sg = (subgrid || cleanFilename.split('-')[0] || '').toUpperCase().trim(); // e.g. "N93E70"
+
+  // 3. Dynamic template pattern with pointFolder nested path
+  const pattern = settings?.multiResTilePattern || settings?.tilePathPattern || 'tiles/{subgrid}/{pointFolder}/config.json';
+
+  const relativePath = pattern
+    .replace('{subgrid}', sg)
+    .replace('{pointFolder}', pointFolder)
+    .replace('{filename}', cleanFilename)
+    .replace(/^\/+/, '');
+
+  return `${baseUrl}/${relativePath}`;
 }
 
 /**
@@ -1539,7 +1593,11 @@ export async function testCloudflareStorageHealth(
   contentType?: string;
   error?: string;
 }> {
-  const cleanDomain = formatCloudflareUrl(domainOrUrl);
+  let cleanDomain = (domainOrUrl || '').trim().replace(/\/+$/, '');
+  if (cleanDomain && !cleanDomain.startsWith('http://') && !cleanDomain.startsWith('https://')) {
+    cleanDomain = `https://${cleanDomain}`;
+  }
+
   if (!cleanDomain) {
     return {
       ok: false,
@@ -1552,11 +1610,12 @@ export async function testCloudflareStorageHealth(
     };
   }
 
-  const fn = (sampleFilename || 'SG01-0001.jpg').trim();
+  const fn = (sampleFilename || 'N93E70-0001.jpg').trim();
   const testSettings = {
     ...settings,
     storageProvider: 'cloudflare_r2',
-    r2Domain: cleanDomain
+    r2Domain: cleanDomain,
+    r2PublicDomain: cleanDomain
   };
 
   const isMulti = testSettings.imageStorageStrategy !== 'single_equirectangular';
