@@ -51,8 +51,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
     const [isAnimating, setIsAnimating] = useState(false);
 
     // Dynamic Viewer Selection (Zero Hardcode)
-    const { viewerDisplayName, engineName: viewerEngineName } = usePanoramaViewer(projectSettings);
-
+    const { viewerDisplayName } = usePanoramaViewer(projectSettings);
     // Mobile swipe handlers
     const [touchStartX, setTouchStartX] = useState<number | null>(null);
 
