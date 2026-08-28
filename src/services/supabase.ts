@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import type { QADefectRecord, QAQCAuditRunRecord, ExtendedProjectSettings } from '../types/admin';
+import type { DatasetRecord, ExternalJobStatus, ProcessingJobRecord, ProcessingJobStatus } from '../types/production';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_KEY || '';
@@ -1349,7 +1350,7 @@ export interface DatabaseTableMapping {
  */
 export function getDatabaseTableMapping(settings?: any): DatabaseTableMapping {
   return {
-    panoramasTable: settings?.dbPanoramasTable || import.meta.env.VITE_DB_PANORAMAS_TABLE || 'subgrids',
+    panoramasTable: settings?.dbPanoramasTable || import.meta.env.VITE_DB_PANORAMAS_TABLE || 'panoramas',
     panoramasSummaryView: settings?.dbSummaryView || import.meta.env.VITE_DB_SUMMARY_VIEW || 'panoramas_subgrid_summary',
     batchLogsTable: settings?.dbTableName || import.meta.env.VITE_DB_BATCH_LOGS_TABLE || 'batch_logs',
     qaDefectsTable: settings?.dbQaDefectsTable || import.meta.env.VITE_DB_QA_DEFECTS_TABLE || 'qa_defects',
@@ -2253,6 +2254,226 @@ export async function resolveQADefectInSupabase(subgrid: string, pointId: string
     return true;
   } catch (err) {
     console.warn('resolveQADefectInSupabase catch:', err);
+    return false;
+  }
+}
+
+// ---------------------------------------------------------------------
+// Foundation Production Pipeline — Datasets & Processing Jobs
+// Metadata-only persistence. Image content always lives on NAS folders.
+// ---------------------------------------------------------------------
+
+const DATASETS_TABLE = 'datasets';
+const PROCESSING_JOBS_TABLE = 'processing_jobs';
+
+export interface StagingPanoramaRow {
+  id?: string;
+  subgrid?: string;
+  filename?: string;
+  status?: string;
+  created_at?: string;
+}
+
+const STAGING_PANORAMAS_TABLE = 'staging_panoramas';
+
+/** Minimal capture-metadata fetch from the RAW staging table (lineage Survey tab). */
+export async function fetchStagingPanoramasFromSupabase(): Promise<StagingPanoramaRow[]> {
+  try {
+    const { data, error } = await supabase
+      .from(STAGING_PANORAMAS_TABLE)
+      .select('id, subgrid, filename, status, created_at')
+      .order('created_at', { ascending: true });
+    if (error) {
+      console.warn('fetchStagingPanoramasFromSupabase:', error.message);
+      return [];
+    }
+    return (data || []) as StagingPanoramaRow[];
+  } catch (err) {
+    console.warn('fetchStagingPanoramasFromSupabase catch:', err);
+    return [];
+  }
+}
+
+export async function fetchDatasetsFromSupabase(): Promise<DatasetRecord[]> {
+  try {
+    const { data, error } = await supabase
+      .from(DATASETS_TABLE)
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (error) {
+      console.warn('fetchDatasetsFromSupabase:', error.message);
+      return [];
+    }
+    return (data || []) as DatasetRecord[];
+  } catch (err) {
+    console.warn('fetchDatasetsFromSupabase catch:', err);
+    return [];
+  }
+}
+
+export async function saveDatasetToSupabase(dataset: DatasetRecord): Promise<DatasetRecord | null> {
+  try {
+    const now = new Date().toISOString();
+    if (dataset.id) {
+      const { data, error } = await supabase
+        .from(DATASETS_TABLE)
+        .update({ ...dataset, updated_at: now })
+        .eq('id', dataset.id)
+        .select('*')
+        .single();
+      if (error) {
+        console.warn('saveDatasetToSupabase (update):', error.message);
+        return null;
+      }
+      return data as DatasetRecord;
+    }
+
+    const { data, error } = await supabase
+      .from(DATASETS_TABLE)
+      .insert([{ ...dataset, created_at: now, updated_at: now }])
+      .select('*')
+      .single();
+    if (error) {
+      console.warn('saveDatasetToSupabase (insert):', error.message);
+      return null;
+    }
+    return data as DatasetRecord;
+  } catch (err) {
+    console.warn('saveDatasetToSupabase catch:', err);
+    return null;
+  }
+}
+
+export async function deleteDatasetFromSupabase(id: string): Promise<boolean> {
+  try {
+    const { error } = await supabase.from(DATASETS_TABLE).delete().eq('id', id);
+    if (error) {
+      console.warn('deleteDatasetFromSupabase:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn('deleteDatasetFromSupabase catch:', err);
+    return false;
+  }
+}
+
+export async function fetchProcessingJobsFromSupabase(): Promise<ProcessingJobRecord[]> {
+  try {
+    const { data, error } = await supabase
+      .from(PROCESSING_JOBS_TABLE)
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (error) {
+      console.warn('fetchProcessingJobsFromSupabase:', error.message);
+      return [];
+    }
+    return (data || []) as ProcessingJobRecord[];
+  } catch (err) {
+    console.warn('fetchProcessingJobsFromSupabase catch:', err);
+    return [];
+  }
+}
+
+export async function saveProcessingJobToSupabase(job: ProcessingJobRecord): Promise<ProcessingJobRecord | null> {
+  try {
+    const now = new Date().toISOString();
+    if (job.id) {
+      const { data, error } = await supabase
+        .from(PROCESSING_JOBS_TABLE)
+        .update({ ...job, updated_at: now })
+        .eq('id', job.id)
+        .select('*')
+        .single();
+      if (error) {
+        console.warn('saveProcessingJobToSupabase (update):', error.message);
+        return null;
+      }
+      return data as ProcessingJobRecord;
+    }
+
+    const { data, error } = await supabase
+      .from(PROCESSING_JOBS_TABLE)
+      .insert([{ ...job, created_at: now, updated_at: now }])
+      .select('*')
+      .single();
+    if (error) {
+      console.warn('saveProcessingJobToSupabase (insert):', error.message);
+      return null;
+    }
+    return data as ProcessingJobRecord;
+  } catch (err) {
+    console.warn('saveProcessingJobToSupabase catch:', err);
+    return null;
+  }
+}
+
+export async function updateProcessingJobStatusInSupabase(
+  id: string,
+  fields: Partial<ProcessingJobRecord>
+): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from(PROCESSING_JOBS_TABLE)
+      .update({ ...fields, updated_at: new Date().toISOString() })
+      .eq('id', id);
+    if (error) {
+      console.warn('updateProcessingJobStatusInSupabase:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn('updateProcessingJobStatusInSupabase catch:', err);
+    return false;
+  }
+}
+
+/** Record a QA decision on a processing job (also flips job status). */
+export async function updateProcessingJobQaInSupabase(
+  id: string,
+  input: {
+    decision: 'APPROVED' | 'REJECTED';
+    notes?: string;
+    assignee?: string;
+    status?: ProcessingJobStatus;
+  }
+): Promise<boolean> {
+  const now = new Date().toISOString();
+  return updateProcessingJobStatusInSupabase(id, {
+    qa_decision: input.decision,
+    qa_notes: input.notes || '',
+    qa_by: input.assignee || 'System',
+    qa_at: now,
+    ...(input.status ? { status: input.status } : {})
+  });
+}
+
+/** Update external-PC handoff fields on a processing job. */
+export async function updateProcessingJobHandoffInSupabase(
+  id: string,
+  input: {
+    assignedTo?: string;
+    externalStatus?: ExternalJobStatus;
+    launchCommand?: string;
+  }
+): Promise<boolean> {
+  return updateProcessingJobStatusInSupabase(id, {
+    ...(input.assignedTo !== undefined ? { assigned_to: input.assignedTo } : {}),
+    ...(input.externalStatus !== undefined ? { external_status: input.externalStatus } : {}),
+    ...(input.launchCommand !== undefined ? { launch_command: input.launchCommand } : {})
+  });
+}
+
+export async function deleteProcessingJobFromSupabase(id: string): Promise<boolean> {
+  try {
+    const { error } = await supabase.from(PROCESSING_JOBS_TABLE).delete().eq('id', id);
+    if (error) {
+      console.warn('deleteProcessingJobFromSupabase:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn('deleteProcessingJobFromSupabase catch:', err);
     return false;
   }
 }
