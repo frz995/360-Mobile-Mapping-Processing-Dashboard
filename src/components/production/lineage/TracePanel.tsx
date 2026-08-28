@@ -37,10 +37,20 @@ function datasetLinkRow(
         <span className="block text-[10px] text-text-muted">
           {d.dataset_type} · {d.pipeline_stage || '—'}
           {d.version ? ` · v${d.version}` : ''}
+          {d.superseded_by ? ' · superseded' : ' · current'}
         </span>
       </span>
-      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${statusTone(d.status)}`}>
-        {d.status || '—'}
+      <span className="flex items-center gap-1.5 shrink-0">
+        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${statusTone(d.status)}`}>
+          {d.status || '—'}
+        </span>
+        <span className={`text-[8px] font-bold uppercase px-1 py-0.5 rounded border ${
+          d.superseded_by
+            ? 'text-amber-400 border-amber-500/40 bg-amber-950/40'
+            : 'text-emerald-400 border-emerald-500/40 bg-emerald-950/40'
+        }`}>
+          {d.superseded_by ? 'old' : 'current'}
+        </span>
       </span>
     </button>
   );
@@ -232,6 +242,7 @@ export function TracePanel({
         <div className="text-[10px] text-text-muted mb-2">
           {dataset.dataset_type} · {dataset.pipeline_stage || '—'}
           {dataset.version ? ` · v${dataset.version}` : ''} · {dataset.subgrid || '—'}
+          {dataset.superseded_by ? ` · superseded` : ' · current'}
         </div>
         <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[11px] text-text-muted">
           <div>Provider: {dataset.provider || '—'}</div>
@@ -244,6 +255,9 @@ export function TracePanel({
           <div>Updated: {formatDateTime(dataset.updated_at)}</div>
           {dataset.parent_dataset_id && (
             <div className="col-span-2">Parent ID: {dataset.parent_dataset_id}</div>
+          )}
+          {dataset.superseded_by && (
+            <div className="col-span-2 text-amber-300">Superseded by: {dataset.superseded_by}</div>
           )}
         </dl>
       </div>

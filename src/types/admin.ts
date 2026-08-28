@@ -144,6 +144,13 @@ export interface ExtendedProjectSettings {
   enableLayerGlow?: boolean;
   layerOpacity?: number; // 20 - 100
 
+  // Project Geographic Boundary
+  projectBoundary?: {
+    geojson: any; // GeoJSON FeatureCollection / Polygon of the project area
+    bbox?: [number, number, number, number]; // [minLng, minLat, maxLng, maxLat]
+    focusActive?: boolean; // whether the map focuses/dims to the boundary
+  };
+
   // SLA & QA Benchmarks
   targetKm?: number;
   targetSubgridsCount?: number;
@@ -161,6 +168,8 @@ export interface ExtendedProjectSettings {
   dailyDataImportPolicy?: 'preserve_runs' | 'merge_samedate';
   autoDeduplicateSubgrids?: boolean;
   language?: 'en' | 'ms' | 'zh' | 'ja';
+  projectName?: string;
+  contractCode?: string;
   defaultDataTab?: 'batches' | 'daily' | 'vector';
   dateFormat?: string;
   unitSystem?: 'metric' | 'imperial';

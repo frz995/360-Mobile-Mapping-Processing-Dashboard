@@ -9,8 +9,9 @@ import {
   FileText,
   Printer
 } from 'lucide-react';
-import { fetchDatasetsFromSupabase, fetchProcessingJobsFromSupabase, fetchStagingPanoramasFromSupabase } from '../services/supabase';
+import { fetchDatasetsFromSupabase, fetchProcessingJobsFromSupabase, fetchStagingPanoramasFromSupabase, SUBGRID_COORDINATES } from '../services/supabase';
 import { aggregateStagingBySubgrid } from '../utils/datasetLineage';
+import { buildBoundarySubgridSet } from '../utils/projectBoundary';
 import { computeSurveyAnalytics } from '../utils/surveyAnalytics';
 import {
   openPrintableReport,
@@ -81,6 +82,17 @@ export const ReportsWorkspace: React.FC<ReportsWorkspaceProps> = ({
       .finally(() => setRefreshing(false));
   };
 
+  const boundarySubgrids = useMemo(() => {
+    const boundary = (projectSettings as any)?.projectBoundary;
+    if (!boundary?.geojson && !boundary?.bbox) return undefined;
+    const all = new Set<string>();
+    batchLogs.forEach((b: any) => { const s = (b.subgrid || b.imageFilename || ''); if (s) all.add((s.match(/[nNsS]\d{2}[eEwW]\d{2,3}/) || [s.toUpperCase().trim()])[0].toUpperCase()); });
+    dailyData.forEach((d: any) => { const s = (d.subgrid || d.imageFilename || ''); if (s) all.add((s.match(/[nNsS]\d{2}[eEwW]\d{2,3}/) || [s.toUpperCase().trim()])[0].toUpperCase()); });
+    stagingRows.forEach((r: any) => { const s = (r.subgrid || ''); if (s) all.add(s.toUpperCase().trim()); });
+    const set = buildBoundarySubgridSet(Array.from(all), boundary, SUBGRID_COORDINATES as Record<string, [number, number]>);
+    return set.size > 0 ? set : undefined;
+  }, [batchLogs, dailyData, stagingRows, projectSettings]);
+
   const analytics = useMemo(
     () =>
       computeSurveyAnalytics({
@@ -88,9 +100,10 @@ export const ReportsWorkspace: React.FC<ReportsWorkspaceProps> = ({
         daily: dailyData,
         aggregates: aggregateStagingBySubgrid(stagingRows),
         targetKm: Number(projectSettings?.targetKm) || 0,
-        targetImages: Number(projectSettings?.targetImages) || 0
+        targetImages: Number(projectSettings?.targetImages) || 0,
+        boundarySubgrids
       }),
-    [batchLogs, dailyData, stagingRows, projectSettings?.targetKm, projectSettings?.targetImages]
+    [batchLogs, dailyData, stagingRows, projectSettings?.targetKm, projectSettings?.targetImages, boundarySubgrids]
   );
 
   const generate = (builder: () => string) => {

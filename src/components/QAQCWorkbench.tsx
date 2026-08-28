@@ -137,6 +137,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
   onAbort,
   onClose,
   onOpenDefectsGallery,
+  onSignOffAndPublish,
 }) => {
   const [targetTab, setTargetTab] = useState<'daily' | 'masterlist'>(initialRunId ? 'daily' : 'masterlist');
   const [categoryFilter, setCategoryFilter] = useState<'all' | 'staging' | 'published'>('all');
@@ -1644,7 +1645,20 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                         </div>
                       </div>
 
-                      <div className="text-right shrink-0">
+                      <div className="text-right shrink-0 flex flex-col items-end gap-1.5">
+                        {!item.isPublished && !isZeroFrames && hasAudit && auditDefects === 0 && onSignOffAndPublish && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onSignOffAndPublish?.(item.subgrid, item.runId);
+                            }}
+                            title="Sign off this subgrid as QA/QC Approved and publish to WebGIS"
+                            className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 text-[10px] font-bold uppercase tracking-wide hover:bg-emerald-500/25 transition-colors cursor-pointer"
+                          >
+                            <CheckCircle2 size={11} /> Sign Off &amp; Publish
+                          </button>
+                        )}
                         <span className="px-2.5 py-1 rounded-lg bg-inner border border-subtle text-[11px] text-text-muted font-mono font-medium inline-flex items-center gap-1">
                           {targetTab === 'masterlist' && typeof item.poiCount === 'number' && item.poiCount > 0 ? (
                             item.frameCount < item.poiCount ? (
@@ -2114,7 +2128,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                     {(activeRunningSubgrid || selectedSubgrid) ? (
                       <iframe
                         ref={mapIframeRef}
-                        src={`${import.meta.env.VITE_MAP_URL || 'https://mobilemapping-nine.vercel.app'}/?embed=true&dashboard=true&qaqcWorkbench=true&basemap=${encodeURIComponent(projectSettings?.defaultBasemap || 'positron')}&subgrid=${encodeURIComponent(activeRunningSubgrid || selectedSubgrid)}${selectedRunId ? `&runId=${encodeURIComponent(selectedRunId)}&isSingleRun=true` : ''}`}
+                        src={`${import.meta.env.VITE_MAP_URL || 'https://mobilemapping-nine.vercel.app'}/?embed=true&dashboard=true&qaqcWorkbench=true&basemap=${encodeURIComponent(projectSettings?.defaultBasemap || 'ofm-positron')}&subgrid=${encodeURIComponent(activeRunningSubgrid || selectedSubgrid)}${selectedRunId ? `&runId=${encodeURIComponent(selectedRunId)}&isSingleRun=true` : ''}`}
                         className="w-full h-full border-0"
                         title="QAQC Synchronized Trajectory Map"
                         onLoad={() => {
@@ -2170,7 +2184,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                     <div className="flex-1 w-full h-full relative">
                       <iframe
                         ref={mapIframeRef}
-                        src={`${import.meta.env.VITE_MAP_URL || 'https://mobilemapping-nine.vercel.app'}/?embed=true&dashboard=true&qaqcWorkbench=true&basemap=${encodeURIComponent(projectSettings?.defaultBasemap || 'positron')}&subgrid=${encodeURIComponent(activeRunningSubgrid || selectedSubgrid)}`}
+                        src={`${import.meta.env.VITE_MAP_URL || 'https://mobilemapping-nine.vercel.app'}/?embed=true&dashboard=true&qaqcWorkbench=true&basemap=${encodeURIComponent(projectSettings?.defaultBasemap || 'ofm-positron')}&subgrid=${encodeURIComponent(activeRunningSubgrid || selectedSubgrid)}`}
                         className="w-full h-full border-0"
                         title="QAQC Minimap PiP"
                         onLoad={() => {

@@ -3,12 +3,15 @@ import { CheckCircle2, XCircle, Eye, Loader2, ListChecks } from 'lucide-react';
 import { PhotoSphereViewerComponent } from '../../PhotoSphereViewerComponent';
 import type { ProductionApiClient } from '../../../services/productionApi';
 import {
+  saveDatasetToSupabase,
+  saveProcessingJobToSupabase,
   updateProcessingJobQaInSupabase
 } from '../../../services/supabase';
 import type { DatasetRecord, ProcessingJobRecord } from '../../../types/production';
 import { jobStatusMeta } from '../../../utils/productionQueue';
 import { formatDateTime, productionNasUrlFor } from '../common';
 import { isWorkerJobType } from './processingCommon';
+import { createNextVersion } from '../../../utils/datasetVersioning';
 
 export interface QAConsultPanelProps {
   jobs: ProcessingJobRecord[];
@@ -92,6 +95,67 @@ export const QAConsultPanel: React.FC<QAConsultPanelProps> = ({
       status: decision
     });
     if (ok) {
+      // APPROVED -> promote the matched PROCESSED dataset to a DELIVERABLE
+      // (created as a new version, superseding any prior DELIVERABLE).
+      if (decision === 'APPROVED') {
+        const base = selDataset;
+        if (base) {
+          const deliverableBase =
+            datasets.find(
+              (d) =>
+                d.dataset_type === 'DELIVERABLE' &&
+                d.subgrid === selected!.subgrid
+            ) || undefined;
+          const saved = await saveDatasetToSupabase({
+            ...(deliverableBase ?? base),
+            id: deliverableBase ? undefined : base.id,
+            ...(deliverableBase ? createNextVersion(deliverableBase) : { version: base.version || 1 }),
+            dataset_type: 'DELIVERABLE',
+            pipeline_stage: 'QAQC',
+            name: deliverableBase?.name || `${base.name} (DELIVERABLE)`,
+            subgrid: selected!.subgrid,
+            status: 'COMPLETED',
+            superseded_by: deliverableBase ? undefined : (base.superseded_by ?? null),
+          });
+          if (saved?.id && deliverableBase && deliverableBase.id !== saved.id) {
+            await saveDatasetToSupabase({ ...deliverableBase, superseded_by: saved.id });
+          }
+          if (saved) {
+            onAddAuditLog?.('CREATE', 'QA Approved → DELIVERABLE', `Created DELIVERABLE v${saved.version || 1} for ${selected!.subgrid} by ${userLabel} (job ${selected.id}).`, 'success');
+          }
+        } else {
+          onAddAuditLog?.('EDIT', 'QA Approved', `Job ${selected.name || selected.job_type} approved by ${userLabel}; no DELIVERABLE created (no matched PROCESSED dataset).`, 'info');
+        }
+      } else {
+        // REJECTED -> create a traceable reprocessing child job from the
+        // rejected job, carrying the rejection notes to the operator.
+        const child: ProcessingJobRecord = {
+          job_type: selected.job_type,
+          name: `${selected.name || selected.job_type} · retry (QA)`,
+          source_dataset_id: selected.source_dataset_id,
+          source_folder: selected.source_folder,
+          output_folder: selected.output_folder,
+          subgrid: selected.subgrid,
+          provider: selected.provider,
+          software_version: selected.software_version,
+          total_items: selected.total_items,
+          status: 'QUEUED',
+          progress: 0,
+          completed_items: 0,
+          error_count: 0,
+          priority: typeof selected.priority === 'number' ? selected.priority : 0,
+          operator: userLabel,
+          retry_of: selected.id,
+          retry_count: (selected.retry_count || 0) + 1,
+          notes: notes.trim() ? `QA rejected: ${notes.trim()}` : 'QA rejected via processing lifecycle',
+          settings: { ...(selected.settings || {}) }
+        };
+        const rep = await saveProcessingJobToSupabase(child);
+        if (rep?.id) {
+          onAddAuditLog?.('CREATE', 'QA Rejected → Reprocessing', `Created reprocessing job ${rep.name} (child of ${selected.id}) by ${userLabel}.`, 'warning');
+          onAddNotification?.({ title: 'QA Rejected — Reprocessing queued', message: `${selected.name || selected.job_type} rejected; reprocessing job enqueued.`, category: 'SYSTEM', read: false });
+        }
+      }
       const superseded = pending.find((j) => j.id !== selected.id);
       setNotes('');
       notify(

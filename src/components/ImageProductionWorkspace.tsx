@@ -12,7 +12,8 @@ import {
 } from 'lucide-react';
 import {
   fetchDatasetsFromSupabase,
-  fetchProcessingJobsFromSupabase
+  fetchProcessingJobsFromSupabase,
+  fetchStagingPanoramasFromSupabase
 } from '../services/supabase';
 import { createProductionApiClient } from '../services/productionApi';
 import type { ProductionApiClient } from '../services/productionApi';
@@ -22,6 +23,8 @@ import type {
   ProductionTab
 } from '../types/production';
 import { startJobPolling } from '../utils/productionQueue';
+import { aggregateStagingBySubgrid } from '../utils/datasetLineage';
+import type { StagingAggregate } from '../utils/datasetLineage';
 import {
   getProductionApiSettings,
   PRODUCTION_TAB_LABELS
@@ -32,6 +35,7 @@ import { ProvidersPanel } from './production/ProvidersPanel';
 import { PreviewPanel } from './production/PreviewPanel';
 import { EnhancementPanel } from './production/EnhancementPanel';
 import { MaskingPanel } from './production/MaskingPanel';
+import { JobDetailsDrawer } from './production/processing/JobDetailsDrawer';
 
 export interface ImageProductionWorkspaceProps {
   projectSettings: any;
@@ -66,12 +70,19 @@ export const ImageProductionWorkspace: React.FC<ImageProductionWorkspaceProps> =
   const [activeTab, setActiveTab] = useState<ProductionTab>('pipeline');
   const [datasets, setDatasets] = useState<DatasetRecord[]>([]);
   const [jobs, setJobs] = useState<ProcessingJobRecord[]>([]);
+  const [stagingRows, setStagingRows] = useState<any[]>([]);
+  const [selectedJob, setSelectedJob] = useState<ProcessingJobRecord | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const pollStopRef = useRef<(() => void) | null>(null);
 
   const api: ProductionApiClient = useMemo(
     () => createProductionApiClient(getProductionApiSettings(projectSettings)),
     [projectSettings?.productionApiMode, projectSettings?.productionApiUrl, projectSettings?.productionConcurrency, projectSettings?.nasWorkBasePath]
+  );
+
+  const stagingAggregates: StagingAggregate[] = useMemo(
+    () => aggregateStagingBySubgrid(stagingRows),
+    [stagingRows]
   );
 
   const refreshDatasets = useCallback(() => {
@@ -82,10 +93,15 @@ export const ImageProductionWorkspace: React.FC<ImageProductionWorkspaceProps> =
     fetchProcessingJobsFromSupabase().then(setJobs);
   }, []);
 
+  const refreshStaging = useCallback(() => {
+    fetchStagingPanoramasFromSupabase().then(setStagingRows);
+  }, []);
+
   useEffect(() => {
     refreshDatasets();
     refreshJobs();
-  }, [refreshDatasets, refreshJobs]);
+    refreshStaging();
+  }, [refreshDatasets, refreshJobs, refreshStaging]);
 
   // Live job polling (async, non-blocking).
   useEffect(() => {
@@ -108,7 +124,7 @@ export const ImageProductionWorkspace: React.FC<ImageProductionWorkspaceProps> =
 
   const handleRefresh = () => {
     setRefreshing(true);
-    Promise.all([refreshDatasets(), refreshJobs()]).finally(() => setRefreshing(false));
+    Promise.all([refreshDatasets(), refreshJobs(), refreshStaging()]).finally(() => setRefreshing(false));
   };
 
   return (
@@ -182,12 +198,15 @@ export const ImageProductionWorkspace: React.FC<ImageProductionWorkspaceProps> =
               jobs={jobs}
               datasets={datasets}
               api={api}
+              projectSettings={projectSettings}
+              stagingAggregates={stagingAggregates}
               translate={translate}
               isGuestUser={isGuestUser}
               onRefreshJobs={refreshJobs}
               onAddNotification={addNotification}
               onAddAuditLog={addAuditLog}
               userLabel={userLabel}
+              onOpenJobDetails={setSelectedJob}
             />
           )}
           {activeTab === 'datasets' && (
@@ -248,6 +267,18 @@ export const ImageProductionWorkspace: React.FC<ImageProductionWorkspaceProps> =
           )}
         </div>
       </div>
+
+      <JobDetailsDrawer
+        job={selectedJob}
+        datasets={datasets}
+        onClose={() => setSelectedJob(null)}
+        onRefreshJobs={refreshJobs}
+        onAddNotification={addNotification}
+        onAddAuditLog={addAuditLog}
+        userLabel={userLabel}
+        translate={translate}
+        isGuestUser={isGuestUser}
+      />
     </div>
   );
 };

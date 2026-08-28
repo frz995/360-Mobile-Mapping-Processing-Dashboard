@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS public.datasets (
     status VARCHAR(30) DEFAULT 'REGISTERED',                 -- REGISTERED | READY | IN_PROGRESS | COMPLETED | FAILED | IMPORTED | ARCHIVED
     version INT DEFAULT 1,
     parent_dataset_id UUID REFERENCES public.datasets(id) ON DELETE SET NULL,
+    superseded_by UUID REFERENCES public.datasets(id) ON DELETE SET NULL,  -- set when a newer version replaces this one
     metadata JSONB DEFAULT '{}'::jsonb,
     created_by VARCHAR(100) DEFAULT 'System',
     created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -34,6 +35,7 @@ CREATE INDEX IF NOT EXISTS idx_datasets_subgrid ON public.datasets(subgrid);
 CREATE INDEX IF NOT EXISTS idx_datasets_type ON public.datasets(dataset_type);
 CREATE INDEX IF NOT EXISTS idx_datasets_status ON public.datasets(status);
 CREATE INDEX IF NOT EXISTS idx_datasets_parent ON public.datasets(parent_dataset_id);
+CREATE INDEX IF NOT EXISTS idx_datasets_superseded_by ON public.datasets(superseded_by);
 
 -- 2. Create Processing Jobs Table
 -- Central job registry for external + NAS GPU Worker processing.

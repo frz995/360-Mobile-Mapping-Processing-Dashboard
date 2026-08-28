@@ -21,6 +21,7 @@ import {
 import { fetchDatasetsFromSupabase, fetchProcessingJobsFromSupabase } from '../services/supabase';
 import type { DatasetRecord, ProcessingJobRecord } from '../types/production';
 import { buildLineageGraph, findOrphans } from '../utils/datasetLineage';
+import { computeDatasetVersionState } from '../utils/datasetVersioning';
 import { formatBytes, formatDateTime } from './production/common';
 import type { TranslateFn } from './production/common';
 import { qaBadge, statusTone } from './production/lineage/lineageCommon';
@@ -38,6 +39,8 @@ interface RegistryRow {
   qaDecision: string | null;
   processCount: number;
   latestVersion: boolean;
+  superseded: boolean;
+  versionChain: DatasetRecord[];
 }
 
 export const DatasetRegistryPanel: React.FC<DatasetRegistryPanelProps> = ({
@@ -113,14 +116,7 @@ export const DatasetRegistryPanel: React.FC<DatasetRegistryPanelProps> = ({
       }
     });
 
-    const versionByKey = new Map<string, number>();
-    datasets.forEach((d) => {
-      const key = (d.name || d.output_folder || d.id || '').toUpperCase();
-      const v = d.version || 1;
-      if (!versionByKey.has(key) || v > (versionByKey.get(key) || 0)) {
-        versionByKey.set(key, v);
-      }
-    });
+    const versionState = computeDatasetVersionState(datasets);
 
     return datasets
       .map((d) => ({
@@ -128,7 +124,9 @@ export const DatasetRegistryPanel: React.FC<DatasetRegistryPanelProps> = ({
         sourceName: d.parent_dataset_id ? datasetById.get(d.parent_dataset_id)?.name : undefined,
         qaDecision: jobOutputQa.get(d.id || '') ?? null,
         processCount: jobTouchCount.get(d.id || '') || 0,
-        latestVersion: versionByKey.get((d.name || d.output_folder || d.id || '').toUpperCase()) === (d.version || 1)
+        latestVersion: versionState.latestByDataset.get(d.id || '') ?? !d.superseded_by,
+        superseded: Boolean(d.superseded_by),
+        versionChain: (d.id && versionState.chainByDataset.get(d.id)) || [d]
       }))
       .sort((a, b) => (b.dataset.created_at || '').localeCompare(a.dataset.created_at || ''));
   }, [datasets, jobs, datasetById]);
@@ -304,7 +302,7 @@ export const DatasetRegistryPanel: React.FC<DatasetRegistryPanelProps> = ({
                 </tr>
               </thead>
               <tbody>
-                {filtered.map(({ dataset: d, sourceName, qaDecision, processCount, latestVersion }) => (
+                {filtered.map(({ dataset: d, sourceName, qaDecision, processCount, latestVersion, superseded, versionChain }) => (
                   <tr
                     key={d.id || d.name}
                     className={`border-t border-subtle hover:bg-inner/50 transition-colors ${orphanNames.has(d.id || '') ? 'bg-amber-950/20' : ''}`}
@@ -328,11 +326,20 @@ export const DatasetRegistryPanel: React.FC<DatasetRegistryPanelProps> = ({
                     </td>
                     <td className="px-3 py-2 text-text-muted">{d.pipeline_stage || '—'}</td>
                     <td className="px-3 py-2">
-                      <span className={`font-mono font-bold ${latestVersion ? 'text-emerald-300' : 'text-text-muted'}`}>
-                        v{d.version ?? 1}
-                      </span>
-                      {latestVersion && (
-                        <span className="ml-1 text-[8px] font-bold text-emerald-400 uppercase">latest</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className={`font-mono font-bold ${latestVersion && !superseded ? 'text-emerald-300' : 'text-text-muted'}`}>
+                          v{d.version ?? 1}
+                        </span>
+                        {latestVersion && !superseded ? (
+                          <span className="text-[8px] font-bold text-emerald-400 uppercase">current</span>
+                        ) : superseded ? (
+                          <span className="text-[8px] font-bold text-amber-400 uppercase">superseded</span>
+                        ) : null}
+                      </div>
+                      {versionChain.length > 1 && (
+                        <div className="mt-0.5 text-[9px] text-text-muted font-mono">
+                          {Array.from(new Set(versionChain.map((v) => `v${v.version ?? 1}`))).sort().join(' · ')} ({versionChain.length} versions)
+                        </div>
                       )}
                     </td>
                     <td className="px-3 py-2 font-mono text-text-base">{d.subgrid || '—'}</td>

@@ -8,8 +8,9 @@ import {
   Radar,
   ShieldCheck
 } from 'lucide-react';
-import { fetchStagingPanoramasFromSupabase, fetchProcessingJobsFromSupabase } from '../services/supabase';
+import { fetchStagingPanoramasFromSupabase, fetchProcessingJobsFromSupabase, SUBGRID_COORDINATES } from '../services/supabase';
 import { aggregateStagingBySubgrid } from '../utils/datasetLineage';
+import { buildBoundarySubgridSet } from '../utils/projectBoundary';
 import type { ProcessingJobRecord } from '../types/production';
 import { computeSurveyAnalytics, type SurveyAnalytics } from '../utils/surveyAnalytics';
 import { ANALYTICS_TAB_LABELS } from './production/analytics/analyticsCommon';
@@ -91,6 +92,17 @@ export const AnalyticsWorkspace: React.FC<AnalyticsWorkspaceProps> = ({
     return map;
   }, [jobs]);
 
+  const boundarySubgrids = useMemo(() => {
+    const boundary = (projectSettings as any)?.projectBoundary;
+    if (!boundary?.geojson && !boundary?.bbox) return undefined;
+    const all = new Set<string>();
+    batchLogs.forEach((b: any) => { const s = (b.subgrid || b.imageFilename || ''); if (s) all.add((s.match(/[nNsS]\d{2}[eEwW]\d{2,3}/) || [s.toUpperCase().trim()])[0].toUpperCase()); });
+    dailyData.forEach((d: any) => { const s = (d.subgrid || d.imageFilename || ''); if (s) all.add((s.match(/[nNsS]\d{2}[eEwW]\d{2,3}/) || [s.toUpperCase().trim()])[0].toUpperCase()); });
+    stagingRows.forEach((r: any) => { const s = (r.subgrid || ''); if (s) all.add(s.toUpperCase().trim()); });
+    const set = buildBoundarySubgridSet(Array.from(all), boundary, SUBGRID_COORDINATES as Record<string, [number, number]>);
+    return set.size > 0 ? set : undefined;
+  }, [batchLogs, dailyData, stagingRows, projectSettings]);
+
   const analytics: SurveyAnalytics = useMemo(
     () =>
       computeSurveyAnalytics({
@@ -99,9 +111,10 @@ export const AnalyticsWorkspace: React.FC<AnalyticsWorkspaceProps> = ({
         aggregates,
         qaBySubgrid,
         targetKm: Number(projectSettings?.targetKm) || 0,
-        targetImages: Number(projectSettings?.targetImages) || 0
+        targetImages: Number(projectSettings?.targetImages) || 0,
+        boundarySubgrids
       }),
-    [batchLogs, dailyData, aggregates, qaBySubgrid, projectSettings?.targetKm, projectSettings?.targetImages]
+    [batchLogs, dailyData, aggregates, qaBySubgrid, projectSettings?.targetKm, projectSettings?.targetImages, boundarySubgrids]
   );
 
   return (
