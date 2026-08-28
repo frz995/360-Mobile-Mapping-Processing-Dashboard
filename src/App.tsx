@@ -41,13 +41,26 @@ import {
   ExternalLink,
   Loader2,
   Info,
-  Settings,
   Play,
-  StopCircle
+  StopCircle,
+  Map as MapIcon,
+  MousePointer2
 } from 'lucide-react';
-import { supabase, publishToSupabase, saveToStagingSupabase, deleteFromStagingSupabase, fetchSupabaseData, deleteFromSupabase, updateDefectStatusInSupabase, fetchQaRecordsFromSupabase, fetchQaAuditRunsFromSupabase, saveQaAuditRunToSupabase, verifyCsvImageFilenamesInStorage, fetchAuditLogsFromSupabase, saveAuditLogToSupabase, fetchNotificationsFromSupabase, saveNotificationToSupabase, fetchProjectSettingsFromSupabase, saveProjectSettingsToSupabase, resolvePanoramaUrl, resolvePanoramaConfigUrl, getDatabaseTableMapping, SUBGRID_COORDINATES, formatPIC } from './services/supabase';
+import { supabase, publishToSupabase, saveToStagingSupabase, deleteFromStagingSupabase, fetchSupabaseData, deleteFromSupabase, updateDefectStatusInSupabase, fetchQaRecordsFromSupabase, fetchQaAuditRunsFromSupabase, saveQaAuditRunToSupabase, verifyCsvImageFilenamesInStorage, fetchAuditLogsFromSupabase, saveAuditLogToSupabase, fetchNotificationsFromSupabase, saveNotificationToSupabase, fetchProjectSettingsFromSupabase, saveProjectSettingsToSupabase, resolvePanoramaUrl, resolvePanoramaConfigUrl, getDatabaseTableMapping, SUBGRID_COORDINATES, formatPIC, fetchDatasetsFromSupabase, fetchProcessingJobsFromSupabase, fetchStagingPanoramasFromSupabase } from './services/supabase';
 import type { QAQCAuditRunRecord } from './types/admin';
+import type { DatasetRecord, ProcessingJobRecord } from './types/production';
+import { aggregateStagingBySubgrid } from './utils/datasetLineage';
+import type { StagingAggregate } from './utils/datasetLineage';
+import { computeDeletionImpact, type DeletionImpact, type DeletionMode } from './utils/deletionImpact';
+import { DeletionSelectionMap, type SubgridPointRow } from './components/DeletionSelectionMap';
+import { DatasetRegistryPanel } from './components/DatasetRegistryPanel';
 import { AdminSettingsView } from './components/AdminSettingsView';
+import { ImageProductionWorkspace } from './components/ImageProductionWorkspace';
+import { NASStorageWorkspace } from './components/NASStorageWorkspace';
+import { ProcessingCenterWorkspace } from './components/ProcessingCenterWorkspace';
+import { LineageWorkspace } from './components/LineageWorkspace';
+import { AnalyticsWorkspace } from './components/AnalyticsWorkspace';
+import { ReportsWorkspace } from './components/ReportsWorkspace';
 import { QAQCWorkbench } from './components/QAQCWorkbench';
 import { DefectsGalleryModal } from './components/DefectsGalleryModal';
 import { useQAQCWorker, type StationNode } from './hooks/useQAQCWorker';
@@ -56,6 +69,10 @@ import * as toGeoJSON from '@tmcw/togeojson';
 import './themes.css';
 import { SystemShowcase } from './components/SystemShowcase';
 import { DailyHandoverModal } from './components/DailyHandoverModal';
+import { WorkspaceSidebarNav } from './components/WorkspaceSidebarNav';
+import { WorkspacePlaceholder, getWorkspaceDefinition } from './workspaces';
+import { parseHashWorkspace, setHashWorkspace, subscribeHashWorkspace } from './utils/hashRouter';
+import type { WorkspaceKey } from './utils/hashRouter';
 // ==============================================
 // Data Interfaces & Types
 // ==============================================
@@ -1579,7 +1596,9 @@ const DataManagementPage = ({
   addNotification,
   addAuditLog,
   isGuestUser,
-  projectSettings
+  projectSettings,
+  qaSubgridRecords,
+  translate
 }: {
   dailyData: DailyTimeSeries[],
   setDailyData: (data: DailyTimeSeries[]) => void,
@@ -1595,10 +1614,14 @@ const DataManagementPage = ({
   addNotification?: (item: Omit<NotificationItem, 'id' | 'timestamp' | 'read'>) => void,
   addAuditLog?: (type: AuditLogItem['type'], title: string, details: string, status?: AuditLogItem['status']) => void,
   isGuestUser?: boolean,
-  projectSettings?: any
+  projectSettings?: any,
+  qaSubgridRecords?: Record<string, { flags: { blurry: boolean; obstruction: boolean; badGps: boolean }; answer: 'yes' | 'no' | null; isLocked: boolean }>,
+  translate?: (key: string) => string
 }) => {
-  const initialTab = (projectSettings?.defaultDataTab === 'daily' || projectSettings?.defaultDataTab === 'vector') ? projectSettings.defaultDataTab : 'batches';
-  const [dataTab, setDataTab] = useState<'batches' | 'daily' | 'vector'>(initialTab);
+  const tf = translate || ((key: string) => key);
+  type DataTab = 'batches' | 'daily' | 'vector' | 'datasets';
+  const initialTab: DataTab = (projectSettings?.defaultDataTab === 'daily' || projectSettings?.defaultDataTab === 'vector' || projectSettings?.defaultDataTab === 'datasets') ? projectSettings.defaultDataTab : 'batches';
+  const [dataTab, setDataTab] = useState<DataTab>(initialTab);
 
   const activeAuthUserName = React.useMemo(() => {
     if (!authSession || !authSession.user) return 'Fariz.farhan95';
@@ -1693,7 +1716,7 @@ const DataManagementPage = ({
   const handleBulkDelete = () => {
     if (selectedRowIds.size === 0) return;
     setDeleteTarget('BULK_SELECTION' as any);
-    setIsDeleteModalOpen(true);
+    openDeleteModalForMode('bulk');
   };
 
   // Sync draftDailyData whenever dailyData changes
@@ -1744,6 +1767,129 @@ const DataManagementPage = ({
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [adminPasscode, setAdminPasscode] = useState('');
   const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  /* ---- Safe Deletion + Dataset Registry state ---- */
+  const [deleteMode, setDeleteMode] = useState<DeletionMode>('single');
+  const [deleteModeActive, setDeleteModeActive] = useState(false);
+  const [spatialSubgrids, setSpatialSubgrids] = useState<string[]>([]);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [impactData, setImpactData] = useState<DeletionImpact | null>(null);
+  const [isComputingImpact, setIsComputingImpact] = useState(false);
+  const [isSelectionMapOpen, setIsSelectionMapOpen] = useState(false);
+  const [focusSubgrid, setFocusSubgrid] = useState<string | null>(null);
+  const [registryDatasets, setRegistryDatasets] = useState<DatasetRecord[]>([]);
+  const [registryJobs, setRegistryJobs] = useState<ProcessingJobRecord[]>([]);
+  const [registryStaging, setRegistryStaging] = useState<StagingAggregate[]>([]);
+  const [isRegistryLoading, setIsRegistryLoading] = useState(false);
+
+  const loadRegistryData = useCallback(async () => {
+    setIsRegistryLoading(true);
+    try {
+      const [ds, js, st] = await Promise.all([
+        fetchDatasetsFromSupabase(),
+        fetchProcessingJobsFromSupabase(),
+        fetchStagingPanoramasFromSupabase()
+      ]);
+      const datasets = (ds || []) as DatasetRecord[];
+      const jobs = (js || []) as ProcessingJobRecord[];
+      const staging = aggregateStagingBySubgrid(st || []);
+      setRegistryDatasets(datasets);
+      setRegistryJobs(jobs);
+      setRegistryStaging(staging);
+      return { datasets, jobs, staging };
+    } finally {
+      setIsRegistryLoading(false);
+    }
+  }, []);
+
+  const subgridPoints = useMemo<SubgridPointRow[]>(() => {
+    const map = new Map<string, Array<{ lat: number; lng: number }>>();
+    const ingest = (rec: any) => {
+      const raw = rec?.subgrid || rec?.imageFilename || '';
+      const sg = (extractSubgridName(raw) || '').toUpperCase().trim();
+      if (!sg) return;
+      const pts = map.get(sg) || [];
+      const coords = [].concat(rec?.points || [], rec?.panoramas || []);
+      coords.forEach((p: any) => {
+        const lat = Number(p?.lat ?? p?.latitude ?? p?.y);
+        const lng = Number(p?.lng ?? p?.lon ?? p?.longitude ?? p?.x);
+        if (Number.isFinite(lat) && Number.isFinite(lng)) pts.push({ lat, lng });
+      });
+      if (pts.length > 0) map.set(sg, pts.slice(0, 400));
+    };
+    (dailyData || []).forEach(ingest);
+    (batchLogs || []).forEach(ingest);
+    const out: SubgridPointRow[] = [];
+    map.forEach((points, subgrid) => out.push({ subgrid, points }));
+    return out.sort((a, b) => a.subgrid.localeCompare(b.subgrid));
+  }, [dailyData, batchLogs]);
+
+  const resolveDeleteSubgrids = useCallback((mode: DeletionMode): string[] => {
+    if (mode === 'single') {
+      if (!deleteTarget || typeof deleteTarget === 'string') return [];
+      const raw = ('subgrid' in deleteTarget && deleteTarget.subgrid)
+        ? deleteTarget.subgrid
+        : ('imageFilename' in deleteTarget ? (deleteTarget as BatchLog).imageFilename : '');
+      const sg = (extractSubgridName(raw) || '').toUpperCase().trim();
+      return sg ? [sg] : [];
+    }
+    if (mode === 'bulk') {
+      const set = new Set<string>();
+      selectedRowIds.forEach((id) => {
+        const d = dailyData.find((x) => getItemId(x) === id);
+        const b = batchLogs.find((x) => getItemId(x) === id);
+        const raw = d?.subgrid || b?.subgrid || b?.imageFilename;
+        if (raw) set.add((extractSubgridName(raw) || '').toUpperCase().trim());
+      });
+      return Array.from(set).filter(Boolean);
+    }
+    return spatialSubgrids;
+  }, [deleteTarget, selectedRowIds, dailyData, batchLogs, spatialSubgrids]);
+
+  const computeImpactForMode = useCallback(async (mode: DeletionMode) => {
+    const subgrids = resolveDeleteSubgrids(mode);
+    setIsComputingImpact(true);
+    let ds = registryDatasets;
+    let js = registryJobs;
+    let stg = registryStaging;
+    if (ds.length === 0 && js.length === 0) {
+      try {
+        const res = await loadRegistryData();
+        ds = res.datasets;
+        js = res.jobs;
+        stg = res.staging;
+      } catch {
+        /* ignore — impact still computed with empty registry data */
+      }
+    }
+    const impact = computeDeletionImpact({
+      mode,
+      subgrids,
+      dailyData,
+      batchLogs,
+      qaRecords: qaSubgridRecords,
+      stagingAggregates: stg,
+      datasets: ds,
+      jobs: js
+    });
+    setImpactData(impact);
+    setIsComputingImpact(false);
+  }, [resolveDeleteSubgrids, registryDatasets, registryJobs, registryStaging, loadRegistryData, dailyData, batchLogs, qaSubgridRecords]);
+
+  const openDeleteModalForMode = useCallback((mode: DeletionMode) => {
+    setDeleteMode(mode);
+    setDeleteConfirmText('');
+    setAdminPasscode('');
+    setDeleteError(null);
+    setImpactData(null);
+    setIsDeleteModalOpen(true);
+    computeImpactForMode(mode);
+  }, [computeImpactForMode]);
+
+  const openDeleteModeToggle = useCallback(() => {
+    setIsSelectionMapOpen(true);
+    setDeleteModeActive((prev) => !prev);
+  }, []);
 
   // CSV Import state
   const [isCsvImportOpen, setIsCsvImportOpen] = useState(false);
@@ -2657,13 +2803,31 @@ const DataManagementPage = ({
 
   const initiateDelete = (item: BatchLog | DailyTimeSeries) => {
     setDeleteTarget(item);
-    setAdminPasscode('');
-    setDeleteError(null);
-    setIsDeleteModalOpen(true);
+    openDeleteModalForMode('single');
   };
 
   const confirmDelete = async () => {
     if (!deleteTarget) return;
+
+    /* Explicit confirmation safety gate */
+    const expectedPhrase = (() => {
+      if (deleteMode === 'single') {
+        if (!deleteTarget || typeof deleteTarget === 'string') return '';
+        const raw = ('subgrid' in deleteTarget && deleteTarget.subgrid)
+          ? deleteTarget.subgrid
+          : ('imageFilename' in deleteTarget ? (deleteTarget as BatchLog).imageFilename : '');
+        return (extractSubgridName(raw) || '').toUpperCase().trim();
+      }
+      return 'DELETE';
+    })();
+    if (!deleteConfirmText.trim() || deleteConfirmText.trim().toUpperCase() !== expectedPhrase) {
+      setDeleteError(
+        deleteMode === 'single'
+          ? `Access Denied: type the exact subgrid code "${expectedPhrase}" to confirm permanent deletion.`
+          : 'Access Denied: type "DELETE" to confirm permanent deletion.'
+      );
+      return;
+    }
 
     if (!adminPasscode.trim()) {
       setDeleteError('Access Denied: Password is required to authorize deletion.');
@@ -2681,6 +2845,37 @@ const DataManagementPage = ({
 
     if (!isValidPassword) {
       setDeleteError('Access Denied: Invalid Auth Password. Only authorized administrators can delete database records.');
+      return;
+    }
+
+    if (deleteMode === 'spatial') {
+      const targets = spatialSubgrids.filter(Boolean);
+      const matchSub = (raw?: string) => (extractSubgridName(raw || '') || '').toUpperCase().trim();
+      const affected = new Set(targets.map((sg) => sg.toUpperCase().trim()));
+      const updatedDaily = dailyData.filter((d) => !affected.has(matchSub(d.subgrid)));
+      const updatedDraft = draftDailyData.filter((d) => !affected.has(matchSub(d.subgrid)));
+      const updatedBatches = batchLogs.filter((b) => !affected.has(matchSub(b.subgrid)) && !affected.has(matchSub(b.imageFilename)));
+      setDailyData(updatedDaily);
+      setDraftDailyData(updatedDraft);
+      setBatchLogs(reconcileBatchLogs(updatedDaily, updatedBatches));
+      setIsDailyDirty(true);
+
+      affected.forEach((sg) => {
+        deleteFromStagingSupabase(sg).catch((err) => console.warn('Spatial staging delete error:', err));
+        deleteFromSupabase(sg).catch((err) => console.warn('Spatial delete error:', err));
+      });
+
+      if (onRefreshMap) onRefreshMap();
+      if (addAuditLog) new Set(affected).forEach((sg) => addAuditLog('DELETE', `Record Deleted: ${sg}`, `Spatial selection (map bbox/point) permanently deleted subgrid ${sg}`, 'warning'));
+      setPublishMessage({ text: `[Admin Security Action] ${affected.size} spatially selected subgrid(s) permanently deleted from database.`, type: 'success' });
+      setTimeout(() => setPublishMessage(null), 5000);
+
+      setSpatialSubgrids([]);
+      setDeleteConfirmText('');
+      setIsDeleteModalOpen(false);
+      setDeleteTarget(null);
+      setAdminPasscode('');
+      setDeleteError(null);
       return;
     }
 
@@ -2714,9 +2909,13 @@ const DataManagementPage = ({
       setIsDeleteModalOpen(false);
       setDeleteTarget(null);
       setAdminPasscode('');
+      setDeleteConfirmText('');
       if (onRefreshMap) onRefreshMap();
       setPublishMessage({ text: `Successfully deleted ${idsToDelete.length} selected record(s).`, type: 'success' });
       setTimeout(() => setPublishMessage(null), 4000);
+      deletedSubgrids.forEach((sg) => {
+        if (addAuditLog) addAuditLog('DELETE', `Record Deleted: ${sg}`, `Bulk selection permanently deleted subgrid ${sg}`, 'warning');
+      });
       return;
     }
 
@@ -2790,8 +2989,21 @@ const DataManagementPage = ({
     setIsDeleteModalOpen(false);
     setDeleteTarget(null);
     setAdminPasscode('');
+    setDeleteConfirmText('');
     setDeleteError(null);
   };
+
+  const expectedDeletePhrase = (() => {
+    if (deleteMode !== 'single') return 'DELETE';
+    if (!deleteTarget || typeof deleteTarget === 'string') return 'SUBGRID';
+    const raw = ('subgrid' in deleteTarget && deleteTarget.subgrid)
+      ? deleteTarget.subgrid
+      : ('imageFilename' in deleteTarget ? (deleteTarget as BatchLog).imageFilename : '');
+    return (extractSubgridName(raw) || 'SUBGRID').toUpperCase().trim();
+  })();
+
+  const impactTotals = impactData?.totals;
+  const hasSevereImpact = !!(impactData && (impactData.hasPublished || impactData.hasDeliverables || impactData.hasLinkedJobs || impactData.hasOrphanRisk));
 
   return (
     <>
@@ -2899,6 +3111,104 @@ const DataManagementPage = ({
             >
               <span>Vector Layers</span>
             </button>
+            <button
+              onClick={() => setDataTab('datasets')}
+              className={`px-4 py-2 rounded-lg font-bold transition-all text-xs cursor-pointer flex items-center gap-2 ${dataTab === 'datasets'
+                ? 'bg-sky-600 text-text-base shadow-md'
+                : 'text-text-muted hover:text-text-base hover:bg-inner'
+                }`}
+            >
+              <Database size={13} />
+              <span>{tf('dataRegistryTab')}</span>
+              {isRegistryLoading ? (
+                <Loader2 size={12} className="animate-spin text-sky-400" />
+              ) : registryDatasets.length > 0 ? (
+                <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full ${dataTab === 'datasets' ? 'bg-sky-700/80 text-text-base' : 'bg-card text-text-muted border border-subtle'}`}>
+                  {registryDatasets.length}
+                </span>
+              ) : null}
+            </button>
+          </div>
+
+          {/* Selection Map + Safe Deletion panel */}
+          <div className="bg-card border border-subtle rounded-2xl shadow-md overflow-hidden">
+            <div className="p-3.5 flex flex-wrap items-center gap-3 border-b border-subtle">
+              <button
+                onClick={() => { if (dataTab === 'datasets' && !isSelectionMapOpen) setDataTab('batches'); setIsSelectionMapOpen(o => !o); }}
+                className="flex items-center gap-2 text-xs font-bold text-text-base cursor-pointer hover:text-sky-300 transition-colors"
+              >
+                <MapIcon size={15} className="text-sky-400" />
+                <span>{tf('dataSelectionMapTitle')}</span>
+                {isSelectionMapOpen ? <ChevronDown size={14} className="text-text-muted" /> : <ChevronRight size={14} className="text-text-muted" />}
+              </button>
+              <span className="text-[10px] text-text-muted hidden sm:inline">
+                {tf('dataSelectionMapHint')}
+              </span>
+              <div className="flex-1" />
+              {isGuestUser ? (
+                <span className="text-[10px] text-text-muted border border-subtle px-2 py-1 rounded-md bg-inner">{tf('dataSelectionMapGuest')}</span>
+              ) : (
+                <button
+                  onClick={() => {
+                    if (isSelectionMapOpen && deleteModeActive && spatialSubgrids.length > 0) {
+                      setPublishMessage({ text: 'Deletion mode left active with pending selection. Review it or clear before exiting.', type: 'error' });
+                      return;
+                    }
+                    if (isSelectionMapOpen && !deleteModeActive) {
+                      setSpatialSubgrids([]);
+                    }
+                    openDeleteModeToggle();
+                  }}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer border ${deleteModeActive
+                    ? 'bg-rose-600/90 text-white border-rose-500/50'
+                    : 'bg-inner text-slate-300 border-subtle hover:text-text-base hover:bg-slate-700'
+                    }`}
+                >
+                  <MousePointer2 size={13} className={deleteModeActive ? 'text-white' : 'text-sky-400'} />
+                  <span>{deleteModeActive ? tf('dataDeleteModeOn') : tf('dataDeleteModeOff')}</span>
+                </button>
+              )}
+            </div>
+            {isSelectionMapOpen && (
+              <div className="p-3.5 space-y-3">
+                {deleteModeActive && (
+                  <div className="p-3 bg-amber-950/30 border border-amber-700/40 rounded-xl flex items-center gap-2.5 text-xs text-amber-200">
+                    <Maximize2 size={14} className="text-amber-400 shrink-0" />
+                    <span>{tf('dataDeleteModeHint')}</span>
+                  </div>
+                )}
+                <div className="h-[300px] sm:h-[340px]">
+                  <DeletionSelectionMap
+                    deletionMode={deleteModeActive && !isGuestUser}
+                    selectedSubgrids={spatialSubgrids}
+                    onAddSubgrids={(list) => setSpatialSubgrids(prev => Array.from(new Set([...prev, ...list])))}
+                    onRemoveSubgrid={(sg) => setSpatialSubgrids(prev => prev.filter(x => x !== sg))}
+                    onClear={() => setSpatialSubgrids([])}
+                    subgridPoints={subgridPoints}
+                    focusSubgrid={focusSubgrid}
+                  />
+                </div>
+                {deleteModeActive && (
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    <button
+                      onClick={() => { setDeleteTarget('SPATIAL_SELECTION' as any); openDeleteModalForMode('spatial'); }}
+                      disabled={spatialSubgrids.length === 0}
+                      className="flex items-center gap-2 px-4 py-2 bg-red-600/90 hover:bg-red-600 text-text-base rounded-xl text-xs font-semibold transition-all shadow-md cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      <Trash2 size={14} />
+                      <span>{tf('dataReviewImpact')} ({spatialSubgrids.length})</span>
+                    </button>
+                    <button
+                      onClick={() => setSpatialSubgrids([])}
+                      disabled={spatialSubgrids.length === 0}
+                      className="px-3 py-2 text-xs text-text-muted hover:text-text-base transition-colors cursor-pointer disabled:opacity-40"
+                    >
+                      {tf('dataClearSelection')}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Action Toolbar Row */}
@@ -3241,6 +3551,18 @@ const DataManagementPage = ({
                   </div>
                 </div>
               </div>
+            </div>
+          ) : dataTab === 'datasets' ? (
+            /* Dataset Registry Section */
+            <div className="space-y-6">
+              <DatasetRegistryPanel
+                translate={tf}
+                onOpenInMap={(sg) => {
+                  setFocusSubgrid(sg);
+                  setIsSelectionMapOpen(true);
+                  if (dataTab === 'datasets') setDataTab('batches');
+                }}
+              />
             </div>
           ) : (
             <>
@@ -4592,9 +4914,9 @@ const DataManagementPage = ({
       {/* ===== Admin Security Delete Confirmation Modal ===== */}
       {isDeleteModalOpen && deleteTarget && (
         <div className="fixed inset-0 bg-app backdrop-blur-md flex items-center justify-center p-4 z-[1200] animate-fadeIn">
-          <div className="bg-app border border-subtle rounded-2xl max-w-md w-full shadow-2xl overflow-hidden transform transition-all">
+          <div className="bg-app border border-subtle rounded-2xl max-w-2xl w-full shadow-2xl overflow-hidden transform transition-all max-h-[92vh] flex flex-col">
             {/* Modal Header */}
-            <div className="bg-app border-b border-subtle p-5 flex items-center justify-between">
+            <div className="bg-app border-b border-subtle p-5 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-inner border border-subtle flex items-center justify-center text-slate-300">
                   <ShieldAlert size={20} />
@@ -4611,6 +4933,7 @@ const DataManagementPage = ({
                   setIsDeleteModalOpen(false);
                   setDeleteTarget(null);
                   setDeleteError(null);
+                  setDeleteConfirmText('');
                 }}
                 className="text-text-muted hover:text-text-base p-1 rounded-lg hover:bg-inner transition-colors"
               >
@@ -4619,33 +4942,155 @@ const DataManagementPage = ({
             </div>
 
             {/* Modal Body */}
-            <div className="p-6 space-y-5">
+            <div className="p-6 space-y-5 overflow-y-auto min-h-0">
+              {/* Impact Preview */}
+              <div>
+                <div className="font-semibold text-text-base mb-2 flex items-center gap-1.5 text-xs uppercase tracking-wide">
+                  <Database size={14} className="text-sky-400" />
+                  {tf('dataImpactPreview')}
+                </div>
+
+                {isComputingImpact ? (
+                  <div className="flex items-center gap-2 text-[11px] text-text-muted py-6 justify-center">
+                    <Loader2 size={14} className="animate-spin text-sky-400" /> {tf('dataImpactComputing')}
+                  </div>
+                ) : impactData && impactTotals ? (
+                  <div className="space-y-3">
+                    {/* KPI grid */}
+                    <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                      {[
+                        { label: tf('dataImpactSubgrids'), value: String(impactTotals.subgrids), tone: 'text-sky-300' },
+                        { label: tf('dataImpactRuns'), value: String(impactTotals.runs), tone: 'text-text-base' },
+                        { label: tf('dataImpactBatch'), value: String(impactTotals.batch), tone: 'text-text-base' },
+                        { label: tf('dataImpactPoi'), value: String(impactTotals.poi), tone: 'text-text-base' },
+                        { label: tf('dataImpactFrames'), value: String(impactTotals.frames), tone: 'text-text-base' },
+                        { label: tf('dataImpactKm'), value: `${impactTotals.km.toLocaleString()} km`, tone: 'text-text-base' },
+                        { label: tf('dataImpactDefects'), value: String(impactTotals.defects), tone: impactTotals.defects > 0 ? 'text-amber-300' : 'text-text-base' },
+                        { label: tf('dataImpactQa'), value: String(impactTotals.qa), tone: 'text-text-base' },
+                        { label: tf('dataImpactStaging'), value: String(impactTotals.staging), tone: impactTotals.staging > 0 ? 'text-amber-300' : 'text-text-base' },
+                        { label: tf('dataImpactPublished'), value: String(impactTotals.published), tone: impactTotals.published > 0 ? 'text-rose-300' : 'text-text-base' },
+                        { label: tf('dataImpactDatasets'), value: String(impactTotals.datasets), tone: impactTotals.datasets > 0 ? 'text-amber-300' : 'text-text-base' },
+                        { label: tf('dataImpactDeliverables'), value: String(impactTotals.deliverables), tone: impactTotals.deliverables > 0 ? 'text-rose-300' : 'text-text-base' },
+                        { label: tf('dataImpactJobs'), value: String(impactTotals.jobs), tone: impactTotals.jobs > 0 ? 'text-amber-300' : 'text-text-base' }
+                      ].map((c) => (
+                        <div key={c.label} className="bg-inner border border-subtle rounded-lg px-2.5 py-2">
+                          <div className={`text-sm font-bold leading-none ${c.tone}`}>{c.value}</div>
+                          <div className="text-[9px] uppercase tracking-wider text-text-muted mt-1 truncate" title={c.label}>{c.label}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Per-subgrid breakdown */}
+                    {impactData.rows.length > 0 && (
+                      <div className="overflow-x-auto rounded-lg border border-subtle max-h-[220px] overflow-y-auto">
+                        <table className="w-full text-left text-[10px]">
+                          <thead className="bg-inner text-text-muted border-b border-subtle sticky top-0">
+                            <tr>
+                              <th className="px-2.5 py-2">{tf('dataRegistryColSubgrid')}</th>
+                              <th className="px-2.5 py-2 text-right">{tf('dataImpactRuns')}</th>
+                              <th className="px-2.5 py-2 text-right">{tf('dataImpactPoi')}</th>
+                              <th className="px-2.5 py-2 text-right">{tf('dataImpactFrames')}</th>
+                              <th className="px-2.5 py-2 text-right">{tf('dataImpactKm')}</th>
+                              <th className="px-2.5 py-2 text-right">{tf('dataImpactDefects')}</th>
+                              <th className="px-2.5 py-2 text-right">{tf('dataImpactQa')}</th>
+                              <th className="px-2.5 py-2 text-right">{tf('dataImpactStaging')}</th>
+                              <th className="px-2.5 py-2 text-right">{tf('dataImpactPublished')}</th>
+                              <th className="px-2.5 py-2 text-right">{tf('dataImpactDatasets')}</th>
+                              <th className="px-2.5 py-2 text-right">{tf('dataImpactDeliverables')}</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {impactData.rows.map((r) => (
+                              <tr key={r.subgrid} className="border-t border-subtle">
+                                <td className="px-2.5 py-1.5 font-mono text-sky-300 font-semibold">{r.subgrid}</td>
+                                <td className="px-2.5 py-1.5 text-right text-text-muted">{r.runs}</td>
+                                <td className="px-2.5 py-1.5 text-right text-text-muted">{r.poi}</td>
+                                <td className="px-2.5 py-1.5 text-right text-text-muted">{r.frames}</td>
+                                <td className="px-2.5 py-1.5 text-right text-text-muted">{r.km}</td>
+                                <td className="px-2.5 py-1.5 text-right text-text-muted">{r.defects}</td>
+                                <td className="px-2.5 py-1.5 text-right text-text-muted">{r.qa}</td>
+                                <td className="px-2.5 py-1.5 text-right text-text-muted">{r.staging}</td>
+                                <td className="px-2.5 py-1.5 text-right text-rose-300 font-semibold">{r.published}</td>
+                                <td className="px-2.5 py-1.5 text-right text-amber-300 font-semibold">{r.datasets}</td>
+                                <td className="px-2.5 py-1.5 text-right text-rose-300 font-semibold">{r.deliverables}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+
+                    {/* Dependent-data warnings */}
+                    {hasSevereImpact ? (
+                      <div className="p-3 bg-red-950/40 border border-red-800/60 rounded-xl">
+                        <div className="flex items-center gap-1.5 text-xs font-bold text-red-300 uppercase tracking-wide mb-1.5">
+                          <AlertTriangle size={13} className="text-red-400" />
+                          {tf('dataImpactDependents')}
+                        </div>
+                        <ul className="text-[11px] text-red-200 space-y-1 list-disc list-inside">
+                          {impactData.warnings.map((w, i) => (
+                            <li key={i}>{w}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : impactData.warnings.length > 0 ? (
+                      <div className="p-3 bg-amber-950/30 border border-amber-700/40 rounded-xl">
+                        <ul className="text-[11px] text-amber-200 space-y-1 list-disc list-inside">
+                          {impactData.warnings.map((w, i) => (
+                            <li key={i}>{w}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+
+              {/* Security Warning (unchanged semantics) */}
               <div className="bg-app border border-subtle rounded-xl p-4 text-xs text-slate-300 leading-relaxed">
                 <div className="font-semibold text-text-base mb-1.5 flex items-center gap-1.5 text-xs uppercase tracking-wide">
                   <AlertTriangle size={14} className="text-red-400" />
                   Security Warning: Permanent Deletion
                 </div>
-                This data record will be <strong className="text-red-400 font-medium">permanently removed</strong> from the database. This action cannot be reversed.
-                {typeof deleteTarget === 'string' && deleteTarget === 'BULK_SELECTION' ? (
+                This data will be <strong className="text-red-400 font-medium">permanently removed</strong> from the database. This action cannot be reversed.
+                {deleteMode === 'bulk' && (
                   <div className="mt-3 p-3 bg-app rounded-lg border border-subtle font-mono text-slate-300 text-xs space-y-1.5">
                     <div className="flex justify-between items-center"><span className="text-text-muted">Target Selection:</span> <strong className="text-text-base font-mono font-semibold">Bulk Delete</strong></div>
                     <div className="flex justify-between items-center"><span className="text-text-muted">Records Selected:</span> <span className="text-red-400 font-bold">{selectedRowIds.size} records</span></div>
                   </div>
-                ) : (
+                )}
+                {deleteMode === 'spatial' && (
                   <div className="mt-3 p-3 bg-app rounded-lg border border-subtle font-mono text-slate-300 text-xs space-y-1.5">
-                    <div className="flex justify-between items-center"><span className="text-text-muted">Target Subgrid:</span> <strong className="text-text-base font-mono font-semibold">{(deleteTarget && typeof deleteTarget === 'object' && 'subgrid' in deleteTarget && deleteTarget.subgrid) ? deleteTarget.subgrid : (deleteTarget && typeof deleteTarget === 'object' && 'imageFilename' in deleteTarget ? (deleteTarget as BatchLog).imageFilename : 'Subgrid Record')}</strong></div>
-                    {deleteTarget && typeof deleteTarget === 'object' && 'date' in deleteTarget && deleteTarget.date && (
-                      <div className="flex justify-between items-center"><span className="text-text-muted">Date:</span> <span className="text-slate-300">{deleteTarget.date}</span></div>
-                    )}
-                    {deleteTarget && typeof deleteTarget === 'object' && 'images' in deleteTarget ? (
-                      <div className="flex justify-between items-center"><span className="text-text-muted">Images Total:</span> <span className="text-slate-300">{(deleteTarget as BatchLog).images}</span></div>
-                    ) : (
-                      deleteTarget && typeof deleteTarget === 'object' && (
-                        <div className="flex justify-between items-center"><span className="text-text-muted">Images Processed:</span> <span className="text-slate-300">{(deleteTarget as DailyTimeSeries).imagesProcessed}</span></div>
-                      )
-                    )}
+                    <div className="flex justify-between items-center"><span className="text-text-muted">Target Selection:</span> <strong className="text-text-base font-mono font-semibold">Map Spatial Selection</strong></div>
+                    <div className="flex justify-between items-center"><span className="text-text-muted">Subgrids Selected:</span> <span className="text-red-400 font-bold">{spatialSubgrids.length} subgrids</span></div>
                   </div>
                 )}
+              </div>
+
+              {/* Explicit Confirmation Input */}
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-2 flex items-center gap-1.5">
+                  <Info size={14} className="text-text-muted" />
+                  {tf('dataConfirmPhrase')}
+                </label>
+                <input
+                  type="text"
+                  value={deleteConfirmText}
+                  onChange={(e) => {
+                    setDeleteConfirmText(e.target.value);
+                    if (deleteError) setDeleteError(null);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') confirmDelete();
+                  }}
+                  placeholder={expectedDeletePhrase}
+                  autoCapitalize="characters"
+                  spellCheck={false}
+                  className="w-full bg-app border border-subtle focus:border-rose-500/70 rounded-xl px-4 py-2.5 text-sm font-mono text-text-base placeholder-slate-600 focus:outline-none transition-all shadow-inner uppercase"
+                />
+                <p className="text-[10px] text-text-muted mt-1.5">
+                  {tf('dataConfirmInstruction')} <strong className="text-slate-300 font-mono">{expectedDeletePhrase}</strong>
+                </p>
               </div>
 
               {/* Admin Authorization Input */}
@@ -4667,7 +5112,6 @@ const DataManagementPage = ({
                     }}
                     placeholder="Enter account password"
                     className="w-full bg-app border border-subtle focus:border-slate-600 rounded-xl px-4 py-2.5 text-sm text-text-base placeholder-slate-500 focus:outline-none transition-all shadow-inner"
-                    autoFocus
                   />
                 </div>
               </div>
@@ -4682,12 +5126,13 @@ const DataManagementPage = ({
             </div>
 
             {/* Modal Footer */}
-            <div className="p-4 bg-app border-t border-subtle flex items-center justify-end gap-3">
+            <div className="p-4 bg-app border-t border-subtle flex items-center justify-end gap-3 shrink-0">
               <button
                 onClick={() => {
                   setIsDeleteModalOpen(false);
                   setDeleteTarget(null);
                   setDeleteError(null);
+                  setDeleteConfirmText('');
                 }}
                 className="px-4 py-2 rounded-xl text-xs font-medium text-slate-300 hover:text-text-base bg-inner hover:bg-inner border border-subtle transition-all cursor-pointer"
               >
@@ -4695,7 +5140,8 @@ const DataManagementPage = ({
               </button>
               <button
                 onClick={confirmDelete}
-                className="px-5 py-2.5 rounded-xl text-xs font-semibold text-text-base bg-red-600/90 hover:bg-red-600 border border-red-500/30 transition-all shadow-md flex items-center gap-2 cursor-pointer"
+                disabled={isComputingImpact || !impactData || deleteConfirmText.trim().toUpperCase() !== expectedDeletePhrase.toUpperCase() || !adminPasscode.trim()}
+                className="px-5 py-2.5 rounded-xl text-xs font-semibold text-text-base bg-red-600/90 hover:bg-red-600 border border-red-500/30 transition-all shadow-md flex items-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <Trash2 size={14} />
                 Authorize & Delete Permanently
@@ -4975,7 +5421,7 @@ const DataForm = ({
 // ==============================================
 
 export default function App() {
-  const [currentPage, setCurrentPage] = useState<'dashboard' | 'data' | 'settings'>('dashboard');
+  const [currentPage, setCurrentPage] = useState<WorkspaceKey>(() => parseHashWorkspace());
   const dashboardPsvRef = useRef<PhotoSphereViewerHandle | null>(null);
   const [showLanding, setShowLanding] = useState<boolean>(true);
   const [authSession, setAuthSession] = useState<any>(null);
@@ -5106,36 +5552,67 @@ export default function App() {
     }
   }, [focusedSection]);
 
+  // Lightweight hash-based workspace routing (no external dependency)
+  const goToWorkspace = useCallback((key: WorkspaceKey) => {
+    setCurrentPage(key);
+    setFocusedSection(null);
+    setHashWorkspace(key);
+  }, []);
+
+  useEffect(() => {
+    return subscribeHashWorkspace((key) => {
+      setCurrentPage((prev) => (prev === key ? prev : key));
+    });
+  }, []);
+
   // Module routing handler
   const handleEnterModule = (targetView?: string | null) => {
     setShowLanding(false);
 
     if (targetView === 'general-launch') {
       // Direct launch into dashboard (clean view, no spotlight dimming)
-      setCurrentPage('dashboard');
+      goToWorkspace('dashboard');
       setFocusedSection(null);
     } else if (targetView === 'webgis') {
       // 1. WebGIS Coverage Map Spotlight
-      setCurrentPage('dashboard');
+      goToWorkspace('dashboard');
       setFocusedSection('map');
     } else if (targetView === 'processing') {
       // 2. Batch Processing Spotlight
-      setCurrentPage('dashboard');
+      goToWorkspace('dashboard');
       setFocusedSection('processing');
     } else if (targetView === 'qa-inspector') {
       // 3. 360° Inspector Spotlight
-      setCurrentPage('dashboard');
+      goToWorkspace('dashboard');
       setFocusedSection('qa');
     } else if (targetView === 'postgis' || targetView === 'data') {
       // 4. PostGIS Data Management Canvas
-      setCurrentPage('data');
+      goToWorkspace('data');
       setFocusedSection(null);
     } else if (targetView === 'analytics-audit' || targetView === 'settings') {
       // 5. Executive Reports & Audit Canvas
-      setCurrentPage('settings');
+      goToWorkspace('settings');
+      setFocusedSection(null);
+    } else if (targetView === 'production') {
+      goToWorkspace('production');
+      setFocusedSection(null);
+    } else if (targetView === 'storage') {
+      goToWorkspace('storage');
+      setFocusedSection(null);
+    } else if (targetView === 'lineage') {
+      goToWorkspace('lineage');
+      setFocusedSection(null);
+    } else if (targetView === 'reports') {
+      goToWorkspace('reports');
+      setFocusedSection(null);
+    } else if (targetView === 'analytics') {
+      goToWorkspace('analytics');
+      setFocusedSection(null);
+    } else if (targetView === 'administration' || targetView === 'admin') {
+      goToWorkspace('administration');
       setFocusedSection(null);
     } else {
-      setCurrentPage('dashboard');
+      goToWorkspace('dashboard');
       setFocusedSection(null);
     }
   };
@@ -5143,19 +5620,31 @@ export default function App() {
   // Helper: Routes directly to the canvas matching the chosen module
   const navigateToModule = (targetView?: string | null) => {
     if (!targetView) {
-      setCurrentPage('dashboard');
+      goToWorkspace('dashboard');
       return;
     }
 
     if (targetView === 'data' || targetView === 'postgis') {
-      setCurrentPage('data');
+      goToWorkspace('data');
     } else if (targetView === 'processing') {
-      setCurrentPage('data');
+      goToWorkspace('data');
     } else if (targetView === 'settings') {
-      setCurrentPage('settings');
+      goToWorkspace('settings');
+    } else if (targetView === 'production') {
+      goToWorkspace('production');
+    } else if (targetView === 'storage') {
+      goToWorkspace('storage');
+    } else if (targetView === 'lineage') {
+      goToWorkspace('lineage');
+    } else if (targetView === 'reports') {
+      goToWorkspace('reports');
+    } else if (targetView === 'analytics') {
+      goToWorkspace('analytics');
+    } else if (targetView === 'administration' || targetView === 'admin') {
+      goToWorkspace('administration');
     } else {
       // 'webgis', 'qa-inspector', 'analytics-audit', etc.
-      setCurrentPage('dashboard');
+      goToWorkspace('dashboard');
     }
   };
 
@@ -5937,27 +6426,27 @@ export default function App() {
     if (tourStep === null) return;
 
     if (tourStep === 1 || tourStep === 2 || tourStep === 5 || tourStep === 7) {
-      setCurrentPage('dashboard');
+      goToWorkspace('dashboard');
       setIsAboutModalOpen(false);
     } else if (tourStep === 3) {
-      setCurrentPage('dashboard');
+      goToWorkspace('dashboard');
       setIsAboutModalOpen(false);
       if (!selectedSubgridFilter) {
         const firstSg = batchLogs[0]?.subgrid || dailyData[0]?.subgrid;
         if (firstSg) setSelectedSubgridFilter(firstSg);
       }
     } else if (tourStep === 4) {
-      setCurrentPage('dashboard');
+      goToWorkspace('dashboard');
       setIsAboutModalOpen(false);
     } else if (tourStep === 8) {
-      setCurrentPage('data');
+      goToWorkspace('data');
       setIsAboutModalOpen(false);
     } else if (tourStep === 9) {
-      setCurrentPage('dashboard');
+      goToWorkspace('dashboard');
       setIsAboutModalOpen(false);
       handleRefreshMap();
     } else if (tourStep === 10) {
-      setCurrentPage('settings');
+      goToWorkspace('settings');
       setIsAboutModalOpen(false);
     } else if (tourStep === 11) {
       setIsAboutModalOpen(true);
@@ -7713,7 +8202,249 @@ export default function App() {
       saveSettings: 'Save All Settings',
       helpGuide: 'Help & User Guide',
       auditLogs: 'Audit Logs',
-      notifications: 'Notifications'
+      notifications: 'Notifications',
+      workspaceProduction: 'Image Production Workspace',
+      workspaceStorage: 'NAS / Raw Storage Manager',
+      workspaceProcessing: 'Processing Center',
+      workspaceLineage: 'Data Lineage',
+      workspaceAnalytics: 'Survey Analytics',
+      workspaceReports: 'Reports',
+      workspaceAdministration: 'Administration',
+      workspaceTagLive: 'Live',
+      workspaceTagPlanned: 'Upcoming',
+      workspaceTagReserved: 'Reserved',
+      workspaceComingSoon: 'Workspace Under Construction',
+      workspaceComingSoonDesc: 'This workspace is part of the GeoSphere 360 production platform roadmap. Its capabilities will be delivered in upcoming implementation phases while preserving all existing functionality.',
+      workspacePlannedRoadmap: 'All core workflows are live. Administration is reserved for a future phase.',
+      workspaceDashboardDesc: 'Executive KPI dashboard, interactive coverage map, processing control and 360° inspector.',
+      workspaceDataDesc: 'Batch logs, daily survey runs, vector layer catalog and database management.',
+      workspaceSettingsDesc: 'Project, database, imagery storage, QA benchmarks and access control configuration.',
+      workspaceProductionDesc: 'Image production control plane: RAW registration, NAS GPU Worker enhancement + generative-fill mask removal, live job status, preview and QA/QC import.',
+      workspaceStorageDesc: 'NAS connectivity, capacity monitoring, dataset indexing and RAW/processed storage management.',
+      workspaceProcessingDesc: 'Central job management for external stitching, blurring, enhancement, masking, QA/QC, reports and exports.',
+      workspaceLineageDesc: 'Visual trace from RAW source through external processing, QA/QC, publication and export.',
+      workspaceAnalyticsDesc: 'Road capture survey analytics: distance, coverage, GNSS quality, capture density and gaps.',
+      workspaceReportsDesc: 'Automated report deliverables built from actual project data.',
+      workspaceAdministrationDesc: 'Security, RBAC, audit and high-risk operation controls for administrators.',
+      workspaceCategoryCore: 'Core Workspaces',
+      workspaceCategoryProduction: 'Image Production',
+      workspaceCategoryInsights: 'Insights & Reporting',
+      workspaceCategoryGovernance: 'Administration & Control',
+      analyticsTitle: 'Survey Analytics',
+      analyticsSubtitle: 'Road capture analytics computed live from reconciled batch logs, daily runs, the RAW staging registry and QA decisions. Dashboard is metadata-only; recharts renders every chart.',
+      analyticsGuestNote: 'Read-only mode: analytics are view-only.',
+      analyticsTabOverview: 'Overview',
+      analyticsTabDistance: 'Distance',
+      analyticsTabCoverage: 'Coverage',
+      analyticsTabDensity: 'Density',
+      analyticsTabQuality: 'Quality',
+      analyticsStatePublished: 'Published',
+      analyticsStateStaged: 'Staged',
+      analyticsStatePartial: 'Partial',
+      analyticsState_published: 'PUBLISHED',
+      analyticsState_staged: 'STAGED',
+      analyticsState_partial: 'PARTIAL',
+      analyticsState_none: 'NONE',
+      analyticsDays: 'days',
+      analyticsKpiSubgrids: 'Subgrids Surveyed',
+      analyticsKpiDistance: 'Distance Captured',
+      analyticsKpiFrames: 'Processed Frames',
+      analyticsKpiPoi: 'POIs Registered',
+      analyticsKpiDefects: 'Defects Detected',
+      analyticsKpiQuality: 'Quality Pass Rate',
+      analyticsKpiFramesSub: 'processed frames',
+      analyticsKpiQualitySub: 'per registered POI',
+      analyticsDefectRate: 'defect rate',
+      analyticsTargetProgress: 'Progress vs. Project Targets',
+      analyticsQaApproved: 'QA Approved',
+      analyticsQaRejected: 'QA Rejected',
+      analyticsPublishDistribution: 'Publication Status Distribution',
+      analyticsEmpty: 'No data available yet.',
+      analyticsDailyTrend: 'Daily Throughput Trend',
+      analyticsDistanceBySubgrid: 'Distance Surveyed by Subgrid',
+      analyticsColSubgrid: 'Subgrid',
+      analyticsColFrames: 'Frames',
+      analyticsColRuns: 'Runs',
+      analyticsColPoi: 'POI',
+      analyticsColCoverage: 'Coverage',
+      analyticsColState: 'State',
+      analyticsColDelivery: 'PIC',
+      analyticsColPublished: 'Published',
+      analyticsColStaged: 'Staged',
+      analyticsColPartial: 'Partial',
+      analyticsColDefects: 'Defects',
+      analyticsColPass: 'Pass Rate',
+      analyticsGaps: 'Capture Gaps & Risks',
+      analyticsGapMissing: 'frame(s) short of target',
+      analyticsGapUnpublished: 'surveyed but not published',
+      analyticsGapCapture: 'RAW captures without a processed dataset',
+      analyticsGapKind_missing_frames: 'INCOMPLETE',
+      analyticsGapKind_unpublished: 'NOT PUBLISHED',
+      analyticsGapKind_capture_no_dataset: 'CAPTURE ONLY',
+      analyticsDensityTitle: 'Capture Density',
+      analyticsDefectsRanking: 'Defect Ranking by Subgrid',
+      analyticsQaSub: 'QA decisions',
+      analyticsQaClean: 'No defects or rejections flagged. All surveyed subgrids pass quality checks.',
+      reportsTitle: 'Reports',
+      reportsSubtitle: 'Automated, print-ready reports generated from the same reconciled data as the dashboard.',
+      reportsGuestNote: 'Read-only mode: report generation is disabled for guests.',
+      reportsTabExecutive: 'Executive',
+      reportsTabDaily: 'Daily Operations',
+      reportsTabSubgrid: 'Subgrid Coverage',
+      reportsTabQa: 'QA/QC Audit',
+      reportsTabLineage: 'Lineage & Audit',
+      reportsKpiSubgrids: 'Subgrids Surveyed',
+      reportsKpiPublished: 'Published',
+      reportsKpiStaged: 'Staged',
+      reportsKpiKm: 'Total Distance',
+      reportsKpiPoi: 'POIs Registered',
+      reportsKpiDefects: 'Defects Detected',
+      reportsKpiPassRate: 'Pass Rate',
+      reportsExecTitle: 'Executive Progress & Quality Audit Report',
+      reportsExecDesc: 'Project-wide KPI summary over all surveyed subgrids — distance, coverage, quality and gaps in one print-ready document. Opens a print window and auto-triggers PDF save.',
+      reportsDailyTitle: 'Daily Operations Report',
+      reportsDailyDesc: 'Field capture & handover register covering every daily survey run.',
+      reportsSubgridTitle: 'Subgrid Coverage Report',
+      reportsSubgridDesc: 'Per-parcel delivery, coverage percentage and publication state.',
+      reportsQaTitle: 'QA/QC Audit Report',
+      reportsQaDesc: 'Quality assurance decisions and the defect register by subgrid.',
+      reportsLineageTitle: 'Lineage & Audit Trail Report',
+      reportsLineageDesc: 'Dataset provenance and the full processing job chain.',
+      reportsTagAutomatic: 'Auto',
+      reportsTagRecords: 'records',
+      reportsTagSubgrids: 'subgrids',
+      reportsTagDecisions: 'decisions',
+      reportsTagDatasets: 'datasets',
+      reportsChkSummary: 'Live KPIs',
+      reportsChkTables: 'Data tables',
+      reportsChkPrint: 'Print & PDF',
+      reportsGenerate: 'Generate & Print',
+      productionTabPipeline: 'Pipeline',
+      productionTabDatasets: 'Datasets',
+      productionTabProviders: 'Providers',
+      productionTabPreview: 'Preview',
+      productionTabEnhance: 'Enhance',
+      productionTabMasking: 'Masking',
+      storageTabOverview: 'Overview',
+      storageTabBrowser: 'Folders',
+      storageTabRawRegistry: 'RAW Registry',
+      storageTabValidation: 'Validation',
+      storageTabIndex: 'Index',
+      processingTabBoard: 'Job Board',
+      processingTabHandoff: 'Handoff',
+      processingTabQA: 'QA/QC',
+      processingTabCapacity: 'Capacity',
+      lineageTabGraph: 'Lineage Graph',
+      lineageTabTrace: 'Trace',
+      lineageTabSurvey: 'Survey Capture',
+      lineageTabRegistry: 'Registry',
+      lineageGraphTitle: 'Trace in Graph',
+      lineageGraphSubgrid: 'Subgrid',
+      lineageGraphAllSubgrids: 'All subgrids',
+      lineageGraphEmpty: 'No lineage data yet. Register RAW datasets, run processing jobs, or stage captures to see the trace.',
+      lineageGraphFit: 'Fit',
+      lineageGraphLegend: 'Legend',
+      lineageGraphLayer_RAW: 'RAW',
+      lineageGraphLayer_Stitch: 'STITCH',
+      lineageGraphLayer_Blur: 'BLUR',
+      lineageGraphLayer_Enhance: 'ENHANCE',
+      lineageGraphLayer_Mask: 'MASK',
+      lineageGraphLayer_QaQc: 'QA/QC',
+      lineageGraphLayer_Deliverable: 'DELIVERABLE',
+      lineageNodeRawAggregate: 'RAW capture aggregate',
+      lineageNodeDataset: 'Dataset',
+      lineageNodeJob: 'Job',
+      lineageStatDatasets: 'Datasets',
+      lineageStatJobs: 'Jobs',
+      lineageStatRawFrames: 'RAW frames',
+      lineageStatQaOk: 'QA approved',
+      lineageStatQaRejected: 'QA rejected',
+      lineageStatDeliverables: 'Deliverables',
+      lineageStatLongestChain: 'Longest chain',
+      lineageOrphansTitle: 'Orphaned / unlinked',
+      lineageOrphanDesc: 'items not connected to the pipeline',
+      lineageTraceNone: 'Select a node in the Lineage Graph to inspect its full provenance here.',
+      lineageTraceAncestors: 'Ancestors',
+      lineageTraceDescendants: 'Descendants',
+      lineageTraceJobs: 'Processing runs',
+      lineageTraceSettings: 'Reproduction settings',
+      lineageTraceRawsource: 'RAW source',
+      lineageTraceDeliverable: 'Publication / deliverable',
+      lineageHistorical: 'No reproduction settings recorded',
+      lineageSurveyTitle: 'Survey capture aggregates',
+      lineageSurveyEmpty: 'No survey capture records staged yet. Import capture runs to populate the RAW survey registry.',
+      lineageRegistryTitle: 'Lineage registry',
+      lineageRegistryEmpty: 'No lineage records to show.',
+      lineageRegistrySubgrid: 'Subgrid',
+      lineageRegistrySource: 'Source',
+      lineageRegistryTarget: 'Target',
+      lineageRegistryStatus: 'Status',
+      lineageRegistryQa: 'QA',
+      lineageRegistryDates: 'Dates',
+      lineageRegistryLinkKind: 'Link',
+      lineageKind_parent: 'parent',
+      lineageKind_job_source: 'job input',
+      lineageKind_job_output: 'job output',
+      lineageKind_raw_to_dataset: 'RAW → dataset',
+      lineageFilterAll: 'All',
+      lineageQaApproved: 'Approved',
+      lineageQaRejected: 'Rejected',
+      lineageQaPending: 'Pending',
+      lineageGuestNote: 'Read-only: Data Lineage visualizes metadata only — no data is modified.',
+
+      /* Data Management — Dataset Registry + Safe Deletion */
+      dataRegistryTab: 'Dataset Registry',
+      dataRegistryRefresh: 'Refresh',
+      dataRegistrySubgrid: 'Subgrid',
+      dataRegistryTotalDatasets: 'Datasets',
+      dataRegistryTotalFiles: 'Files',
+      dataRegistryTotalSize: 'Total Size',
+      dataRegistryRaw: 'RAW',
+      dataRegistryProcessed: 'Processed',
+      dataRegistryDeliverables: 'Deliverables',
+      dataRegistryOrphans: 'Orphan datasets',
+      dataRegistrySearch: 'Search name, subgrid, provider, folder…',
+      dataRegistryLoading: 'Loading dataset registry…',
+      dataRegistryColName: 'Name',
+      dataRegistryColType: 'Type',
+      dataRegistryColStage: 'Stage',
+      dataRegistryColVersion: 'Version',
+      dataRegistryColSubgrid: 'Subgrid',
+      dataRegistryColFiles: 'Files',
+      dataRegistryColSize: 'Size',
+      dataRegistryColStatus: 'Status',
+      dataRegistryColQa: 'QA',
+      dataRegistryColJobs: 'Jobs',
+      dataRegistryColSource: 'Source',
+      dataRegistryColCreated: 'Created',
+      dataRegistryOpenInMap: 'Show on map',
+      dataRegistryEmpty: 'No datasets match the current filters.',
+      dataSelectionMapTitle: 'Selection Map',
+      dataSelectionMapHint: 'Live WebGIS coverage map. Enable Delete Mode to select subgrids spatially.',
+      dataSelectionMapGuest: 'Read-only map (guest)',
+      dataDeleteModeOn: 'Delete Mode: ON',
+      dataDeleteModeOff: 'Delete Mode',
+      dataDeleteModeHint: 'Draw a bounding box by dragging over the map, or click a station point to add subgrid(s) to the delete selection.',
+      dataReviewImpact: 'Review Delete Impact',
+      dataClearSelection: 'Clear Selection',
+      dataImpactPreview: 'Deletion Impact Preview',
+      dataImpactComputing: 'Computing full impact…',
+      dataImpactSubgrids: 'Subgrids',
+      dataImpactRuns: 'Runs',
+      dataImpactBatch: 'Batch',
+      dataImpactPoi: 'POI',
+      dataImpactFrames: 'Frames',
+      dataImpactKm: 'Distance',
+      dataImpactDefects: 'Defects',
+      dataImpactQa: 'QA Rec.',
+      dataImpactStaging: 'RAW Staging',
+      dataImpactPublished: 'Published',
+      dataImpactDatasets: 'Datasets',
+      dataImpactDeliverables: 'Deliv.',
+      dataImpactJobs: 'Jobs',
+      dataImpactDependents: 'Dependent Data Warnings',
+      dataConfirmPhrase: 'Explicit Confirmation Code',
+      dataConfirmInstruction: 'Type the exact code to prove you understand this deletion cannot be reversed:'
     },
     ms: {
       appTitle: 'Sistem Pengurusan Data Pemetaan Mudah Alih',
@@ -7743,7 +8474,238 @@ export default function App() {
       saveSettings: 'Simpan Semua Tetapan',
       helpGuide: 'Panduan Bantuan & Pengguna',
       auditLogs: 'Log Audit',
-      notifications: 'Pemberitahuan'
+      notifications: 'Pemberitahuan',
+      workspaceProduction: 'Ruang Kerja Pengeluaran Imej',
+      workspaceStorage: 'Pengurus Stor NAS / Mentah',
+      workspaceProcessing: 'Pusat Pemprosesan',
+      workspaceLineage: 'Silsilah Data',
+      workspaceAnalytics: 'Analitik Ukur',
+      workspaceReports: 'Laporan',
+      workspaceAdministration: 'Pentadbiran',
+      workspaceTagLive: 'Langsung',
+      workspaceTagPlanned: 'Akan Datang',
+      workspaceTagReserved: 'Simpanan',
+      workspaceComingSoon: 'Ruang Kerja Dalam Pembinaan',
+      workspaceComingSoonDesc: 'Ruang kerja ini adalah sebahagian daripada peta jalan platform pengeluaran GeoSphere 360. Keupayaannya akan disampaikan dalam fasa pelaksanaan akan datang sambil mengekalkan semua fungsi sedia ada.',
+      workspaceCategoryCore: 'Ruang Kerja Teras',
+      workspaceCategoryProduction: 'Pengeluaran Imej',
+      workspaceCategoryInsights: 'Analitis & Pelaporan',
+      workspaceCategoryGovernance: 'Pentadbiran & Kawalan',
+      analyticsTitle: 'Analitik Ukur',
+      analyticsSubtitle: 'Analitik tangkapan jalan dikira secara langsung daripada log kumpulan yang diselaraskan, larian harian, daftar storan mentah dan keputusan QA. Papan pemuka meta only; recharts renders every chart.',
+      analyticsGuestNote: 'Mod baca sahaja: analitik hanya untuk paparan.',
+      analyticsTabOverview: 'Ringkasan',
+      analyticsTabDistance: 'Jarak',
+      analyticsTabCoverage: 'Liputan',
+      analyticsTabDensity: 'Ketumpatan',
+      analyticsTabQuality: 'Kualiti',
+      analyticsStatePublished: 'Diterbitkan',
+      analyticsStateStaged: 'Peringkat',
+      analyticsStatePartial: 'Separa',
+      analyticsState_published: 'DITERBITKAN',
+      analyticsState_staged: 'PERINGKAT',
+      analyticsState_partial: 'SEPARA',
+      analyticsState_none: 'TIADA',
+      analyticsDays: 'hari',
+      analyticsKpiSubgrids: 'Subgrid Diukur',
+      analyticsKpiDistance: 'Jarak Ditangkap',
+      analyticsKpiFrames: 'Imej Diproses',
+      analyticsKpiPoi: 'POI Didaftar',
+      analyticsKpiDefects: 'Cacat Dikesan',
+      analyticsKpiQuality: 'Kadar Lulus Kualiti',
+      analyticsKpiFramesSub: 'imej diproses',
+      analyticsKpiQualitySub: 'setiap POI berdaftar',
+      analyticsDefectRate: 'kadar cacat',
+      analyticsTargetProgress: 'Kemajuan vs. Sasaran Projek',
+      analyticsQaApproved: 'QA Lulus',
+      analyticsQaRejected: 'QA Gagal',
+      analyticsPublishDistribution: 'Taburan Status Penerbitan',
+      analyticsEmpty: 'Tiada data lagi.',
+      analyticsDailyTrend: 'Aliran Hasil Harian',
+      analyticsDistanceBySubgrid: 'Jarak Diukur Mengikut Subgrid',
+      analyticsColSubgrid: 'Subgrid',
+      analyticsColFrames: 'Imej',
+      analyticsColRuns: 'Larian',
+      analyticsColPoi: 'POI',
+      analyticsColCoverage: 'Liputan',
+      analyticsColState: 'Status',
+      analyticsColDelivery: 'PIC',
+      analyticsColPublished: 'Diterbitkan',
+      analyticsColStaged: 'Peringkat',
+      analyticsColPartial: 'Separa',
+      analyticsColDefects: 'Cacat',
+      analyticsColPass: 'Kadar Lulus',
+      analyticsGaps: 'Jurang & Risiko Tangkapan',
+      analyticsGapMissing: 'imej kurang daripada sasaran',
+      analyticsGapUnpublished: 'diukur tetapi belum diterbitkan',
+      analyticsGapCapture: 'Tangkapan mentah tanpa set data diproses',
+      analyticsGapKind_missing_frames: 'TIDAK LENGKAP',
+      analyticsGapKind_unpublished: 'BELUM DITERBITKAN',
+      analyticsGapKind_capture_no_dataset: 'TANGKAPAN SAHAJA',
+      analyticsDensityTitle: 'Ketumpatan Tangkapan',
+      analyticsDefectsRanking: 'Kedudukan Cacat Mengikut Subgrid',
+      analyticsQaSub: 'keputusan QA',
+      analyticsQaClean: 'Tiada cacat atau penolakan dikesan. Semua subgrid yang diukur lulus semakan kualiti.',
+      reportsTitle: 'Laporan',
+      reportsSubtitle: 'Laporan automatik sedia dicetak dijana daripada data selaras yang sama seperti papan pemuka.',
+      reportsGuestNote: 'Mod baca sahaja: penjanaan laporan dilumpuhkan untuk tetamu.',
+      reportsTabExecutive: 'Eksekutif',
+      reportsTabDaily: 'Operasi Harian',
+      reportsTabSubgrid: 'Liputan Subgrid',
+      reportsTabQa: 'Audit QA/QC',
+      reportsTabLineage: 'Silsilah & Audit',
+      reportsKpiSubgrids: 'Subgrid Diukur',
+      reportsKpiPublished: 'Diterbitkan',
+      reportsKpiStaged: 'Peringkat',
+      reportsKpiKm: 'Jumlah Jarak',
+      reportsKpiPoi: 'POI Didaftar',
+      reportsKpiDefects: 'Cacat Dikesan',
+      reportsKpiPassRate: 'Kadar Lulus',
+      reportsExecTitle: 'Laporan Audit Eksekutif Kemajuan & Kualiti',
+      reportsExecDesc: 'Ringkasan KPI seluruh projek merentas semua subgrid yang diukur — jarak, liputan, kualiti dan jurang dalam satu dokumen sedia cetak.',
+      reportsDailyTitle: 'Laporan Operasi Harian',
+      reportsDailyDesc: 'Daftar tangkapan & serah tugas lapangan merangkumi setiap larian ukur harian.',
+      reportsSubgridTitle: 'Laporan Liputan Subgrid',
+      reportsSubgridDesc: 'Penghantaran setiap petak, peratus liputan dan status penerbitan.',
+      reportsQaTitle: 'Laporan Audit QA/QC',
+      reportsQaDesc: 'Keputusan jaminan kualiti dan daftar cacat mengikut subgrid.',
+      reportsLineageTitle: 'Laporan Silsilah & Jejak Audit',
+      reportsLineageDesc: 'Asal-usul set data dan rantaian kerja pemprosesan penuh.',
+      reportsTagAutomatic: 'Auto',
+      reportsTagRecords: 'rekod',
+      reportsTagSubgrids: 'subgrid',
+      reportsTagDecisions: 'keputusan',
+      reportsTagDatasets: 'set data',
+      reportsChkSummary: 'KPI langsung',
+      reportsChkTables: 'Jadual data',
+      reportsChkPrint: 'Cetak & PDF',
+      reportsGenerate: 'Jana & Cetak',
+      productionTabPipeline: 'Saluran',
+      productionTabDatasets: 'Set Data',
+      productionTabProviders: 'Pembekal',
+      productionTabPreview: 'Pratonton',
+      productionTabEnhance: 'Penambahbaik',
+      productionTabMasking: 'Topeng',
+      storageTabOverview: 'Ringkasan',
+      storageTabBrowser: 'Folder',
+      storageTabRawRegistry: 'Daftar RAW',
+      storageTabValidation: 'Pengesahan',
+      storageTabIndex: 'Indeks',
+      processingTabBoard: 'Papan Kerja',
+      processingTabHandoff: 'Serah Tugas',
+      processingTabQA: 'QA/QC',
+      processingTabCapacity: 'Kapasiti',
+      lineageTabGraph: 'Graf Silsilah',
+      lineageTabTrace: 'Jejak',
+      lineageTabSurvey: 'Tangkapan Tinjauan',
+      lineageTabRegistry: 'Daftar',
+      lineageGraphTitle: 'Jejak dalam Graf',
+      lineageGraphSubgrid: 'Subgrid',
+      lineageGraphAllSubgrids: 'Semua subgrid',
+      lineageGraphEmpty: 'Tiada data silsilah lagi. Daftar set data RAW, jalankan tugas pemprosesan, atau pentaskan tangkapan untuk melihat jejak.',
+      lineageGraphFit: 'Padan',
+      lineageGraphLegend: 'Legenda',
+      lineageGraphLayer_RAW: 'MENTAH',
+      lineageGraphLayer_Stitch: 'CANTUM',
+      lineageGraphLayer_Blur: 'KABUR',
+      lineageGraphLayer_Enhance: 'TAMBAH BAIK',
+      lineageGraphLayer_Mask: 'TOPENG',
+      lineageGraphLayer_QaQc: 'QA/QC',
+      lineageGraphLayer_Deliverable: 'DELIVERABEL',
+      lineageNodeRawAggregate: 'Agregat tangkapan RAW',
+      lineageNodeDataset: 'Set data',
+      lineageNodeJob: 'Tugas',
+      lineageStatDatasets: 'Set data',
+      lineageStatJobs: 'Tugas',
+      lineageStatRawFrames: 'Bingkai RAW',
+      lineageStatQaOk: 'QA dilulus',
+      lineageStatQaRejected: 'QA ditolak',
+      lineageStatDeliverables: 'Deliverabel',
+      lineageStatLongestChain: 'Rantaian terpanjang',
+      lineageOrphansTitle: 'Yatim / tidak terpaut',
+      lineageOrphanDesc: 'item tidak bersambung ke saluran',
+      lineageTraceNone: 'Pilih nod dalam Graf Silsilah untuk melihat provenans penuh di sini.',
+      lineageTraceAncestors: 'Nenek moyang',
+      lineageTraceDescendants: 'Keturunan',
+      lineageTraceJobs: 'Jalan pemprosesan',
+      lineageTraceSettings: 'Tetapan pembiakan semula',
+      lineageTraceRawsource: 'Sumber RAW',
+      lineageTraceDeliverable: 'Penerbitan / deliverabel',
+      lineageHistorical: 'Tiada tetapan pembiakan semula direkod',
+      lineageSurveyTitle: 'Agregat tangkapan tinjauan',
+      lineageSurveyEmpty: 'Tiada rekod tangkapan tinjauan dipentas lagi. Import jalan tangkapan untuk mengisi daftar tinjauan RAW.',
+      lineageRegistryTitle: 'Daftar silsilah',
+      lineageRegistryEmpty: 'Tiada rekod silsilah untuk dipaparkan.',
+      lineageRegistrySubgrid: 'Subgrid',
+      lineageRegistrySource: 'Sumber',
+      lineageRegistryTarget: 'Sasaran',
+      lineageRegistryStatus: 'Status',
+      lineageRegistryQa: 'QA',
+      lineageRegistryDates: 'Tarikh',
+      lineageRegistryLinkKind: 'Pautan',
+      lineageKind_parent: 'induk',
+      lineageKind_job_source: 'input tugas',
+      lineageKind_job_output: 'output tugas',
+      lineageKind_raw_to_dataset: 'RAW → set data',
+      lineageFilterAll: 'Semua',
+      lineageQaApproved: 'Dilulus',
+      lineageQaRejected: 'Ditolak',
+      lineageQaPending: 'Tertunda',
+      lineageGuestNote: 'Hanya baca: Silsilah Data memaparkan metadata sahaja — tiada data diubah.',
+
+      /* Data Management — Registry Dataset + Padam Selamat */
+      dataRegistryTab: 'Daftar Dataset',
+      dataRegistryRefresh: 'Muat Semula',
+      dataRegistrySubgrid: 'Subgrid',
+      dataRegistryTotalDatasets: 'Dataset',
+      dataRegistryTotalFiles: 'Fail',
+      dataRegistryTotalSize: 'Jumlah Saiz',
+      dataRegistryRaw: 'Mentah',
+      dataRegistryProcessed: 'Diproses',
+      dataRegistryDeliverables: 'Penghantaran',
+      dataRegistryOrphans: 'Dataset yatim',
+      dataRegistrySearch: 'Cari nama, subgrid, pembekal, folder…',
+      dataRegistryLoading: 'Memuat daftar dataset…',
+      dataRegistryColName: 'Nama',
+      dataRegistryColType: 'Jenis',
+      dataRegistryColStage: 'Peringkat',
+      dataRegistryColVersion: 'Versi',
+      dataRegistryColSubgrid: 'Subgrid',
+      dataRegistryColFiles: 'Fail',
+      dataRegistryColSize: 'Saiz',
+      dataRegistryColStatus: 'Status',
+      dataRegistryColQa: 'QA',
+      dataRegistryColJobs: 'Tugas',
+      dataRegistryColSource: 'Sumber',
+      dataRegistryColCreated: 'Dicipta',
+      dataRegistryOpenInMap: 'Papar pada peta',
+      dataRegistryEmpty: 'Tiada dataset sepadan dengan penapis semasa.',
+      dataSelectionMapTitle: 'Peta Pemilihan',
+      dataSelectionMapHint: 'Peta liputan WebGIS langsung. Aktifkan Mod Padam untuk memilih subgrid secara spatial.',
+      dataSelectionMapGuest: 'Peta baca sahaja (tetamu)',
+      dataDeleteModeOn: 'Mod Padam: ON',
+      dataDeleteModeOff: 'Mod Padam',
+      dataDeleteModeHint: 'Lukis kotak sempadan dengan menyeret pada peta, atau klik titik stesen untuk menambah subgrid ke pemilihan padam.',
+      dataReviewImpact: 'Semak Kesan Padam',
+      dataClearSelection: 'Kosongkan Pilihan',
+      dataImpactPreview: 'Pratonton Kesan Padam',
+      dataImpactComputing: 'Mengira kesan penuh…',
+      dataImpactSubgrids: 'Subgrid',
+      dataImpactRuns: 'Larian',
+      dataImpactBatch: 'Kumpulan',
+      dataImpactPoi: 'POI',
+      dataImpactFrames: 'Bingkai',
+      dataImpactKm: 'Jarak',
+      dataImpactDefects: 'Cacat',
+      dataImpactQa: 'QA Rec.',
+      dataImpactStaging: 'Staging Mentah',
+      dataImpactPublished: 'Diterbit',
+      dataImpactDatasets: 'Dataset',
+      dataImpactDeliverables: 'Pengh.',
+      dataImpactJobs: 'Tugas',
+      dataImpactDependents: 'Amaran Data Bergantung',
+      dataConfirmPhrase: 'Kod Pengesahan Eksplisit',
+      dataConfirmInstruction: 'Taip kod tepat untuk membuktikan anda faham pemadaman ini tidak boleh diterbalikkan:'
     },
     zh: {
       appTitle: 'Web映射处理仪表板',
@@ -8149,136 +9111,16 @@ export default function App() {
       <div className="flex-1 flex overflow-hidden">
 
         {/* EXPANDABLE NAVIGATION BAR WITH FLUID ANIMATIONS & BOTTOM TOGGLE BUTTON */}
-        <nav className={`bg-card border-r border-subtle flex flex-col py-3 gap-2 shrink-0 transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] overflow-hidden ${tourStep === 6 ? 'ring-2 ring-slate-400 shadow-[0_0_35px_rgba(255,255,255,0.15)] z-30 relative' : tourStep !== null && tourStep < 7 ? 'opacity-30 blur-[1.5px] pointer-events-none' : ''
-          } ${isSidebarExpanded ? 'w-52 px-2.5 items-stretch' : 'w-14 items-center px-0'
-          }`}>
-          {/* 1. Main Dashboard */}
-          <button
-            onClick={() => setCurrentPage('dashboard')}
-            className={`transition-all duration-300 relative cursor-pointer flex items-center rounded-xl ${tourStep === 7 ? 'ring-2 ring-slate-300 shadow-[0_0_20px_rgba(255,255,255,0.25)] z-30 bg-inner' : ''
-              } ${isSidebarExpanded ? 'w-full px-3 py-2 text-xs font-semibold gap-3 justify-start' : 'w-full h-10 justify-center p-0'
-              } ${currentPage === 'dashboard' ? 'text-sky-400 font-bold' : 'text-text-muted hover:text-text-base'}`}
-            title="Main Dashboard"
-          >
-            <div className="relative shrink-0 flex items-center justify-center">
-              <LayoutDashboard size={20} className="shrink-0 transition-transform duration-200" />
-              {!isSidebarExpanded && (
-                <span className={`absolute -top-1 -right-1 w-2 h-2 rounded-full bg-sky-400 shadow-[0_0_8px_rgba(56,189,248,0.9)] transition-all duration-300 ease-out ${currentPage === 'dashboard' ? 'opacity-100 scale-100' : 'opacity-0 scale-0'
-                  }`} />
-              )}
-            </div>
-            <span className={`transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] whitespace-nowrap overflow-hidden origin-left flex items-center justify-between flex-1 ${isSidebarExpanded ? 'opacity-100 max-w-[140px] translate-x-0' : 'opacity-0 max-w-0 -translate-x-3 pointer-events-none'
-              }`}>
-              <span>{t('dashboard')}</span>
-              {currentPage === 'dashboard' && (
-                <span className="w-2 h-2 rounded-full bg-sky-400 shadow-[0_0_8px_rgba(56,189,248,0.9)] animate-pulse ml-2 shrink-0" />
-              )}
-            </span>
-          </button>
-
-          {/* 2. Data Management */}
-          <button
-            onClick={() => setCurrentPage('data')}
-            className={`transition-all duration-300 relative cursor-pointer flex items-center rounded-xl ${tourStep === 8 ? 'ring-2 ring-slate-300 shadow-[0_0_20px_rgba(255,255,255,0.25)] z-30 bg-inner' : ''
-              } ${isSidebarExpanded ? 'w-full px-3 py-2 text-xs font-semibold gap-3 justify-start' : 'w-full h-10 justify-center p-0'
-              } ${currentPage === 'data' ? 'text-sky-400 font-bold' : 'text-text-muted hover:text-text-base'}`}
-            title={t('data')}
-          >
-            <div className="relative shrink-0 flex items-center justify-center">
-              <Database size={20} className="shrink-0 transition-transform duration-200" />
-              {!isSidebarExpanded && (
-                <span className={`absolute -top-1 -right-1 w-2 h-2 rounded-full bg-sky-400 shadow-[0_0_8px_rgba(56,189,248,0.9)] transition-all duration-300 ease-out ${currentPage === 'data' ? 'opacity-100 scale-100' : 'opacity-0 scale-0'
-                  }`} />
-              )}
-            </div>
-            <span className={`transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] whitespace-nowrap overflow-hidden origin-left flex items-center justify-between flex-1 ${isSidebarExpanded ? 'opacity-100 max-w-[140px] translate-x-0' : 'opacity-0 max-w-0 -translate-x-3 pointer-events-none'
-              }`}>
-              <span>{t('data')}</span>
-              {currentPage === 'data' && (
-                <span className="w-2 h-2 rounded-full bg-sky-400 shadow-[0_0_8px_rgba(56,189,248,0.9)] animate-pulse ml-2 shrink-0" />
-              )}
-            </span>
-          </button>
-
-          {/* 3. Refresh Map & Data */}
-          <button
-            onClick={handleRefreshMap}
-            className={`transition-all duration-200 cursor-pointer flex items-center rounded-xl text-text-muted hover:text-text-base ${tourStep === 9 ? 'ring-2 ring-slate-300 shadow-[0_0_20px_rgba(255,255,255,0.25)] z-30 bg-inner' : ''
-              } ${isSidebarExpanded ? 'w-full px-3 py-2 text-xs font-semibold gap-3 justify-start' : 'w-full h-10 justify-center p-0'
-              }`}
-            title={t('refresh')}
-          >
-            <div className="relative shrink-0 flex items-center justify-center">
-              <RefreshCw size={20} className="shrink-0 transition-transform duration-300 active:rotate-180" />
-            </div>
-            <span className={`transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] whitespace-nowrap overflow-hidden origin-left ${isSidebarExpanded ? 'opacity-100 max-w-[140px] translate-x-0' : 'opacity-0 max-w-0 -translate-x-3 pointer-events-none'
-              }`}>
-              {t('refresh')}
-            </span>
-          </button>
-
-          {/* 4. Project Settings */}
-          <button
-            onClick={() => setCurrentPage('settings')}
-            className={`transition-all duration-300 relative cursor-pointer flex items-center rounded-xl ${tourStep === 10 ? 'ring-2 ring-slate-300 shadow-[0_0_20px_rgba(255,255,255,0.25)] z-30 bg-inner' : ''
-              } ${isSidebarExpanded ? 'w-full px-3 py-2 text-xs font-semibold gap-3 justify-start' : 'w-full h-10 justify-center p-0'
-              } ${currentPage === 'settings' ? 'text-sky-400 font-bold' : 'text-text-muted hover:text-text-base'}`}
-            title={t('settings')}
-          >
-            <div className="relative shrink-0 flex items-center justify-center">
-              <Settings size={20} className="shrink-0 transition-transform duration-300 hover:rotate-90" />
-              {!isSidebarExpanded && (
-                <span className={`absolute -top-1 -right-1 w-2 h-2 rounded-full bg-sky-400 shadow-[0_0_8px_rgba(56,189,248,0.9)] transition-all duration-300 ease-out ${currentPage === 'settings' ? 'opacity-100 scale-100' : 'opacity-0 scale-0'
-                  }`} />
-              )}
-            </div>
-            <span className={`transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] whitespace-nowrap overflow-hidden origin-left flex items-center justify-between flex-1 ${isSidebarExpanded ? 'opacity-100 max-w-[140px] translate-x-0' : 'opacity-0 max-w-0 -translate-x-3 pointer-events-none'
-              }`}>
-              <span>{t('settings')}</span>
-              {currentPage === 'settings' && (
-                <span className="w-2 h-2 rounded-full bg-sky-400 shadow-[0_0_8px_rgba(56,189,248,0.9)] animate-pulse ml-2 shrink-0" />
-              )}
-            </span>
-          </button>
-
-          {/* 5. About Dashboard */}
-          <button
-            onClick={() => setIsAboutModalOpen(true)}
-            className={`transition-all duration-200 cursor-pointer flex items-center rounded-xl text-text-muted hover:text-text-base ${tourStep === 11 ? 'ring-2 ring-slate-300 shadow-[0_0_20px_rgba(255,255,255,0.25)] z-30 bg-inner' : ''
-              } ${isSidebarExpanded ? 'w-full px-3 py-2 text-xs font-semibold gap-3 justify-start' : 'w-full h-10 justify-center p-0'
-              }`}
-            title={t('about')}
-          >
-            <div className="relative shrink-0 flex items-center justify-center">
-              <Info size={20} className="shrink-0 transition-transform duration-200 hover:scale-110" />
-            </div>
-            <span className={`transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] whitespace-nowrap overflow-hidden origin-left ${isSidebarExpanded ? 'opacity-100 max-w-[140px] translate-x-0' : 'opacity-0 max-w-0 -translate-x-3 pointer-events-none'
-              }`}>
-              {t('about')}
-            </span>
-          </button>
-
-          {/* Spacer pushing toggle button to bottom */}
-          <div className="mt-auto" />
-          <div className="w-full h-px bg-inner shrink-0 my-1 transition-opacity duration-300" />
-
-          {/* Panel Expand / Collapse Toggle Button at Bottom with Fluid Icon Rotation */}
-          <button
-            onClick={() => setIsSidebarExpanded(prev => !prev)}
-            className={`rounded-xl text-text-muted hover:text-text-base hover:bg-inner transition-all duration-300 cursor-pointer flex items-center overflow-hidden ${tourStep === 12 ? 'ring-2 ring-slate-300 shadow-[0_0_20px_rgba(255,255,255,0.25)] z-30 bg-inner' : ''
-              } ${isSidebarExpanded ? 'justify-between w-full px-3 py-2 bg-inner border border-subtle shadow-sm' : 'justify-center w-10 h-10'
-              }`}
-            title={isSidebarExpanded ? "Collapse Navigation Panel" : "Expand Navigation Panel"}
-          >
-            <span className={`transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] text-[10px] font-bold text-slate-300 uppercase tracking-wider whitespace-nowrap overflow-hidden origin-left ${isSidebarExpanded ? 'opacity-100 max-w-[120px] translate-x-0' : 'opacity-0 max-w-0 -translate-x-3 pointer-events-none'
-              }`}>
-              {t('collapsePanel')}
-            </span>
-            <div className="p-1 rounded-md bg-inner text-sky-400 shrink-0 shadow-sm border border-subtle">
-              <ChevronRight size={15} className={`transition-transform duration-300 ease-in-out ${isSidebarExpanded ? 'rotate-180' : 'rotate-0'}`} />
-            </div>
-          </button>
-        </nav>
+        <WorkspaceSidebarNav
+          translate={t}
+          activeWorkspace={currentPage}
+          isSidebarExpanded={isSidebarExpanded}
+          tourStep={tourStep}
+          onNavigate={goToWorkspace}
+          onRefresh={handleRefreshMap}
+          onOpenAbout={() => setIsAboutModalOpen(true)}
+          onToggleSidebar={() => setIsSidebarExpanded(prev => !prev)}
+        />
 
         {/* MAIN DASHBOARD CONTENT CANVAS */}
         <main className="flex-1 flex flex-col p-3 gap-3 overflow-y-auto md:overflow-hidden bg-card relative">
@@ -8763,7 +9605,7 @@ export default function App() {
                         </button>
                       </div>
                       <button
-                        onClick={() => setCurrentPage('data')}
+                        onClick={() => goToWorkspace('data')}
                         className="px-2.5 sm:px-3 py-1.5 bg-card hover:bg-inner text-slate-300 hover:text-text-base border border-[rgba(255,255,255,0.12)] text-[10px] sm:text-[11px] font-medium rounded-lg transition-all uppercase tracking-tight cursor-pointer shadow-sm ml-auto sm:ml-0"
                       >
                         RE-UPLOAD CSV
@@ -9772,7 +10614,7 @@ export default function App() {
                 setBatchLogs={setBatchLogs}
                 layerCatalog={layerCatalog}
                 setLayerCatalog={setLayerCatalog}
-                onBackToDashboard={() => setCurrentPage('dashboard')}
+                onBackToDashboard={() => goToWorkspace('dashboard')}
                 mapRefreshKey={mapRefreshKey}
                 onRefreshMap={handleRefreshMap}
                 authSession={authSession}
@@ -9781,6 +10623,8 @@ export default function App() {
                 addAuditLog={addAuditLog}
                 isGuestUser={isGuestUser}
                 projectSettings={projectSettings}
+                qaSubgridRecords={qaSubgridRecords}
+                translate={t}
               />
             </div>
           ) : currentPage === 'settings' ? (
@@ -9798,7 +10642,83 @@ export default function App() {
               addNotification={addNotification}
               addAuditLog={addAuditLog}
             />
-          ) : null}
+          ) : currentPage === 'production' ? (
+            <ImageProductionWorkspace
+              projectSettings={projectSettings}
+              setProjectSettings={setProjectSettings}
+              authSession={authSession}
+              isGuestUser={isGuestUser}
+              addNotification={addNotification}
+              addAuditLog={addAuditLog}
+              onBackToDashboard={() => goToWorkspace('dashboard')}
+              translate={t}
+            />
+          ) : currentPage === 'storage' ? (
+            <NASStorageWorkspace
+              projectSettings={projectSettings}
+              setProjectSettings={setProjectSettings}
+              authSession={authSession}
+              isGuestUser={isGuestUser}
+              addNotification={addNotification}
+              addAuditLog={addAuditLog}
+              onBackToDashboard={() => goToWorkspace('dashboard')}
+              translate={t}
+            />
+          ) : currentPage === 'processing' ? (
+            <ProcessingCenterWorkspace
+              projectSettings={projectSettings}
+              setProjectSettings={setProjectSettings}
+              authSession={authSession}
+              isGuestUser={isGuestUser}
+              addNotification={addNotification}
+              addAuditLog={addAuditLog}
+              onBackToDashboard={() => goToWorkspace('dashboard')}
+              translate={t}
+            />
+          ) : currentPage === 'lineage' ? (
+            <LineageWorkspace
+              projectSettings={projectSettings}
+              setProjectSettings={setProjectSettings}
+              authSession={authSession}
+              isGuestUser={isGuestUser}
+              addNotification={addNotification}
+              addAuditLog={addAuditLog}
+              onBackToDashboard={() => goToWorkspace('dashboard')}
+              translate={t}
+            />
+          ) : currentPage === 'analytics' ? (
+            <AnalyticsWorkspace
+              projectSettings={projectSettings}
+              setProjectSettings={setProjectSettings}
+              authSession={authSession}
+              isGuestUser={isGuestUser}
+              addNotification={addNotification}
+              addAuditLog={addAuditLog}
+              onBackToDashboard={() => goToWorkspace('dashboard')}
+              translate={t}
+              batchLogs={activeBatchLogs}
+              dailyData={dailyData}
+              onRefreshData={handleRefreshMap}
+            />
+          ) : currentPage === 'reports' ? (
+            <ReportsWorkspace
+              projectSettings={projectSettings}
+              setProjectSettings={setProjectSettings}
+              authSession={authSession}
+              isGuestUser={isGuestUser}
+              addNotification={addNotification}
+              addAuditLog={addAuditLog}
+              onBackToDashboard={() => goToWorkspace('dashboard')}
+              translate={t}
+              batchLogs={activeBatchLogs}
+              dailyData={dailyData}
+              onRefreshData={handleRefreshMap}
+            />
+          ) : (
+            <div className="flex-1 flex flex-col min-h-0 overflow-hidden animate-in fade-in duration-500">
+              <WorkspacePlaceholder workspace={getWorkspaceDefinition(currentPage)} translate={t} />
+            </div>
+          )}
         </main>
 
         {/* Subgrid Image Filenames List View Modal (Main Canvas) */}
@@ -10097,7 +11017,7 @@ export default function App() {
                   <button
                     onClick={() => {
                       setIsHelpGuideOpen(false);
-                      setCurrentPage('data');
+                      goToWorkspace('data');
                     }}
                     className="px-3.5 py-2 bg-card hover:bg-slate-700 text-slate-300 hover:text-text-base border border-subtle text-xs font-semibold rounded-lg transition-all cursor-pointer"
                     title="Open Layer Catalog & Data Management Page"
@@ -10380,7 +11300,7 @@ export default function App() {
               setInspectorSubgrid(subgridKey);
               localStorage.setItem('geosphere360_last_active_subgrid', subgridKey);
             }
-            setCurrentPage('dashboard');
+            goToWorkspace('dashboard');
             setIsQAQCRunnerModalOpen(true);
             setIsHandoverModalOpen(false);
           }}
@@ -10390,7 +11310,7 @@ export default function App() {
             setIsHandoverModalOpen(false);
           }}
           onOpenBatchProcessing={() => {
-            setCurrentPage('data');
+            goToWorkspace('data');
             setIsHandoverModalOpen(false);
           }}
         />

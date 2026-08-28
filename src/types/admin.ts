@@ -61,6 +61,19 @@ export interface ExtendedProjectSettings {
   geomType?: string; // 'ST_Point', 'POINTZ', 'MultiPoint'
   autoCreateSpatialIndex?: boolean;
 
+  // Production Pipeline (Image Production Workspace / NAS GPU Worker)
+  productionProviders?: Array<{
+    name: string;
+    software: string;
+    version: string;
+    workerUrl?: string;
+    enabled: boolean;
+  }>;
+  productionApiMode?: 'mock' | 'http';
+  productionApiUrl?: string;
+  productionConcurrency?: number; // 1 - 16
+  nasWorkBasePath?: string; // NAS mount path the worker reads/writes under
+
   // PostGIS Table & View Mappings
   panoramasTable?: string;
   stagingTable?: string;

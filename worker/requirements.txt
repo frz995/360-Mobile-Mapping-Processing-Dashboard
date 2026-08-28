@@ -1,0 +1,10 @@
+fastapi>=0.110
+uvicorn[standard]>=0.29
+requests>=2.31
+python-dotenv>=1.0
+numpy>=1.26
+opencv-python>=4.9
+Pillow>=10.0
+
+# --- Optional (production generative-fill, CUDA). Install on the GPU box: ---
+# simple-lama-inpainting        # LaMa large-mask inpainting (CUDA-capable)
