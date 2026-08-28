@@ -31,7 +31,9 @@ import {
   Lock,
   Trash2,
   SlidersHorizontal,
-  History
+  History,
+  Crosshair,
+  Boxes
 } from 'lucide-react';
 import { UserAccount, DeletionApprovalRequest, SystemHealthMetrics, ExtendedProjectSettings } from '../types/admin';
 import {
@@ -46,6 +48,7 @@ import {
   testCloudflareStorageHealth
 } from '../services/supabase';
 import { ThemeManagementCanvas } from './ThemeSelector';
+import { BoundaryEditor } from './boundary/BoundaryEditor';
 
 interface AdminSettingsViewProps {
   projectSettings: ExtendedProjectSettings;
@@ -156,7 +159,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
         // 2. Send Basemap Selection
         previewIframeRef.current.contentWindow.postMessage({
           type: 'SET_BASEMAP',
-          basemap: projectSettings.defaultBasemap || 'positron',
+          basemap: projectSettings.defaultBasemap || 'ofm-positron',
           customUrl: projectSettings.customBasemapUrl || '',
           opacity: (projectSettings.basemapOpacity ?? 100) / 100
         }, '*');
@@ -209,7 +212,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
 
   // Broadcast basemap settings to all iframes (Dashboard map + Preview map)
   const broadcastBasemap = React.useCallback((bm?: string, customUrl?: string, op?: number) => {
-    const basemapVal = bm || projectSettings.defaultBasemap || 'positron';
+    const basemapVal = bm || projectSettings.defaultBasemap || 'ofm-positron';
     const customUrlVal = customUrl !== undefined ? customUrl : (projectSettings.customBasemapUrl || '');
     const opacityVal = typeof op === 'number' ? op : ((projectSettings.basemapOpacity ?? 100) / 100);
 
@@ -225,6 +228,33 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
       } catch (e) { }
     });
   }, [projectSettings.defaultBasemap, projectSettings.customBasemapUrl, projectSettings.basemapOpacity]);
+
+  // Broadcast the project geographic boundary + focus/dim to all map iframes.
+  const broadcastProjectBoundary = React.useCallback((action: 'focus' | 'dim' | 'clear') => {
+    const boundary = (projectSettings as any)?.projectBoundary;
+    const iframes = document.querySelectorAll<HTMLIFrameElement>('iframe');
+    iframes.forEach(f => {
+      try {
+        if (boundary?.geojson) {
+          f.contentWindow?.postMessage({
+            type: 'SET_PROJECT_BOUNDARY',
+            geojson: boundary.geojson,
+            bbox: boundary.bbox
+          }, '*');
+        }
+        if (action === 'focus' && boundary?.bbox) {
+          f.contentWindow?.postMessage({
+            type: 'FOCUS_BOUNDARY',
+            bbox: boundary.bbox
+          }, '*');
+          f.contentWindow?.postMessage({ type: 'DIM_OUTSIDE_BOUNDARY', enabled: true }, '*');
+        } else if (action === 'clear') {
+          f.contentWindow?.postMessage({ type: 'DIM_OUTSIDE_BOUNDARY', enabled: false }, '*');
+          f.contentWindow?.postMessage({ type: 'CLEAR_BOUNDARY_FOCUS' }, '*');
+        }
+      } catch (e) { }
+    });
+  }, [projectSettings]);
 
   // Broadcast layer theme settings to all iframes (Dashboard map + Preview map)
   const broadcastLayerTheme = React.useCallback((colorsToBroadcast?: any) => {
@@ -267,7 +297,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
 
   // Preview basemap changes ONLY on the preview iframe before user applies
   const previewBasemapChange = React.useCallback((bm?: string, customUrl?: string, op?: number) => {
-    const basemapVal = bm || projectSettings.defaultBasemap || 'positron';
+    const basemapVal = bm || projectSettings.defaultBasemap || 'ofm-positron';
     const customUrlVal = customUrl !== undefined ? customUrl : (projectSettings.customBasemapUrl || '');
     const opacityVal = typeof op === 'number' ? op : ((projectSettings.basemapOpacity ?? 100) / 100);
 
@@ -942,13 +972,65 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
       {/* ========================================================================= */}
       {activeTab === 'settings' && (
         <fieldset disabled={!isAdmin} className="space-y-4 border-none p-0 m-0">
-          {/* SECTION 1: DATABASE & POSTGIS SPATIAL ENGINE CONNECTION SETUP */}
+          {/* SECTION 1: GENERAL, IDENTITY & GLOBAL INTERFACE LANGUAGE */}
+          <div className={`p-5 rounded-xl border space-y-5 ${cardBg}`}>
+            <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-subtle">
+              <div className="flex items-center gap-2">
+                <Globe size={17} className="text-sky-400" />
+                <div>
+                  <h3 className="text-sm font-bold text-text-base uppercase tracking-wide">1. General & Global Interface Language</h3>
+                  <p className="text-[11px] text-text-muted mt-0.5">Choose the system-wide display language and identify this project. Language applies instantly across the whole dashboard, including all processing canvases.</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
+              <div>
+                <label className="block text-text-muted font-medium mb-1">Global Interface Language</label>
+                <select
+                  value={projectSettings.language || 'en'}
+                  onChange={e => setProjectSettings(prev => ({ ...prev, language: e.target.value as any }))}
+                  className={`w-full px-3 py-2 rounded-lg font-medium focus:outline-none border ${inputBg}`}
+                >
+                  <option value="en">English (EN)</option>
+                  <option value="ms">Bahasa Melayu (MS)</option>
+                  <option value="zh">中文 / Simplified Chinese (ZH)</option>
+                  <option value="ja">日本語 / Japanese (JA)</option>
+                </select>
+                <p className="text-[10px] text-text-muted mt-1">Reads from project settings; persisted on save and applied app-wide.</p>
+              </div>
+
+              <div>
+                <label className="block text-text-muted font-medium mb-1">Project Name</label>
+                <input
+                  type="text"
+                  value={projectSettings.projectName || ''}
+                  onChange={e => setProjectSettings(prev => ({ ...prev, projectName: e.target.value }))}
+                  placeholder="e.g. TNB Cable Route 360 Capture"
+                  className={`w-full px-3 py-2 rounded-lg font-medium focus:outline-none border ${inputBg}`}
+                />
+              </div>
+
+              <div>
+                <label className="block text-text-muted font-medium mb-1">Contract Code</label>
+                <input
+                  type="text"
+                  value={projectSettings.contractCode || ''}
+                  onChange={e => setProjectSettings(prev => ({ ...prev, contractCode: e.target.value }))}
+                  placeholder="e.g. MMS-2026-TNB-01"
+                  className={`w-full px-3 py-2 rounded-lg font-mono focus:outline-none border ${inputBg}`}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* SECTION 2: DATABASE & POSTGIS SPATIAL ENGINE CONNECTION SETUP */}
           <div className={`p-5 rounded-xl border space-y-5 ${cardBg}`}>
             <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-subtle">
               <div className="flex items-center gap-2">
                 <Database size={17} className="text-sky-400" />
                 <div>
-                  <h3 className="text-sm font-bold text-text-base uppercase tracking-wide">1. Database & PostGIS Spatial Engine Connection Setup</h3>
+                  <h3 className="text-sm font-bold text-text-base uppercase tracking-wide">2. Database & PostGIS Spatial Engine Connection Setup</h3>
                   <p className="text-[11px] text-text-muted mt-0.5">Configure Supabase PostgreSQL endpoint, PostGIS 3.3 spatial projections, table mappings, and connection pooling.</p>
                 </div>
               </div>
@@ -1332,13 +1414,13 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
             </div>
           </div>
 
-          {/* SECTION 2: 360° IMAGERY & MMS STORAGE ENGINE */}
+          {/* SECTION 3: 360° IMAGERY & MMS STORAGE ENGINE */}
           <div className={`p-5 rounded-xl border space-y-5 ${cardBg}`}>
             <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-subtle">
               <div className="flex items-center gap-2">
                 <Camera size={17} className="text-sky-400" />
                 <div>
-                  <h3 className="text-sm font-bold text-text-base uppercase tracking-wide">2. 360° Imagery & MMS Storage Engine</h3>
+                  <h3 className="text-sm font-bold text-text-base uppercase tracking-wide">3. 360° Imagery & MMS Storage Engine</h3>
                   <p className="text-[11px] text-text-muted mt-0.5">Configure 360° panoramic image storage providers, CDN paths, filename patterns, StreetView pre-fetch cache, and player calibration.</p>
                 </div>
               </div>
@@ -1926,13 +2008,13 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
             </div>
           </div>
 
-          {/* SECTION 3: BASEMAP & SPATIAL LAYER MANAGEMENT WITH LIVE PREVIEW */}
+          {/* SECTION 4: BASEMAP & SPATIAL LAYER MANAGEMENT WITH LIVE PREVIEW */}
           <div className={`p-5 rounded-xl border space-y-5 ${cardBg}`}>
             <div className={`flex flex-wrap items-center justify-between gap-3 pb-3 border-b ${themeMode === 'light' ? 'border-slate-200' : 'border-subtle'}`}>
               <div className="flex items-center gap-2">
                 <Map size={17} className="text-sky-400" />
                 <div>
-                  <h3 className={`text-sm font-bold uppercase tracking-wide ${themeMode === 'light' ? 'text-slate-900' : 'text-text-base'}`}>3. Basemap & Spatial Layer Management</h3>
+                  <h3 className={`text-sm font-bold uppercase tracking-wide ${themeMode === 'light' ? 'text-slate-900' : 'text-text-base'}`}>4. Basemap & Spatial Layer Management</h3>
                   <p className={`text-[11px] mt-0.5 ${themeMode === 'light' ? 'text-text-muted' : 'text-text-muted'}`}>Configure default GIS basemaps, trajectory theme colors, line widths, and inspect changes on the live map preview before applying to the dashboard.</p>
                 </div>
               </div>
@@ -2407,8 +2489,8 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                     {/* Embedded WebGIS Map Iframe */}
                     <iframe
                       ref={previewIframeRef}
-                      key={`${previewRefreshKey}-${themeMode}-${projectSettings.defaultBasemap || 'positron'}`}
-                      src={`${import.meta.env.VITE_MAP_URL || 'https://mobilemapping-nine.vercel.app'}/?embed=true&preview=true&theme=${themeMode}&basemap=${projectSettings.defaultBasemap || 'positron'}&t=${previewRefreshKey}`}
+                      key={`${previewRefreshKey}-${themeMode}-${projectSettings.defaultBasemap || 'ofm-positron'}`}
+                      src={`${import.meta.env.VITE_MAP_URL || 'https://mobilemapping-nine.vercel.app'}/?embed=true&preview=true&theme=${themeMode}&basemap=${projectSettings.defaultBasemap || 'ofm-positron'}&t=${previewRefreshKey}`}
                       onLoad={() => {
                         sendPreviewData();
                         setTimeout(sendPreviewData, 400);
@@ -2487,14 +2569,14 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
             </div>
           </div>
 
-          {/* SECTION 4: SECURITY, RBAC & ACCESS CONTROL SETTINGS */}
+          {/* SECTION 5: SECURITY, RBAC & ACCESS CONTROL SETTINGS */}
           <div className={`p-5 rounded-xl border space-y-4 ${cardBg}`}>
             <div className={`flex flex-wrap items-center justify-between gap-2 pb-3 border-b ${themeMode === 'light' ? 'border-slate-200' : 'border-subtle'}`}>
               <div className="flex items-center gap-2">
                 <Shield size={16} className={themeMode === 'light' ? 'text-slate-700' : 'text-slate-300'} />
                 <div>
                   <h3 className={`text-sm font-bold uppercase tracking-wide ${themeMode === 'light' ? 'text-slate-900' : 'text-text-base'}`}>
-                    4. Security, Authentication & Access Control (RBAC)
+                    5. Security, Authentication & Access Control (RBAC)
                   </h3>
                   <p className={`text-[11px] mt-0.5 ${themeMode === 'light' ? 'text-text-muted' : 'text-text-muted'}`}>
                     Configure enterprise authentication policies, session timeouts, authorized email restrictions, and role permissions.
@@ -2649,12 +2731,12 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
             </div>
           </div>
 
-          {/* SECTION 5: CONTRACT SLA TARGETS & QA BENCHMARKS */}
+          {/* SECTION 6: CONTRACT SLA TARGETS & QA BENCHMARKS */}
           <div className={`p-5 rounded-xl border space-y-4 ${cardBg}`}>
             <div className="flex items-center justify-between pb-3 border-b border-subtle">
               <div className="flex items-center gap-2">
                 <Activity size={16} className="text-sky-400" />
-                <h3 className="text-sm font-bold text-text-base uppercase tracking-wide">5. Contract SLA Targets & QA Benchmarks</h3>
+                <h3 className="text-sm font-bold text-text-base uppercase tracking-wide">6. Contract SLA Targets & QA Benchmarks</h3>
               </div>
               <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-inner border border-subtle text-slate-300">
                 Quality SLA Standard
@@ -2777,6 +2859,96 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                 {isAdmin ? <CheckCircle size={14} /> : <Lock size={14} />}
                 <span>{isAdmin ? 'Save All Settings' : 'Admin Only (Read-Only)'}</span>
               </button>
+            </div>
+          </div>
+
+          {/* SECTION 7: PROJECT GEOGRAPHIC BOUNDARY */}
+          <div className={`p-5 rounded-xl border space-y-5 ${cardBg}`}>
+            <div className={`flex flex-wrap items-center justify-between gap-3 pb-3 border-b ${themeMode === 'light' ? 'border-slate-200' : 'border-subtle'}`}>
+              <div className="flex items-center gap-2">
+                <Boxes size={17} className="text-emerald-400" />
+                <div>
+                  <h3 className={`text-sm font-bold uppercase tracking-wide ${themeMode === 'light' ? 'text-slate-900' : 'text-text-base'}`}>7. Project Geographic Boundary</h3>
+                  <p className={`text-[11px] mt-0.5 ${themeMode === 'light' ? 'text-text-muted' : 'text-text-muted'}`}>Define the project capture area. Draw a polygon, upload GeoJSON/KML, or paste GeoJSON. The boundary filters coverage &amp; analytics and focuses/dims the live map.</p>
+                </div>
+              </div>
+              <span className={`px-2.5 py-1 rounded-full text-[10px] font-mono font-bold flex items-center gap-1.5 ${(projectSettings as any)?.projectBoundary?.geojson
+                ? (themeMode === 'light' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20')
+                : 'bg-inner text-text-muted border border-subtle'
+                }`}>
+                <Map size={12} />
+                {(projectSettings as any)?.projectBoundary?.geojson ? 'Boundary Defined' : 'No Boundary Set'}
+              </span>
+            </div>
+
+            <BoundaryEditor
+              initialBoundary={(projectSettings as any)?.projectBoundary}
+              defaultCenter={(projectSettings as any)?.defaultCenter as any}
+              onChange={(data) => setProjectSettings(prev => ({ ...prev, projectBoundary: data }))}
+            />
+
+            {(projectSettings as any)?.projectBoundary?.bbox && (
+              <div className={`p-3 rounded-lg border ${innerCardBg}`}>
+                <span className="text-[10px] uppercase tracking-wider text-text-muted font-semibold">Bounding Box (minLng, minLat, maxLng, maxLat)</span>
+                <div className="text-[11px] font-mono text-emerald-300 mt-1">
+                  {(projectSettings as any)?.projectBoundary?.bbox?.map((n: number) => Number(n).toFixed(6)).join(' · ')}
+                </div>
+              </div>
+            )}
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                disabled={!isAdmin || !(projectSettings as any)?.projectBoundary?.geojson}
+                onClick={() => {
+                  setProjectSettings(prev => ({ ...prev, projectBoundary: { ...((prev as any)?.projectBoundary || {}), focusActive: true } }));
+                  broadcastProjectBoundary('focus');
+                  showToast('Map focused & dimmed to project boundary.');
+                }}
+                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold transition-all border ${isAdmin && (projectSettings as any)?.projectBoundary?.geojson
+                  ? 'bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-300 border-emerald-500/40 cursor-pointer active:scale-95'
+                  : 'bg-inner text-text-muted border border-subtle cursor-not-allowed'
+                  }`}
+              >
+                <Crosshair size={14} /> Focus Map &amp; Dim Outside
+              </button>
+              <button
+                type="button"
+                disabled={!isAdmin || !(projectSettings as any)?.projectBoundary?.geojson}
+                onClick={() => {
+                  setProjectSettings(prev => ({ ...prev, projectBoundary: { ...((prev as any)?.projectBoundary || {}), focusActive: false } }));
+                  broadcastProjectBoundary('clear');
+                  showToast('Boundary focus/dim cleared.');
+                }}
+                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold transition-all border ${isAdmin && (projectSettings as any)?.projectBoundary?.geojson
+                  ? 'bg-slate-700/40 hover:bg-slate-700/70 text-slate-200 border-subtle cursor-pointer active:scale-95'
+                  : 'bg-inner text-text-muted border border-subtle cursor-not-allowed'
+                  }`}
+              >
+                <Eye size={14} /> Clear Focus
+              </button>
+              <button
+                type="button"
+                disabled={!isAdmin}
+                onClick={() => {
+                  setProjectSettings(prev => ({ ...prev, projectBoundary: undefined }));
+                  broadcastProjectBoundary('clear');
+                  showToast('Project geographic boundary removed.');
+                }}
+                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold transition-all border ${isAdmin
+                  ? 'bg-rose-600/20 hover:bg-rose-600/40 text-rose-300 border-rose-500/40 cursor-pointer active:scale-95'
+                  : 'bg-inner text-text-muted border border-subtle cursor-not-allowed'
+                  }`}
+              >
+                <Trash2 size={14} /> Clear Boundary
+              </button>
+            </div>
+
+            <div className={`p-3 rounded-lg ${themeMode === 'light' ? 'bg-slate-50' : 'bg-inner'} text-[11px] text-text-muted`}>
+              <strong className="text-amber-300">Note (Map-Side Contract):</strong> Focus/dim rendering is handled by the embedded WebGIS map. The dashboard emits{' '}
+              <code className="font-mono text-sky-300">SET_PROJECT_BOUNDARY</code>, <code className="font-mono text-sky-300">FOCUS_BOUNDARY</code>,{' '}
+              <code className="font-mono text-sky-300">DIM_OUTSIDE_BOUNDARY</code> and <code className="font-mono text-sky-300">CLEAR_BOUNDARY_FOCUS</code> messages;
+              the external map project must implement those handlers. Boundary-based coverage &amp; analytics filtering is applied in the dashboard regardless.
             </div>
           </div>
         </fieldset>

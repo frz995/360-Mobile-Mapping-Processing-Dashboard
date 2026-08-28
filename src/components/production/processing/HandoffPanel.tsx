@@ -15,17 +15,20 @@ import {
 } from '../../../services/supabase';
 import type { DatasetRecord, ProcessingJobRecord } from '../../../types/production';
 import { jobStatusMeta } from '../../../utils/productionQueue';
+import { validateFolderForImport } from '../../../utils/processedOutputValidation';
 import { formatDateTime } from '../common';
 import { EXTERNAL_STATUS_META, EXTERNAL_JOB_TYPES, isExternalJobType } from './processingCommon';
 
 export interface HandoffPanelProps {
   jobs: ProcessingJobRecord[];
   api: ProductionApiClient;
+  projectSettings?: any;
   isGuestUser?: boolean;
   onRefreshJobs: () => void;
   onAddNotification?: (item: any) => void;
   onAddAuditLog?: (type: any, title: string, details: string, status?: any) => void;
   userLabel: string;
+  onOpenJobDetails?: (job: ProcessingJobRecord) => void;
 }
 
 const INPUT_CLASS =
@@ -44,7 +47,8 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
   onRefreshJobs,
   onAddNotification,
   onAddAuditLog,
-  userLabel
+  userLabel,
+  onOpenJobDetails
 }) => {
   const [assignees, setAssignees] = useState<Record<string, string>>({});
   const [commands, setCommands] = useState<Record<string, string>>({});
@@ -106,6 +110,17 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
       setBusyId(null);
       return;
     }
+    const v = validateFolderForImport(listing, job.subgrid || '', { expectedCount: fileCount });
+    if (v && !v.ok) {
+      const proceed = window.confirm(`Output validation found issues:\n\n${v.issues.slice(0, 6).join('\n')}\n\nComplete and import anyway?`);
+      if (!proceed) {
+        setMessage('Import blocked — output failed validation.');
+        onAddAuditLog?.('WARN', 'Import Blocked', `${job.name || job.id} blocked by validation: ${v.issues.join('; ')}`, 'warning');
+        setBusyId(null);
+        return;
+      }
+      onAddAuditLog?.('WARN', 'Import Overridden', `${job.name || job.id} imported despite validation issues: ${v.issues.join('; ')}`, 'warning');
+    }
     const dataset = await saveDatasetToSupabase({
       dataset_type: 'PROCESSED',
       pipeline_stage: stageFromJobType(job.job_type),
@@ -149,7 +164,7 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
 
     return (
       <div key={job.id || job.name} className="bg-card border border-subtle rounded-xl p-4 flex flex-col gap-2">
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap cursor-pointer" onClick={() => onOpenJobDetails?.(job)}>
           <span className="text-xs font-bold text-text-base">{job.name || job.job_type}</span>
           <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border uppercase tracking-wide ${meta.className}`}>{meta.label}</span>
           <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border uppercase tracking-wide ${ext.className}`}>{ext.label}</span>

@@ -8,7 +8,8 @@ import {
   Download,
   Loader2,
   ListChecks,
-  ChevronRight
+  ChevronRight,
+  FolderKanban
 } from 'lucide-react';
 import type { ProductionApiClient } from '../../services/productionApi';
 import {
@@ -19,6 +20,7 @@ import {
 } from '../../services/supabase';
 import type {
   DatasetRecord,
+  PipelineStageKey,
   ProcessingJobRecord,
   ProcessingJobType
 } from '../../types/production';
@@ -28,18 +30,24 @@ import {
   isJobActive,
   jobStatusMeta
 } from '../../utils/productionQueue';
+import { buildPipelineStages, stageJobsFor } from '../../utils/pipelineStages';
+import { validateFolderForImport } from '../../utils/processedOutputValidation';
+import type { StagingAggregate } from '../../utils/datasetLineage';
 import { JOB_TYPE_OPTIONS, formatDateTime } from './common';
 
 export interface PipelinePanelProps {
   jobs: ProcessingJobRecord[];
   datasets: DatasetRecord[];
   api: ProductionApiClient;
+  projectSettings?: any;
+  stagingAggregates?: StagingAggregate[];
   translate: (key: string) => string;
   isGuestUser?: boolean;
   onRefreshJobs: () => void;
   onAddNotification?: (item: any) => void;
   onAddAuditLog?: (type: any, title: string, details: string, status?: any) => void;
   userLabel: string;
+  onOpenJobDetails?: (job: ProcessingJobRecord) => void;
 }
 
 interface NewJobDraft {
@@ -84,17 +92,46 @@ function stageFromJobType(jobType: ProcessingJobType): DatasetRecord['pipeline_s
 
 export const PipelinePanel: React.FC<PipelinePanelProps> = ({
   jobs,
+  datasets,
   api,
+  projectSettings,
+  stagingAggregates = [],
+  translate,
   isGuestUser,
   onRefreshJobs,
   onAddNotification,
   onAddAuditLog,
-  userLabel
+  userLabel,
+  onOpenJobDetails
 }) => {
   const [draft, setDraft] = useState<NewJobDraft>(EMPTY_DRAFT);
   const [showNewJob, setShowNewJob] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const [stageFilter, setStageFilter] = useState<PipelineStageKey | null>(null);
+
+  const pipelineStages = useMemo(
+    () => buildPipelineStages({ jobs, datasets, stagingAggregates }),
+    [jobs, datasets, stagingAggregates]
+  );
+
+  const providers = useMemo(() => {
+    const list = (projectSettings?.productionProviders || []) as Array<{
+      name: string;
+      software: string;
+      version: string;
+      enabled: boolean;
+    }>;
+    const enabled = list.filter((p) => p.enabled !== false);
+    return enabled.length > 0 ? enabled : [];
+  }, [projectSettings?.productionProviders]);
+
+  const visibleJobs = useMemo(() => {
+    if (!stageFilter) return jobs;
+    const types = stageJobsFor(stageFilter);
+    if (types.length === 0) return jobs.filter((j) => j.pipeline_stage_key === stageFilter);
+    return jobs.filter((j) => types.includes(j.job_type));
+  }, [jobs, stageFilter]);
 
   const activeCount = useMemo(
     () => jobs.filter((j) => isJobActive(j.status)).length,
@@ -171,16 +208,33 @@ export const PipelinePanel: React.FC<PipelinePanelProps> = ({
   const retryJob = async (job: ProcessingJobRecord) => {
     if (isGuestUser || !job.id) return;
     setBusyId(job.id);
-    await updateProcessingJobStatusInSupabase(job.id, {
+    // Traceable retry: create a NEW child job preserving lineage instead of mutating in place.
+    const child: ProcessingJobRecord = {
+      job_type: job.job_type,
+      name: `${job.name || job.job_type} · retry`,
+      source_dataset_id: job.source_dataset_id,
+      source_folder: job.source_folder,
+      output_folder: job.output_folder,
+      subgrid: job.subgrid,
+      provider: job.provider,
+      software_version: job.software_version,
+      total_items: job.total_items,
       status: 'QUEUED',
       progress: 0,
       completed_items: 0,
       error_count: 0,
-      current_item: '',
-      completed_at: null
-    });
-    const res = await api.submitJob({ ...job, status: 'QUEUED', progress: 0 });
-    if (!res.ok) setMessage({ ok: false, text: res.message });
+      priority: typeof job.priority === 'number' ? job.priority : 0,
+      operator: userLabel,
+      retry_of: job.id,
+      retry_count: (job.retry_count || 0) + 1,
+      settings: { ...(job.settings || {}) }
+    };
+    const saved = await saveProcessingJobToSupabase(child);
+    if (saved?.id) {
+      onAddAuditLog?.('CREATE', 'Job Retried (traceable)', `${child.name} created as child of ${job.id} by ${userLabel}.`, 'info');
+    } else {
+      setMessage({ ok: false, text: 'Failed to create a traceable retry job.' });
+    }
     setBusyId(null);
     onRefreshJobs();
   };
@@ -193,6 +247,20 @@ export const PipelinePanel: React.FC<PipelinePanelProps> = ({
     const fileCount =
       listing?.fileCount || job.completed_items || job.total_items || 0;
     const sizeBytes = listing?.sizeBytes || fileCount * 1840000;
+
+    // Phase 1 (task F): gate import on folder validation when real filenames are enumerable.
+    const v = validateFolderForImport(listing, job.subgrid || '', { expectedCount: fileCount });
+    if (v && !v.ok) {
+      const summary = v.issues.slice(0, 6).join('\n');
+      const proceed = window.confirm(`Output validation found issues:\n\n${summary}\n\nImport anyway?`);
+      if (!proceed) {
+        setMessage({ ok: false, text: `Import blocked — output failed validation.` });
+        setBusyId(null);
+        onAddAuditLog?.('WARN', `Import Blocked`, `${title} blocked by validation: ${v.issues.join('; ')}`, 'warning');
+        return;
+      }
+      onAddAuditLog?.('WARN', `Import Overridden`, `${title} imported despite validation issues: ${v.issues.join('; ')}`, 'warning');
+    }
 
     const dataset: DatasetRecord = {
       dataset_type: 'PROCESSED',
@@ -272,6 +340,94 @@ export const PipelinePanel: React.FC<PipelinePanelProps> = ({
         </div>
       )}
 
+      {/* Project card */}
+      <div className="bg-gradient-to-r from-sky-950/40 to-emerald-950/30 border border-subtle rounded-xl p-4 flex items-center gap-3">
+        <div className="p-2.5 bg-inner rounded-xl border border-subtle text-sky-300 shrink-0">
+          <FolderKanban size={20} />
+        </div>
+        <div className="min-w-0">
+          <div className="text-[10px] uppercase tracking-wider text-text-muted font-bold">
+            {translate('pipelineProject')}
+          </div>
+          <div className="text-sm font-bold text-text-base truncate">
+            {projectSettings?.projectName || 'Image Production Project'}
+          </div>
+          <div className="text-[11px] text-text-muted font-mono">
+            {projectSettings?.contractCode || '—'}
+          </div>
+        </div>
+      </div>
+
+      {/* 9-stage pipeline band */}
+      <div className="bg-card border border-subtle rounded-xl p-4">
+        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <div className="text-[10px] uppercase tracking-wider text-text-muted font-bold">
+            {translate('pipelineStages')}
+          </div>
+          {stageFilter && (
+            <button
+              onClick={() => setStageFilter(null)}
+              className="text-[10px] font-semibold text-sky-300 hover:text-sky-200 cursor-pointer"
+            >
+              ✕ {translate('pipelineClearFilter')}
+            </button>
+          )}
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-9 gap-2">
+          {pipelineStages.map((s) => {
+            const active = stageFilter === s.key;
+            const cls =
+              s.status === 'COMPLETE'
+                ? 'border-emerald-500/40 bg-emerald-950/30 text-emerald-300'
+                : s.status === 'IN_PROGRESS'
+                  ? 'border-amber-500/40 bg-amber-950/30 text-amber-300'
+                  : s.status === 'FAILED'
+                    ? 'border-red-500/40 bg-red-950/30 text-red-300'
+                    : 'border-subtle bg-inner text-text-muted';
+            return (
+              <button
+                key={s.key}
+                onClick={() => setStageFilter(active ? null : s.key)}
+                className={`rounded-xl border p-2.5 text-left transition-colors cursor-pointer ${cls} ${
+                  active ? 'ring-1 ring-sky-400/60' : 'hover:border-sky-500/40'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-1 mb-1">
+                  <span className="text-[9px] font-bold uppercase tracking-wider">
+                    {translate(s.labelKey)}
+                  </span>
+                  {s.status === 'IN_PROGRESS' && typeof s.pct === 'number' && (
+                    <span className="text-[9px] font-mono">{s.pct}%</span>
+                  )}
+                </div>
+                <div className="w-full h-1 bg-black/30 rounded-full overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all duration-500"
+                    style={{
+                      width:
+                        s.status === 'COMPLETE'
+                          ? '100%'
+                          : s.status === 'IN_PROGRESS'
+                            ? `${Math.min(100, s.pct || 0)}%`
+                            : '0%',
+                      background:
+                        s.status === 'FAILED'
+                          ? '#f87171'
+                          : s.status === 'COMPLETE'
+                            ? '#34d399'
+                            : s.status === 'IN_PROGRESS'
+                              ? '#fbbf24'
+                              : '#64748b'
+                    }}
+                  />
+                </div>
+                {s.note && <div className="text-[9px] text-text-muted mt-1 truncate">{s.note}</div>}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {showNewJob && !isGuestUser && (
         <div className="bg-card border border-subtle rounded-xl p-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 animate-in fade-in zoom-in-98 duration-150">
           <div>
@@ -293,8 +449,30 @@ export const PipelinePanel: React.FC<PipelinePanelProps> = ({
           </div>
           <div>
             <label className="text-[10px] uppercase tracking-wider text-text-muted font-semibold">Provider</label>
-            <input className={NUMBER_INPUT_CLASS} value={draft.provider}
-              onChange={(e) => setDraft({ ...draft, provider: e.target.value })} />
+            {providers.length > 0 ? (
+              <select
+                className={NUMBER_INPUT_CLASS}
+                value={draft.provider}
+                onChange={(e) => {
+                  const p = providers.find((x) => x.name === e.target.value);
+                  setDraft({
+                    ...draft,
+                    provider: e.target.value,
+                    software_version: p?.version || draft.software_version
+                  });
+                }}
+              >
+                {providers.map((p) => (
+                  <option key={p.name} value={p.name}>
+                    {p.name}
+                    {p.version ? ` (v${p.version})` : ''}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input className={NUMBER_INPUT_CLASS} value={draft.provider}
+                onChange={(e) => setDraft({ ...draft, provider: e.target.value })} />
+            )}
           </div>
           <div>
             <label className="text-[10px] uppercase tracking-wider text-text-muted font-semibold">Source Folder (NAS)</label>
@@ -335,18 +513,27 @@ export const PipelinePanel: React.FC<PipelinePanelProps> = ({
               </tr>
             </thead>
             <tbody>
-              {jobs.length === 0 && (
-                <tr><td colSpan={7} className="px-3 py-10 text-center text-text-muted">No processing jobs yet. Create one to start the pipeline.</td></tr>
+              {visibleJobs.length === 0 && (
+                <tr><td colSpan={7} className="px-3 py-10 text-center text-text-muted">
+                  {stageFilter ? 'No jobs match this pipeline stage.' : 'No processing jobs yet. Create one to start the pipeline.'}
+                </td></tr>
               )}
-              {jobs.map((job) => {
+              {visibleJobs.map((job) => {
                 const meta = jobStatusMeta(job.status);
                 const eta = estimateEtaSeconds(job);
                 const busy = busyId === job.id;
                 return (
-                  <tr key={job.id} className="border-b border-subtle/60 hover:bg-inner/50 transition-colors">
+                  <tr
+                    key={job.id}
+                    onClick={() => onOpenJobDetails?.(job)}
+                    className={`border-b border-subtle/60 transition-colors ${onOpenJobDetails ? 'cursor-pointer hover:bg-inner/60' : ''}`}
+                  >
                     <td className="px-3 py-2.5 align-top">
                       <div className="font-semibold text-text-base flex items-center gap-2">
                         <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-inner border border-subtle text-sky-300">{job.job_type}</span>
+                        {typeof job.priority === 'number' && job.priority > 0 && (
+                          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-300">P{job.priority}</span>
+                        )}
                         {job.name || job.id}
                       </div>
                       <div className="text-[10px] text-text-muted mt-0.5">

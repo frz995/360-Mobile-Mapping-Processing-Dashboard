@@ -100,6 +100,8 @@ class JobRegistry:
                 "completed_items": 0,
                 "current_item": "",
                 "error_count": 0,
+                "failed_items": [],
+                "error_log": [],
                 "message": "queued",
                 "cancel": threading.Event(),
                 "syncer": syncer,
@@ -127,6 +129,8 @@ class JobRegistry:
             return
 
         completed, errors = 0, 0
+        failed_items: list = []
+        error_log: list = []
         with ThreadPoolExecutor(max_workers=self.concurrency) as pool:
             futures = {pool.submit(self._process_one, job_id, f, output_dir, job_type, settings): f for f in files}
             try:
@@ -135,11 +139,13 @@ class JobRegistry:
                         pool.shutdown(wait=False, cancel_futures=True)
                         push(status="CANCELLED", message="cancelled by operator")
                         return
-                    ok, name = fut.result()
+                    ok, name, err_msg = fut.result()
                     if ok:
                         completed += 1
                     else:
                         errors += 1
+                        failed_items.append(name)
+                        error_log.append({"at": _now(), "message": err_msg or "frame failed"})
                     progress = int((completed / total) * 100) if total else 100
                     push(
                         status="IN_PROGRESS",
@@ -147,28 +153,33 @@ class JobRegistry:
                         completed_items=completed,
                         current_item=name,
                         error_count=errors,
+                        failed_items=failed_items,
+                        error_log=error_log,
                     )
             except Exception as exc:  # noqa: BLE001
                 LOGGER.exception("batch worker failed")
-                push(status="FAILED", message=str(exc))
+                push(status="FAILED", message=str(exc),
+                     failed_items=failed_items, error_log=error_log)
                 return
 
         if errors > 0 and completed > 0:
             push(status="REVIEW_REQUIRED", progress=100, completed_items=completed,
-                 message=f"{completed} ok, {errors} frames need manual retouch", completed_at=_now())
+                 message=f"{completed} ok, {errors} frames need manual retouch", completed_at=_now(),
+                 failed_items=failed_items, error_log=error_log)
         elif errors > 0:
-            push(status="FAILED", message=f"{errors} frames failed", completed_at=_now())
+            push(status="FAILED", message=f"{errors} frames failed", completed_at=_now(),
+                 failed_items=failed_items, error_log=error_log)
         else:
             push(status="COMPLETED", progress=100, completed_items=completed,
                  message="batch complete — clean panoramas in output folder", completed_at=_now())
 
     @staticmethod
-    def _process_one(job_id: str, src_path: str, output_dir: str, job_type: str, settings: dict) -> tuple[bool, str]:
+    def _process_one(job_id: str, src_path: str, output_dir: str, job_type: str, settings: dict) -> tuple[bool, str, str | None]:
         name = os.path.basename(src_path)
         try:
             img = cv2.imread(src_path, cv2.IMREAD_COLOR)
             if img is None:
-                return False, name
+                return False, name, "unreadable image"
             if job_type == "MASK" or "mask" in settings or (job_type == "ENHANCE" and settings.get("mask")):
                 img = apply_mask_pipeline(img, settings)
             if job_type == "ENHANCE" or settings.get("enhance"):
@@ -178,10 +189,12 @@ class JobRegistry:
                 ext = ".jpg"
             quality = int(settings.get("jpegQuality", 92))
             ok = cv2.imwrite(os.path.join(output_dir, name), img, [int(cv2.IMWRITE_JPEG_QUALITY), quality])
-            return bool(ok), name
+            if ok:
+                return True, name, None
+            return False, name, "write failed"
         except Exception as exc:  # noqa: BLE001
             LOGGER.warning("frame failed %s: %s", name, exc)
-            return False, name
+            return False, name, str(exc)
 
 
 def _now() -> str:

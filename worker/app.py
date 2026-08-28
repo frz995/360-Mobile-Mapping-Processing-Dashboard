@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import platform
 import shutil
 import threading
 import time
@@ -24,6 +25,15 @@ logger = logging.getLogger("nas-worker")
 
 NAS_BASE_PATH = os.environ.get("NAS_BASE_PATH", "/nas/360_images").rstrip("/\\")
 API_TOKEN = os.environ.get("NAS_WORKER_TOKEN", "")  # optional shared secret
+
+# Stable worker identifier surfaced to the dashboard (hostname-based).
+_WORKER_ID = os.environ.get("NAS_WORKER_ID") or platform.node() or "nas-gpu-worker"
+
+
+def _now() -> str:
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).isoformat()
+
 
 app = FastAPI(title="GeoSphere 360 NAS GPU Worker", version="1.0.0")
 
@@ -117,6 +127,10 @@ def get_job(job_id: str) -> dict:
         "total_items": job["total_items"],
         "current_item": job["current_item"],
         "error_count": job["error_count"],
+        "failed_items": job.get("failed_items") or [],
+        "error_log": job.get("error_log") or [],
+        "last_heartbeat": job.get("last_heartbeat") or _now(),
+        "worker": _WORKER_ID,
         "message": job["message"],
         "finished": job["status"] in ("COMPLETED", "FAILED", "CANCELLED", "REVIEW_REQUIRED"),
     }

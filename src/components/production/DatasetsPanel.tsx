@@ -4,6 +4,7 @@ import {
   Plus,
   Trash2,
   GitBranch,
+  GitCommitHorizontal,
   CheckCircle2
 } from 'lucide-react';
 import {
@@ -11,6 +12,7 @@ import {
   saveDatasetToSupabase
 } from '../../services/supabase';
 import type { DatasetRecord, DatasetType, PipelineStage } from '../../types/production';
+import { createNextVersion } from '../../utils/datasetVersioning';
 import {
   DATASET_TYPE_OPTIONS,
   PIPELINE_STAGE_OPTIONS,
@@ -103,6 +105,25 @@ export const DatasetsPanel: React.FC<DatasetsPanelProps> = ({
     const ok = await deleteDatasetFromSupabase(ds.id);
     if (ok) {
       onAddAuditLog?.('DELETE', `Dataset Deleted: ${ds.name}`, `Metadata removed by ${userLabel} (NAS files untouched).`, 'warning');
+      onRefreshDatasets();
+    }
+  };
+
+  const createVersion = async (ds: DatasetRecord) => {
+    if (isGuestUser || !ds.id) return;
+    if (!window.confirm(`Create new version (v${(ds.version || 1) + 1}) of "${ds.name}"? The current version will be marked superseded.`)) return;
+    const next = createNextVersion(ds);
+    const superseed = await saveDatasetToSupabase({
+      ...ds,
+      ...next,
+      name: ds.name,
+      subgrid: (ds.subgrid || '').toUpperCase().trim(),
+    });
+    if (!superseed?.id) return;
+    const prior = await saveDatasetToSupabase({ ...ds, superseded_by: superseed.id });
+    if (prior) {
+      onAddNotification?.({ title: 'New Dataset Version', message: `"${ds.name}" v${superseed.version} created (supersedes v${ds.version || 1}).`, category: 'SYSTEM', read: false });
+      onAddAuditLog?.('CREATE', `Dataset New Version: ${ds.name} v${superseed.version}`, `Supersedes v${ds.version || 1} (${ds.id}); parent ${ds.id}.`, 'success');
       onRefreshDatasets();
     }
   };
@@ -236,20 +257,31 @@ export const DatasetsPanel: React.FC<DatasetsPanelProps> = ({
                   </td>
                   <td className="px-3 py-2.5 align-top">
                     {ds.parent_dataset_id ? (
-                      <span className="inline-flex items-center gap-1 text-[10px] text-sky-300"><GitBranch size={11} /> linked to parent</span>
+                      <span className="inline-flex items-center gap-1 text-[10px] text-sky-300"><GitBranch size={11} /> v{ds.version || 1} · parent v{ds.version ? ds.version - 1 : '?'}</span>
                     ) : (
-                      <span className="text-[10px] text-text-muted">root</span>
+                      <span className="inline-flex items-center gap-1 text-[10px] text-text-muted"><GitBranch size={11} /> root</span>
                     )}
-                    <div className="text-[10px] text-text-muted">{formatDateTime(ds.created_at)}</div>
+                    {ds.superseded_by ? (
+                      <div className="text-[10px] text-amber-300 mt-0.5 inline-flex items-center gap-1"><GitCommitHorizontal size={10} /> superseded</div>
+                    ) : (
+                      <div className="text-[10px] text-emerald-300 mt-0.5">current</div>
+                    )}
+                    <div className="text-[10px] text-text-muted mt-0.5">{formatDateTime(ds.created_at)}</div>
                   </td>
                   <td className="px-3 py-2.5 align-top text-right">
                     {isGuestUser ? (
                       <span className="text-[10px] text-text-muted italic">read-only</span>
                     ) : (
-                      <button title="Delete metadata (NAS files untouched)" onClick={() => remove(ds)}
-                        className="p-1.5 rounded-md bg-inner border border-subtle hover:bg-red-500/20 hover:border-red-500/40 text-red-400 transition-colors cursor-pointer">
-                        <Trash2 size={13} />
-                      </button>
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button title="Create a new version of this dataset (marks current as superseded)" onClick={() => createVersion(ds)}
+                          className="p-1.5 rounded-md bg-inner border border-subtle hover:bg-sky-500/20 hover:border-sky-500/40 text-sky-300 transition-colors cursor-pointer">
+                          <GitCommitHorizontal size={13} />
+                        </button>
+                        <button title="Delete metadata (NAS files untouched)" onClick={() => remove(ds)}
+                          className="p-1.5 rounded-md bg-inner border border-subtle hover:bg-red-500/20 hover:border-red-500/40 text-red-400 transition-colors cursor-pointer">
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
                     )}
                   </td>
                 </tr>

@@ -132,9 +132,27 @@ export interface SurveyAnalyticsInput {
   qaBySubgrid?: Record<string, { approved: number; rejected: number }>;
   targetKm?: number;
   targetImages?: number;
+  /** Optional subgrid allow-list (from the project geographic boundary). */
+  boundarySubgrids?: Set<string>;
 }
 
 export function computeSurveyAnalytics(input: SurveyAnalyticsInput): SurveyAnalytics {
+  // Apply the project geographic boundary (subgrid allow-list) if provided.
+  const boundarySubgrids = input.boundarySubgrids;
+  if (boundarySubgrids && boundarySubgrids.size > 0) {
+    const allow = (sg: string) => boundarySubgrids.has((extractSubgrid(sg) || sg).toUpperCase());
+    if (input.batches) input.batches = input.batches.filter((b) => allow((b.subgrid || b.imageFilename || '')));
+    if (input.daily) input.daily = input.daily.filter((d) => allow((d.subgrid || d.imageFilename || '')));
+    if (input.aggregates) input.aggregates = input.aggregates.filter((a) => allow(a.subgrid || ''));
+    if (input.qaBySubgrid) {
+      const qa: Record<string, { approved: number; rejected: number }> = {};
+      Object.entries(input.qaBySubgrid).forEach(([k, v]) => {
+        if (allow(k)) qa[k] = v;
+      });
+      input.qaBySubgrid = qa;
+    }
+  }
+
   const batches = (input.batches || []).filter(Boolean);
   const daily = (input.daily || []).filter(Boolean);
   const aggregates = input.aggregates || [];

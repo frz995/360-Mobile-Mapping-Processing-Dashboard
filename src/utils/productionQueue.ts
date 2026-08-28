@@ -46,7 +46,7 @@ export function startJobPolling(opts: JobPollOptions): () => void {
 }
 
 const TERMINAL_STATUSES: ProcessingJobStatus[] = ['COMPLETED', 'FAILED', 'IMPORTED', 'APPROVED', 'REJECTED', 'CANCELLED'];
-const ACTIVE_STATUSES: ProcessingJobStatus[] = ['QUEUED', 'IN_PROGRESS', 'QA_PENDING', 'PENDING'];
+const ACTIVE_STATUSES: ProcessingJobStatus[] = ['QUEUED', 'IN_PROGRESS', 'QA_PENDING', 'PENDING', 'REVIEW_REQUIRED'];
 
 export function isJobActive(status?: ProcessingJobStatus): boolean {
   return !!status && ACTIVE_STATUSES.includes(status);

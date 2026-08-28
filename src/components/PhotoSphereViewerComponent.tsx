@@ -8,6 +8,8 @@ export interface PhotoSphereViewerHandle {
   zoomOut: () => void;
   toggleFullscreen: () => void;
   getPosition: () => { yaw: number; pitch: number; fov: number } | null;
+  /** Orient the camera to a heading in degrees (radians internally). */
+  setPosition: (position: { yaw?: number; pitch?: number; fov?: number }) => void;
 }
 
 export interface PhotoSphereViewerProps {
@@ -52,6 +54,13 @@ export const PhotoSphereViewerComponent = forwardRef<PhotoSphereViewerHandle, Ph
           pitch: (pos.pitch * 180) / Math.PI,
           fov: viewerRef.current.getZoomLevel(),
         };
+      },
+      setPosition: ({ yaw, pitch, fov }) => {
+        if (!viewerRef.current) return;
+        if (typeof fov === 'number' && isFinite(fov) && fov > 0) viewerRef.current.zoom(fov);
+        if (typeof yaw === 'number' && isFinite(yaw) && typeof pitch === 'number' && isFinite(pitch)) {
+          viewerRef.current.rotate({ yaw: (yaw * Math.PI) / 180, pitch: (pitch * Math.PI) / 180 });
+        }
       },
     }));
 

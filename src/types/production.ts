@@ -53,10 +53,14 @@ export interface DatasetRecord {
   status?: DatasetStatus;
   version?: number;
   parent_dataset_id?: string | null;
+  /** Id of the dataset that superseded (replaced) this one. Set when a newer version is created. */
+  superseded_by?: string | null;
   metadata?: Record<string, unknown>;
   created_by?: string;
   created_at?: string;
   updated_at?: string;
+  /** Runtime-only pipeline stage association (not persisted). */
+  pipeline_stage_key?: PipelineStageKey;
 }
 
 export interface ProcessingJobRecord {
@@ -90,6 +94,19 @@ export interface ProcessingJobRecord {
   completed_at?: string | null;
   created_at?: string;
   updated_at?: string;
+  // ---- Phase 1 runtime-only operational fields (no dedicated DB columns) ----
+  skipped_items?: number;
+  failed_items?: string[];
+  failure_reason?: string;
+  error_log?: Array<{ at: string; message: string }>;
+  priority?: number;
+  retry_of?: string;
+  retry_count?: number;
+  from_retry?: boolean;
+  worker?: string;
+  last_heartbeat?: string | null;
+  /** Runtime-only pipeline stage association (not persisted). */
+  pipeline_stage_key?: PipelineStageKey;
 }
 
 export type ExternalJobStatus = 'none' | 'awaiting_submit' | 'running_external' | 'done';
@@ -97,6 +114,37 @@ export type ExternalJobStatus = 'none' | 'awaiting_submit' | 'running_external' 
 export type ProcessingCenterTab = 'board' | 'handoff' | 'qa' | 'capacity';
 
 export type LineageTab = 'graph' | 'trace' | 'survey' | 'registry';
+
+// ---------------------------------------------------------------------
+// Dynamic Processing Pipeline (Phase 1)
+// The 9 project-level stages are derived from real jobs/datasets/staging
+// state — never hardcoded. Runtime-only; no dedicated DB columns.
+// ---------------------------------------------------------------------
+export type PipelineStageStatus =
+  | 'WAITING'
+  | 'IN_PROGRESS'
+  | 'COMPLETE'
+  | 'FAILED'
+  | 'N/A';
+
+export type PipelineStageKey =
+  | 'ingestion'
+  | 'image_validation'
+  | 'stitching'
+  | 'privacy_blur'
+  | 'metadata_validation'
+  | 'data_staging' // csvpanotrack -> staging_panoramas
+  | 'qaqc'
+  | 'publish'
+  | 'final_export';
+
+export interface PipelineStageResult {
+  key: PipelineStageKey;
+  labelKey: string;
+  status: PipelineStageStatus;
+  pct?: number;
+  note?: string;
+}
 
 export interface EnhancementParams {
   brightness: number; //  -100 .. 100
@@ -208,6 +256,10 @@ export interface ProcessedOutputValidationResult {
   missing: string[];
   totalSizeBytes: number;
   issues: string[];
+  duplicates?: string[];
+  gpsIssues?: string[];
+  timestampIssues?: string[];
+  metadataIssues?: string[];
 }
 
 export type ProductionTab =

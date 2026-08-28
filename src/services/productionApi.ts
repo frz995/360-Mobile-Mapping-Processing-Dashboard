@@ -31,6 +31,10 @@ export interface WorkerJobStatus {
   current_item?: string;
   error_count?: number;
   message?: string;
+  failed_items?: string[];
+  error_log?: Array<{ at: string; message: string }>;
+  last_heartbeat?: string | null;
+  worker?: string;
   finished: boolean;
 }
 

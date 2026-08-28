@@ -1001,7 +1001,7 @@ export const MapComponent = ({
       // 1. Send Basemap
       iframeRef.current.contentWindow.postMessage({
         type: 'SET_BASEMAP',
-        basemap: s.defaultBasemap || 'positron',
+        basemap: s.defaultBasemap || 'ofm-positron',
         customUrl: s.customBasemapUrl || '',
         opacity: (s.basemapOpacity ?? 100) / 100
       }, '*');
@@ -1111,8 +1111,8 @@ export const MapComponent = ({
 
       <iframe
         ref={iframeRef}
-        key={`${refreshKey || 0}-${effectiveSettings?.defaultBasemap || 'positron'}`}
-        src={`${import.meta.env.VITE_MAP_URL || 'https://mobilemapping-nine.vercel.app'}/?embed=true&dashboard=true&basemap=${encodeURIComponent(effectiveSettings?.defaultBasemap || 'positron')}${refreshKey ? `&t=${refreshKey}` : ''}`}
+        key={`${refreshKey || 0}-${effectiveSettings?.defaultBasemap || 'ofm-positron'}`}
+        src={`${import.meta.env.VITE_MAP_URL || 'https://mobilemapping-nine.vercel.app'}/?embed=true&dashboard=true&basemap=${encodeURIComponent(effectiveSettings?.defaultBasemap || 'ofm-positron')}${refreshKey ? `&t=${refreshKey}` : ''}`}
         onLoad={() => {
           if (iframeRef.current && iframeRef.current.contentWindow) {
             iframeRef.current.contentWindow.postMessage({
@@ -7202,6 +7202,22 @@ export default function App() {
   const [qaQuestionnaireAnswer, setQaQuestionnaireAnswer] = useState<'yes' | 'no' | null>(null);
   const [isQaLocked, setIsQaLocked] = useState<boolean>(false);
 
+  const clearMapSelection = () => {
+    setHasSelectedPoint(false);
+    setActivePanoramaFilename('');
+    setActivePanoramaUrl('');
+    setInspectorSubgrid('');
+    setInspectorCoords({ lat: 0, lng: 0 });
+    try {
+      const iframes = document.querySelectorAll<HTMLIFrameElement>('iframe');
+      iframes.forEach((f) => {
+        f.contentWindow?.postMessage({ type: 'MAP_POINT_DESELECTED' }, '*');
+      });
+    } catch (err) {
+      // ignore cross-frame messaging errors
+    }
+  };
+
   const [isQAQCRunnerModalOpen, setIsQAQCRunnerModalOpen] = useState<boolean>(false);
   const [isDefectsGalleryOpen, setIsDefectsGalleryOpen] = useState<boolean>(false);
   const [selectedDefectSubgrid, setSelectedDefectSubgrid] = useState<string>('');
@@ -7598,7 +7614,12 @@ export default function App() {
             setActivePanoramaUrl('');
           }
           if (typeof pt.bearing === 'number' || typeof pt.heading === 'number') {
-            setPanoramaTelemetry(prev => ({ ...prev, yaw: pt.bearing ?? pt.heading }));
+            const yaw = pt.bearing ?? pt.heading;
+            setPanoramaTelemetry(prev => ({ ...prev, yaw }));
+            // Orient the live 360 camera to the selected feature heading.
+            if (typeof yaw === 'number' && isFinite(yaw)) {
+              dashboardPsvRef.current?.setPosition({ yaw });
+            }
           }
           if (typeof pt.lat === 'number' && (typeof pt.lng === 'number' || typeof pt.lon === 'number')) {
             setInspectorCoords({
@@ -8334,6 +8355,29 @@ export default function App() {
       processingTabHandoff: 'Handoff',
       processingTabQA: 'QA/QC',
       processingTabCapacity: 'Capacity',
+      pipelineProject: 'Project pipeline',
+      pipelineStages: 'Pipeline stages',
+      pipelineClearFilter: 'Clear stage filter',
+      pipelineStageIngestion: 'Data ingestion',
+      pipelineStageImageValidation: 'Image validation',
+      pipelineStageStitching: 'Stitching',
+      pipelineStagePrivacyBlur: 'Privacy blur',
+      pipelineStageMetadataValidation: 'Metadata validation',
+      pipelineStageDataStaging: 'Data staging',
+      pipelineStageQaqc: 'QA/QC',
+      pipelineStagePublish: 'Publish',
+      pipelineStageFinalExport: 'Final export',
+      jobDetailsTitle: 'Processing job',
+      jobDetailsOverview: 'Overview',
+      jobDetailsStatus: 'Status',
+      jobDetailsWorker: 'Worker',
+      jobDetailsProgress: 'Progress',
+      jobDetailsTimeline: 'Timeline',
+      jobDetailsLogs: 'Logs',
+      jobDetailsErrors: 'Errors',
+      jobDetailsLineage: 'Lineage',
+      jobDetailsRetryOf: 'Retry of',
+      jobDetailsRetry: 'Create traceable retry',
       lineageTabGraph: 'Lineage Graph',
       lineageTabTrace: 'Trace',
       lineageTabSurvey: 'Survey Capture',
@@ -8595,6 +8639,29 @@ export default function App() {
       processingTabHandoff: 'Serah Tugas',
       processingTabQA: 'QA/QC',
       processingTabCapacity: 'Kapasiti',
+      pipelineProject: 'Saluran paip projek',
+      pipelineStages: 'Peringkat saluran paip',
+      pipelineClearFilter: 'Kosongkan penapis peringkat',
+      pipelineStageIngestion: 'Pengambilan data',
+      pipelineStageImageValidation: 'Pengesahan imej',
+      pipelineStageStitching: 'Cantuman',
+      pipelineStagePrivacyBlur: 'Kabur privasi',
+      pipelineStageMetadataValidation: 'Pengesahan metadata',
+      pipelineStageDataStaging: 'Peringkat data',
+      pipelineStageQaqc: 'QA/QC',
+      pipelineStagePublish: 'Terbit',
+      pipelineStageFinalExport: 'Eksport akhir',
+      jobDetailsTitle: 'Kerja pemprosesan',
+      jobDetailsOverview: 'Ringkasan',
+      jobDetailsStatus: 'Status',
+      jobDetailsWorker: 'Pekerja',
+      jobDetailsProgress: 'Kemajuan',
+      jobDetailsTimeline: 'Garis masa',
+      jobDetailsLogs: 'Log',
+      jobDetailsErrors: 'Ralat',
+      jobDetailsLineage: 'Keturunan',
+      jobDetailsRetryOf: 'Cuba semula daripada',
+      jobDetailsRetry: 'Cipta cubaan semula',
       lineageTabGraph: 'Graf Silsilah',
       lineageTabTrace: 'Jejak',
       lineageTabSurvey: 'Tangkapan Tinjauan',
@@ -10196,6 +10263,15 @@ export default function App() {
                     <div className="flex-1 flex gap-2.5 p-2.5 min-h-0">
                       {/* Left: 360 Panorama Canvas + Floating HUD Overlay */}
                       <div className="flex-1 bg-app rounded-lg border border-subtle relative overflow-hidden group flex flex-col min-w-0">
+                        {hasSelectedPoint && (
+                          <button
+                            onClick={clearMapSelection}
+                            title="Return to map (clear 360 selection)"
+                            className="absolute top-2 right-2 z-20 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-900/80 border border-subtle text-[10px] font-bold uppercase tracking-wide text-text-base hover:bg-slate-800 hover:border-sky-500/40 transition-colors cursor-pointer shadow"
+                          >
+                            <X size={12} /> Return to Map
+                          </button>
+                        )}
                         {hasSelectedPoint ? (
                           <>
                             {(() => {
@@ -10313,6 +10389,11 @@ export default function App() {
                                   index: targetIdx + 1
                                 };
 
+                                // Keep the live 360 camera facing the station heading.
+                                if (typeof nextBearing === 'number' && isFinite(nextBearing)) {
+                                  dashboardPsvRef.current?.setPosition({ yaw: nextBearing });
+                                }
+
                                 const iframes = document.querySelectorAll('iframe');
                                 iframes.forEach((f) => {
                                   try {
@@ -10327,6 +10408,13 @@ export default function App() {
                                       {
                                         type: 'MAP_POINT_SELECTED',
                                         point: pointPayload
+                                      },
+                                      '*'
+                                    );
+                                    f.contentWindow?.postMessage(
+                                      {
+                                        type: 'SET_CAMERA_HEADING',
+                                        heading: nextBearing
                                       },
                                       '*'
                                     );

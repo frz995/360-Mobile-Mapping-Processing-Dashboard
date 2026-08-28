@@ -19,6 +19,7 @@ import { JobBoardPanel } from './production/processing/JobBoardPanel';
 import { HandoffPanel } from './production/processing/HandoffPanel';
 import { QAConsultPanel } from './production/processing/QAConsultPanel';
 import { CapacityPanel } from './production/processing/CapacityPanel';
+import { JobDetailsDrawer } from './production/processing/JobDetailsDrawer';
 
 export interface ProcessingCenterWorkspaceProps {
   projectSettings: any;
@@ -50,6 +51,7 @@ export const ProcessingCenterWorkspace: React.FC<ProcessingCenterWorkspaceProps>
   const [activeTab, setActiveTab] = useState<ProcessingCenterTab>('board');
   const [datasets, setDatasets] = useState<DatasetRecord[]>([]);
   const [jobs, setJobs] = useState<ProcessingJobRecord[]>([]);
+  const [selectedJob, setSelectedJob] = useState<ProcessingJobRecord | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const pollStopRef = useRef<(() => void) | null>(null);
 
@@ -166,22 +168,26 @@ export const ProcessingCenterWorkspace: React.FC<ProcessingCenterWorkspaceProps>
               jobs={jobs}
               datasets={datasets}
               api={api}
+              projectSettings={projectSettings}
               isGuestUser={isGuestUser}
               onRefreshJobs={refreshJobs}
               onAddNotification={addNotification}
               onAddAuditLog={addAuditLog}
               userLabel={userLabel}
+              onOpenJobDetails={setSelectedJob}
             />
           )}
           {activeTab === 'handoff' && (
             <HandoffPanel
               jobs={jobs}
               api={api}
+              projectSettings={projectSettings}
               isGuestUser={isGuestUser}
               onRefreshJobs={refreshJobs}
               onAddNotification={addNotification}
               onAddAuditLog={addAuditLog}
               userLabel={userLabel}
+              onOpenJobDetails={setSelectedJob}
             />
           )}
           {activeTab === 'qa' && (
@@ -207,6 +213,18 @@ export const ProcessingCenterWorkspace: React.FC<ProcessingCenterWorkspaceProps>
           )}
         </div>
       </div>
+      {selectedJob && (
+        <JobDetailsDrawer
+          job={selectedJob}
+          datasets={datasets}
+          isGuestUser={isGuestUser}
+          userLabel={userLabel}
+          onClose={() => setSelectedJob(null)}
+          onRefreshJobs={refreshJobs}
+          onAddNotification={addNotification}
+          onAddAuditLog={addAuditLog}
+        />
+      )}
     </div>
   );
 };

@@ -10,6 +10,7 @@ import {
   ListChecks,
   Filter,
   ExternalLink,
+  Pause,
   UserRound
 } from 'lucide-react';
 import type { ProductionApiClient } from '../../../services/productionApi';
@@ -33,6 +34,7 @@ import {
   jobStatusMeta
 } from '../../../utils/productionQueue';
 import { formatDateTime } from '../common';
+import { validateFolderForImport } from '../../../utils/processedOutputValidation';
 import {
   ALL_JOB_TYPES,
   EXTERNAL_STATUS_META,
@@ -44,11 +46,13 @@ export interface JobBoardPanelProps {
   jobs: ProcessingJobRecord[];
   datasets: DatasetRecord[];
   api: ProductionApiClient;
+  projectSettings?: any;
   isGuestUser?: boolean;
   onRefreshJobs: () => void;
   onAddNotification?: (item: any) => void;
   onAddAuditLog?: (type: any, title: string, details: string, status?: any) => void;
   userLabel: string;
+  onOpenJobDetails?: (job: ProcessingJobRecord) => void;
 }
 
 interface NewJobDraft {
@@ -58,6 +62,8 @@ interface NewJobDraft {
   output_folder: string;
   subgrid: string;
   total_items: number;
+  provider: string;
+  software_version: string;
 }
 
 const EMPTY_DRAFT: NewJobDraft = {
@@ -66,7 +72,9 @@ const EMPTY_DRAFT: NewJobDraft = {
   source_folder: 'RAW',
   output_folder: 'stitchblur',
   subgrid: '',
-  total_items: 500
+  total_items: 500,
+  provider: 'External PC',
+  software_version: ''
 };
 
 const INPUT_CLASS =
@@ -100,11 +108,13 @@ export const JobBoardPanel: React.FC<JobBoardPanelProps> = ({
   jobs,
   datasets,
   api,
+  projectSettings,
   isGuestUser,
   onRefreshJobs,
   onAddNotification,
   onAddAuditLog,
-  userLabel
+  userLabel,
+  onOpenJobDetails
 }) => {
   const [draft, setDraft] = useState<NewJobDraft>(EMPTY_DRAFT);
   const [showNewJob, setShowNewJob] = useState(false);
@@ -114,6 +124,16 @@ export const JobBoardPanel: React.FC<JobBoardPanelProps> = ({
   const [filterType, setFilterType] = useState<string>('ALL');
   const [search, setSearch] = useState('');
   const [mineOnly, setMineOnly] = useState(false);
+
+  const providers = useMemo(() => {
+    const list = (projectSettings?.productionProviders || []) as Array<{
+      name: string;
+      software: string;
+      version: string;
+      enabled: boolean;
+    }>;
+    return list.filter((p) => p.enabled !== false);
+  }, [projectSettings?.productionProviders]);
 
   const subgrids = useMemo(() => {
     const set = new Set<string>();
@@ -186,27 +206,45 @@ export const JobBoardPanel: React.FC<JobBoardPanelProps> = ({
     onRefreshJobs();
   };
 
+  const pauseJob = async (job: ProcessingJobRecord) => {
+    if (isGuestUser || !job.id) return;
+    setBusyId(job.id);
+    await updateProcessingJobStatusInSupabase(job.id, { status: 'QUEUED' });
+    onAddAuditLog?.('EDIT', `Job Paused`, `${job.name || job.id} paused by ${userLabel}.`, 'info');
+    setBusyId(null);
+    onRefreshJobs();
+  };
+
   const retryJob = async (job: ProcessingJobRecord) => {
     if (isGuestUser || !job.id) return;
     setBusyId(job.id);
-    await updateProcessingJobStatusInSupabase(job.id, {
+    // Traceable retry: create a NEW child job, preserving lineage.
+    const child: ProcessingJobRecord = {
+      job_type: job.job_type,
+      name: `${job.name || job.job_type} · retry`,
+      source_dataset_id: job.source_dataset_id,
+      source_folder: job.source_folder,
+      output_folder: job.output_folder,
+      subgrid: job.subgrid,
+      provider: job.provider,
+      software_version: job.software_version,
+      total_items: job.total_items,
       status: 'PENDING',
       progress: 0,
       completed_items: 0,
       error_count: 0,
-      current_item: '',
-      completed_at: null,
-      qa_decision: null,
-      qa_notes: '',
-      qa_by: null as any,
-      qa_at: null
-    });
-    if (isWorkerJobType(job.job_type)) {
-      const res = await api.submitJob({ ...job, status: 'QUEUED', progress: 0 });
-      if (!res.ok) setMessage({ ok: false, text: res.message });
-    } else if (isExternalJobType(job.job_type)) {
-      await updateProcessingJobHandoffInSupabase(job.id, { externalStatus: 'none' });
-      await updateProcessingJobStatusInSupabase(job.id, { status: 'PENDING' });
+      priority: typeof job.priority === 'number' ? job.priority : 0,
+      operator: userLabel,
+      retry_of: job.id,
+      retry_count: (job.retry_count || 0) + 1,
+      external_status: isExternalJobType(job.job_type) ? 'none' : undefined,
+      settings: { ...(job.settings || {}) }
+    };
+    const saved = await saveProcessingJobToSupabase(child);
+    if (!saved?.id) {
+      setMessage({ ok: false, text: 'Failed to create a traceable retry job.' });
+    } else {
+      onAddAuditLog?.('CREATE', 'Job Retried (traceable)', `${child.name} created as child of ${job.id} by ${userLabel}.`, 'info');
     }
     setBusyId(null);
     onRefreshJobs();
@@ -218,6 +256,19 @@ export const JobBoardPanel: React.FC<JobBoardPanelProps> = ({
     const listing = await api.listFolder(job.output_folder || '');
     const fileCount = listing?.fileCount || job.completed_items || job.total_items || 0;
     const sizeBytes = listing?.sizeBytes || fileCount * 1840000;
+
+    const v = validateFolderForImport(listing, job.subgrid || '', { expectedCount: fileCount });
+    if (v && !v.ok) {
+      const proceed = window.confirm(`Output validation found issues:\n\n${v.issues.slice(0, 6).join('\n')}\n\nImport anyway?`);
+      if (!proceed) {
+        setMessage({ ok: false, text: 'Import blocked — output failed validation.' });
+        onAddAuditLog?.('WARN', 'Import Blocked', `${job.name || job.id} blocked by validation: ${v.issues.join('; ')}`, 'warning');
+        setBusyId(null);
+        return;
+      }
+      onAddAuditLog?.('WARN', 'Import Overridden', `${job.name || job.id} imported despite validation issues: ${v.issues.join('; ')}`, 'warning');
+    }
+
     const dataset = await saveDatasetToSupabase({
       dataset_type: 'PROCESSED',
       pipeline_stage: stageFromJobType(job.job_type),
@@ -269,7 +320,8 @@ export const JobBoardPanel: React.FC<JobBoardPanelProps> = ({
       source_folder: draft.source_folder || undefined,
       output_folder: draft.output_folder || undefined,
       subgrid: draft.subgrid.trim().toUpperCase(),
-      provider: isWorkerJobType(draft.job_type) ? 'NAS GPU Worker' : external ? 'External PC' : 'Tracked',
+      provider: draft.provider || (isWorkerJobType(draft.job_type) ? 'NAS GPU Worker' : external ? 'External PC' : 'Tracked'),
+      software_version: draft.software_version || undefined,
       status: 'PENDING',
       progress: 0,
       completed_items: 0,
@@ -387,6 +439,23 @@ export const JobBoardPanel: React.FC<JobBoardPanelProps> = ({
               <input type="number" min={1} value={draft.total_items}
                 onChange={(e) => setDraft({ ...draft, total_items: parseInt(e.target.value || '0', 10) || 0 })} className={INPUT_CLASS} />
             </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-[10px] uppercase tracking-wider text-text-muted">Provider</span>
+              {providers.length > 0 ? (
+                <select value={draft.provider}
+                  onChange={(e) => {
+                    const p = providers.find((x) => x.name === e.target.value);
+                    setDraft({ ...draft, provider: e.target.value, software_version: p?.version || draft.software_version });
+                  }}
+                  className={INPUT_CLASS}>
+                  {providers.map((p) => (
+                    <option key={p.name} value={p.name}>{p.name}{p.version ? ` (v${p.version})` : ''}</option>
+                  ))}
+                </select>
+              ) : (
+                <input value={draft.provider} onChange={(e) => setDraft({ ...draft, provider: e.target.value })} className={INPUT_CLASS} />
+              )}
+            </label>
           </div>
           <p className="text-[11px] text-text-muted mt-2">
             {isWorkerJobType(draft.job_type) ? 'Executed by the NAS GPU Worker (deterministic params).' :
@@ -431,9 +500,14 @@ export const JobBoardPanel: React.FC<JobBoardPanelProps> = ({
                 const eta = estimateEtaSeconds(job);
                 const busy = busyId === job.id;
                 return (
-                  <tr key={job.id || job.name} className="border-b border-subtle/50">
+                  <tr key={job.id || job.name} className="border-b border-subtle/50 cursor-pointer" onClick={() => onOpenJobDetails?.(job)}>
                     <td className="py-2 px-3">
-                      <div className="text-text-base font-semibold">{job.name || job.job_type}</div>
+                      <div className="flex items-center gap-2">
+                        {typeof job.priority === 'number' && job.priority > 0 && (
+                          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-300">P{job.priority}</span>
+                        )}
+                        <span className="text-text-base font-semibold">{job.name || job.job_type}</span>
+                      </div>
                       <div className="text-[10px] text-text-muted font-mono">{job.id ? job.id.slice(0, 8) : ''} · <span className="font-sans">{formatDateTime(job.created_at)}</span></div>
                       {job.output_folder && <div className="text-[10px] text-text-muted font-mono truncate max-w-[220px]">→ {job.output_folder}</div>}
                     </td>
@@ -481,10 +555,18 @@ export const JobBoardPanel: React.FC<JobBoardPanelProps> = ({
                             </button>
                           )}
                           {isJobActive(job.status) && (
-                            <button onClick={() => cancelJob(job)} disabled={busy}
-                              className="p-1.5 rounded-md bg-inner border border-subtle hover:bg-rose-500/15 hover:border-rose-500/40 text-rose-300 cursor-pointer disabled:opacity-40 transition-colors" title="Cancel">
-                              {busy ? <Loader2 size={12} className="animate-spin" /> : <Ban size={12} />}
-                            </button>
+                            <>
+                              {job.status === 'IN_PROGRESS' && (
+                                <button onClick={() => pauseJob(job)} disabled={busy}
+                                  className="p-1.5 rounded-md bg-inner border border-subtle hover:bg-amber-500/15 hover:border-amber-500/40 text-amber-300 cursor-pointer disabled:opacity-40 transition-colors" title="Pause">
+                                  {busy ? <Loader2 size={12} className="animate-spin" /> : <Pause size={12} />}
+                                </button>
+                              )}
+                              <button onClick={() => cancelJob(job)} disabled={busy}
+                                className="p-1.5 rounded-md bg-inner border border-subtle hover:bg-rose-500/15 hover:border-rose-500/40 text-rose-300 cursor-pointer disabled:opacity-40 transition-colors" title="Cancel">
+                                {busy ? <Loader2 size={12} className="animate-spin" /> : <Ban size={12} />}
+                              </button>
+                            </>
                           )}
                           {(job.status === 'COMPLETED') && (
                             <button onClick={() => importOutput(job)} disabled={busy}
