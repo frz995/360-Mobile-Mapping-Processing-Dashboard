@@ -1168,7 +1168,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
           <div className="flex items-center gap-1.5 sm:gap-2 text-xs truncate">
             <span className="text-text-muted font-medium tracking-tight hidden md:inline">GeoSphere 360</span>
             <span className="text-text-muted/30 hidden md:inline">/</span>
-            <span className="text-text-muted font-medium hidden sm:inline">QA/QC</span>
+            <span className="text-text-muted font-medium hidden sm:inline">Acquisition QC</span>
             <span className="text-text-muted/30 hidden sm:inline">/</span>
             {workbenchTab === 'console' && (
               <>
@@ -1461,7 +1461,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Search subgrid, date, PIC..."
-                  className="w-full bg-inner border border-subtle rounded-xl pl-8 pr-3 py-1.5 text-xs text-text-base placeholder:text-text-muted focus:outline-none focus:border-slate-500 transition-all font-sans"
+                  className="w-full bg-inner border border-subtle rounded-xl pl-8 pr-3 py-1.5 text-xs text-text-base placeholder:text-text-muted focus:outline-none focus:border-subtle transition-all font-sans"
                 />
               </div>
 
@@ -1508,7 +1508,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                     type="checkbox"
                     checked={showOnlyWithFrames}
                     onChange={(e) => setShowOnlyWithFrames(e.target.checked)}
-                    className="rounded border-subtle bg-inner text-slate-400 focus:ring-0 cursor-pointer w-3.5 h-3.5"
+                    className="rounded border-subtle bg-inner text-text-muted focus:ring-0 cursor-pointer w-3.5 h-3.5"
                   />
                   <span>Show valid frames only</span>
                 </label>
@@ -1576,8 +1576,8 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                       className={`p-3 rounded-xl border transition-all duration-150 flex items-center justify-between gap-2.5 ${isZeroFrames
                         ? 'opacity-40 bg-card border-subtle/50 cursor-not-allowed text-text-muted'
                         : isSelected
-                          ? 'bg-slate-700/60 border-slate-300/80 text-white shadow-lg ring-2 ring-slate-400/40 cursor-pointer'
-                          : 'bg-card hover:bg-slate-800/40 hover:border-slate-600/50 text-text-muted hover:text-text-base border-subtle cursor-pointer'
+                          ? 'bg-inner/60 border-slate-300/80 text-white shadow-lg ring-2 ring-slate-400/40 cursor-pointer'
+                          : 'bg-card hover:bg-slate-800/40 hover:border-subtle/50 text-text-muted hover:text-text-base border-subtle cursor-pointer'
                         }`}
                     >
                       <div className="min-w-0 space-y-1">
@@ -1653,7 +1653,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                               e.stopPropagation();
                               onSignOffAndPublish?.(item.subgrid, item.runId);
                             }}
-                            title="Sign off this subgrid as QA/QC Approved and publish to WebGIS"
+                            title="Sign off this subgrid as Acquisition QC Approved and publish to WebGIS"
                             className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 text-[10px] font-bold uppercase tracking-wide hover:bg-emerald-500/25 transition-colors cursor-pointer"
                           >
                             <CheckCircle2 size={11} /> Sign Off &amp; Publish
@@ -1699,10 +1699,10 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                     </span>
                   ) : (
                     <span
-                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-slate-500/10 text-slate-400 border border-slate-500/20"
+                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-slate-500/10 text-text-muted border border-subtle/20"
                       title="Hardware Engine: CPU Multi-Sector"
                     >
-                      <Cpu size={10} className="text-slate-400 shrink-0" />
+                      <Cpu size={10} className="text-text-muted shrink-0" />
                       <span>CPU</span>
                     </span>
                   )}
@@ -1723,7 +1723,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                 <button
                   type="button"
                   onClick={() => setConfig(prev => ({ ...prev, checkBlur: !prev.checkBlur }))}
-                  className={`py-2 px-1 rounded-lg border text-center transition-all cursor-pointer text-[11px] font-medium truncate ${config.checkBlur ? 'bg-card border-slate-500 text-text-base font-semibold shadow-sm' : 'bg-card border-subtle text-text-muted hover:text-text-base'
+                  className={`py-2 px-1 rounded-lg border text-center transition-all cursor-pointer text-[11px] font-medium truncate ${config.checkBlur ? 'bg-card border-subtle text-text-base font-semibold shadow-sm' : 'bg-card border-subtle text-text-muted hover:text-text-base'
                     }`}
                   title={projectSettings?.qaFlag1 || 'Blurry Frame'}
                 >
@@ -1732,7 +1732,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                 <button
                   type="button"
                   onClick={() => setConfig(prev => ({ ...prev, checkObstruction: !prev.checkObstruction }))}
-                  className={`py-2 px-1 rounded-lg border text-center transition-all cursor-pointer text-[11px] font-medium truncate ${config.checkObstruction ? 'bg-card border-slate-500 text-text-base font-semibold shadow-sm' : 'bg-card border-subtle text-text-muted hover:text-text-base'
+                  className={`py-2 px-1 rounded-lg border text-center transition-all cursor-pointer text-[11px] font-medium truncate ${config.checkObstruction ? 'bg-card border-subtle text-text-base font-semibold shadow-sm' : 'bg-card border-subtle text-text-muted hover:text-text-base'
                     }`}
                   title={projectSettings?.qaFlag2 || 'Lens Obstruction'}
                 >
@@ -1741,7 +1741,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                 <button
                   type="button"
                   onClick={() => setConfig(prev => ({ ...prev, checkGps: !prev.checkGps }))}
-                  className={`py-2 px-1 rounded-lg border text-center transition-all cursor-pointer text-[11px] font-medium truncate ${config.checkGps ? 'bg-card border-slate-500 text-text-base font-semibold shadow-sm' : 'bg-card border-subtle text-text-muted hover:text-text-base'
+                  className={`py-2 px-1 rounded-lg border text-center transition-all cursor-pointer text-[11px] font-medium truncate ${config.checkGps ? 'bg-card border-subtle text-text-base font-semibold shadow-sm' : 'bg-card border-subtle text-text-muted hover:text-text-base'
                     }`}
                   title={projectSettings?.qaFlag3 || 'Bad GPS Signal'}
                 >
@@ -1764,7 +1764,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                       setStepIntervalMs(200);
                     }}
                     className={`py-1.5 px-1 rounded-lg text-xs font-semibold border text-center transition-all cursor-pointer flex items-center justify-center font-mono ${isAutoPacing
-                      ? 'bg-card border-slate-500 text-text-base shadow-sm'
+                      ? 'bg-card border-subtle text-text-base shadow-sm'
                       : 'bg-card hover:bg-inner border-subtle text-text-muted hover:text-text-base'
                       }`}
                   >
@@ -1785,7 +1785,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                           setStepIntervalMs(speed.ms);
                         }}
                         className={`py-1.5 px-1 rounded-lg text-xs font-semibold border text-center transition-all cursor-pointer font-mono ${isActive
-                          ? 'bg-card border-slate-500 text-text-base shadow-sm'
+                          ? 'bg-card border-subtle text-text-base shadow-sm'
                           : 'bg-card hover:bg-inner border-subtle text-text-muted hover:text-text-base'
                           }`}
                       >
@@ -1798,7 +1798,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
 
               <div className="space-y-1.5 text-xs">
                 <div className="flex items-center justify-between text-[11px]">
-                  <span className="text-text-muted">QA/QC Operator (PIC):</span>
+                  <span className="text-text-muted">Acquisition QC Operator (PIC):</span>
                   <span className="text-text-muted text-[10px]">
                     Assigned: <span className="text-text-base font-semibold">{inspectorPic}</span>
                   </span>
@@ -1808,7 +1808,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                   value={inspectorPic}
                   onChange={(e) => setInspectorPic(e.target.value)}
                   placeholder="Enter operator handle"
-                  className="w-full bg-card border border-subtle rounded-xl px-3 py-1.5 text-xs text-text-base placeholder:text-text-muted focus:outline-none focus:border-slate-500 transition-all font-sans"
+                  className="w-full bg-card border border-subtle rounded-xl px-3 py-1.5 text-xs text-text-base placeholder:text-text-muted focus:outline-none focus:border-subtle transition-all font-sans"
                 />
               </div>
 
@@ -1836,7 +1836,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                   ) : (
                     <>
                       <Play size={14} className="fill-current" />
-                      <span>Start Automated QA/QC</span>
+                      <span>Start Automated Acquisition QC</span>
                     </>
                   )}
                 </button>
@@ -1937,7 +1937,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                             {activeDisplayPointId || `Station ${activeDisplayIndex}`}
                           </span>
                         </div>
-                        <div className="text-xs text-slate-300 font-mono font-normal pl-4 truncate">
+                        <div className="text-xs text-text-base font-mono font-normal pl-4 truncate">
                           Station <strong className="text-white font-bold">{activeDisplayIndex}</strong> of {totalStations}
                         </div>
                       </div>
@@ -1947,7 +1947,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                     {(isRunning || effectiveHistory.length > 0) && (
                       <div className="absolute top-3 right-3 bg-black/85 backdrop-blur-md border border-white/10 rounded-xl px-3.5 py-2 shadow-md space-y-0.5 text-xs min-w-[120px] sm:min-w-[160px] z-10">
                         <div className="flex items-center justify-between gap-2 text-xs">
-                          <span className="text-slate-300 font-medium">GPS:</span>
+                          <span className="text-text-base font-medium">GPS:</span>
                           <span
                             className={`font-bold font-mono ${activeRecord
                               ? activeRecord.defectType?.includes('GPS')
@@ -1964,7 +1964,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                           </span>
                         </div>
                         <div className="flex items-center justify-between gap-2 text-xs">
-                          <span className="text-slate-300 font-medium">Equip:</span>
+                          <span className="text-text-base font-medium">Equip:</span>
                           <span className="font-bold text-white font-mono truncate">
                             {(() => {
                               const currentItem = filteredTargetList.find(
@@ -1993,8 +1993,8 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                               : '0.0000°, 0.0000°'}
                           </span>
                         </div>
-                        <div className="text-slate-300 text-xs font-normal flex items-center gap-1 font-mono pl-4">
-                          <span className="text-slate-400">Step:</span>
+                        <div className="text-text-base text-xs font-normal flex items-center gap-1 font-mono pl-4">
+                          <span className="text-text-muted">Step:</span>
                           <span className="tabular-nums text-white font-semibold">
                             {activeDisplayStepDistance > 0 ? `+${activeDisplayStepDistance.toFixed(1)}m` : '0.0m'}
                           </span>
@@ -2009,8 +2009,8 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                           <Compass size={13} className="text-amber-400 shrink-0" />
                           <span>{activeDisplayBearing.toFixed(0)}°</span>
                         </div>
-                        <div className="text-slate-300 text-xs font-normal flex items-center justify-end gap-1 font-mono">
-                          <span className="text-slate-400">Track:</span>
+                        <div className="text-text-base text-xs font-normal flex items-center justify-end gap-1 font-mono">
+                          <span className="text-text-muted">Track:</span>
                           <span
                             className={`font-semibold ${!activeDisplayCoords.lat || !activeDisplayCoords.lng
                               ? 'text-amber-400'
@@ -2283,9 +2283,9 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                       key={`${item.pointId}-${item.index}`}
                       onClick={() => setSelectedStationIndex(isSelected ? null : item.index)}
                       className={`p-2.5 rounded-xl border transition-all cursor-pointer space-y-1 ${isSelected
-                        ? 'bg-slate-700/60 border-slate-300/80 text-white shadow-lg ring-2 ring-slate-400/40'
+                        ? 'bg-inner/60 border-slate-300/80 text-white shadow-lg ring-2 ring-slate-400/40'
                         : isLive
-                          ? 'bg-slate-800/40 border-slate-600/60 text-white'
+                          ? 'bg-slate-800/40 border-subtle/60 text-white'
                           : item.status === 'flagged'
                             ? 'bg-inner/60 border border-subtle text-text-base hover:bg-slate-800/40'
                             : 'bg-card hover:bg-slate-800/40 text-text-muted hover:text-text-base border-subtle'

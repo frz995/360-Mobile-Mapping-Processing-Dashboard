@@ -199,6 +199,70 @@ export interface ProductionProviderSettings {
   enabled: boolean;
 }
 
+export type ProcessingEngineMode = 'gpu_worker' | 'multi_pc_workstations';
+
+export type WorkstationStationId = 'stitch' | 'blur' | 'lightroom' | 'photoshop';
+
+export interface WorkstationStationConfig {
+  id: WorkstationStationId;
+  name: string;
+  stepNumber: number;
+  software: string;
+  defaultOperator: string;
+  sourceFolderTemplate: string;
+  outputFolderTemplate: string;
+  description: string;
+  iconName?: string;
+  enabled: boolean;
+}
+
+export const DEFAULT_4_WORKSTATIONS: WorkstationStationConfig[] = [
+  {
+    id: 'stitch',
+    name: 'PC 1 — Stitching Station',
+    stepNumber: 1,
+    software: 'PTGui Pro / Insta360 Stitcher',
+    defaultOperator: 'Stitching Operator',
+    sourceFolderTemplate: '/RAW/{subgrid}/',
+    outputFolderTemplate: '/STITCHED/{subgrid}/',
+    description: 'Ingests raw dual-fisheye frames and exports 360° equirectangular panoramas.',
+    enabled: true
+  },
+  {
+    id: 'blur',
+    name: 'PC 2 — Privacy Blur Station',
+    stepNumber: 2,
+    software: 'YOLO Batch Blur / Face & Plate Tool',
+    defaultOperator: 'Blurring Operator',
+    sourceFolderTemplate: '/STITCHED/{subgrid}/',
+    outputFolderTemplate: '/BLURRED/{subgrid}/',
+    description: 'Scans stitched panoramas to blur pedestrian faces and license plates.',
+    enabled: true
+  },
+  {
+    id: 'lightroom',
+    name: 'PC 3 — Lightroom Station',
+    stepNumber: 3,
+    software: 'Adobe Lightroom Classic / Camera RAW',
+    defaultOperator: 'Colorist Operator',
+    sourceFolderTemplate: '/BLURRED/{subgrid}/',
+    outputFolderTemplate: '/ENHANCED/{subgrid}/',
+    description: 'Applies bulk color grading, shadow recovery, clarity, and sharpness presets.',
+    enabled: true
+  },
+  {
+    id: 'photoshop',
+    name: 'PC 4 — Photoshop Station',
+    stepNumber: 4,
+    software: 'Adobe Photoshop (Batch Actions)',
+    defaultOperator: 'Retouch Operator',
+    sourceFolderTemplate: '/ENHANCED/{subgrid}/',
+    outputFolderTemplate: '/PROCESSED/{subgrid}/',
+    description: 'Applies circular nadir hood mask or generative inpaint to remove the vehicle.',
+    enabled: true
+  }
+];
+
 export interface NasFolderEntry {
   name: string;
   path: string;

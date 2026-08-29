@@ -170,7 +170,7 @@ export const DailyHandoverModal: React.FC<DailyHandoverModalProps> = ({
                         {/* Storage Audit */}
                         <div className="p-4 rounded-xl border border-subtle bg-inner space-y-2">
                             <div className="flex items-center justify-between">
-                                <span className="font-medium text-slate-400">Storage Audit (MMS_PIC)</span>
+                                <span className="font-medium text-text-muted">Storage Audit (MMS_PIC)</span>
                                 <span className={`w-2 h-2 rounded-full ${analysis.storageDiscrepancies.length > 0 ? 'bg-amber-400' : 'bg-emerald-400'}`} />
                             </div>
                             <div className="text-2xl font-bold font-mono text-text-base">
@@ -185,7 +185,7 @@ export const DailyHandoverModal: React.FC<DailyHandoverModalProps> = ({
                         {/* QA Conformance */}
                         <div className="p-4 rounded-xl border border-subtle bg-inner space-y-2">
                             <div className="flex items-center justify-between">
-                                <span className="font-medium text-slate-400">QA Conformance</span>
+                                <span className="font-medium text-text-muted">QA Conformance</span>
                                 <span className="w-2 h-2 rounded-full bg-slate-500" />
                             </div>
                             <div className="text-2xl font-bold font-mono text-text-base">
@@ -200,7 +200,7 @@ export const DailyHandoverModal: React.FC<DailyHandoverModalProps> = ({
                         {/* Optical Defects */}
                         <div className="p-4 rounded-xl border border-subtle bg-inner space-y-2">
                             <div className="flex items-center justify-between">
-                                <span className="font-medium text-slate-400">Optical Defects</span>
+                                <span className="font-medium text-text-muted">Optical Defects</span>
                                 <span className={`w-2 h-2 rounded-full ${analysis.totalDefectFrames > 0 ? 'bg-rose-400' : 'bg-emerald-400'}`} />
                             </div>
                             <div className="text-2xl font-bold font-mono text-text-base">
@@ -215,7 +215,7 @@ export const DailyHandoverModal: React.FC<DailyHandoverModalProps> = ({
                         {/* Staging Gate */}
                         <div className="p-4 rounded-xl border border-subtle bg-inner space-y-2">
                             <div className="flex items-center justify-between">
-                                <span className="font-medium text-slate-400">Staging Gate (PostGIS)</span>
+                                <span className="font-medium text-text-muted">Staging Gate (PostGIS)</span>
                                 <span className="w-2 h-2 rounded-full bg-slate-500" />
                             </div>
                             <div className="text-2xl font-bold font-mono text-text-base">
@@ -232,7 +232,7 @@ export const DailyHandoverModal: React.FC<DailyHandoverModalProps> = ({
                     {/* Action Items List Section */}
                     <div className="space-y-3 pt-1">
                         <div className="flex items-center justify-between pb-1">
-                            <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider font-mono">
+                            <h4 className="text-xs font-bold text-text-base uppercase tracking-wider font-mono">
                                 Prioritized Operational Action Items
                             </h4>
                             <span className="text-[11px] font-mono text-text-muted">
@@ -289,7 +289,7 @@ export const DailyHandoverModal: React.FC<DailyHandoverModalProps> = ({
                                                 <span className="text-xs font-bold text-text-base">
                                                     Incomplete S3 Storage Verification
                                                 </span>
-                                                <span className="text-[9.5px] font-mono px-2 py-0.5 rounded bg-card border border-subtle text-slate-300 font-medium">
+                                                <span className="text-[9.5px] font-mono px-2 py-0.5 rounded bg-card border border-subtle text-text-base font-medium">
                                                     {analysis.storageDiscrepancies.length} subgrids
                                                 </span>
                                             </div>
@@ -304,7 +304,7 @@ export const DailyHandoverModal: React.FC<DailyHandoverModalProps> = ({
                                             if (onOpenBatchProcessing) onOpenBatchProcessing();
                                             onClose();
                                         }}
-                                        className="px-3.5 py-2 bg-inner hover:bg-slate-700 border border-subtle text-text-base rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer shadow-sm transition-colors shrink-0"
+                                        className="px-3.5 py-2 bg-inner hover:bg-inner border border-subtle text-text-base rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer shadow-sm transition-colors shrink-0"
                                     >
                                         <span>Reconcile Storage</span>
                                         <ExternalLink size={13} className="text-text-muted" />
@@ -324,7 +324,7 @@ export const DailyHandoverModal: React.FC<DailyHandoverModalProps> = ({
                                                 <span className="text-xs font-bold text-text-base">
                                                     Flagged Defect Remediation
                                                 </span>
-                                                <span className="text-[9.5px] font-mono px-2 py-0.5 rounded bg-card border border-subtle text-slate-300 font-medium">
+                                                <span className="text-[9.5px] font-mono px-2 py-0.5 rounded bg-card border border-subtle text-text-base font-medium">
                                                     {analysis.totalDefectFrames} flags
                                                 </span>
                                             </div>
@@ -338,7 +338,7 @@ export const DailyHandoverModal: React.FC<DailyHandoverModalProps> = ({
                                             if (onOpenDefectsGallery) onOpenDefectsGallery(analysis.lastSubgrid || undefined);
                                             onClose();
                                         }}
-                                        className="px-3.5 py-2 bg-inner hover:bg-slate-700 border border-subtle text-text-base rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer shadow-sm transition-colors shrink-0"
+                                        className="px-3.5 py-2 bg-inner hover:bg-inner border border-subtle text-text-base rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer shadow-sm transition-colors shrink-0"
                                     >
                                         <span>Open Defect Gallery</span>
                                         <ExternalLink size={13} className="text-text-muted" />
@@ -358,7 +358,7 @@ export const DailyHandoverModal: React.FC<DailyHandoverModalProps> = ({
                                                 <span className="text-xs font-bold text-text-base">
                                                     Trajectory QA Conformance Pipeline
                                                 </span>
-                                                <span className="text-[9.5px] font-mono px-2 py-0.5 rounded bg-card border border-subtle text-slate-300 font-medium">
+                                                <span className="text-[9.5px] font-mono px-2 py-0.5 rounded bg-card border border-subtle text-text-base font-medium">
                                                     {analysis.pendingAudits.length} runs queued
                                                 </span>
                                             </div>
@@ -372,7 +372,7 @@ export const DailyHandoverModal: React.FC<DailyHandoverModalProps> = ({
                                             if (onOpenQAQCWorkbench) onOpenQAQCWorkbench(analysis.pendingAudits[0]?.subgrid);
                                             onClose();
                                         }}
-                                        className="px-3.5 py-2 bg-inner hover:bg-slate-700 border border-subtle text-text-base rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer shadow-sm transition-colors shrink-0"
+                                        className="px-3.5 py-2 bg-inner hover:bg-inner border border-subtle text-text-base rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer shadow-sm transition-colors shrink-0"
                                     >
                                         <span>Launch QA Runner</span>
                                         <Play size={13} className="text-text-muted" />
@@ -411,7 +411,7 @@ export const DailyHandoverModal: React.FC<DailyHandoverModalProps> = ({
                     <div className="flex items-center gap-2 w-full sm:w-auto">
                         <button
                             onClick={handleDismiss}
-                            className="w-full sm:w-auto px-4 py-2 bg-inner hover:bg-slate-700 border border-subtle text-text-base rounded-lg text-xs font-semibold transition-colors cursor-pointer"
+                            className="w-full sm:w-auto px-4 py-2 bg-inner hover:bg-inner border border-subtle text-text-base rounded-lg text-xs font-semibold transition-colors cursor-pointer"
                         >
                             Dismiss Briefing
                         </button>

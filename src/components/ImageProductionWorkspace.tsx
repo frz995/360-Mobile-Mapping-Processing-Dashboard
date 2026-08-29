@@ -138,7 +138,7 @@ export const ImageProductionWorkspace: React.FC<ImageProductionWorkspaceProps> =
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-sm font-bold text-text-base tracking-wide">Image Production Workspace</h2>
+                <h2 className="text-sm font-bold text-text-base tracking-wide">Production Workspace</h2>
                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider border ${
                   api.mode === 'mock'
                     ? 'text-sky-300 border-sky-500/40 bg-sky-950/40'
@@ -148,19 +148,23 @@ export const ImageProductionWorkspace: React.FC<ImageProductionWorkspaceProps> =
                 </span>
               </div>
               <p className="text-[11px] text-text-muted mt-0.5 leading-relaxed">
-                RAW → stitch/blur → enhance + generative-fill mask removal → QA/QC → deliverable. Metadata in Supabase; all image bytes on NAS; nothing modified in place.
+                RAW → stitch/blur → enhance + generative-fill mask removal → acceptance QA → deliverable. Metadata in Supabase; all image bytes on NAS; nothing modified in place.
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={handleRefresh}
-              className="flex items-center gap-1.5 px-3 py-2 bg-inner border border-subtle hover:bg-sky-500/20 hover:border-sky-500/40 text-sky-300 text-xs font-semibold rounded-lg transition-colors cursor-pointer">
-              <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} /> Refresh
+            <button
+              onClick={handleRefresh}
+              className="flex items-center gap-1.5 px-3 py-2 bg-inner border border-subtle hover:bg-card text-text-base text-xs font-semibold rounded-lg transition-colors cursor-pointer"
+            >
+              <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} /> {translate('refresh')}
             </button>
             {onBackToDashboard && (
-              <button onClick={onBackToDashboard}
-                className="flex items-center gap-1.5 px-3 py-2 bg-inner border border-subtle hover:bg-amber-500/20 hover:border-amber-500/40 text-amber-300 text-xs font-semibold rounded-lg transition-colors cursor-pointer">
-                <Undo2 size={13} /> Dashboard
+              <button
+                onClick={onBackToDashboard}
+                className="flex items-center gap-1.5 px-3 py-2 bg-inner border border-subtle hover:bg-card text-text-muted hover:text-text-base text-xs font-semibold rounded-lg transition-colors cursor-pointer"
+              >
+                <Undo2 size={13} /> {translate('backToDashboard')}
               </button>
             )}
           </div>

@@ -67,7 +67,7 @@ export const CapacityPanel: React.FC<CapacityPanelProps> = ({ jobs, api, project
   const bars: Array<{ label: string; value: number; cls: string }> = [
     { label: 'QUEUED', value: stats.queued, cls: 'bg-sky-400' },
     { label: 'IN PROGRESS', value: stats.running, cls: 'bg-amber-400' },
-    { label: 'QA PENDING', value: stats.qaPending, cls: 'bg-violet-400' },
+    { label: 'QA PENDING', value: stats.qaPending, cls: 'bg-blue-400' },
     { label: 'REVIEW REQUIRED', value: stats.reviewRequired, cls: 'bg-orange-400' },
     { label: 'COMPLETED TODAY', value: stats.completedToday, cls: 'bg-emerald-400' },
     { label: 'FAILED', value: stats.failed, cls: 'bg-rose-400' }

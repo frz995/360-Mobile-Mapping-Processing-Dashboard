@@ -15,7 +15,6 @@ import type { DatasetRecord, DatasetType, PipelineStage } from '../../types/prod
 import { createNextVersion } from '../../utils/datasetVersioning';
 import {
   DATASET_TYPE_OPTIONS,
-  PIPELINE_STAGE_OPTIONS,
   formatBytes,
   formatDateTime
 } from './common';
@@ -36,7 +35,7 @@ const INPUT_CLASS =
 const TYPE_COLORS: Record<DatasetType, string> = {
   RAW: 'bg-amber-500/15 text-amber-300 border-amber-500/40',
   PROCESSED: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40',
-  DELIVERABLE: 'bg-violet-500/15 text-violet-300 border-violet-500/40'
+  DELIVERABLE: 'bg-sky-500/15 text-sky-300 border-sky-500/40'
 };
 
 const STAGE_COLORS: Record<PipelineStage, string> = {
@@ -44,7 +43,7 @@ const STAGE_COLORS: Record<PipelineStage, string> = {
   BLUR: 'bg-cyan-500/15 text-cyan-300 border-cyan-500/40',
   ENHANCE: 'bg-teal-500/15 text-teal-300 border-teal-500/40',
   MASK: 'bg-orange-500/15 text-orange-300 border-orange-500/40',
-  QAQC: 'bg-violet-500/15 text-violet-300 border-violet-500/40'
+  QAQC: 'bg-sky-500/15 text-sky-300 border-sky-500/40'
 };
 
 export const DatasetsPanel: React.FC<DatasetsPanelProps> = ({
@@ -165,10 +164,9 @@ export const DatasetsPanel: React.FC<DatasetsPanelProps> = ({
           </div>
           <div>
             <label className="text-[10px] uppercase tracking-wider text-text-muted font-semibold">Pipeline Stage</label>
-            <select className={INPUT_CLASS} value={draft.pipeline_stage}
-              onChange={(e) => set('pipeline_stage', e.target.value as PipelineStage)}>
-              {PIPELINE_STAGE_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
-            </select>
+            <div className="w-full bg-inner border border-subtle rounded-lg px-3 py-2 text-xs text-text-muted/60 select-none">
+              Panoramic-metadata
+            </div>
           </div>
           <div>
             <label className="text-[10px] uppercase tracking-wider text-text-muted font-semibold">Subgrid</label>
@@ -190,11 +188,6 @@ export const DatasetsPanel: React.FC<DatasetsPanelProps> = ({
               onChange={(e) => set('source_folder', e.target.value)} />
           </div>
           <div>
-            <label className="text-[10px] uppercase tracking-wider text-text-muted font-semibold">Output Folder (NAS)</label>
-            <input className={INPUT_CLASS} placeholder="stitchblur/N93E70 (optional)" value={draft.output_folder}
-              onChange={(e) => set('output_folder', e.target.value)} />
-          </div>
-          <div>
             <label className="text-[10px] uppercase tracking-wider text-text-muted font-semibold">Files / Size</label>
             <div className="flex gap-2">
               <input type="number" min={0} className={INPUT_CLASS} placeholder="count" value={draft.file_count || 0}
@@ -206,7 +199,7 @@ export const DatasetsPanel: React.FC<DatasetsPanelProps> = ({
           <div className="md:col-span-2 xl:col-span-4">
             <button onClick={save}
               className="px-4 py-2 bg-emerald-500/15 hover:bg-emerald-500/25 active:bg-emerald-500/35 border border-emerald-500/40 text-emerald-300 text-xs font-semibold rounded-lg transition-colors cursor-pointer">
-              Register Dataset (metadata only)
+              Register Dataset
             </button>
           </div>
         </div>
@@ -249,7 +242,9 @@ export const DatasetsPanel: React.FC<DatasetsPanelProps> = ({
                   </td>
                   <td className="px-3 py-2.5 align-top text-[10px] text-text-muted font-mono">
                     {ds.source_folder || '—'}
-                    <div className="text-[10px]">→ {ds.output_folder || ds.source_folder || '—'}</div>
+                    {ds.dataset_type !== 'RAW' && (
+                      <div className="text-[10px]">→ {ds.output_folder || ds.source_folder || '—'}</div>
+                    )}
                   </td>
                   <td className="px-3 py-2.5 align-top text-[10px] font-mono text-text-muted">
                     {(ds.file_count || 0).toLocaleString()} files

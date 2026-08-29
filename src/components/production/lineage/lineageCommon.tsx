@@ -26,9 +26,9 @@ export function statusTone(status?: string | null): string {
     return 'text-sky-300 border-sky-500/40 bg-sky-950/40';
   }
   if (['CANCELLED'].includes(s)) {
-    return 'text-slate-300 border-slate-500/40 bg-slate-800/40';
+    return 'text-text-base border-subtle/40 bg-accent-bg';
   }
-  return 'text-slate-300 border-slate-500/40 bg-slate-800/40';
+  return 'text-text-base border-subtle/40 bg-accent-bg';
 }
 
 export function qaBadge(
@@ -37,7 +37,7 @@ export function qaBadge(
 ): ReactNode {
   if (!qaDecision) {
     return (
-      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider border border-slate-600/60 bg-slate-800/40 text-slate-400">
+      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider border border-subtle/60 bg-accent-bg text-text-muted">
         {translate('lineageQaPending')}
       </span>
     );

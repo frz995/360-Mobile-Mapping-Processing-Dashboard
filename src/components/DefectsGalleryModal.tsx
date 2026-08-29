@@ -209,18 +209,18 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="relative w-full max-w-5xl h-[94vh] sm:h-[88vh] bg-[#0d1117] border border-zinc-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden text-zinc-200">
+      <div className="relative w-full max-w-5xl h-[94vh] sm:h-[88vh] bg-card border border-subtle rounded-2xl shadow-2xl flex flex-col overflow-hidden text-text-base">
         
         {/* HEADER BAR */}
-        <div className="px-4 sm:px-6 py-3.5 border-b border-zinc-800 bg-[#090d13] flex items-center justify-between shrink-0 gap-2">
+        <div className="px-4 sm:px-6 py-3.5 border-b border-subtle bg-inner flex items-center justify-between shrink-0 gap-2">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-9 h-9 rounded-xl bg-zinc-800/80 border border-zinc-700 flex items-center justify-center text-zinc-300 shrink-0">
+            <div className="w-9 h-9 rounded-xl bg-inner/80 border border-subtle flex items-center justify-center text-text-base shrink-0">
               <AlertTriangle size={18} />
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-sm sm:text-base font-semibold tracking-tight text-zinc-100 truncate">
-                  {mode === 'daily' ? 'Daily Batch QA/QC Review' : 'Masterlist QA/QC Review'}
+                <h2 className="text-sm sm:text-base font-semibold tracking-tight text-text-base truncate">
+                  {mode === 'daily' ? 'Daily Batch Acquisition QC Review' : 'Masterlist Acquisition QC Review'}
                 </h2>
                 <span className="px-2 py-0.5 rounded-md text-[11px] font-mono font-semibold bg-blue-500/15 text-blue-300 border border-blue-500/30 shrink-0">
                   {cleanSubgrid}
@@ -235,7 +235,7 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
                   </span>
                 )}
                 {totalPoi !== undefined && totalPoi > 0 && (
-                  <span className="px-2 py-0.5 rounded-md text-[11px] font-mono bg-zinc-800 text-zinc-300 border border-zinc-700 shrink-0">
+                  <span className="px-2 py-0.5 rounded-md text-[11px] font-mono bg-inner text-text-base border border-subtle shrink-0">
                     {totalPoi} POI
                   </span>
                 )}
@@ -250,7 +250,7 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
                   </span>
                 )}
               </div>
-              <p className="text-[11px] text-zinc-400 truncate hidden xs:block mt-0.5">
+              <p className="text-[11px] text-text-muted truncate hidden xs:block mt-0.5">
                 {mode === 'daily'
                   ? `Reviewing anomalies specifically for daily survey run ${surveyDate || cleanSubgrid}.`
                   : `Reviewing cumulative anomalies across all survey runs for subgrid ${cleanSubgrid}.`}
@@ -260,7 +260,7 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
 
           <button
             onClick={onClose}
-            className="p-1.5 hover:bg-zinc-800 rounded-lg text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer shrink-0"
+            className="p-1.5 hover:bg-inner rounded-lg text-text-muted hover:text-text-base transition-colors cursor-pointer shrink-0"
             aria-label="Close Defect Gallery Modal"
           >
             <X size={18} />
@@ -268,9 +268,9 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
         </div>
 
         {/* CONTROLS & FILTER CHIPS */}
-        <div className="px-4 sm:px-6 py-2.5 border-b border-zinc-800 bg-[#0c1017] flex flex-wrap items-center justify-between gap-2 shrink-0">
+        <div className="px-4 sm:px-6 py-2.5 border-b border-subtle bg-inner flex flex-wrap items-center justify-between gap-2 shrink-0">
           <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar w-full sm:w-auto pb-1 sm:pb-0">
-            <span className="text-xs font-medium text-zinc-400 flex items-center gap-1 mr-1 shrink-0">
+            <span className="text-xs font-medium text-text-muted flex items-center gap-1 mr-1 shrink-0">
               <Filter size={12} />
               Filter:
             </span>
@@ -278,8 +278,8 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
               onClick={() => setFilterCategory('all')}
               className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                 filterCategory === 'all'
-                  ? 'bg-zinc-800 text-zinc-100 border border-zinc-600 shadow-sm'
-                  : 'bg-zinc-900/60 hover:bg-zinc-800 text-zinc-400 border border-zinc-800'
+                  ? 'bg-inner text-text-base border border-subtle shadow-sm'
+                  : 'bg-app/60 hover:bg-inner text-text-muted border border-subtle'
               }`}
             >
               All ({displayDefects.length})
@@ -288,8 +288,8 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
               onClick={() => setFilterCategory('blur')}
               className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
                 filterCategory === 'blur'
-                  ? 'bg-zinc-800 text-zinc-100 border border-zinc-600 shadow-sm'
-                  : 'bg-zinc-900/60 hover:bg-zinc-800 text-zinc-400 border border-zinc-800'
+                  ? 'bg-inner text-text-base border border-subtle shadow-sm'
+                  : 'bg-app/60 hover:bg-inner text-text-muted border border-subtle'
               }`}
             >
               <Camera size={12} />
@@ -299,8 +299,8 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
               onClick={() => setFilterCategory('obstruction')}
               className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
                 filterCategory === 'obstruction'
-                  ? 'bg-zinc-800 text-zinc-100 border border-zinc-600 shadow-sm'
-                  : 'bg-zinc-900/60 hover:bg-zinc-800 text-zinc-400 border border-zinc-800'
+                  ? 'bg-inner text-text-base border border-subtle shadow-sm'
+                  : 'bg-app/60 hover:bg-inner text-text-muted border border-subtle'
               }`}
             >
               <Sun size={12} />
@@ -310,8 +310,8 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
               onClick={() => setFilterCategory('gps')}
               className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
                 filterCategory === 'gps'
-                  ? 'bg-zinc-800 text-zinc-100 border border-zinc-600 shadow-sm'
-                  : 'bg-zinc-900/60 hover:bg-zinc-800 text-zinc-400 border border-zinc-800'
+                  ? 'bg-inner text-text-base border border-subtle shadow-sm'
+                  : 'bg-app/60 hover:bg-inner text-text-muted border border-subtle'
               }`}
             >
               <Navigation size={12} />
@@ -319,31 +319,31 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
             </button>
           </div>
 
-          <label className="flex items-center gap-2 text-xs font-medium text-zinc-400 cursor-pointer hover:text-zinc-200 transition-colors shrink-0">
+          <label className="flex items-center gap-2 text-xs font-medium text-text-muted cursor-pointer hover:text-text-base transition-colors shrink-0">
             <input
               type="checkbox"
               checked={showResolved}
               onChange={(e) => setShowResolved(e.target.checked)}
-              className="rounded bg-zinc-800 border-zinc-700 text-zinc-400 focus:ring-0 cursor-pointer"
+              className="rounded bg-inner border-subtle text-text-muted focus:ring-0 cursor-pointer"
             />
             <span>Show Resolved ({resolvedCount})</span>
           </label>
         </div>
 
         {/* DEFECT CARDS GRID BODY */}
-        <div className="flex-1 p-4 sm:p-6 overflow-y-auto min-h-0 bg-[#090d13]/60">
+        <div className="flex-1 p-4 sm:p-6 overflow-y-auto min-h-0 bg-inner/60">
           {isLoading ? (
-            <div className="h-full flex flex-col items-center justify-center gap-3 text-zinc-400">
-              <Loader2 size={28} className="animate-spin text-zinc-400" />
-              <span className="text-xs font-medium text-zinc-300">Loading defects for {cleanSubgrid}...</span>
+            <div className="h-full flex flex-col items-center justify-center gap-3 text-text-muted">
+              <Loader2 size={28} className="animate-spin text-text-muted" />
+              <span className="text-xs font-medium text-text-base">Loading defects for {cleanSubgrid}...</span>
             </div>
           ) : filteredDefects.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center gap-3 text-center p-8">
-              <div className="w-12 h-12 rounded-xl bg-zinc-800/80 border border-zinc-700 flex items-center justify-center text-zinc-400 mb-1">
+              <div className="w-12 h-12 rounded-xl bg-inner/80 border border-subtle flex items-center justify-center text-text-muted mb-1">
                 <ShieldCheck size={24} />
               </div>
-              <h3 className="text-sm font-semibold text-zinc-200">No Defects Found in this View</h3>
-              <p className="text-xs text-zinc-500 max-w-md">
+              <h3 className="text-sm font-semibold text-text-base">No Defects Found in this View</h3>
+              <p className="text-xs text-text-muted max-w-md">
                 {displayDefects.length === 0
                   ? `Subgrid ${cleanSubgrid} has 0 recorded defects or has passed automated inspection clean.`
                   : 'All recorded anomalies for this filter category have been resolved or filtered out.'}
@@ -360,10 +360,10 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
                 return (
                   <div
                     key={defect.id || `${defect.subgrid}-${defect.point_id}`}
-                    className={`bg-[#0e131b] border rounded-xl overflow-hidden shadow-sm flex flex-col justify-between transition-all duration-200 hover:border-zinc-700 ${
+                    className={`bg-card border rounded-xl overflow-hidden shadow-sm flex flex-col justify-between transition-all duration-200 hover:border-subtle ${
                       isResolved
-                        ? 'border-zinc-800/60 opacity-60'
-                        : 'border-zinc-800'
+                        ? 'border-subtle/60 opacity-60'
+                        : 'border-subtle'
                     }`}
                   >
                     {/* CARD TOP: THUMBNAIL & CROP PREVIEW */}
@@ -385,7 +385,7 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
 
                       {/* Station Badge Overlay */}
                       <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5 z-10">
-                        <span className="px-2 py-0.5 rounded text-[10px] font-mono font-medium bg-black/80 backdrop-blur-md text-zinc-200 border border-white/10 shadow">
+                        <span className="px-2 py-0.5 rounded text-[10px] font-mono font-medium bg-black/80 backdrop-blur-md text-slate-100 border border-white/10 shadow">
                           #{defect.frame_index || 1}
                         </span>
                         {isResolved ? (
@@ -403,17 +403,17 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
 
                       {/* Zoom Lightbox Trigger */}
                       <div
-                        className="absolute top-2.5 right-2.5 p-1.5 rounded-md bg-black/70 group-hover:bg-black/90 text-zinc-300 group-hover:text-white backdrop-blur-md transition-opacity shadow border border-white/10 flex items-center gap-1 text-[11px]"
+                        className="absolute top-2.5 right-2.5 p-1.5 rounded-md bg-black/70 group-hover:bg-black/90 text-slate-300 group-hover:text-white backdrop-blur-md transition-opacity shadow border border-white/10 flex items-center gap-1 text-[11px]"
                       >
                         <Maximize2 size={12} />
                         <span className="text-[10px] hidden sm:inline font-medium">View Full</span>
                       </div>
 
                       {/* Bottom Overlay Info */}
-                      <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent p-2.5 pt-6 flex items-center justify-between text-[11px] text-zinc-300">
-                        <span className="font-mono truncate font-medium text-zinc-200">{ptId}</span>
+                      <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent p-2.5 pt-6 flex items-center justify-between text-[11px] text-slate-300">
+                        <span className="font-mono truncate font-medium text-slate-100">{ptId}</span>
                         {defect.bearing !== undefined && (
-                          <span className="text-[10px] text-zinc-400 font-mono shrink-0">
+                          <span className="text-[10px] text-slate-400 font-mono shrink-0">
                             {Number(defect.bearing).toFixed(0)}°
                           </span>
                         )}
@@ -426,43 +426,43 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
                         {/* Defect Category Pills */}
                         <div className="flex flex-wrap gap-1.5 mb-2">
                           {flags.blur && (
-                            <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-zinc-800 text-zinc-300 border border-zinc-700 flex items-center gap-1">
-                              <Camera size={10} className="text-zinc-400" />
+                            <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-inner text-text-base border border-subtle flex items-center gap-1">
+                              <Camera size={10} className="text-text-muted" />
                               Blurry {flags.blurVariance !== undefined ? `(${Number(flags.blurVariance).toFixed(1)})` : ''}
                             </span>
                           )}
                           {flags.obstruction && (
-                            <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-zinc-800 text-zinc-300 border border-zinc-700 flex items-center gap-1">
-                              <Sun size={10} className="text-zinc-400" />
+                            <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-inner text-text-base border border-subtle flex items-center gap-1">
+                              <Sun size={10} className="text-text-muted" />
                               Obstruction {flags.avgBrightness !== undefined ? `(${Number(flags.avgBrightness).toFixed(1)})` : ''}
                             </span>
                           )}
                           {flags.badGps && (
-                            <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-zinc-800 text-zinc-300 border border-zinc-700 flex items-center gap-1">
-                              <Navigation size={10} className="text-zinc-400" />
+                            <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-inner text-text-base border border-subtle flex items-center gap-1">
+                              <Navigation size={10} className="text-text-muted" />
                               GPS Drift {flags.stepDistanceMeters !== undefined ? `(${Number(flags.stepDistanceMeters).toFixed(1)}m)` : ''}
                             </span>
                           )}
                           {!flags.blur && !flags.obstruction && !flags.badGps && (
-                            <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-zinc-800 text-zinc-300 border border-zinc-700">
+                            <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-inner text-text-base border border-subtle">
                               {defect.defect_type || 'QA Anomaly'}
                             </span>
                           )}
                         </div>
 
                         {/* Telemetry metadata */}
-                        <div className="space-y-1 text-[11px] text-zinc-400">
+                        <div className="space-y-1 text-[11px] text-text-muted">
                           <div className="flex items-center gap-1.5 truncate">
-                            <MapPin size={11} className="text-zinc-500 shrink-0" />
+                            <MapPin size={11} className="text-text-muted shrink-0" />
                             {defect.lat && defect.lng ? (
-                              <span className="font-mono text-zinc-300">
+                              <span className="font-mono text-text-base">
                                 {Number(defect.lat).toFixed(5)}°, {Number(defect.lng).toFixed(5)}°
                               </span>
                             ) : (
-                              <span className="italic text-zinc-600">No GPS Coordinates</span>
+                              <span className="italic text-text-muted">No GPS Coordinates</span>
                             )}
                           </div>
-                          <div className="flex items-center justify-between text-[10px] text-zinc-500">
+                          <div className="flex items-center justify-between text-[10px] text-text-muted">
                             <span className="flex items-center gap-1">
                               <User size={10} />
                               {defect.pic || 'Inspector'}
@@ -478,13 +478,13 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
                       </div>
 
                       {/* CARD ACTIONS */}
-                      <div className="pt-2 border-t border-zinc-800/80 flex items-center justify-between gap-2">
+                      <div className="pt-2 border-t border-subtle/80 flex items-center justify-between gap-2">
                         <button
                           onClick={() => handleJump(defect)}
-                          className="flex-1 py-1.5 px-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                          className="flex-1 py-1.5 px-2 bg-inner hover:bg-card text-text-base border border-subtle rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                           title="Jump to 360 Panorama Viewer"
                         >
-                          <Eye size={12} className="text-zinc-400" />
+                          <Eye size={12} className="text-text-muted" />
                           <span>Jump to 360</span>
                         </button>
 
@@ -492,19 +492,19 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
                           <button
                             onClick={() => handleResolveDefect(defect)}
                             disabled={resolvingPointId === defect.point_id}
-                            className="py-1.5 px-2.5 bg-zinc-800/60 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 border border-zinc-700/80 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                            className="py-1.5 px-2.5 bg-inner/60 hover:bg-inner text-text-muted hover:text-text-base border border-subtle/80 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
                             title="Mark Defect as Resolved / Dismissed"
                           >
                             {resolvingPointId === defect.point_id ? (
-                              <Loader2 size={12} className="animate-spin text-zinc-400" />
+                              <Loader2 size={12} className="animate-spin text-text-muted" />
                             ) : (
                               <ShieldCheck size={12} />
                             )}
                             <span>Dismiss</span>
                           </button>
                         ) : (
-                          <div className="text-[11px] font-medium text-zinc-300 flex items-center gap-1 px-2 py-1 bg-zinc-800 rounded-lg border border-zinc-700">
-                            <CheckCircle size={11} className="text-zinc-400" />
+                          <div className="text-[11px] font-medium text-text-base flex items-center gap-1 px-2 py-1 bg-inner rounded-lg border border-subtle">
+                            <CheckCircle size={11} className="text-text-muted" />
                             <span>Resolved</span>
                           </div>
                         )}
@@ -518,14 +518,14 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
         </div>
 
         {/* FOOTER SUMMARY */}
-        <div className="px-6 py-3 border-t border-zinc-800 bg-[#090d13] flex items-center justify-between text-xs text-zinc-400 shrink-0">
+        <div className="px-6 py-3 border-t border-subtle bg-inner flex items-center justify-between text-xs text-text-muted shrink-0">
           <div>
-            Showing <span className="font-semibold text-zinc-200">{filteredDefects.length}</span> of{' '}
-            <span className="font-semibold text-zinc-200">{displayDefects.length}</span> total defect records
+            Showing <span className="font-semibold text-text-base">{filteredDefects.length}</span> of{' '}
+            <span className="font-semibold text-text-base">{displayDefects.length}</span> total defect records
           </div>
           <button
             onClick={onClose}
-            className="px-4 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg text-xs font-medium border border-zinc-700 transition-colors cursor-pointer"
+            className="px-4 py-1.5 bg-inner hover:bg-card text-text-base rounded-lg text-xs font-medium border border-subtle transition-colors cursor-pointer"
           >
             Close Gallery
           </button>
@@ -550,15 +550,15 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
             }}
           >
             {/* TOP LIGHTBOX BAR */}
-            <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 shrink-0 bg-[#12161f] rounded-xl border border-zinc-800 shadow-xl z-10">
+            <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 shrink-0 bg-inner rounded-xl border border-subtle shadow-xl z-10">
               <div className="flex items-center gap-2.5 min-w-0">
-                <span className="px-2 py-0.5 rounded text-xs font-mono font-bold bg-zinc-800 text-zinc-200 border border-zinc-700">
+                <span className="px-2 py-0.5 rounded text-xs font-mono font-bold bg-inner text-text-base border border-subtle">
                   #{lightboxDefect.frame_index || 1}
                 </span>
-                <span className="font-mono text-sm font-semibold text-zinc-100 truncate">
+                <span className="font-mono text-sm font-semibold text-text-base truncate">
                   {ptId}
                 </span>
-                <span className="px-2 py-0.5 rounded text-xs font-mono bg-zinc-800 text-zinc-400 border border-zinc-700 hidden sm:inline">
+                <span className="px-2 py-0.5 rounded text-xs font-mono bg-inner text-text-muted border border-subtle hidden sm:inline">
                   {lightboxDefect.subgrid}
                 </span>
                 {lightboxDefect.is_resolved ? (
@@ -577,21 +577,21 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
               {/* ZOOM & ACTION BUTTONS */}
               <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
                 {/* Zoom Controls */}
-                <div className="flex items-center bg-zinc-800/90 rounded-lg border border-zinc-700 p-0.5 mr-1">
+                <div className="flex items-center bg-inner/90 rounded-lg border border-subtle p-0.5 mr-1">
                   <button
                     onClick={() => setLightboxZoom(prev => Math.max(0.5, Math.round((prev - 0.25) * 100) / 100))}
-                    className="p-1 text-zinc-400 hover:text-white rounded hover:bg-zinc-700 transition-colors cursor-pointer"
+                    className="p-1 text-text-muted hover:text-white rounded hover:bg-card transition-colors cursor-pointer"
                     title="Zoom Out (or scroll down)"
                     disabled={lightboxZoom <= 0.5}
                   >
                     <ZoomOut size={13} />
                   </button>
-                  <span className="px-1.5 text-[11px] font-mono text-zinc-300 min-w-[42px] text-center">
+                  <span className="px-1.5 text-[11px] font-mono text-text-base min-w-[42px] text-center">
                     {Math.round(lightboxZoom * 100)}%
                   </span>
                   <button
                     onClick={() => setLightboxZoom(prev => Math.min(5, Math.round((prev + 0.25) * 100) / 100))}
-                    className="p-1 text-zinc-400 hover:text-white rounded hover:bg-zinc-700 transition-colors cursor-pointer"
+                    className="p-1 text-text-muted hover:text-white rounded hover:bg-card transition-colors cursor-pointer"
                     title="Zoom In (or scroll up)"
                     disabled={lightboxZoom >= 5}
                   >
@@ -600,7 +600,7 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
                   {lightboxZoom !== 1 && (
                     <button
                       onClick={() => setLightboxZoom(1)}
-                      className="p-1 text-zinc-400 hover:text-white rounded hover:bg-zinc-700 transition-colors cursor-pointer ml-0.5"
+                      className="p-1 text-text-muted hover:text-white rounded hover:bg-card transition-colors cursor-pointer ml-0.5"
                       title="Reset Zoom (Fit)"
                     >
                       <RotateCcw size={12} />
@@ -612,7 +612,7 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
                   href={fullImgUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium border border-zinc-700 flex items-center gap-1.5 transition-colors cursor-pointer"
+                  className="px-2.5 py-1.5 rounded-lg bg-inner hover:bg-card text-text-base text-xs font-medium border border-subtle flex items-center gap-1.5 transition-colors cursor-pointer"
                   title="Open Full Image in New Tab"
                 >
                   <ExternalLink size={13} />
@@ -624,7 +624,7 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
                     handleJump(lightboxDefect);
                     setLightboxDefect(null);
                   }}
-                  className="px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium border border-zinc-700 flex items-center gap-1.5 transition-colors cursor-pointer"
+                  className="px-2.5 py-1.5 rounded-lg bg-inner hover:bg-card text-text-base text-xs font-medium border border-subtle flex items-center gap-1.5 transition-colors cursor-pointer"
                   title="Jump to 360 Panorama Viewer"
                 >
                   <Eye size={13} />
@@ -636,7 +636,7 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
                     setLightboxDefect(null);
                     setLightboxZoom(1);
                   }}
-                  className="p-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white border border-zinc-700 transition-colors cursor-pointer"
+                  className="p-1.5 rounded-lg bg-inner hover:bg-card text-text-base hover:text-white border border-subtle transition-colors cursor-pointer"
                   aria-label="Close Lightbox"
                 >
                   <X size={18} />
@@ -664,7 +664,7 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
                   src={fullImgUrl}
                   alt={ptId}
                   crossOrigin="anonymous"
-                  className="w-full max-w-[96vw] max-h-[75vh] object-contain rounded-xl border border-zinc-800/80 shadow-2xl select-none"
+                  className="w-full max-w-[96vw] max-h-[75vh] object-contain rounded-xl border border-subtle/80 shadow-2xl select-none"
                   style={{
                     minWidth: lightboxZoom === 1 ? 'min(94vw, 1400px)' : 'auto'
                   }}
@@ -673,32 +673,32 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
             </div>
 
             {/* BOTTOM TELEMETRY HUD */}
-            <div className="px-4 py-2.5 bg-[#12161f] rounded-xl border border-zinc-800 flex flex-wrap items-center justify-between gap-3 text-xs text-zinc-400 shrink-0 shadow-xl z-10">
+            <div className="px-4 py-2.5 bg-inner rounded-xl border border-subtle flex flex-wrap items-center justify-between gap-3 text-xs text-text-muted shrink-0 shadow-xl z-10">
               <div className="flex items-center gap-4 flex-wrap">
                 {flags.reasons && Array.isArray(flags.reasons) && flags.reasons.length > 0 ? (
-                  <div className="flex items-center gap-1.5 text-zinc-300 font-medium">
-                    <AlertTriangle size={13} className="text-zinc-400 shrink-0" />
+                  <div className="flex items-center gap-1.5 text-text-base font-medium">
+                    <AlertTriangle size={13} className="text-text-muted shrink-0" />
                     <span>{flags.reasons.join(' • ')}</span>
                   </div>
                 ) : (
-                  <span className="text-zinc-300">{lightboxDefect.defect_type || 'Flagged Anomaly'}</span>
+                  <span className="text-text-base">{lightboxDefect.defect_type || 'Flagged Anomaly'}</span>
                 )}
-                <span className="text-zinc-500 text-[11px] hidden md:inline">
+                <span className="text-text-muted text-[11px] hidden md:inline">
                   (Scroll mouse wheel to zoom in/out)
                 </span>
               </div>
 
-              <div className="flex items-center gap-4 text-[11px] font-mono text-zinc-400">
+              <div className="flex items-center gap-4 text-[11px] font-mono text-text-muted">
                 {lightboxDefect.lat && lightboxDefect.lng && (
-                  <span className="flex items-center gap-1 text-zinc-300">
-                    <MapPin size={12} className="text-zinc-500" />
+                  <span className="flex items-center gap-1 text-text-base">
+                    <MapPin size={12} className="text-text-muted" />
                     {Number(lightboxDefect.lat).toFixed(6)}°, {Number(lightboxDefect.lng).toFixed(6)}°
                   </span>
                 )}
                 {lightboxDefect.bearing !== undefined && (
                   <span>Yaw: {Number(lightboxDefect.bearing).toFixed(0)}°</span>
                 )}
-                <span className="flex items-center gap-1 text-zinc-400">
+                <span className="flex items-center gap-1 text-text-muted">
                   <User size={11} />
                   {lightboxDefect.pic || 'Inspector'}
                 </span>

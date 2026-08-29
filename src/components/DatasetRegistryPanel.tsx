@@ -16,10 +16,19 @@ import {
   ShieldCheck,
   FileArchive,
   Layers3,
-  AlertTriangle
+  AlertTriangle,
+  Plus,
+  X,
+  Folder,
+  CheckCircle2
 } from 'lucide-react';
-import { fetchDatasetsFromSupabase, fetchProcessingJobsFromSupabase } from '../services/supabase';
-import type { DatasetRecord, ProcessingJobRecord } from '../types/production';
+import {
+  fetchDatasetsFromSupabase,
+  fetchProcessingJobsFromSupabase,
+  registerSurveyDataset,
+  checkDatasetDuplicates
+} from '../services/supabase';
+import type { DatasetRecord, DatasetType, ProcessingJobRecord } from '../types/production';
 import { buildLineageGraph, findOrphans } from '../utils/datasetLineage';
 import { computeDatasetVersionState } from '../utils/datasetVersioning';
 import { formatBytes, formatDateTime } from './production/common';
@@ -31,6 +40,10 @@ type TypeFilter = 'all' | 'RAW' | 'PROCESSED' | 'DELIVERABLE';
 interface DatasetRegistryPanelProps {
   translate: TranslateFn;
   onOpenInMap: (subgrid: string) => void;
+  isGuestUser?: boolean;
+  userLabel?: string;
+  onAddNotification?: (item: any) => void;
+  onAddAuditLog?: (type: any, title: string, details: string, status?: any) => void;
 }
 
 interface RegistryRow {
@@ -45,7 +58,11 @@ interface RegistryRow {
 
 export const DatasetRegistryPanel: React.FC<DatasetRegistryPanelProps> = ({
   translate,
-  onOpenInMap
+  onOpenInMap,
+  isGuestUser = false,
+  userLabel = 'Operator',
+  onAddNotification,
+  onAddAuditLog
 }) => {
   const [datasets, setDatasets] = useState<DatasetRecord[]>([]);
   const [jobs, setJobs] = useState<ProcessingJobRecord[]>([]);
@@ -54,6 +71,22 @@ export const DatasetRegistryPanel: React.FC<DatasetRegistryPanelProps> = ({
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
   const [subgridFilter, setSubgridFilter] = useState<string | null>(null);
+  
+  // Registration Form State
+  const [showRegisterModal, setShowRegisterModal] = useState(false);
+  const [registering, setRegistering] = useState(false);
+  const [regForm, setRegForm] = useState({
+    name: '',
+    subgrid: '',
+    equipment: 'MMS Vehicle Unit',
+    datasetType: 'RAW' as DatasetType,
+    pipelineStage: 'STITCH' as any,
+    sourceFolder: '',
+    fileCount: 0,
+    sizeBytes: 0,
+    storageProvider: 'nas_local'
+  });
+  const [duplicateWarnings, setDuplicateWarnings] = useState<DatasetRecord[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -170,20 +203,116 @@ export const DatasetRegistryPanel: React.FC<DatasetRegistryPanelProps> = ({
     return { files, bytes, raw, processed, deliverable };
   }, [datasets]);
 
+  // Check duplicates when subgrid or folder changes
+  useEffect(() => {
+    let active = true;
+    if (regForm.subgrid || regForm.sourceFolder) {
+      checkDatasetDuplicates(regForm.subgrid, regForm.sourceFolder).then((dups) => {
+        if (active) setDuplicateWarnings(dups);
+      });
+    } else {
+      setDuplicateWarnings([]);
+    }
+    return () => {
+      active = false;
+    };
+  }, [regForm.subgrid, regForm.sourceFolder]);
+
+  const handleRegisterSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isGuestUser || registering) return;
+    if (!regForm.name.trim()) {
+      onAddNotification?.({
+        title: 'Dataset Name Required',
+        message: 'Please provide a valid dataset name before submitting.',
+        category: 'ERROR',
+        read: false
+      });
+      return;
+    }
+
+    setRegistering(true);
+    try {
+      const saved = await registerSurveyDataset({
+        name: regForm.name.trim(),
+        subgrid: regForm.subgrid.trim().toUpperCase(),
+        equipment: regForm.equipment,
+        datasetType: regForm.datasetType,
+        pipelineStage: regForm.pipelineStage,
+        sourceFolder: regForm.sourceFolder.trim(),
+        fileCount: Number(regForm.fileCount) || 0,
+        sizeBytes: Number(regForm.sizeBytes) || 0,
+        storageProvider: regForm.storageProvider,
+        userLabel,
+        metadata: {
+          intakeSource: 'dataset-registry-panel',
+          equipmentType: regForm.equipment
+        }
+      });
+
+      if (saved) {
+        onAddNotification?.({
+          title: 'Raw Survey Dataset Registered',
+          message: `"${saved.name}" (${saved.subgrid || 'No subgrid'}) successfully registered into catalog.`,
+          category: 'SYSTEM',
+          read: false
+        });
+        onAddAuditLog?.(
+          'CREATE',
+          `Survey Dataset Registered: ${saved.name}`,
+          `Registered type ${saved.dataset_type} (${saved.file_count || 0} frames) for subgrid ${saved.subgrid || '-'} by ${userLabel}.`,
+          'success'
+        );
+        setShowRegisterModal(false);
+        setRegForm({
+          name: '',
+          subgrid: '',
+          equipment: 'MMS Vehicle Unit',
+          datasetType: 'RAW',
+          pipelineStage: 'STITCH',
+          sourceFolder: '',
+          fileCount: 0,
+          sizeBytes: 0,
+          storageProvider: 'nas_local'
+        });
+        await load();
+      }
+    } catch (err: any) {
+      onAddNotification?.({
+        title: 'Registration Failed',
+        message: err?.message || 'Could not register dataset.',
+        category: 'ERROR',
+        read: false
+      });
+    } finally {
+      setRegistering(false);
+    }
+  };
+
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-3 relative">
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2">
         <button
           onClick={load}
           disabled={loading}
-          className="flex items-center gap-2 bg-inner hover:bg-slate-700 border border-subtle text-text-base px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer disabled:opacity-50"
+          className="flex items-center gap-2 bg-inner hover:bg-inner border border-subtle text-text-base px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer disabled:opacity-50"
         >
           <RefreshCw size={13} className={loading ? 'animate-spin text-sky-400' : 'text-sky-400'} />
           <span>{translate('dataRegistryRefresh')}</span>
         </button>
 
-        <span className="text-[11px] font-bold uppercase tracking-wider text-text-muted">
+        {!isGuestUser && (
+          <button
+            onClick={() => setShowRegisterModal(true)}
+            className="flex items-center gap-1.5 bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/40 px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all shadow-sm cursor-pointer"
+          >
+            <Plus size={13} />
+            <span>Register Survey Batch</span>
+          </button>
+        )}
+
+        <span className="text-[11px] font-bold uppercase tracking-wider text-text-muted ml-1">
           {translate('dataRegistrySubgrid')}
         </span>
         <button
@@ -254,7 +383,7 @@ export const DatasetRegistryPanel: React.FC<DatasetRegistryPanelProps> = ({
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder={translate('dataRegistrySearch')}
-            className="w-full bg-inner border border-subtle rounded-lg pl-8 pr-3 py-1.5 text-[11px] text-text-base placeholder-slate-500 focus:outline-none focus:border-sky-500/60 transition-all"
+            className="w-full bg-inner border border-subtle rounded-lg pl-8 pr-3 py-1.5 text-[11px] text-text-base placeholder-text-muted focus:outline-none focus:border-sky-500/60 transition-all"
           />
         </div>
         <select
@@ -380,6 +509,163 @@ export const DatasetRegistryPanel: React.FC<DatasetRegistryPanelProps> = ({
                 )}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* Registration Modal Dialog */}
+      {showRegisterModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-app border border-subtle rounded-2xl w-full max-w-xl shadow-2xl overflow-hidden animate-scaleUp">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-subtle bg-inner">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-sky-500/20 text-sky-400 rounded-lg border border-sky-500/30">
+                  <Plus size={18} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-text-base">Register Raw Survey Batch</h3>
+                  <p className="text-[11px] text-text-muted">Index NAS folder into the survey catalog before processing</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowRegisterModal(false)}
+                className="p-1.5 rounded-lg text-text-muted hover:text-text-base hover:bg-white/5 transition-colors cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <form onSubmit={handleRegisterSubmit} className="p-6 space-y-4 text-xs">
+              {duplicateWarnings.length > 0 && (
+                <div className="p-3 bg-amber-950/40 border border-amber-500/40 rounded-xl text-amber-200 flex items-start gap-2.5">
+                  <AlertTriangle size={16} className="text-amber-400 shrink-0 mt-0.5" />
+                  <div>
+                    <div className="font-semibold">Potential Duplicate Batch Detected</div>
+                    <div className="text-[11px] text-amber-300/90 mt-0.5">
+                      Subgrid <strong>{regForm.subgrid}</strong> already has {duplicateWarnings.length} registered dataset(s) (e.g. {duplicateWarnings[0].name}). A new entry will create an additional lineage track.
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Dataset Name */}
+                <div className="sm:col-span-2">
+                  <label className="block text-[11px] font-semibold text-text-muted uppercase tracking-wider mb-1">
+                    Dataset Name *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={regForm.name}
+                    onChange={(e) => setRegForm({ ...regForm, name: e.target.value })}
+                    placeholder="e.g. N93E70_2026_MMS_SURVEY_RAW"
+                    className="w-full bg-inner border border-subtle rounded-lg px-3 py-2 text-text-base focus:outline-none focus:border-sky-500/60 transition-colors"
+                  />
+                </div>
+
+                {/* Subgrid */}
+                <div>
+                  <label className="block text-[11px] font-semibold text-text-muted uppercase tracking-wider mb-1">
+                    Subgrid Code *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={regForm.subgrid}
+                    onChange={(e) => setRegForm({ ...regForm, subgrid: e.target.value.toUpperCase() })}
+                    placeholder="e.g. N93E70"
+                    className="w-full bg-inner border border-subtle rounded-lg px-3 py-2 text-text-base font-mono uppercase focus:outline-none focus:border-sky-500/60 transition-colors"
+                  />
+                </div>
+
+                {/* Equipment Type */}
+                <div>
+                  <label className="block text-[11px] font-semibold text-text-muted uppercase tracking-wider mb-1">
+                    Capture Equipment
+                  </label>
+                  <select
+                    value={regForm.equipment}
+                    onChange={(e) => setRegForm({ ...regForm, equipment: e.target.value })}
+                    className="w-full bg-inner border border-subtle rounded-lg px-3 py-2 text-text-base focus:outline-none focus:border-sky-500/60 transition-colors cursor-pointer"
+                  >
+                    <option value="MMS Vehicle Unit">MMS Vehicle Unit (360° Rig)</option>
+                    <option value="Backpack Mobile Unit">Backpack Mobile Unit</option>
+                    <option value="Drone Survey">Drone Aerial 360°</option>
+                    <option value="Handheld 360">Handheld / Tripod 360°</option>
+                  </select>
+                </div>
+
+                {/* Source Folder */}
+                <div className="sm:col-span-2">
+                  <label className="block text-[11px] font-semibold text-text-muted uppercase tracking-wider mb-1">
+                    NAS Source Folder Path
+                  </label>
+                  <div className="relative">
+                    <Folder size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
+                    <input
+                      type="text"
+                      value={regForm.sourceFolder}
+                      onChange={(e) => setRegForm({ ...regForm, sourceFolder: e.target.value })}
+                      placeholder="/RAW/N93E70/2026-08-29/"
+                      className="w-full bg-inner border border-subtle rounded-lg pl-9 pr-3 py-2 text-text-base font-mono focus:outline-none focus:border-sky-500/60 transition-colors"
+                    />
+                  </div>
+                </div>
+
+                {/* File Count */}
+                <div>
+                  <label className="block text-[11px] font-semibold text-text-muted uppercase tracking-wider mb-1">
+                    Estimated Frame Count
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={regForm.fileCount || ''}
+                    onChange={(e) => setRegForm({ ...regForm, fileCount: parseInt(e.target.value) || 0 })}
+                    placeholder="e.g. 1500"
+                    className="w-full bg-inner border border-subtle rounded-lg px-3 py-2 text-text-base focus:outline-none focus:border-sky-500/60 transition-colors"
+                  />
+                </div>
+
+                {/* Dataset Type */}
+                <div>
+                  <label className="block text-[11px] font-semibold text-text-muted uppercase tracking-wider mb-1">
+                    Dataset Stage Tier
+                  </label>
+                  <select
+                    value={regForm.datasetType}
+                    onChange={(e) => setRegForm({ ...regForm, datasetType: e.target.value as DatasetType })}
+                    className="w-full bg-inner border border-subtle rounded-lg px-3 py-2 text-text-base focus:outline-none focus:border-sky-500/60 transition-colors cursor-pointer"
+                  >
+                    <option value="RAW">RAW (Initial Field Ingest)</option>
+                    <option value="PROCESSED">PROCESSED (Stitched/Enhanced)</option>
+                    <option value="DELIVERABLE">DELIVERABLE (Client QA Final)</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-subtle">
+                <button
+                  type="button"
+                  onClick={() => setShowRegisterModal(false)}
+                  className="px-4 py-2 bg-inner hover:bg-white/5 border border-subtle text-text-muted hover:text-text-base rounded-lg font-semibold transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={registering}
+                  className="flex items-center gap-2 px-5 py-2 bg-sky-500 hover:bg-sky-400 active:bg-sky-600 text-slate-950 font-bold rounded-lg transition-all shadow-md cursor-pointer disabled:opacity-50"
+                >
+                  {registering ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+                  <span>{registering ? 'Registering...' : 'Confirm Registration'}</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

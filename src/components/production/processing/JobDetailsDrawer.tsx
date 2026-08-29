@@ -111,7 +111,7 @@ export const JobDetailsDrawer: React.FC<JobDetailsDrawerProps> = ({
 
   return (
     <div className="fixed inset-0 z-[900] flex justify-end">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 bg-[var(--modal-overlay)] backdrop-blur-sm" onClick={onClose} />
       <div className="relative w-full max-w-xl h-full bg-app border-l border-subtle shadow-2xl overflow-y-auto animate-in slide-in-from-right duration-300">
         <div className="sticky top-0 z-10 bg-app/95 backdrop-blur-md border-b border-subtle px-5 py-4 flex items-start justify-between gap-3">
           <div className="min-w-0">

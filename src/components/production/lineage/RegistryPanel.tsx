@@ -169,7 +169,7 @@ export function RegistryPanel({
                   <td className="px-3 py-2 font-bold text-sky-300">{r.subgrid || '—'}</td>
                   <td className="px-3 py-2 text-text-muted">{r.source}</td>
                   <td className="px-3 py-2">
-                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded border border-violet-500/40 text-violet-300">
+                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded border border-subtle bg-inner text-text-muted">
                       {translate(`lineageKind_${r.kind}`)}
                     </span>
                   </td>

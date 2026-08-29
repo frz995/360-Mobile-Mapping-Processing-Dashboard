@@ -15,10 +15,12 @@ import type { ProcessingJobRecord } from '../types/production';
 import { computeSurveyAnalytics, type SurveyAnalytics } from '../utils/surveyAnalytics';
 import { ANALYTICS_TAB_LABELS } from './production/analytics/analyticsCommon';
 import { OverviewPanel } from './production/analytics/OverviewPanel';
+import { LedgerPanel } from './production/analytics/LedgerPanel';
 import { DistancePanel } from './production/analytics/DistancePanel';
 import { CoveragePanel } from './production/analytics/CoveragePanel';
 import { DensityPanel } from './production/analytics/DensityPanel';
 import { QualityPanel } from './production/analytics/QualityPanel';
+import { History } from 'lucide-react';
 
 export interface AnalyticsWorkspaceProps {
   projectSettings: any;
@@ -34,10 +36,11 @@ export interface AnalyticsWorkspaceProps {
   onRefreshData?: () => void;
 }
 
-type AnalyticsTab = 'overview' | 'distance' | 'coverage' | 'density' | 'quality';
+type AnalyticsTab = 'overview' | 'ledger' | 'distance' | 'coverage' | 'density' | 'quality';
 
 const TABS: Array<{ key: AnalyticsTab; icon: React.ComponentType<{ size?: number | string; className?: string }> }> = [
   { key: 'overview', icon: BarChart3 },
+  { key: 'ledger', icon: History },
   { key: 'distance', icon: Route },
   { key: 'coverage', icon: Layers },
   { key: 'density', icon: Radar },
@@ -143,7 +146,7 @@ export const AnalyticsWorkspace: React.FC<AnalyticsWorkspaceProps> = ({
           <div className="flex items-center gap-2">
             <button
               onClick={handleRefresh}
-              className="flex items-center gap-1.5 px-3 py-2 bg-inner border border-subtle hover:bg-emerald-500/20 hover:border-emerald-500/40 text-emerald-300 text-xs font-semibold rounded-lg transition-colors cursor-pointer"
+              className="flex items-center gap-1.5 px-3 py-2 bg-inner border border-subtle hover:bg-card text-text-base text-xs font-semibold rounded-lg transition-colors cursor-pointer"
             >
               <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
               {translate('refresh')}
@@ -151,7 +154,7 @@ export const AnalyticsWorkspace: React.FC<AnalyticsWorkspaceProps> = ({
             {onBackToDashboard && (
               <button
                 onClick={onBackToDashboard}
-                className="flex items-center gap-1.5 px-3 py-2 bg-inner border border-subtle hover:bg-amber-500/20 hover:border-amber-500/40 text-amber-300 text-xs font-semibold rounded-lg transition-colors cursor-pointer"
+                className="flex items-center gap-1.5 px-3 py-2 bg-inner border border-subtle hover:bg-card text-text-muted hover:text-text-base text-xs font-semibold rounded-lg transition-colors cursor-pointer"
               >
                 <Undo2 size={13} /> {translate('backToDashboard')}
               </button>
@@ -190,6 +193,15 @@ export const AnalyticsWorkspace: React.FC<AnalyticsWorkspaceProps> = ({
         {/* Active tab panel */}
         <div className="min-h-0">
           {activeTab === 'overview' && <OverviewPanel analytics={analytics} translate={translate} />}
+          {activeTab === 'ledger' && (
+            <LedgerPanel
+              analytics={analytics}
+              batchLogs={batchLogs}
+              dailyData={dailyData}
+              projectSettings={projectSettings}
+              translate={translate}
+            />
+          )}
           {activeTab === 'distance' && <DistancePanel analytics={analytics} translate={translate} />}
           {activeTab === 'coverage' && <CoveragePanel analytics={analytics} translate={translate} />}
           {activeTab === 'density' && <DensityPanel analytics={analytics} translate={translate} />}

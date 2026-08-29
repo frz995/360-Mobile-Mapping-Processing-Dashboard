@@ -82,7 +82,7 @@ export const QAQCRunnerModal: React.FC<QAQCRunnerModalProps> = ({
             <div className="min-w-0">
               <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
                 <h2 className="text-sm sm:text-base font-bold text-text-base tracking-wide truncate">
-                  QA/QC Analysis Runner
+                  Acquisition QC Analysis Runner
                 </h2>
                 <span className="text-[10px] font-mono font-bold text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded border border-sky-500/20 shrink-0">
                   {subgrid || 'General'}
@@ -109,7 +109,7 @@ export const QAQCRunnerModal: React.FC<QAQCRunnerModalProps> = ({
             {!isCompleted && !isAborted && (
               <button
                 onClick={isPaused ? onResume : onPause}
-                className="px-2.5 sm:px-3 py-1 sm:py-1.5 bg-inner hover:bg-slate-700 text-xs font-semibold rounded-lg border border-subtle transition-colors flex items-center gap-1.5 cursor-pointer shadow-sm"
+                className="px-2.5 sm:px-3 py-1 sm:py-1.5 bg-inner hover:bg-inner text-xs font-semibold rounded-lg border border-subtle transition-colors flex items-center gap-1.5 cursor-pointer shadow-sm"
               >
                 {isPaused ? <Play size={13} className="text-emerald-400" /> : <Pause size={13} className="text-amber-400" />}
                 <span className="hidden sm:inline">{isPaused ? 'Resume' : 'Pause'}</span>
@@ -158,7 +158,7 @@ export const QAQCRunnerModal: React.FC<QAQCRunnerModalProps> = ({
                 Passed: <span className="text-emerald-400 font-semibold">{Math.max(0, currentIndex + 1 - defectsList.length)}</span>
               </div>
               <div className="text-text-muted">
-                Defects: <span className={`font-semibold ${defectsList.length > 0 ? 'text-amber-400' : 'text-slate-300'}`}>{defectsList.length}</span>
+                Defects: <span className={`font-semibold ${defectsList.length > 0 ? 'text-amber-400' : 'text-text-base'}`}>{defectsList.length}</span>
               </div>
             </div>
           </div>
@@ -263,7 +263,7 @@ export const QAQCRunnerModal: React.FC<QAQCRunnerModalProps> = ({
                   />
                 ) : (
                   <div className="text-text-muted text-[11px] flex flex-col items-center gap-1">
-                    <Camera size={20} className="text-slate-600" />
+                    <Camera size={20} className="text-text-muted" />
                     <span>No Preview Loaded</span>
                   </div>
                 )}
@@ -333,7 +333,7 @@ export const QAQCRunnerModal: React.FC<QAQCRunnerModalProps> = ({
           <div className="text-[11px] text-text-muted font-mono">
             {isCompleted ? (
               <span className="text-emerald-400 font-semibold flex items-center gap-1.5">
-                <CheckCircle size={13} /> Batch QA/QC finished successfully
+                <CheckCircle size={13} /> Batch Acquisition QC finished successfully
               </span>
             ) : isAborted ? (
               <span className="text-rose-400 font-semibold flex items-center gap-1.5">

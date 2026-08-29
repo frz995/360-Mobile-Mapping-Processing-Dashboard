@@ -4,6 +4,7 @@ import { WebGISHUDViewerOverlay } from './components/WebGISHUDViewerOverlay';
 import {
   AlertTriangle,
   CheckCircle,
+  CheckCircle2,
   Activity,
   Clock,
   Camera,
@@ -46,13 +47,15 @@ import {
   Map as MapIcon,
   MousePointer2
 } from 'lucide-react';
-import { supabase, publishToSupabase, saveToStagingSupabase, deleteFromStagingSupabase, fetchSupabaseData, deleteFromSupabase, updateDefectStatusInSupabase, fetchQaRecordsFromSupabase, fetchQaAuditRunsFromSupabase, saveQaAuditRunToSupabase, verifyCsvImageFilenamesInStorage, fetchAuditLogsFromSupabase, saveAuditLogToSupabase, fetchNotificationsFromSupabase, saveNotificationToSupabase, fetchProjectSettingsFromSupabase, saveProjectSettingsToSupabase, resolvePanoramaUrl, resolvePanoramaConfigUrl, getDatabaseTableMapping, SUBGRID_COORDINATES, formatPIC, fetchDatasetsFromSupabase, fetchProcessingJobsFromSupabase, fetchStagingPanoramasFromSupabase } from './services/supabase';
+import { supabase, publishToSupabase, saveToStagingSupabase, deleteFromStagingSupabase, fetchSupabaseData, deleteFromSupabase, deletePointsFromSupabase, updateDefectStatusInSupabase, fetchQaRecordsFromSupabase, fetchQaAuditRunsFromSupabase, saveQaAuditRunToSupabase, verifyCsvImageFilenamesInStorage, fetchAuditLogsFromSupabase, saveAuditLogToSupabase, fetchNotificationsFromSupabase, saveNotificationToSupabase, fetchProjectSettingsFromSupabase, saveProjectSettingsToSupabase, resolvePanoramaUrl, resolvePanoramaConfigUrl, getDatabaseTableMapping, SUBGRID_COORDINATES, formatPIC, fetchDatasetsFromSupabase, fetchProcessingJobsFromSupabase, fetchStagingPanoramasFromSupabase } from './services/supabase';
 import type { QAQCAuditRunRecord } from './types/admin';
 import type { DatasetRecord, ProcessingJobRecord } from './types/production';
 import { aggregateStagingBySubgrid } from './utils/datasetLineage';
 import type { StagingAggregate } from './utils/datasetLineage';
 import { computeDeletionImpact, type DeletionImpact, type DeletionMode } from './utils/deletionImpact';
-import { DeletionSelectionMap, type SubgridPointRow } from './components/DeletionSelectionMap';
+import { type SubgridPointRow, type SelectedPointInfo } from './components/DeletionSelectionMap';
+import { SelectionMapOverlay } from './components/SelectionMapOverlay';
+import { DataSelectionListModal } from './components/DataSelectionListModal';
 import { DatasetRegistryPanel } from './components/DatasetRegistryPanel';
 import { AdminSettingsView } from './components/AdminSettingsView';
 import { ImageProductionWorkspace } from './components/ImageProductionWorkspace';
@@ -61,6 +64,7 @@ import { ProcessingCenterWorkspace } from './components/ProcessingCenterWorkspac
 import { LineageWorkspace } from './components/LineageWorkspace';
 import { AnalyticsWorkspace } from './components/AnalyticsWorkspace';
 import { ReportsWorkspace } from './components/ReportsWorkspace';
+import { AdministrationWorkspace } from './components/AdministrationWorkspace';
 import { QAQCWorkbench } from './components/QAQCWorkbench';
 import { DefectsGalleryModal } from './components/DefectsGalleryModal';
 import { useQAQCWorker, type StationNode } from './hooks/useQAQCWorker';
@@ -804,7 +808,8 @@ export const MapComponent = ({
   selectedDateFilter,
   stagedItems,
   projectSettings: passedSettings,
-  defectsList
+  defectsList,
+  iframeRefCb
 }: {
   dataManagement?: boolean;
   layerCatalog?: (Layer | Folder)[];
@@ -816,6 +821,7 @@ export const MapComponent = ({
   stagedItems?: any[];
   projectSettings?: any;
   defectsList?: any[];
+  iframeRefCb?: (el: HTMLIFrameElement | null) => void;
 }) => {
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -1021,6 +1027,28 @@ export const MapComponent = ({
           layerOpacity: (s.layerOpacity ?? 100) / 100
         }
       }, '*');
+
+      // 3. Send Project Geographic Boundary (shape + focus/dim outside)
+      const boundary = s.projectBoundary;
+      if (boundary?.geojson || boundary?.bbox) {
+        iframeRef.current.contentWindow.postMessage({
+          type: 'SET_PROJECT_BOUNDARY',
+          geojson: boundary.geojson,
+          bbox: boundary.bbox
+        }, '*');
+        if (boundary.focusActive) {
+          iframeRef.current.contentWindow.postMessage({
+            type: 'FOCUS_BOUNDARY',
+            bbox: boundary.bbox
+          }, '*');
+          iframeRef.current.contentWindow.postMessage({ type: 'DIM_OUTSIDE_BOUNDARY', enabled: true }, '*');
+        } else {
+          iframeRef.current.contentWindow.postMessage({ type: 'DIM_OUTSIDE_BOUNDARY', enabled: false }, '*');
+        }
+      } else {
+        iframeRef.current.contentWindow.postMessage({ type: 'DIM_OUTSIDE_BOUNDARY', enabled: false }, '*');
+        iframeRef.current.contentWindow.postMessage({ type: 'CLEAR_BOUNDARY_FOCUS' }, '*');
+      }
     } catch (e) { }
   }, [effectiveSettings]);
 
@@ -1096,9 +1124,9 @@ export const MapComponent = ({
       </div>
       {/* Live Cursor Coordinate Badge (bottom-right) — non-overlapping position */}
       <div className="absolute bottom-3 right-3 z-20 pointer-events-none">
-        <div className="bg-app backdrop-blur-md border border-subtle rounded-lg px-2.5 py-1 text-[11px] text-slate-300 shadow-xl flex items-center gap-2 font-mono">
+        <div className="bg-app backdrop-blur-md border border-subtle rounded-lg px-2.5 py-1 text-[11px] text-text-base shadow-xl flex items-center gap-2 font-mono">
           <span className="text-sky-400 font-semibold">EPSG:4326</span>
-          <span className="text-slate-600">|</span>
+          <span className="text-text-muted">|</span>
           {coords ? (
             <span className="text-text-base">
               {coords.lat.toFixed(5)}° N, {coords.lng.toFixed(5)}° E
@@ -1110,9 +1138,12 @@ export const MapComponent = ({
       </div>
 
       <iframe
-        ref={iframeRef}
+        ref={(el) => {
+          iframeRef.current = el;
+          if (iframeRefCb) iframeRefCb(el);
+        }}
         key={`${refreshKey || 0}-${effectiveSettings?.defaultBasemap || 'ofm-positron'}`}
-        src={`${import.meta.env.VITE_MAP_URL || 'https://mobilemapping-nine.vercel.app'}/?embed=true&dashboard=true&basemap=${encodeURIComponent(effectiveSettings?.defaultBasemap || 'ofm-positron')}${refreshKey ? `&t=${refreshKey}` : ''}`}
+        src={`${import.meta.env.VITE_MAP_URL || 'https://mobilemapping-nine.vercel.app'}/?embed=true&dashboard=true&basemap=${encodeURIComponent(effectiveSettings?.defaultBasemap || 'ofm-positron')}${refreshKey ? `&t=${refreshKey}` : ''}${dataManagement ? '&noSonar=1' : ''}`}
         onLoad={() => {
           if (iframeRef.current && iframeRef.current.contentWindow) {
             iframeRef.current.contentWindow.postMessage({
@@ -1250,14 +1281,14 @@ ${missingFilenames.length > 0 ? missingFilenames.join('\n') : 'None - All images
   };
 
   return (
-    <div className="fixed inset-0 bg-black/85 flex items-center justify-center z-[1000] p-4 backdrop-blur-md">
+    <div className="fixed inset-0 bg-[var(--modal-overlay)] flex items-center justify-center z-[1000] p-4 backdrop-blur-md">
       <div className="bg-card border border-subtle rounded-2xl p-6 max-w-2xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
 
         {/* Header */}
         <div className="flex justify-between items-start pb-4 mb-4 border-b border-subtle shrink-0">
           <div>
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-xl bg-inner border border-subtle text-slate-300">
+              <div className="p-2 rounded-xl bg-inner border border-subtle text-text-base">
                 {missingCount > 0 ? <ShieldAlert size={20} className="text-rose-400" /> : <ShieldCheck size={20} className="text-emerald-400" />}
               </div>
               <div>
@@ -1290,7 +1321,7 @@ ${missingFilenames.length > 0 ? missingFilenames.join('\n') : 'None - All images
           </div>
           <div className="bg-card border border-subtle p-3 rounded-xl">
             <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider block">Missing Images</span>
-            <span className={`text-xl font-extrabold font-mono mt-0.5 block ${missingCount > 0 ? 'text-rose-400' : 'text-slate-300'}`}>{missingCount.toLocaleString()}</span>
+            <span className={`text-xl font-extrabold font-mono mt-0.5 block ${missingCount > 0 ? 'text-rose-400' : 'text-text-base'}`}>{missingCount.toLocaleString()}</span>
             <span className={`text-[10px] ${missingCount > 0 ? 'text-rose-400/80' : 'text-text-muted'}`}>{missingCount > 0 ? 'Upload required' : '100% Matched'}</span>
           </div>
         </div>
@@ -1350,12 +1381,12 @@ ${missingFilenames.length > 0 ? missingFilenames.join('\n') : 'None - All images
                   placeholder="Filter filenames..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-8 pr-3 py-1.5 bg-card border border-subtle rounded-lg text-xs text-text-base placeholder-slate-500 focus:outline-none focus:border-subtle"
+                  className="pl-8 pr-3 py-1.5 bg-card border border-subtle rounded-lg text-xs text-text-base placeholder-text-muted focus:outline-none focus:border-subtle"
                 />
               </div>
               <button
                 onClick={runIntegrityAudit}
-                className="p-2 bg-inner hover:bg-slate-700 text-slate-300 rounded-lg border border-subtle transition-colors cursor-pointer"
+                className="p-2 bg-inner hover:bg-inner text-text-base rounded-lg border border-subtle transition-colors cursor-pointer"
                 title="Re-run QC Audit"
               >
                 <RefreshCw size={14} />
@@ -1369,7 +1400,7 @@ ${missingFilenames.length > 0 ? missingFilenames.join('\n') : 'None - All images
           {filteredResults.length === 0 ? (
             <div className="py-12 text-center text-text-muted">
               <CheckCircle size={24} className="mx-auto text-emerald-400 mb-2 opacity-70" />
-              <span className="block text-xs font-semibold text-slate-300">
+              <span className="block text-xs font-semibold text-text-base">
                 {activeTab === 'missing' ? 'No missing image files!' : 'No files matching criteria'}
               </span>
               <span className="text-[11px] text-text-muted">
@@ -1414,13 +1445,13 @@ ${missingFilenames.length > 0 ? missingFilenames.join('\n') : 'None - All images
             <button
               onClick={copyMissingList}
               disabled={missingCount === 0}
-              className="px-3.5 py-2 bg-inner hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-text-base border border-subtle rounded-xl text-xs font-medium transition-colors flex items-center gap-2 cursor-pointer"
+              className="px-3.5 py-2 bg-inner hover:bg-inner disabled:opacity-40 disabled:cursor-not-allowed text-text-base border border-subtle rounded-xl text-xs font-medium transition-colors flex items-center gap-2 cursor-pointer"
             >
               <Copy size={13} /> Copy Missing List ({missingCount})
             </button>
             <button
               onClick={exportQCReport}
-              className="px-3.5 py-2 bg-inner hover:bg-slate-700 text-text-base border border-subtle rounded-xl text-xs font-medium transition-colors flex items-center gap-2 cursor-pointer"
+              className="px-3.5 py-2 bg-inner hover:bg-inner text-text-base border border-subtle rounded-xl text-xs font-medium transition-colors flex items-center gap-2 cursor-pointer"
             >
               <FileText size={13} /> Export QC Report (.txt)
             </button>
@@ -1537,7 +1568,7 @@ const CatalogItem = ({
               type="checkbox"
               checked={item.visible}
               onChange={() => onToggleLayer(item.id)}
-              className="w-4 h-4 text-sky-600 bg-slate-700 border-slate-600 rounded focus:ring-sky-500"
+              className="w-4 h-4 text-sky-600 bg-inner border-subtle rounded focus:ring-sky-500"
             />
             <div className="flex items-center gap-2">
               <div
@@ -1772,15 +1803,88 @@ const DataManagementPage = ({
   const [deleteMode, setDeleteMode] = useState<DeletionMode>('single');
   const [deleteModeActive, setDeleteModeActive] = useState(false);
   const [spatialSubgrids, setSpatialSubgrids] = useState<string[]>([]);
+  const [spatialSelectedPoints, setSpatialSelectedPoints] = useState<SelectedPointInfo[]>([]);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [impactData, setImpactData] = useState<DeletionImpact | null>(null);
   const [isComputingImpact, setIsComputingImpact] = useState(false);
   const [isSelectionMapOpen, setIsSelectionMapOpen] = useState(false);
-  const [focusSubgrid, setFocusSubgrid] = useState<string | null>(null);
+  const [isSelectionListModalOpen, setIsSelectionListModalOpen] = useState(false);
+  const [, setFocusSubgrid] = useState<string | null>(null);
   const [registryDatasets, setRegistryDatasets] = useState<DatasetRecord[]>([]);
   const [registryJobs, setRegistryJobs] = useState<ProcessingJobRecord[]>([]);
   const [registryStaging, setRegistryStaging] = useState<StagingAggregate[]>([]);
   const [isRegistryLoading, setIsRegistryLoading] = useState(false);
+  const [mapSubgridFilter, setMapSubgridFilter] = useState<string>('');
+  const [selectionNavMode, setSelectionNavMode] = useState<'navigate' | 'select'>('select');
+
+  const spatialSelectionSet = useMemo(
+    () => new Set(spatialSubgrids.map((s) => (s || '').toUpperCase().trim())),
+    [spatialSubgrids]
+  );
+  const safeDeletionMapItems = useMemo(() => (Array.isArray(dailyData) ? dailyData : []), [dailyData]);
+  const safeDeletionAfterItems = useMemo(() => {
+    if (!Array.isArray(dailyData)) return [];
+    if (spatialSelectionSet.size === 0) return dailyData;
+    return dailyData.filter((d: any) => {
+      const raw = d?.subgrid || d?.imageFilename || '';
+      const sg = (extractSubgridName(raw) || raw || '').toUpperCase().trim();
+      return !spatialSelectionSet.has(sg);
+    });
+  }, [dailyData, spatialSelectionSet]);
+  const subgridFilterFn = (all: any[]): any[] => {
+    if (!mapSubgridFilter) return all;
+    const f = mapSubgridFilter.toUpperCase().trim();
+    return all.filter((d: any) => {
+      const raw = d?.subgrid || d?.imageFilename || '';
+      const sg = (extractSubgridName(raw) || raw || '').toUpperCase().trim();
+      return sg === f;
+    });
+  };
+  const filteredCurrentMapItems = useMemo(() => subgridFilterFn(safeDeletionMapItems), [safeDeletionMapItems, mapSubgridFilter]);
+  const filteredAfterMapItems = useMemo(() => subgridFilterFn(safeDeletionAfterItems), [safeDeletionAfterItems, mapSubgridFilter]);
+
+  const availableSubgridList = useMemo(() => {
+    return Array.from(new Set([
+      ...batchLogs.map((b) => (extractSubgridName(b.subgrid || b.imageFilename) || b.subgrid || '').toUpperCase().trim()),
+      ...dailyData.map((d) => (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim()),
+    ])).filter(Boolean) as string[];
+  }, [batchLogs, dailyData]);
+
+  const currentMapIframeRef = useRef<HTMLIFrameElement | null>(null);
+  const currentMapContainerRef = useRef<HTMLDivElement | null>(null);
+
+  const handleSpatialAdd = useCallback((list: string[], points?: SelectedPointInfo[]) => {
+    setSpatialSubgrids((prev) => Array.from(new Set([...prev, ...list])));
+    if (points && points.length > 0) {
+      setSpatialSelectedPoints((prev) => {
+        const m = new Map(prev.map((p) => [p.subgrid + '_' + (p.filename || p.pointId || (p.lat ?? 0) + ',' + (p.lng ?? 0)), p]));
+        points.forEach((p) => m.set(p.subgrid + '_' + (p.filename || p.pointId || (p.lat ?? 0) + ',' + (p.lng ?? 0)), p));
+        return Array.from(m.values());
+      });
+    }
+  }, []);
+
+  const handleFlyToSelection = useCallback((subgrid: string, points?: SelectedPointInfo[]) => {
+    const ifr = currentMapIframeRef.current;
+    if (!ifr || !ifr.contentWindow) return;
+    const validPts = (points || []).filter((p) => typeof p.lat === 'number' && typeof p.lng === 'number' && Number.isFinite(p.lat) && Number.isFinite(p.lng));
+    if (validPts.length > 0) {
+      const minLat = Math.min(...validPts.map((p) => p.lat!));
+      const maxLat = Math.max(...validPts.map((p) => p.lat!));
+      const minLng = Math.min(...validPts.map((p) => p.lng!));
+      const maxLng = Math.max(...validPts.map((p) => p.lng!));
+      const padLat = Math.max(0.0015, (maxLat - minLat) * 0.15);
+      const padLng = Math.max(0.0015, (maxLng - minLng) * 0.15);
+      try {
+        ifr.contentWindow.postMessage({ type: 'FOCUS_BOUNDARY', bbox: [minLng - padLng, minLat - padLat, maxLng + padLng, maxLat + padLat] }, '*');
+        ifr.contentWindow.postMessage({ type: 'FLY_TO', lat: (minLat + maxLat) / 2, lng: (minLng + maxLng) / 2, lon: (minLng + maxLng) / 2, zoom: 17 }, '*');
+      } catch {}
+    } else if (subgrid) {
+      try {
+        ifr.contentWindow.postMessage({ type: 'SET_SUBGRID_FILTER', subgrid, date: '', isSingleRun: false, runId: null }, '*');
+      } catch {}
+    }
+  }, []);
 
   const loadRegistryData = useCallback(async () => {
     setIsRegistryLoading(true);
@@ -1803,26 +1907,149 @@ const DataManagementPage = ({
   }, []);
 
   const subgridPoints = useMemo<SubgridPointRow[]>(() => {
-    const map = new Map<string, Array<{ lat: number; lng: number }>>();
-    const ingest = (rec: any) => {
-      const raw = rec?.subgrid || rec?.imageFilename || '';
+    // 1. Collect all unique subgrids from batchLogs (Masterlist) and dailyData
+    const allSubgridNames = new Set<string>();
+    (batchLogs || []).forEach((b) => {
+      const raw = b?.subgrid || b?.imageFilename || '';
       const sg = (extractSubgridName(raw) || '').toUpperCase().trim();
-      if (!sg) return;
-      const pts = map.get(sg) || [];
-      const coords = [].concat(rec?.points || [], rec?.panoramas || []);
-      coords.forEach((p: any) => {
-        const lat = Number(p?.lat ?? p?.latitude ?? p?.y);
-        const lng = Number(p?.lng ?? p?.lon ?? p?.longitude ?? p?.x);
-        if (Number.isFinite(lat) && Number.isFinite(lng)) pts.push({ lat, lng });
-      });
-      if (pts.length > 0) map.set(sg, pts.slice(0, 400));
-    };
-    (dailyData || []).forEach(ingest);
-    (batchLogs || []).forEach(ingest);
+      if (sg) allSubgridNames.add(sg);
+    });
+    (dailyData || []).forEach((d) => {
+      const raw = d?.subgrid || (d as any)?.imageFilename || '';
+      const sg = (extractSubgridName(raw) || '').toUpperCase().trim();
+      if (sg) allSubgridNames.add(sg);
+    });
+
     const out: SubgridPointRow[] = [];
-    map.forEach((points, subgrid) => out.push({ subgrid, points }));
-    return out.sort((a, b) => a.subgrid.localeCompare(b.subgrid));
-  }, [dailyData, batchLogs]);
+
+    allSubgridNames.forEach((sg) => {
+      // Find authoritative masterlist record
+      const masterRec = (batchLogs || []).find((b) => {
+        const raw = b?.subgrid || b?.imageFilename || '';
+        return (extractSubgridName(raw) || '').toUpperCase().trim() === sg;
+      });
+
+      const dailyRecs = (dailyData || []).filter((d) => {
+        const raw = d?.subgrid || (d as any)?.imageFilename || '';
+        return (extractSubgridName(raw) || '').toUpperCase().trim() === sg;
+      });
+
+      // Target POI / Frame count from Masterlist
+      const masterCount =
+        masterRec && typeof masterRec.poiCount === 'number' && masterRec.poiCount > 0
+          ? masterRec.poiCount
+          : masterRec && typeof masterRec.availableImagesCount === 'number' && masterRec.availableImagesCount > 0
+          ? masterRec.availableImagesCount
+          : masterRec && typeof masterRec.images === 'number' && masterRec.images > 0
+          ? masterRec.images
+          : masterRec?.panoramas?.length || 0;
+
+      const dailyCount = dailyRecs.reduce((sum, d) => {
+        const c = d?.poiCount || d?.availableImagesCount || (d as any)?.images || d?.panoramas?.length || 0;
+        return Math.max(sum, c);
+      }, 0);
+
+      const targetCount = masterCount > 0 ? masterCount : dailyCount;
+
+      // Collect points from masterlist panoramas/points first, then dailyData
+      const ptsMap = new Map<string, { lat: number; lng: number; filename?: string; pointId?: string }>();
+
+      const ingestCoords = (recList: any[]) => {
+        recList.forEach((rec) => {
+          const coords = [].concat(rec?.points || [], rec?.panoramas || []);
+          coords.forEach((p: any, pIdx: number) => {
+            const lat = Number(p?.lat ?? p?.latitude ?? p?.y);
+            const lng = Number(p?.lng ?? p?.lon ?? p?.longitude ?? p?.x);
+            const filename =
+              p?.filename ||
+              p?.imageFilename ||
+              p?.image_url ||
+              `${sg}-${String(pIdx + 1).padStart(4, '0')}.jpg`;
+            const pointId = p?.pointId || p?.id || p?.point_id || `pt-${sg}-${pIdx}`;
+            if (Number.isFinite(lat) && Number.isFinite(lng)) {
+              const key = filename || `${lat.toFixed(6)},${lng.toFixed(6)}`;
+              if (!ptsMap.has(key)) {
+                ptsMap.set(key, { lat, lng, filename, pointId });
+              }
+            }
+          });
+        });
+      };
+
+      if (masterRec) ingestCoords([masterRec]);
+      ingestCoords(dailyRecs);
+
+      let pts = Array.from(ptsMap.values());
+
+      if (targetCount > 0 && pts.length > targetCount) {
+        pts = pts.slice(0, targetCount);
+      }
+
+      // Sort points deterministically by filename/id
+      pts.sort((a, b) => (a.filename || a.pointId || '').localeCompare(b.filename || b.pointId || '', undefined, { numeric: true }));
+
+      // Determine status & color for subgrid matching dashboard
+      const isPub = Boolean(
+        masterRec?.status === 'Complete' ||
+        masterRec?.publishToWebGIS === 'yes' ||
+        masterRec?.isSyncedWithSupabase ||
+        dailyRecs.some((d) => d.publishToWebGIS === 'yes' || d.isSyncedWithSupabase)
+      );
+      const masterDefects = masterRec?.defects || 0;
+      const hasDefects = Boolean(
+        masterDefects > 0 ||
+        dailyRecs.some((d) => ((d as any).defects && (d as any).defects > 0) || d.publishToWebGIS === 'need to recheck' || d.publishToWebGIS === 'no') ||
+        (qaSubgridRecords && Object.entries(qaSubgridRecords).some(([k, v]) => {
+          return k.toUpperCase().includes(sg) && v?.flags && (v.flags.blurry || v.flags.obstruction || v.flags.badGps);
+        }))
+      );
+      const statusColor = hasDefects ? '#ef4444' : isPub ? '#10b981' : '#f59e0b';
+      const statusName = hasDefects ? 'defect' : isPub ? 'yes' : 'in process';
+
+      const enrichedPts = pts.map((p, pIdx) => {
+        const fnClean = (p.filename || '').split('/').pop()?.toUpperCase().trim();
+        const isPtDefect = Boolean(
+          (p as any).isDefect ||
+          (p as any).is_defect ||
+          (p as any).status === 'defect' ||
+          (p as any).qa_status === 'defect' ||
+          (masterDefects > 0 && pIdx < masterDefects) ||
+          (qaSubgridRecords && (
+            (fnClean && qaSubgridRecords[fnClean]?.flags && (qaSubgridRecords[fnClean].flags.blurry || qaSubgridRecords[fnClean].flags.obstruction || qaSubgridRecords[fnClean].flags.badGps)) ||
+            (qaSubgridRecords[sg]?.flags && (qaSubgridRecords[sg].flags.blurry || qaSubgridRecords[sg].flags.obstruction || qaSubgridRecords[sg].flags.badGps))
+          ))
+        );
+
+        const ptColor = isPtDefect ? '#ef4444' : isPub ? '#10b981' : '#f59e0b';
+        const ptStatus = isPtDefect ? 'defect' : isPub ? 'yes' : 'in process';
+
+        return {
+          ...p,
+          status: ptStatus,
+          statusColor: ptColor,
+          color: ptColor,
+          isDefect: isPtDefect,
+          is_defect: isPtDefect,
+          isPublished: isPub && !isPtDefect,
+          opacity: isPtDefect ? 1.0 : (isPub ? 1.0 : 0.8)
+        };
+      });
+
+      if (pts.length > 0 || targetCount > 0) {
+        out.push({
+          subgrid: sg,
+          points: enrichedPts,
+          totalPoi: targetCount > 0 ? targetCount : pts.length,
+          status: statusName,
+          statusColor: statusColor,
+          color: statusColor,
+          isPublished: isPub
+        });
+      }
+    });
+
+    return out.sort((a, b) => a.subgrid.localeCompare(b.subgrid, undefined, { numeric: true, sensitivity: 'base' }));
+  }, [dailyData, batchLogs, qaSubgridRecords]);
 
   const resolveDeleteSubgrids = useCallback((mode: DeletionMode): string[] => {
     if (mode === 'single') {
@@ -2852,25 +3079,115 @@ const DataManagementPage = ({
       const targets = spatialSubgrids.filter(Boolean);
       const matchSub = (raw?: string) => (extractSubgridName(raw || '') || '').toUpperCase().trim();
       const affected = new Set(targets.map((sg) => sg.toUpperCase().trim()));
-      const updatedDaily = dailyData.filter((d) => !affected.has(matchSub(d.subgrid)));
-      const updatedDraft = draftDailyData.filter((d) => !affected.has(matchSub(d.subgrid)));
-      const updatedBatches = batchLogs.filter((b) => !affected.has(matchSub(b.subgrid)) && !affected.has(matchSub(b.imageFilename)));
-      setDailyData(updatedDaily);
-      setDraftDailyData(updatedDraft);
-      setBatchLogs(reconcileBatchLogs(updatedDaily, updatedBatches));
-      setIsDailyDirty(true);
 
-      affected.forEach((sg) => {
-        deleteFromStagingSupabase(sg).catch((err) => console.warn('Spatial staging delete error:', err));
-        deleteFromSupabase(sg).catch((err) => console.warn('Spatial delete error:', err));
+      // Check if partial point deletion is taking place for any subgrid
+      let deletedPointsTotal = 0;
+      let wholeDeletedSubgridsCount = 0;
+      const partialSummary: string[] = [];
+
+      const updatedDaily: DailyTimeSeries[] = [];
+
+      // Process each daily entry
+      draftDailyData.forEach((d) => {
+        const sg = matchSub(d.subgrid);
+        if (!affected.has(sg)) {
+          updatedDaily.push(d);
+          return;
+        }
+
+        const ptsForSg = spatialSelectedPoints.filter((p) => p.subgrid === sg);
+        const existingCount = d.panoramas?.length || d.availableImagesCount || d.poiCount || (d as any).images || 0;
+
+        // If specific subset of points are selected (e.g. 4 points out of 14)
+        if (ptsForSg.length > 0 && ptsForSg.length < existingCount) {
+          const delFilenames = ptsForSg.map((p) => p.filename).filter((f): f is string => Boolean(f));
+          const delCoords = new Set(ptsForSg.map((p) => `${p.lat?.toFixed(5)},${p.lng?.toFixed(5)}`));
+
+          // Delete specific points from Supabase database
+          if (delFilenames.length > 0) {
+            deletePointsFromSupabase(delFilenames, sg).catch((err) =>
+              console.warn('Point deletion DB error:', err)
+            );
+          }
+
+          // Filter panoramas
+          const remainingPanos = (d.panoramas || []).filter((p) => {
+            if (p.filename && delFilenames.includes(p.filename)) return false;
+            const latVal = Number(p.latitude ?? (p as any).lat);
+            const lngVal = Number(p.longitude ?? (p as any).lng);
+            const key = `${latVal.toFixed(5)},${lngVal.toFixed(5)}`;
+            if (delCoords.has(key)) return false;
+            return true;
+          });
+
+          const remainingFiles = (d.availableFilenames || []).filter((fn) => !delFilenames.includes(fn));
+          const newCount =
+            remainingPanos.length > 0
+              ? remainingPanos.length
+              : Math.max(0, existingCount - ptsForSg.length);
+          const newKm =
+            remainingPanos.length > 1
+              ? calculatePanoramaTrackKm(remainingPanos)
+              : Math.round(newCount * 0.005 * 100) / 100;
+
+          deletedPointsTotal += ptsForSg.length;
+          partialSummary.push(`${sg}: -${ptsForSg.length} pts (${newCount} remaining)`);
+
+          if (newCount > 0) {
+            updatedDaily.push({
+              ...d,
+              poiCount: newCount,
+              imagesProcessed: newCount,
+              availableImagesCount: newCount,
+              kmProcessed: newKm,
+              panoramas: remainingPanos,
+              availableFilenames: remainingFiles.length > 0 ? remainingFiles : undefined
+            });
+          }
+        } else {
+          // Whole subgrid deletion
+          wholeDeletedSubgridsCount += 1;
+          deleteFromStagingSupabase(sg).catch((err) => console.warn('Spatial staging delete error:', err));
+          deleteFromSupabase(sg).catch((err) => console.warn('Spatial delete error:', err));
+        }
       });
 
+      setDailyData(updatedDaily);
+      setDraftDailyData(updatedDaily);
+      setBatchLogs(reconcileBatchLogs(updatedDaily, batchLogs));
+      setIsDailyDirty(true);
+
       if (onRefreshMap) onRefreshMap();
-      if (addAuditLog) new Set(affected).forEach((sg) => addAuditLog('DELETE', `Record Deleted: ${sg}`, `Spatial selection (map bbox/point) permanently deleted subgrid ${sg}`, 'warning'));
-      setPublishMessage({ text: `[Admin Security Action] ${affected.size} spatially selected subgrid(s) permanently deleted from database.`, type: 'success' });
+
+      if (addAuditLog) {
+        if (deletedPointsTotal > 0) {
+          addAuditLog(
+            'DELETE',
+            `Partial Points Deleted: ${partialSummary.join(', ')}`,
+            `Deleted ${deletedPointsTotal} points from subgrid(s)`,
+            'warning'
+          );
+        }
+        if (wholeDeletedSubgridsCount > 0) {
+          addAuditLog(
+            'DELETE',
+            `Subgrids Deleted: ${Array.from(affected).join(', ')}`,
+            `Permanently deleted ${wholeDeletedSubgridsCount} subgrid(s)`,
+            'warning'
+          );
+        }
+      }
+
+      const msg =
+        deletedPointsTotal > 0 && wholeDeletedSubgridsCount === 0
+          ? `[Database Updated] Successfully deleted ${deletedPointsTotal} point(s). Subgrid records updated dynamically (${partialSummary.join(', ')}).`
+          : `[Database Updated] ${wholeDeletedSubgridsCount} subgrid(s) and ${deletedPointsTotal} point(s) permanently deleted.`;
+
+      setPublishMessage({ text: msg, type: 'success' });
       setTimeout(() => setPublishMessage(null), 5000);
 
       setSpatialSubgrids([]);
+      setSpatialSelectedPoints([]);
       setDeleteConfirmText('');
       setIsDeleteModalOpen(false);
       setDeleteTarget(null);
@@ -3008,14 +3325,14 @@ const DataManagementPage = ({
   return (
     <>
       <div className="flex-1 flex flex-col h-full bg-card text-text-base font-sans p-4 sm:p-6 overflow-y-auto min-h-0">
-        <div className="max-w-7xl mx-auto w-full space-y-5">
+        <div className="w-full space-y-5">
 
           {/* Executive Header Bar */}
           <div className="bg-card border border-subtle rounded-2xl p-5 shadow-lg flex flex-wrap items-center justify-between gap-4">
             <div className="flex items-center gap-4">
               <button
                 onClick={onBackToDashboard}
-                className="flex items-center gap-2 bg-inner hover:bg-slate-700 text-text-base border border-subtle px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer shadow-sm hover:scale-[1.02] active:scale-95"
+                className="flex items-center gap-2 bg-inner hover:bg-inner text-text-base border border-subtle px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer shadow-sm hover:scale-[1.02] active:scale-95"
               >
                 <LayoutDashboard size={16} className="text-sky-400" />
                 <span>Back to Dashboard</span>
@@ -3032,7 +3349,7 @@ const DataManagementPage = ({
 
             {authSession && (
               <div className="flex items-center gap-3">
-                <div className="flex items-center gap-2 px-3 py-1.5 bg-card border border-subtle rounded-xl text-xs text-slate-300 shadow-inner">
+                <div className="flex items-center gap-2 px-3 py-1.5 bg-card border border-subtle rounded-xl text-xs text-text-base shadow-inner">
                   <User size={13} className="text-text-muted" />
                   <span className="font-semibold text-text-base">{authSession.user?.email || (isGuestUser ? 'Guest User' : 'Operator')}</span>
                   {isGuestUser ? (
@@ -3044,7 +3361,7 @@ const DataManagementPage = ({
                 {onSignOut && (
                   <button
                     onClick={onSignOut}
-                    className="flex items-center gap-1.5 bg-inner hover:bg-slate-700 border border-subtle text-slate-300 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer shadow-sm"
+                    className="flex items-center gap-1.5 bg-inner hover:bg-inner border border-subtle text-text-base px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer shadow-sm"
                     title="Sign out of Dashboard"
                   >
                     <LogOut size={13} />
@@ -3057,7 +3374,7 @@ const DataManagementPage = ({
 
           {/* Guest Read-Only Banner */}
           {isGuestUser && (
-            <div className="p-3 bg-card border border-subtle rounded-xl flex items-center gap-3 text-xs text-slate-300 shadow-sm">
+            <div className="p-3 bg-card border border-subtle rounded-xl flex items-center gap-3 text-xs text-text-base shadow-sm">
               <AlertTriangle size={15} className="text-sky-400 shrink-0" />
               <span><strong className="text-text-base font-semibold">Guest Mode — Read Only.</strong> You can view all data but editing, uploading, deleting, and publishing are disabled. Sign in with an authorized account to make changes.</span>
             </div>
@@ -3145,6 +3462,22 @@ const DataManagementPage = ({
                 {tf('dataSelectionMapHint')}
               </span>
               <div className="flex-1" />
+              {isSelectionMapOpen && (
+                <label className="flex items-center gap-1.5 text-[11px] text-text-muted">
+                  <Layers size={12} className="text-sky-400" />
+                  <span className="hidden sm:inline">Subgrid</span>
+                  <select
+                    value={mapSubgridFilter}
+                    onChange={(e) => setMapSubgridFilter(e.target.value)}
+                    className="bg-inner border border-subtle rounded-md px-2 py-1 text-[11px] text-text-base cursor-pointer outline-none focus:border-sky-500/50 max-w-[160px]"
+                  >
+                    <option value="">All Subgrids</option>
+                    {availableSubgridList.map((sg) => (
+                      <option key={sg} value={sg}>{sg}</option>
+                    ))}
+                  </select>
+                </label>
+              )}
               {isGuestUser ? (
                 <span className="text-[10px] text-text-muted border border-subtle px-2 py-1 rounded-md bg-inner">{tf('dataSelectionMapGuest')}</span>
               ) : (
@@ -3161,7 +3494,7 @@ const DataManagementPage = ({
                   }}
                   className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer border ${deleteModeActive
                     ? 'bg-rose-600/90 text-white border-rose-500/50'
-                    : 'bg-inner text-slate-300 border-subtle hover:text-text-base hover:bg-slate-700'
+                    : 'bg-inner text-text-base border-subtle hover:text-text-base hover:bg-inner'
                     }`}
                 >
                   <MousePointer2 size={13} className={deleteModeActive ? 'text-white' : 'text-sky-400'} />
@@ -3172,39 +3505,149 @@ const DataManagementPage = ({
             {isSelectionMapOpen && (
               <div className="p-3.5 space-y-3">
                 {deleteModeActive && (
-                  <div className="p-3 bg-amber-950/30 border border-amber-700/40 rounded-xl flex items-center gap-2.5 text-xs text-amber-200">
-                    <Maximize2 size={14} className="text-amber-400 shrink-0" />
-                    <span>{tf('dataDeleteModeHint')}</span>
+                  <div className="p-3 bg-card/90 border border-rose-500/30 rounded-xl flex flex-wrap items-center justify-between gap-2.5 text-xs text-text-base shadow-lg backdrop-blur-md">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-7 h-7 rounded-lg bg-rose-500/15 border border-rose-500/30 flex items-center justify-center shrink-0">
+                        <Trash2 size={14} className="text-rose-400" />
+                      </div>
+                      <div>
+                        <span className="font-bold text-text-base text-xs">Safe Spatial Deletion Active</span>
+                        <p className="text-[11px] text-text-muted">
+                          Draw a bounding box by dragging over the map, or click a station point to select existing survey subgrids.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-inner border border-subtle text-text-muted">
+                        Available in DB: {Array.from(new Set([...batchLogs.map(b => (extractSubgridName(b.subgrid || b.imageFilename) || b.subgrid || '').toUpperCase().trim()), ...dailyData.map(d => (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim())])).filter(Boolean).length} Subgrids
+                      </span>
+                    </div>
                   </div>
                 )}
-                <div className="h-[300px] sm:h-[340px]">
-                  <DeletionSelectionMap
-                    deletionMode={deleteModeActive && !isGuestUser}
-                    selectedSubgrids={spatialSubgrids}
-                    onAddSubgrids={(list) => setSpatialSubgrids(prev => Array.from(new Set([...prev, ...list])))}
-                    onRemoveSubgrid={(sg) => setSpatialSubgrids(prev => prev.filter(x => x !== sg))}
-                    onClear={() => setSpatialSubgrids([])}
-                    subgridPoints={subgridPoints}
-                    focusSubgrid={focusSubgrid}
-                  />
-                </div>
+                {deleteModeActive ? (
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 p-2 bg-inner/60 rounded-xl">
+                    {/* Pane 1: Current Production WebGIS (all survey data) */}
+                    <div className="relative flex flex-col rounded-xl overflow-hidden border border-subtle bg-slate-950 min-h-[300px]">
+                      <div className="px-3 py-1.5 bg-card border-b border-subtle flex items-center justify-between text-xs shrink-0">
+                        <div className="flex items-center gap-1.5">
+                          <CheckCircle2 size={12} className="text-sky-400" />
+                          <span className="font-bold text-sky-300 text-[11px]">Current Production WebGIS</span>
+                        </div>
+                        <span className="text-[10px] text-text-muted font-mono">All survey data</span>
+                        <div className="flex items-center gap-1 p-0.5 bg-inner border border-subtle rounded-lg">
+                          <button
+                            onClick={() => setSelectionNavMode('select')}
+                            className={`px-2 py-0.5 rounded-md text-[10px] font-bold transition-all cursor-pointer ${selectionNavMode === 'select' ? 'bg-rose-600/90 text-white' : 'text-text-muted hover:text-text-base'}`}
+                          >
+                            Select
+                          </button>
+                          <button
+                            onClick={() => setSelectionNavMode('navigate')}
+                            className={`px-2 py-0.5 rounded-md text-[10px] font-bold transition-all cursor-pointer ${selectionNavMode === 'navigate' ? 'bg-sky-600/90 text-white' : 'text-text-muted hover:text-text-base'}`}
+                          >
+                            Navigate
+                          </button>
+                        </div>
+                      </div>
+                      <div ref={currentMapContainerRef} className="relative w-full overflow-hidden" style={{ height: 640 }}>
+                        <MapComponent dataManagement refreshKey={mapRefreshKey} stagedItems={filteredCurrentMapItems} iframeRefCb={(el) => { currentMapIframeRef.current = el; }} />
+                        <SelectionMapOverlay
+                          iframeRef={currentMapIframeRef}
+                          containerRef={currentMapContainerRef}
+                          deletionMode={deleteModeActive && !isGuestUser}
+                          mode={selectionNavMode}
+                          onAddSubgrids={handleSpatialAdd}
+                          subgridPoints={subgridPoints}
+                          availableSubgrids={availableSubgridList}
+                          selectedSubgrids={spatialSubgrids}
+                          onFlyTo={handleFlyToSelection}
+                        />
+                      </div>
+                    </div>
+                    {/* Pane 2: After Deletion Preview (selected subgrids removed) */}
+                    <div className="relative flex flex-col rounded-xl overflow-hidden border border-subtle bg-slate-950 min-h-[300px]">
+                      <div className="px-3 py-1.5 bg-card border-b border-subtle flex items-center justify-between text-xs shrink-0">
+                        <div className="flex items-center gap-1.5">
+                          <Trash2 size={12} className="text-rose-400" />
+                          <span className="font-bold text-rose-300 text-[11px]">After Deletion Preview</span>
+                        </div>
+                        <span className="text-[10px] text-text-muted font-mono">
+                          {spatialSubgrids.length > 0 ? `${spatialSubgrids.length} Target(s) Purged` : '0 Selected'}
+                        </span>
+                        <div className="flex items-center gap-1 p-0.5 bg-inner border border-subtle rounded-lg">
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold text-text-muted">Read Only</span>
+                        </div>
+                      </div>
+                      <div className="relative w-full overflow-hidden" style={{ height: 640 }}>
+                        <MapComponent dataManagement refreshKey={mapRefreshKey} stagedItems={filteredAfterMapItems} />
+                        {spatialSubgrids.length > 0 && (
+                          <div className="absolute bottom-2 left-2 right-2 z-10 pointer-events-none flex justify-center">
+                            <div className="bg-slate-950/90 backdrop-blur-md border border-rose-500/40 rounded-xl px-3 py-1.5 text-center shadow-2xl max-w-sm">
+                              <p className="text-[11px] font-medium text-slate-200">
+                                <strong className="font-mono text-rose-300">{spatialSubgrids.join(', ')}</strong> will be purged from active WebGIS layers.
+                              </p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="h-[460px] sm:h-[500px] lg:h-[520px]">
+                    <MapComponent dataManagement refreshKey={mapRefreshKey} stagedItems={safeDeletionMapItems} projectSettings={projectSettings} />
+                  </div>
+                )}
                 {deleteModeActive && (
-                  <div className="flex flex-wrap items-center gap-2.5">
-                    <button
-                      onClick={() => { setDeleteTarget('SPATIAL_SELECTION' as any); openDeleteModalForMode('spatial'); }}
-                      disabled={spatialSubgrids.length === 0}
-                      className="flex items-center gap-2 px-4 py-2 bg-red-600/90 hover:bg-red-600 text-text-base rounded-xl text-xs font-semibold transition-all shadow-md cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                    >
-                      <Trash2 size={14} />
-                      <span>{tf('dataReviewImpact')} ({spatialSubgrids.length})</span>
-                    </button>
-                    <button
-                      onClick={() => setSpatialSubgrids([])}
-                      disabled={spatialSubgrids.length === 0}
-                      className="px-3 py-2 text-xs text-text-muted hover:text-text-base transition-colors cursor-pointer disabled:opacity-40"
-                    >
-                      {tf('dataClearSelection')}
-                    </button>
+                  <div className="flex flex-wrap items-center justify-between gap-2.5 pt-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        onClick={() => {
+                          const availableSet = new Set(
+                            Array.from(new Set([...batchLogs.map(b => (extractSubgridName(b.subgrid || b.imageFilename) || b.subgrid || '').toUpperCase().trim()), ...dailyData.map(d => (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim())])).filter(Boolean)
+                          );
+                          const validSelected = spatialSubgrids.filter(sg => availableSet.has(sg.toUpperCase().trim()));
+                          if (validSelected.length === 0) {
+                            setPublishMessage({ text: 'Please select subgrid records that exist in the masterlist or daily dataset before proceeding.', type: 'error' });
+                            return;
+                          }
+                          setDeleteTarget('SPATIAL_SELECTION' as any);
+                          openDeleteModalForMode('spatial');
+                        }}
+                        disabled={spatialSubgrids.length === 0}
+                        className="flex items-center gap-2 px-4 py-2 bg-rose-600/90 hover:bg-rose-600 text-white rounded-xl text-xs font-semibold transition-all shadow-md cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed border border-rose-500/40 active:scale-95"
+                      >
+                        <Trash2 size={14} />
+                        <span>{tf('dataReviewImpact')} ({spatialSubgrids.length} Selected)</span>
+                      </button>
+
+                      <button
+                        onClick={() => setIsSelectionListModalOpen(true)}
+                        disabled={spatialSubgrids.length === 0}
+                        className="flex items-center gap-1.5 px-3.5 py-2 bg-inner hover:bg-card text-text-base border border-subtle hover:border-sky-500/40 rounded-xl text-xs font-semibold transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shadow-sm"
+                      >
+                        <Layers size={13} className="text-sky-400" />
+                        <span>Inspect Data Selection ({spatialSelectedPoints.length > 0 ? `${spatialSelectedPoints.length} pts` : `${spatialSubgrids.length} subgrids`})</span>
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setSpatialSubgrids([]);
+                          setSpatialSelectedPoints([]);
+                        }}
+                        disabled={spatialSubgrids.length === 0}
+                        className="px-3 py-2 text-xs text-text-muted hover:text-text-base transition-colors cursor-pointer disabled:opacity-40"
+                      >
+                        {tf('dataClearSelection')}
+                      </button>
+                    </div>
+
+                    <div className="text-[11px] text-text-muted font-mono">
+                      {spatialSubgrids.length > 0 ? (
+                        <span>Ready to evaluate impact on {spatialSubgrids.length} subgrid(s) ({spatialSelectedPoints.length > 0 ? `${spatialSelectedPoints.length} points selected` : 'All points'})</span>
+                      ) : (
+                        <span>Select survey points or draw a bbox to inspect data for deletion</span>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
@@ -3223,7 +3666,7 @@ const DataManagementPage = ({
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="Search subgrid, grid, date, or PIC..."
-                    className="w-full bg-card border border-subtle rounded-xl pl-9 pr-8 py-2 text-xs text-text-base placeholder-slate-500 focus:outline-none focus:border-sky-500/80 focus:ring-1 focus:ring-sky-500/20 transition-all"
+                    className="w-full bg-card border border-subtle rounded-xl pl-9 pr-8 py-2 text-xs text-text-base placeholder-text-muted focus:outline-none focus:border-sky-500/80 focus:ring-1 focus:ring-sky-500/20 transition-all"
                   />
                   {searchQuery && (
                     <button
@@ -3242,7 +3685,7 @@ const DataManagementPage = ({
                       ? 'bg-sky-600 border-sky-500 text-text-base shadow-md'
                       : isColumnFilterOpen
                         ? 'bg-inner border-sky-500 text-sky-400'
-                        : 'bg-card border-subtle text-slate-300 hover:bg-inner hover:text-text-base'
+                        : 'bg-card border-subtle text-text-base hover:bg-inner hover:text-text-base'
                       }`}
                     title="Filter Daily Data by specific columns"
                   >
@@ -3275,7 +3718,7 @@ const DataManagementPage = ({
                         setPublishMessage({ text: `Successfully synced ${sDaily ? sDaily.length : 0} records directly from Supabase!`, type: 'success' });
                       }
                     }}
-                    className="flex items-center gap-2 bg-inner hover:bg-slate-700 border border-subtle text-text-base px-3.5 py-2 rounded-xl transition-all text-xs font-semibold cursor-pointer shadow-sm"
+                    className="flex items-center gap-2 bg-inner hover:bg-inner border border-subtle text-text-base px-3.5 py-2 rounded-xl transition-all text-xs font-semibold cursor-pointer shadow-sm"
                     title="Sync latest live records from Supabase mobilemapping database"
                   >
                     <RefreshCw size={13} className="text-sky-400" />
@@ -3283,7 +3726,7 @@ const DataManagementPage = ({
                   </button>
 
                   {!isGuestUser && (
-                    <label className="flex items-center gap-2 bg-inner hover:bg-slate-700 border border-subtle px-3.5 py-2 rounded-xl transition-all cursor-pointer text-text-base font-semibold text-xs shadow-sm active:scale-95">
+                    <label className="flex items-center gap-2 bg-inner hover:bg-inner border border-subtle px-3.5 py-2 rounded-xl transition-all cursor-pointer text-text-base font-semibold text-xs shadow-sm active:scale-95">
                       <FileText size={13} className="text-emerald-400" />
                       <span>Import CSV</span>
                       <input
@@ -3304,7 +3747,7 @@ const DataManagementPage = ({
           {/* Expandable Column Filter Panel (Daily Data) */}
           {isColumnFilterOpen && dataTab === 'daily' && (
             <div className="p-4 bg-card border border-subtle rounded-2xl shadow-xl space-y-3 animate-in fade-in duration-200">
-              <div className="flex items-center justify-between pb-2 border-b border-subtle text-xs text-slate-300 font-bold uppercase tracking-wider">
+              <div className="flex items-center justify-between pb-2 border-b border-subtle text-xs text-text-base font-bold uppercase tracking-wider">
                 <div className="flex items-center gap-2">
                   <Filter size={14} className="text-sky-400" />
                   <span>Daily Data Column Filters</span>
@@ -3426,7 +3869,7 @@ const DataManagementPage = ({
 
                       <button
                         onClick={() => setIsFolderCreateModalOpen(true)}
-                        className="flex items-center justify-center gap-2 bg-inner hover:bg-slate-700 text-text-base border border-subtle px-5 py-2.5 rounded-xl transition-all text-xs font-semibold cursor-pointer"
+                        className="flex items-center justify-center gap-2 bg-inner hover:bg-inner text-text-base border border-subtle px-5 py-2.5 rounded-xl transition-all text-xs font-semibold cursor-pointer"
                       >
                         <Folder size={16} className="text-amber-400" />
                         <span>Create Folder</span>
@@ -3557,6 +4000,10 @@ const DataManagementPage = ({
             <div className="space-y-6">
               <DatasetRegistryPanel
                 translate={tf}
+                isGuestUser={isGuestUser}
+                userLabel={authSession?.user?.email || 'Operator'}
+                onAddNotification={addNotification}
+                onAddAuditLog={addAuditLog}
                 onOpenInMap={(sg) => {
                   setFocusSubgrid(sg);
                   setIsSelectionMapOpen(true);
@@ -3667,7 +4114,7 @@ const DataManagementPage = ({
                         )}
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-800">
+                    <tbody className="divide-y divide-subtle">
                       {dataTab === 'batches' ? (
                         paginatedBatchLogs.length > 0 ? (
                           paginatedBatchLogs.map((batch, index) => {
@@ -3675,7 +4122,7 @@ const DataManagementPage = ({
                             return (
                               <tr
                                 key={batch.id || `b-${index}`}
-                                className="hover:bg-inner transition-all text-slate-300"
+                                className="hover:bg-inner transition-all text-text-base"
                               >
                                 <td className="px-3 py-3.5 w-10 text-center" onClick={(e) => e.stopPropagation()}>
                                   <input
@@ -3693,13 +4140,13 @@ const DataManagementPage = ({
                                     className="rounded border-subtle bg-app text-sky-500 focus:ring-sky-500 cursor-pointer w-4 h-4 accent-sky-500"
                                   />
                                 </td>
-                                <td className="px-4 py-3.5 font-mono text-xs text-slate-300 whitespace-nowrap">{formatDisplayDate(batch.date)}</td>
+                                <td className="px-4 py-3.5 font-mono text-xs text-text-base whitespace-nowrap">{formatDisplayDate(batch.date)}</td>
                                 <td className="px-4 py-3.5 font-mono text-text-base font-semibold whitespace-nowrap">{batch.grid}</td>
                                 <td className="px-4 py-3.5 font-semibold text-text-base whitespace-nowrap flex items-center gap-2">
                                   <span>{batchSubgrid}</span>
                                 </td>
                                 <td className="px-4 py-3.5 font-mono text-xs text-text-base font-semibold whitespace-nowrap">{getPOICount(batch).toLocaleString()}</td>
-                                <td className="px-4 py-3.5 font-semibold text-slate-300 whitespace-nowrap">{batch.kmProcessed.toFixed(1)}</td>
+                                <td className="px-4 py-3.5 font-semibold text-text-base whitespace-nowrap">{batch.kmProcessed.toFixed(1)}</td>
                                 <td className="px-4 py-3.5 whitespace-nowrap">
                                   <button
                                     onClick={(e) => {
@@ -3725,10 +4172,10 @@ const DataManagementPage = ({
                                     <ExternalLink size={11} className="shrink-0 text-text-muted" />
                                   </button>
                                 </td>
-                                <td className="px-4 py-3.5 text-slate-300 font-medium whitespace-nowrap">
+                                <td className="px-4 py-3.5 text-text-base font-medium whitespace-nowrap">
                                   {batch.defects || 0}
                                 </td>
-                                <td className="px-4 py-3.5 text-slate-300 font-medium whitespace-nowrap">
+                                <td className="px-4 py-3.5 text-text-base font-medium whitespace-nowrap">
                                   {(batch.pic && batch.pic.trim().toLowerCase() !== 'unassigned') ? batch.pic : (activeAuthUserName || 'Admin')}
                                 </td>
                                 <td className="px-4 py-3.5 whitespace-nowrap">
@@ -3751,7 +4198,7 @@ const DataManagementPage = ({
                                       availableFilenames: batch.availableFilenames,
                                       expectedFilenames: batch.panoramas?.map((p: any) => p.filename).filter(Boolean)
                                     })}
-                                    className="px-2.5 py-1 rounded-lg border text-xs font-medium bg-inner hover:bg-slate-700 text-text-base border-subtle transition-all cursor-pointer flex items-center gap-1.5 shadow-sm"
+                                    className="px-2.5 py-1 rounded-lg border text-xs font-medium bg-inner hover:bg-inner text-text-base border-subtle transition-all cursor-pointer flex items-center gap-1.5 shadow-sm"
                                     title={`Run QC Audit for ${batchSubgrid}`}
                                   >
                                     {getPOICount(batch) > getImagesProcessedCount(batch) ? (
@@ -3782,7 +4229,7 @@ const DataManagementPage = ({
                                       </button>
                                     </>
                                   ) : (
-                                    <span className="text-[10px] text-slate-600 italic">View only</span>
+                                    <span className="text-[10px] text-text-muted italic">View only</span>
                                   )}
                                 </td>
                               </tr>
@@ -3803,7 +4250,7 @@ const DataManagementPage = ({
                             return (
                               <tr
                                 key={daily.id || `d-${daily.date}-${daily.subgrid}-${index}`}
-                                className="hover:bg-inner transition-all text-slate-300"
+                                className="hover:bg-inner transition-all text-text-base"
                               >
                                 <td className="px-3 py-3.5 w-10 text-center" onClick={(e) => e.stopPropagation()}>
                                   <input
@@ -3821,13 +4268,13 @@ const DataManagementPage = ({
                                     className="rounded border-subtle bg-app text-sky-500 focus:ring-sky-500 cursor-pointer w-4 h-4 accent-sky-500"
                                   />
                                 </td>
-                                <td className="px-4 py-3.5 text-slate-300 font-mono text-xs whitespace-nowrap">{formatDisplayDate(daily.date)}</td>
+                                <td className="px-4 py-3.5 text-text-base font-mono text-xs whitespace-nowrap">{formatDisplayDate(daily.date)}</td>
                                 <td className="px-4 py-3.5 text-text-base font-semibold whitespace-nowrap">{daily.grid}</td>
                                 <td className="px-4 py-3.5 text-text-base font-semibold whitespace-nowrap flex items-center gap-2">
                                   <span>{daily.subgrid}</span>
                                 </td>
                                 <td className="px-4 py-3.5 font-mono text-xs text-text-base font-semibold whitespace-nowrap">{getPOICount(daily).toLocaleString()}</td>
-                                <td className="px-4 py-3.5 text-slate-300 font-semibold whitespace-nowrap">{daily.kmProcessed.toFixed(1)}</td>
+                                <td className="px-4 py-3.5 text-text-base font-semibold whitespace-nowrap">{daily.kmProcessed.toFixed(1)}</td>
                                 <td className="px-4 py-3.5 whitespace-nowrap">
                                   <button
                                     onClick={(e) => {
@@ -3865,7 +4312,7 @@ const DataManagementPage = ({
                                       setDailyData(updated);
                                       setBatchLogs(reconcileBatchLogs(updated, batchLogs));
                                     }}
-                                    className="bg-app border border-subtle rounded-lg px-2 py-1 text-xs font-semibold text-text-base focus:outline-none focus:ring-1 focus:ring-slate-500 cursor-pointer"
+                                    className="bg-app border border-subtle rounded-lg px-2 py-1 text-xs font-semibold text-text-base focus:outline-none focus:ring-1 focus:ring-accent cursor-pointer"
                                   >
                                     <option value="MMS" className="bg-app text-text-base">MMS</option>
                                     <option value="Backpack" className="bg-app text-text-base">Backpack</option>
@@ -3873,10 +4320,10 @@ const DataManagementPage = ({
                                     <option value="Handheld" className="bg-app text-text-base">Handheld</option>
                                   </select>
                                 </td>
-                                <td className="px-4 py-3.5 text-slate-300 font-medium whitespace-nowrap">
+                                <td className="px-4 py-3.5 text-text-base font-medium whitespace-nowrap">
                                   {daily.imagesDefected || daily.defectCount || 0}
                                 </td>
-                                <td className="px-4 py-3.5 text-slate-300 font-medium whitespace-nowrap">
+                                <td className="px-4 py-3.5 text-text-base font-medium whitespace-nowrap">
                                   {(daily.pic && daily.pic.trim().toLowerCase() !== 'unassigned')
                                     ? daily.pic
                                     : (activeAuthUserName || (authSession?.user?.email ? authSession.user.email.split('@')[0] : '') || 'Operator')}
@@ -3894,22 +4341,22 @@ const DataManagementPage = ({
                                         setDailyData(updated);
                                       }
                                     }}
-                                    className="bg-app border border-subtle rounded-lg px-2 py-1 text-xs font-semibold text-text-base focus:outline-none focus:ring-1 focus:ring-slate-500 cursor-pointer"
+                                    className="bg-app border border-subtle rounded-lg px-2 py-1 text-xs font-semibold text-text-base focus:outline-none focus:ring-1 focus:ring-accent cursor-pointer"
                                   >
-                                    <option value="in process" className="bg-app text-slate-300">In Process</option>
+                                    <option value="in process" className="bg-app text-text-base">In Process</option>
                                     <option value="yes" className="bg-app text-text-base">Yes - Publish</option>
-                                    <option value="need to recheck" className="bg-app text-slate-300">Need to Recheck</option>
+                                    <option value="need to recheck" className="bg-app text-text-base">Need to Recheck</option>
                                     <option value="no" className="bg-app text-text-muted">No</option>
                                   </select>
                                 </td>
                                 <td className="px-4 py-3.5 whitespace-nowrap">
                                   {isPublished ? (
-                                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold bg-inner text-slate-300 border border-subtle">
+                                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold bg-inner text-text-base border border-subtle">
                                       <CheckCircle size={12} className="text-emerald-400 shrink-0" />
                                       Published in database
                                     </span>
                                   ) : (
-                                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold bg-inner text-slate-300 border border-subtle">
+                                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold bg-inner text-text-base border border-subtle">
                                       <Clock size={12} className="text-amber-400 shrink-0" />
                                       Ready to publish
                                     </span>
@@ -3921,7 +4368,7 @@ const DataManagementPage = ({
                                       <button
                                         onClick={() => handlePublishRecord(daily)}
                                         disabled={isPublished || publishingId === getItemId(daily)}
-                                        className={`transition-colors p-1 ${isPublished ? 'text-slate-600 cursor-not-allowed opacity-40' : 'text-emerald-400 hover:text-emerald-300 cursor-pointer'}`}
+                                        className={`transition-colors p-1 ${isPublished ? 'text-text-muted cursor-not-allowed opacity-40' : 'text-emerald-400 hover:text-emerald-300 cursor-pointer'}`}
                                         title={isPublished ? 'Already published in database' : 'Click to publish to database'}
                                       >
                                         {publishingId === getItemId(daily) ? (
@@ -3949,7 +4396,7 @@ const DataManagementPage = ({
                                       </button>
                                     </>
                                   ) : (
-                                    <span className="text-[10px] text-slate-600 italic">View only</span>
+                                    <span className="text-[10px] text-text-muted italic">View only</span>
                                   )}
                                 </td>
                               </tr>
@@ -3995,7 +4442,7 @@ const DataManagementPage = ({
                       <button
                         onClick={() => setPage(p => Math.max(1, p - 1))}
                         disabled={safePage === 1}
-                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-inner hover:bg-slate-700 disabled:opacity-40 disabled:hover:bg-inner text-slate-300 font-medium transition-colors cursor-pointer"
+                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-inner hover:bg-inner disabled:opacity-40 disabled:hover:bg-inner text-text-base font-medium transition-colors cursor-pointer"
                       >
                         <ChevronLeft size={14} />
                         Previous
@@ -4008,7 +4455,7 @@ const DataManagementPage = ({
                       <button
                         onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                         disabled={safePage === totalPages}
-                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-inner hover:bg-slate-700 disabled:opacity-40 disabled:hover:bg-inner text-slate-300 font-medium transition-colors cursor-pointer"
+                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-inner hover:bg-inner disabled:opacity-40 disabled:hover:bg-inner text-text-base font-medium transition-colors cursor-pointer"
                       >
                         Next
                         <ChevronRight size={14} />
@@ -4062,7 +4509,7 @@ const DataManagementPage = ({
             }];
 
             return (
-              <div className="fixed inset-0 bg-black/85 flex items-center justify-center z-[1000] p-4 sm:p-6 backdrop-blur-sm overflow-y-auto">
+              <div className="fixed inset-0 bg-[var(--modal-overlay)] flex items-center justify-center z-[1000] p-4 sm:p-6 backdrop-blur-sm overflow-y-auto">
                 <div className="bg-card border border-subtle rounded-2xl w-[96vw] max-w-[1750px] h-[94vh] max-h-[94vh] flex flex-col shadow-2xl overflow-hidden my-auto border-t border-t-slate-700/50 animate-fadeIn">
 
                   {/* Modal Header */}
@@ -4074,7 +4521,7 @@ const DataManagementPage = ({
                       <div>
                         <h2 className="text-base font-bold text-text-base tracking-wide flex items-center gap-2">
                           <span>{editingItem ? 'Edit Record & Spatial Map Inspector' : 'Add New Record'}</span>
-                          <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-inner text-slate-300 font-mono font-normal border border-subtle">
+                          <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-inner text-text-base font-mono font-normal border border-subtle">
                             {dataTab === 'batches' ? 'Batch Logs' : 'Daily Data'}
                           </span>
                         </h2>
@@ -4101,7 +4548,7 @@ const DataManagementPage = ({
                     {/* Left Column: Data Form Inputs (5 cols) */}
                     <div className="lg:col-span-5 bg-card border border-subtle rounded-2xl p-6 shadow-sm space-y-5 flex flex-col justify-between overflow-y-auto">
                       <div>
-                        <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-4 pb-2.5 border-b border-subtle flex items-center justify-between">
+                        <h3 className="text-xs font-bold text-text-base uppercase tracking-wider mb-4 pb-2.5 border-b border-subtle flex items-center justify-between">
                           <span>Record Configuration</span>
                           <span className="text-[11px] text-text-muted font-normal font-mono">ID: {(editingItem as any)?.id || 'NEW'}</span>
                         </h3>
@@ -4153,7 +4600,7 @@ const DataManagementPage = ({
               ? imagesListModal.customFilenames
               : generateImageFilenamesList(imagesListModal.subgrid, imagesListModal.count > 0 ? imagesListModal.count : (imagesListModal.poiCount || 1), imagesListModal.baseFilename);
             return (
-              <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[1000] p-4 backdrop-blur-sm">
+              <div className="fixed inset-0 bg-[var(--modal-overlay)] flex items-center justify-center z-[1000] p-4 backdrop-blur-sm">
                 <div className="bg-card border border-subtle rounded-xl p-5 max-w-md w-full max-h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
                   <div className="flex justify-between items-center pb-3 mb-3 border-b border-subtle shrink-0">
                     <div>
@@ -4174,7 +4621,7 @@ const DataManagementPage = ({
                       &times;
                     </button>
                   </div>
-                  <div className="flex-1 overflow-y-auto font-mono text-xs text-slate-300 space-y-1 p-2 bg-card rounded-lg border border-subtle max-h-96">
+                  <div className="flex-1 overflow-y-auto font-mono text-xs text-text-base space-y-1 p-2 bg-card rounded-lg border border-subtle max-h-96">
                     {filenames.map((name, idx) => (
                       <div key={idx} className="flex items-center justify-between px-2.5 py-1 hover:bg-inner rounded transition-colors">
                         <span className="text-text-muted text-[10px] w-10 shrink-0">{idx + 1}.</span>
@@ -4188,7 +4635,7 @@ const DataManagementPage = ({
                         navigator.clipboard.writeText(filenames.join('\n'));
                         alert(`Copied ${filenames.length} image filenames to clipboard!`);
                       }}
-                      className="px-3 py-1.5 bg-inner hover:bg-slate-700 text-text-base border border-subtle rounded-lg text-xs font-medium cursor-pointer transition-colors flex items-center gap-1.5"
+                      className="px-3 py-1.5 bg-inner hover:bg-inner text-text-base border border-subtle rounded-lg text-xs font-medium cursor-pointer transition-colors flex items-center gap-1.5"
                     >
                       <Copy size={13} /> Copy List ({filenames.length})
                     </button>
@@ -4221,7 +4668,7 @@ const DataManagementPage = ({
           {isLayerEditModalOpen && editingItem && 'id' in editingItem && (() => {
             const layer = editingItem as Layer;
             return (
-              <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[1000]">
+              <div className="fixed inset-0 bg-[var(--modal-overlay)] flex items-center justify-center z-[1000]">
                 <div className="bg-app border border-subtle rounded-xl p-8 max-w-md w-full mx-4">
                   <div className="flex justify-between items-center mb-6">
                     <h2 className="text-2xl font-bold text-text-base">Edit Layer</h2>
@@ -4237,7 +4684,7 @@ const DataManagementPage = ({
                   </div>
                   <div className="space-y-4">
                     <div>
-                      <label className="block text-sm font-semibold text-slate-300 mb-2">Layer Name</label>
+                      <label className="block text-sm font-semibold text-text-base mb-2">Layer Name</label>
                       <input
                         type="text"
                         value={layer.name}
@@ -4246,7 +4693,7 @@ const DataManagementPage = ({
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-semibold text-slate-300 mb-2">Color</label>
+                      <label className="block text-sm font-semibold text-text-base mb-2">Color</label>
                       <div className="flex items-center gap-4">
                         <input
                           type="color"
@@ -4269,7 +4716,7 @@ const DataManagementPage = ({
                           setIsLayerEditModalOpen(false);
                           setEditingItem(null);
                         }}
-                        className="flex-1 bg-slate-700 hover:bg-slate-600 px-4 py-3 rounded-lg transition-all"
+                        className="flex-1 bg-inner hover:bg-inner px-4 py-3 rounded-lg transition-all"
                       >
                         Cancel
                       </button>
@@ -4282,7 +4729,7 @@ const DataManagementPage = ({
 
           {/* Folder Create Modal */}
           {isFolderCreateModalOpen && (
-            <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[1000]">
+            <div className="fixed inset-0 bg-[var(--modal-overlay)] flex items-center justify-center z-[1000]">
               <div className="bg-app border border-subtle rounded-xl p-8 max-w-md w-full mx-4">
                 <div className="flex justify-between items-center mb-6">
                   <h2 className="text-2xl font-bold text-text-base">Create Folder</h2>
@@ -4298,7 +4745,7 @@ const DataManagementPage = ({
                 </div>
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm font-semibold text-slate-300 mb-2">Folder Name</label>
+                    <label className="block text-sm font-semibold text-text-base mb-2">Folder Name</label>
                     <input
                       type="text"
                       value={newFolderName}
@@ -4316,7 +4763,7 @@ const DataManagementPage = ({
                         }
                       }}
                       disabled={!newFolderName.trim()}
-                      className="flex-1 bg-amber-600 hover:bg-amber-500 disabled:bg-slate-700 px-4 py-3 rounded-lg transition-all"
+                      className="flex-1 bg-amber-600 hover:bg-amber-500 disabled:bg-inner px-4 py-3 rounded-lg transition-all"
                     >
                       Create Folder
                     </button>
@@ -4325,7 +4772,7 @@ const DataManagementPage = ({
                         setIsFolderCreateModalOpen(false);
                         setNewFolderName('');
                       }}
-                      className="flex-1 bg-slate-700 hover:bg-slate-600 px-4 py-3 rounded-lg transition-all"
+                      className="flex-1 bg-inner hover:bg-inner px-4 py-3 rounded-lg transition-all"
                     >
                       Cancel
                     </button>
@@ -4337,7 +4784,7 @@ const DataManagementPage = ({
 
           {/* Folder Edit Modal */}
           {isFolderEditModalOpen && editingItem && 'id' in editingItem && 'type' in editingItem && (editingItem as any).type === 'folder' && (
-            <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[1000]">
+            <div className="fixed inset-0 bg-[var(--modal-overlay)] flex items-center justify-center z-[1000]">
               <div className="bg-app border border-subtle rounded-xl p-8 max-w-md w-full mx-4">
                 <div className="flex justify-between items-center mb-6">
                   <h2 className="text-2xl font-bold text-text-base">Edit Folder</h2>
@@ -4354,7 +4801,7 @@ const DataManagementPage = ({
                 </div>
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm font-semibold text-slate-300 mb-2">Folder Name</label>
+                    <label className="block text-sm font-semibold text-text-base mb-2">Folder Name</label>
                     <input
                       type="text"
                       value={newFolderName}
@@ -4366,7 +4813,7 @@ const DataManagementPage = ({
                     <button
                       onClick={() => saveFolderEdit(newFolderName)}
                       disabled={!newFolderName.trim()}
-                      className="flex-1 bg-amber-600 hover:bg-amber-500 disabled:bg-slate-700 px-4 py-3 rounded-lg transition-all"
+                      className="flex-1 bg-amber-600 hover:bg-amber-500 disabled:bg-inner px-4 py-3 rounded-lg transition-all"
                     >
                       Save Changes
                     </button>
@@ -4376,7 +4823,7 @@ const DataManagementPage = ({
                         setEditingItem(null);
                         setNewFolderName('');
                       }}
-                      className="flex-1 bg-slate-700 hover:bg-slate-600 px-4 py-3 rounded-lg transition-all"
+                      className="flex-1 bg-inner hover:bg-inner px-4 py-3 rounded-lg transition-all"
                     >
                       Cancel
                     </button>
@@ -4391,7 +4838,7 @@ const DataManagementPage = ({
             const currentCatalogItems = movingItem.catalog === 'staged' ? stagedLayers : layerCatalog;
             const availableFolders = getFlatFolderList(currentCatalogItems).filter(f => f.id !== movingItem.item.id);
             return (
-              <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[1000]">
+              <div className="fixed inset-0 bg-[var(--modal-overlay)] flex items-center justify-center z-[1000]">
                 <div className="bg-app border border-subtle rounded-xl p-8 max-w-md w-full mx-4">
                   <div className="flex justify-between items-center mb-6">
                     <h2 className="text-2xl font-bold text-text-base">
@@ -4410,7 +4857,7 @@ const DataManagementPage = ({
                   </div>
                   <div className="space-y-4">
                     <div>
-                      <label className="block text-sm font-semibold text-slate-300 mb-2">Move to</label>
+                      <label className="block text-sm font-semibold text-text-base mb-2">Move to</label>
                       <select
                         value={targetFolderId || ''}
                         onChange={(e) => setTargetFolderId(e.target.value || null)}
@@ -4437,7 +4884,7 @@ const DataManagementPage = ({
                           setMovingItem(null);
                           setTargetFolderId(null);
                         }}
-                        className="flex-1 bg-slate-700 hover:bg-slate-600 px-4 py-3 rounded-lg transition-all"
+                        className="flex-1 bg-inner hover:bg-inner px-4 py-3 rounded-lg transition-all"
                       >
                         Cancel
                       </button>
@@ -4452,7 +4899,7 @@ const DataManagementPage = ({
 
       {/* Import CSV Modal */}
       {isCsvImportOpen && (
-        <div className="fixed inset-0 bg-black/85 flex items-center justify-center z-[1100] p-4 sm:p-6 backdrop-blur-sm overflow-y-auto">
+        <div className="fixed inset-0 bg-[var(--modal-overlay)] flex items-center justify-center z-[1100] p-4 sm:p-6 backdrop-blur-sm overflow-y-auto">
           <div className="bg-card border border-subtle rounded-2xl w-[96vw] max-w-[1750px] h-[94vh] max-h-[94vh] flex flex-col shadow-2xl overflow-hidden my-auto border-t border-t-slate-700/50">
 
             {/* Header */}
@@ -4594,7 +5041,7 @@ const DataManagementPage = ({
                                 csvFileList.forEach(f => { updated[f.fileName] = val; });
                                 setFileGridMap(updated);
                               }}
-                              className="bg-app border border-subtle rounded px-2 py-0.5 text-xs text-text-base focus:outline-none focus:border-slate-500"
+                              className="bg-app border border-subtle rounded px-2 py-0.5 text-xs text-text-base focus:outline-none focus:border-subtle"
                             >
                               <option value="">Apply to all...</option>
                               {GRIDS.map(g => <option key={g} value={g}>Grid {g}</option>)}
@@ -4610,7 +5057,7 @@ const DataManagementPage = ({
                               <select
                                 value={fileGridMap[file.fileName] || selectedGrid || '1'}
                                 onChange={(e) => setFileGridMap({ ...fileGridMap, [file.fileName]: e.target.value })}
-                                className="bg-app border border-subtle rounded px-2 py-1 text-xs text-text-base focus:outline-none focus:border-slate-500 shrink-0"
+                                className="bg-app border border-subtle rounded px-2 py-1 text-xs text-text-base focus:outline-none focus:border-subtle shrink-0"
                               >
                                 {GRIDS.map(g => <option key={g} value={g}>Grid {g}</option>)}
                               </select>
@@ -4629,7 +5076,7 @@ const DataManagementPage = ({
                               setFileGridMap({ [csvFileList[0].fileName]: e.target.value });
                             }
                           }}
-                          className="w-full bg-app border border-subtle rounded-lg px-3 py-1.5 text-xs text-text-base focus:outline-none focus:border-slate-500"
+                          className="w-full bg-app border border-subtle rounded-lg px-3 py-1.5 text-xs text-text-base focus:outline-none focus:border-subtle"
                         >
                           {GRIDS.map(g => <option key={g} value={g}>{g}</option>)}
                         </select>
@@ -4647,7 +5094,7 @@ const DataManagementPage = ({
                               type="button"
                               onClick={() => setSelectedEquipment(eq)}
                               className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-medium border transition-all ${selectedEquipment === eq
-                                ? 'bg-slate-700 border-slate-600 text-text-base shadow-sm font-semibold'
+                                ? 'bg-inner border-subtle text-text-base shadow-sm font-semibold'
                                 : 'bg-app border-subtle text-text-muted hover:text-text-base'
                                 }`}
                             >
@@ -4663,7 +5110,7 @@ const DataManagementPage = ({
                           value={selectedPic}
                           onChange={(e) => setSelectedPic(e.target.value)}
                           placeholder="Enter PIC name (or leave empty for Auth User)"
-                          className="w-full bg-app border border-subtle rounded-lg px-3 py-1.5 text-xs text-text-base placeholder-slate-500 focus:outline-none focus:border-sky-500 font-medium"
+                          className="w-full bg-app border border-subtle rounded-lg px-3 py-1.5 text-xs text-text-base placeholder-text-muted focus:outline-none focus:border-sky-500 font-medium"
                         />
                       </div>
                     </div>
@@ -4671,7 +5118,7 @@ const DataManagementPage = ({
 
                   {/* Field Mapping Section */}
                   <div>
-                    <h3 className="text-xs font-bold text-slate-300 mb-2 uppercase tracking-wider">Column Field Mapping</h3>
+                    <h3 className="text-xs font-bold text-text-base mb-2 uppercase tracking-wider">Column Field Mapping</h3>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-72 overflow-y-auto pr-1">
                       {csvHeaders.map(header => (
                         <div key={header} className={`flex items-center gap-2 p-2.5 rounded-xl border transition-all ${csvFieldMap[header] ? 'bg-app border-subtle' : 'bg-card border-subtle'
@@ -4686,7 +5133,7 @@ const DataManagementPage = ({
                             <select
                               value={csvFieldMap[header] || ''}
                               onChange={e => setCsvFieldMap(prev => ({ ...prev, [header]: e.target.value }))}
-                              className={`w-full text-xs bg-app border rounded-lg px-2 py-1 transition-colors ${csvFieldMap[header] ? 'border-slate-600 text-text-base font-medium' : 'border-subtle text-text-muted'
+                              className={`w-full text-xs bg-app border rounded-lg px-2 py-1 transition-colors ${csvFieldMap[header] ? 'border-subtle text-text-base font-medium' : 'border-subtle text-text-muted'
                                 }`}
                             >
                               <option value="">— skip —</option>
@@ -4806,7 +5253,7 @@ const DataManagementPage = ({
                   {csvPreview.length > 0 && (
                     <div>
                       <div className="flex items-center justify-between mb-2">
-                        <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Sample Data Preview (First 5 Rows)</h3>
+                        <h3 className="text-xs font-bold text-text-base uppercase tracking-wider">Sample Data Preview (First 5 Rows)</h3>
                         <span className="text-[11px] text-text-muted font-mono">{csvRows.length} total records</span>
                       </div>
                       <div className="overflow-x-auto rounded-xl border border-subtle max-h-40">
@@ -4823,11 +5270,11 @@ const DataManagementPage = ({
                               ))}
                             </tr>
                           </thead>
-                          <tbody className="divide-y divide-slate-800/60 font-mono">
+                          <tbody className="divide-y divide-subtle/60 font-mono">
                             {csvPreview.map((row, i) => (
                               <tr key={i} className="hover:bg-inner transition-colors">
                                 {csvHeaders.map(h => (
-                                  <td key={h} className="px-3 py-1.5 text-slate-300 whitespace-nowrap">{row[h] || '—'}</td>
+                                  <td key={h} className="px-3 py-1.5 text-text-base whitespace-nowrap">{row[h] || '—'}</td>
                                 ))}
                               </tr>
                             ))}
@@ -4839,7 +5286,7 @@ const DataManagementPage = ({
 
                   {/* Parsed Subgrids Summary Table */}
                   <div>
-                    <h3 className="text-xs font-bold text-slate-300 mb-2 uppercase tracking-wider">
+                    <h3 className="text-xs font-bold text-text-base mb-2 uppercase tracking-wider">
                       Staging Subgrids Summary ({csvFileList.length > 0 ? csvFileList.length : 1} file(s))
                     </h3>
                     <div className="overflow-x-auto rounded-xl border border-subtle max-h-32">
@@ -4854,14 +5301,14 @@ const DataManagementPage = ({
                             <th className="px-3 py-2 font-semibold">Status</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-800/60 font-mono">
+                        <tbody className="divide-y divide-subtle/60 font-mono">
                           {csvFileList.map((file, idx) => (
                             <tr key={file.fileName || idx} className="hover:bg-inner">
                               <td className="px-3 py-2 font-bold text-text-base">{extractSubgridName(file.fileName) || `Subgrid ${idx + 1}`}</td>
-                              <td className="px-3 py-2 text-slate-300">Grid {fileGridMap[file.fileName] || selectedGrid || '1'}</td>
-                              <td className="px-3 py-2 text-slate-300">{file.rows.length}</td>
-                              <td className="px-3 py-2 text-slate-300">{selectedEquipment}</td>
-                              <td className="px-3 py-2 text-slate-300">{selectedPic}</td>
+                              <td className="px-3 py-2 text-text-base">Grid {fileGridMap[file.fileName] || selectedGrid || '1'}</td>
+                              <td className="px-3 py-2 text-text-base">{file.rows.length}</td>
+                              <td className="px-3 py-2 text-text-base">{selectedEquipment}</td>
+                              <td className="px-3 py-2 text-text-base">{selectedPic}</td>
                               <td className="px-3 py-2">
                                 <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-950/40 text-amber-300 border border-amber-500/30 opacity-80 inline-flex items-center gap-1">
                                   <Clock size={10} className="text-amber-400" /> Staged (50%)
@@ -4883,7 +5330,7 @@ const DataManagementPage = ({
             <div className="p-4 border-t border-subtle flex items-center justify-between shrink-0 bg-card gap-3">
               <button
                 onClick={() => setIsCsvImportOpen(false)}
-                className="px-4 py-2 rounded-xl bg-inner hover:bg-slate-700 text-slate-300 text-xs font-medium transition-all cursor-pointer border border-subtle"
+                className="px-4 py-2 rounded-xl bg-inner hover:bg-inner text-text-base text-xs font-medium transition-all cursor-pointer border border-subtle"
               >
                 Cancel
               </button>
@@ -4918,7 +5365,7 @@ const DataManagementPage = ({
             {/* Modal Header */}
             <div className="bg-app border-b border-subtle p-5 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-inner border border-subtle flex items-center justify-center text-slate-300">
+                <div className="w-10 h-10 rounded-xl bg-inner border border-subtle flex items-center justify-center text-text-base">
                   <ShieldAlert size={20} />
                 </div>
                 <div>
@@ -5047,20 +5494,20 @@ const DataManagementPage = ({
               </div>
 
               {/* Security Warning (unchanged semantics) */}
-              <div className="bg-app border border-subtle rounded-xl p-4 text-xs text-slate-300 leading-relaxed">
+              <div className="bg-app border border-subtle rounded-xl p-4 text-xs text-text-base leading-relaxed">
                 <div className="font-semibold text-text-base mb-1.5 flex items-center gap-1.5 text-xs uppercase tracking-wide">
                   <AlertTriangle size={14} className="text-red-400" />
                   Security Warning: Permanent Deletion
                 </div>
                 This data will be <strong className="text-red-400 font-medium">permanently removed</strong> from the database. This action cannot be reversed.
                 {deleteMode === 'bulk' && (
-                  <div className="mt-3 p-3 bg-app rounded-lg border border-subtle font-mono text-slate-300 text-xs space-y-1.5">
+                  <div className="mt-3 p-3 bg-app rounded-lg border border-subtle font-mono text-text-base text-xs space-y-1.5">
                     <div className="flex justify-between items-center"><span className="text-text-muted">Target Selection:</span> <strong className="text-text-base font-mono font-semibold">Bulk Delete</strong></div>
                     <div className="flex justify-between items-center"><span className="text-text-muted">Records Selected:</span> <span className="text-red-400 font-bold">{selectedRowIds.size} records</span></div>
                   </div>
                 )}
                 {deleteMode === 'spatial' && (
-                  <div className="mt-3 p-3 bg-app rounded-lg border border-subtle font-mono text-slate-300 text-xs space-y-1.5">
+                  <div className="mt-3 p-3 bg-app rounded-lg border border-subtle font-mono text-text-base text-xs space-y-1.5">
                     <div className="flex justify-between items-center"><span className="text-text-muted">Target Selection:</span> <strong className="text-text-base font-mono font-semibold">Map Spatial Selection</strong></div>
                     <div className="flex justify-between items-center"><span className="text-text-muted">Subgrids Selected:</span> <span className="text-red-400 font-bold">{spatialSubgrids.length} subgrids</span></div>
                   </div>
@@ -5069,7 +5516,7 @@ const DataManagementPage = ({
 
               {/* Explicit Confirmation Input */}
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-2 flex items-center gap-1.5">
+                <label className="block text-xs font-medium text-text-base mb-2 flex items-center gap-1.5">
                   <Info size={14} className="text-text-muted" />
                   {tf('dataConfirmPhrase')}
                 </label>
@@ -5086,16 +5533,16 @@ const DataManagementPage = ({
                   placeholder={expectedDeletePhrase}
                   autoCapitalize="characters"
                   spellCheck={false}
-                  className="w-full bg-app border border-subtle focus:border-rose-500/70 rounded-xl px-4 py-2.5 text-sm font-mono text-text-base placeholder-slate-600 focus:outline-none transition-all shadow-inner uppercase"
+                  className="w-full bg-app border border-subtle focus:border-rose-500/70 rounded-xl px-4 py-2.5 text-sm font-mono text-text-base placeholder-text-muted focus:outline-none transition-all shadow-inner uppercase"
                 />
                 <p className="text-[10px] text-text-muted mt-1.5">
-                  {tf('dataConfirmInstruction')} <strong className="text-slate-300 font-mono">{expectedDeletePhrase}</strong>
+                  {tf('dataConfirmInstruction')} <strong className="text-text-base font-mono">{expectedDeletePhrase}</strong>
                 </p>
               </div>
 
               {/* Admin Authorization Input */}
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-2 flex items-center gap-1.5">
+                <label className="block text-xs font-medium text-text-base mb-2 flex items-center gap-1.5">
                   <Lock size={14} className="text-text-muted" />
                   Enter User Auth Password to Confirm Deletion:
                 </label>
@@ -5111,7 +5558,7 @@ const DataManagementPage = ({
                       if (e.key === 'Enter') confirmDelete();
                     }}
                     placeholder="Enter account password"
-                    className="w-full bg-app border border-subtle focus:border-slate-600 rounded-xl px-4 py-2.5 text-sm text-text-base placeholder-slate-500 focus:outline-none transition-all shadow-inner"
+                    className="w-full bg-app border border-subtle focus:border-subtle rounded-xl px-4 py-2.5 text-sm text-text-base placeholder-text-muted focus:outline-none transition-all shadow-inner"
                   />
                 </div>
               </div>
@@ -5134,7 +5581,7 @@ const DataManagementPage = ({
                   setDeleteError(null);
                   setDeleteConfirmText('');
                 }}
-                className="px-4 py-2 rounded-xl text-xs font-medium text-slate-300 hover:text-text-base bg-inner hover:bg-inner border border-subtle transition-all cursor-pointer"
+                className="px-4 py-2 rounded-xl text-xs font-medium text-text-base hover:text-text-base bg-inner hover:bg-inner border border-subtle transition-all cursor-pointer"
               >
                 Cancel
               </button>
@@ -5150,6 +5597,59 @@ const DataManagementPage = ({
           </div>
         </div>
       )}
+
+      {/* Data Selection & Point Inspector Modal */}
+      <DataSelectionListModal
+        isOpen={isSelectionListModalOpen}
+        onClose={() => setIsSelectionListModalOpen(false)}
+        selectedSubgrids={spatialSubgrids}
+        selectedPoints={spatialSelectedPoints}
+        subgridPoints={subgridPoints}
+        dailyData={dailyData}
+        batchLogs={batchLogs}
+        onTogglePoint={(point) => {
+          setSpatialSelectedPoints((prev) => {
+            const key = point.subgrid + '_' + (point.filename || point.pointId || `${point.lat},${point.lng}`);
+            const exists = prev.some((p) => (p.subgrid + '_' + (p.filename || p.pointId || `${p.lat},${p.lng}`)) === key);
+            if (exists) {
+              return prev.filter((p) => (p.subgrid + '_' + (p.filename || p.pointId || `${p.lat},${p.lng}`)) !== key);
+            }
+            return [...prev, point];
+          });
+        }}
+        onSelectAllPointsForSubgrid={(subgrid) => {
+          const norm = subgrid.toUpperCase().trim();
+          const sgRow = subgridPoints.find((r) => r.subgrid.toUpperCase().trim() === norm);
+          if (!sgRow) return;
+          const allPts: SelectedPointInfo[] = sgRow.points.map((p) => ({
+            subgrid: norm,
+            filename: p.filename,
+            pointId: p.pointId,
+            lat: p.lat,
+            lng: p.lng
+          }));
+          setSpatialSelectedPoints((prev) => {
+            const other = prev.filter((p) => p.subgrid.toUpperCase().trim() !== norm);
+            return [...other, ...allPts];
+          });
+        }}
+        onClearSubgridPoints={(subgrid) => {
+          const norm = subgrid.toUpperCase().trim();
+          setSpatialSelectedPoints((prev) => prev.filter((p) => p.subgrid.toUpperCase().trim() !== norm));
+        }}
+        onRemoveSubgrid={(sg) => {
+          setSpatialSubgrids((prev) => prev.filter((x) => x !== sg));
+          setSpatialSelectedPoints((prev) => prev.filter((p) => p.subgrid !== sg));
+        }}
+        onClearAll={() => {
+          setSpatialSubgrids([]);
+          setSpatialSelectedPoints([]);
+        }}
+        onProceedToDelete={() => {
+          setDeleteTarget('SPATIAL_SELECTION' as any);
+          openDeleteModalForMode('spatial');
+        }}
+      />
     </>
   );
 };
@@ -5209,12 +5709,12 @@ const DataForm = ({
       {dataType === 'batches' ? (
         <>
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">Date</label>
+            <label className="block text-xs font-semibold text-text-base mb-1">Date</label>
             <input
               type="date"
               value={toISODateString(formData.date)}
               onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-              className="w-full bg-app border border-subtle rounded-lg px-3 py-1.5 text-xs text-text-base focus:outline-none focus:border-slate-500"
+              className="w-full bg-app border border-subtle rounded-lg px-3 py-1.5 text-xs text-text-base focus:outline-none focus:border-subtle"
               required
             />
           </div>
@@ -5248,13 +5748,13 @@ const DataForm = ({
               </div>
               <div className="bg-app p-2 rounded-lg border border-subtle truncate">
                 <span className="text-[10px] text-text-muted block font-medium">First Image</span>
-                <strong className="text-slate-300 font-mono text-[11px] truncate block" title={formData.imageFilename}>{formData.imageFilename || '—'}</strong>
+                <strong className="text-text-base font-mono text-[11px] truncate block" title={formData.imageFilename}>{formData.imageFilename || '—'}</strong>
               </div>
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">Capture Equipment</label>
+            <label className="block text-xs font-semibold text-text-base mb-1">Capture Equipment</label>
             <div className="flex items-center gap-2">
               {(['MMS', 'Backpack', 'Drone'] as const).map(eq => (
                 <button
@@ -5262,7 +5762,7 @@ const DataForm = ({
                   type="button"
                   onClick={() => setFormData({ ...formData, captureEquipment: eq })}
                   className={`flex-1 py-1.5 px-3 rounded-lg font-medium text-xs border transition-all cursor-pointer ${formData.captureEquipment === eq
-                    ? 'bg-slate-700 border-slate-600 text-text-base shadow-sm font-semibold'
+                    ? 'bg-inner border-subtle text-text-base shadow-sm font-semibold'
                     : 'bg-app border-subtle text-text-muted hover:text-text-base'
                     }`}
                 >
@@ -5272,21 +5772,21 @@ const DataForm = ({
             </div>
           </div>
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">PIC (Person In Charge)</label>
+            <label className="block text-xs font-semibold text-text-base mb-1">PIC (Person In Charge)</label>
             <input
               type="text"
               value={formData.pic || ''}
               onChange={(e) => setFormData({ ...formData, pic: e.target.value })}
               placeholder="Enter PIC Name"
-              className="w-full bg-app border border-subtle rounded-lg px-3 py-1.5 text-xs text-text-base focus:outline-none focus:border-slate-500"
+              className="w-full bg-app border border-subtle rounded-lg px-3 py-1.5 text-xs text-text-base focus:outline-none focus:border-subtle"
             />
           </div>
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">Status</label>
+            <label className="block text-xs font-semibold text-text-base mb-1">Status</label>
             <select
               value={formData.status}
               onChange={(e) => setFormData({ ...formData, status: e.target.value as 'Complete' | 'Ongoing' })}
-              className="w-full bg-app border border-subtle rounded-lg px-3 py-1.5 text-xs text-text-base focus:outline-none focus:border-slate-500"
+              className="w-full bg-app border border-subtle rounded-lg px-3 py-1.5 text-xs text-text-base focus:outline-none focus:border-subtle"
               required
             >
               <option value="Ongoing">Ongoing</option>
@@ -5297,12 +5797,12 @@ const DataForm = ({
       ) : (
         <>
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">Date</label>
+            <label className="block text-xs font-semibold text-text-base mb-1">Date</label>
             <input
               type="date"
               value={toISODateString(formData.date)}
               onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-              className="w-full bg-app border border-subtle rounded-lg px-3 py-1.5 text-xs text-text-base focus:outline-none focus:border-slate-500"
+              className="w-full bg-app border border-subtle rounded-lg px-3 py-1.5 text-xs text-text-base focus:outline-none focus:border-subtle"
               required
             />
           </div>
@@ -5334,7 +5834,7 @@ const DataForm = ({
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">Capture Equipment</label>
+            <label className="block text-xs font-semibold text-text-base mb-1">Capture Equipment</label>
             <div className="flex items-center gap-2">
               {(['MMS', 'Backpack', 'Drone'] as const).map(eq => (
                 <button
@@ -5342,7 +5842,7 @@ const DataForm = ({
                   type="button"
                   onClick={() => setFormData({ ...formData, captureEquipment: eq })}
                   className={`flex-1 py-1.5 px-3 rounded-lg font-medium text-xs border transition-all cursor-pointer ${formData.captureEquipment === eq
-                    ? 'bg-slate-700 border-slate-600 text-text-base shadow-sm font-semibold'
+                    ? 'bg-inner border-subtle text-text-base shadow-sm font-semibold'
                     : 'bg-app border-subtle text-text-muted hover:text-text-base'
                     }`}
                 >
@@ -5352,17 +5852,17 @@ const DataForm = ({
             </div>
           </div>
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">PIC (Person In Charge)</label>
+            <label className="block text-xs font-semibold text-text-base mb-1">PIC (Person In Charge)</label>
             <input
               type="text"
               value={formData.pic || ''}
               onChange={(e) => setFormData({ ...formData, pic: e.target.value })}
               placeholder="Enter PIC Name"
-              className="w-full bg-app border border-subtle rounded-lg px-3 py-1.5 text-xs text-text-base focus:outline-none focus:border-slate-500"
+              className="w-full bg-app border border-subtle rounded-lg px-3 py-1.5 text-xs text-text-base focus:outline-none focus:border-subtle"
             />
           </div>
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">Publish to WEBGIS</label>
+            <label className="block text-xs font-semibold text-text-base mb-1">Publish to WEBGIS</label>
             <select
               value={formData.publishToWebGIS || 'in process'}
               onChange={(e) => {
@@ -5374,7 +5874,7 @@ const DataForm = ({
                   isSyncedWithSupabase: val === 'yes'
                 });
               }}
-              className="w-full bg-app border border-subtle rounded-lg px-3 py-1.5 text-xs text-text-base focus:outline-none focus:border-slate-500"
+              className="w-full bg-app border border-subtle rounded-lg px-3 py-1.5 text-xs text-text-base focus:outline-none focus:border-subtle"
               required
             >
               <option value="yes">yes</option>
@@ -5384,7 +5884,7 @@ const DataForm = ({
             </select>
           </div>
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">Status (Database Sync)</label>
+            <label className="block text-xs font-semibold text-text-base mb-1">Status (Database Sync)</label>
             <input
               disabled
               type="text"
@@ -5400,13 +5900,13 @@ const DataForm = ({
         <button
           type="button"
           onClick={onCancel}
-          className="px-4 py-1.5 bg-inner hover:bg-slate-700 text-slate-300 rounded-lg font-medium text-xs transition-all cursor-pointer border border-subtle"
+          className="px-4 py-1.5 bg-inner hover:bg-inner text-text-base rounded-lg font-medium text-xs transition-all cursor-pointer border border-subtle"
         >
           Cancel
         </button>
         <button
           type="submit"
-          className="flex items-center gap-1.5 px-4 py-1.5 bg-slate-700 hover:bg-slate-600 text-text-base rounded-lg font-medium text-xs transition-all cursor-pointer shadow-sm border border-slate-600 active:scale-95"
+          className="flex items-center gap-1.5 px-4 py-1.5 bg-inner hover:bg-inner text-text-base rounded-lg font-medium text-xs transition-all cursor-pointer shadow-sm border border-subtle active:scale-95"
         >
           <Save size={14} />
           Save Changes
@@ -7437,8 +7937,8 @@ export default function App() {
 
     saveNotificationToSupabase({
       timestamp: timestampStr,
-      title: `Batch QA/QC Initialized (${cleanSub || 'All'})`,
-      message: `Automated QA/QC inspection pipeline started for subgrid ${cleanSub || 'General'}${runId ? ' (Single Run Scoped)' : ''}. Total frames: ${stations.length}. Active flags: [Blur: ${config.checkBlur ? 'ON' : 'OFF'}, Obstruction: ${config.checkObstruction ? 'ON' : 'OFF'}, GPS: ${config.checkGps ? 'ON' : 'OFF'}]. Inspector: ${effectivePic}.`,
+      title: `Batch Acquisition QC Initialized (${cleanSub || 'All'})`,
+      message: `Automated acquisition QC inspection pipeline started for subgrid ${cleanSub || 'General'}${runId ? ' (Single Run Scoped)' : ''}. Total frames: ${stations.length}. Active flags: [Blur: ${config.checkBlur ? 'ON' : 'OFF'}, Obstruction: ${config.checkObstruction ? 'ON' : 'OFF'}, GPS: ${config.checkGps ? 'ON' : 'OFF'}]. Inspector: ${effectivePic}.`,
       category: 'SYSTEM',
       totalItems: 1
     }).catch(() => { });
@@ -8047,7 +8547,7 @@ export default function App() {
   // 1. Loading state during auth verification
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-[#070b14] flex items-center justify-center text-slate-400">
+      <div className="min-h-screen bg-app flex items-center justify-center text-text-muted">
         <div className="flex items-center gap-3">
           <Loader2 className="w-5 h-5 animate-spin text-sky-400" />
           <span className="text-xs font-semibold">Verifying authorization...</span>
@@ -8077,7 +8577,7 @@ export default function App() {
 
   if (!authSession && !authLoading) {
     return (
-      <div className="min-h-screen bg-card text-zinc-100 font-sans flex items-center justify-center p-6 relative overflow-hidden select-none">
+      <div className="min-h-screen bg-card text-text-base font-sans flex items-center justify-center p-6 relative overflow-hidden select-none">
         {/* Subtle Ambient Radial Glow */}
         <div className="absolute -top-40 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-card rounded-full blur-[120px] pointer-events-none" />
 
@@ -8085,12 +8585,12 @@ export default function App() {
           {/* Header Branding */}
           <div className="text-center mb-8">
             <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-card border border-subtle shadow-sm mb-4">
-              <Globe size={22} className="text-zinc-200" />
+              <Globe size={22} className="text-text-base" />
             </div>
             <h1 className="text-xl font-semibold text-text-base tracking-tight">
               Sign in to Dashboard
             </h1>
-            <p className="text-xs text-zinc-400 mt-1.5 leading-relaxed">
+            <p className="text-xs text-text-muted mt-1.5 leading-relaxed">
               GeoSphere 360 Operations Hub &bull; Mobile Mapping & Spatial Intelligence
             </p>
           </div>
@@ -8098,7 +8598,7 @@ export default function App() {
           {/* Form */}
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
-              <label className="block text-xs font-medium text-zinc-300 mb-1.5">
+              <label className="block text-xs font-medium text-text-base mb-1.5">
                 Email address
               </label>
               <input
@@ -8107,19 +8607,19 @@ export default function App() {
                 onChange={(e) => setAuthEmail(e.target.value)}
                 placeholder="user@example.com"
                 required
-                className="w-full bg-card border border-subtle focus:border-zinc-500 focus:ring-1 focus:ring-zinc-500/20 rounded-lg px-3.5 py-2.5 text-sm text-zinc-100 placeholder-zinc-500 outline-none transition-all duration-150"
+                className="w-full bg-card border border-subtle focus:border-accent focus:ring-1 focus:ring-accent/20 rounded-lg px-3.5 py-2.5 text-sm text-text-base placeholder-text-muted outline-none transition-all duration-150"
               />
             </div>
 
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label className="block text-xs font-medium text-zinc-300">
+                <label className="block text-xs font-medium text-text-base">
                   Password
                 </label>
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors cursor-pointer"
+                  className="text-xs text-text-muted hover:text-text-base transition-colors cursor-pointer"
                   tabIndex={-1}
                 >
                   {showPassword ? 'Hide' : 'Show'}
@@ -8131,7 +8631,7 @@ export default function App() {
                 onChange={(e) => setAuthPassword(e.target.value)}
                 placeholder="••••••••"
                 required
-                className="w-full bg-card border border-subtle focus:border-zinc-500 focus:ring-1 focus:ring-zinc-500/20 rounded-lg px-3.5 py-2.5 text-sm text-zinc-100 placeholder-zinc-500 outline-none transition-all duration-150"
+                className="w-full bg-card border border-subtle focus:border-accent focus:ring-1 focus:ring-accent/20 rounded-lg px-3.5 py-2.5 text-sm text-text-base placeholder-text-muted outline-none transition-all duration-150"
               />
             </div>
 
@@ -8147,11 +8647,11 @@ export default function App() {
             <button
               type="submit"
               disabled={isAuthenticating}
-              className="w-full py-2.5 px-4 bg-white hover:bg-zinc-200 active:bg-zinc-300 disabled:opacity-50 text-zinc-950 text-sm font-semibold rounded-lg shadow-sm transition-all duration-150 flex items-center justify-center gap-2 cursor-pointer mt-5"
+              className="w-full py-2.5 px-4 bg-sky-600 hover:bg-sky-500 active:bg-sky-700 disabled:opacity-50 text-white text-sm font-semibold rounded-lg shadow-sm transition-all duration-150 flex items-center justify-center gap-2 cursor-pointer mt-5"
             >
               {isAuthenticating ? (
                 <>
-                  <RefreshCw size={15} className="animate-spin text-zinc-950" />
+                  <RefreshCw size={15} className="animate-spin text-white" />
                   <span>Signing in...</span>
                 </>
               ) : (
@@ -8165,7 +8665,7 @@ export default function App() {
             <div className="absolute inset-0 flex items-center">
               <div className="w-full border-t border-subtle" />
             </div>
-            <span className="relative bg-card px-2 text-[10px] uppercase text-zinc-500 font-medium">
+            <span className="relative bg-card px-2 text-[10px] uppercase text-text-muted font-medium">
               or
             </span>
           </div>
@@ -8174,15 +8674,15 @@ export default function App() {
           <button
             type="button"
             onClick={handleGuestLogin}
-            className="w-full py-2.5 px-4 bg-card hover:bg-card active:bg-zinc-750 text-zinc-300 hover:text-text-base border border-subtle text-xs font-semibold rounded-lg shadow-sm transition-all duration-150 flex items-center justify-center gap-2 cursor-pointer"
+            className="w-full py-2.5 px-4 bg-card hover:bg-card active:bg-inner text-text-base hover:text-text-base border border-subtle text-xs font-semibold rounded-lg shadow-sm transition-all duration-150 flex items-center justify-center gap-2 cursor-pointer"
           >
-            <User size={15} className="text-zinc-400" />
+            <User size={15} className="text-text-muted" />
             <span>Continue as Guest (Read-Only Mode)</span>
           </button>
 
           {/* Footer Security Note */}
           <div className="mt-8 text-center">
-            <p className="text-[11px] text-zinc-500">
+            <p className="text-[11px] text-text-muted">
               Protected by Supabase Access Authentication
             </p>
           </div>
@@ -8199,7 +8699,8 @@ export default function App() {
       appTitle: 'Mobile Mapping Data Management System',
       dashboard: 'Main Dashboard',
       data: 'Data Management',
-      refresh: 'Refresh Map',
+      refresh: 'Refresh',
+      backToDashboard: 'Back to Dashboard',
       settings: 'Project Settings',
       about: 'About Dashboard',
       collapsePanel: 'Collapse Panel',
@@ -8224,7 +8725,7 @@ export default function App() {
       helpGuide: 'Help & User Guide',
       auditLogs: 'Audit Logs',
       notifications: 'Notifications',
-      workspaceProduction: 'Image Production Workspace',
+      workspaceProduction: 'Production Workspace',
       workspaceStorage: 'NAS / Raw Storage Manager',
       workspaceProcessing: 'Processing Center',
       workspaceLineage: 'Data Lineage',
@@ -8240,21 +8741,22 @@ export default function App() {
       workspaceDashboardDesc: 'Executive KPI dashboard, interactive coverage map, processing control and 360° inspector.',
       workspaceDataDesc: 'Batch logs, daily survey runs, vector layer catalog and database management.',
       workspaceSettingsDesc: 'Project, database, imagery storage, QA benchmarks and access control configuration.',
-      workspaceProductionDesc: 'Image production control plane: RAW registration, NAS GPU Worker enhancement + generative-fill mask removal, live job status, preview and QA/QC import.',
+      workspaceProductionDesc: 'Production control plane: RAW registration, 4-Station Multi-PC workflow & NAS GPU Worker enhancement, live job status, preview and QA acceptance.',
       workspaceStorageDesc: 'NAS connectivity, capacity monitoring, dataset indexing and RAW/processed storage management.',
-      workspaceProcessingDesc: 'Central job management for external stitching, blurring, enhancement, masking, QA/QC, reports and exports.',
-      workspaceLineageDesc: 'Visual trace from RAW source through external processing, QA/QC, publication and export.',
+      workspaceProcessingDesc: 'Central job management for external stitching, blurring, enhancement, masking, acceptance QA, reports and exports.',
+      workspaceLineageDesc: 'Visual trace from RAW source through external processing, acceptance QA, publication and export.',
       workspaceAnalyticsDesc: 'Road capture survey analytics: distance, coverage, GNSS quality, capture density and gaps.',
       workspaceReportsDesc: 'Automated report deliverables built from actual project data.',
       workspaceAdministrationDesc: 'Security, RBAC, audit and high-risk operation controls for administrators.',
       workspaceCategoryCore: 'Core Workspaces',
-      workspaceCategoryProduction: 'Image Production',
+      workspaceCategoryProduction: 'Production',
       workspaceCategoryInsights: 'Insights & Reporting',
       workspaceCategoryGovernance: 'Administration & Control',
       analyticsTitle: 'Survey Analytics',
       analyticsSubtitle: 'Road capture analytics computed live from reconciled batch logs, daily runs, the RAW staging registry and QA decisions. Dashboard is metadata-only; recharts renders every chart.',
       analyticsGuestNote: 'Read-only mode: analytics are view-only.',
       analyticsTabOverview: 'Overview',
+      analyticsTabLedger: 'Analytics',
       analyticsTabDistance: 'Distance',
       analyticsTabCoverage: 'Coverage',
       analyticsTabDensity: 'Density',
@@ -8312,7 +8814,7 @@ export default function App() {
       reportsTabExecutive: 'Executive',
       reportsTabDaily: 'Daily Operations',
       reportsTabSubgrid: 'Subgrid Coverage',
-      reportsTabQa: 'QA/QC Audit',
+      reportsTabQa: 'Acquisition QC Audit',
       reportsTabLineage: 'Lineage & Audit',
       reportsKpiSubgrids: 'Subgrids Surveyed',
       reportsKpiPublished: 'Published',
@@ -8327,7 +8829,7 @@ export default function App() {
       reportsDailyDesc: 'Field capture & handover register covering every daily survey run.',
       reportsSubgridTitle: 'Subgrid Coverage Report',
       reportsSubgridDesc: 'Per-parcel delivery, coverage percentage and publication state.',
-      reportsQaTitle: 'QA/QC Audit Report',
+      reportsQaTitle: 'Acquisition QC Audit Report',
       reportsQaDesc: 'Quality assurance decisions and the defect register by subgrid.',
       reportsLineageTitle: 'Lineage & Audit Trail Report',
       reportsLineageDesc: 'Dataset provenance and the full processing job chain.',
@@ -8341,7 +8843,7 @@ export default function App() {
       reportsChkPrint: 'Print & PDF',
       reportsGenerate: 'Generate & Print',
       productionTabPipeline: 'Pipeline',
-      productionTabDatasets: 'Datasets',
+      productionTabDatasets: 'Metadata',
       productionTabProviders: 'Providers',
       productionTabPreview: 'Preview',
       productionTabEnhance: 'Enhance',
@@ -8353,7 +8855,7 @@ export default function App() {
       storageTabIndex: 'Index',
       processingTabBoard: 'Job Board',
       processingTabHandoff: 'Handoff',
-      processingTabQA: 'QA/QC',
+      processingTabQA: 'Acceptance QA',
       processingTabCapacity: 'Capacity',
       pipelineProject: 'Project pipeline',
       pipelineStages: 'Pipeline stages',
@@ -8364,7 +8866,7 @@ export default function App() {
       pipelineStagePrivacyBlur: 'Privacy blur',
       pipelineStageMetadataValidation: 'Metadata validation',
       pipelineStageDataStaging: 'Data staging',
-      pipelineStageQaqc: 'QA/QC',
+      pipelineStageQaqc: 'Acceptance QA',
       pipelineStagePublish: 'Publish',
       pipelineStageFinalExport: 'Final export',
       jobDetailsTitle: 'Processing job',
@@ -8393,7 +8895,7 @@ export default function App() {
       lineageGraphLayer_Blur: 'BLUR',
       lineageGraphLayer_Enhance: 'ENHANCE',
       lineageGraphLayer_Mask: 'MASK',
-      lineageGraphLayer_QaQc: 'QA/QC',
+      lineageGraphLayer_QaQc: 'Acceptance QA',
       lineageGraphLayer_Deliverable: 'DELIVERABLE',
       lineageNodeRawAggregate: 'RAW capture aggregate',
       lineageNodeDataset: 'Dataset',
@@ -8494,7 +8996,8 @@ export default function App() {
       appTitle: 'Sistem Pengurusan Data Pemetaan Mudah Alih',
       dashboard: 'Papan Pemuka Utama',
       data: 'Pengurusan Data',
-      refresh: 'Muat Semula Peta',
+      refresh: 'Muat Semula',
+      backToDashboard: 'Kembali ke Papan Pemuka',
       settings: 'Tetapan Projek',
       about: 'Perihal Papan Pemuka',
       collapsePanel: 'Katup Panel',
@@ -8519,7 +9022,7 @@ export default function App() {
       helpGuide: 'Panduan Bantuan & Pengguna',
       auditLogs: 'Log Audit',
       notifications: 'Pemberitahuan',
-      workspaceProduction: 'Ruang Kerja Pengeluaran Imej',
+      workspaceProduction: 'Ruang Kerja Pengeluaran',
       workspaceStorage: 'Pengurus Stor NAS / Mentah',
       workspaceProcessing: 'Pusat Pemprosesan',
       workspaceLineage: 'Silsilah Data',
@@ -8532,13 +9035,14 @@ export default function App() {
       workspaceComingSoon: 'Ruang Kerja Dalam Pembinaan',
       workspaceComingSoonDesc: 'Ruang kerja ini adalah sebahagian daripada peta jalan platform pengeluaran GeoSphere 360. Keupayaannya akan disampaikan dalam fasa pelaksanaan akan datang sambil mengekalkan semua fungsi sedia ada.',
       workspaceCategoryCore: 'Ruang Kerja Teras',
-      workspaceCategoryProduction: 'Pengeluaran Imej',
+      workspaceCategoryProduction: 'Pengeluaran',
       workspaceCategoryInsights: 'Analitis & Pelaporan',
       workspaceCategoryGovernance: 'Pentadbiran & Kawalan',
       analyticsTitle: 'Analitik Ukur',
       analyticsSubtitle: 'Analitik tangkapan jalan dikira secara langsung daripada log kumpulan yang diselaraskan, larian harian, daftar storan mentah dan keputusan QA. Papan pemuka meta only; recharts renders every chart.',
       analyticsGuestNote: 'Mod baca sahaja: analitik hanya untuk paparan.',
-      analyticsTabOverview: 'Ringkasan',
+      analyticsTabOverview: 'Gambaran Keseluruhan',
+      analyticsTabLedger: 'Analisis',
       analyticsTabDistance: 'Jarak',
       analyticsTabCoverage: 'Liputan',
       analyticsTabDensity: 'Ketumpatan',
@@ -8596,7 +9100,7 @@ export default function App() {
       reportsTabExecutive: 'Eksekutif',
       reportsTabDaily: 'Operasi Harian',
       reportsTabSubgrid: 'Liputan Subgrid',
-      reportsTabQa: 'Audit QA/QC',
+      reportsTabQa: 'Audit QC',
       reportsTabLineage: 'Silsilah & Audit',
       reportsKpiSubgrids: 'Subgrid Diukur',
       reportsKpiPublished: 'Diterbitkan',
@@ -8611,7 +9115,7 @@ export default function App() {
       reportsDailyDesc: 'Daftar tangkapan & serah tugas lapangan merangkumi setiap larian ukur harian.',
       reportsSubgridTitle: 'Laporan Liputan Subgrid',
       reportsSubgridDesc: 'Penghantaran setiap petak, peratus liputan dan status penerbitan.',
-      reportsQaTitle: 'Laporan Audit QA/QC',
+      reportsQaTitle: 'Laporan Audit QC',
       reportsQaDesc: 'Keputusan jaminan kualiti dan daftar cacat mengikut subgrid.',
       reportsLineageTitle: 'Laporan Silsilah & Jejak Audit',
       reportsLineageDesc: 'Asal-usul set data dan rantaian kerja pemprosesan penuh.',
@@ -8625,7 +9129,7 @@ export default function App() {
       reportsChkPrint: 'Cetak & PDF',
       reportsGenerate: 'Jana & Cetak',
       productionTabPipeline: 'Saluran',
-      productionTabDatasets: 'Set Data',
+      productionTabDatasets: 'Metadata',
       productionTabProviders: 'Pembekal',
       productionTabPreview: 'Pratonton',
       productionTabEnhance: 'Penambahbaik',
@@ -8637,7 +9141,7 @@ export default function App() {
       storageTabIndex: 'Indeks',
       processingTabBoard: 'Papan Kerja',
       processingTabHandoff: 'Serah Tugas',
-      processingTabQA: 'QA/QC',
+      processingTabQA: 'QA Penerimaan',
       processingTabCapacity: 'Kapasiti',
       pipelineProject: 'Saluran paip projek',
       pipelineStages: 'Peringkat saluran paip',
@@ -8648,7 +9152,7 @@ export default function App() {
       pipelineStagePrivacyBlur: 'Kabur privasi',
       pipelineStageMetadataValidation: 'Pengesahan metadata',
       pipelineStageDataStaging: 'Peringkat data',
-      pipelineStageQaqc: 'QA/QC',
+      pipelineStageQaqc: 'QA Penerimaan',
       pipelineStagePublish: 'Terbit',
       pipelineStageFinalExport: 'Eksport akhir',
       jobDetailsTitle: 'Kerja pemprosesan',
@@ -8677,7 +9181,7 @@ export default function App() {
       lineageGraphLayer_Blur: 'KABUR',
       lineageGraphLayer_Enhance: 'TAMBAH BAIK',
       lineageGraphLayer_Mask: 'TOPENG',
-      lineageGraphLayer_QaQc: 'QA/QC',
+      lineageGraphLayer_QaQc: 'QA Penerimaan',
       lineageGraphLayer_Deliverable: 'DELIVERABEL',
       lineageNodeRawAggregate: 'Agregat tangkapan RAW',
       lineageNodeDataset: 'Set data',
@@ -8853,7 +9357,7 @@ export default function App() {
             </div>
             <div>
               <h4 className="text-xs font-bold text-emerald-400 tracking-wide">Settings Saved & Synced</h4>
-              <p className="text-[11px] text-slate-300">{settingsSaveToast.message}</p>
+              <p className="text-[11px] text-text-base">{settingsSaveToast.message}</p>
             </div>
           </div>
         </div>
@@ -8923,8 +9427,8 @@ export default function App() {
 
             {/* BATCH AUDIT LOGS POPOVER */}
             {isAuditLogOpen && (
-              <div className="absolute right-0 top-10 w-96 max-w-[90vw] bg-card border border-[rgba(255,255,255,0.08)] rounded-xl shadow-2xl z-50 overflow-hidden text-text-base animate-in fade-in duration-150 backdrop-blur-md">
-                <div className="p-3 bg-card border-b border-[rgba(255,255,255,0.08)] flex items-center justify-between gap-2">
+              <div className="absolute right-0 top-10 w-96 max-w-[90vw] bg-card border border-subtle rounded-xl shadow-2xl z-50 overflow-hidden text-text-base animate-in fade-in duration-150 backdrop-blur-md">
+                <div className="p-3 bg-card border-b border-subtle flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 shrink-0">
                     <History size={15} className="text-sky-400" />
                     <span className="text-xs font-semibold uppercase tracking-wider text-text-base">
@@ -8957,13 +9461,13 @@ export default function App() {
                 </div>
 
                 {/* Filter Tabs */}
-                <div className="px-3 py-1.5 bg-card border-b border-[rgba(255,255,255,0.06)] flex items-center gap-1 overflow-x-auto text-[10px]">
+                <div className="px-3 py-1.5 bg-card border-b border-subtle flex items-center gap-1 overflow-x-auto text-[10px]">
                   {(['ALL', 'EDIT', 'DELETE', 'CREATE', 'PUBLISH', 'ERROR'] as const).map(tab => (
                     <button
                       key={tab}
                       onClick={() => setAuditFilterTab(tab)}
                       className={`px-2 py-0.5 rounded font-medium transition-all cursor-pointer whitespace-nowrap border ${auditFilterTab === tab
-                        ? 'bg-card text-text-base border-slate-600'
+                        ? 'bg-card text-text-base border-subtle'
                         : 'text-text-muted border-transparent hover:text-text-base hover:bg-inner'
                         }`}
                     >
@@ -8988,11 +9492,11 @@ export default function App() {
                       .map(log => {
                         const badgeColor =
                           log.type === 'CREATE' ? 'bg-inner text-sky-300 border-subtle' :
-                            log.type === 'EDIT' ? 'bg-inner text-slate-300 border-subtle' :
+                            log.type === 'EDIT' ? 'bg-inner text-text-base border-subtle' :
                               log.type === 'DELETE' ? 'bg-inner text-rose-300 border-subtle' :
                                 log.type === 'PUBLISH' ? 'bg-sky-950/60 text-sky-300 border-sky-800/60' :
                                   log.type === 'ERROR' ? 'bg-rose-950/60 text-rose-300 border-rose-900/60' :
-                                    'bg-inner text-slate-300 border-subtle';
+                                    'bg-inner text-text-base border-subtle';
 
                         return (
                           <div key={log.id} className="p-2.5 hover:bg-inner transition-colors rounded-lg space-y-1">
@@ -9004,7 +9508,7 @@ export default function App() {
                             </div>
                             <div className="text-xs font-medium text-text-base">{log.title}</div>
                             <div className="text-[11px] text-text-muted">{log.details}</div>
-                            <div className="text-[9px] text-text-muted text-right">User: <span className="text-slate-300 font-medium">{log.user}</span></div>
+                            <div className="text-[9px] text-text-muted text-right">User: <span className="text-text-base font-medium">{log.user}</span></div>
                           </div>
                         );
                       })
@@ -9043,8 +9547,8 @@ export default function App() {
 
             {/* NOTIFICATIONS POPOVER */}
             {isNotifOpen && (
-              <div className="absolute right-0 top-10 w-96 max-w-[90vw] bg-card border border-[rgba(255,255,255,0.08)] rounded-xl shadow-2xl z-50 overflow-hidden text-text-base animate-in fade-in duration-150 backdrop-blur-md">
-                <div className="p-3 bg-card border-b border-[rgba(255,255,255,0.08)] flex items-center justify-between">
+              <div className="absolute right-0 top-10 w-96 max-w-[90vw] bg-card border border-subtle rounded-xl shadow-2xl z-50 overflow-hidden text-text-base animate-in fade-in duration-150 backdrop-blur-md">
+                <div className="p-3 bg-card border-b border-subtle flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Bell size={15} className="text-sky-400" />
                     <span className="text-xs font-semibold uppercase tracking-wider text-text-base">
@@ -9095,7 +9599,7 @@ export default function App() {
                                   PUBLISH SUCCESS
                                 </span>
                               ) : isPending ? (
-                                <span className="bg-inner text-slate-300 border border-subtle px-1.5 py-0.2 rounded text-[9px] font-medium">
+                                <span className="bg-inner text-text-base border border-subtle px-1.5 py-0.2 rounded text-[9px] font-medium">
                                   PENDING TASK
                                 </span>
                               ) : (
@@ -9134,7 +9638,7 @@ export default function App() {
 
                           {/* Detail Badges: Total Data & Published Timestamp */}
                           {isPublish && (
-                            <div className="pt-1.5 border-t border-[rgba(255,255,255,0.06)] flex items-center justify-between text-[10px]">
+                            <div className="pt-1.5 border-t border-subtle flex items-center justify-between text-[10px]">
                               <span className="text-text-muted">Total Data Included: <strong className="text-text-base">{notif.totalItems || 1} subgrid(s)</strong></span>
                               <span className="text-text-muted">Date Published: <strong className="text-sky-400">{notif.timestamp}</strong></span>
                             </div>
@@ -9215,9 +9719,9 @@ export default function App() {
               <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 shrink-0 transition-all duration-300 ${tourStep === 1 ? 'ring-2 ring-sky-400/90 shadow-[0_0_35px_rgba(56,189,248,0.4)] z-30 relative rounded-xl p-1 bg-sky-950/20' : tourStep !== null ? 'opacity-30 blur-[1.5px] pointer-events-none' : ''
                 }`}>
                 {/* Card 1: Total Distance Mapped */}
-                <div className="bg-card border border-[rgba(255,255,255,0.08)] backdrop-blur-md rounded-xl p-3.5 flex flex-col justify-between shadow-sm">
+                <div className="bg-card border border-subtle backdrop-blur-md rounded-xl p-3.5 flex flex-col justify-between shadow-sm">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-slate-300 uppercase tracking-tight">{t('totalDistance')}</span>
+                    <span className="text-xs font-bold text-text-base uppercase tracking-tight">{t('totalDistance')}</span>
                     <Navigation size={15} className="text-sky-400 shrink-0" />
                   </div>
                   <div className="my-1 flex items-baseline gap-2">
@@ -9239,9 +9743,9 @@ export default function App() {
                 </div>
 
                 {/* Card 2: Processed Panoramas */}
-                <div className="bg-card border border-[rgba(255,255,255,0.08)] backdrop-blur-md rounded-xl p-3.5 flex flex-col justify-between shadow-sm">
+                <div className="bg-card border border-subtle backdrop-blur-md rounded-xl p-3.5 flex flex-col justify-between shadow-sm">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-slate-300 uppercase tracking-tight">{t('processedPanoramas')}</span>
+                    <span className="text-xs font-bold text-text-base uppercase tracking-tight">{t('processedPanoramas')}</span>
                     <Camera size={15} className="text-sky-400 shrink-0" />
                   </div>
                   <div className="my-1">
@@ -9260,9 +9764,9 @@ export default function App() {
                 </div>
 
                 {/* Card 3: Active Processing Jobs */}
-                <div className="bg-card border border-[rgba(255,255,255,0.08)] backdrop-blur-md rounded-xl p-3.5 flex flex-col justify-between shadow-sm">
+                <div className="bg-card border border-subtle backdrop-blur-md rounded-xl p-3.5 flex flex-col justify-between shadow-sm">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-slate-300 uppercase tracking-tight">{t('activeJobs')}</span>
+                    <span className="text-xs font-bold text-text-base uppercase tracking-tight">{t('activeJobs')}</span>
                     <Database size={15} className="text-sky-400 shrink-0" />
                   </div>
                   <div className="my-1 flex items-baseline gap-2 flex-wrap">
@@ -9290,9 +9794,9 @@ export default function App() {
                 </div>
 
                 {/* Card 4: Pipeline Health */}
-                <div className="bg-card border border-[rgba(255,255,255,0.08)] backdrop-blur-md rounded-xl p-3.5 flex flex-col justify-between shadow-sm">
+                <div className="bg-card border border-subtle backdrop-blur-md rounded-xl p-3.5 flex flex-col justify-between shadow-sm">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-slate-300 uppercase tracking-tight">{t('pipelineHealth')}</span>
+                    <span className="text-xs font-bold text-text-base uppercase tracking-tight">{t('pipelineHealth')}</span>
                     <div className="w-14 h-5">
                       <svg className="w-full h-full text-emerald-400 stroke-current fill-none stroke-2" viewBox="0 0 50 20">
                         <path d="M0,15 L10,12 L20,18 L30,5 L40,10 L50,2" />
@@ -9321,17 +9825,17 @@ export default function App() {
               <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-3 min-h-0 overflow-y-auto lg:overflow-hidden">
 
                 {/* LEFT COLUMN: INTERACTIVE COVERAGE MAP (7 Cols) */}
-                <div className={`col-span-1 lg:col-span-7 min-h-[380px] lg:min-h-0 bg-card border border-[rgba(255,255,255,0.08)] backdrop-blur-md rounded-xl flex flex-col overflow-hidden relative transition-all duration-300 ${tourStep === 2 ? 'ring-2 ring-sky-400/90 shadow-[0_0_35px_rgba(56,189,248,0.4)] z-30 relative scale-[1.002]' : tourStep !== null ? 'opacity-30 blur-[1.5px] pointer-events-none' : ''
+                <div className={`col-span-1 lg:col-span-7 min-h-[380px] lg:min-h-0 bg-card border border-subtle backdrop-blur-md rounded-xl flex flex-col overflow-hidden relative transition-all duration-300 ${tourStep === 2 ? 'ring-2 ring-sky-400/90 shadow-[0_0_35px_rgba(56,189,248,0.4)] z-30 relative scale-[1.002]' : tourStep !== null ? 'opacity-30 blur-[1.5px] pointer-events-none' : ''
                   }`}>
                   {/* Header */}
-                  <div className="p-2.5 sm:p-3 border-b border-[rgba(255,255,255,0.08)] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 shrink-0 bg-card">
-                    <span className="text-xs font-bold uppercase tracking-wider text-slate-300">
+                  <div className="p-2.5 sm:p-3 border-b border-subtle flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 shrink-0 bg-card">
+                    <span className="text-xs font-bold uppercase tracking-wider text-text-base">
                       INTERACTIVE COVERAGE MAP
                     </span>
                     <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap w-full sm:w-auto justify-end">
                       <button
                         onClick={generateExecutivePdfReport}
-                        className="flex-1 sm:flex-none px-2.5 sm:px-3 py-1.5 bg-card hover:bg-inner text-slate-300 hover:text-text-base border border-[rgba(255,255,255,0.12)] text-[10px] sm:text-[11px] font-medium rounded-lg transition-all uppercase tracking-tight cursor-pointer flex items-center justify-center gap-1.5 shadow-sm active:scale-95 whitespace-nowrap"
+                        className="flex-1 sm:flex-none px-2.5 sm:px-3 py-1.5 bg-card hover:bg-inner text-text-base hover:text-text-base border border-subtle text-[10px] sm:text-[11px] font-medium rounded-lg transition-all uppercase tracking-tight cursor-pointer flex items-center justify-center gap-1.5 shadow-sm active:scale-95 whitespace-nowrap"
                         title="Generate printable Executive PDF Summary Report"
                       >
                         <FileText size={13} className="shrink-0" />
@@ -9351,7 +9855,7 @@ export default function App() {
                         }}
                         className={`flex-1 sm:flex-none px-2.5 sm:px-3 py-1.5 text-[10px] sm:text-[11px] font-medium rounded-lg border transition-all uppercase tracking-tight flex items-center justify-center gap-1.5 cursor-pointer shadow-sm active:scale-95 whitespace-nowrap ${isDrawingBBox
                           ? 'bg-card border-slate-400 text-text-base'
-                          : 'bg-card hover:bg-inner text-slate-300 border-[rgba(255,255,255,0.12)] hover:border-[rgba(255,255,255,0.2)]'
+                          : 'bg-card hover:bg-inner text-text-base border-subtle hover:border-subtle'
                           }`}
                         title="Toggle spatial bounding box rectangle filter on map"
                       >
@@ -9382,7 +9886,7 @@ export default function App() {
                           </div>
 
                           <label className="flex items-center justify-between px-2 py-1 rounded-md hover:bg-inner text-text-base hover:text-text-base cursor-pointer select-none transition-colors">
-                            <span className="text-[11px] font-medium text-slate-300">Show Panotrack Layer</span>
+                            <span className="text-[11px] font-medium text-text-base">Show Panotrack Layer</span>
                             <input
                               type="checkbox"
                               checked={showPanotrackData}
@@ -9562,10 +10066,10 @@ export default function App() {
                               ✕
                             </button>
                           </div>
-                          <div className="text-slate-300 font-mono text-[11px] flex justify-between gap-4"><span className="text-text-muted">Coordinates:</span> <span>{activeCoords.lat && activeCoords.lng ? `${activeCoords.lat.toFixed(4)}° N, ${activeCoords.lng.toFixed(4)}° E` : '—'}</span></div>
-                          <div className="text-slate-300 text-[11px] flex justify-between gap-4"><span className="text-text-muted">Distance from start:</span> <span className="font-semibold text-text-base">{activeKm} km</span></div>
-                          <div className="text-slate-300 text-[11px] flex justify-between gap-4"><span className="text-text-muted">Image Count:</span> <span className="font-semibold text-text-base">{activeImages}</span></div>
-                          <div className="text-slate-300 text-[11px] flex justify-between items-center gap-4">
+                          <div className="text-text-base font-mono text-[11px] flex justify-between gap-4"><span className="text-text-muted">Coordinates:</span> <span>{activeCoords.lat && activeCoords.lng ? `${activeCoords.lat.toFixed(4)}° N, ${activeCoords.lng.toFixed(4)}° E` : '—'}</span></div>
+                          <div className="text-text-base text-[11px] flex justify-between gap-4"><span className="text-text-muted">Distance from start:</span> <span className="font-semibold text-text-base">{activeKm} km</span></div>
+                          <div className="text-text-base text-[11px] flex justify-between gap-4"><span className="text-text-muted">Image Count:</span> <span className="font-semibold text-text-base">{activeImages}</span></div>
+                          <div className="text-text-base text-[11px] flex justify-between items-center gap-4">
                             <span className="text-text-muted">Defect Images:</span>
                             <button
                               onClick={() => {
@@ -9583,7 +10087,7 @@ export default function App() {
                               }}
                               className={`font-semibold px-2 py-0.5 rounded border text-[10px] cursor-pointer transition-all flex items-center gap-1.5 group shadow-sm active:scale-95 ${activeDefects > 0
                                 ? 'text-amber-400 bg-amber-500/10 hover:bg-amber-500/25 border-amber-500/30 hover:border-amber-500/60'
-                                : 'text-slate-400 bg-slate-500/10 border-slate-500/20'
+                                : 'text-text-muted bg-slate-500/10 border-subtle/20'
                                 }`}
                               title="Click to filter & select defect data"
                             >
@@ -9592,8 +10096,8 @@ export default function App() {
                               <Filter size={10} className="group-hover:scale-110 transition-transform shrink-0" />
                             </button>
                           </div>
-                          <div className="text-slate-300 text-[11px] flex justify-between gap-4"><span className="text-text-muted">PIC:</span> <span className="font-semibold text-emerald-400">{activePic}</span></div>
-                          <div className="text-slate-300 text-[11px] flex justify-between items-center pt-1 border-t border-subtle">
+                          <div className="text-text-base text-[11px] flex justify-between gap-4"><span className="text-text-muted">PIC:</span> <span className="font-semibold text-emerald-400">{activePic}</span></div>
+                          <div className="text-text-base text-[11px] flex justify-between items-center pt-1 border-t border-subtle">
                             <span className="text-text-muted">Processing Status:</span>
                             <span className={`font-semibold px-2 py-0.5 rounded border text-[10px] ${isPublished
                               ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
@@ -9630,19 +10134,19 @@ export default function App() {
                 <div className="col-span-1 lg:col-span-5 flex flex-col gap-3 min-h-[400px] lg:min-h-0">
 
                   {/* TOP RIGHT PANEL: PROCESSING CONTROL & ADMIN */}
-                  <div className={`flex-1 bg-card border border-[rgba(255,255,255,0.08)] backdrop-blur-md rounded-xl flex flex-col overflow-hidden transition-all duration-700 ${focusedSection === 'processing'
+                  <div className={`flex-1 bg-card border border-subtle backdrop-blur-md rounded-xl flex flex-col overflow-hidden transition-all duration-700 ${focusedSection === 'processing'
                     ? 'relative z-30 ring-4 ring-emerald-400 shadow-[0_0_50px_rgba(52,211,153,0.5)] scale-[1.005]'
                     : focusedSection
                       ? 'filter blur-[4px] opacity-25 pointer-events-none'
                       : ''
                     }`}>
-                    <div className="p-2.5 sm:p-3 border-b border-[rgba(255,255,255,0.08)] flex flex-wrap items-center justify-between gap-2 shrink-0 bg-card">
+                    <div className="p-2.5 sm:p-3 border-b border-subtle flex flex-wrap items-center justify-between gap-2 shrink-0 bg-card">
                       <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
-                        <span className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5 sm:gap-2">
+                        <span className="text-xs font-bold uppercase tracking-wider text-text-base flex items-center gap-1.5 sm:gap-2">
                           <Database size={14} className="text-sky-400 shrink-0" />
                           <span>PROCESSING CONTROL & ADMIN</span>
                         </span>
-                        <div className="flex bg-inner border border-[rgba(255,255,255,0.08)] rounded-lg p-0.5 text-[10px]">
+                        <div className="flex bg-inner border border-subtle rounded-lg p-0.5 text-[10px]">
                           <button
                             onClick={() => setActiveTab('batches')}
                             className={`px-2 py-0.5 rounded font-semibold transition-colors cursor-pointer ${activeTab === 'batches' ? 'bg-card text-text-base shadow-sm' : 'text-text-muted hover:text-text-base'}`}
@@ -9663,8 +10167,8 @@ export default function App() {
                           className={`p-1 rounded-lg border transition-all cursor-pointer ${hasActiveDashFilters
                             ? 'bg-sky-600 border-sky-500 text-text-base shadow-sm'
                             : isDashFilterOpen
-                              ? 'bg-card border-slate-600 text-sky-400'
-                              : 'bg-card border-[rgba(255,255,255,0.08)] text-text-muted hover:text-text-base hover:bg-card'
+                              ? 'bg-card border-subtle text-sky-400'
+                              : 'bg-card border-subtle text-text-muted hover:text-text-base hover:bg-card'
                             }`}
                           title="Filter Daily Progress columns"
                         >
@@ -9673,7 +10177,7 @@ export default function App() {
                       </div>
                       <button
                         onClick={() => goToWorkspace('data')}
-                        className="px-2.5 sm:px-3 py-1.5 bg-card hover:bg-inner text-slate-300 hover:text-text-base border border-[rgba(255,255,255,0.12)] text-[10px] sm:text-[11px] font-medium rounded-lg transition-all uppercase tracking-tight cursor-pointer shadow-sm ml-auto sm:ml-0"
+                        className="px-2.5 sm:px-3 py-1.5 bg-card hover:bg-inner text-text-base hover:text-text-base border border-subtle text-[10px] sm:text-[11px] font-medium rounded-lg transition-all uppercase tracking-tight cursor-pointer shadow-sm ml-auto sm:ml-0"
                       >
                         RE-UPLOAD CSV
                       </button>
@@ -9681,7 +10185,7 @@ export default function App() {
 
                     {/* Compact Inline Filter Bar for Daily Progress */}
                     {isDashFilterOpen && (
-                      <div className="px-3 py-2 bg-card border-b border-[rgba(255,255,255,0.08)] flex flex-wrap items-center justify-between gap-2 text-[10px] animate-in fade-in duration-150">
+                      <div className="px-3 py-2 bg-card border-b border-subtle flex flex-wrap items-center justify-between gap-2 text-[10px] animate-in fade-in duration-150">
                         <div className="flex flex-wrap items-center gap-2">
                           <div className="flex items-center gap-1">
                             <span className="text-text-muted font-medium">Grid:</span>
@@ -9756,7 +10260,7 @@ export default function App() {
                     <div className="flex-1 overflow-auto">
                       {activeTab === 'batches' ? (
                         <table className="w-full text-left text-[11px]">
-                          <thead className="bg-card text-text-muted sticky top-0 z-10 border-b border-[rgba(255,255,255,0.08)]">
+                          <thead className="bg-card text-text-muted sticky top-0 z-10 border-b border-subtle">
                             <tr>
                               <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-text-muted whitespace-nowrap">Batch ID</th>
                               <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-text-muted whitespace-nowrap">Grid</th>
@@ -9784,8 +10288,8 @@ export default function App() {
                               <tr>
                                 <td colSpan={10} className="py-10 text-center text-text-muted">
                                   <div className="flex flex-col items-center justify-center gap-2">
-                                    <Database size={28} className="text-slate-600" />
-                                    <span className="text-xs font-semibold text-slate-300">No batch logs found</span>
+                                    <Database size={28} className="text-text-muted" />
+                                    <span className="text-xs font-semibold text-text-base">No batch logs found</span>
                                     <span className="text-[11px] text-text-muted">Import a CSV file to ingest processing logs.</span>
                                   </div>
                                 </td>
@@ -9799,13 +10303,13 @@ export default function App() {
                                   <tr
                                     key={log.id || i}
                                     onClick={() => toggleSubgridFilter(batchSubgrid)}
-                                    className={`cursor-pointer transition-all ${isSelected ? 'bg-sky-950/70 text-text-base font-medium' : 'hover:bg-inner text-slate-300'}`}
+                                    className={`cursor-pointer transition-all ${isSelected ? 'bg-sky-950/70 text-text-base font-medium' : 'hover:bg-inner text-text-base'}`}
                                   >
-                                    <td className="px-3.5 py-3.5 font-mono text-[11px] text-slate-300 font-semibold whitespace-nowrap">{formattedBatchId}</td>
+                                    <td className="px-3.5 py-3.5 font-mono text-[11px] text-text-base font-semibold whitespace-nowrap">{formattedBatchId}</td>
                                     <td className="px-3.5 py-3.5 font-medium text-text-base whitespace-nowrap">{log.grid || '1'}</td>
                                     <td className="px-3.5 py-3.5 font-semibold text-text-base whitespace-nowrap">{batchSubgrid}</td>
                                     <td className="px-3.5 py-3.5 font-mono text-xs text-text-base font-semibold whitespace-nowrap">{getPOICount(log).toLocaleString()}</td>
-                                    <td className="px-3.5 py-3.5 font-semibold text-slate-300 whitespace-nowrap">{(log.kmProcessed || 0).toFixed(1)} km</td>
+                                    <td className="px-3.5 py-3.5 font-semibold text-text-base whitespace-nowrap">{(log.kmProcessed || 0).toFixed(1)} km</td>
                                     <td className="px-3.5 py-3.5 whitespace-nowrap">
                                       <button
                                         onClick={(e) => {
@@ -9934,7 +10438,7 @@ export default function App() {
                                         );
                                       })()}
                                     </td>
-                                    <td className="px-3.5 py-3.5 text-slate-300 font-medium whitespace-nowrap">Admin</td>
+                                    <td className="px-3.5 py-3.5 text-text-base font-medium whitespace-nowrap">Admin</td>
                                     <td className="px-3.5 py-3.5 whitespace-nowrap">
                                       {qaqcWorkerState.isRunning && !qaqcWorkerState.runId && qaqcWorkerState.subgrid === batchSubgrid ? (
                                         <button
@@ -9964,7 +10468,7 @@ export default function App() {
                                       )}
                                     </td>
                                     <td className="px-3.5 py-3.5 text-right whitespace-nowrap">
-                                      <button onClick={(e) => { e.stopPropagation(); toggleSubgridFilter(batchSubgrid); }} className="px-2.5 py-1 bg-inner hover:bg-slate-700 text-text-base hover:text-text-base border border-subtle rounded-md text-[10px] font-medium cursor-pointer transition-colors whitespace-nowrap" aria-label={`View logs for subgrid ${batchSubgrid}`}>
+                                      <button onClick={(e) => { e.stopPropagation(); toggleSubgridFilter(batchSubgrid); }} className="px-2.5 py-1 bg-inner hover:bg-inner text-text-base hover:text-text-base border border-subtle rounded-md text-[10px] font-medium cursor-pointer transition-colors whitespace-nowrap" aria-label={`View logs for subgrid ${batchSubgrid}`}>
                                         View Logs
                                       </button>
                                     </td>
@@ -9976,7 +10480,7 @@ export default function App() {
                         </table>
                       ) : (
                         <table className="w-full text-left text-[11px]">
-                          <thead className="bg-card text-text-muted sticky top-0 z-10 border-b border-[rgba(255,255,255,0.08)]">
+                          <thead className="bg-card text-text-muted sticky top-0 z-10 border-b border-subtle">
                             <tr>
                               <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-text-muted whitespace-nowrap">Date</th>
                               <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-text-muted whitespace-nowrap">Grid</th>
@@ -10003,8 +10507,8 @@ export default function App() {
                               <tr>
                                 <td colSpan={9} className="py-10 text-center text-text-muted">
                                   <div className="flex flex-col items-center justify-center gap-2">
-                                    <Calendar size={28} className="text-slate-600" />
-                                    <span className="text-xs font-semibold text-slate-300">No daily records yet</span>
+                                    <Calendar size={28} className="text-text-muted" />
+                                    <span className="text-xs font-semibold text-text-base">No daily records yet</span>
                                     <span className="text-[11px] text-text-muted">Daily processing progress logs will appear here.</span>
                                   </div>
                                 </td>
@@ -10064,7 +10568,7 @@ export default function App() {
                                       onClick={() => handleSelectDailyRun(log)}
                                       className={`cursor-pointer transition-all duration-150 ${isRowSelected
                                         ? '!bg-sky-900/60 border-l-4 border-sky-400 !text-white font-semibold shadow-inner'
-                                        : 'hover:bg-inner text-slate-300'
+                                        : 'hover:bg-inner text-text-base'
                                         }`}
                                     >
                                       <td className="px-3.5 py-3.5 font-mono text-[10px] text-text-muted whitespace-nowrap">
@@ -10075,7 +10579,7 @@ export default function App() {
                                       </td>
                                       <td className="px-3.5 py-3.5 font-medium text-text-base whitespace-nowrap">{log.grid}</td>
                                       <td className="px-3.5 py-3.5 font-semibold text-text-base whitespace-nowrap">{dailySubgrid}</td>
-                                      <td className="px-3.5 py-3.5 text-slate-300 whitespace-nowrap">{log.kmProcessed.toFixed(1)} km</td>
+                                      <td className="px-3.5 py-3.5 text-text-base whitespace-nowrap">{log.kmProcessed.toFixed(1)} km</td>
                                       <td className="px-3.5 py-3.5 whitespace-nowrap">
                                         <button
                                           onClick={(e) => {
@@ -10128,7 +10632,7 @@ export default function App() {
                                           <span className="text-text-muted text-[11px] font-medium tabular-nums">0</span>
                                         )}
                                       </td>
-                                      <td className="px-3.5 py-3.5 text-slate-300 font-medium whitespace-nowrap">{formatPIC(log.pic, activeAuthUserName || "Fariz.farhan95")}</td>
+                                      <td className="px-3.5 py-3.5 text-text-base font-medium whitespace-nowrap">{formatPIC(log.pic, activeAuthUserName || "Fariz.farhan95")}</td>
                                       <td className="px-3.5 py-3.5 whitespace-nowrap">
                                         {(() => {
                                           if (isThisRowUnderInspection) {
@@ -10153,7 +10657,7 @@ export default function App() {
 
                                           if (effectiveQaqcStatus) {
                                             return (
-                                              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-inner text-slate-300 border border-subtle inline-flex items-center gap-1 whitespace-nowrap shadow-sm">
+                                              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-inner text-text-base border border-subtle inline-flex items-center gap-1 whitespace-nowrap shadow-sm">
                                                 <CheckCircle size={10} className="text-emerald-400" />
                                                 {effectiveQaqcStatus}
                                               </span>
@@ -10175,7 +10679,7 @@ export default function App() {
                                           );
                                         })()}
                                       </td>
-                                      <td className="px-3.5 py-3.5 text-right font-medium text-slate-300 whitespace-nowrap">{log.captureEquipment || 'MMS'}</td>
+                                      <td className="px-3.5 py-3.5 text-right font-medium text-text-base whitespace-nowrap">{log.captureEquipment || 'MMS'}</td>
                                     </tr>
                                   );
                                 })
@@ -10187,7 +10691,7 @@ export default function App() {
                   </div>
 
                   {/* 360 INSPECTOR VIEWER & QAQC CARD */}
-                  <div className={`flex-1 bg-card border border-[rgba(255,255,255,0.08)] backdrop-blur-md rounded-xl flex flex-col overflow-hidden transition-all duration-700 ${focusedSection === 'qa'
+                  <div className={`flex-1 bg-card border border-subtle backdrop-blur-md rounded-xl flex flex-col overflow-hidden transition-all duration-700 ${focusedSection === 'qa'
                     ? 'relative z-30 ring-4 ring-indigo-400 shadow-[0_0_50px_rgba(129,140,248,0.5)] scale-[1.005]'
                     : focusedSection
                       ? 'filter blur-[4px] opacity-25 pointer-events-none'
@@ -10198,7 +10702,7 @@ export default function App() {
                     <div className="px-3.5 py-2 border-b border-subtle bg-card flex flex-wrap items-center justify-between shrink-0 gap-2">
                       <span className="text-xs font-bold uppercase tracking-wider text-text-base flex items-center gap-2 shrink-0">
                         <Camera size={14} className="text-accent" />
-                        <span>360 INSPECTOR VIEWER & QAQC</span>
+                        <span>360 INSPECTOR VIEWER & ACQUISITION QC</span>
                       </span>
 
                       <div className="flex items-center gap-2 min-w-0">
@@ -10228,7 +10732,7 @@ export default function App() {
                             <button
                               type="button"
                               onClick={() => setIsQAQCRunnerModalOpen(true)}
-                              className="px-2 py-0.5 bg-card hover:bg-card text-slate-300 hover:text-text-base border border-[rgba(255,255,255,0.12)] rounded text-[10px] font-medium transition-all cursor-pointer flex items-center gap-1 shadow-sm active:scale-95 shrink-0"
+                              className="px-2 py-0.5 bg-card hover:bg-card text-text-base hover:text-text-base border border-subtle rounded text-[10px] font-medium transition-all cursor-pointer flex items-center gap-1 shadow-sm active:scale-95 shrink-0"
                             >
                               <Activity size={10} className="animate-spin text-sky-400" />
                               <span>Open HUD</span>
@@ -10236,7 +10740,7 @@ export default function App() {
                             <button
                               type="button"
                               onClick={abortQAQCInspection}
-                              className="px-2 py-0.5 bg-card hover:bg-red-950/30 text-slate-300 hover:text-rose-400 border border-[rgba(255,255,255,0.12)] hover:border-red-800/50 rounded text-[10px] font-medium transition-all cursor-pointer flex items-center gap-1 shadow-sm active:scale-95 shrink-0"
+                              className="px-2 py-0.5 bg-card hover:bg-red-950/30 text-text-base hover:text-rose-400 border border-subtle hover:border-red-800/50 rounded text-[10px] font-medium transition-all cursor-pointer flex items-center gap-1 shadow-sm active:scale-95 shrink-0"
                               title="Abort inspection"
                             >
                               <StopCircle size={10} />
@@ -10250,10 +10754,10 @@ export default function App() {
                               setIsQAQCRunnerModalOpen(true);
                             }}
                             title="Launch Full Canvas QA/QC Inspection Workbench with Target Selection Hub"
-                            className="px-3 py-1.5 bg-card hover:bg-card text-slate-300 hover:text-text-base border border-[rgba(255,255,255,0.12)] text-[11px] font-medium rounded-lg transition-all cursor-pointer shadow-sm flex items-center gap-1.5 active:scale-95"
+                            className="px-3 py-1.5 bg-card hover:bg-card text-text-base hover:text-text-base border border-subtle text-[11px] font-medium rounded-lg transition-all cursor-pointer shadow-sm flex items-center gap-1.5 active:scale-95"
                           >
-                            <Play size={11} className="fill-current text-slate-300" />
-                            <span>Run Batch QA/QC</span>
+                            <Play size={11} className="fill-current text-text-base" />
+                            <span>Run Batch Acquisition QC</span>
                           </button>
                         )}
                       </div>
@@ -10428,8 +10932,8 @@ export default function App() {
                           </>
                         ) : (
                           <div className="w-full h-full bg-card flex flex-col items-center justify-center p-4 text-center select-none">
-                            <Maximize2 size={38} className="text-slate-600 mb-2.5 stroke-[1.5]" />
-                            <h4 className="text-xs sm:text-sm font-medium text-slate-300 tracking-tight">
+                            <Maximize2 size={38} className="text-text-muted mb-2.5 stroke-[1.5]" />
+                            <h4 className="text-xs sm:text-sm font-medium text-text-base tracking-tight">
                               Select a location on the map
                             </h4>
                             <p className="text-[11px] text-text-muted mt-1">
@@ -10443,7 +10947,7 @@ export default function App() {
                       <div className="w-52 sm:w-56 shrink-0 bg-card rounded-lg border border-subtle p-3 flex flex-col justify-between overflow-y-auto">
                         <div>
                           <div className="flex items-center justify-between gap-1 pb-2 border-b border-subtle mb-2.5">
-                            <span className="text-[11px] font-bold text-slate-300 uppercase tracking-tight flex items-center gap-1.5 whitespace-nowrap">
+                            <span className="text-[11px] font-bold text-text-base uppercase tracking-tight flex items-center gap-1.5 whitespace-nowrap">
                               <ShieldCheck size={14} className="text-sky-400 shrink-0" />
                               <span>OPERATOR QA</span>
                             </span>
@@ -10462,13 +10966,13 @@ export default function App() {
                             </div>
                             <div className="flex items-center justify-between text-text-muted gap-2">
                               <span className="shrink-0">Equipment:</span>
-                              <span className="font-medium text-slate-300 text-right whitespace-nowrap">
+                              <span className="font-medium text-text-base text-right whitespace-nowrap">
                                 {hasSelectedPoint ? 'MMS 360' : '-'}
                               </span>
                             </div>
                             <div className="flex items-center justify-between text-text-muted gap-2">
                               <span className="shrink-0">Coordinates:</span>
-                              <span className="font-mono text-slate-300 text-[9px] whitespace-nowrap text-right">
+                              <span className="font-mono text-text-base text-[9px] whitespace-nowrap text-right">
                                 {hasSelectedPoint ? `${inspectorCoords.lat.toFixed(4)}, ${inspectorCoords.lng.toFixed(4)}` : '-'}
                               </span>
                             </div>
@@ -10537,7 +11041,7 @@ export default function App() {
                                       <span className={`w-1.5 h-1.5 rounded-full shrink-0 bg-${color}-400`}></span>
                                       <span className="truncate">{label}</span>
                                     </span>
-                                    <span className="text-[9px] font-mono shrink-0 ml-1 text-slate-600">Flag</span>
+                                    <span className="text-[9px] font-mono shrink-0 ml-1 text-text-muted">Flag</span>
                                   </div>
                                 ))}
                                 <p className="text-[9px] text-amber-500/70 text-center pt-1 italic">QA editing disabled for guests</p>
@@ -10561,7 +11065,7 @@ export default function App() {
                                     className={`w-full py-1.5 px-2 rounded-md text-[10px] font-medium text-left flex items-center justify-between transition-all border ${isQaLocked ? 'opacity-90 cursor-default' : 'cursor-pointer active:scale-95'
                                       } ${selectedQaFlags.blurry
                                         ? 'bg-red-500/25 border-red-500 text-red-300 ring-1 ring-red-500/50 shadow-md'
-                                        : 'bg-inner hover:bg-red-500/10 hover:border-red-500/50 border-subtle text-slate-300 hover:text-red-400'
+                                        : 'bg-inner hover:bg-red-500/10 hover:border-red-500/50 border-subtle text-text-base hover:text-red-400'
                                       }`}
                                   >
                                     <span className="flex items-center gap-1.5 truncate">
@@ -10589,7 +11093,7 @@ export default function App() {
                                     className={`w-full py-1.5 px-2 rounded-md text-[10px] font-medium text-left flex items-center justify-between transition-all border ${isQaLocked ? 'opacity-90 cursor-default' : 'cursor-pointer active:scale-95'
                                       } ${selectedQaFlags.obstruction
                                         ? 'bg-amber-500/25 border-amber-500 text-amber-300 ring-1 ring-amber-500/50 shadow-md'
-                                        : 'bg-inner hover:bg-amber-500/10 hover:border-amber-500/50 border-subtle text-slate-300 hover:text-amber-400'
+                                        : 'bg-inner hover:bg-amber-500/10 hover:border-amber-500/50 border-subtle text-text-base hover:text-amber-400'
                                       }`}
                                   >
                                     <span className="flex items-center gap-1.5 truncate">
@@ -10617,7 +11121,7 @@ export default function App() {
                                     className={`w-full py-1.5 px-2 rounded-md text-[10px] font-medium text-left flex items-center justify-between transition-all border ${isQaLocked ? 'opacity-90 cursor-default' : 'cursor-pointer active:scale-95'
                                       } ${selectedQaFlags.badGps
                                         ? 'bg-sky-500/25 border-sky-500 text-sky-300 ring-1 ring-sky-500/50 shadow-md'
-                                        : 'bg-inner hover:bg-sky-500/10 hover:border-sky-500/50 border-subtle text-slate-300 hover:text-sky-400'
+                                        : 'bg-inner hover:bg-sky-500/10 hover:border-sky-500/50 border-subtle text-text-base hover:text-sky-400'
                                       }`}
                                   >
                                     <span className="flex items-center gap-1.5 truncate">
@@ -10634,7 +11138,7 @@ export default function App() {
                           {/* QA Questionnaire Box */}
                           {!isGuestUser && !isQaLocked && (selectedQaFlags.blurry || selectedQaFlags.obstruction || selectedQaFlags.badGps) && (
                             <div className="bg-app rounded-md p-2 border border-subtle space-y-1.5 text-[10px] mt-2.5 animate-in fade-in slide-in-from-top-2 duration-200">
-                              <div className="flex items-center justify-between text-slate-300 font-medium">
+                              <div className="flex items-center justify-between text-text-base font-medium">
                                 <span>Update Status?</span>
                                 <span className="text-[9px] text-text-muted font-mono">
                                   {qaQuestionnaireAnswer === 'yes' ? 'DEFECT CONFIRMED' : qaQuestionnaireAnswer === 'no' ? 'NO DEFECT' : 'SELECT RESPONSE'}
@@ -10802,6 +11306,17 @@ export default function App() {
               dailyData={dailyData}
               onRefreshData={handleRefreshMap}
             />
+          ) : currentPage === 'administration' ? (
+            <AdministrationWorkspace
+              authSession={authSession}
+              isGuestUser={isGuestUser}
+              addNotification={addNotification}
+              addAuditLog={addAuditLog}
+              onBackToDashboard={() => goToWorkspace('dashboard')}
+              translate={t}
+              auditLogs={auditLogs}
+              onRefreshData={handleRefreshMap}
+            />
           ) : (
             <div className="flex-1 flex flex-col min-h-0 overflow-hidden animate-in fade-in duration-500">
               <WorkspacePlaceholder workspace={getWorkspaceDefinition(currentPage)} translate={t} />
@@ -10816,7 +11331,7 @@ export default function App() {
               ? imagesListModal.customFilenames
               : generateImageFilenamesList(imagesListModal.subgrid, imagesListModal.count > 0 ? imagesListModal.count : (imagesListModal.poiCount || 1), imagesListModal.baseFilename);
             return (
-              <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[1000] p-4 backdrop-blur-sm">
+              <div className="fixed inset-0 bg-[var(--modal-overlay)] flex items-center justify-center z-[1000] p-4 backdrop-blur-sm">
                 <div className="bg-card border border-subtle rounded-xl p-5 max-w-md w-full max-h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
                   <div className="flex justify-between items-center pb-3 mb-3 border-b border-subtle shrink-0">
                     <div>
@@ -10837,7 +11352,7 @@ export default function App() {
                       &times;
                     </button>
                   </div>
-                  <div className="flex-1 overflow-y-auto font-mono text-xs text-slate-300 space-y-1 p-2 bg-card rounded-lg border border-subtle max-h-96">
+                  <div className="flex-1 overflow-y-auto font-mono text-xs text-text-base space-y-1 p-2 bg-card rounded-lg border border-subtle max-h-96">
                     {filenames.map((name, idx) => (
                       <div key={idx} className="flex items-center justify-between px-2.5 py-1 hover:bg-inner rounded transition-colors">
                         <span className="text-text-muted text-[10px] w-10 shrink-0">{idx + 1}.</span>
@@ -10851,7 +11366,7 @@ export default function App() {
                         navigator.clipboard.writeText(filenames.join('\n'));
                         alert(`Copied ${filenames.length} image filenames to clipboard!`);
                       }}
-                      className="px-3 py-1.5 bg-inner hover:bg-slate-700 text-text-base border border-subtle rounded-lg text-xs font-medium cursor-pointer transition-colors flex items-center gap-1.5"
+                      className="px-3 py-1.5 bg-inner hover:bg-inner text-text-base border border-subtle rounded-lg text-xs font-medium cursor-pointer transition-colors flex items-center gap-1.5"
                     >
                       <Copy size={13} /> Copy List ({filenames.length})
                     </button>
@@ -10892,7 +11407,7 @@ export default function App() {
                 </button>
               </div>
 
-              <p className="text-xs text-slate-300 leading-relaxed mb-4">
+              <p className="text-xs text-text-base leading-relaxed mb-4">
                 {TOUR_STEPS[tourStep - 1].desc}
               </p>
 
@@ -10902,7 +11417,7 @@ export default function App() {
                   <button
                     key={s.step}
                     onClick={() => setTourStep(s.step)}
-                    className={`h-1.5 rounded-full transition-all cursor-pointer ${tourStep === s.step ? 'w-5 bg-slate-200' : 'w-1.5 bg-slate-700 hover:bg-slate-500'
+                    className={`h-1.5 rounded-full transition-all cursor-pointer ${tourStep === s.step ? 'w-5 bg-slate-200' : 'w-1.5 bg-inner hover:bg-slate-500'
                       }`}
                     title={`Go to step ${s.step}: ${s.title}`}
                   />
@@ -10918,7 +11433,7 @@ export default function App() {
                   {tourStep > 1 && (
                     <button
                       onClick={() => setTourStep(tourStep - 1)}
-                      className="px-3 py-1 bg-inner hover:bg-slate-700 text-slate-300 border border-subtle text-xs font-medium rounded-lg transition-all cursor-pointer"
+                      className="px-3 py-1 bg-inner hover:bg-inner text-text-base border border-subtle text-xs font-medium rounded-lg transition-all cursor-pointer"
                     >
                       Previous
                     </button>
@@ -10926,14 +11441,14 @@ export default function App() {
                   {tourStep < TOUR_STEPS.length ? (
                     <button
                       onClick={() => setTourStep(tourStep + 1)}
-                      className="px-3.5 py-1 bg-inner hover:bg-slate-700 text-text-base border border-slate-600 text-xs font-medium rounded-lg transition-all cursor-pointer flex items-center gap-1 shadow-sm"
+                      className="px-3.5 py-1 bg-inner hover:bg-inner text-text-base border border-subtle text-xs font-medium rounded-lg transition-all cursor-pointer flex items-center gap-1 shadow-sm"
                     >
                       Next Step <ChevronRight size={14} />
                     </button>
                   ) : (
                     <button
                       onClick={() => setTourStep(null)}
-                      className="px-3.5 py-1 bg-inner hover:bg-slate-700 text-emerald-400 border border-slate-600 text-xs font-semibold rounded-lg transition-all cursor-pointer shadow-sm"
+                      className="px-3.5 py-1 bg-inner hover:bg-inner text-emerald-400 border border-subtle text-xs font-semibold rounded-lg transition-all cursor-pointer shadow-sm"
                     >
                       Complete Tour ✓
                     </button>
@@ -10950,10 +11465,10 @@ export default function App() {
         {
           isHelpGuideOpen && (
             <div className="fixed inset-0 bg-app backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-150">
-              <div className="bg-card border border-[rgba(255,255,255,0.08)] rounded-xl w-full max-w-3xl max-h-[85vh] shadow-2xl flex flex-col overflow-hidden text-text-base">
+              <div className="bg-card border border-subtle rounded-xl w-full max-w-3xl max-h-[85vh] shadow-2xl flex flex-col overflow-hidden text-text-base">
 
                 {/* Modal Header */}
-                <div className="p-4 bg-card border-b border-[rgba(255,255,255,0.08)] flex items-center justify-between">
+                <div className="p-4 bg-card border-b border-subtle flex items-center justify-between">
                   <div>
                     <h2 className="text-sm font-bold text-text-base tracking-tight">
                       User Guide & System Manual
@@ -10969,7 +11484,7 @@ export default function App() {
                         setIsHelpGuideOpen(false);
                         setTourStep(1);
                       }}
-                      className="px-3 py-1.5 bg-card hover:bg-slate-700 text-text-base hover:text-text-base border border-subtle text-xs font-semibold rounded-lg transition-all cursor-pointer"
+                      className="px-3 py-1.5 bg-card hover:bg-inner text-text-base hover:text-text-base border border-subtle text-xs font-semibold rounded-lg transition-all cursor-pointer"
                       title="Start guided step-by-step tour"
                     >
                       Start Interactive Tour
@@ -10984,7 +11499,7 @@ export default function App() {
                 </div>
 
                 {/* Modal Navigation Tabs (Clean text, no emojis or icons) */}
-                <div className="px-4 py-2 bg-card border-b border-[rgba(255,255,255,0.06)] flex items-center gap-1.5 overflow-x-auto text-xs">
+                <div className="px-4 py-2 bg-card border-b border-subtle flex items-center gap-1.5 overflow-x-auto text-xs">
                   {[
                     { id: 'map', label: 'Interactive Map' },
                     { id: 'panorama', label: '360° Street View' },
@@ -10995,7 +11510,7 @@ export default function App() {
                       key={tab.id}
                       onClick={() => setHelpGuideTab(tab.id as any)}
                       className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer whitespace-nowrap border font-medium ${helpGuideTab === tab.id
-                        ? 'bg-card text-text-base border-slate-600'
+                        ? 'bg-card text-text-base border-subtle'
                         : 'text-text-muted border-transparent hover:text-text-base hover:bg-inner'
                         }`}
                     >
@@ -11005,13 +11520,13 @@ export default function App() {
                 </div>
 
                 {/* Modal Body Content (Clean neat boxes, no lightbulb/book icons) */}
-                <div className="p-5 overflow-y-auto space-y-3 flex-1 text-xs text-slate-300 leading-relaxed">
+                <div className="p-5 overflow-y-auto space-y-3 flex-1 text-xs text-text-base leading-relaxed">
                   {helpGuideTab === 'map' && (
                     <div className="space-y-3">
                       <div className="bg-card p-3.5 rounded-lg border border-subtle space-y-1">
                         <h4 className="font-semibold text-text-base text-xs">1. Subgrid Selection &amp; Key Normalization</h4>
                         <p className="text-text-muted">
-                          Clicking any subgrid on the map or inside the control table isolates all trajectory points for that region. Subgrid keys are automatically normalized (<code className="bg-inner px-1 py-0.5 rounded text-slate-300 font-mono text-[10px]">XX-YY &rarr; XXYY</code>) across CSV imports and database queries.
+                          Clicking any subgrid on the map or inside the control table isolates all trajectory points for that region. Subgrid keys are automatically normalized (<code className="bg-inner px-1 py-0.5 rounded text-text-base font-mono text-[10px]">XX-YY &rarr; XXYY</code>) across CSV imports and database queries.
                         </p>
                       </div>
 
@@ -11043,7 +11558,7 @@ export default function App() {
                       <div className="bg-card p-3.5 rounded-lg border border-subtle space-y-1">
                         <h4 className="font-semibold text-text-base text-xs">2. Defect Inspection &amp; QA Benchmark Verification</h4>
                         <p className="text-text-muted">
-                          Frames with flagged defects (<code className="bg-inner px-1 py-0.5 rounded text-slate-300 font-mono text-[10px]">Blurry Frame, Lens Obstruction, GPS Offset</code>) display automated defect questionnaires. Operator YES/NO validations immediately update defect status in Supabase.
+                          Frames with flagged defects (<code className="bg-inner px-1 py-0.5 rounded text-text-base font-mono text-[10px]">Blurry Frame, Lens Obstruction, GPS Offset</code>) display automated defect questionnaires. Operator YES/NO validations immediately update defect status in Supabase.
                         </p>
                       </div>
                     </div>
@@ -11101,13 +11616,13 @@ export default function App() {
                 </div>
 
                 {/* Modal Footer */}
-                <div className="p-4 bg-card border-t border-[rgba(255,255,255,0.08)] flex items-center justify-between">
+                <div className="p-4 bg-card border-t border-subtle flex items-center justify-between">
                   <button
                     onClick={() => {
                       setIsHelpGuideOpen(false);
                       goToWorkspace('data');
                     }}
-                    className="px-3.5 py-2 bg-card hover:bg-slate-700 text-slate-300 hover:text-text-base border border-subtle text-xs font-semibold rounded-lg transition-all cursor-pointer"
+                    className="px-3.5 py-2 bg-card hover:bg-inner text-text-base hover:text-text-base border border-subtle text-xs font-semibold rounded-lg transition-all cursor-pointer"
                     title="Open Layer Catalog & Data Management Page"
                   >
                     Open Layer Catalog & Data Management Page
@@ -11115,7 +11630,7 @@ export default function App() {
 
                   <button
                     onClick={() => setIsHelpGuideOpen(false)}
-                    className="px-4 py-2 bg-card hover:bg-slate-700 text-text-base text-xs font-semibold rounded-lg transition-all cursor-pointer"
+                    className="px-4 py-2 bg-card hover:bg-inner text-text-base text-xs font-semibold rounded-lg transition-all cursor-pointer"
                   >
                     Close Manual
                   </button>
@@ -11137,7 +11652,7 @@ export default function App() {
                 {/* Modal Header */}
                 <div className="p-5 bg-card border-b border-subtle flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="p-2.5 rounded-xl bg-inner border border-subtle text-slate-300 shadow-sm">
+                    <div className="p-2.5 rounded-xl bg-inner border border-subtle text-text-base shadow-sm">
                       <Info size={20} />
                     </div>
                     <div>
@@ -11161,21 +11676,21 @@ export default function App() {
                 </div>
 
                 {/* Modal Body Content */}
-                <div className="p-6 space-y-5 text-xs text-slate-300 leading-relaxed overflow-y-auto max-h-[75vh]">
+                <div className="p-6 space-y-5 text-xs text-text-base leading-relaxed overflow-y-auto max-h-[75vh]">
 
                   {/* 1. System Purpose & Domain Overview */}
                   <div className="p-4 rounded-xl bg-card border border-subtle space-y-2">
                     <h3 className="font-bold text-text-base text-xs uppercase tracking-wider flex items-center gap-2">
                       <span>System Purpose &amp; Domain Architecture</span>
                     </h3>
-                    <p className="text-slate-300 text-[11.5px] leading-relaxed">
+                    <p className="text-text-base text-[11.5px] leading-relaxed">
                       Engineered specifically for <strong>TNB 360° Mobile Mapping Operations</strong>, this WebGIS processing platform provides unified spatial trajectory analytics, automated subgrid deduplication, live Supabase PostGIS synchronization, and interactive 360° StreetView quality control inspection.
                     </p>
                   </div>
 
                   {/* 2. Technical Specifications & GIS Core */}
                   <div className="space-y-2">
-                    <h4 className="font-bold text-slate-300 text-xs uppercase tracking-wider">
+                    <h4 className="font-bold text-text-base text-xs uppercase tracking-wider">
                       Technical Specifications &amp; GIS Core
                     </h4>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 font-mono text-[11px]">
@@ -11207,21 +11722,21 @@ export default function App() {
 
                   {/* 4. Core Workflow Capabilities */}
                   <div className="space-y-2.5">
-                    <h4 className="font-bold text-slate-300 text-xs uppercase tracking-wider">
+                    <h4 className="font-bold text-text-base text-xs uppercase tracking-wider">
                       Core Workflow Capabilities &amp; Features
                     </h4>
-                    <div className="space-y-2 text-slate-300 text-[11.5px] leading-relaxed">
+                    <div className="space-y-2 text-text-base text-[11.5px] leading-relaxed">
                       <div className="p-3 rounded-xl bg-card border border-subtle space-y-1">
                         <div className="font-bold text-text-base">1. Subgrid Trajectory Deduplication Strategy</div>
                         <p className="text-text-muted text-[11px]">
-                          Auto-normalizes subgrid keys (<code className="bg-inner px-1 py-0.5 rounded text-slate-300 font-mono text-[10px]">XX-YY &rarr; XXYY</code>). Offers choice between Masterlist clean merge or preserved daily survey runs.
+                          Auto-normalizes subgrid keys (<code className="bg-inner px-1 py-0.5 rounded text-text-base font-mono text-[10px]">XX-YY &rarr; XXYY</code>). Offers choice between Masterlist clean merge or preserved daily survey runs.
                         </p>
                       </div>
 
                       <div className="p-3 rounded-xl bg-card border border-subtle space-y-1">
                         <div className="font-bold text-text-base">2. Interactive 360° QA Inspector &amp; SLA Benchmarks</div>
                         <p className="text-text-muted text-[11px]">
-                          Supports AI defect threshold benchmarks (<code className="bg-inner px-1 py-0.5 rounded text-slate-300 font-mono text-[10px]">95%, 85%, 75%, 60%</code>) with custom flag labels (<code className="bg-inner px-1 py-0.5 rounded text-slate-300 font-mono text-[10px]">Blurry Frame, Lens Obstruction, Bad GPS</code>).
+                          Supports AI defect threshold benchmarks (<code className="bg-inner px-1 py-0.5 rounded text-text-base font-mono text-[10px]">95%, 85%, 75%, 60%</code>) with custom flag labels (<code className="bg-inner px-1 py-0.5 rounded text-text-base font-mono text-[10px]">Blurry Frame, Lens Obstruction, Bad GPS</code>).
                         </p>
                       </div>
 
@@ -11241,7 +11756,7 @@ export default function App() {
                   <span>© 2026 Mobile Mapping Data Management System</span>
                   <button
                     onClick={() => setIsAboutModalOpen(false)}
-                    className="px-4 py-1.5 bg-inner hover:bg-slate-700 text-text-base font-medium rounded-lg border border-subtle transition-all cursor-pointer shadow-sm"
+                    className="px-4 py-1.5 bg-inner hover:bg-inner text-text-base font-medium rounded-lg border border-subtle transition-all cursor-pointer shadow-sm"
                   >
                     Close System Info
                   </button>

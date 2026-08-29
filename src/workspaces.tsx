@@ -6,7 +6,7 @@ import {
   FileText,
   GitBranch,
   HardDrive,
-  Image,
+  Workflow,
   LayoutDashboard,
   Settings,
   Shield
@@ -27,13 +27,13 @@ export const WORKSPACES: WorkspaceDefinition[] = [
   { key: 'dashboard', labelKey: 'dashboard', descriptionKey: 'workspaceDashboardDesc', icon: LayoutDashboard, tag: 'live' },
   { key: 'data', labelKey: 'data', descriptionKey: 'workspaceDataDesc', icon: Database, tag: 'live' },
   { key: 'settings', labelKey: 'settings', descriptionKey: 'workspaceSettingsDesc', icon: Settings, tag: 'live' },
-  { key: 'production', labelKey: 'workspaceProduction', descriptionKey: 'workspaceProductionDesc', icon: Image, tag: 'live' },
+  { key: 'production', labelKey: 'workspaceProduction', descriptionKey: 'workspaceProductionDesc', icon: Workflow, tag: 'live' },
   { key: 'storage', labelKey: 'workspaceStorage', descriptionKey: 'workspaceStorageDesc', icon: HardDrive, tag: 'live' },
   { key: 'processing', labelKey: 'workspaceProcessing', descriptionKey: 'workspaceProcessingDesc', icon: Cpu, tag: 'live' },
   { key: 'lineage', labelKey: 'workspaceLineage', descriptionKey: 'workspaceLineageDesc', icon: GitBranch, tag: 'live' },
   { key: 'analytics', labelKey: 'workspaceAnalytics', descriptionKey: 'workspaceAnalyticsDesc', icon: BarChart3, tag: 'live' },
   { key: 'reports', labelKey: 'workspaceReports', descriptionKey: 'workspaceReportsDesc', icon: FileText, tag: 'live' },
-  { key: 'administration', labelKey: 'workspaceAdministration', descriptionKey: 'workspaceAdministrationDesc', icon: Shield, tag: 'reserved' }
+  { key: 'administration', labelKey: 'workspaceAdministration', descriptionKey: 'workspaceAdministrationDesc', icon: Shield, tag: 'live' }
 ];
 
 export function getWorkspaceDefinition(key: WorkspaceKey): WorkspaceDefinition {
@@ -94,7 +94,7 @@ export function WorkspacePlaceholder({ workspace, translate }: WorkspacePlacehol
                 workspace.tag === 'planned'
                   ? 'text-sky-300 border-sky-500/40 bg-sky-950/40'
                   : workspace.tag === 'reserved'
-                    ? 'text-slate-400 border-slate-600/60 bg-slate-800/40'
+                    ? 'text-text-muted border-subtle/60 bg-accent-bg'
                     : 'text-emerald-300 border-emerald-500/40 bg-emerald-950/40'
               }`}
             >
@@ -105,7 +105,7 @@ export function WorkspacePlaceholder({ workspace, translate }: WorkspacePlacehol
         </div>
       </div>
       <div className="bg-card border border-subtle rounded-xl p-8 flex-1 flex flex-col items-center justify-center text-center gap-3 min-h-0">
-        <div className="p-3 bg-inner rounded-2xl border border-subtle text-slate-500">
+        <div className="p-3 bg-inner rounded-2xl border border-subtle text-text-muted">
           <Icon size={28} strokeWidth={1.5} />
         </div>
         <h3 className="text-sm font-semibold text-text-base">{translate('workspaceComingSoon')}</h3>

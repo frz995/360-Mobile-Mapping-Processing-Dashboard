@@ -101,14 +101,18 @@ export const NASStorageWorkspace: React.FC<NASStorageWorkspaceProps> = ({
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={handleRefresh}
-              className="flex items-center gap-1.5 px-3 py-2 bg-inner border border-subtle hover:bg-sky-500/20 hover:border-sky-500/40 text-sky-300 text-xs font-semibold rounded-lg transition-colors cursor-pointer">
-              <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} /> Refresh
+            <button
+              onClick={handleRefresh}
+              className="flex items-center gap-1.5 px-3 py-2 bg-inner border border-subtle hover:bg-card text-text-base text-xs font-semibold rounded-lg transition-colors cursor-pointer"
+            >
+              <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} /> {translate('refresh')}
             </button>
             {onBackToDashboard && (
-              <button onClick={onBackToDashboard}
-                className="flex items-center gap-1.5 px-3 py-2 bg-inner border border-subtle hover:bg-amber-500/20 hover:border-amber-500/40 text-amber-300 text-xs font-semibold rounded-lg transition-colors cursor-pointer">
-                <Undo2 size={13} /> Dashboard
+              <button
+                onClick={onBackToDashboard}
+                className="flex items-center gap-1.5 px-3 py-2 bg-inner border border-subtle hover:bg-card text-text-muted hover:text-text-base text-xs font-semibold rounded-lg transition-colors cursor-pointer"
+              >
+                <Undo2 size={13} /> {translate('backToDashboard')}
               </button>
             )}
           </div>
