@@ -188,45 +188,50 @@ export function computeSurveyAnalytics(input: SurveyAnalyticsInput): SurveyAnaly
     return created;
   };
 
-  const stateRank: Record<SubgridAnalytics['publishState'], number> = {
-    published: 3,
-    staged: 2,
-    partial: 1,
-    none: 0
-  };
 
-  const collectRow = (row: BatchLike, isDaily: boolean) => {
-    const sg = extractSubgrid(row.subgrid || row.imageFilename) || 'UNASSIGNED';
+  const dailySubgridKeys = new Set(
+    daily.map((d) => extractSubgrid(d.subgrid || d.imageFilename) || 'UNASSIGNED')
+  );
+
+  // 1. Process daily operational runs first (granular truth)
+  daily.forEach((d) => {
+    const sg = extractSubgrid(d.subgrid || d.imageFilename) || 'UNASSIGNED';
     const acc = accFor(sg);
-    acc.grid = row.grid || acc.grid || '1';
-    const km = Number(row.kmProcessed) || 0;
-    acc.km += km;
-    acc.poi += poiOf(row);
-    acc.frames = Math.max(acc.frames, framesOf(row)); // verified frames are per-subgrid totals
-    acc.defects += Number(row.defects) || 0;
+    acc.grid = d.grid || acc.grid || '1';
+    acc.km += Number(d.kmProcessed) || 0;
+    acc.poi += poiOf(d);
+    acc.frames += framesOf(d);
+    acc.defects += Number(d.defects) || Number((d as any).imagesDefected) || Number((d as any).defectCount) || 0;
     acc.runsCount += 1;
-    if (!acc.captureEquipment) acc.captureEquipment = row.captureEquipment || 'MMS';
-    if (!acc.pic) acc.pic = row.pic || '';
-    if (!isDaily) {
-      const partialNow = acc.poi > 0 && framesOf(row) < acc.poi;
-      const candidate: SubgridAnalytics['publishState'] =
-        row.isSyncedWithSupabase || row.status === 'Complete'
-          ? 'published'
-          : partialNow
-            ? 'partial'
-            : km > 0
-              ? 'staged'
-              : 'none';
-      if (stateRank[candidate] > stateRank[acc.publishState]) {
-        acc.publishState = candidate;
-      }
-    } else if (acc.publishState === 'none' && km > 0) {
+    if (!acc.captureEquipment && d.captureEquipment) acc.captureEquipment = d.captureEquipment;
+    if (!acc.pic && d.pic) acc.pic = d.pic;
+    if (d.isSyncedWithSupabase || d.publishToWebGIS === 'yes' || d.status === 'Complete') {
+      acc.publishState = 'published';
+    } else if (acc.publishState === 'none' && (acc.km > 0 || acc.frames > 0)) {
       acc.publishState = 'staged';
     }
-  };
+  });
 
-  batches.forEach((b) => collectRow(b, false));
-  daily.forEach((d) => collectRow(d, true));
+  // 2. Process batches (add subgrids not in daily, or enrich existing subgrids)
+  batches.forEach((b) => {
+    const sg = extractSubgrid(b.subgrid || b.imageFilename) || 'UNASSIGNED';
+    const acc = accFor(sg);
+    acc.grid = b.grid || acc.grid || '1';
+    if (!dailySubgridKeys.has(sg)) {
+      acc.km += Number(b.kmProcessed) || 0;
+      acc.poi += poiOf(b);
+      acc.frames += framesOf(b);
+      acc.defects += Number(b.defects) || 0;
+      acc.runsCount += Number(b.runsCount) || 1;
+    }
+    if (!acc.captureEquipment && b.captureEquipment) acc.captureEquipment = b.captureEquipment;
+    if (!acc.pic && b.pic) acc.pic = b.pic;
+    if (b.isSyncedWithSupabase || b.status === 'Complete' || b.publishToWebGIS === 'yes') {
+      acc.publishState = 'published';
+    } else if (acc.publishState === 'none' && (acc.km > 0 || acc.frames > 0)) {
+      acc.publishState = 'staged';
+    }
+  });
 
   // Post-derive ratios once totals are final.
   let totalKm = 0;

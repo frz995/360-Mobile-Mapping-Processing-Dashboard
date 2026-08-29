@@ -61,7 +61,19 @@ export interface ExtendedProjectSettings {
   geomType?: string; // 'ST_Point', 'POINTZ', 'MultiPoint'
   autoCreateSpatialIndex?: boolean;
 
-  // Production Pipeline (Image Production Workspace / NAS GPU Worker)
+  // Production Pipeline (Image Production Workspace / NAS GPU Worker & 4-PC Multi Workstations)
+  processingEngineMode?: 'gpu_worker' | 'multi_pc_workstations';
+  workstationsConfig?: Array<{
+    id: string;
+    name: string;
+    stepNumber: number;
+    software: string;
+    defaultOperator: string;
+    sourceFolderTemplate: string;
+    outputFolderTemplate: string;
+    description?: string;
+    enabled: boolean;
+  }>;
   productionProviders?: Array<{
     name: string;
     software: string;
@@ -149,6 +161,8 @@ export interface ExtendedProjectSettings {
     geojson: any; // GeoJSON FeatureCollection / Polygon of the project area
     bbox?: [number, number, number, number]; // [minLng, minLat, maxLng, maxLat]
     focusActive?: boolean; // whether the map focuses/dims to the boundary
+    regionId?: string; // matched Malaysia region preset id (e.g. 'malaysia', 'state:Selangor')
+    regionName?: string; // display name of the applied region
   };
 
   // SLA & QA Benchmarks

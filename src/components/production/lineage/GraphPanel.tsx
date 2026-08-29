@@ -335,7 +335,7 @@ export function GraphPanel({
           <span className="w-2.5 h-2.5 rounded-sm bg-sky-400/80" /> {translate('lineageNodeDataset')}
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="w-2.5 h-2.5 rounded-sm bg-violet-400/80" /> {translate('lineageNodeJob')}
+          <span className="w-2.5 h-2.5 rounded-sm bg-blue-400/80" /> {translate('lineageNodeJob')}
         </span>
         <span className="flex items-center gap-1.5">
           <span className="w-2 h-2 rounded-full bg-emerald-400" /> {translate('lineageQaApproved')}

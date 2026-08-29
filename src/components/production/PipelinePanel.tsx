@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Plus,
   Play,
@@ -16,7 +16,8 @@ import {
   deleteProcessingJobFromSupabase,
   saveProcessingJobToSupabase,
   updateProcessingJobStatusInSupabase,
-  saveDatasetToSupabase
+  saveDatasetToSupabase,
+  getStorageImageCountsFromSupabase
 } from '../../services/supabase';
 import type {
   DatasetRecord,
@@ -109,11 +110,28 @@ export const PipelinePanel: React.FC<PipelinePanelProps> = ({
   const [busyId, setBusyId] = useState<string | null>(null);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [stageFilter, setStageFilter] = useState<PipelineStageKey | null>(null);
+  const [bucketFrames, setBucketFrames] = useState<number>(0);
 
   const pipelineStages = useMemo(
-    () => buildPipelineStages({ jobs, datasets, stagingAggregates }),
-    [jobs, datasets, stagingAggregates]
+    () => buildPipelineStages({ jobs, datasets, stagingAggregates, bucketFrames }),
+    [jobs, datasets, stagingAggregates, bucketFrames]
   );
+
+  const refreshBucketFrames = useMemo(
+    () => () => {
+      getStorageImageCountsFromSupabase()
+        .then((counts) => {
+          const total = Object.values(counts || {}).reduce((a, b) => a + (Number(b) || 0), 0);
+          setBucketFrames(total);
+        })
+        .catch(() => {});
+    },
+    []
+  );
+
+  useEffect(() => {
+    refreshBucketFrames();
+  }, [refreshBucketFrames, jobs]);
 
   const providers = useMemo(() => {
     const list = (projectSettings?.productionProviders || []) as Array<{
@@ -314,10 +332,19 @@ export const PipelinePanel: React.FC<PipelinePanelProps> = ({
             <ListChecks size={20} />
           </div>
           <div>
-            <h2 className="text-sm font-bold text-text-base tracking-wide">Pipeline &amp; Jobs</h2>
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-bold text-text-base tracking-wide">Pipeline &amp; Jobs</h2>
+              <span className="text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider border bg-inner text-text-muted border-subtle">
+                {projectSettings?.processingEngineMode === 'gpu_worker'
+                  ? 'GPU Worker Server'
+                  : '4-PC Workstations'}
+              </span>
+            </div>
             <span className="text-[11px] text-text-muted">
               {jobs.length} total · <span className="text-amber-300">{activeCount} active</span>
-              {api.mode === 'mock' && <span className="ml-2 text-sky-400/80">● mock worker</span>}
+              {projectSettings?.processingEngineMode === 'gpu_worker' && api.mode === 'mock' && (
+                <span className="ml-2 text-sky-400/80">● mock worker</span>
+              )}
             </span>
           </div>
         </div>

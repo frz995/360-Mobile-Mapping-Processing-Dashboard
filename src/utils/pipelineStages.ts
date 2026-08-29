@@ -7,11 +7,11 @@
 // Stages (per product):
 // 1 Data Ingestion         <- RAW datasets registered
 // 2 Image Validation       <- RAW/processed datasets present, none failed
-// 3 External Stitching     <- STITCH jobs/datasets
-// 4 External Privacy Blur  <- BLUR jobs/datasets (partial = progress %)
-// 5 Metadata Validation    <- PROCESSED datasets imported
+// 3 Metadata Validation    <- PROCESSED datasets imported
+// 4 External Stitching     <- STITCH jobs/datasets
+// 5 External Privacy Blur  <- BLUR jobs/datasets (partial = progress %)
 // 6 DataStaging (csvpanotrack) <- staging_panoramas aggregates
-// 7 QA/QC                  <- QA_PENDING / APPROVED / REJECTED job state
+// 7 Acceptance QA          <- QA_PENDING / APPROVED / REJECTED job state
 // 8 Publish                <- DELIVERABLE datasets present
 // 9 Final Export           <- EXPORT/REPORT jobs completed + DELIVERABLE
 // =====================================================================
@@ -29,6 +29,8 @@ export interface PipelineStageCtx {
   jobs: ProcessingJobRecord[];
   datasets: DatasetRecord[];
   stagingAggregates: StagingAggregate[];
+  /** Project-wide frame count available in the storage bucket (cloud). */
+  bucketFrames?: number;
 }
 
 export interface PipelineStageDef {
@@ -83,6 +85,18 @@ export const PIPELINE_STAGE_DEFS: PipelineStageDef[] = [
     }
   },
   {
+    key: 'metadata_validation',
+    labelKey: 'pipelineStageMetadataValidation',
+    derive: ({ datasets }) =>
+      datasets.some(
+        (d) =>
+          (d.dataset_type === 'PROCESSED' || d.dataset_type === 'DELIVERABLE') &&
+          (d.status === 'READY' || d.status === 'IMPORTED' || d.status === 'COMPLETED')
+      )
+        ? { status: 'COMPLETE' }
+        : { status: 'WAITING' }
+  },
+  {
     key: 'stitching',
     labelKey: 'pipelineStageStitching',
     hint: 'STITCH',
@@ -111,28 +125,17 @@ export const PIPELINE_STAGE_DEFS: PipelineStageDef[] = [
     }
   },
   {
-    key: 'metadata_validation',
-    labelKey: 'pipelineStageMetadataValidation',
-    derive: ({ datasets }) =>
-      datasets.some(
-        (d) =>
-          (d.dataset_type === 'PROCESSED' || d.dataset_type === 'DELIVERABLE') &&
-          (d.status === 'READY' || d.status === 'IMPORTED' || d.status === 'COMPLETED')
-      )
-        ? { status: 'COMPLETE' }
-        : { status: 'WAITING' }
-  },
-  {
     key: 'data_staging',
     labelKey: 'pipelineStageDataStaging',
     hint: 'csvpanotrack → staging_panoramas',
-    derive: ({ stagingAggregates, datasets }) => {
+    derive: ({ stagingAggregates, datasets, bucketFrames }) => {
       if (!stagingAggregates || stagingAggregates.length === 0) return { status: 'WAITING' };
       const frames = stagingAggregates.reduce((a, s) => a + (s.frames || 0), 0);
+      const note = `${frames.toLocaleString()} local · ${(bucketFrames || 0).toLocaleString()} bucket`;
       if (stagingPublished(stagingAggregates, datasets)) {
-        return { status: 'COMPLETE', note: `${frames.toLocaleString()} frames` };
+        return { status: 'COMPLETE', note };
       }
-      return { status: 'IN_PROGRESS', note: `${frames.toLocaleString()} frames` };
+      return { status: 'IN_PROGRESS', note };
     }
   },
   {
@@ -141,15 +144,22 @@ export const PIPELINE_STAGE_DEFS: PipelineStageDef[] = [
     hint: 'QA_PENDING / APPROVED / REJECTED',
     jobTypes: ['QAQC'],
     derive: ({ jobs }) => {
-      if (anyJob(jobs, ['QAQC'], 'REJECTED')) return { status: 'FAILED' };
+      const reviewed = jobs.filter((j) => j.qa_decision === 'APPROVED' || j.qa_decision === 'REJECTED');
+      const pending = jobs.filter(
+        (j) => !j.qa_decision && (j.status === 'QA_PENDING' || j.status === 'REVIEW_REQUIRED' || (j.status === 'COMPLETED' && !j.qa_decision))
+      );
+      const approved = reviewed.filter((j) => j.qa_decision === 'APPROVED').length;
+      const rejected = reviewed.filter((j) => j.qa_decision === 'REJECTED').length;
+      const note = `approved ${approved} · pending ${pending.length} · rejected ${rejected}`;
+      if (anyJob(jobs, ['QAQC'], 'REJECTED')) return { status: 'FAILED', note };
       if (anyJob(jobs, ['QAQC'], 'APPROVED') || anyJob(jobs, ['QAQC'], 'COMPLETED'))
-        return { status: 'COMPLETE' };
-      if (anyJob(jobs, ['QAQC'])) return { status: 'IN_PROGRESS' };
+        return { status: 'COMPLETE', note };
+      if (anyJob(jobs, ['QAQC'])) return { status: 'IN_PROGRESS', note };
       // Fall back to job-level QA state across all job types.
-      if (jobs.some((j) => j.qa_decision === 'APPROVED')) return { status: 'COMPLETE' };
-      if (jobs.some((j) => j.qa_decision === 'REJECTED')) return { status: 'FAILED' };
-      if (jobs.some((j) => j.status === 'QA_PENDING')) return { status: 'IN_PROGRESS' };
-      return { status: 'WAITING' };
+      if (jobs.some((j) => j.qa_decision === 'APPROVED')) return { status: 'COMPLETE', note };
+      if (jobs.some((j) => j.qa_decision === 'REJECTED')) return { status: 'FAILED', note };
+      if (jobs.some((j) => j.status === 'QA_PENDING')) return { status: 'IN_PROGRESS', note };
+      return { status: 'WAITING', note };
     }
   },
   {

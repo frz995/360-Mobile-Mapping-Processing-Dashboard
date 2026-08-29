@@ -85,11 +85,11 @@ function typeChip(jobType: string): { label: string; cls: string } {
     STITCH: 'text-sky-300 border-sky-500/40 bg-sky-950/40',
     BLUR: 'text-indigo-300 border-indigo-500/40 bg-indigo-950/40',
     ENHANCE: 'text-emerald-300 border-emerald-500/40 bg-emerald-950/40',
-    MASK: 'text-violet-300 border-violet-500/40 bg-violet-950/40',
+    MASK: 'text-sky-300 border-sky-500/40 bg-sky-950/40',
     QAQC: 'text-amber-300 border-amber-500/40 bg-amber-950/40',
     REPORT: 'text-teal-300 border-teal-500/40 bg-teal-950/40',
     EXPORT: 'text-rose-300 border-rose-500/40 bg-rose-950/40',
-    AI_DETECT: 'text-slate-300 border-slate-600/40 bg-slate-500/10'
+    AI_DETECT: 'text-text-base border-subtle/40 bg-slate-500/10'
   };
   return { label: jobType, cls: map[jobType] || map.AI_DETECT };
 }

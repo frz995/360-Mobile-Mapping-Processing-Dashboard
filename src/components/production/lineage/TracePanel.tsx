@@ -161,9 +161,9 @@ export function TracePanel({
     const output = j.output_dataset_id ? datasetById.get(j.output_dataset_id) : undefined;
     return (
       <div className="flex flex-col gap-3">
-        <div className="p-4 rounded-xl bg-inner border border-violet-500/40">
+        <div className="p-4 rounded-xl bg-inner border border-subtle">
           <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
-            <div className="text-xs font-bold text-violet-300 uppercase tracking-wider">
+            <div className="text-xs font-bold text-sky-300 uppercase tracking-wider">
               {j.job_type} {j.name ? `· ${j.name}` : ''}
             </div>
             <div className="flex items-center gap-2">{qaBadge(j.qa_decision, translate)}</div>
@@ -318,10 +318,10 @@ export function TracePanel({
               <button
                 key={j.id}
                 onClick={() => j.id && onSelectNode(`job::${j.id}`)}
-                className="text-left w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-inner border border-subtle hover:border-violet-500/40 transition-colors cursor-pointer"
+                className="text-left w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-inner border border-subtle hover:border-sky-500/40 transition-colors cursor-pointer"
               >
                 <span className="min-w-0">
-                  <span className="block text-[11px] text-violet-300 font-bold truncate">
+                  <span className="block text-[11px] text-sky-300 font-bold truncate">
                     {j.job_type} {j.name ? `· ${j.name}` : ''}
                   </span>
                   <span className="block text-[10px] text-text-muted">

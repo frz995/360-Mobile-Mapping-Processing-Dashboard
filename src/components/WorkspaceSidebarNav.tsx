@@ -63,7 +63,7 @@ function NavItem({
         <span className="truncate">{translate(definition.labelKey)}</span>
         {definition.tag !== 'live' && (
           <span
-            className={`w-1.5 h-1.5 rounded-full ml-2 shrink-0 ${definition.tag === 'planned' ? 'bg-amber-400' : 'bg-slate-600'}`}
+            className={`w-1.5 h-1.5 rounded-full ml-2 shrink-0 ${definition.tag === 'planned' ? 'bg-amber-400' : 'bg-inner'}`}
           />
         )}
         {active && (
@@ -166,7 +166,7 @@ export function WorkspaceSidebarNav({
         className={`rounded-xl text-text-muted hover:text-text-base hover:bg-inner transition-all duration-300 cursor-pointer flex items-center overflow-hidden ${tourStep === 12 ? 'ring-2 ring-slate-300 shadow-[0_0_20px_rgba(255,255,255,0.25)] z-30 bg-inner' : ''} ${isSidebarExpanded ? 'justify-between w-full px-3 py-2 bg-inner border border-subtle shadow-sm' : 'justify-center w-10 h-10'}`}
         title={isSidebarExpanded ? 'Collapse Navigation Panel' : 'Expand Navigation Panel'}
       >
-        <span className={`transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] text-[10px] font-bold text-slate-300 uppercase tracking-wider whitespace-nowrap overflow-hidden origin-left ${isSidebarExpanded ? 'opacity-100 max-w-[120px] translate-x-0' : 'opacity-0 max-w-0 -translate-x-3 pointer-events-none'}`}>
+        <span className={`transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] text-[10px] font-bold text-text-base uppercase tracking-wider whitespace-nowrap overflow-hidden origin-left ${isSidebarExpanded ? 'opacity-100 max-w-[120px] translate-x-0' : 'opacity-0 max-w-0 -translate-x-3 pointer-events-none'}`}>
           {translate('collapsePanel')}
         </span>
         <div className="p-1 rounded-md bg-inner text-sky-400 shrink-0 shadow-sm border border-subtle">

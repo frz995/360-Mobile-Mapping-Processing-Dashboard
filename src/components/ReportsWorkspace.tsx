@@ -127,7 +127,7 @@ export const ReportsWorkspace: React.FC<ReportsWorkspaceProps> = ({
         {/* Header */}
         <div className="bg-card border border-subtle rounded-xl p-4 flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-inner rounded-xl border border-subtle text-violet-400">
+            <div className="p-2.5 bg-inner rounded-xl border border-subtle text-sky-400">
               <FileText size={22} />
             </div>
             <div className="min-w-0">
@@ -147,7 +147,7 @@ export const ReportsWorkspace: React.FC<ReportsWorkspaceProps> = ({
           <div className="flex items-center gap-2">
             <button
               onClick={handleRefresh}
-              className="flex items-center gap-1.5 px-3 py-2 bg-inner border border-subtle hover:bg-violet-500/20 hover:border-violet-500/40 text-violet-300 text-xs font-semibold rounded-lg transition-colors cursor-pointer"
+              className="flex items-center gap-1.5 px-3 py-2 bg-inner border border-subtle hover:bg-card text-text-base text-xs font-semibold rounded-lg transition-colors cursor-pointer"
             >
               <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
               {translate('refresh')}
@@ -155,7 +155,7 @@ export const ReportsWorkspace: React.FC<ReportsWorkspaceProps> = ({
             {onBackToDashboard && (
               <button
                 onClick={onBackToDashboard}
-                className="flex items-center gap-1.5 px-3 py-2 bg-inner border border-subtle hover:bg-amber-500/20 hover:border-amber-500/40 text-amber-300 text-xs font-semibold rounded-lg transition-colors cursor-pointer"
+                className="flex items-center gap-1.5 px-3 py-2 bg-inner border border-subtle hover:bg-card text-text-muted hover:text-text-base text-xs font-semibold rounded-lg transition-colors cursor-pointer"
               >
                 <Undo2 size={13} /> {translate('backToDashboard')}
               </button>
@@ -174,7 +174,7 @@ export const ReportsWorkspace: React.FC<ReportsWorkspaceProps> = ({
                 onClick={() => setActiveTab(tab.key)}
                 className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wide transition-colors cursor-pointer whitespace-nowrap ${
                   active
-                    ? 'bg-violet-500/20 text-violet-300 border border-violet-500/30'
+                    ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40'
                     : 'text-text-muted hover:text-text-base border border-transparent'
                 }`}
               >
@@ -282,12 +282,12 @@ function ReportActionCard({
   return (
     <div className="bg-card border border-subtle rounded-xl p-5 flex flex-col xl:flex-row xl:items-center gap-4 xl:justify-between">
       <div className="flex items-start gap-4 min-w-0">
-        <div className="p-3 bg-inner rounded-2xl border border-subtle text-violet-300 shrink-0">{icon}</div>
+        <div className="p-3 bg-inner rounded-2xl border border-subtle text-sky-400 shrink-0">{icon}</div>
         <div className="min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <h3 className="text-sm font-bold text-text-base">{title}</h3>
             {tag && (
-              <span className="text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider border border-violet-500/40 bg-violet-950/40 text-violet-300">
+              <span className="text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider border border-sky-500/40 bg-sky-950/40 text-sky-300">
                 {tag}
               </span>
             )}
@@ -309,10 +309,10 @@ function ReportActionCard({
       <button
         onClick={onGenerate}
         disabled={disabled}
-        className={`flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer shrink-0 ${
+        className={`flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer shrink-0 shadow-sm ${
           disabled
             ? 'bg-inner border border-subtle text-text-muted cursor-not-allowed'
-            : 'bg-violet-500/20 border border-violet-500/40 text-violet-300 hover:bg-violet-500/30'
+            : 'bg-sky-500 hover:bg-sky-400 text-slate-950'
         }`}
       >
         <Printer size={15} /> {translate('reportsGenerate')}

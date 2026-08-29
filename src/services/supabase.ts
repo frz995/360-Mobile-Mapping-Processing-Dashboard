@@ -1053,6 +1053,51 @@ export async function deleteFromStagingSupabase(subgrid: string, filenames?: str
 }
 
 /**
+ * Permanently delete specific panorama points / filenames from Supabase database.
+ */
+export async function deletePointsFromSupabase(
+  filenames: string[],
+  _subgrid?: string
+): Promise<{ success: boolean; message: string; deletedCount: number }> {
+  try {
+    const validFilenames = filenames.filter(Boolean).map((f) => f.trim());
+    if (validFilenames.length === 0) {
+      return { success: false, message: 'No filenames provided for point deletion', deletedCount: 0 };
+    }
+
+    // 1. Delete from panoramas table matching filenames
+    const { error: pErr } = await supabase
+      .from('panoramas')
+      .delete()
+      .in('filename', validFilenames);
+
+    // 2. Also delete from qa_defects matching filenames
+    try {
+      await supabase
+        .from('qa_defects')
+        .delete()
+        .in('filename', validFilenames);
+    } catch {
+      /* ignore */
+    }
+
+    if (pErr) {
+      console.error('Error deleting specific points from Supabase panoramas:', pErr);
+      return { success: false, message: pErr.message, deletedCount: 0 };
+    }
+
+    return {
+      success: true,
+      message: `Successfully deleted ${validFilenames.length} point(s) from database`,
+      deletedCount: validFilenames.length
+    };
+  } catch (err) {
+    console.error('Error deleting points from Supabase:', err);
+    return { success: false, message: (err as Error).message, deletedCount: 0 };
+  }
+}
+
+/**
  * Permanently delete records for a subgrid from Supabase database.
  */
 export async function deleteFromSupabase(subgrid: string): Promise<{ success: boolean; message: string }> {
@@ -2100,7 +2145,26 @@ export async function saveUserAccountToSupabase(users: any[]): Promise<boolean> 
  */
 export async function fetchProjectSettingsFromSupabase(): Promise<any | null> {
   try {
-    const { data, error } = await supabase.from('project_settings').select('*').limit(1).maybeSingle();
+    const userId = await getCurrentUserId();
+
+    // 1. Prefer the authenticated user's personally-scoped settings row.
+    if (userId) {
+      const { data, error } = await supabase
+        .from('project_settings')
+        .select('*')
+        .eq('user_id', userId)
+        .maybeSingle();
+      if (!error && data) {
+        return data.settings || data;
+      }
+    }
+
+    // 2. Fall back to the global shared default template (also used for anon/guest).
+    const { data, error } = await supabase
+      .from('project_settings')
+      .select('*')
+      .eq('id', 'default')
+      .maybeSingle();
     if (!error && data) {
       return data.settings || data;
     }
@@ -2111,12 +2175,30 @@ export async function fetchProjectSettingsFromSupabase(): Promise<any | null> {
 }
 
 /**
- * Persist project settings to Supabase database.
+ * Resolve the currently authenticated user's UUID (null when anonymous/guest).
+ */
+async function getCurrentUserId(): Promise<string | null> {
+  try {
+    const { data, error } = await supabase.auth.getUser();
+    if (!error && data?.user) return data.user.id;
+  } catch (err) {
+    console.warn('Could not resolve session user id:', err);
+  }
+  return null;
+}
+
+/**
+ * Persist project settings to Supabase database, scoped to the current
+ * authenticated user (per-user row). Anonymous/guest saves fall back to the
+ * shared global 'default' template so they do not clobber user-scoped data.
  */
 export async function saveProjectSettingsToSupabase(settings: any): Promise<boolean> {
   try {
+    const userId = await getCurrentUserId();
+    const id = userId || 'default';
     const { error } = await supabase.from('project_settings').upsert([{
-      id: 'default',
+      id,
+      ...(userId ? { user_id: userId } : {}),
       settings: settings,
       updated_at: new Date().toISOString()
     }]);
@@ -2341,6 +2423,70 @@ export async function saveDatasetToSupabase(dataset: DatasetRecord): Promise<Dat
   } catch (err) {
     console.warn('saveDatasetToSupabase catch:', err);
     return null;
+  }
+}
+
+export async function registerSurveyDataset(params: {
+  name: string;
+  subgrid?: string;
+  equipment?: string;
+  sourceFolder?: string;
+  outputFolder?: string;
+  fileCount?: number;
+  sizeBytes?: number;
+  datasetType?: 'RAW' | 'PROCESSED' | 'DELIVERABLE';
+  pipelineStage?: 'STITCH' | 'BLUR' | 'ENHANCE' | 'MASK' | 'QAQC';
+  storageProvider?: string;
+  userLabel?: string;
+  metadata?: Record<string, unknown>;
+}): Promise<DatasetRecord | null> {
+  const dataset: DatasetRecord = {
+    dataset_type: params.datasetType || 'RAW',
+    pipeline_stage: params.pipelineStage || 'STITCH',
+    name: params.name.trim(),
+    subgrid: (params.subgrid || '').toUpperCase().trim() || undefined,
+    provider: params.equipment || 'MMS Vehicle Unit',
+    source_folder: params.sourceFolder || '',
+    output_folder: params.outputFolder || '',
+    storage_provider: params.storageProvider || 'nas_local',
+    file_count: params.fileCount || 0,
+    size_bytes: params.sizeBytes || 0,
+    status: 'REGISTERED',
+    version: 1,
+    parent_dataset_id: null,
+    created_by: params.userLabel || 'System',
+    metadata: {
+      equipment: params.equipment,
+      source: 'nas-intake',
+      registeredAt: new Date().toISOString(),
+      ...(params.metadata || {})
+    }
+  };
+  return saveDatasetToSupabase(dataset);
+}
+
+export async function checkDatasetDuplicates(subgrid: string, folderPath?: string): Promise<DatasetRecord[]> {
+  try {
+    const sg = (subgrid || '').toUpperCase().trim();
+    if (!sg && !folderPath) return [];
+
+    let query = supabase.from(DATASETS_TABLE).select('*');
+    if (sg) {
+      query = query.eq('subgrid', sg);
+    }
+    if (folderPath) {
+      query = query.eq('source_folder', folderPath);
+    }
+
+    const { data, error } = await query;
+    if (error) {
+      console.warn('checkDatasetDuplicates:', error.message);
+      return [];
+    }
+    return (data || []) as DatasetRecord[];
+  } catch (err) {
+    console.warn('checkDatasetDuplicates catch:', err);
+    return [];
   }
 }
 

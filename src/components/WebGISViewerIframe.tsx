@@ -150,7 +150,7 @@ export const WebGISViewerIframe: React.FC<WebGISViewerIframeProps> = ({
         <div className="absolute inset-0 bg-app/40 backdrop-blur-[2px] flex flex-col items-center justify-center pointer-events-none z-20 animate-in fade-in duration-200">
           <div className="bg-card/95 border border-subtle rounded-md px-3.5 py-2 shadow-lg flex items-center gap-2 text-xs font-medium text-text-base">
             <span className="w-2 h-2 rounded-full bg-accent animate-pulse" />
-            <span>QA/QC Lockout Active {lockPic ? `(${lockPic})` : ''}</span>
+            <span>Acquisition QC Lockout Active {lockPic ? `(${lockPic})` : ''}</span>
           </div>
         </div>
       )}

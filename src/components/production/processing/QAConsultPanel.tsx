@@ -183,7 +183,7 @@ export const QAConsultPanel: React.FC<QAConsultPanelProps> = ({
     <div className="flex flex-col gap-3">
       <div className="flex items-center gap-2 flex-wrap">
         <div className="flex items-center gap-2 text-text-base text-xs font-bold uppercase tracking-wide">
-          <ListChecks size={15} className="text-sky-400" /> QA/QC review console
+          <ListChecks size={15} className="text-sky-400" /> Acceptance QA review console
         </div>
         <span className="text-[11px] text-text-muted font-mono">
           {stats.pending} pending · {stats.approved} approved · {stats.rejected} rejected

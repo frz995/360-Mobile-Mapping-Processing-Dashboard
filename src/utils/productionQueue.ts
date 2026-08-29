@@ -98,7 +98,7 @@ export function jobStatusMeta(status?: ProcessingJobStatus): JobStatusMeta {
     case 'IMPORTED':
       return { label: 'IMPORTED', className: 'bg-teal-500/15 text-teal-300 border-teal-500/40', dot: 'bg-teal-400' };
     case 'QA_PENDING':
-      return { label: 'QA PENDING', className: 'bg-violet-500/15 text-violet-300 border-violet-500/40', dot: 'bg-violet-400' };
+      return { label: 'QA PENDING', className: 'bg-sky-500/15 text-sky-300 border-sky-500/40', dot: 'bg-sky-400' };
     case 'APPROVED':
       return { label: 'APPROVED', className: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40', dot: 'bg-emerald-400' };
     case 'REJECTED':

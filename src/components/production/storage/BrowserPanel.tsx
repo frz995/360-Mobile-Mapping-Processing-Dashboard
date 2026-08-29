@@ -104,24 +104,25 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
     if (isGuestUser || registering) return;
     setRegistering(true);
     const subgrid = guessSubgridFromPath(entry.path);
+    const isRawPath = entry.path.toUpperCase().includes('/RAW') || entry.path.toUpperCase().startsWith('RAW');
     const dataset = await saveDatasetToSupabase({
-      dataset_type: 'PROCESSED',
+      dataset_type: isRawPath ? 'RAW' : 'PROCESSED',
       pipeline_stage: 'STITCH',
       name: entry.name,
       subgrid: subgrid || undefined,
-      provider: 'NAS Storage Manager',
+      provider: isRawPath ? 'MMS Field Intake' : 'NAS Storage Manager',
       source_folder: entry.path,
       storage_provider: projectSettings?.storageProvider || 'nas',
       file_count: entry.fileCount,
       size_bytes: entry.sizeBytes,
       status: 'REGISTERED',
       created_by: userLabel,
-      metadata: { source: 'folder-register', path: entry.path }
+      metadata: { source: 'folder-register', path: entry.path, intakeTier: isRawPath ? 'RAW' : 'PROCESSED' }
     });
     setRegistering(false);
     if (dataset) {
-      onAddNotification?.({ title: `Dataset registered`, message: `${entry.name} (${subgrid || 'no subgrid'}) indexed from ${entry.path}.`, category: 'SYSTEM' });
-      onAddAuditLog?.('CREATE', `Dataset ${entry.name}`, `Registered from ${entry.path} (${entry.fileCount || 0} files)`, 'COMPLETED');
+      onAddNotification?.({ title: `Dataset registered`, message: `${entry.name} [${dataset.dataset_type}] (${subgrid || 'no subgrid'}) indexed from ${entry.path}.`, category: 'SYSTEM' });
+      onAddAuditLog?.('CREATE', `Dataset ${entry.name}`, `Registered ${dataset.dataset_type} from ${entry.path} (${entry.fileCount || 0} files)`, 'COMPLETED');
     } else {
       onAddNotification?.({ title: `Register failed`, message: `Could not register ${entry.name}.`, category: 'ERROR' });
     }
