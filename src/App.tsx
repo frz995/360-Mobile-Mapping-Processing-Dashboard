@@ -809,7 +809,9 @@ export const MapComponent = ({
   stagedItems,
   projectSettings: passedSettings,
   defectsList,
-  iframeRefCb
+  iframeRefCb,
+  selectedSubgrids,
+  selectedPoints
 }: {
   dataManagement?: boolean;
   layerCatalog?: (Layer | Folder)[];
@@ -822,6 +824,8 @@ export const MapComponent = ({
   projectSettings?: any;
   defectsList?: any[];
   iframeRefCb?: (el: HTMLIFrameElement | null) => void;
+  selectedSubgrids?: string[];
+  selectedPoints?: any[];
 }) => {
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -834,6 +838,13 @@ export const MapComponent = ({
     if (!stagedItems || stagedItems.length === 0) return [];
 
     const knownDefectFilenames = new Set<string>();
+    const selectedSgSet = new Set((selectedSubgrids || []).map((s) => (extractSubgridName(s) || s || '').toUpperCase().trim()));
+    const selectedPtKeySet = new Set((selectedPoints || []).map((p: any) => {
+      const fn = (p.filename || p.image_url || p.pointId || p.point_id || '').split('/').pop()?.toUpperCase().trim();
+      const ptId = (p.pointId || p.point_id || '').toUpperCase().trim();
+      const rawSg = (p.subgrid || '').toUpperCase().trim();
+      return fn || ptId || `${rawSg}_${p.lat},${p.lng}`;
+    }));
 
     if (Array.isArray(defectsList)) {
       defectsList.forEach((d: any) => {
@@ -845,12 +856,13 @@ export const MapComponent = ({
     }
 
     return stagedItems.map((item, itemIdx) => {
+      const rawSg = item.subgrid || item.imageFilename || '';
+      const normSg = (extractSubgridName(rawSg) || rawSg || '').toUpperCase().trim();
+      const isSubgridSelected = selectedSgSet.has(normSg);
+
       const isPub = item.publishToWebGIS === 'yes' || item.publishToUSVPRO === 'yes' || Boolean(item.isSyncedWithSupabase) || item.isFromSupabase === true;
-      const statusVal = isPub ? 'yes' : (item.publishToWebGIS || item.publishToUSVPRO || 'in process');
-      const op = isPub ? 1.0 : 0.7;
-      const colorHex = isPub
-        ? '#10b981'
-        : (statusVal === 'need to recheck' || statusVal === 'no' ? '#ef4444' : '#f59e0b');
+      const statusVal = isSubgridSelected ? 'selected' : (isPub ? 'yes' : (item.publishToWebGIS || item.publishToUSVPRO || 'in process'));
+      const op = isSubgridSelected ? 1.0 : (isPub ? 1.0 : 0.7);
 
       const itemRunId = item.runId || item.id || getItemId(item) || `batch-${itemIdx}`;
       const pans = item.panoramas || item.points || [];
@@ -858,6 +870,17 @@ export const MapComponent = ({
       const formattedPans = pans.map((p: any, pIdx: number) => {
         const fnClean = (p.filename || p.image_url || '').split('/').pop()?.toUpperCase().trim();
         const ptClean = (p.point_id || p.pointId || '').toUpperCase().trim();
+        const pRawSg = p.subgrid || item.subgrid || '';
+        const pNormSg = (extractSubgridName(pRawSg) || pRawSg || '').toUpperCase().trim();
+        const pLatLng = (typeof p.lat === 'number' && typeof p.lng === 'number') ? `${p.lat.toFixed(5)},${p.lng.toFixed(5)}` : '';
+
+        const isPointInSelectedSet = Boolean(
+          (fnClean && selectedPtKeySet.has(fnClean)) ||
+          (ptClean && selectedPtKeySet.has(ptClean)) ||
+          (pLatLng && (selectedPtKeySet.has(pLatLng) || selectedPtKeySet.has(`${pNormSg}_${pLatLng}`)))
+        );
+        const isPointSelected = selectedPtKeySet.size > 0 ? isPointInSelectedSet : (isSubgridSelected || selectedSgSet.has(pNormSg));
+
         const isPointDefect = Boolean(
           (fnClean && knownDefectFilenames.has(fnClean)) ||
           (ptClean && knownDefectFilenames.has(ptClean)) ||
@@ -868,9 +891,11 @@ export const MapComponent = ({
           p.qa_status === 'defect' ||
           (p.defect_flags && typeof p.defect_flags === 'object' && Object.values(p.defect_flags).some(Boolean))
         );
-        const pointColorHex = isPointDefect ? '#ef4444' : colorHex;
-        const pointStatusVal = isPointDefect ? 'defect' : statusVal;
-        const pointOp = isPointDefect ? 1.0 : op;
+        const pointColorHex = isPointSelected
+          ? '#38bdf8' // Light Blue for selected point / segment
+          : (isPointDefect ? '#ef4444' : (isPub ? '#10b981' : '#f59e0b'));
+        const pointStatusVal = isPointSelected ? 'selected' : (isPointDefect ? 'defect' : statusVal);
+        const pointOp = isPointSelected ? 1.0 : (isPointDefect ? 1.0 : op);
 
         return {
           ...p,
@@ -878,7 +903,7 @@ export const MapComponent = ({
           runId: itemRunId,
           filename: p.filename || p.image_url,
           image_url: p.image_url || p.filename,
-          subgrid: p.subgrid || item.subgrid,
+          subgrid: pNormSg || normSg || item.subgrid,
           grid: p.grid || item.grid,
           latitude: p.latitude ?? p.lat ?? p.y,
           longitude: p.longitude ?? p.lon ?? p.lng ?? p.x,
@@ -891,10 +916,13 @@ export const MapComponent = ({
           captured_at: p.captured_at ?? p.date,
           status: pointStatusVal,
           qa_status: pointStatusVal,
-          publishToWebGIS: statusVal,
-          publishToUSVPRO: statusVal,
-          isPublished: isPub,
-          published: isPub,
+          publishToWebGIS: isPointSelected ? 'selected' : statusVal,
+          publishToUSVPRO: isPointSelected ? 'selected' : statusVal,
+          isPublished: isPointSelected ? false : isPub,
+          published: isPointSelected ? false : isPub,
+          isSelected: isPointSelected,
+          selected: isPointSelected,
+          is_selected: isPointSelected,
           is_defect: isPointDefect,
           isDefect: isPointDefect,
           opacity: pointOp,
@@ -903,22 +931,36 @@ export const MapComponent = ({
           color: pointColorHex,
           statusColor: pointColorHex,
           strokeColor: pointColorHex,
-          fillColor: pointColorHex
+          fillColor: pointColorHex,
+          trackColor: pointColorHex,
+          lineColor: pointColorHex,
+          highlightColor: pointColorHex
         };
       });
+
+      const hasAnySelectedPoint = formattedPans.some((p: any) => p.isSelected);
+      const isSubgridFullyOrPartiallySelected = isSubgridSelected || hasAnySelectedPoint;
+      const colorHex = isSubgridFullyOrPartiallySelected
+        ? '#38bdf8' // Light Blue for selected panotrack
+        : (isPub
+          ? '#10b981'
+          : (statusVal === 'need to recheck' || statusVal === 'no' ? '#ef4444' : '#f59e0b'));
 
       return {
         ...item,
         id: itemRunId,
         runId: itemRunId,
-        subgrid: item.subgrid,
+        subgrid: normSg || item.subgrid,
         grid: item.grid,
         status: statusVal,
         qa_status: statusVal,
-        publishToWebGIS: statusVal,
-        publishToUSVPRO: statusVal,
-        isPublished: isPub,
-        published: isPub,
+        publishToWebGIS: isSubgridSelected ? 'selected' : statusVal,
+        publishToUSVPRO: isSubgridSelected ? 'selected' : statusVal,
+        isPublished: isSubgridSelected ? false : isPub,
+        published: isSubgridSelected ? false : isPub,
+        isSelected: isSubgridFullyOrPartiallySelected,
+        selected: isSubgridFullyOrPartiallySelected,
+        is_selected: isSubgridFullyOrPartiallySelected,
         opacity: op,
         fillOpacity: op,
         strokeOpacity: op,
@@ -926,11 +968,14 @@ export const MapComponent = ({
         statusColor: colorHex,
         strokeColor: colorHex,
         fillColor: colorHex,
+        trackColor: colorHex,
+        lineColor: colorHex,
+        highlightColor: colorHex,
         panoramas: formattedPans,
         points: formattedPans
       };
     });
-  }, [stagedItems, defectsList]);
+  }, [stagedItems, defectsList, selectedSubgrids, selectedPoints]);
 
   const sendStagedData = React.useCallback(() => {
     if (iframeRef.current && iframeRef.current.contentWindow && formattedStagedItems.length > 0) {
@@ -978,14 +1023,30 @@ export const MapComponent = ({
           runId: selectedDailyRunId || null
         }, '*');
 
-        // 3. Send FILTER_STATUS_TYPES to ensure stitching/in-progress trajectory filter is active
+        // 3. Send explicit selection messages for WebGIS viewer layers
+        if (selectedSubgrids && selectedSubgrids.length > 0) {
+          iframeRef.current.contentWindow.postMessage({
+            type: 'SET_SELECTED_SUBGRIDS',
+            subgrids: selectedSubgrids,
+            selectedSubgrids: selectedSubgrids,
+            color: '#38bdf8'
+          }, '*');
+          iframeRef.current.contentWindow.postMessage({
+            type: 'HIGHLIGHT_SUBGRID',
+            subgrid: selectedSubgrids[0],
+            subgrids: selectedSubgrids,
+            color: '#38bdf8'
+          }, '*');
+        }
+
+        // 4. Send FILTER_STATUS_TYPES to ensure stitching/in-progress trajectory filter is active
         iframeRef.current.contentWindow.postMessage({
           type: 'FILTER_STATUS_TYPES',
-          statusFilters: { published: true, defect: true, stitching: true },
+          statusFilters: { published: true, defect: true, stitching: true, selected: true },
           showPanotrackData: true
         }, '*');
 
-        // 4. Send QAQC_DEFECTS_SYNC with all known defect items
+        // 5. Send QAQC_DEFECTS_SYNC with all known defect items
         const defectsArray: any[] = [];
         if (Array.isArray(defectsList)) {
           defectsArray.push(...defectsList);
@@ -998,7 +1059,7 @@ export const MapComponent = ({
         }
       } catch (e) { }
     }
-  }, [formattedStagedItems, dataManagement, defectsList, selectedDailyRunId]);
+  }, [formattedStagedItems, dataManagement, defectsList, selectedDailyRunId, selectedSubgridFilter, selectedSubgrids]);
 
   const syncMapSettings = React.useCallback(() => {
     if (!iframeRef.current || !iframeRef.current.contentWindow) return;
@@ -1824,13 +1885,48 @@ const DataManagementPage = ({
   const safeDeletionMapItems = useMemo(() => (Array.isArray(dailyData) ? dailyData : []), [dailyData]);
   const safeDeletionAfterItems = useMemo(() => {
     if (!Array.isArray(dailyData)) return [];
-    if (spatialSelectionSet.size === 0) return dailyData;
-    return dailyData.filter((d: any) => {
+    if (spatialSelectedPoints.length === 0 && spatialSelectionSet.size === 0) return dailyData;
+
+    const selectedPtKeySet = new Set(spatialSelectedPoints.map((p) => {
+      const fn = (p.filename || p.pointId || '').split('/').pop()?.toUpperCase().trim();
+      const ptId = (p.pointId || '').toUpperCase().trim();
+      const latLng = (typeof p.lat === 'number' && typeof p.lng === 'number') ? `${p.lat.toFixed(5)},${p.lng.toFixed(5)}` : '';
+      return fn || ptId || latLng;
+    }));
+
+    return dailyData.map((d: any) => {
       const raw = d?.subgrid || d?.imageFilename || '';
       const sg = (extractSubgridName(raw) || raw || '').toUpperCase().trim();
-      return !spatialSelectionSet.has(sg);
-    });
-  }, [dailyData, spatialSelectionSet]);
+
+      if (spatialSelectedPoints.length === 0 && spatialSelectionSet.has(sg)) {
+        return null;
+      }
+
+      const pans = d.panoramas || d.points || [];
+      if (pans.length > 0 && selectedPtKeySet.size > 0) {
+        const remainingPans = pans.filter((p: any) => {
+          const fnClean = (p.filename || p.image_url || '').split('/').pop()?.toUpperCase().trim();
+          const ptClean = (p.point_id || p.pointId || '').toUpperCase().trim();
+          const pLatLng = (typeof p.lat === 'number' && typeof p.lng === 'number') ? `${p.lat.toFixed(5)},${p.lng.toFixed(5)}` : '';
+          const isSelected = Boolean(
+            (fnClean && selectedPtKeySet.has(fnClean)) ||
+            (ptClean && selectedPtKeySet.has(ptClean)) ||
+            (pLatLng && selectedPtKeySet.has(pLatLng))
+          );
+          return !isSelected;
+        });
+        if (remainingPans.length === 0) return null;
+        return {
+          ...d,
+          panoramas: remainingPans,
+          points: remainingPans
+        };
+      }
+
+      if (spatialSelectionSet.has(sg)) return null;
+      return d;
+    }).filter(Boolean);
+  }, [dailyData, spatialSelectionSet, spatialSelectedPoints]);
   const subgridFilterFn = (all: any[]): any[] => {
     if (!mapSubgridFilter) return all;
     const f = mapSubgridFilter.toUpperCase().trim();
@@ -1851,6 +1947,7 @@ const DataManagementPage = ({
   }, [batchLogs, dailyData]);
 
   const currentMapIframeRef = useRef<HTMLIFrameElement | null>(null);
+  const afterMapIframeRef = useRef<HTMLIFrameElement | null>(null);
   const currentMapContainerRef = useRef<HTMLDivElement | null>(null);
 
   const handleSpatialAdd = useCallback((list: string[], points?: SelectedPointInfo[]) => {
@@ -1865,8 +1962,8 @@ const DataManagementPage = ({
   }, []);
 
   const handleFlyToSelection = useCallback((subgrid: string, points?: SelectedPointInfo[]) => {
-    const ifr = currentMapIframeRef.current;
-    if (!ifr || !ifr.contentWindow) return;
+    const iframes = [currentMapIframeRef.current, afterMapIframeRef.current].filter(Boolean) as HTMLIFrameElement[];
+    if (iframes.length === 0) return;
     const validPts = (points || []).filter((p) => typeof p.lat === 'number' && typeof p.lng === 'number' && Number.isFinite(p.lat) && Number.isFinite(p.lng));
     if (validPts.length > 0) {
       const minLat = Math.min(...validPts.map((p) => p.lat!));
@@ -1875,14 +1972,18 @@ const DataManagementPage = ({
       const maxLng = Math.max(...validPts.map((p) => p.lng!));
       const padLat = Math.max(0.0015, (maxLat - minLat) * 0.15);
       const padLng = Math.max(0.0015, (maxLng - minLng) * 0.15);
-      try {
-        ifr.contentWindow.postMessage({ type: 'FOCUS_BOUNDARY', bbox: [minLng - padLng, minLat - padLat, maxLng + padLng, maxLat + padLat] }, '*');
-        ifr.contentWindow.postMessage({ type: 'FLY_TO', lat: (minLat + maxLat) / 2, lng: (minLng + maxLng) / 2, lon: (minLng + maxLng) / 2, zoom: 17 }, '*');
-      } catch {}
+      iframes.forEach((ifr) => {
+        try {
+          ifr.contentWindow?.postMessage({ type: 'FOCUS_BOUNDARY', bbox: [minLng - padLng, minLat - padLat, maxLng + padLng, maxLat + padLat] }, '*');
+          ifr.contentWindow?.postMessage({ type: 'FLY_TO', lat: (minLat + maxLat) / 2, lng: (minLng + maxLng) / 2, lon: (minLng + maxLng) / 2, zoom: 17 }, '*');
+        } catch { }
+      });
     } else if (subgrid) {
-      try {
-        ifr.contentWindow.postMessage({ type: 'SET_SUBGRID_FILTER', subgrid, date: '', isSingleRun: false, runId: null }, '*');
-      } catch {}
+      iframes.forEach((ifr) => {
+        try {
+          ifr.contentWindow?.postMessage({ type: 'SET_SUBGRID_FILTER', subgrid, date: '', isSingleRun: false, runId: null }, '*');
+        } catch { }
+      });
     }
   }, []);
 
@@ -1939,10 +2040,10 @@ const DataManagementPage = ({
         masterRec && typeof masterRec.poiCount === 'number' && masterRec.poiCount > 0
           ? masterRec.poiCount
           : masterRec && typeof masterRec.availableImagesCount === 'number' && masterRec.availableImagesCount > 0
-          ? masterRec.availableImagesCount
-          : masterRec && typeof masterRec.images === 'number' && masterRec.images > 0
-          ? masterRec.images
-          : masterRec?.panoramas?.length || 0;
+            ? masterRec.availableImagesCount
+            : masterRec && typeof masterRec.images === 'number' && masterRec.images > 0
+              ? masterRec.images
+              : masterRec?.panoramas?.length || 0;
 
       const dailyCount = dailyRecs.reduce((sum, d) => {
         const c = d?.poiCount || d?.availableImagesCount || (d as any)?.images || d?.panoramas?.length || 0;
@@ -2050,6 +2151,80 @@ const DataManagementPage = ({
 
     return out.sort((a, b) => a.subgrid.localeCompare(b.subgrid, undefined, { numeric: true, sensitivity: 'base' }));
   }, [dailyData, batchLogs, qaSubgridRecords]);
+
+  // Synchronize both maps whenever user changes subgrid dropdown selection
+  useEffect(() => {
+    const iframes = [currentMapIframeRef.current, afterMapIframeRef.current].filter(Boolean) as HTMLIFrameElement[];
+    if (iframes.length === 0) return;
+
+    if (mapSubgridFilter) {
+      const norm = mapSubgridFilter.toUpperCase().trim();
+      const targetRow = subgridPoints.find((r) => r.subgrid.toUpperCase().trim() === norm);
+      const pts = (targetRow?.points || []).filter((p) => typeof p.lat === 'number' && typeof p.lng === 'number' && Number.isFinite(p.lat) && Number.isFinite(p.lng));
+
+      if (pts.length > 0) {
+        const minLat = Math.min(...pts.map((p) => p.lat!));
+        const maxLat = Math.max(...pts.map((p) => p.lat!));
+        const minLng = Math.min(...pts.map((p) => p.lng!));
+        const maxLng = Math.max(...pts.map((p) => p.lng!));
+        const padLat = Math.max(0.0015, (maxLat - minLat) * 0.15);
+        const padLng = Math.max(0.0015, (maxLng - minLng) * 0.15);
+
+        iframes.forEach((ifr) => {
+          if (!ifr || !ifr.contentWindow) return;
+          try {
+            ifr.contentWindow.postMessage({
+              type: 'FOCUS_BOUNDARY',
+              bbox: [minLng - padLng, minLat - padLat, maxLng + padLng, maxLat + padLat]
+            }, '*');
+            ifr.contentWindow.postMessage({
+              type: 'FLY_TO',
+              lat: (minLat + maxLat) / 2,
+              lng: (minLng + maxLng) / 2,
+              lon: (minLng + maxLng) / 2,
+              zoom: 17
+            }, '*');
+            ifr.contentWindow.postMessage({
+              type: 'SET_SUBGRID_FILTER',
+              subgrid: norm,
+              date: '',
+              isSingleRun: false,
+              runId: null
+            }, '*');
+          } catch { }
+        });
+      }
+    } else {
+      const allPts = subgridPoints.flatMap((r) => r.points || []).filter((p) => typeof p.lat === 'number' && typeof p.lng === 'number' && Number.isFinite(p.lat) && Number.isFinite(p.lng));
+      if (allPts.length > 0) {
+        const minLat = Math.min(...allPts.map((p) => p.lat!));
+        const maxLat = Math.max(...allPts.map((p) => p.lat!));
+        const minLng = Math.min(...allPts.map((p) => p.lng!));
+        const maxLng = Math.max(...allPts.map((p) => p.lng!));
+
+        iframes.forEach((ifr) => {
+          if (!ifr || !ifr.contentWindow) return;
+          try {
+            ifr.contentWindow.postMessage({ type: 'CLEAR_BOUNDARY_FOCUS' }, '*');
+            ifr.contentWindow.postMessage({
+              type: 'FLY_TO',
+              lat: (minLat + maxLat) / 2,
+              lng: (minLng + maxLng) / 2,
+              lon: (minLng + maxLng) / 2,
+              zoom: 15
+            }, '*');
+            ifr.contentWindow.postMessage({
+              type: 'SET_SUBGRID_FILTER',
+              subgrid: '',
+              date: '',
+              isSingleRun: false,
+              runId: null
+            }, '*');
+          } catch { }
+        });
+      }
+    }
+  }, [mapSubgridFilter, subgridPoints]);
 
   const resolveDeleteSubgrids = useCallback((mode: DeletionMode): string[] => {
     if (mode === 'single') {
@@ -3533,7 +3708,11 @@ const DataManagementPage = ({
                           <CheckCircle2 size={12} className="text-sky-400" />
                           <span className="font-bold text-sky-300 text-[11px]">Current Production WebGIS</span>
                         </div>
-                        <span className="text-[10px] text-text-muted font-mono">All survey data</span>
+                        <span className="text-[10px] text-text-muted font-mono">
+                          {mapSubgridFilter
+                            ? `Subgrid: ${mapSubgridFilter} (${filteredCurrentMapItems.reduce((acc, it) => acc + (it.panoramas?.length || it.points?.length || 0), 0)} pts)`
+                            : `All survey data (${availableSubgridList.length} subgrid${availableSubgridList.length === 1 ? '' : 's'})`}
+                        </span>
                         <div className="flex items-center gap-1 p-0.5 bg-inner border border-subtle rounded-lg">
                           <button
                             onClick={() => setSelectionNavMode('select')}
@@ -3550,7 +3729,15 @@ const DataManagementPage = ({
                         </div>
                       </div>
                       <div ref={currentMapContainerRef} className="relative w-full overflow-hidden" style={{ height: 640 }}>
-                        <MapComponent dataManagement refreshKey={mapRefreshKey} stagedItems={filteredCurrentMapItems} iframeRefCb={(el) => { currentMapIframeRef.current = el; }} />
+                        <MapComponent
+                          dataManagement
+                          refreshKey={mapRefreshKey}
+                          stagedItems={filteredCurrentMapItems}
+                          selectedSubgrids={spatialSubgrids}
+                          selectedPoints={spatialSelectedPoints}
+                          selectedSubgridFilter={mapSubgridFilter}
+                          iframeRefCb={(el) => { currentMapIframeRef.current = el; }}
+                        />
                         <SelectionMapOverlay
                           iframeRef={currentMapIframeRef}
                           containerRef={currentMapContainerRef}
@@ -3560,6 +3747,8 @@ const DataManagementPage = ({
                           subgridPoints={subgridPoints}
                           availableSubgrids={availableSubgridList}
                           selectedSubgrids={spatialSubgrids}
+                          selectedPoints={spatialSelectedPoints}
+                          subgridFilter={mapSubgridFilter}
                           onFlyTo={handleFlyToSelection}
                         />
                       </div>
@@ -3572,14 +3761,24 @@ const DataManagementPage = ({
                           <span className="font-bold text-rose-300 text-[11px]">After Deletion Preview</span>
                         </div>
                         <span className="text-[10px] text-text-muted font-mono">
-                          {spatialSubgrids.length > 0 ? `${spatialSubgrids.length} Target(s) Purged` : '0 Selected'}
+                          {mapSubgridFilter
+                            ? (spatialSelectionSet.has(mapSubgridFilter.toUpperCase().trim())
+                              ? `Subgrid: ${mapSubgridFilter} (Purged)`
+                              : `Subgrid: ${mapSubgridFilter} (${filteredAfterMapItems.reduce((acc, it) => acc + (it.panoramas?.length || it.points?.length || 0), 0)} pts)`)
+                            : (spatialSubgrids.length > 0 ? `${spatialSubgrids.length} Target(s) Purged` : '0 Selected')}
                         </span>
                         <div className="flex items-center gap-1 p-0.5 bg-inner border border-subtle rounded-lg">
                           <span className="px-2 py-0.5 rounded-md text-[10px] font-bold text-text-muted">Read Only</span>
                         </div>
                       </div>
                       <div className="relative w-full overflow-hidden" style={{ height: 640 }}>
-                        <MapComponent dataManagement refreshKey={mapRefreshKey} stagedItems={filteredAfterMapItems} />
+                        <MapComponent
+                          dataManagement
+                          refreshKey={mapRefreshKey}
+                          stagedItems={filteredAfterMapItems}
+                          selectedSubgridFilter={mapSubgridFilter}
+                          iframeRefCb={(el) => { afterMapIframeRef.current = el; }}
+                        />
                         {spatialSubgrids.length > 0 && (
                           <div className="absolute bottom-2 left-2 right-2 z-10 pointer-events-none flex justify-center">
                             <div className="bg-slate-950/90 backdrop-blur-md border border-rose-500/40 rounded-xl px-3 py-1.5 text-center shadow-2xl max-w-sm">
