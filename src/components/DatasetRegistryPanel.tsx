@@ -346,17 +346,19 @@ export const DatasetRegistryPanel: React.FC<DatasetRegistryPanelProps> = ({
       {/* Summary cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
         {[
-          { label: translate('dataRegistryTotalDatasets'), value: String(datasets.length), icon: <Database size={14} />, tone: 'text-text-base' },
-          { label: translate('dataRegistryTotalFiles'), value: totals.files.toLocaleString(), icon: <FileArchive size={14} />, tone: 'text-sky-300' },
-          { label: translate('dataRegistryTotalSize'), value: formatBytes(totals.bytes), icon: <Boxes size={14} />, tone: 'text-emerald-300' },
-          { label: translate('dataRegistryRaw'), value: String(totals.raw), icon: <Layers3 size={14} />, tone: 'text-amber-300' },
-          { label: translate('dataRegistryProcessed'), value: String(totals.processed), icon: <Layers3 size={14} />, tone: 'text-sky-300' },
-          { label: translate('dataRegistryDeliverables'), value: String(totals.deliverable), icon: <ShieldCheck size={14} />, tone: 'text-emerald-300' }
+          { label: translate('dataRegistryTotalDatasets'), value: String(datasets.length), rawValue: datasets.length, icon: <Database size={14} /> },
+          { label: translate('dataRegistryTotalFiles'), value: totals.files.toLocaleString(), rawValue: totals.files, icon: <FileArchive size={14} /> },
+          { label: translate('dataRegistryTotalSize'), value: formatBytes(totals.bytes), rawValue: totals.bytes, icon: <Boxes size={14} /> },
+          { label: translate('dataRegistryRaw'), value: String(totals.raw), rawValue: totals.raw, icon: <Layers3 size={14} /> },
+          { label: translate('dataRegistryProcessed'), value: String(totals.processed), rawValue: totals.processed, icon: <Layers3 size={14} /> },
+          { label: translate('dataRegistryDeliverables'), value: String(totals.deliverable), rawValue: totals.deliverable, icon: <ShieldCheck size={14} /> }
         ].map((c) => (
-          <div key={c.label} className="bg-inner border border-subtle rounded-xl p-3 flex items-center gap-2.5">
-            <span className={`${c.tone} shrink-0`}>{c.icon}</span>
+          <div key={c.label} className="bg-inner/60 border border-subtle rounded-xl p-3 flex items-center gap-2.5 shadow-sm">
+            <span className="text-text-muted shrink-0">{c.icon}</span>
             <div className="min-w-0">
-              <div className={`text-sm font-bold leading-none ${c.tone}`}>{c.value}</div>
+              <div className={`text-sm font-bold font-mono leading-none ${c.rawValue > 0 ? 'text-sky-400' : 'text-text-muted'}`}>
+                {c.value}
+              </div>
               <div className="text-[9px] uppercase tracking-wider text-text-muted mt-1 truncate">{c.label}</div>
             </div>
           </div>

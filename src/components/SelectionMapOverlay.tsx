@@ -17,8 +17,6 @@ interface CalibrationSample extends GeoPoint { x: number; y: number; }
 interface BBoxDraw { x1: number; y1: number; x2: number; y2: number; }
 interface MapBounds { north: number; south: number; east: number; west: number; }
 
-const EPS = 1e-6;
-
 export interface SelectionMapOverlayProps {
   iframeRef: React.RefObject<HTMLIFrameElement | null>;
   deletionMode: boolean;
@@ -50,7 +48,6 @@ export const SelectionMapOverlay: React.FC<SelectionMapOverlayProps> = ({
   const [calibrationReady, setCalibrationReady] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [isPanning, setIsPanning] = useState(false);
-  const [currentBounds, setCurrentBounds] = useState<MapBounds | null>(null);
 
   const mousePosRef = useRef<ScreenPoint | null>(null);
   const coordsRef = useRef<GeoPoint | null>(null);
@@ -94,7 +91,6 @@ export const SelectionMapOverlay: React.FC<SelectionMapOverlayProps> = ({
     if (w <= 0 || h <= 0) return;
     if (!Number.isFinite(bounds.north) || !Number.isFinite(bounds.south) || !Number.isFinite(bounds.east) || !Number.isFinite(bounds.west)) return;
     currentBoundsRef.current = bounds;
-    setCurrentBounds(bounds);
     samplesRef.current = [
       { x: 0, y: 0, lat: bounds.north, lng: bounds.west },
       { x: w, y: 0, lat: bounds.north, lng: bounds.east },
@@ -150,7 +146,6 @@ export const SelectionMapOverlay: React.FC<SelectionMapOverlayProps> = ({
 
     const b = { north: n, south: s, east: e, west: wst };
     currentBoundsRef.current = b;
-    setCurrentBounds(b);
     samplesRef.current = [
       { x: 0, y: 0, lat: n, lng: wst },
       { x: w, y: 0, lat: n, lng: e },
@@ -273,10 +268,6 @@ export const SelectionMapOverlay: React.FC<SelectionMapOverlayProps> = ({
       if (!b) return;
 
       if (Math.abs(b.x2 - b.x1) < 5 && Math.abs(b.y2 - b.y1) < 5) return;
-
-      const rect = containerRef.current?.getBoundingClientRect();
-      const w = rect?.width || 800;
-      const h = rect?.height || 640;
 
       const bounds = currentBoundsRef.current;
       if (!bounds || !Number.isFinite(bounds.north) || !Number.isFinite(bounds.south) || !Number.isFinite(bounds.east) || !Number.isFinite(bounds.west)) {
@@ -429,7 +420,11 @@ export const SelectionMapOverlay: React.FC<SelectionMapOverlayProps> = ({
               <Crosshair size={11} className="text-sky-400" /> Dynamic Selection Active
             </span>
             <span className="px-2.5 py-1.5 rounded-md text-[11px] font-semibold text-white bg-slate-900/90 border border-white/15 shadow-md backdrop-blur-sm">
-              {selectedPoints && selectedPoints.length > 0 ? `${selectedPoints.length} Point(s) Selected` : `${selectedSubgrids.length} Subgrid(s) Selected`}
+              {selectedPoints && selectedPoints.length > 0
+                ? `${selectedPoints.length} Point(s) Selected`
+                : selectedSubgrids.length > 0
+                ? `${selectedSubgrids.length} Subgrid(s) Selected`
+                : 'No Point Selected'}
             </span>
           </>
         )}

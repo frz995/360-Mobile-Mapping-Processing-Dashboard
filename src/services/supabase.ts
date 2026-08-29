@@ -1128,6 +1128,109 @@ export async function deleteFromSupabase(subgrid: string): Promise<{ success: bo
   }
 }
 
+export interface RecycleBinItem {
+  id: string;
+  subgrid: string;
+  grid?: string;
+  type: 'partial_points' | 'whole_subgrid';
+  deleted_at: string;
+  deleted_by: string;
+  poi_count: number;
+  km_processed: number;
+  points: {
+    filename?: string;
+    pointId?: string;
+    lat: number;
+    lng: number;
+    bearing?: number;
+    pitch?: number;
+    roll?: number;
+  }[];
+  original_record?: any;
+}
+
+export const RECYCLE_BIN_TABLE = 'survey_recycle_bin';
+
+/**
+ * Save deleted subgrid or points to Supabase Recycle Bin.
+ */
+export async function saveToRecycleBinInSupabase(item: RecycleBinItem): Promise<boolean> {
+  try {
+    const { error } = await supabase.from(RECYCLE_BIN_TABLE).insert([{
+      id: item.id,
+      subgrid: item.subgrid,
+      grid: item.grid || '1',
+      type: item.type,
+      deleted_at: item.deleted_at,
+      deleted_by: item.deleted_by,
+      poi_count: item.poi_count,
+      km_processed: item.km_processed,
+      points: item.points,
+      original_record: item.original_record
+    }]);
+
+    if (error) {
+      console.warn('saveToRecycleBinInSupabase Supabase insert note:', error.message);
+    }
+  } catch (err) {
+    console.warn('saveToRecycleBinInSupabase catch:', err);
+  }
+
+  try {
+    const existing: RecycleBinItem[] = JSON.parse(localStorage.getItem('geosphere360_recycle_bin') || '[]');
+    const updated = [item, ...existing.filter(x => x.id !== item.id)];
+    localStorage.setItem('geosphere360_recycle_bin', JSON.stringify(updated));
+  } catch { }
+
+  return true;
+}
+
+/**
+ * Fetch all items currently stored in the Recycle Bin.
+ */
+export async function fetchRecycleBinFromSupabase(): Promise<RecycleBinItem[]> {
+  let dbItems: RecycleBinItem[] = [];
+  try {
+    const { data, error } = await supabase
+      .from(RECYCLE_BIN_TABLE)
+      .select('*')
+      .order('deleted_at', { ascending: false });
+
+    if (!error && Array.isArray(data)) {
+      dbItems = data as RecycleBinItem[];
+    }
+  } catch { }
+
+  try {
+    const localItems: RecycleBinItem[] = JSON.parse(localStorage.getItem('geosphere360_recycle_bin') || '[]');
+    const idSet = new Set(dbItems.map(i => i.id));
+    const merged = [...dbItems];
+    localItems.forEach(l => {
+      if (!idSet.has(l.id)) merged.push(l);
+    });
+    return merged.sort((a, b) => new Date(b.deleted_at).getTime() - new Date(a.deleted_at).getTime());
+  } catch {
+    return dbItems;
+  }
+}
+
+/**
+ * Remove an item permanently from the Recycle Bin.
+ */
+export async function deleteFromRecycleBinInSupabase(id: string): Promise<boolean> {
+  try {
+    await supabase.from(RECYCLE_BIN_TABLE).delete().eq('id', id);
+  } catch { }
+
+  try {
+    const existing: RecycleBinItem[] = JSON.parse(localStorage.getItem('geosphere360_recycle_bin') || '[]');
+    const updated = existing.filter(x => x.id !== id);
+    localStorage.setItem('geosphere360_recycle_bin', JSON.stringify(updated));
+  } catch { }
+
+  return true;
+}
+
 /**
  * Real-time update of defect count, QA status, and defect flags in Supabase database.
  * Supports updating both individual panotrack image records and subgrid aggregates.
