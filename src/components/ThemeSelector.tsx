@@ -357,7 +357,7 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                                                 <div className="flex items-center gap-2">
                                                     <h4 className="text-xs font-semibold text-text-base">{preset.name}</h4>
                                                     <span
-                                                        className="text-[9px] px-1.5 py-0.2 rounded font-mono border"
+                                                        className="text-[9px] px-1.5 py-0.2 rounded font-sans border"
                                                         style={{
                                                             backgroundColor: preset.accentBg,
                                                             color: preset.accent,
@@ -367,7 +367,7 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                                                         {preset.badge}
                                                     </span>
                                                     {isCurrentlyActive && (
-                                                        <span className="text-[9px] text-emerald-400 font-medium font-mono">
+                                                        <span className="text-[9px] text-emerald-400 font-medium font-sans">
                                                             (Active)
                                                         </span>
                                                     )}
@@ -403,7 +403,7 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                             Live Dashboard Preview
                         </div>
                         <span
-                            className="text-[10px] px-2 py-0.5 rounded border font-mono"
+                            className="text-[10px] px-2 py-0.5 rounded border font-sans"
                             style={{
                                 backgroundColor: stagedObj.accentBg,
                                 color: stagedObj.accent,
@@ -452,7 +452,7 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
 
                             <div className="flex items-center gap-2">
                                 <span
-                                    className="px-2 py-0.5 rounded text-[10px] font-mono font-bold"
+                                    className="px-2 py-0.5 rounded text-[10px] font-sans font-bold"
                                     style={{
                                         backgroundColor: stagedObj.accentBg,
                                         color: stagedObj.accent,
@@ -585,7 +585,7 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                                 </div>
 
                                 {/* Map Bottom Status */}
-                                <div className="p-2.5 flex items-center justify-between z-10 pointer-events-none text-[8px] font-mono">
+                                <div className="p-2.5 flex items-center justify-between z-10 pointer-events-none text-[8px] font-sans">
                                     <span
                                         className="px-2 py-0.5 rounded border pointer-events-auto"
                                         style={{
@@ -614,7 +614,7 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                                             <span className="text-[9px] font-semibold uppercase tracking-wider" style={{ color: stagedObj.textPrimary }}>
                                                 Processing Admin
                                             </span>
-                                            <span className="text-[8px] font-mono" style={{ color: stagedObj.textMuted }}>
+                                            <span className="text-[8px] font-sans" style={{ color: stagedObj.textMuted }}>
                                                 {batchLogs.length} Batches
                                             </span>
                                         </div>
@@ -631,7 +631,7 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                                                                 backgroundColor: stagedObj.innerCard
                                                             }}
                                                         >
-                                                            <span className="font-mono font-medium" style={{ color: stagedObj.textPrimary }}>{row.subgrid || `SG-${idx + 1}`}</span>
+                                                            <span className="font-sans font-medium" style={{ color: stagedObj.textPrimary }}>{row.subgrid || `SG-${idx + 1}`}</span>
                                                             <span style={{ color: stagedObj.textMuted }}>{frameCount} frames</span>
                                                             <span className="font-medium text-amber-500">{row.status || 'Ongoing'}</span>
                                                         </div>
@@ -647,7 +647,7 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
 
                                     <div className="pt-1 border-t flex items-center justify-between text-[7.5px]" style={{ borderColor: stagedObj.borderSubtle, color: stagedObj.textMuted }}>
                                         <span>Pipeline Status</span>
-                                        <span className="font-mono text-emerald-500">Operational</span>
+                                        <span className="font-sans text-emerald-500">Operational</span>
                                     </div>
                                 </div>
 

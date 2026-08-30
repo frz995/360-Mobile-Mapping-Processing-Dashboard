@@ -222,20 +222,20 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
                 <h2 className="text-sm sm:text-base font-semibold tracking-tight text-text-base truncate">
                   {mode === 'daily' ? 'Daily Batch Acquisition QC Review' : 'Masterlist Acquisition QC Review'}
                 </h2>
-                <span className="px-2 py-0.5 rounded-md text-[11px] font-mono font-semibold bg-blue-500/15 text-blue-300 border border-blue-500/30 shrink-0">
+                <span className="px-2 py-0.5 rounded-md text-[11px] font-sans font-semibold bg-blue-500/15 text-blue-300 border border-blue-500/30 shrink-0">
                   {cleanSubgrid}
                 </span>
                 {mode === 'daily' ? (
-                  <span className="px-2 py-0.5 rounded-md text-[11px] font-mono font-medium bg-sky-500/15 text-sky-300 border border-sky-500/30 shrink-0">
+                  <span className="px-2 py-0.5 rounded-md text-[11px] font-sans font-medium bg-sky-500/15 text-sky-300 border border-sky-500/30 shrink-0">
                     Daily {surveyDate ? `• ${surveyDate}` : ''}
                   </span>
                 ) : (
-                  <span className="px-2 py-0.5 rounded-md text-[11px] font-mono font-medium bg-amber-500/15 text-amber-300 border border-amber-500/30 shrink-0">
+                  <span className="px-2 py-0.5 rounded-md text-[11px] font-sans font-medium bg-amber-500/15 text-amber-300 border border-amber-500/30 shrink-0">
                     Master Subgrid
                   </span>
                 )}
                 {totalPoi !== undefined && totalPoi > 0 && (
-                  <span className="px-2 py-0.5 rounded-md text-[11px] font-mono bg-inner text-text-base border border-subtle shrink-0">
+                  <span className="px-2 py-0.5 rounded-md text-[11px] font-sans bg-inner text-text-base border border-subtle shrink-0">
                     {totalPoi} POI
                   </span>
                 )}
@@ -385,7 +385,7 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
 
                       {/* Station Badge Overlay */}
                       <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5 z-10">
-                        <span className="px-2 py-0.5 rounded text-[10px] font-mono font-medium bg-black/80 backdrop-blur-md text-slate-100 border border-white/10 shadow">
+                        <span className="px-2 py-0.5 rounded text-[10px] font-sans font-medium bg-black/80 backdrop-blur-md text-slate-100 border border-white/10 shadow">
                           #{defect.frame_index || 1}
                         </span>
                         {isResolved ? (
@@ -411,9 +411,9 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
 
                       {/* Bottom Overlay Info */}
                       <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent p-2.5 pt-6 flex items-center justify-between text-[11px] text-slate-300">
-                        <span className="font-mono truncate font-medium text-slate-100">{ptId}</span>
+                        <span className="font-sans truncate font-medium text-slate-100">{ptId}</span>
                         {defect.bearing !== undefined && (
-                          <span className="text-[10px] text-slate-400 font-mono shrink-0">
+                          <span className="text-[10px] text-slate-400 font-sans shrink-0">
                             {Number(defect.bearing).toFixed(0)}°
                           </span>
                         )}
@@ -455,7 +455,7 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
                           <div className="flex items-center gap-1.5 truncate">
                             <MapPin size={11} className="text-text-muted shrink-0" />
                             {defect.lat && defect.lng ? (
-                              <span className="font-mono text-text-base">
+                              <span className="font-sans text-text-base">
                                 {Number(defect.lat).toFixed(5)}°, {Number(defect.lng).toFixed(5)}°
                               </span>
                             ) : (
@@ -468,7 +468,7 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
                               {defect.pic || 'Inspector'}
                             </span>
                             {defect.created_at && (
-                              <span className="flex items-center gap-1 font-mono">
+                              <span className="flex items-center gap-1 font-sans">
                                 <Clock size={10} />
                                 {new Date(defect.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                               </span>
@@ -552,13 +552,13 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
             {/* TOP LIGHTBOX BAR */}
             <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 shrink-0 bg-inner rounded-xl border border-subtle shadow-xl z-10">
               <div className="flex items-center gap-2.5 min-w-0">
-                <span className="px-2 py-0.5 rounded text-xs font-mono font-bold bg-inner text-text-base border border-subtle">
+                <span className="px-2 py-0.5 rounded text-xs font-sans font-bold bg-inner text-text-base border border-subtle">
                   #{lightboxDefect.frame_index || 1}
                 </span>
-                <span className="font-mono text-sm font-semibold text-text-base truncate">
+                <span className="font-sans text-sm font-semibold text-text-base truncate">
                   {ptId}
                 </span>
-                <span className="px-2 py-0.5 rounded text-xs font-mono bg-inner text-text-muted border border-subtle hidden sm:inline">
+                <span className="px-2 py-0.5 rounded text-xs font-sans bg-inner text-text-muted border border-subtle hidden sm:inline">
                   {lightboxDefect.subgrid}
                 </span>
                 {lightboxDefect.is_resolved ? (
@@ -586,7 +586,7 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
                   >
                     <ZoomOut size={13} />
                   </button>
-                  <span className="px-1.5 text-[11px] font-mono text-text-base min-w-[42px] text-center">
+                  <span className="px-1.5 text-[11px] font-sans text-text-base min-w-[42px] text-center">
                     {Math.round(lightboxZoom * 100)}%
                   </span>
                   <button
@@ -688,7 +688,7 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
                 </span>
               </div>
 
-              <div className="flex items-center gap-4 text-[11px] font-mono text-text-muted">
+              <div className="flex items-center gap-4 text-[11px] font-sans text-text-muted">
                 {lightboxDefect.lat && lightboxDefect.lng && (
                   <span className="flex items-center gap-1 text-text-base">
                     <MapPin size={12} className="text-text-muted" />

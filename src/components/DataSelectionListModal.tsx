@@ -185,7 +185,7 @@ export const DataSelectionListModal: React.FC<DataSelectionListModalProps> = ({
             <span className="text-[10px] text-text-muted uppercase font-bold tracking-wider block mb-1">
               Subgrids Selected
             </span>
-            <span className={`text-base font-bold font-mono ${selectedSubgrids.length > 0 ? 'text-sky-400' : 'text-text-muted'}`}>
+            <span className={`text-base font-bold font-sans ${selectedSubgrids.length > 0 ? 'text-sky-400' : 'text-text-muted'}`}>
               {selectedSubgrids.length}
             </span>
           </div>
@@ -193,7 +193,7 @@ export const DataSelectionListModal: React.FC<DataSelectionListModalProps> = ({
             <span className="text-[10px] text-text-muted uppercase font-bold tracking-wider block mb-1">
               Points Selected
             </span>
-            <span className="text-base font-bold font-mono">
+            <span className="text-base font-bold font-sans">
               <span className={totalSelectedPointsCount > 0 ? 'text-sky-400' : 'text-text-muted'}>
                 {totalSelectedPointsCount}
               </span>{' '}
@@ -206,7 +206,7 @@ export const DataSelectionListModal: React.FC<DataSelectionListModalProps> = ({
             <span className="text-[10px] text-text-muted uppercase font-bold tracking-wider block mb-1">
               Remaining Frames
             </span>
-            <div className="text-base font-bold font-mono">
+            <div className="text-base font-bold font-sans">
               <span className={remainingFramesCount > 0 ? 'text-sky-400' : 'text-text-muted'}>
                 {remainingFramesCount}
               </span>
@@ -319,10 +319,10 @@ export const DataSelectionListModal: React.FC<DataSelectionListModalProps> = ({
                         >
                           {isExpanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
                         </button>
-                        <span className="font-mono font-bold text-xs text-text-base">
+                        <span className="font-sans font-bold text-xs text-text-base">
                           {norm}
                         </span>
-                        <span className="text-[10px] font-mono font-normal text-text-muted bg-inner border border-subtle px-2 py-0.5 rounded-md flex items-center gap-1.5">
+                        <span className="text-[10px] font-sans font-normal text-text-muted bg-inner border border-subtle px-2 py-0.5 rounded-md flex items-center gap-1.5">
                           <span>
                             {isAllSelected
                               ? `All ${allPoints.length} points`
@@ -386,7 +386,7 @@ export const DataSelectionListModal: React.FC<DataSelectionListModalProps> = ({
                                   <th className="px-3 py-2 text-right">Status</th>
                                 </tr>
                               </thead>
-                              <tbody className="divide-y divide-subtle font-mono text-[11px]">
+                              <tbody className="divide-y divide-subtle font-sans text-[11px]">
                                 {allPoints.map((p, idx) => {
                                   const pFilename =
                                     p.filename ||
@@ -446,24 +446,24 @@ export const DataSelectionListModal: React.FC<DataSelectionListModalProps> = ({
                                         isChecked ? 'bg-sky-500/5' : ''
                                       }`}
                                     >
-                                      <td className="px-3 py-1.5 text-text-muted font-mono text-[10px]">
+                                      <td className="px-3 py-1.5 text-text-muted font-sans text-[10px]">
                                         {isChecked ? (
                                           <CheckSquare size={13} className="text-sky-400" />
                                         ) : (
                                           <Square size={13} className="text-text-muted" />
                                         )}
                                       </td>
-                                      <td className="px-3 py-1.5 font-mono text-text-base flex items-center gap-1.5">
+                                      <td className="px-3 py-1.5 font-sans text-text-base flex items-center gap-1.5">
                                         <FileText size={11} className="text-text-muted shrink-0" />
                                         <span>{pFilename}</span>
                                       </td>
-                                      <td className="px-3 py-1.5 font-mono text-text-muted">
+                                      <td className="px-3 py-1.5 font-sans text-text-muted">
                                         {p.lat.toFixed(5)}
                                       </td>
-                                      <td className="px-3 py-1.5 font-mono text-text-muted">
+                                      <td className="px-3 py-1.5 font-sans text-text-muted">
                                         {p.lng.toFixed(5)}
                                       </td>
-                                      <td className="px-3 py-1.5 text-center font-mono text-[10px]">
+                                      <td className="px-3 py-1.5 text-center font-sans text-[10px]">
                                         {isAvailableInBucket ? (
                                           <span className="px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold">
                                             Yes
@@ -476,11 +476,11 @@ export const DataSelectionListModal: React.FC<DataSelectionListModalProps> = ({
                                       </td>
                                       <td className="px-3 py-1.5 text-right font-sans font-medium text-[10px]">
                                         {isChecked ? (
-                                          <span className="text-sky-400 font-mono font-semibold">
+                                          <span className="text-sky-400 font-sans font-semibold">
                                             Selected
                                           </span>
                                         ) : (
-                                          <span className="text-text-muted font-mono">
+                                          <span className="text-text-muted font-sans">
                                             Excluded
                                           </span>
                                         )}
@@ -514,7 +514,7 @@ export const DataSelectionListModal: React.FC<DataSelectionListModalProps> = ({
                 </div>
               </div>
 
-              <div className="p-3.5 bg-inner/60 border border-subtle rounded-xl text-xs space-y-1.5 font-mono">
+              <div className="p-3.5 bg-inner/60 border border-subtle rounded-xl text-xs space-y-1.5 font-sans">
                 <div className="flex justify-between text-text-muted">
                   <span>Subgrids Targeted:</span>
                   <strong className="text-text-base font-bold">{selectedSubgrids.length}</strong>
@@ -527,14 +527,14 @@ export const DataSelectionListModal: React.FC<DataSelectionListModalProps> = ({
 
               <div className="space-y-2">
                 <label className="block text-xs font-medium text-text-base">
-                  To confirm deletion, please type <strong className="font-mono text-rose-400 font-bold">DELETE</strong> below:
+                  To confirm deletion, please type <strong className="font-sans text-rose-400 font-bold">DELETE</strong> below:
                 </label>
                 <input
                   type="text"
                   value={deleteInputText}
                   onChange={(e) => setDeleteInputText(e.target.value)}
                   placeholder="Type DELETE..."
-                  className="w-full bg-inner border border-subtle focus:border-rose-500/70 rounded-xl px-3.5 py-2 text-xs font-mono text-text-base placeholder-text-muted focus:outline-none uppercase tracking-wider"
+                  className="w-full bg-inner border border-subtle focus:border-rose-500/70 rounded-xl px-3.5 py-2 text-xs font-sans text-text-base placeholder-text-muted focus:outline-none uppercase tracking-wider"
                   autoFocus
                 />
               </div>

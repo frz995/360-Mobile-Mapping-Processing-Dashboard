@@ -98,11 +98,11 @@ export const WebGISHUDViewerOverlay: FC<WebGISHUDOverlayProps> = ({
                             style={{ backgroundColor: 'var(--accent)' }}
                             className="w-1.5 h-1.5 rounded-full animate-pulse shadow-sm shrink-0"
                         />
-                        <span style={{ color: 'var(--text-primary)' }} className="font-mono text-[10px] font-bold tracking-tight truncate max-w-[120px] sm:max-w-[160px]">
+                        <span style={{ color: 'var(--text-primary)' }} className="font-sans text-[10px] font-bold tracking-tight truncate max-w-[120px] sm:max-w-[160px]">
                             {imageName || `Station-${currentIndex + 1}`}
                         </span>
                     </div>
-                    <div style={{ color: 'var(--text-muted)' }} className="text-[9px] font-mono leading-none mt-0.5">
+                    <div style={{ color: 'var(--text-muted)' }} className="text-[9px] font-sans leading-none mt-0.5">
                         Station <span style={{ color: 'var(--text-primary)' }} className="font-semibold">{currentIndex + 1}</span> of {totalFrames}
                     </div>
                 </div>
@@ -113,7 +113,7 @@ export const WebGISHUDViewerOverlay: FC<WebGISHUDOverlayProps> = ({
                         borderColor: 'var(--border-subtle)',
                         boxShadow: 'var(--card-shadow)',
                     }}
-                    className="pointer-events-auto backdrop-blur-md border px-2 py-0.5 rounded-lg text-right font-mono transition-colors duration-200"
+                    className="pointer-events-auto backdrop-blur-md border px-2 py-0.5 rounded-lg text-right font-sans transition-colors duration-200"
                 >
                     <div className="text-[9.5px] leading-tight">
                         <span style={{ color: 'var(--text-muted)' }}>GPS: </span>
@@ -135,7 +135,7 @@ export const WebGISHUDViewerOverlay: FC<WebGISHUDOverlayProps> = ({
                         borderColor: 'var(--border-subtle)',
                         boxShadow: 'var(--card-shadow)',
                     }}
-                    className="pointer-events-auto backdrop-blur-md border px-2 py-1 rounded-lg font-mono text-[9.5px] flex items-center gap-1.5 transition-colors duration-200 shrink-0 z-0"
+                    className="pointer-events-auto backdrop-blur-md border px-2 py-1 rounded-lg font-sans text-[9.5px] flex items-center gap-1.5 transition-colors duration-200 shrink-0 z-0"
                 >
                     <Navigation style={{ color: 'var(--accent)' }} className="w-2.5 h-2.5 rotate-45 shrink-0" />
                     <span style={{ color: 'var(--text-primary)' }} className="font-semibold whitespace-nowrap">
@@ -195,7 +195,7 @@ export const WebGISHUDViewerOverlay: FC<WebGISHUDOverlayProps> = ({
                         <div style={{ backgroundColor: 'var(--border-subtle)' }} className="h-2.5 w-[1px] mx-0.5" />
 
                         {/* Frame Counter */}
-                        <div className="flex items-center gap-0.5 px-0.5 font-mono text-[9.5px] font-bold whitespace-nowrap">
+                        <div className="flex items-center gap-0.5 px-0.5 font-sans text-[9.5px] font-bold whitespace-nowrap">
                             <span style={{ color: 'var(--text-primary)' }}>{totalFrames > 0 ? currentIndex + 1 : 0}</span>
                             <span style={{ color: 'var(--text-muted)' }}>/</span>
                             <span style={{ color: 'var(--text-muted)' }}>{totalFrames}</span>
@@ -250,7 +250,7 @@ export const WebGISHUDViewerOverlay: FC<WebGISHUDOverlayProps> = ({
                         type="button"
                         onClick={() => setIsTrackLocked((prev) => !prev)}
                         title="Toggle Trajectory Bearing Lock"
-                        className="flex items-center gap-1 font-mono text-[9px] hover:text-[var(--accent)] transition-all cursor-pointer"
+                        className="flex items-center gap-1 font-sans text-[9px] hover:text-[var(--accent)] transition-all cursor-pointer"
                     >
                         <Compass className="w-2.5 h-2.5 text-amber-400 shrink-0" />
                         <span style={{ color: 'var(--text-primary)' }} className="font-bold whitespace-nowrap">

@@ -20,6 +20,7 @@ import type {
   WorkstationStationConfig
 } from '../../types/production';
 import { DEFAULT_4_WORKSTATIONS } from '../../types/production';
+import { Surface } from './chrome';
 
 export interface ProvidersPanelProps {
   projectSettings: ExtendedProjectSettings;
@@ -128,28 +129,23 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({
   };
 
   return (
-    <div className="flex flex-col gap-4 min-h-0">
-      {/* Top Header & Save Toolbar */}
+    <Surface className="flex flex-col gap-4 min-h-0 p-4">
+      {/* Section label + Save strip */}
       <div className="flex items-center justify-between gap-4 flex-wrap pb-1">
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 bg-inner text-text-base rounded-xl border border-subtle shrink-0">
-            <Monitor size={20} />
-          </div>
-          <div>
-            <h2 className="text-sm font-bold text-text-base tracking-wide">
-              Processing Engine &amp; Workstations
-            </h2>
-            <p className="text-[11px] text-text-muted mt-0.5">
-              Select primary execution model and configure workstation directory routing
-            </p>
-          </div>
+        <div>
+          <h2 className="text-sm font-bold text-text-base tracking-wide">
+            Processing Engine &amp; Workstations
+          </h2>
+          <p className="text-[11px] text-text-muted mt-0.5">
+            Select primary execution model and configure workstation directory routing
+          </p>
         </div>
 
         {!isGuestUser && (
           <button
             onClick={saveAll}
             disabled={saving}
-            className="flex items-center gap-2 px-4 py-2 bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs rounded-xl shadow-sm transition-all cursor-pointer disabled:opacity-50"
+            className="flex items-center gap-2 px-4 py-2 bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs rounded-lg shadow-sm transition-all cursor-pointer disabled:opacity-50"
           >
             <Save size={14} />
             <span>{saving ? 'Saving...' : 'Save Configuration'}</span>
@@ -157,89 +153,81 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({
         )}
       </div>
 
-      {/* Symmetrical Dual-Engine Selector Cards */}
+      {/* Symmetrical Dual-Engine Selector */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
         {/* Mode 1: 4-PC Workstations */}
         <div
           onClick={() => !isGuestUser && setApi({ processingEngineMode: 'multi_pc_workstations' })}
-          className={`p-4 rounded-xl border transition-all cursor-pointer flex flex-col justify-between gap-3 ${
+          className={`rounded-lg border transition-all cursor-pointer flex items-center gap-3 px-4 py-3 ${
             engineMode === 'multi_pc_workstations'
-              ? 'bg-inner/90 border-sky-500/60 shadow-sm ring-1 ring-sky-500/30'
-              : 'bg-card border-subtle hover:border-subtle/90 opacity-70 hover:opacity-100'
+              ? 'bg-inner/60 border-sky-500/50'
+              : 'bg-inner/40 border-subtle hover:border-subtle/80 opacity-70 hover:opacity-100'
           }`}
         >
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className={`p-2 rounded-lg border ${
+          <div className={`p-2 rounded-lg border ${
+            engineMode === 'multi_pc_workstations'
+              ? 'bg-card text-sky-400 border-sky-500/40'
+              : 'bg-inner text-text-muted border-subtle'
+          }`}>
+            <Monitor size={18} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <h3 className="text-xs font-bold text-text-base">4-Station Multi-PC Workflow</h3>
+              <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border uppercase ${
                 engineMode === 'multi_pc_workstations'
-                  ? 'bg-card text-sky-400 border-sky-500/40'
+                  ? 'bg-sky-500/10 text-sky-300 border-sky-500/30'
                   : 'bg-inner text-text-muted border-subtle'
               }`}>
-                <Monitor size={18} />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="text-xs font-bold text-text-base">4-Station Multi-PC Workflow</h3>
-                  <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border uppercase ${
-                    engineMode === 'multi_pc_workstations'
-                      ? 'bg-sky-500/10 text-sky-300 border-sky-500/30'
-                      : 'bg-inner text-text-muted border-subtle'
-                  }`}>
-                    {engineMode === 'multi_pc_workstations' ? 'Active Mode' : 'Standby'}
-                  </span>
-                </div>
-                <p className="text-[11px] text-text-muted mt-1">
-                  Sequential desktop handoff across Stitching, Privacy Blur, Lightroom, and Photoshop PCs
-                </p>
-              </div>
+                {engineMode === 'multi_pc_workstations' ? 'Active Mode' : 'Standby'}
+              </span>
             </div>
-            <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 mt-0.5 ${
-              engineMode === 'multi_pc_workstations' ? 'border-sky-400 bg-sky-500 text-slate-950' : 'border-subtle bg-inner'
-            }`}>
-              {engineMode === 'multi_pc_workstations' && <Check size={10} className="stroke-[3]" />}
-            </div>
+            <p className="text-[11px] text-text-muted mt-1">
+              Sequential desktop handoff across Stitching, Privacy Blur, Lightroom, and Photoshop PCs
+            </p>
+          </div>
+          <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${
+            engineMode === 'multi_pc_workstations' ? 'border-sky-400 bg-sky-500 text-slate-950' : 'border-subtle bg-inner'
+          }`}>
+            {engineMode === 'multi_pc_workstations' && <Check size={10} className="stroke-[3]" />}
           </div>
         </div>
 
         {/* Mode 2: GPU Worker */}
         <div
           onClick={() => !isGuestUser && setApi({ processingEngineMode: 'gpu_worker' })}
-          className={`p-4 rounded-xl border transition-all cursor-pointer flex flex-col justify-between gap-3 ${
+          className={`rounded-lg border transition-all cursor-pointer flex items-center gap-3 px-4 py-3 ${
             engineMode === 'gpu_worker'
-              ? 'bg-inner/90 border-sky-500/60 shadow-sm ring-1 ring-sky-500/30'
-              : 'bg-card border-subtle hover:border-subtle/90 opacity-70 hover:opacity-100'
+              ? 'bg-inner/60 border-sky-500/50'
+              : 'bg-inner/40 border-subtle hover:border-subtle/80 opacity-70 hover:opacity-100'
           }`}
         >
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className={`p-2 rounded-lg border ${
+          <div className={`p-2 rounded-lg border ${
+            engineMode === 'gpu_worker'
+              ? 'bg-card text-sky-400 border-sky-500/40'
+              : 'bg-inner text-text-muted border-subtle'
+          }`}>
+            <Cpu size={18} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <h3 className="text-xs font-bold text-text-base">Automated NAS GPU Worker</h3>
+              <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border uppercase ${
                 engineMode === 'gpu_worker'
-                  ? 'bg-card text-sky-400 border-sky-500/40'
+                  ? 'bg-sky-500/10 text-sky-300 border-sky-500/30'
                   : 'bg-inner text-text-muted border-subtle'
               }`}>
-                <Cpu size={18} />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="text-xs font-bold text-text-base">Automated NAS GPU Worker</h3>
-                  <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border uppercase ${
-                    engineMode === 'gpu_worker'
-                      ? 'bg-sky-500/10 text-sky-300 border-sky-500/30'
-                      : 'bg-inner text-text-muted border-subtle'
-                  }`}>
-                    {engineMode === 'gpu_worker' ? 'Active Mode' : 'Standby'}
-                  </span>
-                </div>
-                <p className="text-[11px] text-text-muted mt-1">
-                  Automated headless execution via background FastAPI daemon + PyTorch CUDA worker
-                </p>
-              </div>
+                {engineMode === 'gpu_worker' ? 'Active Mode' : 'Standby'}
+              </span>
             </div>
-            <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 mt-0.5 ${
-              engineMode === 'gpu_worker' ? 'border-sky-400 bg-sky-500 text-slate-950' : 'border-subtle bg-inner'
-            }`}>
-              {engineMode === 'gpu_worker' && <Check size={10} className="stroke-[3]" />}
-            </div>
+            <p className="text-[11px] text-text-muted mt-1">
+              Automated headless execution via background FastAPI daemon + PyTorch CUDA worker
+            </p>
+          </div>
+          <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${
+            engineMode === 'gpu_worker' ? 'border-sky-400 bg-sky-500 text-slate-950' : 'border-subtle bg-inner'
+          }`}>
+            {engineMode === 'gpu_worker' && <Check size={10} className="stroke-[3]" />}
           </div>
         </div>
       </div>
@@ -263,7 +251,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({
               return (
                 <div
                   key={ws.id}
-                  className="bg-inner/60 border border-subtle rounded-xl p-4 space-y-3.5 hover:border-subtle transition-all shadow-sm"
+                  className="bg-inner/50 border border-subtle rounded-lg p-4 space-y-3.5 hover:border-subtle/80 transition-all"
                 >
                   <div className="flex items-center justify-between border-b border-subtle pb-2.5">
                     <div className="flex items-center gap-2">
@@ -278,7 +266,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({
                         className="bg-transparent font-bold text-xs text-text-base focus:outline-none border-b border-transparent focus:border-sky-500/40 w-48 truncate"
                       />
                     </div>
-                    <span className="text-[9px] font-mono font-bold px-2 py-0.5 rounded bg-card text-text-muted border border-subtle">
+                    <span className="text-[9px] font-sans font-bold px-2 py-0.5 rounded bg-card text-text-muted border border-subtle">
                       STEP {ws.stepNumber}
                     </span>
                   </div>
@@ -313,7 +301,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({
                         NAS Input Folder
                       </label>
                       <input
-                        className="w-full bg-card border border-subtle rounded-lg px-3 py-1.5 text-xs font-mono text-text-base outline-none focus:border-sky-500/60 transition-colors"
+                        className="w-full bg-card border border-subtle rounded-lg px-3 py-1.5 text-xs font-sans text-text-base outline-none focus:border-sky-500/60 transition-colors"
                         disabled={isGuestUser}
                         value={ws.sourceFolderTemplate}
                         onChange={(e) => handleStationChange(idx, { sourceFolderTemplate: e.target.value })}
@@ -325,7 +313,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({
                         NAS Output Folder
                       </label>
                       <input
-                        className="w-full bg-card border border-subtle rounded-lg px-3 py-1.5 text-xs font-mono text-text-base outline-none focus:border-sky-500/60 transition-colors"
+                        className="w-full bg-card border border-subtle rounded-lg px-3 py-1.5 text-xs font-sans text-text-base outline-none focus:border-sky-500/60 transition-colors"
                         disabled={isGuestUser}
                         value={ws.outputFolderTemplate}
                         onChange={(e) => handleStationChange(idx, { outputFolderTemplate: e.target.value })}
@@ -345,8 +333,8 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({
         </div>
       ) : (
         /* GPU Worker Settings */
-        <div className="bg-inner/60 border border-subtle rounded-xl p-4 space-y-3.5 shadow-sm">
-          <div className="flex items-center gap-2 border-b border-subtle pb-2.5">
+        <div className="bg-inner/50 border border-subtle rounded-lg p-4 space-y-3.5">
+          <div className="flex items-center gap-2 border-b border-divider pb-2.5">
             <Cpu size={15} className="text-sky-400" />
             <h3 className="text-xs font-bold text-text-base">Automated GPU Worker Configuration</h3>
           </div>
@@ -400,8 +388,8 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({
       )}
 
       {/* Custom Providers / External Tools Registry */}
-      <div className="bg-inner/40 border border-subtle rounded-xl p-4 shadow-sm space-y-3">
-        <div className="flex items-center justify-between">
+      <div className="border border-subtle rounded-lg overflow-hidden divide-y divide-divider">
+        <div className="flex items-center justify-between bg-inner/40 px-4 py-3">
           <div className="flex items-center gap-2">
             <ServerCog size={15} className="text-sky-400" />
             <h3 className="text-xs font-bold text-text-base">External Software &amp; Tool Registry</h3>
@@ -412,7 +400,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({
                 setDraft(EMPTY_PROVIDER);
                 setEditing(true);
               }}
-              className="flex items-center gap-1 px-3 py-1.5 bg-inner hover:bg-card border border-subtle text-text-base text-xs font-semibold rounded-lg transition-colors cursor-pointer"
+              className="flex items-center gap-1 px-3 py-1.5 bg-card hover:bg-inner border border-subtle text-text-base text-xs font-semibold rounded-lg transition-colors cursor-pointer"
             >
               <Plus size={13} /> Add Custom Tool
             </button>
@@ -420,7 +408,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({
         </div>
 
         {editing && !isGuestUser && (
-          <div className="bg-card border border-subtle rounded-xl p-3.5 grid grid-cols-1 md:grid-cols-4 gap-3 animate-in fade-in">
+          <div className="bg-card px-4 py-3.5 grid grid-cols-1 md:grid-cols-4 gap-3">
             <div>
               <label className="block text-[10px] uppercase tracking-wider text-text-muted font-semibold mb-1">Tool Name</label>
               <input
@@ -459,11 +447,11 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({
           </div>
         )}
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+        <div className="px-4 py-3 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
           {providers.map((p) => (
             <div
               key={`${p.name}-${p.software}`}
-              className="flex items-center justify-between gap-2 bg-card border border-subtle rounded-lg px-3.5 py-2.5"
+              className="flex items-center justify-between gap-2 bg-inner/40 border border-subtle rounded-lg px-3.5 py-2.5"
             >
               <div className="min-w-0">
                 <div className="text-xs font-semibold text-text-base truncate">{p.name}</div>
@@ -501,6 +489,6 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({
           )}
         </div>
       </div>
-    </div>
+    </Surface>
   );
 };

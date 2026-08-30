@@ -112,7 +112,7 @@ export const RawRegistryPanel: React.FC<RawRegistryPanelProps> = ({ api, dataset
 
   const cell = (count?: number, bytes?: number) =>
     count ? (
-      <div className="text-text-base font-mono">{count.toLocaleString()}
+      <div className="text-text-base font-sans">{count.toLocaleString()}
         <div className="text-[10px] text-text-muted font-sans">{formatBytes(bytes)}</div>
       </div>
     ) : (

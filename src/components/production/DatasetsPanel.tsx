@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import {
-  Database,
   Plus,
   Trash2,
   GitBranch,
@@ -18,6 +17,7 @@ import {
   formatBytes,
   formatDateTime
 } from './common';
+import { Surface } from './chrome';
 
 export interface DatasetsPanelProps {
   datasets: DatasetRecord[];
@@ -128,20 +128,21 @@ export const DatasetsPanel: React.FC<DatasetsPanelProps> = ({
   };
 
   return (
-    <div className="flex flex-col gap-4 min-h-0">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 bg-inner rounded-xl border border-subtle text-sky-400">
-            <Database size={20} />
-          </div>
-          <div>
-            <h2 className="text-sm font-bold text-text-base tracking-wide">Datasets</h2>
-            <span className="text-[11px] text-text-muted">{datasets.length} registered · metadata only, NAS holds all image bytes</span>
-          </div>
-        </div>
+    <Surface className="flex flex-col min-h-0">
+      {/* Toolbar */}
+      <div className="flex items-center justify-between gap-3 flex-wrap px-4 py-2.5 border-b border-divider">
+        <span className="text-[11px] text-text-muted">
+          {datasets.length} registered · metadata only, NAS holds all image bytes
+        </span>
         {!isGuestUser && (
-          <button onClick={() => setShowForm((s) => !s)}
-            className="flex items-center gap-1.5 px-3 py-2 bg-sky-500/15 hover:bg-sky-500/25 active:bg-sky-500/35 border border-sky-500/40 text-sky-300 text-xs font-semibold rounded-lg transition-colors cursor-pointer">
+          <button
+            onClick={() => setShowForm((s) => !s)}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs font-semibold transition-colors cursor-pointer ${
+              showForm
+                ? 'bg-sky-500/10 border-sky-500/30 text-sky-300'
+                : 'bg-sky-500/15 hover:bg-sky-500/25 border-sky-500/40 text-sky-300'
+            }`}
+          >
             {showForm ? <CheckCircle2 size={14} /> : <Plus size={14} />}
             {showForm ? 'Close Form' : 'Register Dataset'}
           </button>
@@ -149,64 +150,71 @@ export const DatasetsPanel: React.FC<DatasetsPanelProps> = ({
       </div>
 
       {showForm && !isGuestUser && (
-        <div className="bg-card border border-subtle rounded-xl p-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 animate-in fade-in zoom-in-98 duration-150">
-          <div>
-            <label className="text-[10px] uppercase tracking-wider text-text-muted font-semibold">Dataset Name *</label>
-            <input className={INPUT_CLASS} placeholder="Stitch+Blur N93E70" value={draft.name}
-              onChange={(e) => set('name', e.target.value)} />
+        <div className="border-b border-divider px-4 py-3.5 flex flex-col gap-3 animate-in fade-in duration-150">
+          <div className="flex items-center gap-2">
+            <Plus size={13} className="text-sky-400" />
+            <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted">New Dataset Registration</span>
           </div>
-          <div>
-            <label className="text-[10px] uppercase tracking-wider text-text-muted font-semibold">Type</label>
-            <select className={INPUT_CLASS} value={draft.dataset_type}
-              onChange={(e) => set('dataset_type', e.target.value as DatasetType)}>
-              {DATASET_TYPE_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="text-[10px] uppercase tracking-wider text-text-muted font-semibold">Pipeline Stage</label>
-            <div className="w-full bg-inner border border-subtle rounded-lg px-3 py-2 text-xs text-text-muted/60 select-none">
-              Panoramic-metadata
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+            <div>
+              <label className="text-[10px] uppercase tracking-wider text-text-muted font-semibold">Dataset Name *</label>
+              <input className={INPUT_CLASS} placeholder="Stitch+Blur N93E70" value={draft.name}
+                onChange={(e) => set('name', e.target.value)} />
             </div>
-          </div>
-          <div>
-            <label className="text-[10px] uppercase tracking-wider text-text-muted font-semibold">Subgrid</label>
-            <input className={INPUT_CLASS} placeholder="N93E70" value={draft.subgrid}
-              onChange={(e) => set('subgrid', e.target.value)} />
-          </div>
-          <div>
-            <label className="text-[10px] uppercase tracking-wider text-text-muted font-semibold">Provider / Software</label>
-            <div className="flex gap-2">
-              <input className={INPUT_CLASS} placeholder="Local PC" value={draft.provider}
-                onChange={(e) => set('provider', e.target.value)} />
-              <input className={`${INPUT_CLASS} w-24`} placeholder="v2.3" value={draft.software_version}
-                onChange={(e) => set('software_version', e.target.value)} />
+            <div>
+              <label className="text-[10px] uppercase tracking-wider text-text-muted font-semibold">Type</label>
+              <select className={INPUT_CLASS} value={draft.dataset_type}
+                onChange={(e) => set('dataset_type', e.target.value as DatasetType)}>
+                {DATASET_TYPE_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
             </div>
-          </div>
-          <div>
-            <label className="text-[10px] uppercase tracking-wider text-text-muted font-semibold">Source Folder (NAS)</label>
-            <input className={INPUT_CLASS} placeholder="RAW/N93E70" value={draft.source_folder}
-              onChange={(e) => set('source_folder', e.target.value)} />
-          </div>
-          <div>
-            <label className="text-[10px] uppercase tracking-wider text-text-muted font-semibold">Files / Size</label>
-            <div className="flex gap-2">
-              <input type="number" min={0} className={INPUT_CLASS} placeholder="count" value={draft.file_count || 0}
-                onChange={(e) => set('file_count', Number(e.target.value) || 0)} />
-              <input type="number" min={0} step={1024} className={INPUT_CLASS} placeholder="bytes" value={draft.size_bytes || 0}
-                onChange={(e) => set('size_bytes', Number(e.target.value) || 0)} />
+            <div>
+              <label className="text-[10px] uppercase tracking-wider text-text-muted font-semibold">Pipeline Stage</label>
+              <div className="w-full bg-inner border border-subtle rounded-lg px-3 py-2 text-xs text-text-muted/60 select-none">
+                Panoramic-metadata
+              </div>
             </div>
-          </div>
-          <div className="md:col-span-2 xl:col-span-4">
-            <button onClick={save}
-              className="px-4 py-2 bg-emerald-500/15 hover:bg-emerald-500/25 active:bg-emerald-500/35 border border-emerald-500/40 text-emerald-300 text-xs font-semibold rounded-lg transition-colors cursor-pointer">
-              Register Dataset
-            </button>
+            <div>
+              <label className="text-[10px] uppercase tracking-wider text-text-muted font-semibold">Subgrid</label>
+              <input className={INPUT_CLASS} placeholder="N93E70" value={draft.subgrid}
+                onChange={(e) => set('subgrid', e.target.value)} />
+            </div>
+            <div>
+              <label className="text-[10px] uppercase tracking-wider text-text-muted font-semibold">Provider / Software</label>
+              <div className="flex gap-2">
+                <input className={INPUT_CLASS} placeholder="Local PC" value={draft.provider}
+                  onChange={(e) => set('provider', e.target.value)} />
+                <input className={`${INPUT_CLASS} w-24`} placeholder="v2.3" value={draft.software_version}
+                  onChange={(e) => set('software_version', e.target.value)} />
+              </div>
+            </div>
+            <div>
+              <label className="text-[10px] uppercase tracking-wider text-text-muted font-semibold">Source Folder (NAS)</label>
+              <input className={INPUT_CLASS} placeholder="RAW/N93E70" value={draft.source_folder}
+                onChange={(e) => set('source_folder', e.target.value)} />
+            </div>
+            <div>
+              <label className="text-[10px] uppercase tracking-wider text-text-muted font-semibold">Files / Size</label>
+              <div className="flex gap-2">
+                <input type="number" min={0} className={INPUT_CLASS} placeholder="count" value={draft.file_count || 0}
+                  onChange={(e) => set('file_count', Number(e.target.value) || 0)} />
+                <input type="number" min={0} step={1024} className={INPUT_CLASS} placeholder="bytes" value={draft.size_bytes || 0}
+                  onChange={(e) => set('size_bytes', Number(e.target.value) || 0)} />
+              </div>
+            </div>
+            <div className="md:col-span-2 xl:col-span-4">
+              <button onClick={save}
+                className="px-4 py-2 bg-emerald-500/15 hover:bg-emerald-500/25 active:bg-emerald-500/35 border border-emerald-500/40 text-emerald-300 text-xs font-semibold rounded-lg transition-colors cursor-pointer">
+                Register Dataset
+              </button>
+            </div>
           </div>
         </div>
       )}
 
-      <div className="bg-card border border-subtle rounded-xl overflow-hidden min-h-0">
-        <div className="max-h-[620px] overflow-y-auto">
+      {/* Dataset register */}
+      <div className="flex-1 min-h-0 flex flex-col">
+        <div className="max-h-[480px] overflow-y-auto">
           <table className="w-full text-xs">
             <thead className="sticky top-0 z-10 bg-card">
               <tr className="text-left text-[10px] uppercase tracking-wider text-text-muted border-b border-subtle">
@@ -240,13 +248,13 @@ export const DatasetsPanel: React.FC<DatasetsPanelProps> = ({
                   <td className="px-3 py-2.5 align-top">
                     <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-inner border-subtle text-text-base">{ds.status}</span>
                   </td>
-                  <td className="px-3 py-2.5 align-top text-[10px] text-text-muted font-mono">
+                  <td className="px-3 py-2.5 align-top text-[10px] text-text-muted font-sans">
                     {ds.source_folder || '—'}
                     {ds.dataset_type !== 'RAW' && (
                       <div className="text-[10px]">→ {ds.output_folder || ds.source_folder || '—'}</div>
                     )}
                   </td>
-                  <td className="px-3 py-2.5 align-top text-[10px] font-mono text-text-muted">
+                  <td className="px-3 py-2.5 align-top text-[10px] font-sans text-text-muted">
                     {(ds.file_count || 0).toLocaleString()} files
                     <div className="text-[10px]">{formatBytes(ds.size_bytes || 0)}</div>
                   </td>
@@ -285,6 +293,6 @@ export const DatasetsPanel: React.FC<DatasetsPanelProps> = ({
           </table>
         </div>
       </div>
-    </div>
+    </Surface>
   );
 };

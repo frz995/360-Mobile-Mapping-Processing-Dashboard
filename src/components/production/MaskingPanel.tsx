@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  Eraser,
   Play,
   Loader2,
   ScanLine,
@@ -19,6 +18,7 @@ import type {
 import { loadImageWithRetry } from '../../utils/imageEnhancement';
 import { detectMaskFootprint } from '../../utils/maskFootprintDetector';
 import { productionNasUrlFor } from './common';
+import { Surface } from './chrome';
 
 export interface MaskingPanelProps {
   datasets: DatasetRecord[];
@@ -205,56 +205,26 @@ Action Sequence:
   };
 
   return (
-    <div className="flex flex-col gap-4 min-h-0">
-      {/* Header */}
-      <div className="flex items-center gap-3">
-        <div className="p-2.5 bg-inner rounded-xl border border-subtle text-sky-400">
-          <Eraser size={20} />
-        </div>
-        <div>
-          <h2 className="text-sm font-bold text-text-base tracking-wide">
-            Car-Roof &amp; Nadir Mask Removal
-          </h2>
-          <span className="text-[11px] text-text-muted">
-            {is4PcMode
-              ? 'Analyze bottom vehicle nadir footprint % and inspect mask boundaries for PC 4 (Photoshop Station).'
-              : 'Detect stitch-method mask footprint, then queue a generative-fill (LaMa) MASK batch to the automated NAS GPU Worker.'}
-          </span>
-        </div>
-      </div>
-
-      {/* 4-STATION MULTI-PC WORKFLOW NOTICE BANNER */}
+    <Surface className="flex flex-col min-h-0">
+      {/* 4-STATION MULTI-PC WORKFLOW NOTICE STRIP */}
       {is4PcMode && (
-        <div className="p-3.5 rounded-xl border border-sky-500/30 bg-sky-950/20 flex flex-wrap items-center justify-between gap-3 text-xs">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-inner border border-subtle text-sky-400 shrink-0">
-              <Monitor size={18} />
-            </div>
-            <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="font-bold text-text-base">
-                  4-Station Mode Active &bull; Station 4 (Photoshop Station)
-                </span>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-300 border border-sky-500/30 font-semibold uppercase">
-                  Station Handoff Guide
-                </span>
-              </div>
-              <p className="text-[11px] text-text-muted mt-0.5">
-                Nadir vehicle patching, circular hood mask &amp; generative fill inpainting are processed on <strong>PC 4</strong> using Adobe Photoshop Batch Actions. Use this panel to inspect the bottom footprint % and verify mask boundaries before executing actions.
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] font-mono text-text-muted bg-inner px-2.5 py-1 rounded border border-subtle">
-              Input: /ENHANCED/ &rarr; Output: /PROCESSED/
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 border-b border-divider">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <Monitor size={15} className="text-sky-400 shrink-0" />
+            <span className="text-[11px] text-text-muted leading-relaxed">
+              <span className="font-bold text-text-base">4-Station Mode Active · Station 4 (Photoshop Station)</span>
+              &nbsp;— nadir vehicle patching, circular hood mask &amp; generative fill inpainting executed on <strong className="text-text-base">PC 4</strong> using Photoshop Batch Actions. Use this panel to inspect the bottom footprint % and verify mask boundaries before executing actions.
             </span>
           </div>
+          <span className="text-[10px] font-sans text-text-muted bg-inner border border-subtle px-2.5 py-1 rounded shrink-0">
+            Input: /ENHANCED/ &rarr; Output: /PROCESSED/
+          </span>
         </div>
       )}
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-        {/* Controls Column */}
-        <div className="bg-card border border-subtle rounded-xl p-4 flex flex-col gap-4">
+      <div className="p-4 grid grid-cols-1 xl:grid-cols-3 gap-4 xl:gap-0 flex-1 min-h-0">
+        {/* Inspector rail */}
+        <div className="flex flex-col gap-4 min-h-0 xl:pr-5">
           <div>
             <label className="text-[10px] uppercase tracking-wider text-text-muted font-semibold">
               Source Dataset
@@ -277,7 +247,7 @@ Action Sequence:
               Sample Frame
             </label>
             <input
-              className="w-full bg-inner border border-subtle rounded-lg px-3 py-2 text-xs text-text-base outline-none focus:border-sky-500/60 font-mono"
+              className="w-full bg-inner border border-subtle rounded-lg px-3 py-2 text-xs text-text-base outline-none focus:border-sky-500/60 font-sans"
               placeholder="N93E70-00001.jpg"
               value={sampleName}
               onChange={(e) => setSampleName(e.target.value)}
@@ -330,11 +300,11 @@ Action Sequence:
             onChange={(e) => setOverrideBand(Number(e.target.value))}
             className="w-full accent-slate-300 h-1.5 bg-inner rounded-lg cursor-pointer disabled:opacity-40"
           />
-          <div className="text-[10px] text-text-muted font-mono">
+          <div className="text-[10px] text-text-muted font-sans">
             band: {Math.round(overrideBand * 100)}% height
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap pt-2 border-t border-subtle">
+          <div className="flex items-center gap-2 flex-wrap pt-2 border-t border-divider">
             <button
               onClick={runDetection}
               disabled={scanning || !sourceUrl}
@@ -375,8 +345,8 @@ Action Sequence:
           </p>
         </div>
 
-        {/* Preview Column */}
-        <div className="bg-card border border-subtle rounded-xl p-4 xl:col-span-2 flex flex-col gap-3">
+        {/* Preview column */}
+        <div className="xl:border-l xl:border-divider xl:pl-5 xl:col-span-2 flex flex-col gap-3 min-h-0">
           <h3 className="text-xs font-bold text-text-base">Footprint Analysis Preview</h3>
           <div className="relative rounded-lg overflow-hidden border border-subtle bg-inner min-h-[300px] flex-1">
             {analyzedUrl ? (
@@ -407,6 +377,6 @@ Action Sequence:
           )}
         </div>
       </div>
-    </div>
+    </Surface>
   );
 };

@@ -7,15 +7,10 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Database,
   RefreshCw,
   Loader2,
   Search,
   MapPin,
-  Boxes,
-  ShieldCheck,
-  FileArchive,
-  Layers3,
   AlertTriangle,
   Plus,
   X,
@@ -343,26 +338,42 @@ export const DatasetRegistryPanel: React.FC<DatasetRegistryPanelProps> = ({
         )}
       </div>
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
-        {[
-          { label: translate('dataRegistryTotalDatasets'), value: String(datasets.length), rawValue: datasets.length, icon: <Database size={14} /> },
-          { label: translate('dataRegistryTotalFiles'), value: totals.files.toLocaleString(), rawValue: totals.files, icon: <FileArchive size={14} /> },
-          { label: translate('dataRegistryTotalSize'), value: formatBytes(totals.bytes), rawValue: totals.bytes, icon: <Boxes size={14} /> },
-          { label: translate('dataRegistryRaw'), value: String(totals.raw), rawValue: totals.raw, icon: <Layers3 size={14} /> },
-          { label: translate('dataRegistryProcessed'), value: String(totals.processed), rawValue: totals.processed, icon: <Layers3 size={14} /> },
-          { label: translate('dataRegistryDeliverables'), value: String(totals.deliverable), rawValue: totals.deliverable, icon: <ShieldCheck size={14} /> }
-        ].map((c) => (
-          <div key={c.label} className="bg-inner/60 border border-subtle rounded-xl p-3 flex items-center gap-2.5 shadow-sm">
-            <span className="text-text-muted shrink-0">{c.icon}</span>
-            <div className="min-w-0">
-              <div className={`text-sm font-bold font-mono leading-none ${c.rawValue > 0 ? 'text-sky-400' : 'text-text-muted'}`}>
-                {c.value}
-              </div>
-              <div className="text-[9px] uppercase tracking-wider text-text-muted mt-1 truncate">{c.label}</div>
-            </div>
-          </div>
-        ))}
+      {/* Summary Telemetry Strip */}
+      <div className="bg-card border border-subtle rounded-xl px-4 py-2.5 shadow-sm text-xs flex flex-wrap items-center gap-x-4 gap-y-2">
+        <span className="text-[11px] font-bold text-text-muted shrink-0 uppercase tracking-wider">
+          Registry Telemetry:
+        </span>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+          <span>
+            <span className="text-text-muted">{translate('dataRegistryTotalDatasets')}: </span>
+            <strong className="font-semibold text-text-base">{datasets.length}</strong>
+          </span>
+          <span className="text-text-muted">&bull;</span>
+          <span>
+            <span className="text-text-muted">{translate('dataRegistryTotalFiles')}: </span>
+            <strong className="font-semibold text-text-base">{totals.files.toLocaleString()}</strong>
+          </span>
+          <span className="text-text-muted">&bull;</span>
+          <span>
+            <span className="text-text-muted">{translate('dataRegistryTotalSize')}: </span>
+            <strong className="font-semibold text-text-base">{formatBytes(totals.bytes)}</strong>
+          </span>
+          <span className="text-text-muted">&bull;</span>
+          <span>
+            <span className="text-text-muted">{translate('dataRegistryRaw')}: </span>
+            <strong className="font-semibold text-text-base">{totals.raw}</strong>
+          </span>
+          <span className="text-text-muted">&bull;</span>
+          <span>
+            <span className="text-text-muted">{translate('dataRegistryProcessed')}: </span>
+            <strong className="font-semibold text-text-base">{totals.processed}</strong>
+          </span>
+          <span className="text-text-muted">&bull;</span>
+          <span>
+            <span className="text-text-muted">{translate('dataRegistryDeliverables')}: </span>
+            <strong className="font-semibold text-text-base">{totals.deliverable}</strong>
+          </span>
+        </div>
       </div>
 
       {orphanNames.size > 0 && (
@@ -399,7 +410,7 @@ export const DatasetRegistryPanel: React.FC<DatasetRegistryPanelProps> = ({
             </option>
           ))}
         </select>
-        <span className="text-[11px] text-text-muted font-mono ml-auto">{filtered.length} / {rows.length}</span>
+        <span className="text-[11px] text-text-muted font-sans ml-auto">{filtered.length} / {rows.length}</span>
       </div>
 
       {/* Table */}
@@ -438,7 +449,7 @@ export const DatasetRegistryPanel: React.FC<DatasetRegistryPanelProps> = ({
                     key={d.id || d.name}
                     className={`border-t border-subtle hover:bg-inner/50 transition-colors ${orphanNames.has(d.id || '') ? 'bg-amber-950/20' : ''}`}
                   >
-                    <td className="px-3 py-2 font-mono text-sky-300 max-w-[220px] truncate" title={d.name}>
+                    <td className="px-3 py-2 font-sans text-sky-300 max-w-[220px] truncate" title={d.name}>
                       {d.name || '—'}
                       {orphanNames.has(d.id || '') && (
                         <span className="ml-1.5 text-[8px] font-bold uppercase text-amber-400">orphan</span>
@@ -458,7 +469,7 @@ export const DatasetRegistryPanel: React.FC<DatasetRegistryPanelProps> = ({
                     <td className="px-3 py-2 text-text-muted">{d.pipeline_stage || '—'}</td>
                     <td className="px-3 py-2">
                       <div className="flex items-center gap-1.5">
-                        <span className={`font-mono font-bold ${latestVersion && !superseded ? 'text-emerald-300' : 'text-text-muted'}`}>
+                        <span className={`font-sans font-bold ${latestVersion && !superseded ? 'text-emerald-300' : 'text-text-muted'}`}>
                           v{d.version ?? 1}
                         </span>
                         {latestVersion && !superseded ? (
@@ -468,12 +479,12 @@ export const DatasetRegistryPanel: React.FC<DatasetRegistryPanelProps> = ({
                         ) : null}
                       </div>
                       {versionChain.length > 1 && (
-                        <div className="mt-0.5 text-[9px] text-text-muted font-mono">
+                        <div className="mt-0.5 text-[9px] text-text-muted font-sans">
                           {Array.from(new Set(versionChain.map((v) => `v${v.version ?? 1}`))).sort().join(' · ')} ({versionChain.length} versions)
                         </div>
                       )}
                     </td>
-                    <td className="px-3 py-2 font-mono text-text-base">{d.subgrid || '—'}</td>
+                    <td className="px-3 py-2 font-sans text-text-base">{d.subgrid || '—'}</td>
                     <td className="px-3 py-2 text-right text-text-muted">{d.file_count?.toLocaleString() ?? '—'}</td>
                     <td className="px-3 py-2 text-right text-text-base">{formatBytes(d.size_bytes)}</td>
                     <td className="px-3 py-2">
@@ -579,7 +590,7 @@ export const DatasetRegistryPanel: React.FC<DatasetRegistryPanelProps> = ({
                     value={regForm.subgrid}
                     onChange={(e) => setRegForm({ ...regForm, subgrid: e.target.value.toUpperCase() })}
                     placeholder="e.g. N93E70"
-                    className="w-full bg-inner border border-subtle rounded-lg px-3 py-2 text-text-base font-mono uppercase focus:outline-none focus:border-sky-500/60 transition-colors"
+                    className="w-full bg-inner border border-subtle rounded-lg px-3 py-2 text-text-base font-sans uppercase focus:outline-none focus:border-sky-500/60 transition-colors"
                   />
                 </div>
 
@@ -612,7 +623,7 @@ export const DatasetRegistryPanel: React.FC<DatasetRegistryPanelProps> = ({
                       value={regForm.sourceFolder}
                       onChange={(e) => setRegForm({ ...regForm, sourceFolder: e.target.value })}
                       placeholder="/RAW/N93E70/2026-08-29/"
-                      className="w-full bg-inner border border-subtle rounded-lg pl-9 pr-3 py-2 text-text-base font-mono focus:outline-none focus:border-sky-500/60 transition-colors"
+                      className="w-full bg-inner border border-subtle rounded-lg pl-9 pr-3 py-2 text-text-base font-sans focus:outline-none focus:border-sky-500/60 transition-colors"
                     />
                   </div>
                 </div>

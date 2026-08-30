@@ -291,7 +291,7 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
           className="flex items-center justify-between gap-2 cursor-pointer hover:opacity-90"
           onClick={() => onOpenJobDetails?.(job)}
         >
-          <span className="font-mono font-bold text-sky-300 text-xs">{job.subgrid || 'SUBGRID'}</span>
+          <span className="font-sans font-bold text-sky-300 text-xs">{job.subgrid || 'SUBGRID'}</span>
           <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border uppercase tracking-wider ${meta.className}`}>
             {job.status}
           </span>
@@ -309,7 +309,7 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
         </div>
 
         {/* Folder Paths with Copy */}
-        <div className="space-y-1 text-[10px] font-mono text-text-muted">
+        <div className="space-y-1 text-[10px] font-sans text-text-muted">
           <div className="flex items-center justify-between gap-1 bg-inner/60 p-1.5 rounded border border-subtle/60">
             <span className="truncate" title={job.source_folder}>IN: {job.source_folder}</span>
             <button
@@ -383,7 +383,7 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-2 text-xs font-mono">
+          <div className="flex items-center gap-2 text-xs font-sans">
             <span className="p-2 bg-inner rounded-xl border border-subtle text-text-muted">
               URL: <strong className="text-text-base">{projectSettings?.productionApiUrl || 'http://127.0.0.1:8000'}</strong>
             </span>
@@ -405,7 +405,7 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
               <Zap size={14} className="text-text-muted" />
             </div>
             <div className="text-base font-bold text-text-base">NVIDIA CUDA GPU</div>
-            <div className="text-[10px] text-text-muted font-mono">PyTorch 2.3 · CUDA 12.4</div>
+            <div className="text-[10px] text-text-muted font-sans">PyTorch 2.3 · CUDA 12.4</div>
           </div>
 
           <div className="bg-inner border border-subtle rounded-xl p-3.5 space-y-1">
@@ -457,7 +457,7 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
                   placeholder="e.g. N93E70"
                   value={gpuSubgrid}
                   onChange={(e) => setGpuSubgrid(e.target.value.toUpperCase())}
-                  className="w-full bg-inner border border-subtle rounded-lg px-3 py-2 text-xs font-mono uppercase text-text-base outline-none focus:border-sky-500/60"
+                  className="w-full bg-inner border border-subtle rounded-lg px-3 py-2 text-xs font-sans uppercase text-text-base outline-none focus:border-sky-500/60"
                 />
               </div>
 
@@ -513,7 +513,7 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
                 >
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
-                      <span className="font-mono font-bold text-sky-300">{j.subgrid || 'SUBGRID'}</span>
+                      <span className="font-sans font-bold text-sky-300">{j.subgrid || 'SUBGRID'}</span>
                       <span className="text-text-base font-semibold">{j.name || j.job_type}</span>
                     </div>
                     <span className={`text-[9px] font-bold px-2 py-0.5 rounded border uppercase ${meta.className}`}>
@@ -523,7 +523,7 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
 
                   {/* Progress Bar */}
                   <div className="space-y-1">
-                    <div className="flex items-center justify-between text-[10px] text-text-muted font-mono">
+                    <div className="flex items-center justify-between text-[10px] text-text-muted font-sans">
                       <span>Frames: {j.completed_items || 0} / {j.total_items || 500}</span>
                       <span className="text-text-muted">{progressPct}%</span>
                     </div>
@@ -532,7 +532,7 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between text-[10px] font-mono text-text-muted pt-1">
+                  <div className="flex items-center justify-between text-[10px] font-sans text-text-muted pt-1">
                     <span className="truncate">IN: {j.source_folder || '/RAW/'} → OUT: {j.output_folder || '/PROCESSED/'}</span>
                     <span className="shrink-0 text-text-muted">{j.provider || 'GPU Worker'}</span>
                   </div>
@@ -590,7 +590,7 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
                 <h4 className="text-xs font-bold text-text-base">Stitching PC</h4>
               </div>
             </div>
-            <span className="text-[10px] font-mono font-bold text-text-muted bg-card px-2 py-0.5 rounded border border-subtle">
+            <span className="text-[10px] font-sans font-bold text-text-muted bg-card px-2 py-0.5 rounded border border-subtle">
               {laneJobs.stitch.length}
             </span>
           </div>
@@ -615,7 +615,7 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
                 <h4 className="text-xs font-bold text-text-base">Privacy Blur PC</h4>
               </div>
             </div>
-            <span className="text-[10px] font-mono font-bold text-text-muted bg-card px-2 py-0.5 rounded border border-subtle">
+            <span className="text-[10px] font-sans font-bold text-text-muted bg-card px-2 py-0.5 rounded border border-subtle">
               {laneJobs.blur.length}
             </span>
           </div>
@@ -640,7 +640,7 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
                 <h4 className="text-xs font-bold text-text-base">Lightroom PC</h4>
               </div>
             </div>
-            <span className="text-[10px] font-mono font-bold text-text-muted bg-card px-2 py-0.5 rounded border border-subtle">
+            <span className="text-[10px] font-sans font-bold text-text-muted bg-card px-2 py-0.5 rounded border border-subtle">
               {laneJobs.lightroom.length}
             </span>
           </div>
@@ -665,7 +665,7 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
                 <h4 className="text-xs font-bold text-text-base">Photoshop PC</h4>
               </div>
             </div>
-            <span className="text-[10px] font-mono font-bold text-text-muted bg-card px-2 py-0.5 rounded border border-subtle">
+            <span className="text-[10px] font-sans font-bold text-text-muted bg-card px-2 py-0.5 rounded border border-subtle">
               {laneJobs.photoshop.length}
             </span>
           </div>
@@ -705,15 +705,15 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
                   placeholder="e.g. N93E70"
                   value={dispatchSubgrid}
                   onChange={(e) => setDispatchSubgrid(e.target.value.toUpperCase())}
-                  className="w-full bg-inner border border-subtle rounded-lg px-3 py-2 text-text-base font-mono uppercase focus:outline-none focus:border-sky-500/60"
+                  className="w-full bg-inner border border-subtle rounded-lg px-3 py-2 text-text-base font-sans uppercase focus:outline-none focus:border-sky-500/60"
                 />
               </div>
 
               <div className="p-3 bg-inner rounded-xl border border-subtle space-y-1 text-[11px] text-text-muted">
                 <div className="font-semibold text-text-base mb-1">Pipeline Initial Route:</div>
                 <div>• Initial Station: <strong>PC 1 — Stitching Station</strong></div>
-                <div>• Source Folder: <code className="text-sky-300 font-mono">/RAW/{dispatchSubgrid || 'SUBGRID'}/</code></div>
-                <div>• Output Folder: <code className="text-sky-300 font-mono">/STITCHED/{dispatchSubgrid || 'SUBGRID'}/</code></div>
+                <div>• Source Folder: <code className="text-sky-300 font-sans">/RAW/{dispatchSubgrid || 'SUBGRID'}/</code></div>
+                <div>• Output Folder: <code className="text-sky-300 font-sans">/STITCHED/{dispatchSubgrid || 'SUBGRID'}/</code></div>
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-2">

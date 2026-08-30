@@ -36,6 +36,20 @@ import {
 } from '../services/supabase';
 import { ThemeManagementCanvas } from './ThemeSelector';
 import { MALAYSIA_REGIONS, regionToGeoJSON, CUSTOM_REGION_ID } from './boundary/malaysiaRegions';
+import { UnderlineTabStrip, type ChromeTab } from './production/chrome';
+
+const SETTINGS_TABS: ChromeTab<'settings' | 'theme-pack'>[] = [
+  {
+    key: 'settings',
+    label: 'Project & Map Settings',
+    icon: <Settings size={14} />
+  },
+  {
+    key: 'theme-pack',
+    label: 'Theme Packages',
+    icon: <Palette size={14} />
+  }
+];
 
 interface AdminSettingsViewProps {
   projectSettings: ExtendedProjectSettings;
@@ -433,82 +447,80 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
   const inputBg = themeMode === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-card border-subtle text-text-base';
 
   return (
-    <div className={`w-full h-full flex flex-col min-h-0 overflow-y-auto space-y-4 p-4 ${themeMode === 'light' ? 'text-slate-900' : 'text-text-base'}`}>
+    <div className={`flex-1 flex flex-col min-h-0 overflow-hidden animate-in fade-in duration-500 ${themeMode === 'light' ? 'text-slate-900' : 'text-text-base'}`}>
+      <div className="flex-1 flex flex-col gap-3 min-h-0 overflow-y-auto p-4">
 
-      {/* RBAC READ-ONLY NOTICE FOR NON-ADMINISTRATORS / GUESTS */}
-      {!isAdmin && (
-        <div className={`p-3.5 rounded-xl border flex flex-wrap items-center justify-between gap-3 shrink-0 shadow-sm animate-in fade-in duration-200 ${isGuest
-          ? 'bg-gradient-to-r from-amber-950/40 via-card to-card border-amber-500/30 text-amber-200'
-          : themeMode === 'light'
-            ? 'bg-slate-100 border-slate-300 text-slate-700'
-            : 'bg-app border-subtle text-text-base'
-          }`}>
-          <div className="flex items-center gap-3">
-            {isGuest ? (
-              <div className="p-2 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/30 shrink-0">
-                <Eye size={18} />
-              </div>
-            ) : (
-              <div className={`p-2 rounded-lg border shrink-0 ${themeMode === 'light' ? 'bg-slate-200 border-slate-300 text-slate-700' : 'bg-inner border-subtle text-text-muted'}`}>
-                <Lock size={18} />
-              </div>
-            )}
-            <div>
-              <h4 className="text-xs font-bold uppercase tracking-wide flex items-center gap-2">
-                {isGuest ? 'Guest Exploration Mode (Read-Only)' : 'Restricted Operational Privileges'}
-              </h4>
-              <p className="text-[11px] text-text-muted mt-0.5">
-                {isGuest
-                  ? 'You are viewing live system performance and parameters in guest viewer mode. System parameter changes require Administrator authorization.'
-                  : (
-                    <>Current account role: <span className="font-mono font-semibold text-text-base">{userEffectiveRole}</span>. Configuration controls are restricted to Administrators.</>
-                  )}
-              </p>
-            </div>
-          </div>
-          <span className={`px-2.5 py-1 rounded-md text-[10px] font-mono font-semibold border ${isGuest
-            ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+        {/* Header */}
+        <div className="px-1">
+          <h2 className="text-base font-bold text-text-base tracking-wide">
+            Project &amp; Map Settings
+          </h2>
+          <p className="text-xs text-text-muted mt-0.5 leading-relaxed">
+            Configure system parameters, basemap providers, storage endpoints, and multi-theme styling
+          </p>
+        </div>
+
+        {/* RBAC READ-ONLY NOTICE FOR NON-ADMINISTRATORS / GUESTS */}
+        {!isAdmin && (
+          <div className={`p-3.5 rounded-xl border flex flex-wrap items-center justify-between gap-3 shrink-0 shadow-sm animate-in fade-in duration-200 ${isGuest
+            ? 'bg-gradient-to-r from-amber-950/40 via-card to-card border-amber-500/30 text-amber-200'
             : themeMode === 'light'
-              ? 'bg-slate-200 text-slate-700 border-slate-300'
-              : 'bg-inner text-text-muted border-subtle'
+              ? 'bg-slate-100 border-slate-300 text-slate-700'
+              : 'bg-app border-subtle text-text-base'
             }`}>
-            {isGuest ? 'Guest Viewer' : 'Read-Only'}
-          </span>
-        </div>
-      )}
+            <div className="flex items-center gap-3">
+              {isGuest ? (
+                <div className="p-2 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/30 shrink-0">
+                  <Eye size={18} />
+                </div>
+              ) : (
+                <div className={`p-2 rounded-lg border shrink-0 ${themeMode === 'light' ? 'bg-slate-200 border-slate-300 text-slate-700' : 'bg-inner border-subtle text-text-muted'}`}>
+                  <Lock size={18} />
+                </div>
+              )}
+              <div>
+                <h4 className="text-xs font-bold uppercase tracking-wide flex items-center gap-2">
+                  {isGuest ? 'Guest Exploration Mode (Read-Only)' : 'Restricted Operational Privileges'}
+                </h4>
+                <p className="text-[11px] text-text-muted mt-0.5">
+                  {isGuest
+                    ? 'You are viewing live system performance and parameters in guest viewer mode. System parameter changes require Administrator authorization.'
+                    : (
+                      <>Current account role: <span className="font-sans font-semibold text-text-base">{userEffectiveRole}</span>. Configuration controls are restricted to Administrators.</>
+                    )}
+                </p>
+              </div>
+            </div>
+            <span className={`px-2.5 py-1 rounded-md text-[10px] font-sans font-semibold border ${isGuest
+              ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+              : themeMode === 'light'
+                ? 'bg-slate-200 text-slate-700 border-slate-300'
+                : 'bg-inner text-text-muted border-subtle'
+              }`}>
+              {isGuest ? 'Guest Viewer' : 'Read-Only'}
+            </span>
+          </div>
+        )}
 
-      {/* TOAST STATUS NOTIFICATION */}
-      {toastMessage && (
-        <div className={`fixed top-4 right-4 z-50 px-4 py-2.5 rounded-xl border text-xs font-semibold shadow-2xl flex items-center gap-2 animate-in fade-in slide-in-from-top-3 ${toastMessage.type === 'success' ? 'bg-emerald-950/90 text-emerald-300 border-emerald-700/80' : 'bg-rose-950/90 text-rose-300 border-rose-700/80'}`}>
-          {toastMessage.type === 'success' ? <CheckCircle size={15} className="text-emerald-400" /> : <AlertTriangle size={15} className="text-rose-400" />}
-          <span>{toastMessage.text}</span>
-        </div>
-      )}
+        {/* TOAST STATUS NOTIFICATION */}
+        {toastMessage && (
+          <div className={`fixed top-4 right-4 z-50 px-4 py-2.5 rounded-xl border text-xs font-semibold shadow-2xl flex items-center gap-2 animate-in fade-in slide-in-from-top-3 ${toastMessage.type === 'success' ? 'bg-emerald-950/90 text-emerald-300 border-emerald-700/80' : 'bg-rose-950/90 text-rose-300 border-rose-700/80'}`}>
+            {toastMessage.type === 'success' ? <CheckCircle size={15} className="text-emerald-400" /> : <AlertTriangle size={15} className="text-rose-400" />}
+            <span>{toastMessage.text}</span>
+          </div>
+        )}
 
-      {/* SETTINGS SUB-NAVIGATION BAR */}
-      <div className={`flex items-center gap-1.5 p-1 rounded-xl border overflow-x-auto shrink-0 ${cardBg}`}>
-        <button
-          onClick={() => setActiveTab('settings')}
-          className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${activeTab === 'settings'
-            ? (themeMode === 'light' ? 'bg-sky-50 text-sky-700 shadow-sm border border-sky-200 font-bold' : 'bg-inner text-text-base shadow-sm border border-subtle')
-            : (themeMode === 'light' ? 'text-text-muted hover:text-slate-900 hover:bg-slate-100' : 'text-text-muted hover:text-text-base hover:bg-inner')
-            }`}
-        >
-          <Settings size={14} className={activeTab === 'settings' ? 'text-sky-500' : ''} />
-          <span>Project &amp; Map Settings</span>
-        </button>
+        {/* Main Panel Canvas */}
+        <div className="bg-card border border-subtle rounded-2xl shadow-md overflow-hidden flex flex-col min-h-0">
+          <div className="px-3 pt-2 border-b border-divider bg-card">
+            <UnderlineTabStrip
+              tabs={SETTINGS_TABS}
+              active={activeTab}
+              onChange={(k) => setActiveTab(k as any)}
+            />
+          </div>
 
-        <button
-          onClick={() => setActiveTab('theme-pack')}
-          className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${activeTab === 'theme-pack'
-            ? (themeMode === 'light' ? 'bg-sky-50 text-sky-700 shadow-sm border border-sky-200 font-bold' : 'bg-sky-500/20 text-sky-300 shadow-sm border border-sky-500/30')
-            : (themeMode === 'light' ? 'text-text-muted hover:text-slate-900 hover:bg-slate-100' : 'text-text-muted hover:text-text-base hover:bg-inner')
-            }`}
-        >
-          <Palette size={14} className={activeTab === 'theme-pack' ? 'text-sky-400' : ''} />
-          <span>Theme Packages</span>
-        </button>
-      </div>
+          <div className="p-4 sm:p-5 flex-1 flex flex-col min-h-0 space-y-4">
 
       {/* ========================================================================= */}
       {/* TAB 1: PROJECT & SECURITY SETTINGS */}
@@ -561,7 +573,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                   value={projectSettings.contractCode || ''}
                   onChange={e => setProjectSettings(prev => ({ ...prev, contractCode: e.target.value }))}
                   placeholder="e.g. MMS-2026-TNB-01"
-                  className={`w-full px-3 py-2 rounded-lg font-mono focus:outline-none border ${inputBg}`}
+                  className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
                 />
               </div>
             </div>
@@ -578,7 +590,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <span className="px-2.5 py-1 rounded-full text-[10px] font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold flex items-center gap-1.5">
+                <span className="px-2.5 py-1 rounded-full text-[10px] font-sans bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                   PostGIS 3.3 &bull; Connected
                 </span>
@@ -592,7 +604,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                   <Server size={14} className="text-sky-400" />
                   A. Connection Endpoints & Access Credentials
                 </h4>
-                <span className="text-[10px] text-text-muted font-mono">Driver: PostgREST / TCP Pooler</span>
+                <span className="text-[10px] text-text-muted font-sans">Driver: PostgREST / TCP Pooler</span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
@@ -603,7 +615,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                     value={projectSettings.supabaseUrl || import.meta.env.VITE_SUPABASE_URL || 'https://xyzcompany.supabase.co'}
                     onChange={e => setProjectSettings(prev => ({ ...prev, supabaseUrl: e.target.value }))}
                     placeholder="https://your-project.supabase.co"
-                    className={`w-full px-3 py-2 rounded-lg font-mono focus:outline-none border ${inputBg}`}
+                    className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
                   />
                 </div>
 
@@ -615,7 +627,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                       value={projectSettings.supabaseKey || import.meta.env.VITE_SUPABASE_ANON_KEY || ''}
                       onChange={e => setProjectSettings(prev => ({ ...prev, supabaseKey: e.target.value }))}
                       placeholder="eyJhbGciOiJIUzI1NiIsInR5c..."
-                      className={`w-full px-3 py-2 rounded-lg font-mono focus:outline-none border ${inputBg}`}
+                      className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
                     />
                     <button
                       type="button"
@@ -635,7 +647,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                     value={projectSettings.databaseHost || 'db.aws-0-ap-southeast-1.supabase.co'}
                     onChange={e => setProjectSettings(prev => ({ ...prev, databaseHost: e.target.value }))}
                     placeholder="db.your-project.supabase.co"
-                    className={`w-full px-3 py-2 rounded-lg font-mono focus:outline-none border ${inputBg}`}
+                    className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
                   />
                 </div>
 
@@ -646,7 +658,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                     value={projectSettings.databasePort || 5432}
                     onChange={e => setProjectSettings(prev => ({ ...prev, databasePort: parseInt(e.target.value) || 5432 }))}
                     placeholder="5432 (or 6543 for PgBouncer)"
-                    className={`w-full px-3 py-2 rounded-lg font-mono focus:outline-none border ${inputBg}`}
+                    className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
                   />
                 </div>
 
@@ -658,14 +670,14 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                       value={projectSettings.databaseName || 'postgres'}
                       onChange={e => setProjectSettings(prev => ({ ...prev, databaseName: e.target.value }))}
                       placeholder="postgres"
-                      className={`w-full px-3 py-2 rounded-lg font-mono focus:outline-none border ${inputBg}`}
+                      className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
                     />
                     <input
                       type="text"
                       value={projectSettings.databaseSchema || 'public'}
                       onChange={e => setProjectSettings(prev => ({ ...prev, databaseSchema: e.target.value }))}
                       placeholder="public"
-                      className={`w-full px-3 py-2 rounded-lg font-mono focus:outline-none border ${inputBg}`}
+                      className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
                     />
                   </div>
                 </div>
@@ -703,7 +715,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                   <Globe size={14} className="text-sky-400" />
                   B. PostGIS Spatial Reference (SRID) & Geometry Engine
                 </h4>
-                <span className="text-[10px] text-emerald-400 font-mono">ST_GeomFromText Active</span>
+                <span className="text-[10px] text-emerald-400 font-sans">ST_GeomFromText Active</span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
@@ -712,7 +724,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                   <select
                     value={projectSettings.spatialSrid || 'EPSG:4326'}
                     onChange={e => setProjectSettings(prev => ({ ...prev, spatialSrid: e.target.value }))}
-                    className={`w-full px-3 py-2 rounded-lg font-mono focus:outline-none border ${inputBg}`}
+                    className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
                   >
                     <option value="EPSG:4326">EPSG:4326 &mdash; WGS 84 (Global Lat/Lon Standard)</option>
                     <option value="EPSG:3375">EPSG:3375 &mdash; GDM2000 / MRSO (Peninsular Malaysia)</option>
@@ -730,7 +742,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                     value={projectSettings.geomColumnName || 'geom'}
                     onChange={e => setProjectSettings(prev => ({ ...prev, geomColumnName: e.target.value }))}
                     placeholder="geom"
-                    className={`w-full px-3 py-2 rounded-lg font-mono focus:outline-none border ${inputBg}`}
+                    className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
                   />
                 </div>
 
@@ -739,7 +751,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                   <select
                     value={projectSettings.geomType || 'ST_Point'}
                     onChange={e => setProjectSettings(prev => ({ ...prev, geomType: e.target.value }))}
-                    className={`w-full px-3 py-2 rounded-lg font-mono focus:outline-none border ${inputBg}`}
+                    className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
                   >
                     <option value="ST_Point">Point (2D: longitude, latitude)</option>
                     <option value="POINTZ">PointZ (3D: lon, lat, elevation)</option>
@@ -799,7 +811,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                     type="text"
                     value={projectSettings.panoramasTable || 'panoramas'}
                     onChange={e => setProjectSettings(prev => ({ ...prev, panoramasTable: e.target.value }))}
-                    className={`w-full px-3 py-2 rounded-lg font-mono focus:outline-none border ${inputBg}`}
+                    className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
                   />
                 </div>
 
@@ -809,7 +821,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                     type="text"
                     value={projectSettings.stagingTable || 'staging_panoramas'}
                     onChange={e => setProjectSettings(prev => ({ ...prev, stagingTable: e.target.value }))}
-                    className={`w-full px-3 py-2 rounded-lg font-mono focus:outline-none border ${inputBg}`}
+                    className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
                   />
                 </div>
 
@@ -819,7 +831,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                     type="text"
                     value={projectSettings.subgridTable || 'subgrids'}
                     onChange={e => setProjectSettings(prev => ({ ...prev, subgridTable: e.target.value }))}
-                    className={`w-full px-3 py-2 rounded-lg font-mono focus:outline-none border ${inputBg}`}
+                    className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
                   />
                 </div>
 
@@ -829,7 +841,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                     type="text"
                     value={projectSettings.qaDefectsTable || 'qa_defects'}
                     onChange={e => setProjectSettings(prev => ({ ...prev, qaDefectsTable: e.target.value }))}
-                    className={`w-full px-3 py-2 rounded-lg font-mono focus:outline-none border ${inputBg}`}
+                    className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
                   />
                 </div>
 
@@ -839,7 +851,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                     type="text"
                     value={projectSettings.auditLogsTable || 'audit_logs'}
                     onChange={e => setProjectSettings(prev => ({ ...prev, auditLogsTable: e.target.value }))}
-                    className={`w-full px-3 py-2 rounded-lg font-mono focus:outline-none border ${inputBg}`}
+                    className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
                   />
                 </div>
 
@@ -849,7 +861,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                     type="text"
                     value={projectSettings.deletionRequestsTable || 'deletion_requests'}
                     onChange={e => setProjectSettings(prev => ({ ...prev, deletionRequestsTable: e.target.value }))}
-                    className={`w-full px-3 py-2 rounded-lg font-mono focus:outline-none border ${inputBg}`}
+                    className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
                   />
                 </div>
               </div>
@@ -950,7 +962,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                   </button>
                 </div>
 
-                <div className="text-[11px] text-text-muted font-mono">
+                <div className="text-[11px] text-text-muted font-sans">
                   Latency: <strong className="text-emerald-400 font-bold">{postgisLatencyMs} ms</strong> &bull; Query Chunk: <strong className="text-text-base">{projectSettings.queryChunkSize || 50} rows</strong>
                 </div>
               </div>
@@ -967,7 +979,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                   <p className="text-[11px] text-text-muted mt-0.5">Configure 360° panoramic image storage providers, CDN paths, filename patterns, StreetView pre-fetch cache, and player calibration.</p>
                 </div>
               </div>
-              <span className="px-2.5 py-1 rounded-full text-[10px] font-mono bg-inner border border-subtle text-text-base font-semibold">
+              <span className="px-2.5 py-1 rounded-full text-[10px] font-sans bg-inner border border-subtle text-text-base font-semibold">
                 Storage: {projectSettings.storageProvider ? projectSettings.storageProvider.toUpperCase() : 'SUPABASE'}
               </span>
             </div>
@@ -979,7 +991,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                   <Server size={14} className="text-sky-400" />
                   A. Storage Infrastructure Provider & Cloud Engine
                 </h4>
-                <span className="text-[10px] text-text-muted font-mono">CDN & Object Storage Pipeline</span>
+                <span className="text-[10px] text-text-muted font-sans">CDN & Object Storage Pipeline</span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
@@ -1010,7 +1022,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                         value={projectSettings.r2Domain || ''}
                         onChange={e => setProjectSettings(prev => ({ ...prev, r2Domain: e.target.value, cloudStorageBaseUrl: e.target.value }))}
                         placeholder="pub-xxxxxxxxxxxx.r2.dev or media.yourdomain.com"
-                        className={`w-full px-3 py-2 rounded-lg font-mono focus:outline-none border ${inputBg}`}
+                        className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
                       />
                       <p className="text-[10px] text-text-muted mt-1">e.g. `pub-xxx.r2.dev` or `https://media.example.com`</p>
                     </div>
@@ -1036,7 +1048,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                             value={projectSettings.multiResTilePattern || 'tiles/{subgrid}/{filename}/config.json'}
                             onChange={e => setProjectSettings(prev => ({ ...prev, multiResTilePattern: e.target.value }))}
                             placeholder="tiles/{subgrid}/{filename}/config.json"
-                            className={`w-full px-3 py-2 rounded-lg font-mono focus:outline-none border ${inputBg}`}
+                            className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
                           />
                           <p className="text-[10px] text-text-muted mt-1">Default: `tiles/&#123;subgrid&#125;/&#123;filename&#125;/config.json`</p>
                         </div>
@@ -1047,7 +1059,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                             value={projectSettings.multiResFallbackPattern || 'tiles/{subgrid}/{filename}/fallback/f.jpg'}
                             onChange={e => setProjectSettings(prev => ({ ...prev, multiResFallbackPattern: e.target.value }))}
                             placeholder="tiles/{subgrid}/{filename}/fallback/f.jpg"
-                            className={`w-full px-3 py-2 rounded-lg font-mono focus:outline-none border ${inputBg}`}
+                            className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
                           />
                           <p className="text-[10px] text-text-muted mt-1">Default: `tiles/&#123;subgrid&#125;/&#123;filename&#125;/fallback/f.jpg`</p>
                         </div>
@@ -1063,7 +1075,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                         value={projectSettings.s3Bucket || 'tnb-mobilemapping-panoramas'}
                         onChange={e => setProjectSettings(prev => ({ ...prev, s3Bucket: e.target.value }))}
                         placeholder="tnb-mobilemapping-panoramas"
-                        className={`w-full px-3 py-2 rounded-lg font-mono focus:outline-none border ${inputBg}`}
+                        className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
                       />
                     </div>
                     <div>
@@ -1073,7 +1085,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                         value={projectSettings.s3Region || 'ap-southeast-1'}
                         onChange={e => setProjectSettings(prev => ({ ...prev, s3Region: e.target.value }))}
                         placeholder="ap-southeast-1"
-                        className={`w-full px-3 py-2 rounded-lg font-mono focus:outline-none border ${inputBg}`}
+                        className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
                       />
                     </div>
                   </>
@@ -1085,7 +1097,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                       value={projectSettings.gcsBucket || 'tnb-gis-360-panoramas'}
                       onChange={e => setProjectSettings(prev => ({ ...prev, gcsBucket: e.target.value }))}
                       placeholder="tnb-gis-360-panoramas"
-                      className={`w-full px-3 py-2 rounded-lg font-mono focus:outline-none border ${inputBg}`}
+                      className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
                     />
                   </div>
                 ) : projectSettings.storageProvider === 'azure_blob' ? (
@@ -1097,7 +1109,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                         value={projectSettings.azureAccount || 'tnbgisstorage'}
                         onChange={e => setProjectSettings(prev => ({ ...prev, azureAccount: e.target.value }))}
                         placeholder="tnbgisstorage"
-                        className={`w-full px-3 py-2 rounded-lg font-mono focus:outline-none border ${inputBg}`}
+                        className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
                       />
                     </div>
                     <div>
@@ -1107,7 +1119,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                         value={projectSettings.azureContainer || 'panoramas'}
                         onChange={e => setProjectSettings(prev => ({ ...prev, azureContainer: e.target.value }))}
                         placeholder="panoramas"
-                        className={`w-full px-3 py-2 rounded-lg font-mono focus:outline-none border ${inputBg}`}
+                        className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
                       />
                     </div>
                   </>
@@ -1120,7 +1132,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                         value={projectSettings.wasabiBucket || 'tnb-wasabi-panoramas'}
                         onChange={e => setProjectSettings(prev => ({ ...prev, wasabiBucket: e.target.value }))}
                         placeholder="tnb-wasabi-panoramas"
-                        className={`w-full px-3 py-2 rounded-lg font-mono focus:outline-none border ${inputBg}`}
+                        className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
                       />
                     </div>
                     <div>
@@ -1130,7 +1142,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                         value={projectSettings.wasabiRegion || 'us-east-1'}
                         onChange={e => setProjectSettings(prev => ({ ...prev, wasabiRegion: e.target.value }))}
                         placeholder="us-east-1"
-                        className={`w-full px-3 py-2 rounded-lg font-mono focus:outline-none border ${inputBg}`}
+                        className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
                       />
                     </div>
                   </>
@@ -1142,7 +1154,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                       value={projectSettings.nasServerUrl || 'http://192.168.1.100/360_images'}
                       onChange={e => setProjectSettings(prev => ({ ...prev, nasServerUrl: e.target.value, imageStoragePath: e.target.value }))}
                       placeholder="http://192.168.1.100/360_images"
-                      className={`w-full px-3 py-2 rounded-lg font-mono focus:outline-none border ${inputBg}`}
+                      className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
                     />
                   </div>
                 ) : projectSettings.storageProvider === 'custom_cdn' ? (
@@ -1154,7 +1166,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                         value={projectSettings.customCdnUrl || ''}
                         onChange={e => setProjectSettings(prev => ({ ...prev, customCdnUrl: e.target.value, imageStoragePath: e.target.value, cloudStorageBaseUrl: e.target.value }))}
                         placeholder="https://cdn.example.com/panoramas/"
-                        className={`w-full px-3 py-2 rounded-lg font-mono focus:outline-none border ${inputBg}`}
+                        className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
                       />
                     </div>
                     <div>
@@ -1177,7 +1189,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                       value={projectSettings.supabaseBucket || 'MMS_PIC'}
                       onChange={e => setProjectSettings(prev => ({ ...prev, supabaseBucket: e.target.value, imageStoragePath: `/storage/v1/object/public/${e.target.value}/` }))}
                       placeholder="MMS_PIC"
-                      className={`w-full px-3 py-2 rounded-lg font-mono focus:outline-none border ${inputBg}`}
+                      className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
                     />
                   </div>
                 )}
@@ -1204,7 +1216,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                   <FileText size={14} className="text-sky-400" />
                   B. Panorama Filename Pattern & Directory Resolution
                 </h4>
-                <span className="text-[10px] text-text-muted font-mono">Format: Equirectangular JPG/PNG</span>
+                <span className="text-[10px] text-text-muted font-sans">Format: Equirectangular JPG/PNG</span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
@@ -1215,7 +1227,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                     value={projectSettings.imageFormatPattern || '{subgrid}-{index:04d}.jpg'}
                     onChange={e => setProjectSettings(prev => ({ ...prev, imageFormatPattern: e.target.value }))}
                     placeholder="{subgrid}-{index:04d}.jpg"
-                    className={`w-full px-3 py-2 rounded-lg font-mono focus:outline-none border ${inputBg}`}
+                    className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
                   />
                   <p className="text-[10px] text-text-muted mt-1">e.g. {`{subgrid}-{index:04d}.jpg`} &bull; {`{subgrid}_{index}.jpg`}</p>
                 </div>
@@ -1260,7 +1272,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                   <Activity size={14} className="text-sky-400" />
                   C. 360° StreetView Player & Preload Streaming Engine
                 </h4>
-                <span className="text-[10px] text-emerald-400 font-mono">Three.js / WebGL 60FPS</span>
+                <span className="text-[10px] text-emerald-400 font-sans">Three.js / WebGL 60FPS</span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
@@ -1333,7 +1345,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                     Probe object storage endpoints, test CORS cross-origin headers, measure latency, and verify multi-resolution tile configuration files.
                   </p>
                 </div>
-                <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-sky-500/10 text-sky-400 border border-sky-500/20">
+                <span className="px-2 py-0.5 rounded text-[10px] font-sans bg-sky-500/10 text-sky-400 border border-sky-500/20">
                   {projectSettings.storageProvider === 'cloudflare_r2' ? 'Cloudflare R2 Mode' : `${(projectSettings.storageProvider || 'Supabase').toUpperCase()} Mode`}
                 </span>
               </div>
@@ -1347,7 +1359,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                     value={testFilename}
                     onChange={e => setTestFilename(e.target.value)}
                     placeholder="e.g. SG01-0001.jpg or N93E70-0001"
-                    className={`w-full px-3 py-2 rounded-lg font-mono focus:outline-none border ${inputBg}`}
+                    className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
                   />
                 </div>
 
@@ -1422,7 +1434,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
               </div>
 
               {/* RESOLVED URLS BAR */}
-              <div className={`p-3 rounded-lg border ${inputBg} space-y-2 text-xs font-mono`}>
+              <div className={`p-3 rounded-lg border ${inputBg} space-y-2 text-xs font-sans`}>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2 overflow-hidden">
                     <span className="text-text-muted shrink-0 text-[11px] font-sans font-medium">Resolved 360° URL:</span>
@@ -1493,7 +1505,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                               ? `Storage Connected &bull; HTTP 404 File Not Found`
                               : `Connection Failed &bull; ${cfTestResult.statusText || 'Error'}`}
                         </span>
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-inner border border-subtle text-text-base">
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-sans bg-inner border border-subtle text-text-base">
                           {cfTestResult.latencyMs}ms Latency
                         </span>
                         {cfTestResult.corsOk && (
@@ -1516,7 +1528,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                       )}
 
                       {cfTestResult.contentType && (
-                        <div className="text-[10px] text-text-muted font-mono">
+                        <div className="text-[10px] text-text-muted font-sans">
                           Content-Type: <span className="text-text-base">{cfTestResult.contentType}</span>
                         </div>
                       )}
@@ -1562,7 +1574,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                 </div>
               </div>
               <div className="flex items-center gap-1.5">
-                <span className={`px-2.5 py-1 rounded-full text-[10px] font-mono font-bold flex items-center gap-1.5 ${themeMode === 'light' ? 'bg-sky-50 text-sky-700 border border-sky-200' : 'bg-sky-500/10 text-sky-400 border border-sky-500/20'}`}>
+                <span className={`px-2.5 py-1 rounded-full text-[10px] font-sans font-bold flex items-center gap-1.5 ${themeMode === 'light' ? 'bg-sky-50 text-sky-700 border border-sky-200' : 'bg-sky-500/10 text-sky-400 border border-sky-500/20'}`}>
                   <Palette size={12} />
                   Live Preview Engine
                 </span>
@@ -1580,7 +1592,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                       <Layers size={14} className="text-sky-400" />
                       A. Basemap Tile Source & Opacity
                     </h4>
-                    <span className="text-[10px] text-text-muted font-mono">Preview on select</span>
+                    <span className="text-[10px] text-text-muted font-sans">Preview on select</span>
                   </div>
 
                   <div className="space-y-3 text-xs">
@@ -1621,7 +1633,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                     <div>
                       <div className="flex justify-between items-center mb-1">
                         <label className="text-text-muted font-medium">Basemap Opacity</label>
-                        <span className="font-mono text-[11px] text-sky-400 font-bold">{projectSettings.basemapOpacity ?? 100}%</span>
+                        <span className="font-sans text-[11px] text-sky-400 font-bold">{projectSettings.basemapOpacity ?? 100}%</span>
                       </div>
                       <input
                         type="range"
@@ -1649,7 +1661,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                             previewBasemapChange('custom_tile', val);
                           }}
                           placeholder="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                          className={`w-full px-3 py-2 rounded-lg font-mono focus:outline-none border ${inputBg}`}
+                          className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
                         />
                       </div>
                     )}
@@ -1777,7 +1789,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                               return updated;
                             });
                           }}
-                          className={`w-full px-2 py-1.5 rounded font-mono text-[11px] uppercase border ${inputBg}`}
+                          className={`w-full px-2 py-1.5 rounded font-sans text-[11px] uppercase border ${inputBg}`}
                         />
                       </div>
                     </div>
@@ -1810,7 +1822,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                               return updated;
                             });
                           }}
-                          className={`w-full px-2 py-1.5 rounded font-mono text-[11px] uppercase border ${inputBg}`}
+                          className={`w-full px-2 py-1.5 rounded font-sans text-[11px] uppercase border ${inputBg}`}
                         />
                       </div>
                     </div>
@@ -1843,7 +1855,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                               return updated;
                             });
                           }}
-                          className={`w-full px-2 py-1.5 rounded font-mono text-[11px] uppercase border ${inputBg}`}
+                          className={`w-full px-2 py-1.5 rounded font-sans text-[11px] uppercase border ${inputBg}`}
                         />
                       </div>
                     </div>
@@ -1876,7 +1888,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                               return updated;
                             });
                           }}
-                          className={`w-full px-2 py-1.5 rounded font-mono text-[11px] uppercase border ${inputBg}`}
+                          className={`w-full px-2 py-1.5 rounded font-sans text-[11px] uppercase border ${inputBg}`}
                         />
                       </div>
                     </div>
@@ -1909,7 +1921,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                               return updated;
                             });
                           }}
-                          className={`w-full px-2 py-1.5 rounded font-mono text-[11px] uppercase border ${inputBg}`}
+                          className={`w-full px-2 py-1.5 rounded font-sans text-[11px] uppercase border ${inputBg}`}
                         />
                       </div>
                     </div>
@@ -1956,7 +1968,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                     <div className={`sm:col-span-2 pt-2 border-t ${themeMode === 'light' ? 'border-slate-200' : 'border-subtle'}`}>
                       <div className="flex justify-between items-center mb-1">
                         <label className="text-text-muted font-medium">Layer & Trajectory Color Opacity</label>
-                        <span className="font-mono text-[11px] text-emerald-400 font-bold">{projectSettings.layerOpacity ?? 100}%</span>
+                        <span className="font-sans text-[11px] text-emerald-400 font-bold">{projectSettings.layerOpacity ?? 100}%</span>
                       </div>
                       <input
                         type="range"
@@ -2000,7 +2012,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                       <Map size={14} className="text-emerald-400" />
                       C. Project Geographic Boundary
                     </h4>
-                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-mono font-bold flex items-center gap-1.5 ${(projectSettings as any)?.projectBoundary?.geojson
+                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-sans font-bold flex items-center gap-1.5 ${(projectSettings as any)?.projectBoundary?.geojson
                       ? (themeMode === 'light' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20')
                       : 'bg-inner text-text-muted border border-subtle'
                       }`}>
@@ -2093,7 +2105,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                   {(projectSettings as any)?.projectBoundary?.bbox && (
                     <div className={`p-2.5 rounded-lg border ${innerCardBg}`}>
                       <span className="text-[10px] uppercase tracking-wider text-text-muted font-semibold">Bounding Box (minLng, minLat, maxLng, maxLat)</span>
-                      <div className="text-[11px] font-mono text-emerald-300 mt-1">
+                      <div className="text-[11px] font-sans text-emerald-300 mt-1">
                         {(projectSettings as any)?.projectBoundary?.bbox?.map((n: number) => Number(n).toFixed(6)).join(' · ')}
                       </div>
                     </div>
@@ -2153,7 +2165,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
 
                     {/* Bottom-Right Live Cursor Coordinate Badge */}
                     <div className="absolute bottom-3 right-3 z-20 pointer-events-none">
-                      <div className={`backdrop-blur-md border rounded-lg px-2.5 py-1 text-[10px] shadow-xl flex items-center gap-1.5 font-mono ${themeMode === 'light' ? 'bg-white/95 border-slate-200 text-slate-800' : 'bg-app border-subtle text-text-base'}`}>
+                      <div className={`backdrop-blur-md border rounded-lg px-2.5 py-1 text-[10px] shadow-xl flex items-center gap-1.5 font-sans ${themeMode === 'light' ? 'bg-white/95 border-slate-200 text-slate-800' : 'bg-app border-subtle text-text-base'}`}>
                         <span className="text-sky-500 font-semibold">{projectSettings.spatialSrid || 'EPSG:4326'}</span>
                         <span className={themeMode === 'light' ? 'text-text-base' : 'text-text-muted'}>|</span>
                         {previewCoords ? (
@@ -2233,7 +2245,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                   </p>
                 </div>
               </div>
-              <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-semibold border ${themeMode === 'light' ? 'bg-slate-100 text-slate-700 border-slate-200' : 'bg-inner text-text-base border-subtle'}`}>
+              <span className={`px-2 py-0.5 rounded text-[10px] font-sans font-semibold border ${themeMode === 'light' ? 'bg-slate-100 text-slate-700 border-slate-200' : 'bg-inner text-text-base border-subtle'}`}>
                 Protected Mode
               </span>
             </div>
@@ -2301,7 +2313,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                     placeholder="user@example.com, @company.com (email)"
                     value={projectSettings.corporateDomain || ''}
                     onChange={e => setProjectSettings(prev => ({ ...prev, corporateDomain: e.target.value }))}
-                    className={`w-full px-3 py-2 rounded-lg font-mono focus:outline-none border ${inputBg}`}
+                    className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
                   />
                   <p className="text-[10px] text-text-muted mt-1">Specify authorized email addresses or domain suffixes (e.g. <code>user@example.com</code> or <code>@company.com</code>).</p>
                 </div>
@@ -2314,7 +2326,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                     <Users size={13} className={themeMode === 'light' ? 'text-text-muted' : 'text-text-muted'} />
                     Role-Based Access Control (RBAC) Policy
                   </h4>
-                  <span className="text-[10px] text-text-muted font-mono">4 System Roles</span>
+                  <span className="text-[10px] text-text-muted font-sans">4 System Roles</span>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
@@ -2361,7 +2373,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                     type={showApiKey ? 'text' : 'password'}
                     readOnly
                     value={import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'}
-                    className={`flex-1 px-2.5 py-1.5 rounded font-mono text-[11px] border ${inputBg}`}
+                    className={`flex-1 px-2.5 py-1.5 rounded font-sans text-[11px] border ${inputBg}`}
                   />
                   <button
                     type="button"
@@ -2388,7 +2400,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                 <Activity size={16} className="text-sky-400" />
                 <h3 className="text-sm font-bold text-text-base uppercase tracking-wide">6. Contract SLA Targets & QA Benchmarks</h3>
               </div>
-              <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-inner border border-subtle text-text-base">
+              <span className="px-2 py-0.5 rounded text-[10px] font-sans bg-inner border border-subtle text-text-base">
                 Quality SLA Standard
               </span>
             </div>
@@ -2402,7 +2414,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                   value={projectSettings.targetKm ?? ''}
                   onChange={e => setProjectSettings(prev => ({ ...prev, targetKm: e.target.value === '' ? 0 : parseFloat(e.target.value) }))}
                   placeholder="e.g. 300.0"
-                  className={`w-full px-3 py-2 rounded-lg font-mono focus:outline-none border ${inputBg}`}
+                  className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
                 />
               </div>
 
@@ -2413,7 +2425,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                   step="0.1"
                   value={projectSettings.maxDefectThresholdPercent || 5.0}
                   onChange={e => setProjectSettings(prev => ({ ...prev, maxDefectThresholdPercent: parseFloat(e.target.value) || 5.0 }))}
-                  className={`w-full px-3 py-2 rounded-lg font-mono focus:outline-none border ${inputBg}`}
+                  className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
                 />
               </div>
 
@@ -2487,7 +2499,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
             {/* Save Button */}
             <div className={`pt-3 border-t flex flex-wrap justify-end items-center gap-3 ${themeMode === 'light' ? 'border-slate-200' : 'border-subtle'}`}>
               {!isAdmin && (
-                <span className="text-xs text-amber-400 font-mono flex items-center gap-1.5">
+                <span className="text-xs text-amber-400 font-sans flex items-center gap-1.5">
                   <Lock size={13} /> Only administrators can save configuration changes.
                 </span>
               )}
@@ -2527,6 +2539,9 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
           projectSettings={projectSettings}
         />
       )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 };

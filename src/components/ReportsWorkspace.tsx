@@ -4,8 +4,6 @@ import {
   Layers,
   ShieldCheck,
   GitBranch,
-  RefreshCw,
-  Undo2,
   FileText,
   Printer
 } from 'lucide-react';
@@ -23,6 +21,7 @@ import {
 } from '../utils/reportDocuments';
 import type { ProcessingJobRecord, DatasetRecord } from '../types/production';
 import { REPORTS_TAB_LABELS } from './production/reports/reportsCommon';
+import { UnderlineTabStrip, type ChromeTab } from './production/chrome';
 
 export interface ReportsWorkspaceProps {
   projectSettings: any;
@@ -40,28 +39,27 @@ export interface ReportsWorkspaceProps {
 
 type ReportsTab = 'executive' | 'daily' | 'subgrid' | 'qa' | 'lineage';
 
-const TABS: Array<{ key: ReportsTab; icon: React.ComponentType<{ size?: number | string; className?: string }> }> = [
-  { key: 'executive', icon: FileText },
-  { key: 'daily', icon: CalendarClock },
-  { key: 'subgrid', icon: Layers },
-  { key: 'qa', icon: ShieldCheck },
-  { key: 'lineage', icon: GitBranch }
+const TABS: ChromeTab<ReportsTab>[] = [
+  { key: 'executive', icon: <FileText size={14} /> },
+  { key: 'daily', icon: <CalendarClock size={14} /> },
+  { key: 'subgrid', icon: <Layers size={14} /> },
+  { key: 'qa', icon: <ShieldCheck size={14} /> },
+  { key: 'lineage', icon: <GitBranch size={14} /> }
 ];
 
 export const ReportsWorkspace: React.FC<ReportsWorkspaceProps> = ({
   projectSettings,
   isGuestUser,
-  onBackToDashboard,
+  onBackToDashboard: _onBackToDashboard,
   translate = (k) => k,
   batchLogs = [],
   dailyData = [],
-  onRefreshData
+  onRefreshData: _onRefreshData
 }) => {
   const [activeTab, setActiveTab] = useState<ReportsTab>('executive');
   const [stagingRows, setStagingRows] = useState<any[]>([]);
   const [datasets, setDatasets] = useState<DatasetRecord[]>([]);
   const [jobs, setJobs] = useState<ProcessingJobRecord[]>([]);
-  const [refreshing, setRefreshing] = useState(false);
 
   const refreshAll = useCallback(() => {
     Promise.all([
@@ -74,13 +72,6 @@ export const ReportsWorkspace: React.FC<ReportsWorkspaceProps> = ({
   useEffect(() => {
     refreshAll();
   }, [refreshAll]);
-
-  const handleRefresh = () => {
-    setRefreshing(true);
-    Promise.all([refreshAll(), onRefreshData?.()])
-      .catch(() => undefined)
-      .finally(() => setRefreshing(false));
-  };
 
   const boundarySubgrids = useMemo(() => {
     const boundary = (projectSettings as any)?.projectBoundary;
@@ -111,152 +102,127 @@ export const ReportsWorkspace: React.FC<ReportsWorkspaceProps> = ({
     openPrintableReport('GeoSphere 360 Report', builder());
   };
 
-  const kpis = [
-    { label: translate('reportsKpiSubgrids'), value: String(analytics.totals.subgrids) },
-    { label: translate('reportsKpiPublished'), value: String(analytics.totals.published) },
-    { label: translate('reportsKpiStaged'), value: String(analytics.totals.staged) },
-    { label: translate('reportsKpiKm'), value: `${analytics.totals.km.toFixed(2)} km` },
-    { label: translate('reportsKpiPoi'), value: analytics.totals.poi.toLocaleString() },
-    { label: translate('reportsKpiDefects'), value: analytics.totals.defects.toLocaleString() },
-    { label: translate('reportsKpiPassRate'), value: `${analytics.totals.passRate.toFixed(1)}%` }
-  ];
-
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden animate-in fade-in duration-500">
       <div className="flex-1 flex flex-col gap-3 min-h-0 overflow-y-auto p-4">
         {/* Header */}
-        <div className="bg-card border border-subtle rounded-xl p-4 flex items-center justify-between gap-3 flex-wrap">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-inner rounded-xl border border-subtle text-sky-400">
-              <FileText size={22} />
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-sm font-bold text-text-base tracking-wide">
-                  {translate('reportsTitle')}
-                </h2>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider border border-emerald-500/40 bg-emerald-950/40 text-emerald-300">
-                  Live
+        <div className="px-1">
+          <h2 className="text-base font-bold text-text-base tracking-wide">
+            {translate('reportsTitle')}
+          </h2>
+          <p className="text-xs text-text-muted mt-0.5 leading-relaxed">
+            {translate('reportsSubtitle')}
+          </p>
+        </div>
+
+        {/* Main Panel Canvas */}
+        <div className="bg-card border border-subtle rounded-2xl shadow-md overflow-hidden flex flex-col min-h-0">
+          <div className="px-3 pt-2 border-b border-divider bg-card">
+            <UnderlineTabStrip
+              tabs={TABS}
+              active={activeTab}
+              onChange={setActiveTab}
+              tabLabel={(key) => translate(REPORTS_TAB_LABELS[key])}
+            />
+          </div>
+
+          <div className="p-4 sm:p-5 flex flex-col gap-4 min-h-0">
+            {/* Reports Telemetry Strip */}
+            <div className="bg-inner/40 border border-subtle rounded-xl px-4 py-2.5 shadow-sm text-xs flex flex-wrap items-center gap-x-4 gap-y-2">
+              <span className="text-[11px] font-bold text-text-muted shrink-0 uppercase tracking-wider">
+                Reports Telemetry:
+              </span>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+                <span>
+                  <span className="text-text-muted">{translate('reportsKpiSubgrids')}: </span>
+                  <strong className="font-semibold text-text-base">{analytics.totals.subgrids}</strong>
+                </span>
+                <span className="text-text-muted">&bull;</span>
+                <span>
+                  <span className="text-text-muted">{translate('reportsKpiPublished')}: </span>
+                  <strong className="font-semibold text-text-base">{analytics.totals.published}</strong>
+                </span>
+                <span className="text-text-muted">&bull;</span>
+                <span>
+                  <span className="text-text-muted">{translate('reportsKpiStaged')}: </span>
+                  <strong className="font-semibold text-text-base">{analytics.totals.staged}</strong>
+                </span>
+                <span className="text-text-muted">&bull;</span>
+                <span>
+                  <span className="text-text-muted">{translate('reportsKpiKm')}: </span>
+                  <strong className="font-semibold text-text-base">{analytics.totals.km.toFixed(2)} km</strong>
+                </span>
+                <span className="text-text-muted">&bull;</span>
+                <span>
+                  <span className="text-text-muted">{translate('reportsKpiPoi')}: </span>
+                  <strong className="font-semibold text-text-base">{analytics.totals.poi.toLocaleString()}</strong>
+                </span>
+                <span className="text-text-muted">&bull;</span>
+                <span>
+                  <span className="text-text-muted">{translate('reportsKpiDefects')}: </span>
+                  <strong className="font-semibold text-text-base">{analytics.totals.defects.toLocaleString()}</strong>
+                </span>
+                <span className="text-text-muted">&bull;</span>
+                <span>
+                  <span className="text-text-muted">{translate('reportsKpiPassRate')}: </span>
+                  <strong className="font-semibold text-text-base">{analytics.totals.passRate.toFixed(1)}%</strong>
                 </span>
               </div>
-              <p className="text-[11px] text-text-muted mt-0.5 leading-relaxed">
-                {translate('reportsSubtitle')}
-              </p>
             </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleRefresh}
-              className="flex items-center gap-1.5 px-3 py-2 bg-inner border border-subtle hover:bg-card text-text-base text-xs font-semibold rounded-lg transition-colors cursor-pointer"
-            >
-              <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
-              {translate('refresh')}
-            </button>
-            {onBackToDashboard && (
-              <button
-                onClick={onBackToDashboard}
-                className="flex items-center gap-1.5 px-3 py-2 bg-inner border border-subtle hover:bg-card text-text-muted hover:text-text-base text-xs font-semibold rounded-lg transition-colors cursor-pointer"
-              >
-                <Undo2 size={13} /> {translate('backToDashboard')}
-              </button>
+
+            {/* Active report panel */}
+            {activeTab === 'executive' && (
+              <ReportActionCard
+                icon={<FileText size={20} />}
+                title={translate('reportsExecTitle')}
+                desc={translate('reportsExecDesc')}
+                onGenerate={() => generate(() => buildExecutiveReportHtml(analytics))}
+                disabled={isGuestUser}
+                translate={translate}
+              />
+            )}
+            {activeTab === 'daily' && (
+              <ReportActionCard
+                icon={<CalendarClock size={20} />}
+                title={translate('reportsDailyTitle')}
+                desc={translate('reportsDailyDesc')}
+                onGenerate={() => generate(() => buildDailyReportHtml(dailyData))}
+                disabled={isGuestUser}
+                translate={translate}
+              />
+            )}
+            {activeTab === 'subgrid' && (
+              <ReportActionCard
+                icon={<Layers size={20} />}
+                title={translate('reportsSubgridTitle')}
+                desc={translate('reportsSubgridDesc')}
+                onGenerate={() => generate(() => buildSubgridReportHtml(analytics))}
+                disabled={isGuestUser}
+                translate={translate}
+              />
+            )}
+            {activeTab === 'qa' && (
+              <ReportActionCard
+                icon={<ShieldCheck size={20} />}
+                title={translate('reportsQaTitle')}
+                desc={translate('reportsQaDesc')}
+                onGenerate={() => generate(() => buildQaReportHtml({ jobs, analytics }))}
+                disabled={isGuestUser}
+                translate={translate}
+              />
+            )}
+            {activeTab === 'lineage' && (
+              <ReportActionCard
+                icon={<GitBranch size={20} />}
+                title={translate('reportsLineageTitle')}
+                desc={translate('reportsLineageDesc')}
+                onGenerate={() => generate(() => buildLineageReportHtml({ datasets, jobs }))}
+                disabled={isGuestUser}
+                translate={translate}
+              />
             )}
           </div>
         </div>
-
-        {/* Tabs */}
-        <div className="flex items-center gap-1 overflow-x-auto bg-card border border-subtle rounded-xl p-1">
-          {TABS.map((tab) => {
-            const Icon = tab.icon;
-            const active = activeTab === tab.key;
-            return (
-              <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
-                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wide transition-colors cursor-pointer whitespace-nowrap ${
-                  active
-                    ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40'
-                    : 'text-text-muted hover:text-text-base border border-transparent'
-                }`}
-              >
-                <Icon size={14} />
-                {translate(REPORTS_TAB_LABELS[tab.key])}
-              </button>
-            );
-          })}
-        </div>
-
-        {isGuestUser && (
-          <div className="text-[11px] px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300">
-            {translate('reportsGuestNote')}
-          </div>
-        )}
-
-        {/* KPI strip */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-7 gap-2">
-          {kpis.map((k) => (
-            <div key={k.label} className="bg-inner border border-subtle rounded-xl p-3">
-              <div className="text-[9px] font-bold uppercase tracking-wider text-text-muted">{k.label}</div>
-              <div className="text-sm font-bold text-text-base mt-1">{k.value}</div>
-            </div>
-          ))}
-        </div>
-
-        {/* Active report panel */}
-        {activeTab === 'executive' && (
-          <ReportActionCard
-            icon={<FileText size={20} />}
-            title={translate('reportsExecTitle')}
-            desc={translate('reportsExecDesc')}
-            onGenerate={() => generate(() => buildExecutiveReportHtml(analytics))}
-            disabled={isGuestUser}
-            translate={translate}
-            tag={translate('reportsTagAutomatic')}
-          />
-        )}
-        {activeTab === 'daily' && (
-          <ReportActionCard
-            icon={<CalendarClock size={20} />}
-            title={translate('reportsDailyTitle')}
-            desc={translate('reportsDailyDesc')}
-            onGenerate={() => generate(() => buildDailyReportHtml(dailyData))}
-            disabled={isGuestUser}
-            translate={translate}
-            tag={`${dailyData.length} ${translate('reportsTagRecords')}`}
-          />
-        )}
-        {activeTab === 'subgrid' && (
-          <ReportActionCard
-            icon={<Layers size={20} />}
-            title={translate('reportsSubgridTitle')}
-            desc={translate('reportsSubgridDesc')}
-            onGenerate={() => generate(() => buildSubgridReportHtml(analytics))}
-            disabled={isGuestUser}
-            translate={translate}
-            tag={`${analytics.perSubgrid.length} ${translate('reportsTagSubgrids')}`}
-          />
-        )}
-        {activeTab === 'qa' && (
-          <ReportActionCard
-            icon={<ShieldCheck size={20} />}
-            title={translate('reportsQaTitle')}
-            desc={translate('reportsQaDesc')}
-            onGenerate={() => generate(() => buildQaReportHtml({ jobs, analytics }))}
-            disabled={isGuestUser}
-            translate={translate}
-            tag={`${jobs.filter((j: any) => j.qa_decision).length} ${translate('reportsTagDecisions')}`}
-          />
-        )}
-        {activeTab === 'lineage' && (
-          <ReportActionCard
-            icon={<GitBranch size={20} />}
-            title={translate('reportsLineageTitle')}
-            desc={translate('reportsLineageDesc')}
-            onGenerate={() => generate(() => buildLineageReportHtml({ datasets, jobs }))}
-            disabled={isGuestUser}
-            translate={translate}
-            tag={`${datasets.length} ${translate('reportsTagDatasets')}`}
-          />
-        )}
       </div>
     </div>
   );
@@ -268,8 +234,7 @@ function ReportActionCard({
   desc,
   onGenerate,
   disabled,
-  translate,
-  tag
+  translate
 }: {
   icon: React.ReactNode;
   title: string;
@@ -277,7 +242,6 @@ function ReportActionCard({
   onGenerate: () => void;
   disabled?: boolean;
   translate: (k: string) => string;
-  tag?: string;
 }) {
   return (
     <div className="bg-card border border-subtle rounded-xl p-5 flex flex-col xl:flex-row xl:items-center gap-4 xl:justify-between">
@@ -286,11 +250,6 @@ function ReportActionCard({
         <div className="min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <h3 className="text-sm font-bold text-text-base">{title}</h3>
-            {tag && (
-              <span className="text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider border border-sky-500/40 bg-sky-950/40 text-sky-300">
-                {tag}
-              </span>
-            )}
           </div>
           <p className="text-[11px] text-text-muted mt-1 leading-relaxed">{desc}</p>
           <ul className="flex flex-wrap gap-1.5 mt-3">

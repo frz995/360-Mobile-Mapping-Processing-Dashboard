@@ -6,8 +6,7 @@ import {
   WifiOff,
   Server,
   Loader2,
-  Database,
-  CheckCircle2
+  Database
 } from 'lucide-react';
 import type { ProductionApiClient } from '../../../services/productionApi';
 import type { DatasetRecord, StorageInfo, WorkerHealthInfo } from '../../../types/production';
@@ -82,12 +81,12 @@ export const OverviewPanel: React.FC<OverviewPanelProps> = ({
               </span>
             )}
           </div>
-          <p className="text-[11px] text-text-muted mt-1.5 font-mono break-all">{workerUrl}</p>
+          <p className="text-[11px] text-text-muted mt-1.5 font-sans break-all">{workerUrl}</p>
           {health && (
             <div className="text-[11px] text-text-muted mt-2 flex items-center gap-1.5">
               <span className="text-emerald-300 font-semibold">{health.status}</span> ·
               <Activity size={12} /> {health.jobs_active} active job(s) · NAS mount:{" "}
-              <span className="font-mono">{health.nas_base}</span>
+              <span className="font-sans">{health.nas_base}</span>
             </div>
           )}
           {error && <p className="text-[11px] text-amber-300 mt-2">{error}</p>}
@@ -102,11 +101,11 @@ export const OverviewPanel: React.FC<OverviewPanelProps> = ({
               {projectSettings?.nasServerUrl || import.meta.env.VITE_NAS_SERVER_URL ? 'Configured' : 'Not set'}
             </span>
           </div>
-          <p className="text-[11px] text-text-muted mt-1.5 font-mono break-all">
+          <p className="text-[11px] text-text-muted mt-1.5 font-sans break-all">
             {projectSettings?.nasServerUrl || import.meta.env.VITE_NAS_SERVER_URL || '—'}
           </p>
           <p className="text-[11px] text-text-muted mt-2">
-            Direct image URLs. Must send CORS headers, or use the worker <span className="font-mono">/api/images</span> passthrough.
+            Direct image URLs. Must send CORS headers, or use the worker <span className="font-sans">/api/images</span> passthrough.
           </p>
         </div>
       </div>
@@ -117,7 +116,7 @@ export const OverviewPanel: React.FC<OverviewPanelProps> = ({
           <div className="flex items-center gap-2 text-text-base text-xs font-bold uppercase tracking-wide">
             <Database size={15} className="text-sky-400" /> Capacity
           </div>
-          <span className="text-[11px] text-text-muted font-mono">
+          <span className="text-[11px] text-text-muted font-sans">
             {storage ? storage.base_path : (projectSettings?.nasWorkBasePath || '—')}
           </span>
         </div>
@@ -133,7 +132,7 @@ export const OverviewPanel: React.FC<OverviewPanelProps> = ({
                   Used <span className="text-text-base font-semibold">{formatBytes(used)}</span> of{" "}
                   {formatBytes(total)}
                 </span>
-                <span className="font-mono">{pct(used, total).toFixed(1)}%</span>
+                <span className="font-sans">{pct(used, total).toFixed(1)}%</span>
               </div>
               <div className="h-2.5 bg-black/40 rounded-full overflow-hidden">
                 <div
@@ -169,7 +168,7 @@ export const OverviewPanel: React.FC<OverviewPanelProps> = ({
                   <tbody>
                     {storage.per_top_level.map((row) => (
                       <tr key={row.name} className="border-t border-subtle">
-                        <td className="py-1.5 pr-2 font-mono text-sky-300">{row.name}/</td>
+                        <td className="py-1.5 pr-2 font-sans text-sky-300">{row.name}/</td>
                         <td className="py-1.5 pr-2 text-right text-text-muted">{row.files?.toLocaleString?.() || row.files}</td>
                         <td className="py-1.5 pr-2 text-right text-text-muted">{row.folders?.toLocaleString?.() || row.folders}</td>
                         <td className="py-1.5 text-right text-text-base">{formatBytes(row.bytes)}</td>
@@ -182,27 +181,37 @@ export const OverviewPanel: React.FC<OverviewPanelProps> = ({
           </>
         ) : (
           <p className="text-[11px] text-amber-300 mt-2">
-            Storage info unavailable — worker not reachable or <span className="font-mono">/api/storage</span> not exposed.
+            Storage info unavailable — worker not reachable or <span className="font-sans">/api/storage</span> not exposed.
           </p>
         )}
       </div>
 
-      {/* Dataset index summary */}
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-        {[
-          { label: 'RAW', count: rawCount, color: 'text-amber-300' },
-          { label: 'PROCESSED', count: processedCount, color: 'text-sky-300' },
-          { label: 'DELIVERABLE', count: deliverableCount, color: 'text-emerald-300' },
-          { label: 'TOTAL', count: datasets.length, color: 'text-text-base' }
-        ].map((k) => (
-          <div key={k.label} className="bg-inner border border-subtle rounded-xl p-4 flex items-center gap-3">
-            <CheckCircle2 size={16} className={k.color} />
-            <div>
-              <div className={`text-lg font-bold leading-none ${k.color}`}>{k.count}</div>
-              <div className="text-[10px] uppercase tracking-wider text-text-muted mt-1">{k.label} datasets</div>
-            </div>
-          </div>
-        ))}
+      {/* Dataset index summary telemetry strip */}
+      <div className="bg-card border border-subtle rounded-xl px-4 py-2.5 shadow-sm text-xs flex flex-wrap items-center gap-x-4 gap-y-2">
+        <span className="text-[11px] font-bold text-text-muted shrink-0 uppercase tracking-wider">
+          Datasets Catalog:
+        </span>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+          <span>
+            <span className="text-text-muted">RAW: </span>
+            <strong className="font-semibold text-text-base">{rawCount}</strong>
+          </span>
+          <span className="text-text-muted">&bull;</span>
+          <span>
+            <span className="text-text-muted">Processed: </span>
+            <strong className="font-semibold text-text-base">{processedCount}</strong>
+          </span>
+          <span className="text-text-muted">&bull;</span>
+          <span>
+            <span className="text-text-muted">Deliverable: </span>
+            <strong className="font-semibold text-text-base">{deliverableCount}</strong>
+          </span>
+          <span className="text-text-muted">&bull;</span>
+          <span>
+            <span className="text-text-muted">Total Datasets: </span>
+            <strong className="font-semibold text-text-base">{datasets.length}</strong>
+          </span>
+        </div>
       </div>
     </div>
   );

@@ -200,12 +200,12 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
                         ) : isPreviewable(entry.name) ? (
                           <span className="flex items-center gap-1.5">
                             <ImageIcon size={13} className="text-sky-300" />
-                            <span className="text-text-base font-mono">{entry.name}</span>
+                            <span className="text-text-base font-sans">{entry.name}</span>
                           </span>
                         ) : (
                           <span className="flex items-center gap-1.5">
                             <FileText size={13} className="text-text-muted" />
-                            <span className="text-text-muted font-mono">{entry.name}</span>
+                            <span className="text-text-muted font-sans">{entry.name}</span>
                           </span>
                         )}
                       </td>
@@ -249,7 +249,7 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
           {listing && (
             <div className="px-3 py-2 border-t border-subtle text-[10px] text-text-muted">
               {listing.fileCount?.toLocaleString?.() || listing.fileCount || 0} files ·{" "}
-              {formatBytes(listing.sizeBytes)} in <span className="font-mono">{listing.path || '/'}</span>
+              {formatBytes(listing.sizeBytes)} in <span className="font-sans">{listing.path || '/'}</span>
             </div>
           )}
         </div>
@@ -261,7 +261,7 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
               <div className="text-xs font-bold text-text-base flex items-center gap-2">
                 <Folder size={14} className="text-amber-300" /> {selected.name}/
               </div>
-              <p className="text-[11px] text-text-muted mt-1 font-mono break-all">{selected.path}</p>
+              <p className="text-[11px] text-text-muted mt-1 font-sans break-all">{selected.path}</p>
               <div className="text-[11px] text-text-muted mt-2">
                 {selected.fileCount?.toLocaleString?.() || selected.fileCount || 0} files ·
                 {formatBytes(selected.sizeBytes)}
@@ -283,7 +283,7 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
               <div className="text-xs font-bold text-text-base flex items-center gap-2">
                 <ImageIcon size={14} className="text-sky-300" /> {selected.name}
               </div>
-              <p className="text-[11px] text-text-muted mt-1 font-mono break-all">{selected.path}</p>
+              <p className="text-[11px] text-text-muted mt-1 font-sans break-all">{selected.path}</p>
               <div className="text-[11px] text-text-muted mt-1">{formatBytes(selected.sizeBytes)}</div>
               {previewUrl ? (
                 <a href={previewUrl} target="_blank" rel="noreferrer"

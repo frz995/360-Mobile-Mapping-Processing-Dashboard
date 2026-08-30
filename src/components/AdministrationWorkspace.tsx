@@ -6,7 +6,6 @@ import {
   Activity,
   Server,
   RefreshCw,
-  Undo2,
   Search,
   Plus,
   Trash2,
@@ -25,6 +24,7 @@ import {
   saveUserAccountToSupabase,
   deleteFromSupabase
 } from '../services/supabase';
+import { UnderlineTabStrip, type ChromeTab } from './production/chrome';
 
 export interface AdministrationWorkspaceProps {
   authSession?: any;
@@ -44,13 +44,13 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
   isGuestUser = false,
   addNotification,
   addAuditLog,
-  onBackToDashboard,
-  translate = (k) => k,
+  onBackToDashboard: _onBackToDashboard,
+  translate: _translate = (k) => k,
   auditLogs = [],
   onRefreshData
 }) => {
   const [activeTab, setActiveTab] = useState<AdminWorkspaceTab>('users');
-  const [refreshing, setRefreshing] = useState(false);
+  const [_refreshing, setRefreshing] = useState(false);
 
   // User Management State
   const [users, setUsers] = useState<UserAccount[]>([]);
@@ -278,6 +278,43 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
 
   const pendingApprovalsCount = deletionRequests.filter((r) => r.status === 'Pending').length;
 
+  const countBadge = (n: number) => (
+    <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-inner border border-subtle text-text-muted ml-0.5">
+      {n}
+    </span>
+  );
+
+  const ADMIN_TABS: ChromeTab<AdminWorkspaceTab>[] = [
+    {
+      key: 'users',
+      icon: <Users size={14} />,
+      label: 'User Management',
+      badge: countBadge(users.length)
+    },
+    {
+      key: 'approvals',
+      icon: <CheckSquare size={14} />,
+      label: 'Approvals',
+      badge: pendingApprovalsCount > 0 ? (
+        <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 ml-0.5 font-bold">
+          {pendingApprovalsCount}
+        </span>
+      ) : undefined
+    },
+    {
+      key: 'audit',
+      icon: <Activity size={14} />,
+      label: 'Audit Logs',
+      badge: countBadge(auditLogs.length)
+    },
+    {
+      key: 'health',
+      icon: <Server size={14} />,
+      label: 'System Health',
+      badge: <span className="w-2 h-2 rounded-full bg-emerald-400 ml-0.5" />
+    }
+  ];
+
   const filteredAuditLogs = auditLogs.filter((log: any) => {
     const matchSearch =
       !auditSearch.trim() ||
@@ -290,111 +327,30 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden animate-in fade-in duration-500">
       <div className="flex-1 flex flex-col gap-3 min-h-0 overflow-y-auto p-4">
-        {/* Top Header */}
-        <div className="bg-card border border-subtle rounded-xl p-4 flex items-center justify-between gap-3 flex-wrap shadow-sm">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-inner rounded-xl border border-subtle text-sky-400">
-              <Shield size={22} />
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-sm font-bold text-text-base tracking-wide">
-                  Administration &amp; Governance
-                </h2>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider border border-sky-500/40 bg-sky-950/40 text-sky-300">
-                  Protected Mode
-                </span>
-              </div>
-              <p className="text-[11px] text-text-muted mt-0.5 leading-relaxed">
-                Security, RBAC user access control, data deletion approvals, and audit trail
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={loadData}
-              className="flex items-center gap-1.5 px-3 py-2 bg-inner border border-subtle hover:bg-card text-text-base text-xs font-semibold rounded-lg transition-colors cursor-pointer"
-            >
-              <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
-              {translate('refresh')}
-            </button>
-            {onBackToDashboard && (
-              <button
-                onClick={onBackToDashboard}
-                className="flex items-center gap-1.5 px-3 py-2 bg-inner border border-subtle hover:bg-card text-text-muted hover:text-text-base text-xs font-semibold rounded-lg transition-colors cursor-pointer"
-              >
-                <Undo2 size={13} /> {translate('backToDashboard')}
-              </button>
-            )}
-          </div>
+        {/* Header */}
+        <div className="px-1">
+          <h2 className="text-base font-bold text-text-base tracking-wide">
+            Administration &amp; Governance
+          </h2>
+          <p className="text-xs text-text-muted mt-0.5 leading-relaxed">
+            Security, RBAC user access control, data deletion approvals, and audit trail
+          </p>
         </div>
 
-        {/* Tab Navigation */}
-        <div className="flex items-center gap-1 overflow-x-auto bg-card border border-subtle rounded-xl p-1 shrink-0">
-          <button
-            onClick={() => setActiveTab('users')}
-            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wide transition-colors cursor-pointer whitespace-nowrap ${
-              activeTab === 'users'
-                ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40'
-                : 'text-text-muted hover:text-text-base border border-transparent'
-            }`}
-          >
-            <Users size={14} />
-            <span>User Management</span>
-            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-inner border border-subtle text-text-muted ml-1">
-              {users.length}
-            </span>
-          </button>
+        {/* Main Panel Canvas */}
+        <div className="bg-card border border-subtle rounded-2xl shadow-md overflow-hidden flex flex-col min-h-0">
+          <div className="px-3 pt-2 border-b border-divider bg-card">
+            <UnderlineTabStrip
+              tabs={ADMIN_TABS}
+              active={activeTab}
+              onChange={setActiveTab}
+            />
+          </div>
 
-          <button
-            onClick={() => setActiveTab('approvals')}
-            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wide transition-colors cursor-pointer whitespace-nowrap ${
-              activeTab === 'approvals'
-                ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40'
-                : 'text-text-muted hover:text-text-base border border-transparent'
-            }`}
-          >
-            <CheckSquare size={14} />
-            <span>Approvals (Data Deletion)</span>
-            {pendingApprovalsCount > 0 && (
-              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 ml-1 font-bold">
-                {pendingApprovalsCount}
-              </span>
-            )}
-          </button>
-
-          <button
-            onClick={() => setActiveTab('audit')}
-            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wide transition-colors cursor-pointer whitespace-nowrap ${
-              activeTab === 'audit'
-                ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40'
-                : 'text-text-muted hover:text-text-base border border-transparent'
-            }`}
-          >
-            <Activity size={14} />
-            <span>Audit Logs</span>
-            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-inner border border-subtle text-text-muted ml-1">
-              {auditLogs.length}
-            </span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('health')}
-            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wide transition-colors cursor-pointer whitespace-nowrap ${
-              activeTab === 'health'
-                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                : 'text-text-muted hover:text-text-base border border-transparent'
-            }`}
-          >
-            <Server size={14} />
-            <span>System Health</span>
-            <span className="w-2 h-2 rounded-full bg-emerald-400 ml-1" />
-          </button>
-        </div>
-
-        {/* TAB 1: USER MANAGEMENT */}
-        {activeTab === 'users' && (
-          <div className="bg-card border border-subtle rounded-xl p-5 space-y-4 shadow-sm animate-in fade-in">
+          <div className="p-5 flex-1 flex flex-col min-h-0 space-y-4">
+            {/* TAB 1: USER MANAGEMENT */}
+            {activeTab === 'users' && (
+              <div className="space-y-4 animate-in fade-in">
             <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-subtle">
               <div>
                 <h3 className="text-sm font-bold text-text-base flex items-center gap-2">
@@ -475,7 +431,7 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
                           </div>
                           <span>{u.name}</span>
                         </td>
-                        <td className="px-3.5 py-2.5 font-mono text-text-base">{u.email}</td>
+                        <td className="px-3.5 py-2.5 font-sans text-text-base">{u.email}</td>
                         <td className="px-3.5 py-2.5">
                           <select
                             disabled={!isAdmin}
@@ -500,7 +456,7 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
                             {u.status}
                           </span>
                         </td>
-                        <td className="px-3.5 py-2.5 text-text-muted font-mono text-[11px]">
+                        <td className="px-3.5 py-2.5 text-text-muted font-sans text-[11px]">
                           {u.lastLogin}
                         </td>
                         <td className="px-3.5 py-2.5 text-right">
@@ -541,7 +497,7 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
 
         {/* TAB 2: APPROVALS (DATA DELETION) */}
         {activeTab === 'approvals' && (
-          <div className="bg-card border border-subtle rounded-xl p-5 space-y-4 shadow-sm animate-in fade-in">
+          <div className="space-y-4 animate-in fade-in">
             <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-subtle">
               <div>
                 <h3 className="text-sm font-bold text-text-base flex items-center gap-2">
@@ -597,18 +553,18 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
 
                       return (
                         <tr key={req.id} className="hover:bg-inner transition-colors">
-                          <td className="px-3.5 py-2.5 font-mono font-semibold text-text-base">
+                          <td className="px-3.5 py-2.5 font-sans font-semibold text-text-base">
                             {req.id}
                           </td>
-                          <td className="px-3.5 py-2.5 font-mono font-bold text-text-base">
+                          <td className="px-3.5 py-2.5 font-sans font-bold text-text-base">
                             {req.subgrid}
                           </td>
                           <td className="px-3.5 py-2.5">
                             <div className="font-semibold text-text-base">{requesterName}</div>
-                            <div className="text-[10px] text-text-muted font-mono">{requesterEmail}</div>
+                            <div className="text-[10px] text-text-muted font-sans">{requesterEmail}</div>
                           </td>
                           <td className="px-3.5 py-2.5 max-w-xs text-text-base">{req.reason}</td>
-                          <td className="px-3.5 py-2.5 font-mono text-text-base">
+                          <td className="px-3.5 py-2.5 font-sans text-text-base">
                             {req.poiCount} frames ({req.kmProcessed} km)
                           </td>
                           <td className="px-3.5 py-2.5">
@@ -647,7 +603,7 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
                                 </span>
                               )
                             ) : (
-                              <span className="text-[10px] text-text-muted font-mono">
+                              <span className="text-[10px] text-text-muted font-sans">
                                 {req.reviewedBy ? `by ${req.reviewedBy}` : 'Processed'}
                               </span>
                             )}
@@ -664,7 +620,7 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
 
         {/* TAB 3: AUDIT LOGS */}
         {activeTab === 'audit' && (
-          <div className="bg-card border border-subtle rounded-xl p-5 space-y-4 shadow-sm animate-in fade-in">
+          <div className="space-y-4 animate-in fade-in">
             <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-subtle">
               <div>
                 <h3 className="text-sm font-bold text-text-base flex items-center gap-2">
@@ -717,13 +673,13 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
                         <span className="font-bold text-text-base">{log.title}</span>
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-card border border-subtle text-text-muted font-mono">
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-card border border-subtle text-text-muted font-sans">
                           {log.type}
                         </span>
                       </div>
                       <p className="text-text-muted text-[11px]">{log.details}</p>
                     </div>
-                    <div className="text-right text-[10px] text-text-muted font-mono shrink-0">
+                    <div className="text-right text-[10px] text-text-muted font-sans shrink-0">
                       {log.timestamp ? new Date(log.timestamp).toLocaleString() : 'Just now'}
                     </div>
                   </div>
@@ -735,7 +691,7 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
 
         {/* TAB 4: SYSTEM HEALTH */}
         {activeTab === 'health' && (
-          <div className="bg-card border border-subtle rounded-xl p-5 space-y-4 shadow-sm animate-in fade-in">
+          <div className="space-y-4 animate-in fade-in">
             <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-subtle">
               <div>
                 <h3 className="text-sm font-bold text-text-base flex items-center gap-2">
@@ -757,40 +713,42 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-              <div className="p-4 rounded-xl border border-subtle bg-inner space-y-1.5">
+              <div className="p-4 rounded-xl border border-subtle bg-inner space-y-1.5 shadow-sm">
                 <span className="text-[10px] uppercase font-bold text-text-muted">PostGIS Database</span>
                 <div className="text-sm font-bold text-emerald-400 flex items-center gap-1.5">
                   <CheckCircle size={14} /> {healthMetrics.postgisStatus}
                 </div>
-                <div className="text-[11px] text-text-muted font-mono">{healthMetrics.postgisLatencyMs}ms ping latency</div>
+                <div className="text-[11px] text-text-muted font-sans">{healthMetrics.postgisLatencyMs}ms ping latency</div>
               </div>
 
-              <div className="p-4 rounded-xl border border-subtle bg-inner space-y-1.5">
+              <div className="p-4 rounded-xl border border-subtle bg-inner space-y-1.5 shadow-sm">
                 <span className="text-[10px] uppercase font-bold text-text-muted">NAS / Storage Engine</span>
                 <div className="text-sm font-bold text-emerald-400 flex items-center gap-1.5">
                   <CheckCircle size={14} /> {healthMetrics.storageStatus}
                 </div>
-                <div className="text-[11px] text-text-muted font-mono">114 indexed subgrid volumes</div>
+                <div className="text-[11px] text-text-muted font-sans">114 indexed subgrid volumes</div>
               </div>
 
-              <div className="p-4 rounded-xl border border-subtle bg-inner space-y-1.5">
+              <div className="p-4 rounded-xl border border-subtle bg-inner space-y-1.5 shadow-sm">
                 <span className="text-[10px] uppercase font-bold text-text-muted">Realtime Supabase Sync</span>
                 <div className="text-sm font-bold text-sky-400 flex items-center gap-1.5">
                   <Activity size={14} /> {healthMetrics.realtimeStatus}
                 </div>
-                <div className="text-[11px] text-text-muted font-mono">WebSocket channel active</div>
+                <div className="text-[11px] text-text-muted font-sans">WebSocket channel active</div>
               </div>
 
-              <div className="p-4 rounded-xl border border-subtle bg-inner space-y-1.5">
+              <div className="p-4 rounded-xl border border-subtle bg-inner space-y-1.5 shadow-sm">
                 <span className="text-[10px] uppercase font-bold text-text-muted">Last Health Probe</span>
                 <div className="text-sm font-bold text-text-base flex items-center gap-1.5">
                   <Clock size={14} /> {healthMetrics.lastPingTime}
                 </div>
-                <div className="text-[11px] text-emerald-400 font-mono">All services green</div>
+                <div className="text-[11px] text-emerald-400 font-sans">All services green</div>
               </div>
             </div>
           </div>
         )}
+          </div>
+        </div>
       </div>
 
       {/* MODAL 1: ADD USER MODAL */}
@@ -931,7 +889,7 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
             <div className="space-y-3 text-xs">
               <p className="text-text-base leading-relaxed">
                 Assign user <strong className="text-text-base">{roleChangeModal.userName}</strong> (
-                <span className="font-mono text-text-muted text-[11px]">
+                <span className="font-sans text-text-muted text-[11px]">
                   {roleChangeModal.userEmail}
                 </span>
                 ) to role <strong className="text-sky-400">{roleChangeModal.targetRole}</strong>?

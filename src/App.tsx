@@ -9,7 +9,6 @@ import {
   Clock,
   Camera,
   Navigation,
-  LayoutDashboard,
   Save,
   Trash2,
   Edit2,
@@ -48,7 +47,7 @@ import {
   MousePointer2,
   RotateCcw
 } from 'lucide-react';
-import { supabase, publishToSupabase, saveToStagingSupabase, deleteFromStagingSupabase, fetchSupabaseData, deleteFromSupabase, deletePointsFromSupabase, updateDefectStatusInSupabase, fetchQaRecordsFromSupabase, fetchQaAuditRunsFromSupabase, saveQaAuditRunToSupabase, verifyCsvImageFilenamesInStorage, fetchAuditLogsFromSupabase, saveAuditLogToSupabase, fetchNotificationsFromSupabase, saveNotificationToSupabase, fetchProjectSettingsFromSupabase, saveProjectSettingsToSupabase, resolvePanoramaUrl, resolvePanoramaConfigUrl, getDatabaseTableMapping, SUBGRID_COORDINATES, formatPIC, fetchDatasetsFromSupabase, fetchProcessingJobsFromSupabase, fetchStagingPanoramasFromSupabase, saveToRecycleBinInSupabase, fetchRecycleBinFromSupabase, type RecycleBinItem } from './services/supabase';
+import { supabase, publishToSupabase, saveToStagingSupabase, deleteFromStagingSupabase, fetchSupabaseData, deleteFromSupabase, deletePointsFromSupabase, updateDefectStatusInSupabase, fetchQaRecordsFromSupabase, fetchQaAuditRunsFromSupabase, saveQaAuditRunToSupabase, verifyCsvImageFilenamesInStorage, fetchAuditLogsFromSupabase, saveAuditLogToSupabase, fetchNotificationsFromSupabase, saveNotificationToSupabase, fetchProjectSettingsFromSupabase, saveProjectSettingsToSupabase, resolvePanoramaUrl, resolvePanoramaConfigUrl, getDatabaseTableMapping, SUBGRID_COORDINATES, formatPIC, fetchDatasetsFromSupabase, fetchProcessingJobsFromSupabase, saveProcessingJobToSupabase, fetchStagingPanoramasFromSupabase, saveToRecycleBinInSupabase, fetchRecycleBinFromSupabase, type RecycleBinItem } from './services/supabase';
 import type { QAQCAuditRunRecord } from './types/admin';
 import type { DatasetRecord, ProcessingJobRecord } from './types/production';
 import { aggregateStagingBySubgrid } from './utils/datasetLineage';
@@ -61,6 +60,7 @@ import { RecycleBinModal } from './components/RecycleBinModal';
 import { DatasetRecoveryPanel } from './components/DatasetRecoveryPanel';
 import { DatasetRegistryPanel } from './components/DatasetRegistryPanel';
 import { AdminSettingsView } from './components/AdminSettingsView';
+import { OperationalActionCenter } from './components/OperationalActionCenter';
 import { ImageProductionWorkspace } from './components/ImageProductionWorkspace';
 import { NASStorageWorkspace } from './components/NASStorageWorkspace';
 import { ProcessingCenterWorkspace } from './components/ProcessingCenterWorkspace';
@@ -68,6 +68,7 @@ import { LineageWorkspace } from './components/LineageWorkspace';
 import { AnalyticsWorkspace } from './components/AnalyticsWorkspace';
 import { ReportsWorkspace } from './components/ReportsWorkspace';
 import { AdministrationWorkspace } from './components/AdministrationWorkspace';
+import { UnderlineTabStrip, type ChromeTab } from './components/production/chrome';
 import { QAQCWorkbench } from './components/QAQCWorkbench';
 import { DefectsGalleryModal } from './components/DefectsGalleryModal';
 import { useQAQCWorker, type StationNode } from './hooks/useQAQCWorker';
@@ -1199,7 +1200,7 @@ export const MapComponent = ({
       </div>
       {/* Live Cursor Coordinate Badge (bottom-right) — non-overlapping position */}
       <div className="absolute bottom-3 right-3 z-20 pointer-events-none">
-        <div className="bg-app backdrop-blur-md border border-subtle rounded-lg px-2.5 py-1 text-[11px] text-text-base shadow-xl flex items-center gap-2 font-mono">
+        <div className="bg-app backdrop-blur-md border border-subtle rounded-lg px-2.5 py-1 text-[11px] text-text-base shadow-xl flex items-center gap-2 font-sans">
           <span className="text-sky-400 font-semibold">EPSG:4326</span>
           <span className="text-text-muted">|</span>
           {coords ? (
@@ -1386,17 +1387,17 @@ ${missingFilenames.length > 0 ? missingFilenames.join('\n') : 'None - All images
         <div className="grid grid-cols-3 gap-3 mb-4 shrink-0">
           <div className="bg-card border border-subtle p-3 rounded-xl">
             <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider block">POI Metadata Points</span>
-            <span className="text-xl font-extrabold text-text-base font-mono mt-0.5 block">{expectedTotal.toLocaleString()}</span>
+            <span className="text-xl font-extrabold text-text-base font-sans mt-0.5 block">{expectedTotal.toLocaleString()}</span>
             <span className="text-[10px] text-text-muted">Expected survey track</span>
           </div>
           <div className="bg-card border border-subtle p-3 rounded-xl">
             <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider block">Available in MMS_PIC</span>
-            <span className="text-xl font-extrabold text-emerald-400 font-mono mt-0.5 block">{availableCount.toLocaleString()}</span>
+            <span className="text-xl font-extrabold text-emerald-400 font-sans mt-0.5 block">{availableCount.toLocaleString()}</span>
             <span className="text-[10px] text-text-muted">Uploaded image frames</span>
           </div>
           <div className="bg-card border border-subtle p-3 rounded-xl">
             <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider block">Missing Images</span>
-            <span className={`text-xl font-extrabold font-mono mt-0.5 block ${missingCount > 0 ? 'text-rose-400' : 'text-text-base'}`}>{missingCount.toLocaleString()}</span>
+            <span className={`text-xl font-extrabold font-sans mt-0.5 block ${missingCount > 0 ? 'text-rose-400' : 'text-text-base'}`}>{missingCount.toLocaleString()}</span>
             <span className={`text-[10px] ${missingCount > 0 ? 'text-rose-400/80' : 'text-text-muted'}`}>{missingCount > 0 ? 'Upload required' : '100% Matched'}</span>
           </div>
         </div>
@@ -1409,7 +1410,7 @@ ${missingFilenames.length > 0 ? missingFilenames.join('\n') : 'None - All images
                 <Loader2 size={15} className="animate-spin text-sky-400" />
                 Analyzing MMS_PIC storage bucket files...
               </span>
-              <span className="text-text-base font-mono">{progress}%</span>
+              <span className="text-text-base font-sans">{progress}%</span>
             </div>
             <div className="w-full bg-inner h-2 rounded-full overflow-hidden p-0.5">
               <div
@@ -1417,7 +1418,7 @@ ${missingFilenames.length > 0 ? missingFilenames.join('\n') : 'None - All images
                 style={{ width: `${progress}%` }}
               />
             </div>
-            <div className="text-[11px] text-text-muted font-mono truncate">
+            <div className="text-[11px] text-text-muted font-sans truncate">
               {currentScanningFilename ? `Scanning: ${currentScanningFilename}` : 'Checking panorama filenames...'}
             </div>
           </div>
@@ -1471,7 +1472,7 @@ ${missingFilenames.length > 0 ? missingFilenames.join('\n') : 'None - All images
         )}
 
         {/* Results List View */}
-        <div className="flex-1 overflow-y-auto font-mono text-xs space-y-1 p-2.5 bg-card rounded-xl border border-subtle min-h-[220px]">
+        <div className="flex-1 overflow-y-auto font-sans text-xs space-y-1 p-2.5 bg-card rounded-xl border border-subtle min-h-[220px]">
           {filteredResults.length === 0 ? (
             <div className="py-12 text-center text-text-muted">
               <CheckCircle size={24} className="mx-auto text-emerald-400 mb-2 opacity-70" />
@@ -1489,21 +1490,21 @@ ${missingFilenames.length > 0 ? missingFilenames.join('\n') : 'None - All images
                 className="flex items-center justify-between px-3 py-2 bg-card hover:bg-card border border-subtle hover:border-subtle rounded-lg transition-colors"
               >
                 <div className="flex items-center gap-3">
-                  <span className="text-text-muted text-[10px] w-10 font-mono">#{String(item.index).padStart(4, '0')}</span>
+                  <span className="text-text-muted text-[10px] w-10 font-sans">#{String(item.index).padStart(4, '0')}</span>
                   {/* Clean white/slate text for filenames */}
-                  <span className="font-mono text-xs font-medium text-text-base">
+                  <span className="font-sans text-xs font-medium text-text-base">
                     {item.filename}
                   </span>
                 </div>
 
                 <div className="flex items-center gap-2">
                   {item.isMissing ? (
-                    <span className="px-2 py-0.5 bg-rose-500/10 text-rose-400 border border-rose-500/20 rounded-md text-[10px] font-medium font-mono flex items-center gap-1">
+                    <span className="px-2 py-0.5 bg-rose-500/10 text-rose-400 border border-rose-500/20 rounded-md text-[10px] font-medium font-sans flex items-center gap-1">
                       <AlertTriangle size={10} />
                       MISSING FROM MMS_PIC
                     </span>
                   ) : (
-                    <span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-md text-[10px] font-medium font-mono flex items-center gap-1">
+                    <span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-md text-[10px] font-medium font-sans flex items-center gap-1">
                       <CheckCircle size={10} />
                       AVAILABLE
                     </span>
@@ -1694,17 +1695,19 @@ const DataManagementPage = ({
   setBatchLogs,
   layerCatalog,
   setLayerCatalog,
-  onBackToDashboard,
+  onBackToDashboard: _onBackToDashboard,
   mapRefreshKey,
   onRefreshMap,
   authSession,
-  onSignOut,
+  onSignOut: _onSignOut,
   addNotification,
   addAuditLog,
   isGuestUser,
   projectSettings,
   qaSubgridRecords,
-  translate
+  translate,
+  initialTab,
+  initialSearch
 }: {
   dailyData: DailyTimeSeries[],
   setDailyData: (data: DailyTimeSeries[]) => void,
@@ -1722,13 +1725,19 @@ const DataManagementPage = ({
   isGuestUser?: boolean,
   projectSettings?: any,
   qaSubgridRecords?: Record<string, { flags: { blurry: boolean; obstruction: boolean; badGps: boolean }; answer: 'yes' | 'no' | null; isLocked: boolean }>,
-  translate?: (key: string) => string
+  translate?: (key: string) => string,
+  initialTab?: 'batches' | 'daily' | 'vector' | 'datasets' | 'recovery',
+  initialSearch?: string
 }) => {
   const tf = translate || ((key: string) => key);
   type DataTab = 'batches' | 'daily' | 'vector' | 'datasets' | 'recovery';
-  const initialTab: DataTab = (projectSettings?.defaultDataTab === 'daily' || projectSettings?.defaultDataTab === 'vector' || projectSettings?.defaultDataTab === 'datasets' || projectSettings?.defaultDataTab === 'recovery') ? projectSettings.defaultDataTab : 'batches';
-  const [dataTab, setDataTab] = useState<DataTab>(initialTab);
+  const defaultTab: DataTab = initialTab || ((projectSettings?.defaultDataTab === 'daily' || projectSettings?.defaultDataTab === 'vector' || projectSettings?.defaultDataTab === 'datasets' || projectSettings?.defaultDataTab === 'recovery') ? projectSettings.defaultDataTab : 'batches');
+  const [dataTab, setDataTab] = useState<DataTab>(defaultTab);
   const [recycleBinCount, setRecycleBinCount] = useState<number>(0);
+
+  useEffect(() => {
+    if (initialTab) setDataTab(initialTab);
+  }, [initialTab]);
 
   const refreshRecycleBinCount = useCallback(async () => {
     try {
@@ -2961,9 +2970,13 @@ const DataManagementPage = ({
   };
 
   // Search & Pagination State
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(initialSearch || '');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+
+  useEffect(() => {
+    if (initialSearch !== undefined) setSearchQuery(initialSearch);
+  }, [initialSearch]);
 
   // Reset pagination on tab/search/pageSize change
   useEffect(() => {
@@ -3845,54 +3858,69 @@ const DataManagementPage = ({
   const impactTotals = impactData?.totals;
   const hasSevereImpact = !!(impactData && (impactData.hasPublished || impactData.hasDeliverables || impactData.hasLinkedJobs || impactData.hasOrphanRisk));
 
+  const DATA_TABS: ChromeTab<string>[] = useMemo(() => [
+    {
+      key: 'batches',
+      label: 'Masterlist Data',
+      icon: <ClipboardList size={14} />,
+      badge: (
+        <span className={`text-[10px] font-sans px-2 py-0.5 rounded-full ${dataTab === 'batches' ? 'bg-sky-500/20 text-sky-300 border border-sky-500/30' : 'bg-inner text-text-muted border border-subtle'}`}>
+          {batchLogs.length}
+        </span>
+      )
+    },
+    {
+      key: 'daily',
+      label: 'Daily Data',
+      icon: <Calendar size={14} />,
+      badge: (
+        <span className={`text-[10px] font-sans px-2 py-0.5 rounded-full ${dataTab === 'daily' ? 'bg-sky-500/20 text-sky-300 border border-sky-500/30' : 'bg-inner text-text-muted border border-subtle'}`}>
+          {draftDailyData.length}
+        </span>
+      )
+    },
+    {
+      key: 'vector',
+      label: 'Vector Layers',
+      icon: <Layers size={14} />
+    },
+    {
+      key: 'datasets',
+      label: tf('dataRegistryTab'),
+      icon: <Database size={14} />,
+      badge: isRegistryLoading ? (
+        <Loader2 size={12} className="animate-spin text-sky-400" />
+      ) : registryDatasets.length > 0 ? (
+        <span className={`text-[10px] font-sans px-2 py-0.5 rounded-full ${dataTab === 'datasets' ? 'bg-sky-500/20 text-sky-300 border border-sky-500/30' : 'bg-inner text-text-muted border border-subtle'}`}>
+          {registryDatasets.length}
+        </span>
+      ) : null
+    },
+    {
+      key: 'recovery',
+      label: 'Dataset Recovery',
+      icon: <RotateCcw size={14} />,
+      badge: recycleBinCount > 0 ? (
+        <span className={`text-[10px] font-sans px-2 py-0.5 rounded-full ${dataTab === 'recovery' ? 'bg-sky-500/20 text-sky-300 border border-sky-500/30' : 'bg-inner text-text-muted border border-subtle'}`}>
+          {recycleBinCount}
+        </span>
+      ) : null
+    }
+  ], [dataTab, batchLogs.length, draftDailyData.length, tf, isRegistryLoading, registryDatasets.length, recycleBinCount]);
+
   return (
     <>
-      <div className="flex-1 flex flex-col h-full bg-card text-text-base font-sans p-4 sm:p-6 overflow-y-auto min-h-0">
-        <div className="w-full space-y-5">
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden animate-in fade-in duration-500">
+        <div className="flex-1 flex flex-col gap-3 min-h-0 overflow-y-auto p-4">
 
-          {/* Executive Header Bar */}
-          <div className="bg-card border border-subtle rounded-2xl p-5 shadow-lg flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center gap-4">
-              <button
-                onClick={onBackToDashboard}
-                className="flex items-center gap-2 bg-inner hover:bg-inner text-text-base border border-subtle px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer shadow-sm hover:scale-[1.02] active:scale-95"
-              >
-                <LayoutDashboard size={16} className="text-sky-400" />
-                <span>Back to Dashboard</span>
-              </button>
-              <div>
-                <h1 className="text-lg font-bold text-text-base tracking-wide flex items-center gap-2">
-                  PostgreSQL / PostGIS Data Management
-                </h1>
-                <p className="text-xs text-text-muted">
-                  Inspect, query, filter, edit, and publish subgrid trajectories and GIS vector layers to production database
-                </p>
-              </div>
-            </div>
-
-            {authSession && (
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-2 px-3 py-1.5 bg-card border border-subtle rounded-xl text-xs text-text-base shadow-inner">
-                  <User size={13} className="text-text-muted" />
-                  <span className="font-semibold text-text-base">{authSession.user?.email || (isGuestUser ? 'Guest User' : 'Operator')}</span>
-                  {isGuestUser ? (
-                    <span className="bg-inner text-text-muted border border-subtle px-2 py-0.5 rounded-full text-[10px] font-bold">Guest</span>
-                  ) : (
-                    <span className="bg-sky-500/10 text-sky-400 border border-sky-500/20 px-2 py-0.5 rounded-full text-[10px] font-bold">Authorized</span>
-                  )}
-                </div>
-                {onSignOut && (
-                  <button
-                    onClick={onSignOut}
-                    className="flex items-center gap-1.5 bg-inner hover:bg-inner border border-subtle text-text-base px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer shadow-sm"
-                    title="Sign out of Dashboard"
-                  >
-                    <LogOut size={13} />
-                    <span>Sign Out</span>
-                  </button>
-                )}
-              </div>
-            )}
+          {/* Header */}
+          <div className="px-1">
+            <h2 className="text-base font-bold text-text-base tracking-wide">
+              PostgreSQL / PostGIS Data Management
+            </h2>
+            <p className="text-xs text-text-muted mt-0.5 leading-relaxed">
+              Inspect, query, filter, edit, and publish subgrid trajectories and GIS vector layers to production database
+            </p>
           </div>
 
           {/* Guest Read-Only Banner */}
@@ -3916,77 +3944,24 @@ const DataManagementPage = ({
             </div>
           )}
 
-          {/* Segmented Pill Tabs Navigation */}
-          <div className="bg-card border border-subtle p-1.5 rounded-xl flex items-center gap-1 shadow-sm w-fit">
-            <button
-              onClick={() => setDataTab('batches')}
-              className={`px-4 py-2 rounded-lg font-bold transition-all flex items-center gap-2 text-xs cursor-pointer ${dataTab === 'batches'
-                ? 'bg-sky-600 text-text-base shadow-md'
-                : 'text-text-muted hover:text-text-base hover:bg-inner'
-                }`}
-            >
-              <span>Batch Logs</span>
-              <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full ${dataTab === 'batches' ? 'bg-sky-700/80 text-text-base' : 'bg-card text-text-muted border border-subtle'}`}>
-                {batchLogs.length}
-              </span>
-            </button>
-            <button
-              onClick={() => setDataTab('daily')}
-              className={`px-4 py-2 rounded-lg font-bold transition-all flex items-center gap-2 text-xs cursor-pointer ${dataTab === 'daily'
-                ? 'bg-sky-600 text-text-base shadow-md'
-                : 'text-text-muted hover:text-text-base hover:bg-inner'
-                }`}
-            >
-              <span>Daily Data</span>
-              <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full ${dataTab === 'daily' ? 'bg-sky-700/80 text-text-base' : 'bg-card text-text-muted border border-subtle'}`}>
-                {draftDailyData.length}
-              </span>
-            </button>
-            <button
-              onClick={() => setDataTab('vector')}
-              className={`px-4 py-2 rounded-lg font-bold transition-all text-xs cursor-pointer ${dataTab === 'vector'
-                ? 'bg-sky-600 text-text-base shadow-md'
-                : 'text-text-muted hover:text-text-base hover:bg-inner'
-                }`}
-            >
-              <span>Vector Layers</span>
-            </button>
-            <button
-              onClick={() => setDataTab('datasets')}
-              className={`px-4 py-2 rounded-lg font-bold transition-all text-xs cursor-pointer flex items-center gap-2 ${dataTab === 'datasets'
-                ? 'bg-sky-600 text-text-base shadow-md'
-                : 'text-text-muted hover:text-text-base hover:bg-inner'
-                }`}
-            >
-              <Database size={13} />
-              <span>{tf('dataRegistryTab')}</span>
-              {isRegistryLoading ? (
-                <Loader2 size={12} className="animate-spin text-sky-400" />
-              ) : registryDatasets.length > 0 ? (
-                <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full ${dataTab === 'datasets' ? 'bg-sky-700/80 text-text-base' : 'bg-card text-text-muted border border-subtle'}`}>
-                  {registryDatasets.length}
-                </span>
-              ) : null}
-            </button>
-            <button
-              onClick={() => setDataTab('recovery')}
-              className={`px-4 py-2 rounded-lg font-bold transition-all text-xs cursor-pointer flex items-center gap-2 ${dataTab === 'recovery'
-                ? 'bg-sky-600 text-text-base shadow-md'
-                : 'text-text-muted hover:text-text-base hover:bg-inner'
-                }`}
-            >
-              <RotateCcw size={13} />
-              <span>Dataset Recovery</span>
-              {recycleBinCount > 0 && (
-                <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full ${dataTab === 'recovery' ? 'bg-sky-700/80 text-text-base' : 'bg-card text-text-muted border border-subtle'}`}>
-                  {recycleBinCount}
-                </span>
-              )}
-            </button>
-          </div>
+          {/* MAIN PANEL CONTENT BACK CANVAS */}
+          <div className="bg-card border border-subtle rounded-2xl shadow-md overflow-hidden flex flex-col shrink-0">
+            {/* Integrated Sub-Tabs Underline Strip */}
+            <div className="px-3 pt-2 border-b border-divider bg-card">
+              <UnderlineTabStrip
+                tabs={DATA_TABS}
+                active={dataTab}
+                onChange={(k) => {
+                  setDataTab(k as any);
+                  setSearchQuery('');
+                }}
+              />
+            </div>
 
-          {/* Selection Map + Safe Deletion panel */}
-          <div className="bg-card border border-subtle rounded-2xl shadow-md overflow-hidden">
+            <div className="p-4 flex-1 flex flex-col gap-4">
+
+            {/* Selection Map + Safe Deletion panel */}
+            <div className="bg-inner/40 border border-subtle rounded-xl shadow-sm overflow-hidden">
             <div className="p-3.5 flex flex-wrap items-center gap-3 border-b border-subtle">
               <button
                 onClick={() => { if (dataTab === 'datasets' && !isSelectionMapOpen) setDataTab('batches'); setIsSelectionMapOpen(o => !o); }}
@@ -4056,7 +4031,7 @@ const DataManagementPage = ({
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-inner border border-subtle text-text-muted">
+                      <span className="text-[10px] font-sans font-semibold px-2 py-0.5 rounded bg-inner border border-subtle text-text-muted">
                         Available in DB: {Array.from(new Set([...batchLogs.map(b => (extractSubgridName(b.subgrid || b.imageFilename) || b.subgrid || '').toUpperCase().trim()), ...dailyData.map(d => (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim())])).filter(Boolean).length} Subgrids
                       </span>
                     </div>
@@ -4071,7 +4046,7 @@ const DataManagementPage = ({
                           <CheckCircle2 size={12} className="text-sky-400" />
                           <span className="font-bold text-sky-300 text-[11px]">Current Production WebGIS</span>
                         </div>
-                        <span className="text-[10px] text-text-muted font-mono">
+                        <span className="text-[10px] text-text-muted font-sans">
                           {mapSubgridFilter
                             ? `Subgrid: ${mapSubgridFilter} (${filteredCurrentMapItems.reduce((acc, it) => acc + (it.panoramas?.length || it.points?.length || 0), 0)} pts)`
                             : `All survey data (${availableSubgridList.length} subgrid${availableSubgridList.length === 1 ? '' : 's'})`}
@@ -4123,7 +4098,7 @@ const DataManagementPage = ({
                           <Trash2 size={12} className="text-rose-400" />
                           <span className="font-bold text-rose-300 text-[11px]">After Deletion Preview</span>
                         </div>
-                        <span className="text-[10px] text-text-muted font-mono">
+                        <span className="text-[10px] text-text-muted font-sans">
                           {mapSubgridFilter
                             ? (spatialSelectionSet.has(mapSubgridFilter.toUpperCase().trim())
                               ? `Subgrid: ${mapSubgridFilter} (Purged)`
@@ -4149,7 +4124,7 @@ const DataManagementPage = ({
                           <div className="absolute bottom-2 left-2 right-2 z-10 pointer-events-none flex justify-center">
                             <div className="bg-slate-950/90 backdrop-blur-md border border-rose-500/40 rounded-xl px-3 py-1.5 text-center shadow-2xl max-w-sm">
                               <p className="text-[11px] font-medium text-slate-200">
-                                <strong className="font-mono text-rose-300">{spatialSubgrids.join(', ')}</strong> will be purged from active WebGIS layers.
+                                <strong className="font-sans text-rose-300">{spatialSubgrids.join(', ')}</strong> will be purged from active WebGIS layers.
                               </p>
                             </div>
                           </div>
@@ -4196,14 +4171,14 @@ const DataManagementPage = ({
                         <RotateCcw size={12} className="text-sky-400" />
                         <span>Dataset Recovery</span>
                         {recycleBinCount > 0 && (
-                          <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-sky-500/20 text-sky-400">
+                          <span className="text-[10px] font-sans px-1.5 py-0.2 rounded-full bg-sky-500/20 text-sky-400">
                             {recycleBinCount}
                           </span>
                         )}
                       </button>
                     </div>
 
-                    <div className="text-[11px] text-text-muted font-mono">
+                    <div className="text-[11px] text-text-muted font-sans">
                       {spatialSubgrids.length > 0 ? (
                         <span>{spatialSubgrids.length} subgrid(s) selected ({spatialSelectedPoints.length > 0 ? `${spatialSelectedPoints.length} points` : 'All points'})</span>
                       ) : (
@@ -4218,7 +4193,7 @@ const DataManagementPage = ({
 
           {/* Action Toolbar Row */}
           {(dataTab === 'batches' || dataTab === 'daily') && (
-            <div className="flex flex-wrap items-center justify-between gap-4 bg-card border border-subtle p-3.5 rounded-2xl shadow-md">
+            <div className="flex flex-wrap items-center justify-between gap-4 bg-inner/40 border border-subtle p-3 rounded-xl shadow-sm">
               {/* Search Bar & Filter Toggle Button */}
               <div className="flex items-center gap-3 flex-1 max-w-md">
                 <div className="relative flex-1 min-w-[200px]">
@@ -4593,7 +4568,7 @@ const DataManagementPage = ({
               {selectedRowIds.size > 0 && (
                 <div className="bg-app border border-subtle rounded-2xl px-5 py-3 flex flex-wrap items-center justify-between gap-4 shadow-xl animate-fadeIn text-xs">
                   <div className="flex items-center gap-2.5 text-text-base font-medium">
-                    <span className="bg-sky-500/20 text-sky-400 border border-sky-500/30 px-2.5 py-0.5 rounded-full font-mono font-bold text-xs">{selectedRowIds.size}</span>
+                    <span className="bg-sky-500/20 text-sky-400 border border-sky-500/30 px-2.5 py-0.5 rounded-full font-sans font-bold text-xs">{selectedRowIds.size}</span>
                     <span>record(s) selected</span>
                   </div>
                   <div className="flex items-center gap-3">
@@ -4624,7 +4599,7 @@ const DataManagementPage = ({
                 </div>
               )}
 
-              <div className="bg-card border border-subtle rounded-2xl shadow-xl overflow-hidden flex flex-col">
+              <div className="bg-inner/20 border border-subtle rounded-xl shadow-sm overflow-hidden flex flex-col">
                 <div className="overflow-x-auto">
                   <table className="w-full text-left">
                     <thead className="bg-card text-text-muted border-b border-subtle">
@@ -4714,12 +4689,12 @@ const DataManagementPage = ({
                                     className="rounded border-subtle bg-app text-sky-500 focus:ring-sky-500 cursor-pointer w-4 h-4 accent-sky-500"
                                   />
                                 </td>
-                                <td className="px-4 py-3.5 font-mono text-xs text-text-base whitespace-nowrap">{formatDisplayDate(batch.date)}</td>
-                                <td className="px-4 py-3.5 font-mono text-text-base font-semibold whitespace-nowrap">{batch.grid}</td>
+                                <td className="px-4 py-3.5 font-sans text-xs text-text-base whitespace-nowrap">{formatDisplayDate(batch.date)}</td>
+                                <td className="px-4 py-3.5 font-sans text-text-base font-semibold whitespace-nowrap">{batch.grid}</td>
                                 <td className="px-4 py-3.5 font-semibold text-text-base whitespace-nowrap flex items-center gap-2">
                                   <span>{batchSubgrid}</span>
                                 </td>
-                                <td className="px-4 py-3.5 font-mono text-xs text-text-base font-semibold whitespace-nowrap">{getPOICount(batch).toLocaleString()}</td>
+                                <td className="px-4 py-3.5 font-sans text-xs text-text-base font-semibold whitespace-nowrap">{getPOICount(batch).toLocaleString()}</td>
                                 <td className="px-4 py-3.5 font-semibold text-text-base whitespace-nowrap">{batch.kmProcessed.toFixed(1)}</td>
                                 <td className="px-4 py-3.5 whitespace-nowrap">
                                   <button
@@ -4773,13 +4748,9 @@ const DataManagementPage = ({
                                       expectedFilenames: batch.panoramas?.map((p: any) => p.filename).filter(Boolean)
                                     })}
                                     className="px-2.5 py-1 rounded-lg border text-xs font-medium bg-inner hover:bg-inner text-text-base border-subtle transition-all cursor-pointer flex items-center gap-1.5 shadow-sm"
-                                    title={`Run QC Audit for ${batchSubgrid}`}
+                                    title="View QC Audit Details"
                                   >
-                                    {getPOICount(batch) > getImagesProcessedCount(batch) ? (
-                                      <ShieldAlert size={14} className="text-red-400" />
-                                    ) : (
-                                      <ShieldCheck size={14} className="text-red-400" />
-                                    )}
+                                    <ShieldAlert size={13} className="text-sky-400" />
                                     <span>QC Audit</span>
                                   </button>
                                   {!isGuestUser ? (
@@ -4842,12 +4813,12 @@ const DataManagementPage = ({
                                     className="rounded border-subtle bg-app text-sky-500 focus:ring-sky-500 cursor-pointer w-4 h-4 accent-sky-500"
                                   />
                                 </td>
-                                <td className="px-4 py-3.5 text-text-base font-mono text-xs whitespace-nowrap">{formatDisplayDate(daily.date)}</td>
+                                <td className="px-4 py-3.5 text-text-base font-sans text-xs whitespace-nowrap">{formatDisplayDate(daily.date)}</td>
                                 <td className="px-4 py-3.5 text-text-base font-semibold whitespace-nowrap">{daily.grid}</td>
                                 <td className="px-4 py-3.5 text-text-base font-semibold whitespace-nowrap flex items-center gap-2">
                                   <span>{daily.subgrid}</span>
                                 </td>
-                                <td className="px-4 py-3.5 font-mono text-xs text-text-base font-semibold whitespace-nowrap">{getPOICount(daily).toLocaleString()}</td>
+                                <td className="px-4 py-3.5 font-sans text-xs text-text-base font-semibold whitespace-nowrap">{getPOICount(daily).toLocaleString()}</td>
                                 <td className="px-4 py-3.5 text-text-base font-semibold whitespace-nowrap">{daily.kmProcessed.toFixed(1)}</td>
                                 <td className="px-4 py-3.5 whitespace-nowrap">
                                   <button
@@ -5040,6 +5011,8 @@ const DataManagementPage = ({
               </div>
             </>
           )}
+            </div>
+          </div>
 
           {/* Dual-View Add/Edit Record Modal (Left: Form Data, Right: Interactive Map Preview) */}
           {isFormOpen && (() => {
@@ -5095,8 +5068,8 @@ const DataManagementPage = ({
                       <div>
                         <h2 className="text-base font-bold text-text-base tracking-wide flex items-center gap-2">
                           <span>{editingItem ? 'Edit Record & Spatial Map Inspector' : 'Add New Record'}</span>
-                          <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-inner text-text-base font-mono font-normal border border-subtle">
-                            {dataTab === 'batches' ? 'Batch Logs' : 'Daily Data'}
+                          <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-inner text-text-base font-sans font-normal border border-subtle">
+                            {dataTab === 'batches' ? 'Masterlist Data' : 'Daily Data'}
                           </span>
                         </h2>
                         <p className="text-xs text-text-muted font-medium">
@@ -5124,7 +5097,7 @@ const DataManagementPage = ({
                       <div>
                         <h3 className="text-xs font-bold text-text-base uppercase tracking-wider mb-4 pb-2.5 border-b border-subtle flex items-center justify-between">
                           <span>Record Configuration</span>
-                          <span className="text-[11px] text-text-muted font-normal font-mono">ID: {(editingItem as any)?.id || 'NEW'}</span>
+                          <span className="text-[11px] text-text-muted font-normal font-sans">ID: {(editingItem as any)?.id || 'NEW'}</span>
                         </h3>
                         <DataForm
                           initialData={editingItem as BatchLog | DailyTimeSeries | null}
@@ -5157,7 +5130,7 @@ const DataManagementPage = ({
                       </div>
                       <div className="p-3.5 bg-card border border-subtle rounded-xl flex items-center justify-between text-xs text-text-muted">
                         <span>💡 Click survey points on map preview to open 360° street view imagery.</span>
-                        <span className="font-mono text-text-base font-semibold text-xs">Subgrid: {editSubgrid}</span>
+                        <span className="font-sans text-text-base font-semibold text-xs">Subgrid: {editSubgrid}</span>
                       </div>
                     </div>
 
@@ -5182,7 +5155,7 @@ const DataManagementPage = ({
                         <Camera size={16} className="text-sky-400" />
                         Subgrid {imagesListModal.subgrid} Filenames
                       </h2>
-                      <span className="text-[11px] text-text-muted font-mono">
+                      <span className="text-[11px] text-text-muted font-sans">
                         {imagesListModal.poiCount !== undefined ? `POI: ${imagesListModal.poiCount.toLocaleString()}  •  ` : ''}
                         Available Frames: <strong className="text-sky-400 font-bold">{filenames.length.toLocaleString()}</strong>
                       </span>
@@ -5195,7 +5168,7 @@ const DataManagementPage = ({
                       &times;
                     </button>
                   </div>
-                  <div className="flex-1 overflow-y-auto font-mono text-xs text-text-base space-y-1 p-2 bg-card rounded-lg border border-subtle max-h-96">
+                  <div className="flex-1 overflow-y-auto font-sans text-xs text-text-base space-y-1 p-2 bg-card rounded-lg border border-subtle max-h-96">
                     {filenames.map((name, idx) => (
                       <div key={idx} className="flex items-center justify-between px-2.5 py-1 hover:bg-inner rounded transition-colors">
                         <span className="text-text-muted text-[10px] w-10 shrink-0">{idx + 1}.</span>
@@ -5275,7 +5248,7 @@ const DataManagementPage = ({
                           onChange={(e) => setEditingItem({ ...layer, color: e.target.value })}
                           className="w-12 h-12 cursor-pointer rounded-lg border border-subtle"
                         />
-                        <span className="text-text-muted text-sm font-mono">{layer.color}</span>
+                        <span className="text-text-muted text-sm font-sans">{layer.color}</span>
                       </div>
                     </div>
                     <div className="flex gap-3 pt-4">
@@ -5537,8 +5510,8 @@ const DataManagementPage = ({
                               <AlertTriangle size={16} className="text-amber-400 shrink-0 animate-pulse" />
                               <div>
                                 <span className="font-bold text-amber-300">Multiple data detected</span>
-                                <span className="text-amber-200/90 ml-2 font-mono text-[11px]">
-                                  Subgrid(s) <strong className="text-amber-100 font-bold font-mono">{duplicateDetectedSubgrids.join(', ')}</strong> already exist in records.
+                                <span className="text-amber-200/90 ml-2 font-sans text-[11px]">
+                                  Subgrid(s) <strong className="text-amber-100 font-bold font-sans">{duplicateDetectedSubgrids.join(', ')}</strong> already exist in records.
                                 </span>
                               </div>
                             </div>
@@ -5577,7 +5550,7 @@ const DataManagementPage = ({
                                 {displaySubgrids.map(sg => {
                                   const isSubDup = existingSubgridSet.has(sg.toUpperCase().trim());
                                   return (
-                                    <span key={sg} className={`px-2 py-0.5 rounded-md text-[11px] font-mono font-bold flex items-center gap-1 ${isSubDup
+                                    <span key={sg} className={`px-2 py-0.5 rounded-md text-[11px] font-sans font-bold flex items-center gap-1 ${isSubDup
                                       ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
                                       : 'bg-sky-500/15 text-sky-300 border border-sky-500/30'
                                       }`}>
@@ -5625,7 +5598,7 @@ const DataManagementPage = ({
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-36 overflow-y-auto pr-1">
                           {csvFileList.map((file) => (
                             <div key={file.fileName} className="flex items-center justify-between gap-2 p-2 bg-app border border-subtle rounded-lg">
-                              <span className="text-xs text-text-base truncate font-mono flex-1" title={file.fileName}>
+                              <span className="text-xs text-text-base truncate font-sans flex-1" title={file.fileName}>
                                 {file.fileName}
                               </span>
                               <select
@@ -5699,7 +5672,7 @@ const DataManagementPage = ({
                           }`}>
                           <div className="flex-1 min-w-0">
                             <p className="text-[10px] text-text-muted">CSV column</p>
-                            <p className="text-text-base font-mono text-xs truncate font-medium">{header}</p>
+                            <p className="text-text-base font-sans text-xs truncate font-medium">{header}</p>
                           </div>
                           <RefreshCw size={12} className="text-text-muted shrink-0" />
                           <div className="flex-1 min-w-0">
@@ -5828,7 +5801,7 @@ const DataManagementPage = ({
                     <div>
                       <div className="flex items-center justify-between mb-2">
                         <h3 className="text-xs font-bold text-text-base uppercase tracking-wider">Sample Data Preview (First 5 Rows)</h3>
-                        <span className="text-[11px] text-text-muted font-mono">{csvRows.length} total records</span>
+                        <span className="text-[11px] text-text-muted font-sans">{csvRows.length} total records</span>
                       </div>
                       <div className="overflow-x-auto rounded-xl border border-subtle max-h-40">
                         <table className="w-full text-[11px] text-left">
@@ -5838,13 +5811,13 @@ const DataManagementPage = ({
                                 <th key={h} className="px-3 py-2 font-semibold whitespace-nowrap">
                                   <span className="block">{h}</span>
                                   {csvFieldMap[h] && (
-                                    <span className="text-emerald-400 font-mono text-[9px]">→ {csvFieldMap[h]}</span>
+                                    <span className="text-emerald-400 font-sans text-[9px]">→ {csvFieldMap[h]}</span>
                                   )}
                                 </th>
                               ))}
                             </tr>
                           </thead>
-                          <tbody className="divide-y divide-subtle/60 font-mono">
+                          <tbody className="divide-y divide-subtle/60 font-sans">
                             {csvPreview.map((row, i) => (
                               <tr key={i} className="hover:bg-inner transition-colors">
                                 {csvHeaders.map(h => (
@@ -5875,7 +5848,7 @@ const DataManagementPage = ({
                             <th className="px-3 py-2 font-semibold">Status</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-subtle/60 font-mono">
+                        <tbody className="divide-y divide-subtle/60 font-sans">
                           {csvFileList.map((file, idx) => (
                             <tr key={file.fileName || idx} className="hover:bg-inner">
                               <td className="px-3 py-2 font-bold text-text-base">{extractSubgridName(file.fileName) || `Subgrid ${idx + 1}`}</td>
@@ -6023,7 +5996,7 @@ const DataManagementPage = ({
                           <tbody>
                             {impactData.rows.map((r) => (
                               <tr key={r.subgrid} className="border-t border-subtle">
-                                <td className="px-2.5 py-1.5 font-mono text-sky-300 font-semibold">{r.subgrid}</td>
+                                <td className="px-2.5 py-1.5 font-sans text-sky-300 font-semibold">{r.subgrid}</td>
                                 <td className="px-2.5 py-1.5 text-right text-text-muted">{r.runs}</td>
                                 <td className="px-2.5 py-1.5 text-right text-text-muted">{r.poi}</td>
                                 <td className="px-2.5 py-1.5 text-right text-text-muted">{r.frames}</td>
@@ -6075,14 +6048,14 @@ const DataManagementPage = ({
                 </div>
                 This data will be <strong className="text-red-400 font-medium">permanently removed</strong> from the database. This action cannot be reversed.
                 {deleteMode === 'bulk' && (
-                  <div className="mt-3 p-3 bg-app rounded-lg border border-subtle font-mono text-text-base text-xs space-y-1.5">
-                    <div className="flex justify-between items-center"><span className="text-text-muted">Target Selection:</span> <strong className="text-text-base font-mono font-semibold">Bulk Delete</strong></div>
+                  <div className="mt-3 p-3 bg-app rounded-lg border border-subtle font-sans text-text-base text-xs space-y-1.5">
+                    <div className="flex justify-between items-center"><span className="text-text-muted">Target Selection:</span> <strong className="text-text-base font-sans font-semibold">Bulk Delete</strong></div>
                     <div className="flex justify-between items-center"><span className="text-text-muted">Records Selected:</span> <span className="text-red-400 font-bold">{selectedRowIds.size} records</span></div>
                   </div>
                 )}
                 {deleteMode === 'spatial' && (
-                  <div className="mt-3 p-3 bg-app rounded-lg border border-subtle font-mono text-text-base text-xs space-y-1.5">
-                    <div className="flex justify-between items-center"><span className="text-text-muted">Target Selection:</span> <strong className="text-text-base font-mono font-semibold">Map Spatial Selection</strong></div>
+                  <div className="mt-3 p-3 bg-app rounded-lg border border-subtle font-sans text-text-base text-xs space-y-1.5">
+                    <div className="flex justify-between items-center"><span className="text-text-muted">Target Selection:</span> <strong className="text-text-base font-sans font-semibold">Map Spatial Selection</strong></div>
                     <div className="flex justify-between items-center"><span className="text-text-muted">Subgrids Selected:</span> <span className="text-red-400 font-bold">{spatialSubgrids.length} subgrids</span></div>
                   </div>
                 )}
@@ -6107,10 +6080,10 @@ const DataManagementPage = ({
                   placeholder={expectedDeletePhrase}
                   autoCapitalize="characters"
                   spellCheck={false}
-                  className="w-full bg-app border border-subtle focus:border-rose-500/70 rounded-xl px-4 py-2.5 text-sm font-mono text-text-base placeholder-text-muted focus:outline-none transition-all shadow-inner uppercase"
+                  className="w-full bg-app border border-subtle focus:border-rose-500/70 rounded-xl px-4 py-2.5 text-sm font-sans text-text-base placeholder-text-muted focus:outline-none transition-all shadow-inner uppercase"
                 />
                 <p className="text-[10px] text-text-muted mt-1.5">
-                  {tf('dataConfirmInstruction')} <strong className="text-text-base font-mono">{expectedDeletePhrase}</strong>
+                  {tf('dataConfirmInstruction')} <strong className="text-text-base font-sans">{expectedDeletePhrase}</strong>
                 </p>
               </div>
 
@@ -6338,7 +6311,7 @@ const DataForm = ({
               </div>
               <div className="bg-app p-2 rounded-lg border border-subtle truncate">
                 <span className="text-[10px] text-text-muted block font-medium">First Image</span>
-                <strong className="text-text-base font-mono text-[11px] truncate block" title={formData.imageFilename}>{formData.imageFilename || '—'}</strong>
+                <strong className="text-text-base font-sans text-[11px] truncate block" title={formData.imageFilename}>{formData.imageFilename || '—'}</strong>
               </div>
             </div>
           </div>
@@ -6536,6 +6509,8 @@ export default function App() {
     answer: 'yes' | 'no' | null;
     isLocked: boolean;
   }>>({});
+  const [dataManagementTab, setDataManagementTab] = useState<'batches' | 'daily' | 'vector' | 'datasets' | 'recovery'>('batches');
+  const [dataManagementSearch, setDataManagementSearch] = useState<string>('');
 
   // 2. Logging & Notification Callbacks
   const addNotification = useCallback((item: Omit<NotificationItem, 'id' | 'timestamp' | 'read'>) => {
@@ -7691,7 +7666,7 @@ export default function App() {
             }
             * { box-sizing: border-box; }
             body {
-              font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
+              font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
               color: #0f172a;
               background: #ffffff;
               margin: 0;
@@ -7777,7 +7752,7 @@ export default function App() {
             }
             .meta-row:last-child { border-bottom: none; }
             .meta-label { font-weight: 600; color: #64748b; }
-            .meta-val { font-weight: 700; color: #0f172a; font-family: monospace; }
+            .meta-val { font-weight: 700; color: #0f172a; font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
 
             /* Narrative Box */
             .section-title {
@@ -7870,7 +7845,7 @@ export default function App() {
             
             .text-center { text-align: center; }
             .text-right { text-align: right; }
-            .font-mono { font-family: monospace; }
+            .font-sans { font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
             
             /* Status Badges - Monochrome & Professional */
             .badge {
@@ -8087,11 +8062,11 @@ export default function App() {
       const isSynced = b.isSyncedWithSupabase || b.status === 'Complete';
       return `
                   <tr>
-                    <td><strong class="font-mono">Grid ${gridVal} / ${subName}</strong></td>
+                    <td><strong class="font-sans">Grid ${gridVal} / ${subName}</strong></td>
                     <td>${eq}</td>
-                    <td class="text-right font-mono">${poiVal.toLocaleString()}</td>
-                    <td class="text-right font-mono">${imgCount.toLocaleString()} frames</td>
-                    <td class="text-right font-mono">${km} km</td>
+                    <td class="text-right font-sans">${poiVal.toLocaleString()}</td>
+                    <td class="text-right font-sans">${imgCount.toLocaleString()} frames</td>
+                    <td class="text-right font-sans">${km} km</td>
                     <td class="text-center">
                       <span class="badge ${isSynced ? 'badge-complete' : 'badge-neutral'}">
                         ${isSynced ? 'VERIFIED & PUBLISHED' : 'STAGED IN PROCESS'}
@@ -8103,7 +8078,7 @@ export default function App() {
           : `<span style="color:#64748b; font-size:9px;">0 (CLEAN)</span>`}
                     </td>
                     <td>${picName}</td>
-                    <td class="text-center font-mono" style="font-size:9.5px;">${isSynced ? 'SUPABASE LIVE' : 'LOCAL DRAFT'}</td>
+                    <td class="text-center font-sans" style="font-size:9.5px;">${isSynced ? 'SUPABASE LIVE' : 'LOCAL DRAFT'}</td>
                   </tr>
                 `;
     }).join('')}
@@ -8131,11 +8106,11 @@ export default function App() {
       const isConfirmedDefect = qaRec?.answer === 'yes' || (b.defects || 0) > 0;
       return `
                   <tr>
-                    <td><strong class="font-mono">${sgKey}</strong></td>
-                    <td class="font-mono">${flags.blurry ? 'FLAGGED (Yes)' : 'PASS (Clean)'}</td>
-                    <td class="font-mono">${flags.obstruction ? 'FLAGGED (Yes)' : 'PASS (Clean)'}</td>
-                    <td class="font-mono">${flags.badGps ? 'FLAGGED (Yes)' : 'PASS (Clean)'}</td>
-                    <td class="font-mono">${qaRec?.isLocked ? (qaRec.answer === 'yes' ? 'DEFECT CONFIRMED' : 'APPROVED (PASSED)') : 'PENDING REVIEW'}</td>
+                    <td><strong class="font-sans">${sgKey}</strong></td>
+                    <td class="font-sans">${flags.blurry ? 'FLAGGED (Yes)' : 'PASS (Clean)'}</td>
+                    <td class="font-sans">${flags.obstruction ? 'FLAGGED (Yes)' : 'PASS (Clean)'}</td>
+                    <td class="font-sans">${flags.badGps ? 'FLAGGED (Yes)' : 'PASS (Clean)'}</td>
+                    <td class="font-sans">${qaRec?.isLocked ? (qaRec.answer === 'yes' ? 'DEFECT CONFIRMED' : 'APPROVED (PASSED)') : 'PENDING REVIEW'}</td>
                     <td class="text-center">
                       <span class="badge ${isConfirmedDefect ? 'badge-defect' : 'badge-complete'}">
                         ${isConfirmedDefect ? 'AUDIT ACTION' : 'LOW RISK'}
@@ -8161,7 +8136,7 @@ export default function App() {
               </div>
               <div class="spec-row">
                 <span class="spec-key">Primary Image Repository Path:</span>
-                <span class="spec-val font-mono">${projectSettings?.imageStoragePath || '/MMS_PIC/'}</span>
+                <span class="spec-val font-sans">${projectSettings?.imageStoragePath || '/MMS_PIC/'}</span>
               </div>
             </div>
             <div class="spec-card">
@@ -8199,11 +8174,11 @@ export default function App() {
             <tbody>
               ${auditLogs.slice(0, 5).map(log => `
                 <tr>
-                  <td class="font-mono" style="font-size:9.5px;">${log.timestamp}</td>
+                  <td class="font-sans" style="font-size:9.5px;">${log.timestamp}</td>
                   <td class="text-center"><span class="badge badge-neutral">${log.type}</span></td>
                   <td><strong>${log.title}</strong> — <span style="color:#475569;">${log.details}</span></td>
                   <td>${log.user}</td>
-                  <td class="text-center font-mono" style="font-size:9.5px; font-weight:700;">${log.status.toUpperCase()}</td>
+                  <td class="text-center font-sans" style="font-size:9.5px; font-weight:700;">${log.status.toUpperCase()}</td>
                 </tr>
               `).join('')}
             </tbody>
@@ -8309,6 +8284,7 @@ export default function App() {
   };
 
   const [isQAQCRunnerModalOpen, setIsQAQCRunnerModalOpen] = useState<boolean>(false);
+  const [qaqcWorkbenchSubgrid, setQaqcWorkbenchSubgrid] = useState<string | null>(null);
   const [isDefectsGalleryOpen, setIsDefectsGalleryOpen] = useState<boolean>(false);
   const [selectedDefectSubgrid, setSelectedDefectSubgrid] = useState<string>('');
   const [defectGalleryContext, setDefectGalleryContext] = useState<{
@@ -10284,7 +10260,7 @@ export default function App() {
         />
 
         {/* MAIN DASHBOARD CONTENT CANVAS */}
-        <main className="flex-1 flex flex-col p-3 gap-3 overflow-y-auto md:overflow-hidden bg-card relative">
+        <main className={`flex-1 flex flex-col p-3 gap-3 overflow-y-auto md:overflow-hidden relative ${currentPage === 'dashboard' ? 'bg-card' : 'bg-app [background:var(--canvas-bg)]'}`}>
 
           {/* SUPABASE DISCONNECTED ERROR FALLBACK BANNER */}
           {supabaseError && (
@@ -10410,6 +10386,42 @@ export default function App() {
                   </div>
                 </div>
               </div>
+
+              {/* OPERATIONAL COMMAND & ACTION CENTER */}
+              <OperationalActionCenter
+                batchLogs={batchLogs}
+                dailyData={dailyData}
+                qaDefectsCount={totalDefects}
+                isGuestUser={isGuestUser}
+                onOpenQAQCWorkbench={(subgridKey) => {
+                  setQaqcWorkbenchSubgrid(subgridKey || null);
+                  setIsQAQCRunnerModalOpen(true);
+                }}
+                onOpenDefectsGallery={(subgridKey) => {
+                  if (subgridKey) setSelectedDefectSubgrid(subgridKey);
+                  setIsDefectsGalleryOpen(true);
+                }}
+                onNavigate={(ws, params) => {
+                  goToWorkspace(ws);
+                  if (ws === 'data' && params) {
+                    if (params.tab) setDataManagementTab(params.tab);
+                    if (params.search !== undefined) setDataManagementSearch(params.search);
+                  }
+                }}
+                onGeneratePdfReport={generateExecutivePdfReport}
+                onRetryJob={async (job) => {
+                  if (job.id) {
+                    await saveProcessingJobToSupabase({ ...job, status: 'QUEUED', progress: 0 });
+                    if (addNotification) {
+                      addNotification({
+                        title: 'Job Retried',
+                        message: `Job ${job.name || job.id} queued for retry.`,
+                        category: 'SYSTEM'
+                      });
+                    }
+                  }
+                }}
+              />
 
               {/* MIDDLE & BOTTOM GRID: LEFT (COVERAGE MAP) & RIGHT (CONTROL + INSPECTOR) */}
               <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-3 min-h-0 overflow-y-auto lg:overflow-hidden">
@@ -10631,7 +10643,7 @@ export default function App() {
                       return selectedSubgridFilter ? (
                         <div className="absolute top-3 right-3 z-20 bg-card backdrop-blur-md border border-subtle rounded-xl p-3 text-xs text-text-base shadow-2xl max-w-xs space-y-1.5 animate-in fade-in zoom-in-95 duration-200">
                           <div className="flex items-center justify-between font-bold pb-1 border-b border-subtle">
-                            <span className="text-sky-400 font-mono text-xs">
+                            <span className="text-sky-400 font-sans text-xs">
                               Subgrid ID: {selectedSubgridFilter} {isDailySelected && activeDailyLog ? `(${formatDisplayDate(activeDailyLog.date)})` : (selectedDateFilter ? `(${selectedDateFilter})` : '')}
                             </span>
                             <button
@@ -10656,7 +10668,7 @@ export default function App() {
                               ✕
                             </button>
                           </div>
-                          <div className="text-text-base font-mono text-[11px] flex justify-between gap-4"><span className="text-text-muted">Coordinates:</span> <span>{activeCoords.lat && activeCoords.lng ? `${activeCoords.lat.toFixed(4)}° N, ${activeCoords.lng.toFixed(4)}° E` : '—'}</span></div>
+                          <div className="text-text-base font-sans text-[11px] flex justify-between gap-4"><span className="text-text-muted">Coordinates:</span> <span>{activeCoords.lat && activeCoords.lng ? `${activeCoords.lat.toFixed(4)}° N, ${activeCoords.lng.toFixed(4)}° E` : '—'}</span></div>
                           <div className="text-text-base text-[11px] flex justify-between gap-4"><span className="text-text-muted">Distance from start:</span> <span className="font-semibold text-text-base">{activeKm} km</span></div>
                           <div className="text-text-base text-[11px] flex justify-between gap-4"><span className="text-text-muted">Image Count:</span> <span className="font-semibold text-text-base">{activeImages}</span></div>
                           <div className="text-text-base text-[11px] flex justify-between items-center gap-4">
@@ -10895,10 +10907,10 @@ export default function App() {
                                     onClick={() => toggleSubgridFilter(batchSubgrid)}
                                     className={`cursor-pointer transition-all ${isSelected ? 'bg-sky-950/70 text-text-base font-medium' : 'hover:bg-inner text-text-base'}`}
                                   >
-                                    <td className="px-3.5 py-3.5 font-mono text-[11px] text-text-base font-semibold whitespace-nowrap">{formattedBatchId}</td>
+                                    <td className="px-3.5 py-3.5 font-sans text-[11px] text-text-base font-semibold whitespace-nowrap">{formattedBatchId}</td>
                                     <td className="px-3.5 py-3.5 font-medium text-text-base whitespace-nowrap">{log.grid || '1'}</td>
                                     <td className="px-3.5 py-3.5 font-semibold text-text-base whitespace-nowrap">{batchSubgrid}</td>
-                                    <td className="px-3.5 py-3.5 font-mono text-xs text-text-base font-semibold whitespace-nowrap">{getPOICount(log).toLocaleString()}</td>
+                                    <td className="px-3.5 py-3.5 font-sans text-xs text-text-base font-semibold whitespace-nowrap">{getPOICount(log).toLocaleString()}</td>
                                     <td className="px-3.5 py-3.5 font-semibold text-text-base whitespace-nowrap">{(log.kmProcessed || 0).toFixed(1)} km</td>
                                     <td className="px-3.5 py-3.5 whitespace-nowrap">
                                       <button
@@ -11161,7 +11173,7 @@ export default function App() {
                                         : 'hover:bg-inner text-text-base'
                                         }`}
                                     >
-                                      <td className="px-3.5 py-3.5 font-mono text-[10px] text-text-muted whitespace-nowrap">
+                                      <td className="px-3.5 py-3.5 font-sans text-[10px] text-text-muted whitespace-nowrap">
                                         <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
                                           <span>{formatDisplayDate(log.date)}</span>
                                           {isRowSelected && <span className="w-1.5 h-1.5 rounded-full bg-sky-400" />}
@@ -11303,7 +11315,7 @@ export default function App() {
                               <span className="relative inline-flex rounded-full h-2 w-2 bg-accent"></span>
                             </span>
                             <span className="text-xs font-medium text-text-base whitespace-nowrap">
-                              QA/QC: <span className="font-mono font-bold text-accent">{qaqcWorkerState.subgrid || 'General'}</span>
+                              QA/QC: <span className="font-sans font-bold text-accent">{qaqcWorkerState.subgrid || 'General'}</span>
                             </span>
                             <div className="w-16 h-1.5 bg-card rounded-full overflow-hidden border border-subtle/80 shrink-0">
                               <div
@@ -11313,10 +11325,10 @@ export default function App() {
                                 }}
                               />
                             </div>
-                            <span className="text-xs font-semibold tabular-nums text-text-base shrink-0 font-mono">
+                            <span className="text-xs font-semibold tabular-nums text-text-base shrink-0 font-sans">
                               {Math.min(100, Math.round(((qaqcWorkerState.currentIndex + 1) / (qaqcWorkerState.totalStations || 1)) * 100))}%
                             </span>
-                            <span className="text-[11px] text-text-muted tabular-nums shrink-0 font-mono">
+                            <span className="text-[11px] text-text-muted tabular-nums shrink-0 font-sans">
                               ({Math.min(qaqcWorkerState.totalStations || 1, qaqcWorkerState.currentIndex + 1)}/{qaqcWorkerState.totalStations || 1})
                             </span>
                             <button
@@ -11395,7 +11407,7 @@ export default function App() {
                               return (
                                 <PhotoSphereViewerComponent
                                   ref={dashboardPsvRef}
-                                  key={`pano-psv-${targetSubgrid}-${targetFilename}-${provider}`}
+                                  key={`pano-psv-${targetSubgrid}-${provider}`}
                                   configUrl={shouldUseMultiRes && dynamicConfigUrl ? dynamicConfigUrl : undefined}
                                   panoramaUrl={!shouldUseMultiRes ? dynamicPanoUrl : undefined}
                                   onPositionChange={(pos) => {
@@ -11463,6 +11475,18 @@ export default function App() {
                                 const nextLat = Number(targetStation?.latitude ?? (targetStation as any)?.lat ?? inspectorCoords.lat);
                                 const nextLng = Number(targetStation?.longitude ?? (targetStation as any)?.lng ?? (targetStation as any)?.lon ?? inspectorCoords.lng);
                                 const nextBearing = targetStation?.bearing ?? (targetStation as any)?.heading ?? ((targetIdx * 12) % 360);
+
+                                // Preload adjacent stations into browser cache for instant 0ms stepping
+                                const aheadStation = stations[targetIdx + 1];
+                                if (aheadStation) {
+                                  const url = aheadStation.image_url || resolvePanoramaUrl(aheadStation.filename, projectSettings, { subgrid: cleanSg });
+                                  if (url) { const img = new Image(); img.src = url; }
+                                }
+                                const behindStation = stations[targetIdx - 1];
+                                if (behindStation) {
+                                  const url = behindStation.image_url || resolvePanoramaUrl(behindStation.filename, projectSettings, { subgrid: cleanSg });
+                                  if (url) { const img = new Image(); img.src = url; }
+                                }
 
                                 // Update Dashboard State
                                 setActivePanoramaFilename(nextFn);
@@ -11562,7 +11586,7 @@ export default function App() {
                             </div>
                             <div className="flex items-center justify-between text-text-muted gap-2">
                               <span className="shrink-0">Coordinates:</span>
-                              <span className="font-mono text-text-base text-[9px] whitespace-nowrap text-right">
+                              <span className="font-sans text-text-base text-[9px] whitespace-nowrap text-right">
                                 {hasSelectedPoint ? `${inspectorCoords.lat.toFixed(4)}, ${inspectorCoords.lng.toFixed(4)}` : '-'}
                               </span>
                             </div>
@@ -11576,7 +11600,7 @@ export default function App() {
                               <div className="flex flex-col gap-0.5 pt-1 border-t border-subtle">
                                 <div className="flex items-center justify-between text-[9.5px]">
                                   <span className="text-text-muted font-medium">QA Status:</span>
-                                  <span className={`font-bold font-mono ${qaQuestionnaireAnswer === 'yes' ? 'text-amber-400' : 'text-emerald-400'}`}>
+                                  <span className={`font-bold font-sans ${qaQuestionnaireAnswer === 'yes' ? 'text-amber-400' : 'text-emerald-400'}`}>
                                     {qaQuestionnaireAnswer === 'yes' ? 'DEFECT CONFIRMED' : 'PASSED'}
                                   </span>
                                 </div>
@@ -11615,7 +11639,7 @@ export default function App() {
                                   <Edit2 size={10} /> Edit QA
                                 </button>
                               ) : (
-                                <span className="text-[8.5px] text-text-muted font-mono">Toggle to Flag</span>
+                                <span className="text-[8.5px] text-text-muted font-sans">Toggle to Flag</span>
                               )}
                             </div>
 
@@ -11631,7 +11655,7 @@ export default function App() {
                                       <span className={`w-1.5 h-1.5 rounded-full shrink-0 bg-${color}-400`}></span>
                                       <span className="truncate">{label}</span>
                                     </span>
-                                    <span className="text-[9px] font-mono shrink-0 ml-1 text-text-muted">Flag</span>
+                                    <span className="text-[9px] font-sans shrink-0 ml-1 text-text-muted">Flag</span>
                                   </div>
                                 ))}
                                 <p className="text-[9px] text-amber-500/70 text-center pt-1 italic">QA editing disabled for guests</p>
@@ -11662,7 +11686,7 @@ export default function App() {
                                       <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${selectedQaFlags.blurry ? 'bg-red-300 ring-2 ring-red-400' : 'bg-red-400'}`}></span>
                                       <span className="truncate">{projectSettings.qaFlag1 || 'Blurry Frame'}</span>
                                     </span>
-                                    <span className={`text-[9px] font-mono shrink-0 ml-1 ${selectedQaFlags.blurry ? 'text-red-300 font-bold' : 'text-text-muted group-hover:text-red-400'}`}>Flag</span>
+                                    <span className={`text-[9px] font-sans shrink-0 ml-1 ${selectedQaFlags.blurry ? 'text-red-300 font-bold' : 'text-text-muted group-hover:text-red-400'}`}>Flag</span>
                                   </button>
                                 )}
 
@@ -11690,7 +11714,7 @@ export default function App() {
                                       <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${selectedQaFlags.obstruction ? 'bg-amber-300 ring-2 ring-amber-400' : 'bg-amber-400'}`}></span>
                                       <span className="truncate">{projectSettings.qaFlag2 || 'Lens Obstruction'}</span>
                                     </span>
-                                    <span className={`text-[9px] font-mono shrink-0 ml-1 ${selectedQaFlags.obstruction ? 'text-amber-300 font-bold' : 'text-text-muted group-hover:text-amber-400'}`}>Flag</span>
+                                    <span className={`text-[9px] font-sans shrink-0 ml-1 ${selectedQaFlags.obstruction ? 'text-amber-300 font-bold' : 'text-text-muted group-hover:text-amber-400'}`}>Flag</span>
                                   </button>
                                 )}
 
@@ -11718,7 +11742,7 @@ export default function App() {
                                       <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${selectedQaFlags.badGps ? 'bg-sky-300 ring-2 ring-sky-400' : 'bg-sky-400'}`}></span>
                                       <span className="truncate">{projectSettings.qaFlag3 || 'Bad GPS Signal'}</span>
                                     </span>
-                                    <span className={`text-[9px] font-mono shrink-0 ml-1 ${selectedQaFlags.badGps ? 'text-sky-300 font-bold' : 'text-text-muted group-hover:text-sky-400'}`}>Flag</span>
+                                    <span className={`text-[9px] font-sans shrink-0 ml-1 ${selectedQaFlags.badGps ? 'text-sky-300 font-bold' : 'text-text-muted group-hover:text-sky-400'}`}>Flag</span>
                                   </button>
                                 )}
                               </>
@@ -11730,7 +11754,7 @@ export default function App() {
                             <div className="bg-app rounded-md p-2 border border-subtle space-y-1.5 text-[10px] mt-2.5 animate-in fade-in slide-in-from-top-2 duration-200">
                               <div className="flex items-center justify-between text-text-base font-medium">
                                 <span>Update Status?</span>
-                                <span className="text-[9px] text-text-muted font-mono">
+                                <span className="text-[9px] text-text-muted font-sans">
                                   {qaQuestionnaireAnswer === 'yes' ? 'DEFECT CONFIRMED' : qaQuestionnaireAnswer === 'no' ? 'NO DEFECT' : 'SELECT RESPONSE'}
                                 </span>
                               </div>
@@ -11807,6 +11831,8 @@ export default function App() {
                 projectSettings={projectSettings}
                 qaSubgridRecords={qaSubgridRecords}
                 translate={t}
+                initialTab={dataManagementTab}
+                initialSearch={dataManagementSearch}
               />
             </div>
           ) : currentPage === 'settings' ? (
@@ -11929,7 +11955,7 @@ export default function App() {
                         <Camera size={16} className="text-sky-400" />
                         Subgrid {imagesListModal.subgrid} Filenames
                       </h2>
-                      <span className="text-[11px] text-text-muted font-mono">
+                      <span className="text-[11px] text-text-muted font-sans">
                         {imagesListModal.poiCount !== undefined ? `POI: ${imagesListModal.poiCount.toLocaleString()}  •  ` : ''}
                         Available Frames: <strong className="text-sky-400 font-bold">{filenames.length.toLocaleString()}</strong>
                       </span>
@@ -11942,7 +11968,7 @@ export default function App() {
                       &times;
                     </button>
                   </div>
-                  <div className="flex-1 overflow-y-auto font-mono text-xs text-text-base space-y-1 p-2 bg-card rounded-lg border border-subtle max-h-96">
+                  <div className="flex-1 overflow-y-auto font-sans text-xs text-text-base space-y-1 p-2 bg-card rounded-lg border border-subtle max-h-96">
                     {filenames.map((name, idx) => (
                       <div key={idx} className="flex items-center justify-between px-2.5 py-1 hover:bg-inner rounded transition-colors">
                         <span className="text-text-muted text-[10px] w-10 shrink-0">{idx + 1}.</span>
@@ -11981,7 +12007,7 @@ export default function App() {
             <div className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[90vw] max-w-lg bg-card border border-subtle rounded-2xl shadow-2xl z-[99999] p-4 text-text-base backdrop-blur-xl animate-in fade-in slide-in-from-bottom-4 duration-200">
               <div className="flex items-center justify-between border-b border-subtle pb-2 mb-3">
                 <div className="flex items-center gap-2">
-                  <span className="bg-inner text-text-base border border-subtle text-[10px] font-mono font-bold px-2 py-0.5 rounded-md uppercase tracking-wider">
+                  <span className="bg-inner text-text-base border border-subtle text-[10px] font-sans font-bold px-2 py-0.5 rounded-md uppercase tracking-wider">
                     Step {tourStep} of {TOUR_STEPS.length}
                   </span>
                   <h3 className="text-xs font-bold text-text-base tracking-wide">
@@ -12015,7 +12041,7 @@ export default function App() {
               </div>
 
               <div className="flex items-center justify-between pt-2 border-t border-subtle">
-                <span className="text-[10px] text-text-muted font-mono">
+                <span className="text-[10px] text-text-muted font-sans">
                   Focus: <strong className="text-text-base">{TOUR_STEPS[tourStep - 1].highlight}</strong>
                 </span>
 
@@ -12116,7 +12142,7 @@ export default function App() {
                       <div className="bg-card p-3.5 rounded-lg border border-subtle space-y-1">
                         <h4 className="font-semibold text-text-base text-xs">1. Subgrid Selection &amp; Key Normalization</h4>
                         <p className="text-text-muted">
-                          Clicking any subgrid on the map or inside the control table isolates all trajectory points for that region. Subgrid keys are automatically normalized (<code className="bg-inner px-1 py-0.5 rounded text-text-base font-mono text-[10px]">XX-YY &rarr; XXYY</code>) across CSV imports and database queries.
+                          Clicking any subgrid on the map or inside the control table isolates all trajectory points for that region. Subgrid keys are automatically normalized (<code className="bg-inner px-1 py-0.5 rounded text-text-base font-sans text-[10px]">XX-YY &rarr; XXYY</code>) across CSV imports and database queries.
                         </p>
                       </div>
 
@@ -12148,7 +12174,7 @@ export default function App() {
                       <div className="bg-card p-3.5 rounded-lg border border-subtle space-y-1">
                         <h4 className="font-semibold text-text-base text-xs">2. Defect Inspection &amp; QA Benchmark Verification</h4>
                         <p className="text-text-muted">
-                          Frames with flagged defects (<code className="bg-inner px-1 py-0.5 rounded text-text-base font-mono text-[10px]">Blurry Frame, Lens Obstruction, GPS Offset</code>) display automated defect questionnaires. Operator YES/NO validations immediately update defect status in Supabase.
+                          Frames with flagged defects (<code className="bg-inner px-1 py-0.5 rounded text-text-base font-sans text-[10px]">Blurry Frame, Lens Obstruction, GPS Offset</code>) display automated defect questionnaires. Operator YES/NO validations immediately update defect status in Supabase.
                         </p>
                       </div>
                     </div>
@@ -12252,7 +12278,7 @@ export default function App() {
                       <p className="text-xs text-sky-400 font-medium">
                         Spatial Trajectory Processing &amp; Quality Assurance Pipeline
                       </p>
-                      <p className="text-[11px] text-text-muted font-mono mt-0.5">
+                      <p className="text-[11px] text-text-muted font-sans mt-0.5">
                         Version 2.4.0 (Executive Enterprise Build)
                       </p>
                     </div>
@@ -12283,7 +12309,7 @@ export default function App() {
                     <h4 className="font-bold text-text-base text-xs uppercase tracking-wider">
                       Technical Specifications &amp; GIS Core
                     </h4>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 font-mono text-[11px]">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 font-sans text-[11px]">
                       <div className="p-3 rounded-xl bg-card border border-subtle space-y-1">
                         <span className="text-text-muted block text-[10px] uppercase">GIS Mapping Engine</span>
                         <span className="text-text-base font-bold">PostGIS 3.4 + Leaflet 1.9 + WebGL</span>
@@ -12303,7 +12329,7 @@ export default function App() {
                             ? 'PhotoSphereViewer (Multi-Res Tile Engine)'
                             : 'PhotoSphereViewer (Equirectangular)'}
                         </span>
-                        <span className="text-text-muted text-[9px] font-mono">
+                        <span className="text-text-muted text-[9px] font-sans">
                           {projectSettings?.storageProvider?.toUpperCase() || 'DYNAMIC'} · {projectSettings?.imageStorageStrategy || 'single_equirectangular'}
                         </span>
                       </div>
@@ -12319,14 +12345,14 @@ export default function App() {
                       <div className="p-3 rounded-xl bg-card border border-subtle space-y-1">
                         <div className="font-bold text-text-base">1. Subgrid Trajectory Deduplication Strategy</div>
                         <p className="text-text-muted text-[11px]">
-                          Auto-normalizes subgrid keys (<code className="bg-inner px-1 py-0.5 rounded text-text-base font-mono text-[10px]">XX-YY &rarr; XXYY</code>). Offers choice between Masterlist clean merge or preserved daily survey runs.
+                          Auto-normalizes subgrid keys (<code className="bg-inner px-1 py-0.5 rounded text-text-base font-sans text-[10px]">XX-YY &rarr; XXYY</code>). Offers choice between Masterlist clean merge or preserved daily survey runs.
                         </p>
                       </div>
 
                       <div className="p-3 rounded-xl bg-card border border-subtle space-y-1">
                         <div className="font-bold text-text-base">2. Interactive 360° QA Inspector &amp; SLA Benchmarks</div>
                         <p className="text-text-muted text-[11px]">
-                          Supports AI defect threshold benchmarks (<code className="bg-inner px-1 py-0.5 rounded text-text-base font-mono text-[10px]">95%, 85%, 75%, 60%</code>) with custom flag labels (<code className="bg-inner px-1 py-0.5 rounded text-text-base font-mono text-[10px]">Blurry Frame, Lens Obstruction, Bad GPS</code>).
+                          Supports AI defect threshold benchmarks (<code className="bg-inner px-1 py-0.5 rounded text-text-base font-sans text-[10px]">95%, 85%, 75%, 60%</code>) with custom flag labels (<code className="bg-inner px-1 py-0.5 rounded text-text-base font-sans text-[10px]">Blurry Frame, Lens Obstruction, Bad GPS</code>).
                         </p>
                       </div>
 
@@ -12342,7 +12368,7 @@ export default function App() {
                 </div>
 
                 {/* Modal Footer */}
-                <div className="p-4 bg-card border-t border-subtle flex justify-between items-center text-[11px] text-text-muted shrink-0 font-mono">
+                <div className="p-4 bg-card border-t border-subtle flex justify-between items-center text-[11px] text-text-muted shrink-0 font-sans">
                   <span>© 2026 Mobile Mapping Data Management System</span>
                   <button
                     onClick={() => setIsAboutModalOpen(false)}
@@ -12370,7 +12396,7 @@ export default function App() {
               projectSettings={projectSettings}
               qaqcAuditRuns={qaqcAuditRuns}
               defectsList={allKnownDefects}
-              initialSubgrid={selectedSubgridFilter || qaqcWorkerState.subgrid || undefined}
+              initialSubgrid={qaqcWorkbenchSubgrid || selectedSubgridFilter || qaqcWorkerState.subgrid || undefined}
               initialRunId={selectedDailyRunId || qaqcWorkerState.runId || undefined}
               activeUserName={activeAuthUserName || (authSession?.user?.email ? authSession.user.email.split('@')[0] : '') || 'Operator'}
               surveyDate={selectedDateFilter || undefined}
@@ -12393,7 +12419,10 @@ export default function App() {
                   console.warn('Sign-off push to Supabase failed:', err);
                 }
               }}
-              onClose={() => setIsQAQCRunnerModalOpen(false)}
+              onClose={() => {
+                setIsQAQCRunnerModalOpen(false);
+                setQaqcWorkbenchSubgrid(null);
+              }}
               onOpenDefectsGallery={(sg) => {
                 setSelectedDefectSubgrid(sg);
                 setIsDefectsGalleryOpen(true);
@@ -12488,11 +12517,7 @@ export default function App() {
             setInspectorSubgrid(subgridKey);
           }}
           onOpenQAQCWorkbench={(subgridKey) => {
-            if (subgridKey) {
-              setSelectedSubgridFilter(subgridKey);
-              setInspectorSubgrid(subgridKey);
-              localStorage.setItem('geosphere360_last_active_subgrid', subgridKey);
-            }
+            setQaqcWorkbenchSubgrid(subgridKey || null);
             goToWorkspace('dashboard');
             setIsQAQCRunnerModalOpen(true);
             setIsHandoverModalOpen(false);

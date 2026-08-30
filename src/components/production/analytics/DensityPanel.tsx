@@ -90,11 +90,11 @@ export function DensityPanel({ analytics, translate }: DensityPanelProps) {
                 {rows.map((r) => (
                   <tr key={r.subgrid} className="border-b border-subtle hover:bg-inner/40 transition-colors">
                     <td className="px-3 py-2 font-bold text-sky-300">{r.subgrid}</td>
-                    <td className="px-3 py-2 text-right font-mono">{formatNumber(r.km, 2)}</td>
-                    <td className="px-3 py-2 text-right font-mono">{formatNumber(r.poi)}</td>
-                    <td className="px-3 py-2 text-right font-mono">{formatNumber(r.frames)}</td>
-                    <td className="px-3 py-2 text-right font-mono">{formatNumber(r.densityPoi, 1)}</td>
-                    <td className="px-3 py-2 text-right font-mono">{formatNumber(r.densityFrames, 1)}</td>
+                    <td className="px-3 py-2 text-right font-sans">{formatNumber(r.km, 2)}</td>
+                    <td className="px-3 py-2 text-right font-sans">{formatNumber(r.poi)}</td>
+                    <td className="px-3 py-2 text-right font-sans">{formatNumber(r.frames)}</td>
+                    <td className="px-3 py-2 text-right font-sans">{formatNumber(r.densityPoi, 1)}</td>
+                    <td className="px-3 py-2 text-right font-sans">{formatNumber(r.densityFrames, 1)}</td>
                   </tr>
                 ))}
               </tbody>

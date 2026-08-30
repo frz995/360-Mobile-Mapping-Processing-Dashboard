@@ -1,5 +1,4 @@
 @import './themes.css';
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -13,12 +12,10 @@ body {
   font-feature-settings: "cv02", "cv03", "cv04", "cv11", "tnum";
 }
 
-.font-mono,
 code,
 kbd,
 samp,
 pre {
-  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace !important;
   font-feature-settings: "tnum" 1;
   font-variant-numeric: tabular-nums;
 }
@@ -56,6 +53,7 @@ textarea::placeholder {
   color-scheme: light;
   background-color: #f8fafc !important;
   color: #0f172a !important;
+  --divider: #e8eef5;
 }
 
 /* Header & Top Navigation */
@@ -580,4 +578,13 @@ textarea::placeholder {
   font-size: 12px;
   background: rgba(0,0,0,0.8) !important;
   color: #fbbf24 !important;
+}
+
+/* PhotoSphereViewer default loader override */
+.psv-loader,
+.psv-loader-canvas,
+.psv-loader-text {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
 }

@@ -818,7 +818,7 @@ export const DeletionSelectionMap: React.FC<DeletionSelectionMapProps> = ({
                   key={norm}
                   onClick={() => handleToggleTrack(norm)}
                   title={`Toggle track ${norm} (${totalPts} points). Status: ${row.status === 'defect' ? 'Defect' : row.isPublished ? 'Published' : 'In Process'}.`}
-                  className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-mono font-medium transition-all cursor-pointer shrink-0 border ${
+                  className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-sans font-medium transition-all cursor-pointer shrink-0 border ${
                     isSelected
                       ? isPartial
                         ? 'bg-amber-500/20 text-amber-200 border-amber-500/40 shadow-sm font-bold'
@@ -842,7 +842,7 @@ export const DeletionSelectionMap: React.FC<DeletionSelectionMapProps> = ({
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            <span className="text-[10px] text-text-muted font-mono">
+            <span className="text-[10px] text-text-muted font-sans">
               {selectedSubgrids.length} of {subgridPoints.length} active
             </span>
           </div>
@@ -874,7 +874,7 @@ export const DeletionSelectionMap: React.FC<DeletionSelectionMapProps> = ({
                 <CheckCircle2 size={12} className="text-sky-400" />
                 <span className="font-bold text-sky-300 text-[11px]">Current Production WebGIS</span>
               </div>
-              <span className="text-[10px] text-text-muted font-mono">Interactive Selection</span>
+              <span className="text-[10px] text-text-muted font-sans">Interactive Selection</span>
             </div>
           )}
 
@@ -1034,7 +1034,7 @@ export const DeletionSelectionMap: React.FC<DeletionSelectionMapProps> = ({
                 <Trash2 size={12} className="text-rose-400" />
                 <span className="font-bold text-rose-300 text-[11px]">Projected State (After Deletion)</span>
               </div>
-              <span className="text-[10px] text-rose-400 font-mono font-bold bg-rose-500/15 border border-rose-500/30 px-2 py-0.5 rounded">
+              <span className="text-[10px] text-rose-400 font-sans font-bold bg-rose-500/15 border border-rose-500/30 px-2 py-0.5 rounded">
                 {selectedSubgrids.length > 0 ? `${selectedSubgrids.length} Target(s) Purged` : '0 Selected'}
               </span>
             </div>
@@ -1052,7 +1052,7 @@ export const DeletionSelectionMap: React.FC<DeletionSelectionMapProps> = ({
                 <div className="absolute bottom-2 left-2 right-2 z-10 pointer-events-none flex justify-center">
                   <div className="bg-slate-950/90 backdrop-blur-md border border-rose-500/40 rounded-xl px-3 py-1.5 text-center shadow-2xl max-w-sm">
                     <p className="text-[11px] font-medium text-slate-200">
-                      <strong className="font-mono text-rose-300">{selectedSubgrids.join(', ')}</strong> will be purged from active WebGIS layers.
+                      <strong className="font-sans text-rose-300">{selectedSubgrids.join(', ')}</strong> will be purged from active WebGIS layers.
                     </p>
                   </div>
                 </div>
@@ -1078,7 +1078,7 @@ export const DeletionSelectionMap: React.FC<DeletionSelectionMapProps> = ({
             return (
               <span
                 key={sg}
-                className="inline-flex items-center gap-1.5 bg-card border border-rose-500/40 text-text-base text-[11px] font-mono font-bold px-2.5 py-0.5 rounded-lg shadow-sm"
+                className="inline-flex items-center gap-1.5 bg-card border border-rose-500/40 text-text-base text-[11px] font-sans font-bold px-2.5 py-0.5 rounded-lg shadow-sm"
               >
                 <span className="text-rose-300">{sg}</span>
                 {isPartial ? (

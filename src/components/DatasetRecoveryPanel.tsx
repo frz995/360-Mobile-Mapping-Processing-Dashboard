@@ -150,7 +150,7 @@ export const DatasetRecoveryPanel: React.FC<DatasetRecoveryPanelProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-base font-bold text-text-base tracking-wide">Dataset Recovery &amp; Recycle Bin</h2>
-                <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-inner border border-subtle text-text-base">
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-sans font-bold bg-inner border border-subtle text-text-base">
                   {items.length} Record{items.length !== 1 ? 's' : ''}
                 </span>
               </div>
@@ -188,7 +188,7 @@ export const DatasetRecoveryPanel: React.FC<DatasetRecoveryPanelProps> = ({
             <span className="text-[10px] text-text-muted uppercase font-bold tracking-wider block mb-1">
               Archived Batches / Subgrids
             </span>
-            <span className={`text-base font-bold font-mono ${items.length > 0 ? 'text-sky-400' : 'text-text-muted'}`}>
+            <span className={`text-base font-bold font-sans ${items.length > 0 ? 'text-sky-400' : 'text-text-muted'}`}>
               {items.length}
             </span>
           </div>
@@ -196,7 +196,7 @@ export const DatasetRecoveryPanel: React.FC<DatasetRecoveryPanelProps> = ({
             <span className="text-[10px] text-text-muted uppercase font-bold tracking-wider block mb-1">
               Recoverable POI &amp; Frames
             </span>
-            <div className="text-base font-bold font-mono flex items-center gap-1.5">
+            <div className="text-base font-bold font-sans flex items-center gap-1.5">
               <span className={totalRecoverablePoi > 0 ? 'text-sky-400' : 'text-text-muted'}>
                 {totalRecoverablePoi} POI
               </span>
@@ -210,7 +210,7 @@ export const DatasetRecoveryPanel: React.FC<DatasetRecoveryPanelProps> = ({
             <span className="text-[10px] text-text-muted uppercase font-bold tracking-wider block mb-1">
               Storage Source
             </span>
-            <span className="text-xs font-mono font-medium text-text-base flex items-center gap-1.5 mt-0.5">
+            <span className="text-xs font-sans font-medium text-text-base flex items-center gap-1.5 mt-0.5">
               <Database size={13} className="text-sky-400" />
               <span>Supabase PostgreSQL DB</span>
             </span>
@@ -227,10 +227,10 @@ export const DatasetRecoveryPanel: React.FC<DatasetRecoveryPanelProps> = ({
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search deleted subgrids, point filenames, or operators..."
-            className="w-full bg-inner border border-subtle focus:border-sky-500/50 rounded-xl pl-9 pr-4 py-2 text-xs font-mono text-text-base placeholder-text-muted focus:outline-none transition-all shadow-inner"
+            className="w-full bg-inner border border-subtle focus:border-sky-500/50 rounded-xl pl-9 pr-4 py-2 text-xs font-sans text-text-base placeholder-text-muted focus:outline-none transition-all shadow-inner"
           />
         </div>
-        <div className="text-[11px] text-text-muted font-mono">
+        <div className="text-[11px] text-text-muted font-sans">
           Showing {filteredItems.length} of {items.length} items
         </div>
       </div>
@@ -292,10 +292,10 @@ export const DatasetRecoveryPanel: React.FC<DatasetRecoveryPanelProps> = ({
                       return (
                         <>
                           <div className="flex items-center gap-2">
-                            <span className="font-mono font-bold text-sm text-text-base">
+                            <span className="font-sans font-bold text-sm text-text-base">
                               {item.subgrid}
                             </span>
-                            <span className="text-[10px] font-mono px-2.5 py-0.5 rounded-md bg-inner border border-subtle text-text-muted font-semibold flex items-center gap-1.5">
+                            <span className="text-[10px] font-sans px-2.5 py-0.5 rounded-md bg-inner border border-subtle text-text-muted font-semibold flex items-center gap-1.5">
                               <span>{item.type === 'partial_points' ? 'Partial Deletion' : 'Whole Subgrid'}</span>
                               <span>&bull;</span>
                               <span className={itemPoi > 0 ? 'text-sky-400' : 'text-text-muted'}>{itemPoi} POI</span>
@@ -303,7 +303,7 @@ export const DatasetRecoveryPanel: React.FC<DatasetRecoveryPanelProps> = ({
                               <span className={itemFrames > 0 ? 'text-sky-400' : 'text-text-muted'}>{itemFrames} frames</span>
                             </span>
                           </div>
-                          <p className="text-[11px] text-text-muted font-mono mt-0.5">
+                          <p className="text-[11px] text-text-muted font-sans mt-0.5">
                             Deleted on {formattedDate} &bull; by <strong className="text-text-base">{item.deleted_by || 'Operator'}</strong> &bull; {item.km_processed || 0} km
                           </p>
                         </>
@@ -357,7 +357,7 @@ export const DatasetRecoveryPanel: React.FC<DatasetRecoveryPanelProps> = ({
                             <th className="px-3 py-2">Heading</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-subtle font-mono text-[11px]">
+                        <tbody className="divide-y divide-subtle font-sans text-[11px]">
                           {item.points.map((p, idx) => (
                             <tr key={idx} className="hover:bg-inner/40">
                               <td className="px-3 py-1.5 text-text-muted">{idx + 1}</td>

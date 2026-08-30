@@ -1,15 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import {
     Clock,
-    HardDrive,
-    ShieldAlert,
-    ArrowRight,
-    CheckCircle2,
     X,
-    RotateCcw,
-    ExternalLink,
-    Play,
-    Layers
+    ArrowRight,
+    CheckCircle2
 } from 'lucide-react';
 
 export interface DailyHandoverModalProps {
@@ -132,23 +126,22 @@ export const DailyHandoverModal: React.FC<DailyHandoverModalProps> = ({
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-md animate-fadeIn select-none font-sans">
-            <div className="relative w-full max-w-4xl max-h-[92vh] bg-card border border-subtle rounded-2xl shadow-2xl flex flex-col overflow-hidden text-text-base transition-all">
+            <div className="relative w-full max-w-3xl max-h-[90vh] bg-card border border-subtle rounded-2xl shadow-2xl flex flex-col overflow-hidden text-text-base transition-all">
 
-                {/* 1. Header Section (Clean Monochrome Slate Foundation) */}
-                <div className="p-5 border-b border-subtle flex items-center justify-between shrink-0">
+                {/* 1. Header Section */}
+                <div className="px-5 py-4 border-b border-subtle flex items-center justify-between shrink-0">
                     <div>
-                        <h3 className="text-sm sm:text-base font-bold text-text-base flex items-center gap-2">
-                            <Layers size={16} className="text-text-muted" />
-                            <span>Daily Operations Briefing</span>
+                        <h3 className="text-sm sm:text-base font-bold text-text-base">
+                            Daily Operations Briefing
                         </h3>
                         <p className="text-xs text-text-muted mt-0.5">
-                            Welcome back, <strong className="text-text-base font-semibold">{operatorName}</strong> &bull; Spatial trajectory tracking, photogrammetric QA, and storage health diagnostics.
+                            Operator: <span className="text-text-base font-medium">{operatorName}</span> &bull; Photogrammetric processing &amp; pipeline diagnostics
                         </p>
                     </div>
 
                     <div className="flex items-center gap-2.5">
-                        <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-inner border border-subtle rounded-lg text-xs font-mono text-text-muted">
-                            <Clock size={13} className="text-text-muted" />
+                        <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 bg-inner border border-subtle rounded-lg text-xs text-text-muted">
+                            <Clock size={12} className="text-text-muted" />
                             <span>{todayFormatted}</span>
                         </div>
                         <button
@@ -162,106 +155,67 @@ export const DailyHandoverModal: React.FC<DailyHandoverModalProps> = ({
                 </div>
 
                 {/* 2. Scrollable Body Content */}
-                <div className="flex-1 overflow-y-auto p-5 space-y-5">
+                <div className="flex-1 overflow-y-auto p-5 space-y-4">
 
-                    {/* Operational Telemetry Matrix (Uniform Calm KPI Cards) */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
-
-                        {/* Storage Audit */}
-                        <div className="p-4 rounded-xl border border-subtle bg-inner space-y-2">
-                            <div className="flex items-center justify-between">
-                                <span className="font-medium text-text-muted">Storage Audit (MMS_PIC)</span>
-                                <span className={`w-2 h-2 rounded-full ${analysis.storageDiscrepancies.length > 0 ? 'bg-amber-400' : 'bg-emerald-400'}`} />
-                            </div>
-                            <div className="text-2xl font-bold font-mono text-text-base">
-                                {analysis.storageDiscrepancies.length}
-                                <span className="text-xs font-normal text-text-muted ml-1">subgrids</span>
-                            </div>
-                            <p className="text-[10px] text-text-muted font-mono truncate">
-                                {analysis.storageDiscrepancies.length > 0 ? 'Pending S3 frame uploads' : 'All S3 frames verified OK'}
-                            </p>
+                    {/* Operational Telemetry Summary Bar */}
+                    <div className="bg-inner border border-subtle rounded-xl p-3 text-xs flex flex-wrap items-center justify-between gap-y-2 gap-x-4">
+                        <div className="flex items-center gap-2">
+                            <span className="text-text-muted font-medium">Storage:</span>
+                            <span className="font-semibold text-text-base">
+                                {analysis.storageDiscrepancies.length > 0 ? `${analysis.storageDiscrepancies.length} subgrids pending upload` : 'All verified OK'}
+                            </span>
                         </div>
-
-                        {/* QA Conformance */}
-                        <div className="p-4 rounded-xl border border-subtle bg-inner space-y-2">
-                            <div className="flex items-center justify-between">
-                                <span className="font-medium text-text-muted">QA Conformance</span>
-                                <span className="w-2 h-2 rounded-full bg-slate-500" />
-                            </div>
-                            <div className="text-2xl font-bold font-mono text-text-base">
-                                {analysis.pendingAudits.length}
-                                <span className="text-xs font-normal text-text-muted ml-1">runs</span>
-                            </div>
-                            <p className="text-[10px] text-text-muted font-mono truncate">
-                                Tenengrad inspection queued
-                            </p>
+                        <div className="hidden md:block text-text-muted">&bull;</div>
+                        <div className="flex items-center gap-2">
+                            <span className="text-text-muted font-medium">QA Conformance:</span>
+                            <span className="font-semibold text-text-base">
+                                {analysis.pendingAudits.length} runs queued
+                            </span>
                         </div>
-
-                        {/* Optical Defects */}
-                        <div className="p-4 rounded-xl border border-subtle bg-inner space-y-2">
-                            <div className="flex items-center justify-between">
-                                <span className="font-medium text-text-muted">Optical Defects</span>
-                                <span className={`w-2 h-2 rounded-full ${analysis.totalDefectFrames > 0 ? 'bg-rose-400' : 'bg-emerald-400'}`} />
-                            </div>
-                            <div className="text-2xl font-bold font-mono text-text-base">
-                                {analysis.totalDefectFrames}
-                                <span className="text-xs font-normal text-text-muted ml-1">flags</span>
-                            </div>
-                            <p className="text-[10px] text-text-muted font-mono truncate">
-                                Across {analysis.defectSubgridsCount} survey subgrids
-                            </p>
+                        <div className="hidden md:block text-text-muted">&bull;</div>
+                        <div className="flex items-center gap-2">
+                            <span className="text-text-muted font-medium">Defects:</span>
+                            <span className="font-semibold text-text-base">
+                                {analysis.totalDefectFrames} flags ({analysis.defectSubgridsCount} subgrids)
+                            </span>
                         </div>
-
-                        {/* Staging Gate */}
-                        <div className="p-4 rounded-xl border border-subtle bg-inner space-y-2">
-                            <div className="flex items-center justify-between">
-                                <span className="font-medium text-text-muted">Staging Gate (PostGIS)</span>
-                                <span className="w-2 h-2 rounded-full bg-slate-500" />
-                            </div>
-                            <div className="text-2xl font-bold font-mono text-text-base">
-                                {analysis.stagingBatches.length}
-                                <span className="text-xs font-normal text-text-muted ml-1">batches</span>
-                            </div>
-                            <p className="text-[10px] text-text-muted font-mono truncate">
-                                Pending publish to WebGIS
-                            </p>
+                        <div className="hidden md:block text-text-muted">&bull;</div>
+                        <div className="flex items-center gap-2">
+                            <span className="text-text-muted font-medium">Staging:</span>
+                            <span className="font-semibold text-text-base">
+                                {analysis.stagingBatches.length} batches pending
+                            </span>
                         </div>
-
                     </div>
 
                     {/* Action Items List Section */}
-                    <div className="space-y-3 pt-1">
-                        <div className="flex items-center justify-between pb-1">
-                            <h4 className="text-xs font-bold text-text-base uppercase tracking-wider font-mono">
+                    <div className="space-y-2.5 pt-1">
+                        <div className="flex items-center justify-between pb-0.5">
+                            <h4 className="text-[11px] font-bold text-text-muted uppercase tracking-wider">
                                 Prioritized Operational Action Items
                             </h4>
-                            <span className="text-[11px] font-mono text-text-muted">
-                                {analysis.totalPendingItems} active pipelines requiring review
+                            <span className="text-xs text-text-muted">
+                                {analysis.totalPendingItems} items requiring review
                             </span>
                         </div>
 
-                        <div className="space-y-2.5">
+                        <div className="divide-y divide-subtle border border-subtle rounded-xl overflow-hidden bg-inner/40">
 
-                            {/* Item 1: Resume Previous Session (IMPORTANT CONTENT: Primary Accent Highlight) */}
+                            {/* Item 1: Resume Previous Session */}
                             {analysis.lastSubgrid && (
-                                <div className="p-4 rounded-xl border border-sky-500/40 bg-inner flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-sky-500/70 transition-colors">
-                                    <div className="flex items-start gap-3">
-                                        <div className="w-8 h-8 rounded-lg bg-card border border-subtle flex items-center justify-center shrink-0 mt-0.5">
-                                            <RotateCcw size={15} className="text-sky-400" />
+                                <div className="p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-inner/70 transition-colors">
+                                    <div className="space-y-0.5">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xs font-semibold text-text-base">
+                                                Resume Yesterday's Session ({analysis.lastSubgrid})
+                                            </span>
+                                            <span className="text-[10px] px-1.5 py-0.2 rounded bg-inner border border-subtle text-text-muted font-medium">
+                                                Active Bookmark
+                                            </span>
                                         </div>
-                                        <div className="space-y-0.5">
-                                            <div className="flex items-center gap-2 flex-wrap">
-                                                <span className="text-xs font-bold text-text-base">
-                                                    Resume Yesterday's Session ({analysis.lastSubgrid})
-                                                </span>
-                                                <span className="text-[9.5px] font-mono px-2 py-0.5 rounded bg-sky-500/10 text-sky-400 border border-sky-500/20 font-medium">
-                                                    Active Bookmark
-                                                </span>
-                                            </div>
-                                            <p className="text-[11px] text-text-muted font-mono">
-                                                Jump directly into the 360° photogrammetric QA workspace at your saved inspection node.
-                                            </p>
-                                        </div>
+                                        <p className="text-[11px] text-text-muted">
+                                            Jump directly into the 360° photogrammetric QA workspace at your saved inspection node.
+                                        </p>
                                     </div>
                                     <button
                                         onClick={() => {
@@ -269,123 +223,108 @@ export const DailyHandoverModal: React.FC<DailyHandoverModalProps> = ({
                                             if (onOpenQAQCWorkbench) onOpenQAQCWorkbench(analysis.lastSubgrid);
                                             onClose();
                                         }}
-                                        className="px-4 py-2 bg-sky-500 hover:bg-sky-400 text-slate-950 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-md transition-all active:scale-95 shrink-0"
+                                        className="px-3.5 py-1.5 bg-card hover:bg-inner border border-subtle text-text-base rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 cursor-pointer shadow-sm transition-all shrink-0"
                                     >
                                         <span>Resume Inspection</span>
-                                        <ArrowRight size={14} />
+                                        <ArrowRight size={13} className="text-text-muted" />
                                     </button>
                                 </div>
                             )}
 
                             {/* Item 2: Storage Reconciliation */}
                             {analysis.storageDiscrepancies.length > 0 && (
-                                <div className="p-4 rounded-xl border border-subtle bg-inner flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-slate-700 transition-colors">
-                                    <div className="flex items-start gap-3">
-                                        <div className="w-8 h-8 rounded-lg bg-card border border-subtle flex items-center justify-center shrink-0 mt-0.5">
-                                            <HardDrive size={15} className="text-text-muted" />
+                                <div className="p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-inner/70 transition-colors">
+                                    <div className="space-y-0.5">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xs font-semibold text-text-base">
+                                                Storage Verification Discrepancy
+                                            </span>
+                                            <span className="text-[10px] px-1.5 py-0.2 rounded bg-inner border border-subtle text-text-muted font-medium">
+                                                {analysis.storageDiscrepancies.length} subgrids
+                                            </span>
                                         </div>
-                                        <div className="space-y-0.5">
-                                            <div className="flex items-center gap-2 flex-wrap">
-                                                <span className="text-xs font-bold text-text-base">
-                                                    Incomplete S3 Storage Verification
-                                                </span>
-                                                <span className="text-[9.5px] font-mono px-2 py-0.5 rounded bg-card border border-subtle text-text-base font-medium">
-                                                    {analysis.storageDiscrepancies.length} subgrids
-                                                </span>
-                                            </div>
-                                            <p className="text-[11px] text-text-muted font-mono">
-                                                {analysis.storageDiscrepancies.map(d => `${d.subgrid} (${d.availableFrames}/${d.totalPoi} frames)`).slice(0, 3).join(', ')}
-                                                {analysis.storageDiscrepancies.length > 3 && ` +${analysis.storageDiscrepancies.length - 3} more`} require physical panorama uploads.
-                                            </p>
-                                        </div>
+                                        <p className="text-[11px] text-text-muted">
+                                            {analysis.storageDiscrepancies.map(d => `${d.subgrid} (${d.availableFrames}/${d.totalPoi} frames)`).slice(0, 3).join(', ')}
+                                            {analysis.storageDiscrepancies.length > 3 && ` +${analysis.storageDiscrepancies.length - 3} more`} require physical panorama uploads.
+                                        </p>
                                     </div>
                                     <button
                                         onClick={() => {
                                             if (onOpenBatchProcessing) onOpenBatchProcessing();
                                             onClose();
                                         }}
-                                        className="px-3.5 py-2 bg-inner hover:bg-inner border border-subtle text-text-base rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer shadow-sm transition-colors shrink-0"
+                                        className="px-3.5 py-1.5 bg-card hover:bg-inner border border-subtle text-text-base rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 cursor-pointer shadow-sm transition-colors shrink-0"
                                     >
                                         <span>Reconcile Storage</span>
-                                        <ExternalLink size={13} className="text-text-muted" />
+                                        <ArrowRight size={13} className="text-text-muted" />
                                     </button>
                                 </div>
                             )}
 
                             {/* Item 3: Defect Remediation */}
                             {analysis.totalDefectFrames > 0 && (
-                                <div className="p-4 rounded-xl border border-subtle bg-inner flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-slate-700 transition-colors">
-                                    <div className="flex items-start gap-3">
-                                        <div className="w-8 h-8 rounded-lg bg-card border border-subtle flex items-center justify-center shrink-0 mt-0.5">
-                                            <ShieldAlert size={15} className="text-text-muted" />
+                                <div className="p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-inner/70 transition-colors">
+                                    <div className="space-y-0.5">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xs font-semibold text-text-base">
+                                                Flagged Defect Remediation
+                                            </span>
+                                            <span className="text-[10px] px-1.5 py-0.2 rounded bg-inner border border-subtle text-text-muted font-medium">
+                                                {analysis.totalDefectFrames} flags
+                                            </span>
                                         </div>
-                                        <div className="space-y-0.5">
-                                            <div className="flex items-center gap-2 flex-wrap">
-                                                <span className="text-xs font-bold text-text-base">
-                                                    Flagged Defect Remediation
-                                                </span>
-                                                <span className="text-[9.5px] font-mono px-2 py-0.5 rounded bg-card border border-subtle text-text-base font-medium">
-                                                    {analysis.totalDefectFrames} flags
-                                                </span>
-                                            </div>
-                                            <p className="text-[11px] text-text-muted font-mono">
-                                                Review motion blur, solar flare, and lens obstruction tags before signing off milestones.
-                                            </p>
-                                        </div>
+                                        <p className="text-[11px] text-text-muted">
+                                            Review motion blur, solar flare, and lens obstruction tags before signing off milestones.
+                                        </p>
                                     </div>
                                     <button
                                         onClick={() => {
                                             if (onOpenDefectsGallery) onOpenDefectsGallery(analysis.lastSubgrid || undefined);
                                             onClose();
                                         }}
-                                        className="px-3.5 py-2 bg-inner hover:bg-inner border border-subtle text-text-base rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer shadow-sm transition-colors shrink-0"
+                                        className="px-3.5 py-1.5 bg-card hover:bg-inner border border-subtle text-text-base rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 cursor-pointer shadow-sm transition-colors shrink-0"
                                     >
                                         <span>Open Defect Gallery</span>
-                                        <ExternalLink size={13} className="text-text-muted" />
+                                        <ArrowRight size={13} className="text-text-muted" />
                                     </button>
                                 </div>
                             )}
 
                             {/* Item 4: Pending Automated QA Audits */}
                             {analysis.pendingAudits.length > 0 && (
-                                <div className="p-4 rounded-xl border border-subtle bg-inner flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-slate-700 transition-colors">
-                                    <div className="flex items-start gap-3">
-                                        <div className="w-8 h-8 rounded-lg bg-card border border-subtle flex items-center justify-center shrink-0 mt-0.5">
-                                            <Play size={15} className="text-text-muted" />
+                                <div className="p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-inner/70 transition-colors">
+                                    <div className="space-y-0.5">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xs font-semibold text-text-base">
+                                                Trajectory QA Conformance Pipeline
+                                            </span>
+                                            <span className="text-[10px] px-1.5 py-0.2 rounded bg-inner border border-subtle text-text-muted font-medium">
+                                                {analysis.pendingAudits.length} queued
+                                            </span>
                                         </div>
-                                        <div className="space-y-0.5">
-                                            <div className="flex items-center gap-2 flex-wrap">
-                                                <span className="text-xs font-bold text-text-base">
-                                                    Trajectory QA Conformance Pipeline
-                                                </span>
-                                                <span className="text-[9.5px] font-mono px-2 py-0.5 rounded bg-card border border-subtle text-text-base font-medium">
-                                                    {analysis.pendingAudits.length} runs queued
-                                                </span>
-                                            </div>
-                                            <p className="text-[11px] text-text-muted font-mono">
-                                                Execute automated Tenengrad sharpness convolutions across newly ingested trajectory runs.
-                                            </p>
-                                        </div>
+                                        <p className="text-[11px] text-text-muted">
+                                            Execute automated Tenengrad sharpness convolutions across newly ingested trajectory runs.
+                                        </p>
                                     </div>
                                     <button
                                         onClick={() => {
                                             if (onOpenQAQCWorkbench) onOpenQAQCWorkbench(analysis.pendingAudits[0]?.subgrid);
                                             onClose();
                                         }}
-                                        className="px-3.5 py-2 bg-inner hover:bg-inner border border-subtle text-text-base rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer shadow-sm transition-colors shrink-0"
+                                        className="px-3.5 py-1.5 bg-card hover:bg-inner border border-subtle text-text-base rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 cursor-pointer shadow-sm transition-colors shrink-0"
                                     >
                                         <span>Launch QA Runner</span>
-                                        <Play size={13} className="text-text-muted" />
+                                        <ArrowRight size={13} className="text-text-muted" />
                                     </button>
                                 </div>
                             )}
 
                             {/* Clean Conformance State */}
                             {analysis.totalPendingItems === 0 && (
-                                <div className="p-4 rounded-xl border border-subtle bg-inner flex items-center gap-3 text-emerald-400">
-                                    <CheckCircle2 size={18} className="text-emerald-400 shrink-0" />
-                                    <div className="text-xs font-mono">
-                                        <span className="font-bold text-text-base block">All Trajectories &amp; Subgrids are Fully Reconciled</span>
+                                <div className="p-3.5 flex items-center gap-2.5 text-text-base text-xs">
+                                    <CheckCircle2 size={16} className="text-text-muted shrink-0" />
+                                    <div>
+                                        <span className="font-semibold block">All Trajectories &amp; Subgrids are Fully Reconciled</span>
                                         <span className="text-text-muted text-[11px]">Zero storage discrepancies or unresolved defect flags detected.</span>
                                     </div>
                                 </div>
@@ -397,13 +336,13 @@ export const DailyHandoverModal: React.FC<DailyHandoverModalProps> = ({
                 </div>
 
                 {/* 3. Footer Controls */}
-                <div className="p-4 border-t border-subtle flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
+                <div className="px-5 py-3.5 border-t border-subtle flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
                     <label className="flex items-center gap-2 text-xs text-text-muted cursor-pointer select-none">
                         <input
                             type="checkbox"
                             checked={dontShowToday}
                             onChange={(e) => setDontShowToday(e.target.checked)}
-                            className="rounded border-subtle bg-card text-sky-400 focus:ring-0 cursor-pointer"
+                            className="rounded border-subtle bg-card text-text-base focus:ring-0 cursor-pointer"
                         />
                         <span>Don't show briefing automatically today</span>
                     </label>
@@ -411,7 +350,7 @@ export const DailyHandoverModal: React.FC<DailyHandoverModalProps> = ({
                     <div className="flex items-center gap-2 w-full sm:w-auto">
                         <button
                             onClick={handleDismiss}
-                            className="w-full sm:w-auto px-4 py-2 bg-inner hover:bg-inner border border-subtle text-text-base rounded-lg text-xs font-semibold transition-colors cursor-pointer"
+                            className="w-full sm:w-auto px-4 py-1.5 bg-inner hover:bg-card border border-subtle text-text-base rounded-lg text-xs font-medium transition-colors cursor-pointer"
                         >
                             Dismiss Briefing
                         </button>

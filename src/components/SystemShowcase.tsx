@@ -384,7 +384,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                                                 key={idx}
                                                 className="p-1.5 sm:p-2 rounded-xl bg-[var(--bg-inner,#162138)] border border-[var(--border-subtle,#1e2e4a)] text-left min-w-0"
                                             >
-                                                <span className="text-[9.5px] font-mono font-bold block" style={{ color: current.accentColor }}>
+                                                <span className="text-[9.5px] font-sans font-bold block" style={{ color: current.accentColor }}>
                                                     {wf.step}
                                                 </span>
                                                 <span className="text-[10px] sm:text-[11px] font-medium text-[var(--text-primary,#f8fafc)] block mt-0.5 line-clamp-2 leading-tight">

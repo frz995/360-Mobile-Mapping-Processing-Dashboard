@@ -103,7 +103,7 @@ export const CapacityPanel: React.FC<CapacityPanelProps> = ({ jobs, api, project
               <div className="text-[11px] text-text-muted mt-1">
                 <span className="text-text-base font-semibold">{health.jobs_active}</span> active job(s) on worker
               </div>
-              <div className="text-[11px] text-text-muted font-mono mt-1 break-all">{health.nas_base}</div>
+              <div className="text-[11px] text-text-muted font-sans mt-1 break-all">{health.nas_base}</div>
             </>
           ) : (
             <div className="flex items-center gap-1.5 text-rose-300 text-sm font-bold mt-1">
@@ -168,11 +168,11 @@ export const CapacityPanel: React.FC<CapacityPanelProps> = ({ jobs, api, project
                     </span>
                   </td>
                   <td className="py-2 pr-2 text-text-muted">{p.software ? `${p.software}${p.version ? ` v${p.version}` : ''}` : '—'}</td>
-                  <td className="py-2 pr-2 text-[10px] font-mono text-text-muted truncate max-w-[200px]">{p.workerUrl || '—'}</td>
-                  <td className="py-2 pr-2 text-right font-mono text-sky-300">{p.queued}</td>
-                  <td className="py-2 pr-2 text-right font-mono text-amber-300">{p.running}</td>
-                  <td className="py-2 pr-2 text-right font-mono text-emerald-300">{p.completed}</td>
-                  <td className={`py-2 text-right font-mono ${p.failed ? 'text-rose-300' : 'text-text-muted'}`}>{p.failed}</td>
+                  <td className="py-2 pr-2 text-[10px] font-sans text-text-muted truncate max-w-[200px]">{p.workerUrl || '—'}</td>
+                  <td className="py-2 pr-2 text-right font-sans text-sky-300">{p.queued}</td>
+                  <td className="py-2 pr-2 text-right font-sans text-amber-300">{p.running}</td>
+                  <td className="py-2 pr-2 text-right font-sans text-emerald-300">{p.completed}</td>
+                  <td className={`py-2 text-right font-sans ${p.failed ? 'text-rose-300' : 'text-text-muted'}`}>{p.failed}</td>
                 </tr>
               ))}
             </tbody>
@@ -202,7 +202,7 @@ export const CapacityPanel: React.FC<CapacityPanelProps> = ({ jobs, api, project
                     <td className="py-2 pr-2 text-text-base font-semibold">{j.name || j.job_type}</td>
                     <td className="py-2 pr-2 text-text-muted">{j.job_type}</td>
                     <td className="py-2 pr-2 text-text-muted">{j.status}</td>
-                    <td className="py-2 pr-2 font-mono text-text-muted">{j.progress || 0}%</td>
+                    <td className="py-2 pr-2 font-sans text-text-muted">{j.progress || 0}%</td>
                     <td className="py-2 text-text-muted">{formatDateTime(j.updated_at)}</td>
                   </tr>
                 ))}

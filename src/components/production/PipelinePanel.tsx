@@ -7,9 +7,7 @@ import {
   Trash2,
   Download,
   Loader2,
-  ListChecks,
-  ChevronRight,
-  FolderKanban
+  ChevronRight
 } from 'lucide-react';
 import type { ProductionApiClient } from '../../services/productionApi';
 import {
@@ -35,6 +33,7 @@ import { buildPipelineStages, stageJobsFor } from '../../utils/pipelineStages';
 import { validateFolderForImport } from '../../utils/processedOutputValidation';
 import type { StagingAggregate } from '../../utils/datasetLineage';
 import { JOB_TYPE_OPTIONS, formatDateTime } from './common';
+import { ProcessStrip, Surface } from './chrome';
 
 export interface PipelinePanelProps {
   jobs: ProcessingJobRecord[];
@@ -325,33 +324,50 @@ export const PipelinePanel: React.FC<PipelinePanelProps> = ({
     job.status === 'COMPLETED' && (job.completed_items || 0) > 0;
 
   return (
-    <div className="flex flex-col gap-4 min-h-0">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 bg-inner rounded-xl border border-subtle text-sky-400">
-            <ListChecks size={20} />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-sm font-bold text-text-base tracking-wide">Pipeline &amp; Jobs</h2>
-              <span className="text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider border bg-inner text-text-muted border-subtle">
-                {projectSettings?.processingEngineMode === 'gpu_worker'
-                  ? 'GPU Worker Server'
-                  : '4-PC Workstations'}
-              </span>
-            </div>
-            <span className="text-[11px] text-text-muted">
-              {jobs.length} total · <span className="text-amber-300">{activeCount} active</span>
-              {projectSettings?.processingEngineMode === 'gpu_worker' && api.mode === 'mock' && (
-                <span className="ml-2 text-sky-400/80">● mock worker</span>
-              )}
-            </span>
-          </div>
+    <Surface className="flex flex-col min-h-0">
+      {/* 9-stage process strip */}
+      <ProcessStrip
+        flush
+        segments={pipelineStages.map((s) => ({
+          key: s.key,
+          label: translate(s.labelKey),
+          status: s.status === 'N/A' ? 'WAITING' : s.status,
+          pct: s.pct,
+          note: s.note,
+          active: stageFilter === s.key
+        }))}
+        onSelect={setStageFilter}
+      />
+
+      {/* Toolbar */}
+      <div className="flex items-center justify-between gap-3 flex-wrap px-4 py-2.5 border-t border-divider">
+        <div className="flex items-center gap-3 flex-wrap text-[11px]">
+          {stageFilter && (
+            <button
+              onClick={() => setStageFilter(null)}
+              className="flex items-center gap-1.5 text-[10px] font-semibold text-sky-300 hover:text-sky-200 cursor-pointer"
+            >
+              <RotateCcw size={11} /> {translate('pipelineClearFilter')}
+            </button>
+          )}
+          <span className="text-text-muted font-sans">
+            {visibleJobs.length} of {jobs.length} jobs
+          </span>
+          <span className="text-text-muted">
+            · <span className="text-amber-300 font-semibold">{activeCount} active</span>
+          </span>
+          {projectSettings?.processingEngineMode === 'gpu_worker' && api.mode === 'mock' && (
+            <span className="text-sky-400/80">● mock worker</span>
+          )}
         </div>
         {!isGuestUser && (
           <button
             onClick={() => setShowNewJob((s) => !s)}
-            className="flex items-center gap-1.5 px-3 py-2 bg-sky-500/15 hover:bg-sky-500/25 active:bg-sky-500/35 border border-sky-500/40 text-sky-300 text-xs font-semibold rounded-lg transition-colors cursor-pointer"
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs font-semibold transition-colors cursor-pointer ${
+              showNewJob
+                ? 'bg-sky-500/10 border-sky-500/30 text-sky-300'
+                : 'bg-sky-500/15 hover:bg-sky-500/25 border-sky-500/40 text-sky-300'
+            }`}
           >
             {showNewJob ? <ChevronRight size={14} /> : <Plus size={14} />}
             {showNewJob ? 'Close Form' : 'New Job'}
@@ -360,173 +376,92 @@ export const PipelinePanel: React.FC<PipelinePanelProps> = ({
       </div>
 
       {message && (
-        <div className={`text-[11px] px-3 py-2 rounded-lg border ${
+        <div className={`mx-4 mb-3 text-[11px] px-3 py-2 rounded-lg border ${
           message.ok ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' : 'bg-red-500/10 border-red-500/30 text-red-300'
         }`}>
           {message.text}
         </div>
       )}
 
-      {/* Project card */}
-      <div className="bg-gradient-to-r from-sky-950/40 to-emerald-950/30 border border-subtle rounded-xl p-4 flex items-center gap-3">
-        <div className="p-2.5 bg-inner rounded-xl border border-subtle text-sky-300 shrink-0">
-          <FolderKanban size={20} />
-        </div>
-        <div className="min-w-0">
-          <div className="text-[10px] uppercase tracking-wider text-text-muted font-bold">
-            {translate('pipelineProject')}
-          </div>
-          <div className="text-sm font-bold text-text-base truncate">
-            {projectSettings?.projectName || 'Image Production Project'}
-          </div>
-          <div className="text-[11px] text-text-muted font-mono">
-            {projectSettings?.contractCode || '—'}
-          </div>
-        </div>
-      </div>
-
-      {/* 9-stage pipeline band */}
-      <div className="bg-card border border-subtle rounded-xl p-4">
-        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-          <div className="text-[10px] uppercase tracking-wider text-text-muted font-bold">
-            {translate('pipelineStages')}
-          </div>
-          {stageFilter && (
-            <button
-              onClick={() => setStageFilter(null)}
-              className="text-[10px] font-semibold text-sky-300 hover:text-sky-200 cursor-pointer"
-            >
-              ✕ {translate('pipelineClearFilter')}
-            </button>
-          )}
-        </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-9 gap-2">
-          {pipelineStages.map((s) => {
-            const active = stageFilter === s.key;
-            const cls =
-              s.status === 'COMPLETE'
-                ? 'border-emerald-500/40 bg-emerald-950/30 text-emerald-300'
-                : s.status === 'IN_PROGRESS'
-                  ? 'border-amber-500/40 bg-amber-950/30 text-amber-300'
-                  : s.status === 'FAILED'
-                    ? 'border-red-500/40 bg-red-950/30 text-red-300'
-                    : 'border-subtle bg-inner text-text-muted';
-            return (
-              <button
-                key={s.key}
-                onClick={() => setStageFilter(active ? null : s.key)}
-                className={`rounded-xl border p-2.5 text-left transition-colors cursor-pointer ${cls} ${
-                  active ? 'ring-1 ring-sky-400/60' : 'hover:border-sky-500/40'
-                }`}
-              >
-                <div className="flex items-center justify-between gap-1 mb-1">
-                  <span className="text-[9px] font-bold uppercase tracking-wider">
-                    {translate(s.labelKey)}
-                  </span>
-                  {s.status === 'IN_PROGRESS' && typeof s.pct === 'number' && (
-                    <span className="text-[9px] font-mono">{s.pct}%</span>
-                  )}
-                </div>
-                <div className="w-full h-1 bg-black/30 rounded-full overflow-hidden">
-                  <div
-                    className="h-full rounded-full transition-all duration-500"
-                    style={{
-                      width:
-                        s.status === 'COMPLETE'
-                          ? '100%'
-                          : s.status === 'IN_PROGRESS'
-                            ? `${Math.min(100, s.pct || 0)}%`
-                            : '0%',
-                      background:
-                        s.status === 'FAILED'
-                          ? '#f87171'
-                          : s.status === 'COMPLETE'
-                            ? '#34d399'
-                            : s.status === 'IN_PROGRESS'
-                              ? '#fbbf24'
-                              : '#64748b'
-                    }}
-                  />
-                </div>
-                {s.note && <div className="text-[9px] text-text-muted mt-1 truncate">{s.note}</div>}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
       {showNewJob && !isGuestUser && (
-        <div className="bg-card border border-subtle rounded-xl p-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 animate-in fade-in zoom-in-98 duration-150">
-          <div>
-            <label className="text-[10px] uppercase tracking-wider text-text-muted font-semibold">Job Name</label>
-            <input className={NUMBER_INPUT_CLASS} placeholder="optional"
-              value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
+        <div className="border-t border-divider px-4 py-3.5 flex flex-col gap-3 animate-in fade-in duration-150">
+          <div className="flex items-center gap-2">
+            <Plus size={13} className="text-sky-400" />
+            <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted">New Processing Job</span>
           </div>
-          <div>
-            <label className="text-[10px] uppercase tracking-wider text-text-muted font-semibold">Job Type</label>
-            <select className={NUMBER_INPUT_CLASS} value={draft.job_type}
-              onChange={(e) => setDraft({ ...draft, job_type: e.target.value as ProcessingJobType })}>
-              {JOB_TYPE_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="text-[10px] uppercase tracking-wider text-text-muted font-semibold">Subgrid</label>
-            <input className={NUMBER_INPUT_CLASS} placeholder="e.g. N93E70"
-              value={draft.subgrid} onChange={(e) => setDraft({ ...draft, subgrid: e.target.value })} />
-          </div>
-          <div>
-            <label className="text-[10px] uppercase tracking-wider text-text-muted font-semibold">Provider</label>
-            {providers.length > 0 ? (
-              <select
-                className={NUMBER_INPUT_CLASS}
-                value={draft.provider}
-                onChange={(e) => {
-                  const p = providers.find((x) => x.name === e.target.value);
-                  setDraft({
-                    ...draft,
-                    provider: e.target.value,
-                    software_version: p?.version || draft.software_version
-                  });
-                }}
-              >
-                {providers.map((p) => (
-                  <option key={p.name} value={p.name}>
-                    {p.name}
-                    {p.version ? ` (v${p.version})` : ''}
-                  </option>
-                ))}
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+            <div>
+              <label className="text-[10px] uppercase tracking-wider text-text-muted font-semibold">Job Name</label>
+              <input className={NUMBER_INPUT_CLASS} placeholder="optional"
+                value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
+            </div>
+            <div>
+              <label className="text-[10px] uppercase tracking-wider text-text-muted font-semibold">Job Type</label>
+              <select className={NUMBER_INPUT_CLASS} value={draft.job_type}
+                onChange={(e) => setDraft({ ...draft, job_type: e.target.value as ProcessingJobType })}>
+                {JOB_TYPE_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
               </select>
-            ) : (
-              <input className={NUMBER_INPUT_CLASS} value={draft.provider}
-                onChange={(e) => setDraft({ ...draft, provider: e.target.value })} />
-            )}
-          </div>
-          <div>
-            <label className="text-[10px] uppercase tracking-wider text-text-muted font-semibold">Source Folder (NAS)</label>
-            <input className={NUMBER_INPUT_CLASS} placeholder="stitchblur/N93E70"
-              value={draft.source_folder} onChange={(e) => setDraft({ ...draft, source_folder: e.target.value })} />
-          </div>
-          <div>
-            <label className="text-[10px] uppercase tracking-wider text-text-muted font-semibold">Output Folder (NAS)</label>
-            <input className={NUMBER_INPUT_CLASS} placeholder="cleaned/N93E70"
-              value={draft.output_folder} onChange={(e) => setDraft({ ...draft, output_folder: e.target.value })} />
-          </div>
-          <div>
-            <label className="text-[10px] uppercase tracking-wider text-text-muted font-semibold">Frames</label>
-            <input type="number" min={1} className={NUMBER_INPUT_CLASS} value={draft.total_items}
-              onChange={(e) => setDraft({ ...draft, total_items: Number(e.target.value) || 0 })} />
-          </div>
-          <div className="flex items-end">
-            <button onClick={handleCreateAndStart}
-              className="w-full px-3 py-2 bg-emerald-500/15 hover:bg-emerald-500/25 active:bg-emerald-500/35 border border-emerald-500/40 text-emerald-300 text-xs font-semibold rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-1.5">
-              <Play size={13} /> Create &amp; Start
-            </button>
+            </div>
+            <div>
+              <label className="text-[10px] uppercase tracking-wider text-text-muted font-semibold">Subgrid</label>
+              <input className={NUMBER_INPUT_CLASS} placeholder="e.g. N93E70"
+                value={draft.subgrid} onChange={(e) => setDraft({ ...draft, subgrid: e.target.value })} />
+            </div>
+            <div>
+              <label className="text-[10px] uppercase tracking-wider text-text-muted font-semibold">Provider</label>
+              {providers.length > 0 ? (
+                <select
+                  className={NUMBER_INPUT_CLASS}
+                  value={draft.provider}
+                  onChange={(e) => {
+                    const p = providers.find((x) => x.name === e.target.value);
+                    setDraft({
+                      ...draft,
+                      provider: e.target.value,
+                      software_version: p?.version || draft.software_version
+                    });
+                  }}
+                >
+                  {providers.map((p) => (
+                    <option key={p.name} value={p.name}>
+                      {p.name}
+                      {p.version ? ` (v${p.version})` : ''}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input className={NUMBER_INPUT_CLASS} value={draft.provider}
+                  onChange={(e) => setDraft({ ...draft, provider: e.target.value })} />
+              )}
+            </div>
+            <div>
+              <label className="text-[10px] uppercase tracking-wider text-text-muted font-semibold">Source Folder (NAS)</label>
+              <input className={NUMBER_INPUT_CLASS} placeholder="stitchblur/N93E70"
+                value={draft.source_folder} onChange={(e) => setDraft({ ...draft, source_folder: e.target.value })} />
+            </div>
+            <div>
+              <label className="text-[10px] uppercase tracking-wider text-text-muted font-semibold">Output Folder (NAS)</label>
+              <input className={NUMBER_INPUT_CLASS} placeholder="cleaned/N93E70"
+                value={draft.output_folder} onChange={(e) => setDraft({ ...draft, output_folder: e.target.value })} />
+            </div>
+            <div>
+              <label className="text-[10px] uppercase tracking-wider text-text-muted font-semibold">Frames</label>
+              <input type="number" min={1} className={NUMBER_INPUT_CLASS} value={draft.total_items}
+                onChange={(e) => setDraft({ ...draft, total_items: Number(e.target.value) || 0 })} />
+            </div>
+            <div className="flex items-end">
+              <button onClick={handleCreateAndStart}
+                className="w-full px-3 py-2 bg-emerald-500/15 hover:bg-emerald-500/25 active:bg-emerald-500/35 border border-emerald-500/40 text-emerald-300 text-xs font-semibold rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-1.5">
+                <Play size={13} /> Create &amp; Start
+              </button>
+            </div>
           </div>
         </div>
       )}
 
-      <div className="bg-card border border-subtle rounded-xl overflow-hidden min-h-0">
-        <div className="max-h-[620px] overflow-y-auto">
+      {/* Jobs register */}
+      <div className="flex-1 min-h-0 flex flex-col border-t border-divider">
+        <div className="max-h-[480px] overflow-y-auto">
           <table className="w-full text-xs">
             <thead className="sticky top-0 z-10 bg-card">
               <tr className="text-left text-[10px] uppercase tracking-wider text-text-muted border-b border-subtle">
@@ -557,9 +492,9 @@ export const PipelinePanel: React.FC<PipelinePanelProps> = ({
                   >
                     <td className="px-3 py-2.5 align-top">
                       <div className="font-semibold text-text-base flex items-center gap-2">
-                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-inner border border-subtle text-sky-300">{job.job_type}</span>
+                        <span className="text-[10px] font-sans px-1.5 py-0.5 rounded bg-inner border border-subtle text-sky-300">{job.job_type}</span>
                         {typeof job.priority === 'number' && job.priority > 0 && (
-                          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-300">P{job.priority}</span>
+                          <span className="text-[10px] font-sans px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-300">P{job.priority}</span>
                         )}
                         {job.name || job.id}
                       </div>
@@ -568,7 +503,7 @@ export const PipelinePanel: React.FC<PipelinePanelProps> = ({
                         {job.software_version ? ` · v${job.software_version}` : ''}
                       </div>
                     </td>
-                    <td className="px-3 py-2.5 align-top text-[10px] text-text-muted font-mono">
+                    <td className="px-3 py-2.5 align-top text-[10px] text-text-muted font-sans">
                       <div className="truncate max-w-[160px]">in: {job.source_folder || '—'}</div>
                       <div className="truncate max-w-[160px]">out: {job.output_folder || '—'}</div>
                     </td>
@@ -591,13 +526,13 @@ export const PipelinePanel: React.FC<PipelinePanelProps> = ({
                             style={{ width: `${Math.min(100, job.progress || 0)}%` }}
                           />
                         </div>
-                        <span className="text-[10px] text-text-muted font-mono">{job.progress || 0}%</span>
+                        <span className="text-[10px] text-text-muted font-sans">{job.progress || 0}%</span>
                       </div>
                       <div className="text-[10px] text-text-muted mt-0.5">
                         {job.completed_items || 0}/{job.total_items || '?'} · {job.current_item || ''}
                       </div>
                     </td>
-                    <td className="px-3 py-2.5 align-top font-mono text-text-muted">{formatEta(eta)}</td>
+                    <td className="px-3 py-2.5 align-top font-sans text-text-muted">{formatEta(eta)}</td>
                     <td className="px-3 py-2.5 align-top text-[10px] text-text-muted">{formatDateTime(job.created_at)}</td>
                     <td className="px-3 py-2.5 align-top">
                       <div className="flex items-center justify-end gap-1.5">
@@ -643,12 +578,12 @@ export const PipelinePanel: React.FC<PipelinePanelProps> = ({
             </tbody>
           </table>
         </div>
-        <div className="px-3 py-2 text-[10px] text-text-muted border-t border-subtle flex flex-wrap gap-x-4 gap-y-1">
+        <div className="px-3 py-2 text-[10px] text-text-muted border-t border-divider flex flex-wrap gap-x-4 gap-y-1">
           <span>PENDING → QUEUED → IN_PROGRESS → COMPLETED → (Import) → IMPORTED → QA_PENDING → APPROVED / REJECTED</span>
           <span>· FAILED / REVIEW_REQUIRED → Retry or manual retouch</span>
           <span>· NAS files are never modified; only the output folder receives results</span>
         </div>
       </div>
-    </div>
+    </Surface>
   );
 };

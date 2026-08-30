@@ -82,7 +82,7 @@ export const IndexPanel: React.FC<IndexPanelProps> = ({ datasets }) => {
                       <Folder size={12} className="text-amber-300" /> {d.name}
                     </span>
                     {d.source_folder && (
-                      <div className="text-[10px] text-text-muted font-mono">{d.source_folder}</div>
+                      <div className="text-[10px] text-text-muted font-sans">{d.source_folder}</div>
                     )}
                   </td>
                   <td className="py-2 px-3">
@@ -91,7 +91,7 @@ export const IndexPanel: React.FC<IndexPanelProps> = ({ datasets }) => {
                     </span>
                   </td>
                   <td className="py-2 px-3 text-text-muted">{d.pipeline_stage}</td>
-                  <td className="py-2 px-3 font-mono text-text-muted">{d.subgrid || '—'}</td>
+                  <td className="py-2 px-3 font-sans text-text-muted">{d.subgrid || '—'}</td>
                   <td className="py-2 px-3 text-right text-text-muted">{d.file_count?.toLocaleString?.() || d.file_count || '—'}</td>
                   <td className="py-2 px-3 text-right text-text-muted">{formatBytes(d.size_bytes)}</td>
                   <td className="py-2 px-3">
