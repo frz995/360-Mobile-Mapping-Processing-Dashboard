@@ -8,13 +8,14 @@ export default {
     extend: {
       fontFamily: {
         sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', 'sans-serif'],
-        mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'Liberation Mono', 'Courier New', 'monospace'],
+        mono: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', 'sans-serif'],
       },
       colors: {
         app: 'var(--bg-app)',
         card: 'var(--bg-card)',
         inner: 'var(--bg-inner)',
         subtle: 'var(--border-subtle)',
+        divider: 'var(--divider)',
         accent: 'var(--accent)',
         'text-base': 'var(--text-primary)',
         'text-muted': 'var(--text-muted)',

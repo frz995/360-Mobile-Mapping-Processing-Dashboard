@@ -114,7 +114,7 @@ export const LedgerPanel: React.FC<LedgerPanelProps> = ({
               Overall Contract Survey Progress
             </span>
             <div className="flex items-baseline gap-2 mt-0.5">
-              <h4 className="text-2xl font-bold text-text-base font-mono">
+              <h4 className="text-2xl font-bold text-text-base font-sans">
                 {overallProgressPercent.toFixed(1)}%
               </h4>
               <span className="text-xs text-text-muted">
@@ -122,7 +122,7 @@ export const LedgerPanel: React.FC<LedgerPanelProps> = ({
               </span>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-4 text-xs font-mono">
+          <div className="flex flex-wrap items-center gap-4 text-xs font-sans">
             <div className="text-right">
               <span className="text-text-muted text-[10px] block font-sans">Processed Frames</span>
               <strong className="text-text-base">
@@ -159,26 +159,26 @@ export const LedgerPanel: React.FC<LedgerPanelProps> = ({
         <div className="p-4 rounded-xl border border-subtle bg-inner space-y-2">
           <h4 className="font-bold text-text-base flex items-center justify-between">
             <span>Survey Coverage Breakdown</span>
-            <span className="text-[10px] font-mono text-text-muted">Live PostGIS</span>
+            <span className="text-[10px] font-sans text-text-muted">Live PostGIS</span>
           </h4>
           <div className="space-y-1.5 text-text-muted">
             <div className="flex justify-between">
               <span>Total Distance:</span>{' '}
-              <strong className="text-text-base font-mono">{totalReportDistance.toFixed(1)} km</strong>
+              <strong className="text-text-base font-sans">{totalReportDistance.toFixed(1)} km</strong>
             </div>
             <div className="flex justify-between">
               <span>Processed Frames:</span>{' '}
-              <strong className="text-text-base font-mono">
+              <strong className="text-text-base font-sans">
                 {totalReportFrames.toLocaleString()} frames
               </strong>
             </div>
             <div className="flex justify-between">
               <span>Target Distance:</span>{' '}
-              <strong className="text-text-base font-mono">{targetKm.toFixed(1)} km</strong>
+              <strong className="text-text-base font-sans">{targetKm.toFixed(1)} km</strong>
             </div>
             <div className="flex justify-between pt-1 border-t border-subtle">
               <span>Remaining to Survey:</span>{' '}
-              <strong className="text-sky-400 font-mono">
+              <strong className="text-sky-400 font-sans">
                 {Math.max(0, targetKm - totalReportDistance).toFixed(1)} km
               </strong>
             </div>
@@ -188,22 +188,22 @@ export const LedgerPanel: React.FC<LedgerPanelProps> = ({
         <div className="p-4 rounded-xl border border-subtle bg-inner space-y-2">
           <h4 className="font-bold text-text-base flex items-center justify-between">
             <span>Acquisition QC Quality SLA Metrics</span>
-            <span className="text-[10px] font-mono text-emerald-400">Verified</span>
+            <span className="text-[10px] font-sans text-emerald-400">Verified</span>
           </h4>
           <div className="space-y-1.5 text-text-muted">
             <div className="flex justify-between">
               <span>Defect Frames:</span>{' '}
-              <strong className="text-text-base font-mono">{totalReportDefects}</strong>
+              <strong className="text-text-base font-sans">{totalReportDefects}</strong>
             </div>
             <div className="flex justify-between">
               <span>Allowed Threshold:</span>{' '}
-              <strong className="text-text-base font-mono">
+              <strong className="text-text-base font-sans">
                 {projectSettings?.maxDefectThresholdPercent || 5.0}%
               </strong>
             </div>
             <div className="flex justify-between">
               <span>Defect Rate:</span>{' '}
-              <strong className="text-text-base font-mono">
+              <strong className="text-text-base font-sans">
                 {totalReportFrames > 0
                   ? ((totalReportDefects / totalReportFrames) * 100).toFixed(2)
                   : '0.00'}
@@ -212,7 +212,7 @@ export const LedgerPanel: React.FC<LedgerPanelProps> = ({
             </div>
             <div className="flex justify-between pt-1 border-t border-subtle">
               <span>Pipeline Quality:</span>{' '}
-              <strong className="text-emerald-400 font-mono">{compliantPercent}% Compliant</strong>
+              <strong className="text-emerald-400 font-sans">{compliantPercent}% Compliant</strong>
             </div>
           </div>
         </div>
@@ -220,32 +220,32 @@ export const LedgerPanel: React.FC<LedgerPanelProps> = ({
         <div className="p-4 rounded-xl border border-subtle bg-inner space-y-2">
           <h4 className="font-bold text-text-base flex items-center justify-between">
             <span>Subgrid Masterlist Summary</span>
-            <span className="text-[10px] font-mono text-text-muted">
+            <span className="text-[10px] font-sans text-text-muted">
               {activeSubgridsCount} Total
             </span>
           </h4>
           <div className="space-y-1.5 text-text-muted">
             <div className="flex justify-between">
               <span>Total Subgrids:</span>{' '}
-              <strong className="text-text-base font-mono">
+              <strong className="text-text-base font-sans">
                 {activeSubgridsCount}
               </strong>
             </div>
             <div className="flex justify-between">
               <span>Completed Batches:</span>{' '}
-              <strong className="text-emerald-400 font-mono">
+              <strong className="text-emerald-400 font-sans">
                 {completedBatchesCount}
               </strong>
             </div>
             <div className="flex justify-between">
               <span>Ongoing Batches:</span>{' '}
-              <strong className="text-amber-300 font-mono">
+              <strong className="text-amber-300 font-sans">
                 {ongoingBatchesCount}
               </strong>
             </div>
             <div className="flex justify-between pt-1 border-t border-subtle">
               <span>Ready for WebGIS:</span>{' '}
-              <strong className="text-sky-400 font-mono">
+              <strong className="text-sky-400 font-sans">
                 {readyForWebGISCount}
               </strong>
             </div>
@@ -260,7 +260,7 @@ export const LedgerPanel: React.FC<LedgerPanelProps> = ({
             <History size={14} className="text-sky-400" />
             Daily Operation &amp; Survey Progress Ledger
           </h4>
-          <span className="text-[11px] text-text-muted font-mono">
+          <span className="text-[11px] text-text-muted font-sans">
             {dailyData.length} daily logs recorded
           </span>
         </div>
@@ -304,15 +304,15 @@ export const LedgerPanel: React.FC<LedgerPanelProps> = ({
                       key={row.id || `${row.date}-${row.subgrid}-${idx}`}
                       className="hover:bg-inner transition-colors text-text-base"
                     >
-                      <td className="px-3.5 py-2.5 font-mono text-[11px] font-semibold">
+                      <td className="px-3.5 py-2.5 font-sans text-[11px] font-semibold">
                         {row.date || '—'}
                       </td>
                       <td className="px-3.5 py-2.5 font-medium">{row.subgrid || '—'}</td>
-                      <td className="px-3.5 py-2.5 font-mono">{km.toFixed(1)} km</td>
-                      <td className="px-3.5 py-2.5 font-mono font-semibold text-text-base">
+                      <td className="px-3.5 py-2.5 font-sans">{km.toFixed(1)} km</td>
+                      <td className="px-3.5 py-2.5 font-sans font-semibold text-text-base">
                         {Number(frameCount).toLocaleString()} frames
                       </td>
-                      <td className="px-3.5 py-2.5 font-mono">
+                      <td className="px-3.5 py-2.5 font-sans">
                         {defects > 0 ? (
                           <span className="text-amber-400 font-semibold">{defects}</span>
                         ) : (
@@ -327,11 +327,11 @@ export const LedgerPanel: React.FC<LedgerPanelProps> = ({
                       </td>
                       <td className="px-3.5 py-2.5 text-right">
                         {isPublished ? (
-                          <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono">
+                          <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-sans">
                             Published
                           </span>
                         ) : (
-                          <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-inner text-text-muted border border-subtle font-mono">
+                          <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-inner text-text-muted border border-subtle font-sans">
                             Staging
                           </span>
                         )}
@@ -347,17 +347,17 @@ export const LedgerPanel: React.FC<LedgerPanelProps> = ({
                   <td colSpan={2} className="px-3.5 py-2.5 text-text-muted text-[11px]">
                     Total ({dailyData.length} daily logs)
                   </td>
-                  <td className="px-3.5 py-2.5 font-mono text-sky-400">
+                  <td className="px-3.5 py-2.5 font-sans text-sky-400">
                     {totalReportDistance.toFixed(1)} km
                   </td>
-                  <td className="px-3.5 py-2.5 font-mono text-text-base">
+                  <td className="px-3.5 py-2.5 font-sans text-text-base">
                     {totalReportFrames.toLocaleString()} frames{' '}
                     <span className="text-[10px] font-normal text-text-muted font-sans">
                       (incl. staging)
                     </span>
                   </td>
-                  <td className="px-3.5 py-2.5 font-mono text-text-base">{totalReportDefects}</td>
-                  <td colSpan={2} className="px-3.5 py-2.5 text-right text-[11px] text-emerald-400 font-mono">
+                  <td className="px-3.5 py-2.5 font-sans text-text-base">{totalReportDefects}</td>
+                  <td colSpan={2} className="px-3.5 py-2.5 text-right text-[11px] text-emerald-400 font-sans">
                     {compliantPercent}% Quality
                   </td>
                 </tr>

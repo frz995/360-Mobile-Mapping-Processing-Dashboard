@@ -41,26 +41,49 @@ export function OverviewPanel({ analytics, translate }: OverviewPanelProps) {
     { name: translate('analyticsStateNone'), value: Math.max(0, t.subgrids - t.published - t.staged - t.partial), state: 'none' }
   ].filter((p) => p.value > 0);
 
-  const kpis = [
-    { label: translate('analyticsKpiSubgrids'), value: formatNumber(t.subgrids), sub: `${t.published} ${translate('analyticsStatePublished')} · ${t.staged} ${translate('analyticsStateStaged')}` },
-    { label: translate('analyticsKpiDistance'), value: `${formatNumber(t.km, 2)} km`, sub: `${formatNumber(t.targetProgressKmPct, 1)}% of ${formatNumber(t.targetKm, 1)} km` },
-    { label: translate('analyticsKpiFrames'), value: formatNumber(t.frames), sub: translate('analyticsKpiFramesSub') },
-    { label: translate('analyticsKpiPoi'), value: formatNumber(t.poi), sub: `${formatNumber(analytics.dailySeries.length)} ${translate('analyticsDays')}` },
-    { label: translate('analyticsKpiDefects'), value: formatNumber(t.defects), sub: `${formatNumber(100 - t.passRate, 1)}% ${translate('analyticsDefectRate')}` },
-    { label: translate('analyticsKpiQuality'), value: `${formatNumber(t.passRate, 1)}%`, sub: translate('analyticsKpiQualitySub') }
-  ];
-
   return (
     <div className="flex flex-col gap-4">
-      {/* KPI grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2">
-        {kpis.map((k) => (
-          <div key={k.label} className="bg-inner border border-subtle rounded-xl p-3">
-            <div className="text-[9px] font-bold uppercase tracking-wider text-text-muted">{k.label}</div>
-            <div className="text-sm font-bold text-text-base mt-1">{k.value}</div>
-            <div className="text-[10px] text-text-muted mt-0.5">{k.sub}</div>
-          </div>
-        ))}
+      {/* KPI Telemetry Strip */}
+      <div className="bg-card border border-subtle rounded-xl px-4 py-2.5 shadow-sm text-xs flex flex-wrap items-center gap-x-4 gap-y-2">
+        <span className="text-[11px] font-bold text-text-muted shrink-0 uppercase tracking-wider">
+          Operations Overview:
+        </span>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+          <span>
+            <span className="text-text-muted">{translate('analyticsKpiSubgrids')}: </span>
+            <strong className="font-semibold text-text-base">{formatNumber(t.subgrids)}</strong>
+          </span>
+          <span className="text-text-muted">&bull;</span>
+          <span>
+            <span className="text-text-muted">{translate('analyticsStatePublished')}: </span>
+            <strong className="font-semibold text-text-base">{formatNumber(t.published)}</strong>
+          </span>
+          <span className="text-text-muted">&bull;</span>
+          <span>
+            <span className="text-text-muted">{translate('analyticsStateStaged')}: </span>
+            <strong className="font-semibold text-text-base">{formatNumber(t.staged)}</strong>
+          </span>
+          <span className="text-text-muted">&bull;</span>
+          <span>
+            <span className="text-text-muted">{translate('analyticsKpiDistance')}: </span>
+            <strong className="font-semibold text-text-base">{formatNumber(t.km, 2)} km</strong>
+          </span>
+          <span className="text-text-muted">&bull;</span>
+          <span>
+            <span className="text-text-muted">{translate('analyticsKpiPoi')}: </span>
+            <strong className="font-semibold text-text-base">{formatNumber(t.poi)}</strong>
+          </span>
+          <span className="text-text-muted">&bull;</span>
+          <span>
+            <span className="text-text-muted">{translate('analyticsKpiDefects')}: </span>
+            <strong className="font-semibold text-text-base">{formatNumber(t.defects)}</strong>
+          </span>
+          <span className="text-text-muted">&bull;</span>
+          <span>
+            <span className="text-text-muted">{translate('analyticsKpiQuality')}: </span>
+            <strong className="font-semibold text-text-base">{formatNumber(t.passRate, 1)}%</strong>
+          </span>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

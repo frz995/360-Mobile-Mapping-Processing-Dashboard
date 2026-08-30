@@ -15,7 +15,7 @@ const CSS = `
 @page { size: A4 portrait; margin: 12mm 15mm 15mm 15mm; }
 * { box-sizing: border-box; }
 body {
-  font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   color: #0f172a; background: #ffffff; margin: 0; padding: 24px; font-size: 11px; line-height: 1.5;
   -webkit-print-color-adjust: exact; print-color-adjust: exact;
 }

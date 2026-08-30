@@ -4,6 +4,7 @@ import type { ProductionApiClient } from '../../services/productionApi';
 import type { NasFolderListing, DatasetRecord } from '../../types/production';
 import { PhotoSphereViewerComponent } from '../PhotoSphereViewerComponent';
 import { productionNasUrlFor, formatBytes } from './common';
+import { Surface } from './chrome';
 
 export interface PreviewPanelProps {
   datasets: DatasetRecord[];
@@ -87,18 +88,9 @@ export const PreviewPanel: React.FC<PreviewPanelProps> = ({
   const subgridAutofill = selected?.subgrid || (selectedFile ? extractSubgrid(selectedFile) : '');
 
   return (
-    <div className="flex flex-col gap-4 min-h-0">
-      <div className="flex items-center gap-3">
-        <div className="p-2.5 bg-inner rounded-xl border border-subtle text-sky-400">
-          <Eye size={20} />
-        </div>
-        <div>
-          <h2 className="text-sm font-bold text-text-base tracking-wide">Preview &amp; Compare</h2>
-          <span className="text-[11px] text-text-muted">Browse NAS folder contents and inspect frames with the 360 viewer (thumbnail-first, then immersive).</span>
-        </div>
-      </div>
-
-      <div className="flex items-center gap-3 flex-wrap">
+    <Surface className="flex flex-col min-h-0">
+      {/* Toolbar strip */}
+      <div className="flex items-center gap-3 flex-wrap px-4 py-3 border-b border-divider">
         <select className="bg-inner border border-subtle rounded-lg px-3 py-2 text-xs text-text-base outline-none focus:border-sky-500/60"
           value={selectedDatasetId} onChange={(e) => setSelectedDatasetId(e.target.value)}>
           <option value="">— select a dataset —</option>
@@ -126,12 +118,13 @@ export const PreviewPanel: React.FC<PreviewPanelProps> = ({
 
         {loading && <Loader2 size={14} className="animate-spin text-sky-400" />}
         {activeListing && (
-          <span className="text-[11px] text-text-muted font-mono">
+          <span className="text-[11px] text-text-muted font-sans">
             {activeListing.path || 'root'} · {activeListing.fileCount.toLocaleString()} files · {formatBytes(activeListing.sizeBytes)}
           </span>
         )}
       </div>
 
+      <div className="p-4 flex-1 min-h-0">
       {selected && activeListing && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 min-h-0">
           <div className="bg-card border border-subtle rounded-xl p-3 flex flex-col gap-2 min-h-0">
@@ -152,7 +145,7 @@ export const PreviewPanel: React.FC<PreviewPanelProps> = ({
                 <div className="w-full h-full flex items-center justify-center text-[11px] text-text-muted">No file selected</div>
               )}
             </div>
-            <p className="text-[10px] text-text-muted font-mono break-all">{folderUrl() || '—'}</p>
+            <p className="text-[10px] text-text-muted font-sans break-all">{folderUrl() || '—'}</p>
           </div>
 
           <div className="bg-card border border-subtle rounded-xl p-3 flex flex-col gap-2 min-h-0">
@@ -179,7 +172,7 @@ export const PreviewPanel: React.FC<PreviewPanelProps> = ({
                     <img key={f.path} src={productionNasUrlFor(projectSettings, side === 'source' ? selected?.source_folder : selected?.output_folder, f.name)}
                       alt={f.name} loading="lazy"
                       className="w-full h-14 object-cover" />
-                    <span className="absolute bottom-0 left-0 right-0 px-1 py-0.5 bg-black/70 text-[8px] font-mono text-slate-300 truncate">
+                    <span className="absolute bottom-0 left-0 right-0 px-1 py-0.5 bg-black/70 text-[8px] font-sans text-slate-300 truncate">
                       {f.name}
                     </span>
                   </button>
@@ -204,6 +197,7 @@ export const PreviewPanel: React.FC<PreviewPanelProps> = ({
           </p>
         </div>
       )}
-    </div>
+      </div>
+    </Surface>
   );
 };

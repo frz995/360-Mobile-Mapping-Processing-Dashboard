@@ -84,7 +84,7 @@ export const QAQCRunnerModal: React.FC<QAQCRunnerModalProps> = ({
                 <h2 className="text-sm sm:text-base font-bold text-text-base tracking-wide truncate">
                   Acquisition QC Analysis Runner
                 </h2>
-                <span className="text-[10px] font-mono font-bold text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded border border-sky-500/20 shrink-0">
+                <span className="text-[10px] font-sans font-bold text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded border border-sky-500/20 shrink-0">
                   {subgrid || 'General'}
                 </span>
                 <span className={`text-[9px] sm:text-[10px] font-semibold px-2 py-0.5 rounded border shrink-0 ${
@@ -131,10 +131,10 @@ export const QAQCRunnerModal: React.FC<QAQCRunnerModalProps> = ({
           {/* 1. High-Tech Progress Bar & Metrics */}
           <div className="p-4 rounded-xl bg-inner border border-subtle space-y-2.5 shadow-inner">
             <div className="flex items-center justify-between text-xs font-semibold">
-              <span className="text-text-base font-mono">
+              <span className="text-text-base font-sans">
                 Station <span className="text-sky-400">{Math.min(currentIndex + 1, totalStations)}</span> of {totalStations}
               </span>
-              <span className="text-sky-400 font-mono font-bold text-sm">
+              <span className="text-sky-400 font-sans font-bold text-sm">
                 {progressPct}%
               </span>
             </div>
@@ -147,7 +147,7 @@ export const QAQCRunnerModal: React.FC<QAQCRunnerModalProps> = ({
               />
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 text-[11px] font-mono">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 text-[11px] font-sans">
               <div className="text-text-muted">
                 Elapsed: <span className="text-text-base font-semibold">{elapsedSeconds}s</span>
               </div>
@@ -173,12 +173,12 @@ export const QAQCRunnerModal: React.FC<QAQCRunnerModalProps> = ({
                   <Navigation size={13} className="text-sky-400" />
                   Live Station Telemetry
                 </span>
-                <span className="text-[10px] font-mono text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded border border-sky-500/20">
+                <span className="text-[10px] font-sans text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded border border-sky-500/20">
                   Node #{currentIndex + 1}
                 </span>
               </div>
 
-              <div className="space-y-1.5 text-xs font-mono">
+              <div className="space-y-1.5 text-xs font-sans">
                 <div className="flex items-center justify-between text-text-muted">
                   <span>Point ID:</span>
                   <span className="text-text-base font-semibold truncate max-w-[200px]" title={currentPointId}>
@@ -246,7 +246,7 @@ export const QAQCRunnerModal: React.FC<QAQCRunnerModalProps> = ({
                   <Camera size={13} className="text-sky-400" />
                   Live Frame Analysis
                 </span>
-                <span className="text-[9px] font-mono text-emerald-400 bg-emerald-500/10 px-1.5 py-0.2 rounded">
+                <span className="text-[9px] font-sans text-emerald-400 bg-emerald-500/10 px-1.5 py-0.2 rounded">
                   256x256 Offscreen
                 </span>
               </div>
@@ -267,12 +267,12 @@ export const QAQCRunnerModal: React.FC<QAQCRunnerModalProps> = ({
                     <span>No Preview Loaded</span>
                   </div>
                 )}
-                <div className="absolute bottom-1 right-1 bg-black/70 px-1.5 py-0.5 rounded text-[9px] font-mono text-text-base">
+                <div className="absolute bottom-1 right-1 bg-black/70 px-1.5 py-0.5 rounded text-[9px] font-sans text-text-base">
                   Frame #{currentIndex + 1}
                 </div>
               </div>
 
-              <span className="text-[10px] text-text-muted truncate w-full font-mono">
+              <span className="text-[10px] text-text-muted truncate w-full font-sans">
                 {currentPointId || 'Scanning equirectangular canvas...'}
               </span>
             </div>
@@ -286,7 +286,7 @@ export const QAQCRunnerModal: React.FC<QAQCRunnerModalProps> = ({
                 <Database size={13} className="text-amber-400" />
                 Live Defect Records ({defectsList.length})
               </span>
-              <span className="text-[10px] font-mono text-emerald-400">
+              <span className="text-[10px] font-sans text-emerald-400">
                 {syncedCount} Synced to Supabase `qa_defects`
               </span>
             </div>
@@ -301,7 +301,7 @@ export const QAQCRunnerModal: React.FC<QAQCRunnerModalProps> = ({
                 defectsList.map((defect, idx) => (
                   <div
                     key={`${defect.point_id}-${idx}`}
-                    className="p-2.5 rounded-xl bg-inner border border-amber-500/30 flex items-center justify-between text-xs font-mono animate-in fade-in slide-in-from-top-2 duration-150"
+                    className="p-2.5 rounded-xl bg-inner border border-amber-500/30 flex items-center justify-between text-xs font-sans animate-in fade-in slide-in-from-top-2 duration-150"
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
                       <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
@@ -330,7 +330,7 @@ export const QAQCRunnerModal: React.FC<QAQCRunnerModalProps> = ({
 
         {/* Modal Footer */}
         <div className="p-4 bg-card border-t border-subtle flex items-center justify-between text-xs shrink-0">
-          <div className="text-[11px] text-text-muted font-mono">
+          <div className="text-[11px] text-text-muted font-sans">
             {isCompleted ? (
               <span className="text-emerald-400 font-semibold flex items-center gap-1.5">
                 <CheckCircle size={13} /> Batch Acquisition QC finished successfully

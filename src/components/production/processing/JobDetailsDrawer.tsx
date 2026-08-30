@@ -119,7 +119,7 @@ export const JobDetailsDrawer: React.FC<JobDetailsDrawerProps> = ({
               <Cpu size={12} /> {translate('jobDetailsTitle')}
             </div>
             <div className="text-sm font-bold text-text-base truncate mt-0.5 flex items-center gap-2">
-              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-inner border border-subtle text-sky-300">{job.job_type}</span>
+              <span className="text-[10px] font-sans px-1.5 py-0.5 rounded bg-inner border border-subtle text-sky-300">{job.job_type}</span>
               {job.name || job.id}
             </div>
           </div>
@@ -143,7 +143,7 @@ export const JobDetailsDrawer: React.FC<JobDetailsDrawerProps> = ({
               <KV k="Provider">{job.provider || '—'}</KV>
               <KV k="Software">{job.software_version || '—'}</KV>
             </div>
-            <div className="text-[10px] font-mono text-text-muted mt-2 space-y-0.5">
+            <div className="text-[10px] font-sans text-text-muted mt-2 space-y-0.5">
               <div className="truncate">in: {job.source_folder || '—'}</div>
               <div className="truncate">out: {job.output_folder || '—'}</div>
             </div>
@@ -158,7 +158,7 @@ export const JobDetailsDrawer: React.FC<JobDetailsDrawerProps> = ({
                   style={{ width: `${pct}%` }}
                 />
               </div>
-              <span className="text-[11px] font-mono text-text-muted">{pct}%</span>
+              <span className="text-[11px] font-sans text-text-muted">{pct}%</span>
             </div>
             <div className="grid grid-cols-4 gap-2 mt-3 text-center">
               <Stat label="Total" value={job.total_items || 0} />
@@ -211,7 +211,7 @@ export const JobDetailsDrawer: React.FC<JobDetailsDrawerProps> = ({
               <div className="text-[11px] text-text-base bg-inner border border-subtle rounded-lg p-2 mb-2 whitespace-pre-wrap">{job.notes}</div>
             )}
             {job.error_log?.map((e, i) => (
-              <div key={i} className="text-[10px] font-mono text-red-300 bg-red-950/20 border border-red-500/20 rounded-lg px-2 py-1 mb-1">
+              <div key={i} className="text-[10px] font-sans text-red-300 bg-red-950/20 border border-red-500/20 rounded-lg px-2 py-1 mb-1">
                 <span className="text-red-400/70">{e.at}</span> — {e.message}
               </div>
             ))}
@@ -227,7 +227,7 @@ export const JobDetailsDrawer: React.FC<JobDetailsDrawerProps> = ({
               {job.failed_items && job.failed_items.length > 0 && (
                 <div className="max-h-24 overflow-y-auto space-y-0.5">
                   {job.failed_items.map((f, i) => (
-                    <div key={i} className="text-[10px] font-mono text-red-300 truncate">{f}</div>
+                    <div key={i} className="text-[10px] font-sans text-red-300 truncate">{f}</div>
                   ))}
                 </div>
               )}
@@ -288,11 +288,11 @@ export const JobDetailsDrawer: React.FC<JobDetailsDrawerProps> = ({
 
 function Section({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) {
   return (
-    <div className="bg-card border border-subtle rounded-xl p-3">
-      <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-text-muted font-bold mb-2">
+    <div className="border border-subtle rounded-lg overflow-hidden divide-y divide-divider">
+      <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-text-muted font-bold px-3 py-2 bg-inner/40">
         {icon} {title}
       </div>
-      {children}
+      <div className="p-3">{children}</div>
     </div>
   );
 }
@@ -308,7 +308,7 @@ function KV({ k, children }: { k: string; children: React.ReactNode }) {
 
 function Stat({ label, value, tone }: { label: string; value: number | string; tone?: string }) {
   return (
-    <div className="bg-inner border border-subtle rounded-lg p-2">
+    <div className="bg-inner/60 border border-subtle rounded-lg p-2">
       <div className="text-[9px] uppercase tracking-wider text-text-muted">{label}</div>
       <div className={`text-sm font-bold ${tone || 'text-text-base'}`}>{value}</div>
     </div>

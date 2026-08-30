@@ -179,7 +179,7 @@ export const QAQCThresholdStudioView: React.FC<QAQCThresholdStudioViewProps> = (
                   : 'Split Slider'}
               </button>
             ) : (
-              <span className="text-[10px] sm:text-[11px] text-text-muted font-mono">Haversine Geodesic</span>
+              <span className="text-[10px] sm:text-[11px] text-text-muted font-sans">Haversine Geodesic</span>
             )}
           </div>
         </div>
@@ -218,14 +218,14 @@ export const QAQCThresholdStudioView: React.FC<QAQCThresholdStudioViewProps> = (
                   <div className="absolute top-3 left-3 px-3 py-2 rounded-xl bg-black/85 border border-white/10 text-xs shadow-md flex items-center gap-2 z-10">
                     <span className="w-1.5 h-1.5 rounded-full bg-slate-400 shrink-0" />
                     <span className="text-text-base font-medium">Sharp Base</span>
-                    <span className="font-mono text-white font-bold text-xs tabular-nums">{simulatedSharpScore.toFixed(1)}</span>
+                    <span className="font-sans text-white font-bold text-xs tabular-nums">{simulatedSharpScore.toFixed(1)}</span>
                   </div>
 
                   {/* Right HUD: Test Scan */}
                   <div className="absolute top-3 right-3 px-3 py-2 rounded-xl bg-black/85 border border-white/10 text-xs shadow-md flex items-center gap-2 z-10">
                     <span className={`w-1.5 h-1.5 rounded-full ${isSimulatedBlurFlagged ? 'bg-rose-400' : 'bg-emerald-400'} shrink-0`} />
                     <span className="text-text-base font-medium hidden xs:inline">Simulated</span>
-                    <span className="font-mono font-bold text-white text-xs tabular-nums">{simulatedBlurScore.toFixed(1)}</span>
+                    <span className="font-sans font-bold text-white text-xs tabular-nums">{simulatedBlurScore.toFixed(1)}</span>
                     <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-semibold ${isSimulatedBlurFlagged
                       ? 'bg-rose-950 text-rose-300 border border-rose-800'
                       : 'bg-emerald-950 text-emerald-300 border border-emerald-800'
@@ -250,7 +250,7 @@ export const QAQCThresholdStudioView: React.FC<QAQCThresholdStudioViewProps> = (
                     style={{ left: `${splitPosition}%` }}
                   >
                     <div className="w-0.5 h-full bg-slate-400" />
-                    <div className="absolute w-7 h-7 rounded-full bg-card border border-subtle text-text-base flex items-center justify-center shadow-lg text-xs font-mono font-bold">
+                    <div className="absolute w-7 h-7 rounded-full bg-card border border-subtle text-text-base flex items-center justify-center shadow-lg text-xs font-sans font-bold">
                       ↔
                     </div>
                   </div>
@@ -347,7 +347,7 @@ export const QAQCThresholdStudioView: React.FC<QAQCThresholdStudioViewProps> = (
                   <div className="absolute top-3 left-3 px-3 py-2 rounded-xl bg-black/85 border border-white/10 text-xs shadow-md flex items-center gap-2 z-10">
                     <span className="w-1.5 h-1.5 rounded-full bg-slate-400 shrink-0" />
                     <span className="text-text-base font-medium">Nominal Sensor</span>
-                    <span className="font-mono text-white font-bold text-xs tabular-nums">132.0</span>
+                    <span className="font-sans text-white font-bold text-xs tabular-nums">132.0</span>
                   </div>
 
                   <div className="absolute top-3 right-3 px-3 py-2 rounded-xl bg-black/85 border border-white/10 text-xs shadow-md flex items-center gap-2 z-10">
@@ -381,7 +381,7 @@ export const QAQCThresholdStudioView: React.FC<QAQCThresholdStudioViewProps> = (
                     style={{ left: `${splitPositionObstruction}%` }}
                   >
                     <div className="w-0.5 h-full bg-slate-400" />
-                    <div className="absolute w-7 h-7 rounded-full bg-card border border-subtle text-text-base flex items-center justify-center shadow-lg text-xs font-mono font-bold">
+                    <div className="absolute w-7 h-7 rounded-full bg-card border border-subtle text-text-base flex items-center justify-center shadow-lg text-xs font-sans font-bold">
                       ↔
                     </div>
                   </div>
@@ -461,28 +461,28 @@ export const QAQCThresholdStudioView: React.FC<QAQCThresholdStudioViewProps> = (
 
                       {/* Station Nodes */}
                       <circle cx="60" cy="90" r="6" fill="#a1a1aa" />
-                      <text x="60" y="130" fill="#a1a1aa" fontSize="12" textAnchor="middle" fontFamily="system-ui, -apple-system, sans-serif" fontWeight="500">Stn 1</text>
-                      <text x="60" y="146" fill="#71717a" fontSize="11" textAnchor="middle" fontFamily="system-ui, -apple-system, sans-serif">(3.1m)</text>
+                      <text x="60" y="130" fill="#a1a1aa" fontSize="12" textAnchor="middle" fontFamily="Inter, -apple-system, BlinkMacSystemFont, sans-serif" fontWeight="500">Stn 1</text>
+                      <text x="60" y="146" fill="#71717a" fontSize="11" textAnchor="middle" fontFamily="Inter, -apple-system, BlinkMacSystemFont, sans-serif">(3.1m)</text>
 
                       <circle cx="170" cy="90" r="6" fill="#a1a1aa" />
-                      <text x="170" y="130" fill="#a1a1aa" fontSize="12" textAnchor="middle" fontFamily="system-ui, -apple-system, sans-serif" fontWeight="500">Stn 2</text>
-                      <text x="170" y="146" fill="#71717a" fontSize="11" textAnchor="middle" fontFamily="system-ui, -apple-system, sans-serif">(2.9m)</text>
+                      <text x="170" y="130" fill="#a1a1aa" fontSize="12" textAnchor="middle" fontFamily="Inter, -apple-system, BlinkMacSystemFont, sans-serif" fontWeight="500">Stn 2</text>
+                      <text x="170" y="146" fill="#71717a" fontSize="11" textAnchor="middle" fontFamily="Inter, -apple-system, BlinkMacSystemFont, sans-serif">(2.9m)</text>
 
                       <circle cx="280" cy="90" r="6" fill="#a1a1aa" />
-                      <text x="280" y="130" fill="#a1a1aa" fontSize="12" textAnchor="middle" fontFamily="system-ui, -apple-system, sans-serif" fontWeight="500">Stn 3</text>
-                      <text x="280" y="146" fill="#71717a" fontSize="11" textAnchor="middle" fontFamily="system-ui, -apple-system, sans-serif">(3.0m)</text>
+                      <text x="280" y="130" fill="#a1a1aa" fontSize="12" textAnchor="middle" fontFamily="Inter, -apple-system, BlinkMacSystemFont, sans-serif" fontWeight="500">Stn 3</text>
+                      <text x="280" y="146" fill="#71717a" fontSize="11" textAnchor="middle" fontFamily="Inter, -apple-system, BlinkMacSystemFont, sans-serif">(3.0m)</text>
 
                       <circle cx="390" cy="90" r="8" fill="#ffffff" stroke="#71717a" strokeWidth="2" />
-                      <text x="390" y="130" fill="#ffffff" fontSize="12" textAnchor="middle" fontFamily="system-ui, -apple-system, sans-serif" fontWeight="600">Stn 4</text>
-                      <text x="390" y="146" fill="#a1a1aa" fontSize="11" textAnchor="middle" fontFamily="system-ui, -apple-system, sans-serif">Origin</text>
+                      <text x="390" y="130" fill="#ffffff" fontSize="12" textAnchor="middle" fontFamily="Inter, -apple-system, BlinkMacSystemFont, sans-serif" fontWeight="600">Stn 4</text>
+                      <text x="390" y="146" fill="#a1a1aa" fontSize="11" textAnchor="middle" fontFamily="Inter, -apple-system, BlinkMacSystemFont, sans-serif">Origin</text>
 
                       <circle cx="650" cy="90" r="9" fill="#f43f5e" stroke="#ffffff" strokeWidth="2" />
-                      <text x="650" y="130" fill="#f43f5e" fontSize="12" textAnchor="middle" fontFamily="system-ui, -apple-system, sans-serif" fontWeight="600">Stn 5</text>
-                      <text x="650" y="146" fill="#f43f5e" fontSize="11" textAnchor="middle" fontFamily="system-ui, -apple-system, sans-serif" fontWeight="600">78.4m Jump</text>
+                      <text x="650" y="130" fill="#f43f5e" fontSize="12" textAnchor="middle" fontFamily="Inter, -apple-system, BlinkMacSystemFont, sans-serif" fontWeight="600">Stn 5</text>
+                      <text x="650" y="146" fill="#f43f5e" fontSize="11" textAnchor="middle" fontFamily="Inter, -apple-system, BlinkMacSystemFont, sans-serif" fontWeight="600">78.4m Jump</text>
 
                       <g transform="translate(520, 36)">
                         <rect x="-80" y="-13" width="160" height="26" rx="13" fill="#18181b" stroke="#f43f5e" strokeWidth="1.5" />
-                        <text x="0" y="4" fill="#f43f5e" fontSize="11" textAnchor="middle" fontFamily="system-ui, -apple-system, sans-serif" fontWeight="600">
+                        <text x="0" y="4" fill="#f43f5e" fontSize="11" textAnchor="middle" fontFamily="Inter, -apple-system, BlinkMacSystemFont, sans-serif" fontWeight="600">
                           GPS Jump &gt; {thresholds.gpsMaxJumpDistanceMeters}m (Defect)
                         </text>
                       </g>
@@ -546,7 +546,7 @@ export const QAQCThresholdStudioView: React.FC<QAQCThresholdStudioViewProps> = (
               <div className="p-3.5 rounded-xl bg-inner border border-subtle space-y-2.5">
                 <div className="flex items-center justify-between text-xs font-semibold">
                   <span className="text-text-base font-medium">Deliverable Image Model</span>
-                  <span className="font-mono text-xs text-text-muted">
+                  <span className="font-sans text-xs text-text-muted">
                     {(thresholds.deliverableModel || 'masked_car') === 'generative_fill' ? 'Full 80% ROI' : 'Top 52% ROI'}
                   </span>
                 </div>
@@ -587,7 +587,7 @@ export const QAQCThresholdStudioView: React.FC<QAQCThresholdStudioViewProps> = (
               <div className="p-3.5 rounded-xl bg-inner border border-subtle space-y-2.5">
                 <div className="flex items-center justify-between text-xs font-semibold">
                   <span className="text-text-base font-medium">Blur Defect Cutoff</span>
-                  <span className="font-mono text-text-base font-bold text-sm tabular-nums">{thresholds.blurVarianceThreshold.toFixed(1)}</span>
+                  <span className="font-sans text-text-base font-bold text-sm tabular-nums">{thresholds.blurVarianceThreshold.toFixed(1)}</span>
                 </div>
                 <input
                   type="range"
@@ -612,7 +612,7 @@ export const QAQCThresholdStudioView: React.FC<QAQCThresholdStudioViewProps> = (
               <div className="p-3.5 rounded-xl bg-inner border border-subtle space-y-2.5">
                 <div className="flex items-center justify-between text-xs font-semibold">
                   <span className="text-text-base font-medium">Simulate Lens Blur</span>
-                  <span className="font-mono text-text-base font-bold text-sm tabular-nums">{blurPreviewLevel.toFixed(1)}px</span>
+                  <span className="font-sans text-text-base font-bold text-sm tabular-nums">{blurPreviewLevel.toFixed(1)}px</span>
                 </div>
                 <input
                   type="range"
@@ -625,7 +625,7 @@ export const QAQCThresholdStudioView: React.FC<QAQCThresholdStudioViewProps> = (
                 />
                 <div className="flex items-center justify-between pt-1">
                   <span className="text-[11px] text-text-muted">Simulated Status:</span>
-                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold font-mono ${
+                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold font-sans ${
                     isSimulatedBlurFlagged
                       ? 'bg-inner text-rose-400 border border-subtle'
                       : 'bg-card text-text-muted border border-subtle'
@@ -680,7 +680,7 @@ export const QAQCThresholdStudioView: React.FC<QAQCThresholdStudioViewProps> = (
                     {isSimulatedBlurFlagged ? 'Flagged as Defect' : 'Passed Inspection'}
                   </span>
                 </div>
-                <span className={`font-mono font-bold text-sm tabular-nums ${isSimulatedBlurFlagged ? 'text-rose-400' : 'text-emerald-400'}`}>
+                <span className={`font-sans font-bold text-sm tabular-nums ${isSimulatedBlurFlagged ? 'text-rose-400' : 'text-emerald-400'}`}>
                   {simulatedBlurScore.toFixed(1)} {isSimulatedBlurFlagged ? '<' : '≥'} {thresholds.blurVarianceThreshold.toFixed(1)}
                 </span>
               </div>
@@ -703,7 +703,7 @@ export const QAQCThresholdStudioView: React.FC<QAQCThresholdStudioViewProps> = (
                       <span className="font-semibold text-xs text-text-base block">Utility Asset Audit</span>
                       <span className="text-[10px] text-text-muted mt-0.5 block truncate">Pole numbers, cables, meter boxes</span>
                     </div>
-                    <span className="font-mono text-[11px] font-semibold px-2 py-0.5 rounded-lg bg-inner border border-subtle text-text-muted shrink-0">
+                    <span className="font-sans text-[11px] font-semibold px-2 py-0.5 rounded-lg bg-inner border border-subtle text-text-muted shrink-0">
                       72 – 75
                     </span>
                   </div>
@@ -720,7 +720,7 @@ export const QAQCThresholdStudioView: React.FC<QAQCThresholdStudioViewProps> = (
                       <span className="font-semibold text-xs text-text-base block">Standard Urban Mapping</span>
                       <span className="text-[10px] text-text-muted mt-0.5 block truncate">Balanced pass/fail SLA rate</span>
                     </div>
-                    <span className="font-mono text-[11px] font-semibold px-2 py-0.5 rounded-lg bg-inner border border-subtle text-text-muted shrink-0">
+                    <span className="font-sans text-[11px] font-semibold px-2 py-0.5 rounded-lg bg-inner border border-subtle text-text-muted shrink-0">
                       68
                     </span>
                   </div>
@@ -737,7 +737,7 @@ export const QAQCThresholdStudioView: React.FC<QAQCThresholdStudioViewProps> = (
                       <span className="font-semibold text-xs text-text-base block">Highway & Rural Captures</span>
                       <span className="text-[10px] text-text-muted mt-0.5 block truncate">Open sky, vegetation & fields</span>
                     </div>
-                    <span className="font-mono text-[11px] font-semibold px-2 py-0.5 rounded-lg bg-inner border border-subtle text-text-muted shrink-0">
+                    <span className="font-sans text-[11px] font-semibold px-2 py-0.5 rounded-lg bg-inner border border-subtle text-text-muted shrink-0">
                       55 – 60
                     </span>
                   </div>
@@ -803,7 +803,7 @@ export const QAQCThresholdStudioView: React.FC<QAQCThresholdStudioViewProps> = (
                 <div className="p-3.5 rounded-xl bg-inner border border-subtle space-y-2.5">
                   <div className="flex items-center justify-between text-xs font-semibold">
                     <span className="text-text-base font-medium">Glitch / Aberration Intensity</span>
-                    <span className="font-mono text-text-base font-bold text-sm tabular-nums">{glitchIntensity}%</span>
+                    <span className="font-sans text-text-base font-bold text-sm tabular-nums">{glitchIntensity}%</span>
                   </div>
                   <input
                     type="range"
@@ -824,7 +824,7 @@ export const QAQCThresholdStudioView: React.FC<QAQCThresholdStudioViewProps> = (
                 <div className="p-3.5 rounded-xl bg-inner border border-subtle space-y-2.5">
                   <div className="flex items-center justify-between text-xs font-semibold">
                     <span className="text-text-base font-medium">Simulate Darkness Luma</span>
-                    <span className="font-mono text-text-base font-bold text-sm tabular-nums">{blackoutSimLevel}</span>
+                    <span className="font-sans text-text-base font-bold text-sm tabular-nums">{blackoutSimLevel}</span>
                   </div>
                   <input
                     type="range"
@@ -845,7 +845,7 @@ export const QAQCThresholdStudioView: React.FC<QAQCThresholdStudioViewProps> = (
                 <div className="p-3.5 rounded-xl bg-inner border border-subtle space-y-2.5">
                   <div className="flex items-center justify-between text-xs font-semibold">
                     <span className="text-text-base font-medium">Simulate Solar Flare Luma</span>
-                    <span className="font-mono text-text-base font-bold text-sm tabular-nums">{glareSimLevel}</span>
+                    <span className="font-sans text-text-base font-bold text-sm tabular-nums">{glareSimLevel}</span>
                   </div>
                   <input
                     type="range"
@@ -866,7 +866,7 @@ export const QAQCThresholdStudioView: React.FC<QAQCThresholdStudioViewProps> = (
               <div className="p-3.5 rounded-xl bg-inner border border-subtle space-y-2.5">
                 <div className="flex items-center justify-between text-xs font-semibold">
                   <span className="text-text-base font-medium">Occlusion Min Brightness</span>
-                  <span className="font-mono text-text-base font-bold text-sm tabular-nums">{thresholds.obstructionMinBrightness}</span>
+                  <span className="font-sans text-text-base font-bold text-sm tabular-nums">{thresholds.obstructionMinBrightness}</span>
                 </div>
                 <input
                   type="range"
@@ -878,7 +878,7 @@ export const QAQCThresholdStudioView: React.FC<QAQCThresholdStudioViewProps> = (
                   className="w-full accent-slate-400 cursor-pointer"
                 />
                 <p className="text-xs text-text-muted leading-relaxed">
-                  Frame average luminance &lt; <span className="text-text-base font-mono font-semibold">{thresholds.obstructionMinBrightness}</span> flags lens blackout (Default: 15).
+                  Frame average luminance &lt; <span className="text-text-base font-sans font-semibold">{thresholds.obstructionMinBrightness}</span> flags lens blackout (Default: 15).
                 </p>
               </div>
 
@@ -886,7 +886,7 @@ export const QAQCThresholdStudioView: React.FC<QAQCThresholdStudioViewProps> = (
               <div className="p-3.5 rounded-xl bg-inner border border-subtle space-y-2.5">
                 <div className="flex items-center justify-between text-xs font-semibold">
                   <span className="text-text-base font-medium">Solar Glare Saturation Limit</span>
-                  <span className="font-mono text-text-base font-bold text-sm tabular-nums">{thresholds.glareLuminanceThreshold}</span>
+                  <span className="font-sans text-text-base font-bold text-sm tabular-nums">{thresholds.glareLuminanceThreshold}</span>
                 </div>
                 <input
                   type="range"
@@ -898,7 +898,7 @@ export const QAQCThresholdStudioView: React.FC<QAQCThresholdStudioViewProps> = (
                   className="w-full accent-slate-400 cursor-pointer"
                 />
                 <p className="text-xs text-text-muted leading-relaxed">
-                  Overexposure clipping &ge; <span className="text-text-base font-mono font-semibold">{thresholds.glareLuminanceThreshold}</span> on &gt;95% of pixels flags direct sun glare (Default: 240).
+                  Overexposure clipping &ge; <span className="text-text-base font-sans font-semibold">{thresholds.glareLuminanceThreshold}</span> on &gt;95% of pixels flags direct sun glare (Default: 240).
                 </p>
               </div>
 
@@ -927,7 +927,7 @@ export const QAQCThresholdStudioView: React.FC<QAQCThresholdStudioViewProps> = (
               <div className="p-3.5 rounded-xl bg-inner border border-subtle space-y-2.5">
                 <div className="flex items-center justify-between text-xs font-semibold">
                   <span className="text-text-base font-medium">GPS Max Jump Cutoff</span>
-                  <span className="font-mono text-text-base font-bold text-sm tabular-nums">{thresholds.gpsMaxJumpDistanceMeters}m</span>
+                  <span className="font-sans text-text-base font-bold text-sm tabular-nums">{thresholds.gpsMaxJumpDistanceMeters}m</span>
                 </div>
                 <input
                   type="range"
@@ -986,7 +986,7 @@ export const QAQCThresholdStudioView: React.FC<QAQCThresholdStudioViewProps> = (
               <div className="p-3.5 rounded-xl bg-inner border border-subtle space-y-1.5 text-xs">
                 <span className="text-xs text-text-muted uppercase font-semibold tracking-wider">Active Configuration</span>
                 <p className="text-text-base font-medium leading-relaxed">
-                  Sequential distance jump &gt; <span className="text-text-base font-mono font-bold">{thresholds.gpsMaxJumpDistanceMeters}m</span> triggers a GPS Defect.
+                  Sequential distance jump &gt; <span className="text-text-base font-sans font-bold">{thresholds.gpsMaxJumpDistanceMeters}m</span> triggers a GPS Defect.
                 </p>
               </div>
             </>

@@ -77,9 +77,9 @@ export function CoveragePanel({ analytics, translate }: CoveragePanelProps) {
             {rows.map((r) => (
               <tr key={r.subgrid} className="border-b border-subtle hover:bg-inner/40 transition-colors">
                 <td className="px-3 py-2 font-bold text-sky-300">{r.subgrid}</td>
-                <td className="px-3 py-2 text-right font-mono">{formatNumber(r.poi)}</td>
-                <td className="px-3 py-2 text-right font-mono">{formatNumber(r.frames)}</td>
-                <td className="px-3 py-2 text-right font-mono">{formatNumber(r.coveragePct, 0)}%</td>
+                <td className="px-3 py-2 text-right font-sans">{formatNumber(r.poi)}</td>
+                <td className="px-3 py-2 text-right font-sans">{formatNumber(r.frames)}</td>
+                <td className="px-3 py-2 text-right font-sans">{formatNumber(r.coveragePct, 0)}%</td>
                 <td className="px-3 py-2 text-center">
                   <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${publishTone(r.publishState)}`}>
                     {translate(`analyticsState_${r.publishState}`)}

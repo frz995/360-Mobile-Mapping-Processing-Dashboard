@@ -86,7 +86,7 @@ export const RecycleBinModal: React.FC<RecycleBinModalProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-sm font-bold text-text-base">Recycle Bin &amp; Data Restore</h3>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-inner border border-subtle text-text-muted">
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-sans bg-inner border border-subtle text-text-muted">
                   {items.length} item{items.length !== 1 ? 's' : ''}
                 </span>
               </div>
@@ -120,7 +120,7 @@ export const RecycleBinModal: React.FC<RecycleBinModalProps> = ({
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search deleted subgrid or user..."
-            className="bg-card border border-subtle rounded-lg px-3 py-1.5 text-xs text-text-base placeholder-text-muted focus:outline-none focus:border-sky-500/50 max-w-xs flex-1 font-mono"
+            className="bg-card border border-subtle rounded-lg px-3 py-1.5 text-xs text-text-base placeholder-text-muted focus:outline-none focus:border-sky-500/50 max-w-xs flex-1 font-sans"
           />
           <span className="text-[11px] text-text-muted">
             Stored in Supabase Database
@@ -174,14 +174,14 @@ export const RecycleBinModal: React.FC<RecycleBinModalProps> = ({
                       >
                         {isExpanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
                       </button>
-                      <span className="font-mono font-bold text-xs text-text-base">
+                      <span className="font-sans font-bold text-xs text-text-base">
                         {item.subgrid}
                       </span>
                       {(() => {
                         const itemPoi = item.poi_count || item.points.length || item.original_record?.poiCount || 0;
                         const itemFrames = item.points.filter((p) => Boolean(p.filename)).length || item.original_record?.availableImagesCount || item.points.length || itemPoi;
                         return (
-                          <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-inner border border-subtle text-text-muted flex items-center gap-1.5 font-semibold">
+                          <span className="text-[10px] font-sans px-2 py-0.5 rounded-md bg-inner border border-subtle text-text-muted flex items-center gap-1.5 font-semibold">
                             <span>{item.type === 'partial_points' ? 'Partial Deletion' : 'Whole Subgrid'}</span>
                             <span>&bull;</span>
                             <span className={itemPoi > 0 ? 'text-sky-400' : 'text-text-muted'}>{itemPoi} POI</span>
@@ -193,7 +193,7 @@ export const RecycleBinModal: React.FC<RecycleBinModalProps> = ({
                     </div>
 
                     <div className="flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
-                      <span className="text-[11px] text-text-muted hidden sm:inline font-mono">
+                      <span className="text-[11px] text-text-muted hidden sm:inline font-sans">
                         {formattedDate} &bull; by {item.deleted_by || 'Operator'}
                       </span>
 
@@ -233,7 +233,7 @@ export const RecycleBinModal: React.FC<RecycleBinModalProps> = ({
                               <th className="px-3 py-1.5">Longitude</th>
                             </tr>
                           </thead>
-                          <tbody className="divide-y divide-subtle font-mono text-[11px]">
+                          <tbody className="divide-y divide-subtle font-sans text-[11px]">
                             {item.points.map((p, idx) => (
                               <tr key={idx} className="hover:bg-inner/40">
                                 <td className="px-3 py-1 text-text-muted">{idx + 1}</td>

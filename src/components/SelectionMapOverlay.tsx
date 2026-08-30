@@ -221,7 +221,7 @@ export const SelectionMapOverlay: React.FC<SelectionMapOverlayProps> = ({
         if (points.length > 0) {
           const matchedSubgrids = new Set<string>();
           const matchedPoints: SelectedPointInfo[] = [];
-          
+
           points.forEach((pt: any) => {
             const rawSub = pt?.subgrid || pt?.filename || pt?.point_id || pt?.grid + pt?.cell || '';
             const sg = (extractSubgridName(rawSub) || rawSub || '').toUpperCase().trim();
@@ -423,8 +423,8 @@ export const SelectionMapOverlay: React.FC<SelectionMapOverlayProps> = ({
               {selectedPoints && selectedPoints.length > 0
                 ? `${selectedPoints.length} Point(s) Selected`
                 : selectedSubgrids.length > 0
-                ? `${selectedSubgrids.length} Subgrid(s) Selected`
-                : 'No Point Selected'}
+                  ? `${selectedSubgrids.length} Subgrid(s) Selected`
+                  : 'No Point Selected'}
             </span>
           </>
         )}

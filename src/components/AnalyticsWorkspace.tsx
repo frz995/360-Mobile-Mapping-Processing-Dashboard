@@ -1,12 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   BarChart3,
-  RefreshCw,
-  Undo2,
   Route,
   Layers,
   Radar,
-  ShieldCheck
+  ShieldCheck,
+  History
 } from 'lucide-react';
 import { fetchStagingPanoramasFromSupabase, fetchProcessingJobsFromSupabase, SUBGRID_COORDINATES } from '../services/supabase';
 import { aggregateStagingBySubgrid } from '../utils/datasetLineage';
@@ -14,13 +13,13 @@ import { buildBoundarySubgridSet } from '../utils/projectBoundary';
 import type { ProcessingJobRecord } from '../types/production';
 import { computeSurveyAnalytics, type SurveyAnalytics } from '../utils/surveyAnalytics';
 import { ANALYTICS_TAB_LABELS } from './production/analytics/analyticsCommon';
+import { UnderlineTabStrip, type ChromeTab } from './production/chrome';
 import { OverviewPanel } from './production/analytics/OverviewPanel';
 import { LedgerPanel } from './production/analytics/LedgerPanel';
 import { DistancePanel } from './production/analytics/DistancePanel';
 import { CoveragePanel } from './production/analytics/CoveragePanel';
 import { DensityPanel } from './production/analytics/DensityPanel';
 import { QualityPanel } from './production/analytics/QualityPanel';
-import { History } from 'lucide-react';
 
 export interface AnalyticsWorkspaceProps {
   projectSettings: any;
@@ -38,28 +37,27 @@ export interface AnalyticsWorkspaceProps {
 
 type AnalyticsTab = 'overview' | 'ledger' | 'distance' | 'coverage' | 'density' | 'quality';
 
-const TABS: Array<{ key: AnalyticsTab; icon: React.ComponentType<{ size?: number | string; className?: string }> }> = [
-  { key: 'overview', icon: BarChart3 },
-  { key: 'ledger', icon: History },
-  { key: 'distance', icon: Route },
-  { key: 'coverage', icon: Layers },
-  { key: 'density', icon: Radar },
-  { key: 'quality', icon: ShieldCheck }
+const TABS: ChromeTab<AnalyticsTab>[] = [
+  { key: 'overview', icon: <BarChart3 size={14} /> },
+  { key: 'ledger', icon: <History size={14} /> },
+  { key: 'distance', icon: <Route size={14} /> },
+  { key: 'coverage', icon: <Layers size={14} /> },
+  { key: 'density', icon: <Radar size={14} /> },
+  { key: 'quality', icon: <ShieldCheck size={14} /> }
 ];
 
 export const AnalyticsWorkspace: React.FC<AnalyticsWorkspaceProps> = ({
   projectSettings,
-  isGuestUser,
-  onBackToDashboard,
+  isGuestUser: _isGuestUser,
+  onBackToDashboard: _onBackToDashboard,
   translate = (k) => k,
   batchLogs = [],
   dailyData = [],
-  onRefreshData
+  onRefreshData: _onRefreshData
 }) => {
   const [activeTab, setActiveTab] = useState<AnalyticsTab>('overview');
   const [stagingRows, setStagingRows] = useState<any[]>([]);
   const [jobs, setJobs] = useState<ProcessingJobRecord[]>([]);
-  const [refreshing, setRefreshing] = useState(false);
 
   const refreshStaging = useCallback(() => {
     fetchStagingPanoramasFromSupabase().then(setStagingRows);
@@ -72,13 +70,6 @@ export const AnalyticsWorkspace: React.FC<AnalyticsWorkspaceProps> = ({
     refreshStaging();
     refreshJobs();
   }, [refreshStaging, refreshJobs]);
-
-  const handleRefresh = () => {
-    setRefreshing(true);
-    Promise.all([refreshStaging(), refreshJobs(), onRefreshData?.()])
-      .catch(() => undefined)
-      .finally(() => setRefreshing(false));
-  };
 
   const aggregates = useMemo(() => aggregateStagingBySubgrid(stagingRows), [stagingRows]);
 
@@ -124,88 +115,43 @@ export const AnalyticsWorkspace: React.FC<AnalyticsWorkspaceProps> = ({
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden animate-in fade-in duration-500">
       <div className="flex-1 flex flex-col gap-3 min-h-0 overflow-y-auto p-4">
         {/* Header */}
-        <div className="bg-card border border-subtle rounded-xl p-4 flex items-center justify-between gap-3 flex-wrap">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-inner rounded-xl border border-subtle text-emerald-400">
-              <BarChart3 size={22} />
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-sm font-bold text-text-base tracking-wide">
-                  {translate('analyticsTitle')}
-                </h2>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider border border-emerald-500/40 bg-emerald-950/40 text-emerald-300">
-                  Live
-                </span>
-              </div>
-              <p className="text-[11px] text-text-muted mt-0.5 leading-relaxed">
-                {translate('analyticsSubtitle')}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleRefresh}
-              className="flex items-center gap-1.5 px-3 py-2 bg-inner border border-subtle hover:bg-card text-text-base text-xs font-semibold rounded-lg transition-colors cursor-pointer"
-            >
-              <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
-              {translate('refresh')}
-            </button>
-            {onBackToDashboard && (
-              <button
-                onClick={onBackToDashboard}
-                className="flex items-center gap-1.5 px-3 py-2 bg-inner border border-subtle hover:bg-card text-text-muted hover:text-text-base text-xs font-semibold rounded-lg transition-colors cursor-pointer"
-              >
-                <Undo2 size={13} /> {translate('backToDashboard')}
-              </button>
-            )}
-          </div>
+        <div className="px-1">
+          <h2 className="text-base font-bold text-text-base tracking-wide">
+            {translate('analyticsTitle')}
+          </h2>
+          <p className="text-xs text-text-muted mt-0.5 leading-relaxed">
+            {translate('analyticsSubtitle')}
+          </p>
         </div>
 
-        {/* Tabs */}
-        <div className="flex items-center gap-1 overflow-x-auto bg-card border border-subtle rounded-xl p-1">
-          {TABS.map((tab) => {
-            const Icon = tab.icon;
-            const active = activeTab === tab.key;
-            return (
-              <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
-                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wide transition-colors cursor-pointer whitespace-nowrap ${
-                  active
-                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                    : 'text-text-muted hover:text-text-base border border-transparent'
-                }`}
-              >
-                <Icon size={14} />
-                {translate(ANALYTICS_TAB_LABELS[tab.key])}
-              </button>
-            );
-          })}
-        </div>
-
-        {isGuestUser && (
-          <div className="text-[11px] px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300">
-            {translate('analyticsGuestNote')}
-          </div>
-        )}
-
-        {/* Active tab panel */}
-        <div className="min-h-0">
-          {activeTab === 'overview' && <OverviewPanel analytics={analytics} translate={translate} />}
-          {activeTab === 'ledger' && (
-            <LedgerPanel
-              analytics={analytics}
-              batchLogs={batchLogs}
-              dailyData={dailyData}
-              projectSettings={projectSettings}
-              translate={translate}
+        {/* Main Panel Canvas */}
+        <div className="bg-card border border-subtle rounded-2xl shadow-md overflow-hidden flex flex-col min-h-0">
+          <div className="px-3 pt-2 border-b border-divider bg-card">
+            <UnderlineTabStrip
+              tabs={TABS}
+              active={activeTab}
+              onChange={setActiveTab}
+              tabLabel={(key) => translate(ANALYTICS_TAB_LABELS[key])}
             />
-          )}
-          {activeTab === 'distance' && <DistancePanel analytics={analytics} translate={translate} />}
-          {activeTab === 'coverage' && <CoveragePanel analytics={analytics} translate={translate} />}
-          {activeTab === 'density' && <DensityPanel analytics={analytics} translate={translate} />}
-          {activeTab === 'quality' && <QualityPanel analytics={analytics} translate={translate} />}
+          </div>
+
+          <div className="p-4 sm:p-5 flex-1 flex flex-col min-h-0">
+            {/* Active tab panel */}
+            {activeTab === 'overview' && <OverviewPanel analytics={analytics} translate={translate} />}
+            {activeTab === 'ledger' && (
+              <LedgerPanel
+                analytics={analytics}
+                batchLogs={batchLogs}
+                dailyData={dailyData}
+                projectSettings={projectSettings}
+                translate={translate}
+              />
+            )}
+            {activeTab === 'distance' && <DistancePanel analytics={analytics} translate={translate} />}
+            {activeTab === 'coverage' && <CoveragePanel analytics={analytics} translate={translate} />}
+            {activeTab === 'density' && <DensityPanel analytics={analytics} translate={translate} />}
+            {activeTab === 'quality' && <QualityPanel analytics={analytics} translate={translate} />}
+          </div>
         </div>
       </div>
     </div>

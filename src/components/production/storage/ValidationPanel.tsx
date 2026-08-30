@@ -133,7 +133,7 @@ export const ValidationPanel: React.FC<ValidationPanelProps> = ({ api, datasets 
               {result.missing.length > 0 && (
                 <div>
                   <div className="text-[10px] uppercase tracking-wider text-text-muted mb-1">Missing ({result.missing.length})</div>
-                  <div className="max-h-32 overflow-y-auto bg-card border border-subtle rounded-lg p-2 font-mono text-[10px] text-rose-300">
+                  <div className="max-h-32 overflow-y-auto bg-card border border-subtle rounded-lg p-2 font-sans text-[10px] text-rose-300">
                     {result.missing.map((m) => <div key={m}>{m}</div>)}
                   </div>
                 </div>
@@ -141,7 +141,7 @@ export const ValidationPanel: React.FC<ValidationPanelProps> = ({ api, datasets 
               {result.invalid.length > 0 && (
                 <div>
                   <div className="text-[10px] uppercase tracking-wider text-text-muted mb-1">Unexpected ({result.invalid.length})</div>
-                  <div className="max-h-32 overflow-y-auto bg-card border border-subtle rounded-lg p-2 font-mono text-[10px] text-amber-300">
+                  <div className="max-h-32 overflow-y-auto bg-card border border-subtle rounded-lg p-2 font-sans text-[10px] text-amber-300">
                     {result.invalid.map((m) => <div key={m}>{m}</div>)}
                   </div>
                 </div>

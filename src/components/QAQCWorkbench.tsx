@@ -1172,13 +1172,13 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
             <span className="text-text-muted/30 hidden sm:inline">/</span>
             {workbenchTab === 'console' && (
               <>
-                <span className="text-text-base font-mono font-bold px-2.5 py-1 rounded-lg bg-inner border border-subtle text-xs truncate max-w-[130px] sm:max-w-none">
+                <span className="text-text-base font-sans font-bold px-2.5 py-1 rounded-lg bg-inner border border-subtle text-xs truncate max-w-[130px] sm:max-w-none">
                   {isRunning || isCompleted ? activeRunningSubgrid : (selectedSubgrid || 'No Target')}
                 </span>
                 {surveyDate && (
                   <>
                     <span className="text-text-muted/30 hidden lg:inline">•</span>
-                    <span className="text-text-muted text-xs font-mono hidden lg:inline">{surveyDate}</span>
+                    <span className="text-text-muted text-xs font-sans hidden lg:inline">{surveyDate}</span>
                   </>
                 )}
                 {(activeRunningPic || inspectorPic || activeUserName) && (
@@ -1198,7 +1198,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                   </>
                 )}
                 <span className="text-text-muted/30 hidden lg:inline">•</span>
-                <span className="text-text-muted text-[10px] hidden lg:inline font-mono px-2 py-0.5 rounded-lg bg-inner border border-subtle">
+                <span className="text-text-muted text-[10px] hidden lg:inline font-sans px-2 py-0.5 rounded-lg bg-inner border border-subtle">
                   {(localThresholds.deliverableModel || projectSettings?.deliverableModel || 'masked_car') === 'generative_fill' ? 'Generative (80% ROI)' : 'Masked (52% ROI)'}
                 </span>
               </>
@@ -1243,7 +1243,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
         {workbenchTab === 'console' && (isRunning || isCompleted || cachedAudit) && (
           <div className="hidden lg:flex items-center gap-3 text-xs text-text-base bg-inner px-3.5 py-1.5 rounded-xl border border-subtle shrink-0 absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10 pointer-events-auto shadow-sm">
             <span className="text-text-muted font-normal text-xs">
-              Station <strong className="text-text-base font-bold font-mono">{Math.min(currentIndex + 1, totalStations)}</strong> / <span className="text-text-muted font-mono">{totalStations}</span>
+              Station <strong className="text-text-base font-bold font-sans">{Math.min(currentIndex + 1, totalStations)}</strong> / <span className="text-text-muted font-sans">{totalStations}</span>
             </span>
             <div className="w-24 xl:w-32 h-1.5 bg-card rounded-full overflow-hidden border border-subtle">
               <div
@@ -1251,8 +1251,8 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                 style={{ width: `${progressPct}%` }}
               />
             </div>
-            <span className="text-text-base tabular-nums font-bold font-mono text-xs">{progressPct}%</span>
-            <span className="text-text-muted text-[11px] tabular-nums font-mono">{elapsedSeconds || cachedAudit?.elapsedSeconds || 0}s</span>
+            <span className="text-text-base tabular-nums font-bold font-sans text-xs">{progressPct}%</span>
+            <span className="text-text-muted text-[11px] tabular-nums font-sans">{elapsedSeconds || cachedAudit?.elapsedSeconds || 0}s</span>
           </div>
         )}
 
@@ -1486,7 +1486,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                 >
                   <Clock size={11} className="text-amber-400 shrink-0" />
                   <span>{targetTab === 'masterlist' ? 'Ongoing' : 'Staging'}</span>
-                  <span className="px-1.5 py-0.2 rounded-full bg-inner text-[10px] font-mono text-text-muted border border-subtle">{stagingCount}</span>
+                  <span className="px-1.5 py-0.2 rounded-full bg-inner text-[10px] font-sans text-text-muted border border-subtle">{stagingCount}</span>
                 </button>
                 <button
                   type="button"
@@ -1498,7 +1498,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                 >
                   <CheckCircle2 size={11} className="text-emerald-400 shrink-0" />
                   <span>{targetTab === 'masterlist' ? 'Complete' : 'Published'}</span>
-                  <span className="px-1.5 py-0.2 rounded-full bg-inner text-[10px] font-mono text-text-muted border border-subtle">{publishedCount}</span>
+                  <span className="px-1.5 py-0.2 rounded-full bg-inner text-[10px] font-sans text-text-muted border border-subtle">{publishedCount}</span>
                 </button>
               </div>
 
@@ -1512,7 +1512,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                   />
                   <span>Show valid frames only</span>
                 </label>
-                <span className="text-text-muted font-mono">{filteredTargetList.length} targets</span>
+                <span className="text-text-muted font-sans">{filteredTargetList.length} targets</span>
               </div>
             </div>
 
@@ -1582,10 +1582,10 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                     >
                       <div className="min-w-0 space-y-1">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className={`font-bold font-mono text-xs ${isSelected ? 'text-text-base' : 'text-text-base'}`}>
+                          <span className={`font-bold font-sans text-xs ${isSelected ? 'text-text-base' : 'text-text-base'}`}>
                             {item.subgrid}
                           </span>
-                          <span className="text-[11px] text-text-muted font-mono">
+                          <span className="text-[11px] text-text-muted font-sans">
                             • {item.date}
                           </span>
                         </div>
@@ -1631,7 +1631,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                           {typeof item.poiCount === 'number' && item.poiCount > 0 && (
                             <>
                               <span className="text-text-muted/40">•</span>
-                              <span className="text-text-muted font-mono text-[11px]">
+                              <span className="text-text-muted font-sans text-[11px]">
                                 {item.poiCount} POI
                               </span>
                             </>
@@ -1659,7 +1659,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                             <CheckCircle2 size={11} /> Sign Off &amp; Publish
                           </button>
                         )}
-                        <span className="px-2.5 py-1 rounded-lg bg-inner border border-subtle text-[11px] text-text-muted font-mono font-medium inline-flex items-center gap-1">
+                        <span className="px-2.5 py-1 rounded-lg bg-inner border border-subtle text-[11px] text-text-muted font-sans font-medium inline-flex items-center gap-1">
                           {targetTab === 'masterlist' && typeof item.poiCount === 'number' && item.poiCount > 0 ? (
                             item.frameCount < item.poiCount ? (
                               <>
@@ -1691,7 +1691,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                   <span>Inspection Parameters</span>
                   {isGpuAccelerationSupported() ? (
                     <span
-                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 truncate max-w-[130px] sm:max-w-none"
+                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-sans font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 truncate max-w-[130px] sm:max-w-none"
                       title={`Hardware Engine: ${getGpuHardwareName()}`}
                     >
                       <Zap size={10} className="fill-current text-emerald-400 shrink-0" />
@@ -1699,7 +1699,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                     </span>
                   ) : (
                     <span
-                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-slate-500/10 text-text-muted border border-subtle/20"
+                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-sans font-medium bg-slate-500/10 text-text-muted border border-subtle/20"
                       title="Hardware Engine: CPU Multi-Sector"
                     >
                       <Cpu size={10} className="text-text-muted shrink-0" />
@@ -1707,14 +1707,14 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                     </span>
                   )}
                   <span
-                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-sky-500/10 text-sky-400 border border-sky-500/20"
+                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-sans font-medium bg-sky-500/10 text-sky-400 border border-sky-500/20"
                     title={`${viewerEngineName} • ${projectSettings?.storageProvider || 'dynamic'}`}
                   >
                     <Camera size={10} className="text-sky-400 shrink-0" />
                     <span>{viewerDisplayName}</span>
                   </span>
                 </div>
-                <span className="text-text-muted text-[11px] font-mono font-normal shrink-0">
+                <span className="text-text-muted text-[11px] font-sans font-normal shrink-0">
                   {selectedSubgrid ? `${selectedStations.length} Frames Queued` : 'No Target'}
                 </span>
               </div>
@@ -1752,7 +1752,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
               <div className="space-y-1.5 text-xs">
                 <div className="flex items-center justify-between text-[11px] text-text-muted">
                   <span>Pacing Rate:</span>
-                  <span className="font-semibold text-text-base font-mono">
+                  <span className="font-semibold text-text-base font-sans">
                     {isAutoPacing ? `Auto (${stepIntervalMs}ms)` : `${stepIntervalMs}ms (${(1000 / stepIntervalMs).toFixed(1)} FPS)`}
                   </span>
                 </div>
@@ -1763,7 +1763,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                       setIsAutoPacing(true);
                       setStepIntervalMs(200);
                     }}
-                    className={`py-1.5 px-1 rounded-lg text-xs font-semibold border text-center transition-all cursor-pointer flex items-center justify-center font-mono ${isAutoPacing
+                    className={`py-1.5 px-1 rounded-lg text-xs font-semibold border text-center transition-all cursor-pointer flex items-center justify-center font-sans ${isAutoPacing
                       ? 'bg-card border-subtle text-text-base shadow-sm'
                       : 'bg-card hover:bg-inner border-subtle text-text-muted hover:text-text-base'
                       }`}
@@ -1784,7 +1784,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                           setIsAutoPacing(false);
                           setStepIntervalMs(speed.ms);
                         }}
-                        className={`py-1.5 px-1 rounded-lg text-xs font-semibold border text-center transition-all cursor-pointer font-mono ${isActive
+                        className={`py-1.5 px-1 rounded-lg text-xs font-semibold border text-center transition-all cursor-pointer font-sans ${isActive
                           ? 'bg-card border-subtle text-text-base shadow-sm'
                           : 'bg-card hover:bg-inner border-subtle text-text-muted hover:text-text-base'
                           }`}
@@ -1858,10 +1858,10 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                     {effectiveDefectsList.length === 0 ? 'Zero Defects' : `${effectiveDefectsList.length} Defect(s)`}
                   </span>
                   <span className="text-text-muted/40">•</span>
-                  <span className="text-text-muted text-xs">Pass Rate: <strong className="text-text-base font-bold font-mono">{selectedStations.length > 0 ? Math.max(0, Math.round(((selectedStations.length - effectiveDefectsList.length) / selectedStations.length) * 100)) : auditPassRate}%</strong></span>
+                  <span className="text-text-muted text-xs">Pass Rate: <strong className="text-text-base font-bold font-sans">{selectedStations.length > 0 ? Math.max(0, Math.round(((selectedStations.length - effectiveDefectsList.length) / selectedStations.length) * 100)) : auditPassRate}%</strong></span>
                 </div>
 
-                <div className="flex items-center gap-2 text-text-muted text-xs font-mono shrink-0">
+                <div className="flex items-center gap-2 text-text-muted text-xs font-sans shrink-0">
                   <span>Subgrid: <strong className="text-text-base font-bold">{activeRunningSubgrid || selectedSubgrid}</strong></span>
                 </div>
               </div>
@@ -1871,11 +1871,11 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
               <div className="m-3 px-3.5 py-2 bg-card/90 backdrop-blur-md border border-subtle rounded-xl flex items-center justify-between shrink-0 text-xs z-10 shadow-sm gap-2">
                 <div className="flex items-center gap-2 min-w-0">
                   <span className="text-text-muted font-medium uppercase tracking-wider text-[10px] hidden xs:inline">Target:</span>
-                  <span className="font-bold text-text-base px-2.5 py-0.5 rounded-lg bg-inner border border-subtle font-mono text-xs truncate max-w-[120px] sm:max-w-none">
+                  <span className="font-bold text-text-base px-2.5 py-0.5 rounded-lg bg-inner border border-subtle font-sans text-xs truncate max-w-[120px] sm:max-w-none">
                     {activeRunningSubgrid || selectedSubgrid || 'None'}
                   </span>
                   <span className="text-text-muted/40">•</span>
-                  <span className="text-text-muted font-medium font-mono text-xs truncate">
+                  <span className="text-text-muted font-medium font-sans text-xs truncate">
                     {isRunning || isCompleted
                       ? `Node ${Math.min(currentIndex + 1, totalStations)} / ${totalStations}`
                       : `${selectedStations.length} Queued`}
@@ -1883,13 +1883,13 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                 </div>
 
                 <div className="flex items-center gap-2 sm:gap-3 text-xs text-text-muted shrink-0">
-                  <div className="flex items-center gap-1 font-mono">
+                  <div className="flex items-center gap-1 font-sans">
                     <span className="text-text-muted text-[11px] hidden xs:inline">Remaining:</span>
                     <span className="tabular-nums text-text-base font-semibold">{isCompleted ? '0s' : isRunning ? `${estimatedSecondsLeft}s` : '--'}</span>
                   </div>
-                  <div className="flex items-center gap-1 font-mono">
+                  <div className="flex items-center gap-1 font-sans">
                     <span className="text-text-muted text-[11px] hidden xs:inline">Defects:</span>
-                    <span className={`tabular-nums font-bold px-2 py-0.5 rounded-lg font-mono ${effectiveDefectsList.length > 0 ? "bg-inner text-rose-400 border border-subtle" : "bg-inner text-text-base border border-subtle"}`}>
+                    <span className={`tabular-nums font-bold px-2 py-0.5 rounded-lg font-sans ${effectiveDefectsList.length > 0 ? "bg-inner text-rose-400 border border-subtle" : "bg-inner text-text-base border border-subtle"}`}>
                       {effectiveDefectsList.length}
                     </span>
                   </div>
@@ -1913,7 +1913,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                   <>
                     <PhotoSphereViewerComponent
                       ref={psvRef}
-                      key={`pano-psv-${activeDisplayPointId || activeRawFile}-${projectSettings?.storageProvider || 'dynamic'}`}
+                      key={`pano-psv-${activeRunningSubgrid || selectedSubgrid}-${projectSettings?.storageProvider || 'dynamic'}`}
                       configUrl={
                         shouldUseMultiRes
                           ? resolvePanoramaConfigUrl(
@@ -1933,11 +1933,11 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                       <div className="absolute top-3 left-3 bg-black/85 backdrop-blur-md border border-white/10 rounded-xl px-3.5 py-2 shadow-md space-y-0.5 max-w-[200px] sm:max-w-[320px] z-10">
                         <div className="flex items-center gap-2">
                           <span className="w-2 h-2 rounded-full bg-sky-400 shrink-0 animate-pulse" />
-                          <span className="font-semibold text-xs text-white tracking-tight truncate font-mono">
+                          <span className="font-semibold text-xs text-white tracking-tight truncate font-sans">
                             {activeDisplayPointId || `Station ${activeDisplayIndex}`}
                           </span>
                         </div>
-                        <div className="text-xs text-text-base font-mono font-normal pl-4 truncate">
+                        <div className="text-xs text-text-base font-sans font-normal pl-4 truncate">
                           Station <strong className="text-white font-bold">{activeDisplayIndex}</strong> of {totalStations}
                         </div>
                       </div>
@@ -1949,7 +1949,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                         <div className="flex items-center justify-between gap-2 text-xs">
                           <span className="text-text-base font-medium">GPS:</span>
                           <span
-                            className={`font-bold font-mono ${activeRecord
+                            className={`font-bold font-sans ${activeRecord
                               ? activeRecord.defectType?.includes('GPS')
                                 ? 'text-rose-400'
                                 : 'text-sky-400'
@@ -1965,7 +1965,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                         </div>
                         <div className="flex items-center justify-between gap-2 text-xs">
                           <span className="text-text-base font-medium">Equip:</span>
-                          <span className="font-bold text-white font-mono truncate">
+                          <span className="font-bold text-white font-sans truncate">
                             {(() => {
                               const currentItem = filteredTargetList.find(
                                 (t) => t.subgrid === (activeRunningSubgrid || selectedSubgrid)
@@ -1985,7 +1985,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                     {/* HUD OVERLAY 3: Bottom-Left Spatial Coordinates */}
                     {(isRunning || effectiveHistory.length > 0) && (
                       <div className="absolute bottom-3 left-3 bg-black/85 backdrop-blur-md border border-white/10 rounded-xl px-3.5 py-2 shadow-md space-y-0.5 z-10">
-                        <div className="text-white text-xs tabular-nums font-semibold flex items-center gap-1.5 font-mono">
+                        <div className="text-white text-xs tabular-nums font-semibold flex items-center gap-1.5 font-sans">
                           <Navigation size={13} className="text-sky-400 shrink-0 rotate-45" />
                           <span>
                             {activeDisplayCoords.lat && activeDisplayCoords.lng
@@ -1993,7 +1993,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                               : '0.0000°, 0.0000°'}
                           </span>
                         </div>
-                        <div className="text-text-base text-xs font-normal flex items-center gap-1 font-mono pl-4">
+                        <div className="text-text-base text-xs font-normal flex items-center gap-1 font-sans pl-4">
                           <span className="text-text-muted">Step:</span>
                           <span className="tabular-nums text-white font-semibold">
                             {activeDisplayStepDistance > 0 ? `+${activeDisplayStepDistance.toFixed(1)}m` : '0.0m'}
@@ -2005,11 +2005,11 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                     {/* HUD OVERLAY 4: Bottom-Right Compass Heading */}
                     {(isRunning || effectiveHistory.length > 0) && viewportMode !== 'pip' && (
                       <div className="absolute bottom-3 right-3 bg-black/85 backdrop-blur-md border border-white/10 rounded-xl px-3.5 py-2 shadow-md space-y-0.5 text-right z-10">
-                        <div className="text-white text-xs tabular-nums font-semibold flex items-center justify-end gap-1.5 font-mono">
+                        <div className="text-white text-xs tabular-nums font-semibold flex items-center justify-end gap-1.5 font-sans">
                           <Compass size={13} className="text-amber-400 shrink-0" />
                           <span>{activeDisplayBearing.toFixed(0)}°</span>
                         </div>
-                        <div className="text-text-base text-xs font-normal flex items-center justify-end gap-1 font-mono">
+                        <div className="text-text-base text-xs font-normal flex items-center justify-end gap-1 font-sans">
                           <span className="text-text-muted">Track:</span>
                           <span
                             className={`font-semibold ${!activeDisplayCoords.lat || !activeDisplayCoords.lng
@@ -2114,11 +2114,11 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                       <MapIcon size={13} className="text-sky-400" />
                       <span className="font-semibold text-text-base text-xs">Vehicle Trajectory Map</span>
                       <span className="text-text-muted/40">•</span>
-                      <span className="text-text-muted font-mono text-[11px] truncate max-w-[120px] sm:max-w-none">
+                      <span className="text-text-muted font-sans text-[11px] truncate max-w-[120px] sm:max-w-none">
                         {activeRunningSubgrid || selectedSubgrid || 'No Target'}
                       </span>
                     </div>
-                    <div className="flex items-center gap-2 text-text-muted font-mono text-[11px]">
+                    <div className="flex items-center gap-2 text-text-muted font-sans text-[11px]">
                       <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                       <span className="hidden sm:inline">Tracking Active</span>
                     </div>
@@ -2205,7 +2205,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                   <span className="font-bold text-text-base text-xs">
                     Inspection Halted
                   </span>
-                  <span className="text-text-muted text-xs font-mono">
+                  <span className="text-text-muted text-xs font-sans">
                     • {effectiveHistory.length} scanned • {effectiveDefectsList.length} defects
                   </span>
                 </div>
@@ -2238,11 +2238,11 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
               </div>
 
               {effectiveDefectsList.length === 0 ? (
-                <span className="px-2.5 py-0.5 rounded-full bg-inner text-text-muted border border-subtle text-[10px] font-medium font-mono">
+                <span className="px-2.5 py-0.5 rounded-full bg-inner text-text-muted border border-subtle text-[10px] font-medium font-sans">
                   SLA Nominal
                 </span>
               ) : (
-                <span className="px-2.5 py-0.5 rounded-full bg-inner text-rose-400 border border-subtle text-[10px] font-bold font-mono">
+                <span className="px-2.5 py-0.5 rounded-full bg-inner text-rose-400 border border-subtle text-[10px] font-bold font-sans">
                   {effectiveDefectsList.length} Flagged
                 </span>
               )}
@@ -2295,15 +2295,15 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                         <div className="flex items-center gap-1.5 min-w-0">
                           <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${item.status === 'flagged' ? 'bg-rose-400' : 'bg-slate-500'
                             }`} />
-                          <span className="font-bold text-xs text-text-base shrink-0 font-mono">
+                          <span className="font-bold text-xs text-text-base shrink-0 font-sans">
                             #{item.index}
                           </span>
                           <span className="text-text-muted/40 text-xs">•</span>
-                          <span className="text-xs text-text-base font-medium truncate font-mono" title={item.pointId}>
+                          <span className="text-xs text-text-base font-medium truncate font-sans" title={item.pointId}>
                             {item.pointId}
                           </span>
                         </div>
-                        <span className="text-[10px] tabular-nums font-mono text-text-muted shrink-0">
+                        <span className="text-[10px] tabular-nums font-sans text-text-muted shrink-0">
                           {item.timestamp}
                         </span>
                       </div>
@@ -2321,16 +2321,16 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                           )}
                         </div>
                       ) : (
-                        <div className="flex items-center justify-between text-[11px] text-text-muted font-mono">
+                        <div className="flex items-center justify-between text-[11px] text-text-muted font-sans">
                           <span className="tabular-nums text-text-muted">
                             {item.lat.toFixed(4)}°, {item.lng.toFixed(4)}°
                           </span>
                           <div className="flex items-center gap-2 tabular-nums text-text-muted">
                             <span>{item.stepDistance > 0 ? `+${item.stepDistance.toFixed(1)}m` : '0.0m'}</span>
                             {item.status === 'skipped' ? (
-                              <span className="text-amber-400 font-mono text-[10px]">Skipped (Timeout/CORS)</span>
+                              <span className="text-amber-400 font-sans text-[10px]">Skipped (Timeout/CORS)</span>
                             ) : item.blurVariance !== undefined ? (
-                              <span className="text-text-base font-mono">Score {item.blurVariance.toFixed(1)}</span>
+                              <span className="text-text-base font-sans">Score {item.blurVariance.toFixed(1)}</span>
                             ) : null}
                           </div>
                         </div>
@@ -2346,7 +2346,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                 <Database size={12} className="text-text-muted" />
                 <span>Supabase Sync:</span>
               </div>
-              <span className="text-text-base tabular-nums font-bold font-mono">
+              <span className="text-text-base tabular-nums font-bold font-sans">
                 {syncedCount} records upserted
               </span>
             </div>
@@ -2405,7 +2405,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                 <div className="min-w-0">
                   <h3 className="font-bold text-sm text-text-base truncate flex items-center gap-2">
                     <span>QA/QC Audit Run History & Technical Details</span>
-                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono text-text-muted bg-inner border border-subtle">
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-sans text-text-muted bg-inner border border-subtle">
                       {isCompleted ? 'Completed' : isRunning ? 'In Progress' : 'Loaded Profile'}
                     </span>
                   </h3>
@@ -2432,27 +2432,27 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                     <MapPin size={13} className="text-text-muted" />
                     Survey Dataset
                   </span>
-                  <span className="font-mono text-[10px] text-text-muted">Subgrid ID</span>
+                  <span className="font-sans text-[10px] text-text-muted">Subgrid ID</span>
                 </div>
                 <div className="space-y-1.5 text-xs">
                   <div className="flex justify-between items-center">
                     <span className="text-text-muted">Target Subgrid:</span>
-                    <span className="font-bold text-text-base font-mono">{currentSubgrid}</span>
+                    <span className="font-bold text-text-base font-sans">{currentSubgrid}</span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-text-muted">Survey Date:</span>
-                    <span className="text-text-base flex items-center gap-1 font-mono text-[11px]">
+                    <span className="text-text-base flex items-center gap-1 font-sans text-[11px]">
                       <Calendar size={12} className="text-text-muted" />
                       {currentDate}
                     </span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-text-muted">Trajectory Distance:</span>
-                    <span className="font-medium text-text-base font-mono text-[11px]">{currentDistance}</span>
+                    <span className="font-medium text-text-base font-sans text-[11px]">{currentDistance}</span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-text-muted">Station Count:</span>
-                    <span className="font-mono text-text-base font-semibold">{effectiveHistory.length} Frames</span>
+                    <span className="font-sans text-text-base font-semibold">{effectiveHistory.length} Frames</span>
                   </div>
                 </div>
               </div>
@@ -2463,7 +2463,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                     <User size={13} className="text-text-muted" />
                     Operator & Equipment
                   </span>
-                  <span className="font-mono text-[10px] text-text-muted">PIC Sign-Off</span>
+                  <span className="font-sans text-[10px] text-text-muted">PIC Sign-Off</span>
                 </div>
                 <div className="space-y-1.5 text-xs">
                   <div className="flex justify-between items-center">
@@ -2481,14 +2481,14 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-text-muted">Audit Completed:</span>
-                    <span className="text-text-base flex items-center gap-1 font-mono text-[11px]">
+                    <span className="text-text-base flex items-center gap-1 font-sans text-[11px]">
                       <Clock size={12} className="text-text-muted" />
                       {cachedAuditRecord?.completedAt || (isCompleted ? 'Just now' : isRunning ? 'In Progress' : '—')}
                     </span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-text-muted">Inspection Run ID:</span>
-                    <span className="font-mono text-[10px] text-text-muted truncate max-w-[140px]" title={currentRunId}>
+                    <span className="font-sans text-[10px] text-text-muted truncate max-w-[140px]" title={currentRunId}>
                       {currentRunId}
                     </span>
                   </div>
@@ -2501,7 +2501,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                     <SlidersHorizontal size={13} className="text-text-muted" />
                     Active Thresholds
                   </span>
-                  <span className="font-mono text-[10px] text-text-muted">Profile</span>
+                  <span className="font-sans text-[10px] text-text-muted">Profile</span>
                 </div>
                 <div className="space-y-1.5 text-xs">
                   <div className="flex justify-between items-center">
@@ -2512,15 +2512,15 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-text-muted">Blur Cutoff:</span>
-                    <span className="font-mono font-medium text-text-base">{localThresholds.blurVarianceThreshold ?? 68.0} / 100</span>
+                    <span className="font-sans font-medium text-text-base">{localThresholds.blurVarianceThreshold ?? 68.0} / 100</span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-text-muted">Max GPS Step:</span>
-                    <span className="font-mono font-medium text-text-base">{localThresholds.gpsMaxJumpDistanceMeters ?? 50.0}m</span>
+                    <span className="font-sans font-medium text-text-base">{localThresholds.gpsMaxJumpDistanceMeters ?? 50.0}m</span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-text-muted">Obstruction Brightness:</span>
-                    <span className="font-mono font-medium text-text-base">{localThresholds.obstructionMinBrightness ?? 15.0} lux</span>
+                    <span className="font-sans font-medium text-text-base">{localThresholds.obstructionMinBrightness ?? 15.0} lux</span>
                   </div>
                 </div>
               </div>
@@ -2529,48 +2529,48 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
             <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2.5">
               <div className="p-3 bg-card border border-subtle rounded-xl space-y-1 shadow-sm">
                 <span className="text-[11px] text-text-muted font-medium">SLA Pass Rate</span>
-                <p className="text-xl font-bold font-mono text-text-base">
+                <p className="text-xl font-bold font-sans text-text-base">
                   {auditPassRate}%
                 </p>
-                <span className="text-[10px] text-text-muted font-mono">{passedCount} / {effectiveHistory.length} Passed</span>
+                <span className="text-[10px] text-text-muted font-sans">{passedCount} / {effectiveHistory.length} Passed</span>
               </div>
               <div className="p-3 bg-card border border-subtle rounded-xl space-y-1 shadow-sm">
                 <span className="text-[11px] text-text-muted font-medium">Nodes Audited</span>
-                <p className="text-xl font-bold text-text-base font-mono">{effectiveHistory.length}</p>
-                <span className="text-[10px] text-text-muted font-mono">100% Surveyed</span>
+                <p className="text-xl font-bold text-text-base font-sans">{effectiveHistory.length}</p>
+                <span className="text-[10px] text-text-muted font-sans">100% Surveyed</span>
               </div>
               <div className="p-3 bg-card border border-subtle rounded-xl space-y-1 shadow-sm">
                 <span className="text-[11px] text-text-muted font-medium">Total Defects</span>
-                <p className="text-xl font-bold font-mono text-text-base">
+                <p className="text-xl font-bold font-sans text-text-base">
                   {effectiveDefectsList.length}
                 </p>
-                <span className="text-[10px] text-text-muted font-mono">{effectiveHistory.length > 0 ? ((effectiveDefectsList.length / effectiveHistory.length) * 100).toFixed(1) : 0}% Rate</span>
+                <span className="text-[10px] text-text-muted font-sans">{effectiveHistory.length > 0 ? ((effectiveDefectsList.length / effectiveHistory.length) * 100).toFixed(1) : 0}% Rate</span>
               </div>
               <div className="p-3 bg-card border border-subtle rounded-xl space-y-1 shadow-sm">
                 <span className="text-[11px] text-text-muted font-medium">Mean Sharpness</span>
-                <p className="text-xl font-bold text-text-base font-mono">{meanSharpnessScore}</p>
-                <span className="text-[10px] text-text-muted font-mono">Cutoff {localThresholds.blurVarianceThreshold ?? 68.0}</span>
+                <p className="text-xl font-bold text-text-base font-sans">{meanSharpnessScore}</p>
+                <span className="text-[10px] text-text-muted font-sans">Cutoff {localThresholds.blurVarianceThreshold ?? 68.0}</span>
               </div>
               <div className="p-3 bg-card border border-subtle rounded-xl space-y-1 shadow-sm">
                 <span className="text-[11px] text-text-muted font-medium">Blur Defects</span>
-                <p className="text-xl font-bold font-mono text-text-base">
+                <p className="text-xl font-bold font-sans text-text-base">
                   {blurCount}
                 </p>
-                <span className="text-[10px] text-text-muted font-mono">Low Focus</span>
+                <span className="text-[10px] text-text-muted font-sans">Low Focus</span>
               </div>
               <div className="p-3 bg-card border border-subtle rounded-xl space-y-1 shadow-sm">
                 <span className="text-[11px] text-text-muted font-medium">Obstructions</span>
-                <p className="text-xl font-bold font-mono text-text-base">
+                <p className="text-xl font-bold font-sans text-text-base">
                   {obstructionCount}
                 </p>
-                <span className="text-[10px] text-text-muted font-mono">Glare / Dark</span>
+                <span className="text-[10px] text-text-muted font-sans">Glare / Dark</span>
               </div>
               <div className="p-3 bg-card border border-subtle rounded-xl space-y-1 shadow-sm">
                 <span className="text-[11px] text-text-muted font-medium">GPS Drift</span>
-                <p className="text-xl font-bold font-mono text-text-base">
+                <p className="text-xl font-bold font-sans text-text-base">
                   {gpsCount}
                 </p>
-                <span className="text-[10px] text-text-muted font-mono">&gt; {localThresholds.gpsMaxJumpDistanceMeters ?? 50}m</span>
+                <span className="text-[10px] text-text-muted font-sans">&gt; {localThresholds.gpsMaxJumpDistanceMeters ?? 50}m</span>
               </div>
             </div>
 
@@ -2653,36 +2653,36 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                             className="hover:bg-inner/40 transition-colors"
                           >
                             <td className="px-3.5 py-2.5 whitespace-nowrap">
-                              <div className="flex items-center gap-1.5 font-mono font-medium text-text-base">
+                              <div className="flex items-center gap-1.5 font-sans font-medium text-text-base">
                                 <span className={`w-1.5 h-1.5 rounded-full ${isFlagged ? 'bg-rose-400' : 'bg-slate-500'} shrink-0`} />
                                 <span>#{item.index}</span>
                               </div>
                             </td>
-                            <td className="px-3.5 py-2.5 font-mono font-bold text-text-base whitespace-nowrap">
+                            <td className="px-3.5 py-2.5 font-sans font-bold text-text-base whitespace-nowrap">
                               {itemSubgrid}
                             </td>
-                            <td className="px-3.5 py-2.5 font-mono font-medium text-text-base whitespace-nowrap">
+                            <td className="px-3.5 py-2.5 font-sans font-medium text-text-base whitespace-nowrap">
                               {item.pointId}
                             </td>
-                            <td className="px-3.5 py-2.5 text-text-muted whitespace-nowrap font-mono text-[11px]">
+                            <td className="px-3.5 py-2.5 text-text-muted whitespace-nowrap font-sans text-[11px]">
                               {currentDate}
                             </td>
-                            <td className="px-3.5 py-2.5 text-text-muted whitespace-nowrap font-mono text-[11px]">
+                            <td className="px-3.5 py-2.5 text-text-muted whitespace-nowrap font-sans text-[11px]">
                               {timeStr}
                             </td>
-                            <td className="px-3.5 py-2.5 font-mono text-text-muted text-[11px] whitespace-nowrap">
+                            <td className="px-3.5 py-2.5 font-sans text-text-muted text-[11px] whitespace-nowrap">
                               {item.lat.toFixed(4)}°, {item.lng.toFixed(4)}°
                             </td>
-                            <td className="px-3.5 py-2.5 font-mono font-medium text-text-base whitespace-nowrap text-[11px]">
+                            <td className="px-3.5 py-2.5 font-sans font-medium text-text-base whitespace-nowrap text-[11px]">
                               {item.blurVariance !== undefined ? item.blurVariance.toFixed(1) : '—'}
                             </td>
                             <td className="px-3.5 py-2.5 whitespace-nowrap">
                               {isFlagged ? (
-                                <span className="px-2.5 py-0.5 rounded-full bg-inner border border-subtle text-rose-400 font-semibold text-[10px] inline-flex items-center gap-1 font-mono">
+                                <span className="px-2.5 py-0.5 rounded-full bg-inner border border-subtle text-rose-400 font-semibold text-[10px] inline-flex items-center gap-1 font-sans">
                                   {item.defectType || 'Defect'}
                                 </span>
                               ) : (
-                                <span className="px-2.5 py-0.5 rounded-full bg-inner border border-subtle text-emerald-400 font-medium text-[10px] inline-flex items-center gap-1 font-mono">
+                                <span className="px-2.5 py-0.5 rounded-full bg-inner border border-subtle text-emerald-400 font-medium text-[10px] inline-flex items-center gap-1 font-sans">
                                   PASSED
                                 </span>
                               )}

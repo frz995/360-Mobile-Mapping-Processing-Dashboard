@@ -6,87 +6,96 @@
 :root,
 [data-theme="midnight"] {
     color-scheme: dark;
-    --bg-app: #080e1a;
-    --bg-card: #0f172a;
-    --bg-inner: #162138;
-    --border-subtle: #1e2e4a;
+    --bg-app: #070c18;
+    --bg-card: #0c1426;
+    --bg-inner: #111b33;
+    --border-subtle: #172544;
+    --divider: rgba(148, 163, 184, 0.14);
     --accent: #38bdf8;
     --accent-bg: rgba(56, 189, 248, 0.12);
     --text-primary: #f8fafc;
     --text-muted: #94a3b8;
-    --table-header-bg: #131d33;
+    --table-header-bg: #0e1830;
     --table-header-text: #94a3b8;
-    --table-row-hover: #192640;
+    --table-row-hover: #142242;
     --table-text: #e2e8f0;
-    --input-bg: #0b1323;
-    --card-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
-    --modal-overlay: rgba(3, 7, 18, 0.85);
+    --input-bg: #091020;
+    --card-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+    --modal-overlay: rgba(3, 7, 18, 0.88);
+    --canvas-bg: linear-gradient(180deg, #091122 0%, #070c18 50%, #040710 100%);
 }
 
 /* 2. OBSIDIAN PURE DARK (OLED Minimum Eye Fatigue) */
 [data-theme="obsidian"] {
-    --bg-app: #030305;
-    --bg-card: #0a0b10;
-    --bg-inner: #12131a;
-    --border-subtle: #1e202c;
+    --bg-app: #030406;
+    --bg-card: #08090d;
+    --bg-inner: #0e0f16;
+    --border-subtle: #181a24;
+    --divider: rgba(139, 148, 158, 0.14);
     --accent: #818cf8;
-    --accent-bg: rgba(129, 140, 248, 0.14);
+    --accent-bg: rgba(129, 140, 248, 0.12);
     --text-primary: #f8fafc;
     --text-muted: #8b949e;
-    --table-header-bg: #0f1016;
+    --table-header-bg: #0b0c12;
     --table-header-text: #8b949e;
-    --table-row-hover: #171923;
+    --table-row-hover: #141620;
     --table-text: #f0f6fc;
-    --input-bg: #050608;
-    --card-shadow: 0 4px 14px rgba(0, 0, 0, 0.65);
-    --modal-overlay: rgba(0, 0, 0, 0.9);
+    --input-bg: #050609;
+    --card-shadow: 0 6px 18px rgba(0, 0, 0, 0.7);
+    --modal-overlay: rgba(0, 0, 0, 0.92);
+    --canvas-bg: linear-gradient(180deg, #090a0f 0%, #030406 100%);
 }
 
 /* 3. TITANIUM GRAPHITE (Neutral Studio Workspace) */
 [data-theme="graphite"] {
-    --bg-app: #121418;
-    --bg-card: #181b22;
-    --bg-inner: #21252f;
-    --border-subtle: #2d3340;
+    --bg-app: #0d0f13;
+    --bg-card: #13161c;
+    --bg-inner: #1a1e26;
+    --border-subtle: #242934;
+    --divider: rgba(148, 163, 184, 0.12);
     --accent: #cbd5e1;
-    --accent-bg: rgba(203, 213, 225, 0.12);
+    --accent-bg: rgba(203, 213, 225, 0.1);
     --text-primary: #f1f5f9;
     --text-muted: #94a3b8;
-    --table-header-bg: #1c2029;
+    --table-header-bg: #161920;
     --table-header-text: #94a3b8;
-    --table-row-hover: #262b36;
+    --table-row-hover: #202530;
     --table-text: #f1f5f9;
-    --input-bg: #13151a;
-    --card-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
-    --modal-overlay: rgba(10, 11, 14, 0.85);
+    --input-bg: #0f1116;
+    --card-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+    --modal-overlay: rgba(8, 10, 13, 0.88);
+    --canvas-bg: linear-gradient(180deg, #15181f 0%, #0d0f13 100%);
 }
 
 /* 4. PRECISION TEAL (GIS Telemetry / Ocean Blue) */
 [data-theme="teal-slate"] {
-    --bg-app: #030d12;
-    --bg-card: #071924;
-    --bg-inner: #0d2737;
-    --border-subtle: #13394d;
+    --bg-app: #030b10;
+    --bg-card: #06141c;
+    --bg-inner: #0a202d;
+    --border-subtle: #0f2e40;
+    --divider: rgba(123, 164, 184, 0.14);
     --accent: #14b8a6;
-    --accent-bg: rgba(20, 184, 166, 0.14);
+    --accent-bg: rgba(20, 184, 166, 0.12);
     --text-primary: #f0fdfa;
     --text-muted: #7ba4b8;
-    --table-header-bg: #0a202d;
+    --table-header-bg: #081924;
     --table-header-text: #7ba4b8;
-    --table-row-hover: #103247;
+    --table-row-hover: #0e293a;
     --table-text: #ccfbf1;
-    --input-bg: #041018;
-    --card-shadow: 0 4px 12px rgba(2, 10, 15, 0.45);
-    --modal-overlay: rgba(2, 8, 12, 0.88);
+    --input-bg: #040e14;
+    --card-shadow: 0 6px 18px rgba(2, 10, 15, 0.5);
+    --modal-overlay: rgba(2, 8, 12, 0.9);
+    --canvas-bg: linear-gradient(180deg, #071720 0%, #030b10 100%);
 }
 
 /* 5. DAYLIGHT CLEAN (Modern SaaS Crisp Light Canvas) */
 [data-theme="daylight"] {
     color-scheme: light;
-    --bg-app: #f4f6f9;
+    --bg-app: #f1f4f9;
     --bg-card: #ffffff;
-    --bg-inner: #f8fafc;
-    --border-subtle: #e2e8f0;
+    --bg-inner: #f6f9fc;
+    --border-subtle: #e0e6ed;
+    --divider: #e8eef5;
     --accent: #2563eb;
     --accent-bg: #eff6ff;
     --text-primary: #0f172a;
@@ -98,6 +107,7 @@
     --input-bg: #ffffff;
     --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 2px 6px -1px rgba(0, 0, 0, 0.03);
     --modal-overlay: rgba(15, 23, 42, 0.45);
+    --canvas-bg: linear-gradient(180deg, #f8fafc 0%, #edf2f7 100%);
 }
 
 /* ==========================================================================
@@ -164,8 +174,7 @@ body,
     border-color: var(--border-subtle) !important;
 }
 
-[data-theme] table td,
-[data-theme] div[class*="font-mono"] {
+[data-theme] table td {
     color: var(--table-text) !important;
 }
 

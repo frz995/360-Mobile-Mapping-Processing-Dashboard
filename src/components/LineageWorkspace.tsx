@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { GitBranch, Radar, Route, Table2, RefreshCw, Undo2, Network } from 'lucide-react';
+import { Radar, Route, Table2, Network } from 'lucide-react';
 import { fetchDatasetsFromSupabase, fetchProcessingJobsFromSupabase, fetchStagingPanoramasFromSupabase } from '../services/supabase';
 import type { DatasetRecord, ProcessingJobRecord } from '../types/production';
 import type { LineageTab } from '../types/production';
@@ -10,6 +10,7 @@ import {
   lineageSummary
 } from '../utils/datasetLineage';
 import { LINEAGE_TAB_LABELS } from './production/lineage/lineageCommon';
+import { UnderlineTabStrip, type ChromeTab } from './production/chrome';
 import { GraphPanel } from './production/lineage/GraphPanel';
 import { TracePanel } from './production/lineage/TracePanel';
 import { SurveyPanel } from './production/lineage/SurveyPanel';
@@ -26,16 +27,16 @@ export interface LineageWorkspaceProps {
   translate?: (key: string) => string;
 }
 
-const TABS: Array<{ key: LineageTab; icon: React.ComponentType<{ size?: number | string; className?: string }> }> = [
-  { key: 'graph', icon: Network },
-  { key: 'trace', icon: Route },
-  { key: 'survey', icon: Radar },
-  { key: 'registry', icon: Table2 }
+const TABS: ChromeTab<LineageTab>[] = [
+  { key: 'graph', icon: <Network size={14} /> },
+  { key: 'trace', icon: <Route size={14} /> },
+  { key: 'survey', icon: <Radar size={14} /> },
+  { key: 'registry', icon: <Table2 size={14} /> }
 ];
 
 export const LineageWorkspace: React.FC<LineageWorkspaceProps> = ({
-  isGuestUser,
-  onBackToDashboard,
+  isGuestUser: _isGuestUser,
+  onBackToDashboard: _onBackToDashboard,
   translate = (k) => k
 }) => {
   const [activeTab, setActiveTab] = useState<LineageTab>('graph');
@@ -44,7 +45,6 @@ export const LineageWorkspace: React.FC<LineageWorkspaceProps> = ({
   const [stagingRows, setStagingRows] = useState<Array<{ subgrid?: string; status?: string; created_at?: string }>>([]);
   const [selectedSubgrid, setSelectedSubgrid] = useState<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
 
   const refreshAll = useCallback(() => {
     return Promise.all([
@@ -82,11 +82,6 @@ export const LineageWorkspace: React.FC<LineageWorkspaceProps> = ({
 
   const summary = useMemo(() => lineageSummary(datasets, jobs, aggregates), [datasets, jobs, aggregates]);
 
-  const handleRefresh = () => {
-    setRefreshing(true);
-    refreshAll().finally(() => setRefreshing(false));
-  };
-
   const handleSelectSubgrid = (sg: string | null) => {
     setSelectedSubgrid(sg);
     setSelectedNodeId(null);
@@ -104,139 +99,110 @@ export const LineageWorkspace: React.FC<LineageWorkspaceProps> = ({
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden animate-in fade-in duration-500">
       <div className="flex-1 flex flex-col gap-3 min-h-0 overflow-y-auto p-4">
         {/* Header */}
-        <div className="bg-card border border-subtle rounded-xl p-4 flex items-center justify-between gap-3 flex-wrap">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-inner rounded-xl border border-subtle text-sky-400">
-              <GitBranch size={22} />
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-sm font-bold text-text-base tracking-wide">Data Lineage</h2>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider border border-sky-500/40 bg-sky-950/40 text-sky-300">
-                  Survey → Publish
-                </span>
-              </div>
-              <p className="text-[11px] text-text-muted mt-0.5 leading-relaxed">
-                Layered trace from RAW capture through processing jobs, acceptance QA decisions and publication. Metadata only — image bytes never leave the NAS.
-              </p>
+        <div className="px-1">
+          <h2 className="text-base font-bold text-text-base tracking-wide">
+            Data Lineage
+          </h2>
+          <p className="text-xs text-text-muted mt-0.5 leading-relaxed">
+            Layered trace from RAW capture through processing jobs, acceptance QA decisions and publication. Metadata only — image bytes never leave the NAS.
+          </p>
+        </div>
+
+        {/* Telemetry Summary strip */}
+        {summary.length > 0 && (
+          <div className="bg-card border border-subtle rounded-xl px-4 py-2.5 shadow-sm text-xs flex flex-wrap items-center gap-x-4 gap-y-2">
+            <span className="text-[11px] font-bold text-text-muted shrink-0 uppercase tracking-wider">
+              Pipeline Lineage:
+            </span>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+              <span>
+                <span className="text-text-muted">{translate('lineageStatDatasets')}: </span>
+                <strong className="font-semibold text-text-base">{summary.reduce((a, r) => a + r.datasetCount, 0)}</strong>
+              </span>
+              <span className="text-text-muted">&bull;</span>
+              <span>
+                <span className="text-text-muted">{translate('lineageStatJobs')}: </span>
+                <strong className="font-semibold text-text-base">{summary.reduce((a, r) => a + r.jobCount, 0)}</strong>
+              </span>
+              <span className="text-text-muted">&bull;</span>
+              <span>
+                <span className="text-text-muted">{translate('lineageStatRawFrames')}: </span>
+                <strong className="font-semibold text-text-base">{summary.reduce((a, r) => a + r.rawFrames, 0)}</strong>
+              </span>
+              <span className="text-text-muted">&bull;</span>
+              <span>
+                <span className="text-text-muted">{translate('lineageStatQaOk')}: </span>
+                <strong className="font-semibold text-text-base">{summary.reduce((a, r) => a + r.qaApproved, 0)}</strong>
+              </span>
+              <span className="text-text-muted">&bull;</span>
+              <span>
+                <span className="text-text-muted">{translate('lineageStatQaRejected')}: </span>
+                <strong className="font-semibold text-text-base">{summary.reduce((a, r) => a + r.qaRejected, 0)}</strong>
+              </span>
+              <span className="text-text-muted">&bull;</span>
+              <span>
+                <span className="text-text-muted">{translate('lineageStatDeliverables')}: </span>
+                <strong className="font-semibold text-text-base">{summary.reduce((a, r) => a + r.deliverableCount, 0)}</strong>
+              </span>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleRefresh}
-              className="flex items-center gap-1.5 px-3 py-2 bg-inner border border-subtle hover:bg-card text-text-base text-xs font-semibold rounded-lg transition-colors cursor-pointer"
-            >
-              <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} /> {translate('refresh')}
-            </button>
-            {onBackToDashboard && (
-              <button
-                onClick={onBackToDashboard}
-                className="flex items-center gap-1.5 px-3 py-2 bg-inner border border-subtle hover:bg-card text-text-muted hover:text-text-base text-xs font-semibold rounded-lg transition-colors cursor-pointer"
-              >
-                <Undo2 size={13} /> {translate('backToDashboard')}
-              </button>
+        )}
+
+        {/* Main Panel Canvas */}
+        <div className="bg-card border border-subtle rounded-2xl shadow-md overflow-hidden flex flex-col min-h-0">
+          <div className="px-3 pt-2 border-b border-divider bg-card">
+            <UnderlineTabStrip
+              tabs={TABS}
+              active={activeTab}
+              onChange={setActiveTab}
+              tabLabel={(key) => translate(LINEAGE_TAB_LABELS[key])}
+            />
+          </div>
+
+          <div className="p-4 flex-1 flex flex-col min-h-0">
+            {/* Active tab panel */}
+            {activeTab === 'graph' && (
+              <GraphPanel
+                graph={graph}
+                subgrids={subgrids}
+                selectedSubgrid={selectedSubgrid}
+                onSelectSubgrid={handleSelectSubgrid}
+                selectedNodeId={selectedNodeId}
+                onSelectNode={setSelectedNodeId}
+                translate={translate}
+              />
+            )}
+            {activeTab === 'trace' && (
+              <TracePanel
+                datasets={datasets}
+                jobs={jobs}
+                aggregates={aggregates}
+                selectedNodeId={selectedNodeId}
+                onSelectNode={setSelectedNodeId}
+                onGoGraph={goGraph}
+                translate={translate}
+              />
+            )}
+            {activeTab === 'survey' && (
+              <SurveyPanel
+                aggregates={aggregates}
+                datasets={datasets}
+                onTraceSubgrid={handleTraceSubgrid}
+                translate={translate}
+              />
+            )}
+            {activeTab === 'registry' && (
+              <RegistryPanel
+                graph={graph}
+                subgrids={subgrids}
+                selectedSubgrid={selectedSubgrid}
+                onSelectSubgrid={handleSelectSubgrid}
+                onSelectNode={setSelectedNodeId}
+                onGoGraph={goGraph}
+                translate={translate}
+              />
             )}
           </div>
-        </div>
-
-        {/* Tabs */}
-        <div className="flex items-center gap-1 overflow-x-auto bg-card border border-subtle rounded-xl p-1">
-          {TABS.map((tab) => {
-            const Icon = tab.icon;
-            const active = activeTab === tab.key;
-            return (
-              <button key={tab.key} onClick={() => setActiveTab(tab.key)}
-                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wide transition-colors cursor-pointer whitespace-nowrap ${
-                  active
-                    ? 'bg-sky-500/20 text-sky-300 border border-sky-500/30'
-                    : 'text-text-muted hover:text-text-base border border-transparent'
-                }`}>
-                <Icon size={14} />
-                {translate(LINEAGE_TAB_LABELS[tab.key])}
-              </button>
-            );
-          })}
-        </div>
-
-        {isGuestUser && (
-          <div className="text-[11px] px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300">
-            {translate('lineageGuestNote')}
-          </div>
-        )}
-
-        {/* Summary strip */}
-        {summary.length > 0 && (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
-            <div className="bg-card border border-subtle rounded-xl p-3">
-              <div className="text-[9px] font-bold uppercase tracking-wider text-text-muted">{translate('lineageStatDatasets')}</div>
-              <div className="text-sm font-bold text-text-base">{summary.reduce((a, r) => a + r.datasetCount, 0)}</div>
-            </div>
-            <div className="bg-card border border-subtle rounded-xl p-3">
-              <div className="text-[9px] font-bold uppercase tracking-wider text-text-muted">{translate('lineageStatJobs')}</div>
-              <div className="text-sm font-bold text-text-base">{summary.reduce((a, r) => a + r.jobCount, 0)}</div>
-            </div>
-            <div className="bg-card border border-subtle rounded-xl p-3">
-              <div className="text-[9px] font-bold uppercase tracking-wider text-text-muted">{translate('lineageStatRawFrames')}</div>
-              <div className="text-sm font-bold text-text-base">{summary.reduce((a, r) => a + r.rawFrames, 0)}</div>
-            </div>
-            <div className="bg-card border border-subtle rounded-xl p-3">
-              <div className="text-[9px] font-bold uppercase tracking-wider text-text-muted">{translate('lineageStatQaOk')}</div>
-              <div className="text-sm font-bold text-emerald-300">{summary.reduce((a, r) => a + r.qaApproved, 0)}</div>
-            </div>
-            <div className="bg-card border border-subtle rounded-xl p-3">
-              <div className="text-[9px] font-bold uppercase tracking-wider text-text-muted">{translate('lineageStatQaRejected')}</div>
-              <div className="text-sm font-bold text-rose-300">{summary.reduce((a, r) => a + r.qaRejected, 0)}</div>
-            </div>
-            <div className="bg-card border border-subtle rounded-xl p-3">
-              <div className="text-[9px] font-bold uppercase tracking-wider text-text-muted">{translate('lineageStatDeliverables')}</div>
-              <div className="text-sm font-bold text-text-base">{summary.reduce((a, r) => a + r.deliverableCount, 0)}</div>
-            </div>
-          </div>
-        )}
-
-        {/* Active tab panel */}
-        <div className="bg-card border border-subtle rounded-xl p-4 min-h-0">
-          {activeTab === 'graph' && (
-            <GraphPanel
-              graph={graph}
-              subgrids={subgrids}
-              selectedSubgrid={selectedSubgrid}
-              onSelectSubgrid={handleSelectSubgrid}
-              selectedNodeId={selectedNodeId}
-              onSelectNode={setSelectedNodeId}
-              translate={translate}
-            />
-          )}
-          {activeTab === 'trace' && (
-            <TracePanel
-              datasets={datasets}
-              jobs={jobs}
-              aggregates={aggregates}
-              selectedNodeId={selectedNodeId}
-              onSelectNode={setSelectedNodeId}
-              onGoGraph={goGraph}
-              translate={translate}
-            />
-          )}
-          {activeTab === 'survey' && (
-            <SurveyPanel
-              aggregates={aggregates}
-              datasets={datasets}
-              onTraceSubgrid={handleTraceSubgrid}
-              translate={translate}
-            />
-          )}
-          {activeTab === 'registry' && (
-            <RegistryPanel
-              graph={graph}
-              subgrids={subgrids}
-              selectedSubgrid={selectedSubgrid}
-              onSelectSubgrid={handleSelectSubgrid}
-              onSelectNode={setSelectedNodeId}
-              onGoGraph={goGraph}
-              translate={translate}
-            />
-          )}
         </div>
       </div>
     </div>

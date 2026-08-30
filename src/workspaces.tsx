@@ -73,12 +73,6 @@ interface WorkspacePlaceholderProps {
 
 export function WorkspacePlaceholder({ workspace, translate }: WorkspacePlaceholderProps) {
   const Icon = workspace.icon;
-  const tagLabel =
-    workspace.tag === 'live'
-      ? translate('workspaceTagLive')
-      : workspace.tag === 'planned'
-        ? translate('workspaceTagPlanned')
-        : translate('workspaceTagReserved');
 
   return (
     <div className="flex-1 flex flex-col gap-3 min-h-0 overflow-y-auto animate-in fade-in zoom-in-98 duration-300 ease-out">
@@ -87,20 +81,7 @@ export function WorkspacePlaceholder({ workspace, translate }: WorkspacePlacehol
           <Icon size={22} />
         </div>
         <div className="min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <h2 className="text-sm font-bold text-text-base tracking-wide">{translate(workspace.labelKey)}</h2>
-            <span
-              className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider border ${
-                workspace.tag === 'planned'
-                  ? 'text-sky-300 border-sky-500/40 bg-sky-950/40'
-                  : workspace.tag === 'reserved'
-                    ? 'text-text-muted border-subtle/60 bg-accent-bg'
-                    : 'text-emerald-300 border-emerald-500/40 bg-emerald-950/40'
-              }`}
-            >
-              {tagLabel}
-            </span>
-          </div>
+          <h2 className="text-sm font-bold text-text-base tracking-wide">{translate(workspace.labelKey)}</h2>
           <p className="text-[11px] text-text-muted mt-0.5 leading-relaxed">{translate(workspace.descriptionKey)}</p>
         </div>
       </div>

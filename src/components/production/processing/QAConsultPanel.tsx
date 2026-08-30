@@ -185,7 +185,7 @@ export const QAConsultPanel: React.FC<QAConsultPanelProps> = ({
         <div className="flex items-center gap-2 text-text-base text-xs font-bold uppercase tracking-wide">
           <ListChecks size={15} className="text-sky-400" /> Acceptance QA review console
         </div>
-        <span className="text-[11px] text-text-muted font-mono">
+        <span className="text-[11px] text-text-muted font-sans">
           {stats.pending} pending · {stats.approved} approved · {stats.rejected} rejected
         </span>
       </div>
@@ -241,7 +241,7 @@ export const QAConsultPanel: React.FC<QAConsultPanelProps> = ({
                 {selected.job_type} · {selected.subgrid || '—'} · {selected.provider || '—'} · {isWorkerJobType(selected.job_type) ? 'NAS GPU Worker' : selected.provider || 'External'}
                 {selected.completed_at ? ` · completed ${formatDateTime(selected.completed_at)}` : ''}
               </div>
-              <div className="text-[11px] text-text-muted mt-1 font-mono">
+              <div className="text-[11px] text-text-muted mt-1 font-sans">
                 {selected.source_folder || '—'} → {selected.output_folder || '—'}
               </div>
               {selected.notes && <p className="text-[11px] text-text-muted mt-1">Notes: {selected.notes}</p>}
@@ -260,11 +260,11 @@ export const QAConsultPanel: React.FC<QAConsultPanelProps> = ({
                 <div className="h-[360px] rounded-lg overflow-hidden border border-subtle bg-black/40">
                   <PhotoSphereViewerComponent key={`qa-${selected.id}`} panoramaUrl={previewUrl} caption={`${selected.subgrid}-00001.jpg`} />
                 </div>
-                <p className="text-[10px] text-text-muted font-mono break-all mt-1">{previewUrl}</p>
+                <p className="text-[10px] text-text-muted font-sans break-all mt-1">{previewUrl}</p>
               </div>
             ) : (
               <p className="text-[11px] text-amber-300">
-                Configure <span className="font-mono">nasServerUrl</span> in Settings to enable the 360 preview of processed output.
+                Configure <span className="font-sans">nasServerUrl</span> in Settings to enable the 360 preview of processed output.
               </p>
             )}
 

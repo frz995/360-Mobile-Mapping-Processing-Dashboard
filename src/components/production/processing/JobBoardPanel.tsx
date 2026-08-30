@@ -359,7 +359,7 @@ export const JobBoardPanel: React.FC<JobBoardPanelProps> = ({
         <div className="flex items-center gap-2 text-text-base text-xs font-bold uppercase tracking-wide">
           <ListChecks size={15} className="text-sky-400" /> Global job board
         </div>
-        <span className="text-[11px] text-text-muted font-mono">{filtered.length}/{jobs.length} jobs · {activeCount} active</span>
+        <span className="text-[11px] text-text-muted font-sans">{filtered.length}/{jobs.length} jobs · {activeCount} active</span>
         <div className="flex-1" />
         {!isGuestUser && (
           <button onClick={() => setShowNewJob((v) => !v)}
@@ -504,12 +504,12 @@ export const JobBoardPanel: React.FC<JobBoardPanelProps> = ({
                     <td className="py-2 px-3">
                       <div className="flex items-center gap-2">
                         {typeof job.priority === 'number' && job.priority > 0 && (
-                          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-300">P{job.priority}</span>
+                          <span className="text-[10px] font-sans px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-300">P{job.priority}</span>
                         )}
                         <span className="text-text-base font-semibold">{job.name || job.job_type}</span>
                       </div>
-                      <div className="text-[10px] text-text-muted font-mono">{job.id ? job.id.slice(0, 8) : ''} · <span className="font-sans">{formatDateTime(job.created_at)}</span></div>
-                      {job.output_folder && <div className="text-[10px] text-text-muted font-mono truncate max-w-[220px]">→ {job.output_folder}</div>}
+                      <div className="text-[10px] text-text-muted font-sans">{job.id ? job.id.slice(0, 8) : ''} · <span className="font-sans">{formatDateTime(job.created_at)}</span></div>
+                      {job.output_folder && <div className="text-[10px] text-text-muted font-sans truncate max-w-[220px]">→ {job.output_folder}</div>}
                     </td>
                     <td className="py-2 px-3">
                       <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase tracking-wide ${meta.className}`}>{meta.label}</span>
@@ -528,9 +528,9 @@ export const JobBoardPanel: React.FC<JobBoardPanelProps> = ({
                           <div className={`h-full rounded-full ${job.status === 'FAILED' || job.status === 'REJECTED' ? 'bg-rose-400' : 'bg-sky-400'} transition-all duration-500`}
                             style={{ width: `${job.progress || 0}%` }} />
                         </div>
-                        <span className="text-[10px] text-text-muted font-mono w-14">{job.progress || 0}% · {formatEta(eta)}</span>
+                        <span className="text-[10px] text-text-muted font-sans w-14">{job.progress || 0}% · {formatEta(eta)}</span>
                       </div>
-                      {job.current_item && <div className="text-[10px] text-text-muted font-mono truncate max-w-[180px] mt-0.5">{job.current_item}</div>}
+                      {job.current_item && <div className="text-[10px] text-text-muted font-sans truncate max-w-[180px] mt-0.5">{job.current_item}</div>}
                     </td>
                     <td className="py-2 px-3">
                       <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border uppercase tracking-wide ${type.cls}`}>{type.label}</span>
@@ -538,10 +538,10 @@ export const JobBoardPanel: React.FC<JobBoardPanelProps> = ({
                         <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border uppercase tracking-wide ${extMeta.className}`}>{extMeta.label}</span>
                       </div>
                     </td>
-                    <td className="py-2 px-3 font-mono text-sky-300">{job.subgrid || '—'}</td>
+                    <td className="py-2 px-3 font-sans text-sky-300">{job.subgrid || '—'}</td>
                     <td className="py-2 px-3 text-text-muted">
                       {job.assigned_to || job.operator || '—'}
-                      {job.launch_command && <div className="text-[10px] font-mono text-text-muted truncate max-w-[160px]">⮞ {job.launch_command}</div>}
+                      {job.launch_command && <div className="text-[10px] font-sans text-text-muted truncate max-w-[160px]">⮞ {job.launch_command}</div>}
                     </td>
                     <td className="py-2 px-3 text-right">
                       {isGuestUser ? (
