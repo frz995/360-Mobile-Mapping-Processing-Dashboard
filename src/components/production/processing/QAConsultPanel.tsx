@@ -258,7 +258,7 @@ export const QAConsultPanel: React.FC<QAConsultPanelProps> = ({
                   <Eye size={12} className="text-sky-400" /> 360 preview · {selected.subgrid}-00001.jpg
                 </div>
                 <div className="h-[360px] rounded-lg overflow-hidden border border-subtle bg-black/40">
-                  <PhotoSphereViewerComponent key={`qa-${selected.id}`} panoramaUrl={previewUrl} caption={`${selected.subgrid}-00001.jpg`} />
+                  <PhotoSphereViewerComponent key={`qa-${selected.id}`} panoramaUrl={previewUrl} caption={`${selected.subgrid}-00001.jpg`} initialFov={projectSettings?.defaultFov} />
                 </div>
                 <p className="text-[10px] text-text-muted font-sans break-all mt-1">{previewUrl}</p>
               </div>

@@ -140,6 +140,7 @@ export const PreviewPanel: React.FC<PreviewPanelProps> = ({
                   key={`${viewerKey}-${side}-${selectedFile}`}
                   panoramaUrl={folderUrl()}
                   caption={selectedFile}
+                  initialFov={projectSettings?.defaultFov}
                 />
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-[11px] text-text-muted">No file selected</div>

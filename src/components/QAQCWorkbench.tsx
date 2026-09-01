@@ -334,7 +334,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
           defectCount = Math.min(defectCount, frameCount);
         }
 
-        const isPublished = d.publishToWebGIS === 'yes' || d.qaqcStatus === 'QA/QC Approved' || Boolean(d.isSyncedWithSupabase) || d.status === 'published';
+        const isPublished = d.publishToWebGIS === 'yes' || d.publishToUSVPRO === 'yes' || Boolean(d.isSyncedWithSupabase) || d.isFromSupabase === true;
         const isRecheck = d.publishToWebGIS === 'need to recheck';
         const publishStatus: 'published' | 'staging' | 'recheck' = isPublished ? 'published' : isRecheck ? 'recheck' : 'staging';
 
@@ -393,9 +393,8 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
         defectCount = Math.min(defectCount, frameCount);
       }
 
-      const isComplete = (b.status === 'Complete' || b.status === 'published') && b.publishToWebGIS !== 'in process' && b.publishToWebGIS !== 'need to recheck';
       const isRecheck = b.publishToWebGIS === 'need to recheck';
-      const isPublished = isComplete && !isRecheck;
+      const isPublished = (b.publishToWebGIS === 'yes' || b.publishToUSVPRO === 'yes' || Boolean(b.isSyncedWithSupabase) || b.isFromSupabase === true) && !isRecheck;
       const publishStatus: 'published' | 'staging' | 'recheck' = isPublished ? 'published' : isRecheck ? 'recheck' : 'staging';
 
       return {
@@ -794,19 +793,70 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
     try {
       const isSingleDailyRun = Boolean(selectedRunId);
 
-      // 1. Force Map to load exact normalized selectedStations
-      const formattedPoints = selectedStations.map((st, idx) => ({
-        id: st.point_id || st.filename || `station-${idx}`,
-        filename: st.filename,
-        image_url: st.image_url,
-        subgrid: activeSgNorm,
-        lat: st.latitude ?? st.lat,
-        lon: st.longitude ?? st.lng,
-        latitude: st.latitude ?? st.lat,
-        longitude: st.longitude ?? st.lng,
-        bearing: st.bearing ?? 0,
-        status: 'in process'
-      }));
+      // 2. Dispatch staged data first (Keeps Defect Colors) so the map view state below
+      //    can reuse the exact per-point published/defect colors.
+      const matchingRuns = selectedRunId
+        ? dailyData.filter(d => (getItemId(d) === selectedRunId || d.id === selectedRunId || (d as any)._id === selectedRunId))
+        : dailyData.filter(d => (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim() === activeSgNorm);
+
+      const runsToSend = matchingRuns.length > 0
+        ? matchingRuns
+        : dailyData.filter(d => (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim() === activeSgNorm);
+
+      let formattedItems: ReturnType<typeof formatTrackItem>[] = [];
+      if (runsToSend.length > 0) {
+        formattedItems = runsToSend.map(formatTrackItem);
+        mapIframeRef.current.contentWindow.postMessage({
+          type: 'SET_STAGED_DATA',
+          stagedItems: formattedItems,
+          isSingleRun: isSingleDailyRun,
+          runId: selectedRunId || ''
+        }, '*');
+      }
+
+      // Build a filename -> colored-point lookup from the formatted (staged) items so the
+      // direct SET_MAP_VIEW_STATE payload carries the same publish/defect colors. The webgis
+      // map renders mapViewState.points directly (skipping staged merges), so these points
+      // MUST carry the correct color or the track shows default amber.
+      const pointColorByKey = new Map<string, { color: string; status: string; isPublished: boolean }>();
+      formattedItems.forEach((item: any) => {
+        const pans = item.panoramas || item.points || [];
+        pans.forEach((p: any) => {
+          const fn = (p.filename || p.image_url || '').replace(/^.*[\\\/]/, '').toUpperCase().trim();
+          if (fn) {
+            pointColorByKey.set(fn, {
+              color: p.color || (p.isPublished ? '#10b981' : '#f59e0b'),
+              status: p.status || (p.isPublished ? 'yes' : 'in process'),
+              isPublished: Boolean(p.isPublished)
+            });
+          }
+        });
+      });
+
+      // 1. Force Map to load exact normalized selectedStations (with correct per-point colors)
+      const formattedPoints = selectedStations.map((st, idx) => {
+        const fnKey = (st.filename || st.image_url || '').replace(/^.*[\\\/]/, '').toUpperCase().trim();
+        const colorInfo = pointColorByKey.get(fnKey) || {
+          color: '#f59e0b',
+          status: 'in process',
+          isPublished: false
+        };
+        return {
+          id: st.point_id || st.filename || `station-${idx}`,
+          filename: st.filename,
+          image_url: st.image_url,
+          subgrid: activeSgNorm,
+          lat: st.latitude ?? st.lat,
+          lon: st.longitude ?? st.lng,
+          latitude: st.latitude ?? st.lat,
+          longitude: st.longitude ?? st.lng,
+          bearing: st.bearing ?? 0,
+          status: colorInfo.status,
+          isPublished: colorInfo.isPublished,
+          published: colorInfo.isPublished,
+          color: colorInfo.color
+        };
+      });
 
       mapIframeRef.current.contentWindow.postMessage({
         type: 'SET_MAP_VIEW_STATE',
@@ -822,25 +872,6 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
         runId: selectedRunId || '',
         isSingleRun: isSingleDailyRun
       }, '*');
-
-      // 2. Dispatch staged data (Keeps Defect Colors)
-      const matchingRuns = selectedRunId
-        ? dailyData.filter(d => (getItemId(d) === selectedRunId || d.id === selectedRunId || (d as any)._id === selectedRunId))
-        : dailyData.filter(d => (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim() === activeSgNorm);
-
-      const runsToSend = matchingRuns.length > 0
-        ? matchingRuns
-        : dailyData.filter(d => (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim() === activeSgNorm);
-
-      if (runsToSend.length > 0) {
-        const formattedItems = runsToSend.map(formatTrackItem);
-        mapIframeRef.current.contentWindow.postMessage({
-          type: 'SET_STAGED_DATA',
-          stagedItems: formattedItems,
-          isSingleRun: isSingleDailyRun,
-          runId: selectedRunId || ''
-        }, '*');
-      }
 
       // 3. Dispatch Live Defects
       mapIframeRef.current.contentWindow.postMessage({
@@ -864,6 +895,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
               point: {
                 filename: activeNode.filename,
                 image_url: activeNode.image_url,
+                config_url: activeNode.filename ? resolvePanoramaConfigUrl(activeNode.filename, projectSettings, activeSgNorm) : '',
                 subgrid: activeSgNorm,
                 lat: activeNode.latitude ?? activeNode.lat,
                 lon: activeNode.longitude ?? activeNode.lng,
@@ -952,6 +984,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
     const pointPayload = {
       filename: activeDisplayPointId,
       image_url: activeDisplayThumbnail,
+      config_url: activeDisplayPointId ? resolvePanoramaConfigUrl(activeDisplayPointId, projectSettings, targetSubgrid) : '',
       subgrid: targetSubgrid,
       lat: activeDisplayCoords.lat,
       lon: activeDisplayCoords.lng,
@@ -1695,7 +1728,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                       title={`Hardware Engine: ${getGpuHardwareName()}`}
                     >
                       <Zap size={10} className="fill-current text-emerald-400 shrink-0" />
-                      <span>GPU (WebGL)</span>
+                      <span>GPU</span>
                     </span>
                   ) : (
                     <span
@@ -1924,7 +1957,23 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                           : undefined
                       }
                       panoramaUrl={!shouldUseMultiRes ? activeDisplayThumbnail : undefined}
-                      onPositionChange={(_pos) => { }}
+                      initialYaw={activeDisplayBearing ?? 0}
+                      initialFov={projectSettings?.defaultFov}
+                      onPositionChange={(pos) => {
+                        // Live heading-cone sync: reflect 360 rotation onto the embedded WebGIS map.
+                        const yawDeg = Math.round(pos.yaw * 100) / 100;
+                        const pitchDeg = Math.round(pos.pitch * 100) / 100;
+                        if (mapIframeRef.current?.contentWindow) {
+                          try {
+                            mapIframeRef.current.contentWindow.postMessage({
+                              type: 'CAMERA_ROTATED',
+                              source: 'parent',
+                              yaw: yawDeg,
+                              pitch: pitchDeg
+                            }, '*');
+                          } catch (_) { }
+                        }
+                      }}
                       className="w-full h-full"
                     />
 

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { PhotoSphereViewerComponent, type PhotoSphereViewerHandle } from './components/PhotoSphereViewerComponent';
 import { WebGISHUDViewerOverlay } from './components/WebGISHUDViewerOverlay';
+import { setHeading } from './utils/headingStore';
 import {
   AlertTriangle,
   CheckCircle,
@@ -1125,6 +1126,39 @@ export const MapComponent = ({
         iframeRef.current.contentWindow.postMessage({ type: 'DIM_OUTSIDE_BOUNDARY', enabled: false }, '*');
         iframeRef.current.contentWindow.postMessage({ type: 'CLEAR_BOUNDARY_FOCUS' }, '*');
       }
+
+      // 4. Send Storage / Dynamic Bucket Resolution Config so the WebGIS can resolve its own
+      //    360 image URLs (single equirectangular OR multi-res tiles) against the active bucket.
+      iframeRef.current.contentWindow.postMessage({
+        type: 'SET_STORAGE_CONFIG',
+        storage: {
+          storageProvider: s.storageProvider || import.meta.env.VITE_STORAGE_PROVIDER || '',
+          imageStorageStrategy: s.imageStorageStrategy || 'single_equirectangular',
+          panoramaMode: s.panoramaMode || '',
+          multiResEnabled: s.imageStorageStrategy !== 'single_equirectangular',
+          supabaseUrl: s.supabaseUrl || import.meta.env.VITE_SUPABASE_URL || '',
+          supabaseBucket: s.supabaseBucket || 'MMS_PIC',
+          r2Domain: s.r2Domain || '',
+          r2PublicDomain: s.r2PublicDomain || '',
+          r2PublicUrl: s.r2PublicUrl || '',
+          customCdnUrl: s.customCdnUrl || '',
+          cloudStorageBaseUrl: s.cloudStorageBaseUrl || '',
+          customStorageUrl: s.customStorageUrl || '',
+          singleImagePathPattern: s.singleImagePathPattern || s.imageFormatPattern || '',
+          imageFormatPattern: s.imageFormatPattern || '',
+          multiResTilePattern: s.multiResTilePattern || s.tilePathPattern || '',
+          tilePathPattern: s.tilePathPattern || '',
+          multiResFallbackPattern: s.multiResFallbackPattern || '',
+          s3Bucket: s.s3Bucket || '',
+          s3Region: s.s3Region || 'ap-southeast-1',
+          gcsBucket: s.gcsBucket || '',
+          azureAccount: s.azureAccount || '',
+          azureContainer: s.azureContainer || '',
+          wasabiBucket: s.wasabiBucket || '',
+          wasabiRegion: s.wasabiRegion || 'us-east-1',
+          nasServerUrl: s.nasServerUrl || ''
+        }
+      }, '*');
     } catch (e) { }
   }, [effectiveSettings]);
 
@@ -1187,10 +1221,6 @@ export const MapComponent = ({
               <h2 className="text-text-base font-bold text-xs sm:text-sm tracking-tight">
                 GeoSphere 360 Operations Hub
               </h2>
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[9px] font-semibold">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                Live WebGIS
-              </span>
             </div>
             <p className="text-[10px] text-text-muted font-medium mt-0.5">
               Mobile Mapping & Spatial Asset Intelligence
@@ -6486,6 +6516,7 @@ const DataForm = ({
 export default function App() {
   const [currentPage, setCurrentPage] = useState<WorkspaceKey>(() => parseHashWorkspace());
   const dashboardPsvRef = useRef<PhotoSphereViewerHandle | null>(null);
+  const inspectionMapIframeRef = useRef<HTMLIFrameElement | null>(null);
   const [showLanding, setShowLanding] = useState<boolean>(true);
   const [authSession, setAuthSession] = useState<any>(null);
   const [pendingModule, setPendingModule] = useState<string | null>(null);
@@ -8657,7 +8688,6 @@ export default function App() {
       [itemKey]: { flags, answer, isLocked: locked }
     }));
   };
-  const lastTelemetryTimeRef = useRef<number>(0);
 
   useEffect(() => {
     const handlePanoramaMessage = (e: MessageEvent) => {
@@ -8682,6 +8712,7 @@ export default function App() {
           if (typeof pt.bearing === 'number' || typeof pt.heading === 'number') {
             const yaw = pt.bearing ?? pt.heading;
             setPanoramaTelemetry(prev => ({ ...prev, yaw }));
+            setHeading(yaw);
             // Orient the live 360 camera to the selected feature heading.
             if (typeof yaw === 'number' && isFinite(yaw)) {
               dashboardPsvRef.current?.setPosition({ yaw });
@@ -8726,7 +8757,6 @@ export default function App() {
         }
       } else if (e.data?.type === 'CAMERA_ROTATED' && e.data?.source === 'viewer') {
         const yawVal = Math.round((e.data.yaw ?? 0) * 100) / 100;
-        const pitchVal = Math.round((e.data.pitch ?? 2.5) * 10) / 10;
 
         // Broadcast CAMERA_ROTATED immediately at 60fps to all map iframes for zero-lag sonar rotation
         const mapIframes = document.querySelectorAll<HTMLIFrameElement>('iframe');
@@ -8741,11 +8771,8 @@ export default function App() {
           } catch (err) { }
         });
 
-        // Throttle React state HUD update to avoid re-rendering entire dashboard layout on every 60fps frame
-        if (Date.now() - lastTelemetryTimeRef.current > 100) {
-          lastTelemetryTimeRef.current = Date.now();
-          setPanoramaTelemetry(prev => ({ ...prev, yaw: yawVal, pitch: pitchVal }));
-        }
+        // Publish live heading to the store (HUD reads it without re-rendering App).
+        setHeading(yawVal);
       }
     };
     window.addEventListener('message', handlePanoramaMessage);
@@ -8882,18 +8909,7 @@ export default function App() {
               point: {
                 filename: def.fn,
                 image_url: imgUrl,
-                subgrid: nextSubgrid,
-                lat: def.lat,
-                lon: def.lng,
-                lng: def.lng,
-                bearing: 0
-              }
-            }, '*');
-            f.contentWindow?.postMessage({
-              type: 'MAP_POINT_SELECTED',
-              point: {
-                filename: def.fn,
-                image_url: imgUrl,
+                config_url: def.fn ? resolvePanoramaConfigUrl(def.fn, projectSettings, nextSubgrid) : '',
                 subgrid: nextSubgrid,
                 lat: def.lat,
                 lon: def.lng,
@@ -9085,6 +9101,7 @@ export default function App() {
           point: {
             filename: fn,
             image_url: imgUrl,
+            config_url: fn ? resolvePanoramaConfigUrl(fn, projectSettings, normSg) : '',
             subgrid: daily.subgrid,
             lat,
             lon: lng,
@@ -9099,6 +9116,7 @@ export default function App() {
           point: {
             filename: fn,
             image_url: imgUrl,
+            config_url: fn ? resolvePanoramaConfigUrl(fn, projectSettings, normSg) : '',
             subgrid: daily.subgrid,
             lat,
             lon: lng,
@@ -9314,7 +9332,7 @@ export default function App() {
       workspaceAnalyticsDesc: 'Road capture survey analytics: distance, coverage, GNSS quality, capture density and gaps.',
       workspaceReportsDesc: 'Automated report deliverables built from actual project data.',
       workspaceAdministrationDesc: 'Security, RBAC, audit and high-risk operation controls for administrators.',
-      workspaceCategoryCore: 'Core Workspaces',
+      workspaceCategoryCore: 'Dashboard',
       workspaceCategoryProduction: 'Production',
       workspaceCategoryInsights: 'Insights & Reporting',
       workspaceCategoryGovernance: 'Administration & Control',
@@ -10728,6 +10746,7 @@ export default function App() {
                       }
                       projectSettings={projectSettings}
                       defectsList={allKnownDefects}
+                      iframeRefCb={(el) => { inspectionMapIframeRef.current = el; }}
                     />
                   </div>
                 </div>
@@ -11410,13 +11429,29 @@ export default function App() {
                                   key={`pano-psv-${targetSubgrid}-${provider}`}
                                   configUrl={shouldUseMultiRes && dynamicConfigUrl ? dynamicConfigUrl : undefined}
                                   panoramaUrl={!shouldUseMultiRes ? dynamicPanoUrl : undefined}
+                                  initialYaw={panoramaTelemetry.yaw}
+                                  initialFov={projectSettings?.defaultFov}
                                   onPositionChange={(pos) => {
-                                    setPanoramaTelemetry(prev => ({
-                                      ...prev,
-                                      yaw: pos.yaw,
-                                      pitch: pos.pitch,
-                                      fov: pos.fov ?? prev.fov
-                                    }));
+                                    // Live heading-cone sync: broadcast 360 camera rotation to the
+                                    // embedded WebGIS map so its sonar/heading cone follows the view.
+                                    // NOTE: React state (panoramaTelemetry) is intentionally NOT updated
+                                    // here — rotation would re-render the entire dashboard. The live
+                                    // heading is published via the heading store (see
+                                    // PhotoSphereViewerComponent) for the HUD readout without App re-render.
+                                    const yawDeg = Math.round(pos.yaw * 100) / 100;
+                                    const pitchDeg = Math.round(pos.pitch * 100) / 100;
+                                    const cameraMsg = {
+                                      type: 'CAMERA_ROTATED',
+                                      source: 'parent',
+                                      yaw: yawDeg,
+                                      pitch: pitchDeg
+                                    };
+                                    const mapIframe = inspectionMapIframeRef.current;
+                                    if (mapIframe?.contentWindow) {
+                                      try {
+                                        mapIframe.contentWindow.postMessage(cameraMsg, '*');
+                                      } catch (_) { }
+                                    }
                                   }}
                                   className="w-full h-full"
                                 />
@@ -11499,6 +11534,7 @@ export default function App() {
                                 const pointPayload = {
                                   filename: nextFn,
                                   image_url: nextUrl,
+                                  config_url: nextFn ? resolvePanoramaConfigUrl(nextFn, projectSettings, cleanSg) : '',
                                   subgrid: cleanSg,
                                   lat: nextLat,
                                   lng: nextLng,
@@ -11836,20 +11872,24 @@ export default function App() {
               />
             </div>
           ) : currentPage === 'settings' ? (
-            <AdminSettingsView
-              projectSettings={projectSettings as any}
-              setProjectSettings={setProjectSettings as any}
-              themeMode={themeMode}
-              dailyData={dailyData}
-              batchLogs={batchLogs}
-              auditLogs={auditLogs}
-              onSaveAllSettings={handleSaveAllSettings}
-              onRefreshMap={handleRefreshMap}
-              onGeneratePdfReport={generateExecutivePdfReport}
-              authSession={authSession}
-              addNotification={addNotification}
-              addAuditLog={addAuditLog}
-            />
+            <div className="flex-1 flex flex-col min-h-0 overflow-hidden animate-in fade-in duration-500">
+              <div className="flex-1 min-h-0 overflow-y-auto">
+                <AdminSettingsView
+                  projectSettings={projectSettings as any}
+                  setProjectSettings={setProjectSettings as any}
+                  themeMode={themeMode}
+                  dailyData={dailyData}
+                  batchLogs={batchLogs}
+                  auditLogs={auditLogs}
+                  onSaveAllSettings={handleSaveAllSettings}
+                  onRefreshMap={handleRefreshMap}
+                  onGeneratePdfReport={generateExecutivePdfReport}
+                  authSession={authSession}
+                  addNotification={addNotification}
+                  addAuditLog={addAuditLog}
+                />
+              </div>
+            </div>
           ) : currentPage === 'production' ? (
             <ImageProductionWorkspace
               projectSettings={projectSettings}
@@ -12467,6 +12507,7 @@ export default function App() {
                 }
                 if (target.bearing !== undefined) {
                   setPanoramaTelemetry(prev => ({ ...prev, yaw: target.bearing || 0 }));
+                  setHeading(target.bearing || 0);
                 }
                 setFocusedSection('qa');
                 setTimeout(() => {

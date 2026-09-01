@@ -240,6 +240,93 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
     });
   }, [projectSettings]);
 
+  // Broadcast the active storage / dynamic bucket resolution config to all WebGIS map iframes,
+  // so they can resolve 360 image URLs (single equirectangular OR multi-res tiles) against the
+  // current bucket even if a point's resolved URL is stale or missing.
+  const broadcastStorageConfig = React.useCallback((storageOverride?: any) => {
+    const s = storageOverride && typeof storageOverride === 'object' ? storageOverride : (projectSettings || {});
+    const storageProvider = s.storageProvider || import.meta.env.VITE_STORAGE_PROVIDER || '';
+    const storageMessage = {
+      type: 'SET_STORAGE_CONFIG',
+      storage: {
+        storageProvider,
+        imageStorageStrategy: s.imageStorageStrategy || 'single_equirectangular',
+        panoramaMode: s.panoramaMode || '',
+        multiResEnabled: s.imageStorageStrategy !== 'single_equirectangular',
+        supabaseUrl: s.supabaseUrl || import.meta.env.VITE_SUPABASE_URL || '',
+        supabaseBucket: s.supabaseBucket || 'MMS_PIC',
+        r2Domain: s.r2Domain || '',
+        r2PublicDomain: s.r2PublicDomain || '',
+        r2PublicUrl: s.r2PublicUrl || '',
+        customCdnUrl: s.customCdnUrl || '',
+        cloudStorageBaseUrl: s.cloudStorageBaseUrl || '',
+        customStorageUrl: s.customStorageUrl || '',
+        singleImagePathPattern: s.singleImagePathPattern || s.imageFormatPattern || '',
+        imageFormatPattern: s.imageFormatPattern || '',
+        multiResTilePattern: s.multiResTilePattern || s.tilePathPattern || '',
+        tilePathPattern: s.tilePathPattern || '',
+        multiResFallbackPattern: s.multiResFallbackPattern || '',
+        s3Bucket: s.s3Bucket || '',
+        s3Region: s.s3Region || 'ap-southeast-1',
+        gcsBucket: s.gcsBucket || '',
+        azureAccount: s.azureAccount || '',
+        azureContainer: s.azureContainer || '',
+        wasabiBucket: s.wasabiBucket || '',
+        wasabiRegion: s.wasabiRegion || 'us-east-1',
+        nasServerUrl: s.nasServerUrl || ''
+      }
+    };
+    const iframes = document.querySelectorAll<HTMLIFrameElement>('iframe');
+    iframes.forEach(f => {
+      try {
+        f.contentWindow?.postMessage(storageMessage, '*');
+      } catch (e) { }
+    });
+    if (previewIframeRef.current?.contentWindow) {
+      try {
+        previewIframeRef.current.contentWindow.postMessage(storageMessage, '*');
+      } catch (e) { }
+    }
+  }, [projectSettings]);
+
+  // Push updated storage / dynamic bucket config to the WebGIS whenever any of the
+  // storage-related settings change (provider, domain, bucket, patterns, strategy...).
+  const storageTrack = React.useMemo(() => {
+    const ps = (projectSettings || {}) as any;
+    return [
+      ps.storageProvider,
+      ps.imageStorageStrategy,
+      ps.panoramaMode,
+      ps.supabaseUrl,
+      ps.supabaseBucket,
+      ps.r2Domain,
+      ps.r2PublicDomain,
+      ps.r2PublicUrl,
+      ps.customCdnUrl,
+      ps.cloudStorageBaseUrl,
+      ps.customStorageUrl,
+      ps.singleImagePathPattern,
+      ps.imageFormatPattern,
+      ps.multiResTilePattern,
+      ps.tilePathPattern,
+      ps.multiResFallbackPattern,
+      ps.s3Bucket,
+      ps.s3Region,
+      ps.gcsBucket,
+      ps.azureAccount,
+      ps.azureContainer,
+      ps.wasabiBucket,
+      ps.wasabiRegion,
+      ps.nasServerUrl
+    ];
+  }, [projectSettings]);
+
+  React.useEffect(() => {
+    if (!projectSettings) return;
+    broadcastStorageConfig(projectSettings);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, storageTrack);
+
   // Apply a selected Malaysia region as the committed Project Boundary.
   const handleApplyRegion = React.useCallback((regionId: string) => {
     const region = MALAYSIA_REGIONS.find((r) => r.id === regionId);
@@ -447,8 +534,8 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
   const inputBg = themeMode === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-card border-subtle text-text-base';
 
   return (
-    <div className={`flex-1 flex flex-col min-h-0 overflow-hidden animate-in fade-in duration-500 ${themeMode === 'light' ? 'text-slate-900' : 'text-text-base'}`}>
-      <div className="flex-1 flex flex-col gap-3 min-h-0 overflow-y-auto p-4">
+    <div className={`flex-1 flex flex-col min-h-0 overflow-y-auto animate-in fade-in duration-500 ${themeMode === 'light' ? 'text-slate-900' : 'text-text-base'}`}>
+      <div className="flex-1 flex flex-col gap-3 min-h-0 p-4">
 
         {/* Header */}
         <div className="px-1">
@@ -2136,10 +2223,6 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                             <h4 className={`font-bold text-xs tracking-tight ${themeMode === 'light' ? 'text-slate-900' : 'text-text-base'}`}>
                               GeoSphere 360 Operations Hub
                             </h4>
-                            <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[8px] font-semibold">
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                              Live WebGIS
-                            </span>
                           </div>
                           <p className={`text-[9px] font-medium ${themeMode === 'light' ? 'text-text-muted' : 'text-text-muted'}`}>
                             Mobile Mapping & Spatial Asset Intelligence

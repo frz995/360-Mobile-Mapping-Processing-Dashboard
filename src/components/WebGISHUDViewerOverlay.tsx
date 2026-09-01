@@ -10,6 +10,7 @@ import {
     ZoomOut,
     Maximize2,
 } from 'lucide-react';
+import { getHeading, subscribeHeading } from '../utils/headingStore';
 
 export interface WebGISHUDOverlayProps {
     imageName: string;
@@ -44,6 +45,17 @@ export const WebGISHUDViewerOverlay: FC<WebGISHUDOverlayProps> = ({
 }) => {
     const [isPlaying, setIsPlaying] = useState(false);
     const [isTrackLocked, setIsTrackLocked] = useState(true);
+
+    // Live heading from the shared store (updates without re-rendering the parent App).
+    const [liveHeading, setLiveHeading] = useState<number>(() => (
+        typeof heading === 'number' && isFinite(heading) ? heading : getHeading()
+    ));
+    useEffect(() => {
+        if (typeof heading === 'number' && isFinite(heading) && getHeading() === 0) {
+            setLiveHeading(heading);
+        }
+        return subscribeHeading((h) => setLiveHeading(h));
+    }, [heading]);
 
     // Playback timer loop
     useEffect(() => {
@@ -254,7 +266,7 @@ export const WebGISHUDViewerOverlay: FC<WebGISHUDOverlayProps> = ({
                     >
                         <Compass className="w-2.5 h-2.5 text-amber-400 shrink-0" />
                         <span style={{ color: 'var(--text-primary)' }} className="font-bold whitespace-nowrap">
-                            {Math.round(heading)}°
+                            {Math.round(liveHeading)}°
                         </span>
                         <span style={{ color: isTrackLocked ? 'var(--accent)' : 'var(--text-muted)' }} className="text-[8px] font-semibold">
                             {isTrackLocked ? 'Lock' : 'Free'}
