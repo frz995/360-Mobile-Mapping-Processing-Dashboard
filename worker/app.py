@@ -20,6 +20,9 @@ from masking import apply_mask_pipeline, derive_mask
 from runner import JobRegistry
 import sync as syncmod
 
+from dotenv import load_dotenv
+load_dotenv()
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logger = logging.getLogger("nas-worker")
 
@@ -59,7 +62,7 @@ def _startup() -> None:
 
 class JobSubmit(BaseModel):
     job_id: Optional[str] = None
-    job_type: str = "ENHANCE"  # ENHANCE | MASK | STITCH | BLUR | QAQC | REPORT | EXPORT | AI_DETECT (only ENHANCE/MASK/AI_DETECT processed here)
+    job_type: str = "ENHANCE"  # ENHANCE | MASK | BLUR | STITCH | QAQC | REPORT | EXPORT | AI_DETECT (only ENHANCE/MASK/BLUR/AI_DETECT/QAQC processed here)
     source_folder: str
     output_folder: str
     subgrid: Optional[str] = None
@@ -88,7 +91,7 @@ def submit_job(body: JobSubmit, authorization: Optional[str] = None) -> dict:
     _guard(authorization)
     if registry is None:
         raise HTTPException(status_code=503, detail="Worker still initialising.")
-    if body.job_type not in ("ENHANCE", "MASK", "AI_DETECT", "QAQC"):
+    if body.job_type not in ("ENHANCE", "MASK", "BLUR", "AI_DETECT", "QAQC"):
         # Externally-processed job types are tracked via the dashboard only.
         return {"ok": True, "message": f"Job type {body.job_type} is not executed by this worker; tracked dashboard-side."}
 

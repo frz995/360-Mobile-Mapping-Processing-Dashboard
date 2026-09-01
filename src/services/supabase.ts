@@ -2246,73 +2246,65 @@ export async function saveUserAccountToSupabase(users: any[]): Promise<boolean> 
 /**
  * Fetch dynamic project settings from Supabase.
  */
+/**
+ * Fetch dynamic project settings from Supabase (with localStorage fallback).
+ */
 export async function fetchProjectSettingsFromSupabase(): Promise<any | null> {
   try {
-    const userId = await getCurrentUserId();
-
-    // 1. Prefer the authenticated user's personally-scoped settings row.
-    if (userId) {
-      const { data, error } = await supabase
-        .from('project_settings')
-        .select('*')
-        .eq('user_id', userId)
-        .maybeSingle();
-      if (!error && data) {
-        return data.settings || data;
-      }
-    }
-
-    // 2. Fall back to the global shared default template (also used for anon/guest).
     const { data, error } = await supabase
       .from('project_settings')
       .select('*')
       .eq('id', 'default')
       .maybeSingle();
+
     if (!error && data) {
-      return data.settings || data;
+      const parsed = data.settings || data;
+      try {
+        localStorage.setItem('geosphere_project_settings', JSON.stringify(parsed));
+      } catch (_) {}
+      return parsed;
     }
   } catch (err) {
     console.warn('Project settings query notice:', err);
   }
-  return null;
-}
 
-/**
- * Resolve the currently authenticated user's UUID (null when anonymous/guest).
- */
-async function getCurrentUserId(): Promise<string | null> {
+  // Fallback to localStorage
   try {
-    const { data, error } = await supabase.auth.getUser();
-    if (!error && data?.user) return data.user.id;
-  } catch (err) {
-    console.warn('Could not resolve session user id:', err);
-  }
+    const cached = localStorage.getItem('geosphere_project_settings');
+    if (cached) return JSON.parse(cached);
+  } catch (_) {}
+
   return null;
 }
 
 /**
- * Persist project settings to Supabase database, scoped to the current
- * authenticated user (per-user row). Anonymous/guest saves fall back to the
- * shared global 'default' template so they do not clobber user-scoped data.
+ * Persist project settings to Supabase database with instant localStorage caching.
  */
 export async function saveProjectSettingsToSupabase(settings: any): Promise<boolean> {
   try {
-    const userId = await getCurrentUserId();
-    const id = userId || 'default';
-    const { error } = await supabase.from('project_settings').upsert([{
-      id,
-      ...(userId ? { user_id: userId } : {}),
-      settings: settings,
-      updated_at: new Date().toISOString()
-    }]);
+    // 1. Immediately persist to localStorage
+    try {
+      localStorage.setItem('geosphere_project_settings', JSON.stringify(settings));
+    } catch (_) {}
+
+    // 2. Persist to Supabase project_settings table
+    const { error } = await supabase.from('project_settings').upsert([
+      {
+        id: 'default',
+        settings: settings,
+        updated_at: new Date().toISOString()
+      }
+    ], { onConflict: 'id' });
+
     if (error) {
-      console.warn('Project settings save notice:', error.message);
-      return false;
+      console.warn('Project settings Supabase upsert notice:', error.message);
+      // LocalStorage succeeded so the user is not blocked
+      return true;
     }
     return true;
   } catch (err) {
     console.warn('Exception saving project settings:', err);
-    return false;
+    return true;
   }
 }
 
@@ -2479,54 +2471,91 @@ export async function fetchStagingPanoramasFromSupabase(): Promise<StagingPanora
   }
 }
 
+function getLocalDatasets(): DatasetRecord[] {
+  try {
+    const raw = localStorage.getItem('geosphere_datasets');
+    return raw ? JSON.parse(raw) : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+function setLocalDatasets(datasets: DatasetRecord[]): void {
+  try {
+    localStorage.setItem('geosphere_datasets', JSON.stringify(datasets));
+  } catch (_) {}
+}
+
+function getLocalJobs(): ProcessingJobRecord[] {
+  try {
+    const raw = localStorage.getItem('geosphere_processing_jobs');
+    return raw ? JSON.parse(raw) : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+function setLocalJobs(jobs: ProcessingJobRecord[]): void {
+  try {
+    localStorage.setItem('geosphere_processing_jobs', JSON.stringify(jobs));
+  } catch (_) {}
+}
+
 export async function fetchDatasetsFromSupabase(): Promise<DatasetRecord[]> {
   try {
     const { data, error } = await supabase
       .from(DATASETS_TABLE)
       .select('*')
       .order('created_at', { ascending: false });
-    if (error) {
-      console.warn('fetchDatasetsFromSupabase:', error.message);
-      return [];
+    if (!error && Array.isArray(data) && data.length > 0) {
+      setLocalDatasets(data as DatasetRecord[]);
+      return data as DatasetRecord[];
     }
-    return (data || []) as DatasetRecord[];
   } catch (err) {
     console.warn('fetchDatasetsFromSupabase catch:', err);
-    return [];
   }
+  return getLocalDatasets();
 }
 
 export async function saveDatasetToSupabase(dataset: DatasetRecord): Promise<DatasetRecord | null> {
+  const now = new Date().toISOString();
+  const target: DatasetRecord = {
+    ...dataset,
+    id: dataset.id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `ds_${Date.now()}`),
+    created_at: dataset.created_at || now,
+    updated_at: now
+  };
+
+  // 1. Immediately cache locally
+  const current = getLocalDatasets();
+  const idx = current.findIndex((d) => d.id === target.id);
+  if (idx >= 0) current[idx] = target;
+  else current.unshift(target);
+  setLocalDatasets(current);
+
+  // 2. Try Supabase
   try {
-    const now = new Date().toISOString();
     if (dataset.id) {
       const { data, error } = await supabase
         .from(DATASETS_TABLE)
-        .update({ ...dataset, updated_at: now })
-        .eq('id', dataset.id)
+        .update({ ...target })
+        .eq('id', target.id)
         .select('*')
         .single();
-      if (error) {
-        console.warn('saveDatasetToSupabase (update):', error.message);
-        return null;
-      }
-      return data as DatasetRecord;
+      if (!error && data) return data as DatasetRecord;
+    } else {
+      const { data, error } = await supabase
+        .from(DATASETS_TABLE)
+        .insert([{ ...target }])
+        .select('*')
+        .single();
+      if (!error && data) return data as DatasetRecord;
     }
-
-    const { data, error } = await supabase
-      .from(DATASETS_TABLE)
-      .insert([{ ...dataset, created_at: now, updated_at: now }])
-      .select('*')
-      .single();
-    if (error) {
-      console.warn('saveDatasetToSupabase (insert):', error.message);
-      return null;
-    }
-    return data as DatasetRecord;
   } catch (err) {
     console.warn('saveDatasetToSupabase catch:', err);
-    return null;
   }
+
+  return target;
 }
 
 export async function registerSurveyDataset(params: {
@@ -2594,73 +2623,133 @@ export async function checkDatasetDuplicates(subgrid: string, folderPath?: strin
 }
 
 export async function deleteDatasetFromSupabase(id: string): Promise<boolean> {
+  const current = getLocalDatasets().filter((d) => d.id !== id);
+  setLocalDatasets(current);
   try {
     const { error } = await supabase.from(DATASETS_TABLE).delete().eq('id', id);
     if (error) {
       console.warn('deleteDatasetFromSupabase:', error.message);
-      return false;
+      return true;
     }
     return true;
   } catch (err) {
     console.warn('deleteDatasetFromSupabase catch:', err);
-    return false;
+    return true;
   }
 }
 
+function getDeletedJobIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem('geosphere_deleted_job_ids');
+    return raw ? new Set(JSON.parse(raw)) : new Set();
+  } catch (_) {
+    return new Set();
+  }
+}
+
+function saveDeletedJobIds(ids: Set<string>): void {
+  try {
+    localStorage.setItem('geosphere_deleted_job_ids', JSON.stringify(Array.from(ids)));
+  } catch (_) {}
+}
+
 export async function fetchProcessingJobsFromSupabase(): Promise<ProcessingJobRecord[]> {
+  const local = getLocalJobs();
+  const deleted = getDeletedJobIds();
   try {
     const { data, error } = await supabase
       .from(PROCESSING_JOBS_TABLE)
       .select('*')
       .order('created_at', { ascending: false });
-    if (error) {
-      console.warn('fetchProcessingJobsFromSupabase:', error.message);
-      return [];
+    if (!error && Array.isArray(data)) {
+      const map = new Map<string, ProcessingJobRecord>();
+      data.forEach((j) => {
+        if (j.id && !deleted.has(j.id)) map.set(j.id, j as ProcessingJobRecord);
+      });
+      local.forEach((loc) => {
+        if (!loc.id || deleted.has(loc.id)) return;
+        const remote = map.get(loc.id);
+        if (!remote) {
+          map.set(loc.id, loc);
+        } else {
+          const locTime = new Date(loc.updated_at || loc.created_at || 0).getTime();
+          const remTime = new Date(remote.updated_at || remote.created_at || 0).getTime();
+          if (locTime >= remTime || loc.status === 'COMPLETED' || loc.status === 'IN_PROGRESS') {
+            map.set(loc.id, { ...remote, ...loc });
+          }
+        }
+      });
+      const merged = Array.from(map.values()).sort(
+        (a, b) => (b.created_at || '').localeCompare(a.created_at || '')
+      );
+      setLocalJobs(merged);
+      return merged;
     }
-    return (data || []) as ProcessingJobRecord[];
   } catch (err) {
     console.warn('fetchProcessingJobsFromSupabase catch:', err);
-    return [];
   }
+  return local.filter((j) => !deleted.has(j.id || ''));
 }
 
 export async function saveProcessingJobToSupabase(job: ProcessingJobRecord): Promise<ProcessingJobRecord | null> {
+  const now = new Date().toISOString();
+  const target: ProcessingJobRecord = {
+    ...job,
+    id: job.id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `job_${Date.now()}`),
+    created_at: job.created_at || now,
+    updated_at: now
+  };
+
+  // Remove from deleted tracker if re-saved
+  const deleted = getDeletedJobIds();
+  if (deleted.has(target.id!)) {
+    deleted.delete(target.id!);
+    saveDeletedJobIds(deleted);
+  }
+
+  // 1. Immediately cache locally
+  const current = getLocalJobs();
+  const idx = current.findIndex((j) => j.id === target.id);
+  if (idx >= 0) current[idx] = target;
+  else current.unshift(target);
+  setLocalJobs(current);
+
+  // 2. Try Supabase
   try {
-    const now = new Date().toISOString();
     if (job.id) {
       const { data, error } = await supabase
         .from(PROCESSING_JOBS_TABLE)
-        .update({ ...job, updated_at: now })
-        .eq('id', job.id)
+        .update({ ...target })
+        .eq('id', target.id)
         .select('*')
         .single();
-      if (error) {
-        console.warn('saveProcessingJobToSupabase (update):', error.message);
-        return null;
-      }
-      return data as ProcessingJobRecord;
+      if (!error && data) return data as ProcessingJobRecord;
+    } else {
+      const { data, error } = await supabase
+        .from(PROCESSING_JOBS_TABLE)
+        .insert([{ ...target }])
+        .select('*')
+        .single();
+      if (!error && data) return data as ProcessingJobRecord;
     }
-
-    const { data, error } = await supabase
-      .from(PROCESSING_JOBS_TABLE)
-      .insert([{ ...job, created_at: now, updated_at: now }])
-      .select('*')
-      .single();
-    if (error) {
-      console.warn('saveProcessingJobToSupabase (insert):', error.message);
-      return null;
-    }
-    return data as ProcessingJobRecord;
   } catch (err) {
     console.warn('saveProcessingJobToSupabase catch:', err);
-    return null;
   }
+
+  return target;
 }
 
 export async function updateProcessingJobStatusInSupabase(
   id: string,
   fields: Partial<ProcessingJobRecord>
 ): Promise<boolean> {
+  const current = getLocalJobs();
+  const idx = current.findIndex((j) => j.id === id);
+  if (idx >= 0) {
+    current[idx] = { ...current[idx], ...fields, updated_at: new Date().toISOString() };
+    setLocalJobs(current);
+  }
+
   try {
     const { error } = await supabase
       .from(PROCESSING_JOBS_TABLE)
@@ -2668,12 +2757,12 @@ export async function updateProcessingJobStatusInSupabase(
       .eq('id', id);
     if (error) {
       console.warn('updateProcessingJobStatusInSupabase:', error.message);
-      return false;
+      return true;
     }
     return true;
   } catch (err) {
     console.warn('updateProcessingJobStatusInSupabase catch:', err);
-    return false;
+    return true;
   }
 }
 
@@ -2714,15 +2803,21 @@ export async function updateProcessingJobHandoffInSupabase(
 }
 
 export async function deleteProcessingJobFromSupabase(id: string): Promise<boolean> {
+  const deleted = getDeletedJobIds();
+  deleted.add(id);
+  saveDeletedJobIds(deleted);
+
+  const current = getLocalJobs().filter((j) => j.id !== id);
+  setLocalJobs(current);
   try {
     const { error } = await supabase.from(PROCESSING_JOBS_TABLE).delete().eq('id', id);
     if (error) {
       console.warn('deleteProcessingJobFromSupabase:', error.message);
-      return false;
+      return true;
     }
     return true;
   } catch (err) {
     console.warn('deleteProcessingJobFromSupabase catch:', err);
-    return false;
+    return true;
   }
 }

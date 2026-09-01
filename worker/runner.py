@@ -15,6 +15,7 @@ import cv2
 
 from enhancement import apply_enhancement
 from masking import apply_mask_pipeline
+from blur import apply_privacy_blur
 
 if TYPE_CHECKING:
     import sync as syncmod
@@ -24,7 +25,31 @@ LOGGER = logging.getLogger("nas-worker.runner")
 IMAGE_EXTS = {".jpg", ".jpeg", ".png"}
 
 
-def _list_source(source_dir: str, subgrid: str | None, total_hint: int) -> list[str]:
+def _list_source(source_dir: str, subgrid: str | None, total_hint: int, recursive: bool = False) -> list[str]:
+    if recursive:
+        # Privacy blur ingests the whole date/camera tree (mirrors Privacy Keeper).
+        # Preserve relative subpaths (e.g. "1/....jpg", "2/....jpg") so the output
+        # tree mirrors the source tree.
+        files: list[str] = []
+        for root, _dirs, names in os.walk(source_dir):
+            for f in sorted(names):
+                if os.path.splitext(f)[1].lower() not in IMAGE_EXTS:
+                    continue
+                full = os.path.join(root, f)
+                rel = os.path.relpath(full, source_dir).replace("\\", "/")
+                if subgrid:
+                    prefix = subgrid.upper().replace("-", "")
+                    if not os.path.basename(f).upper().replace("-", "").startswith(prefix):
+                        continue
+                files.append((rel, full))
+        if subgrid:
+            files.sort(key=lambda t: t[0])
+        else:
+            files.sort(key=lambda t: t[0])
+        if total_hint and len(files) < total_hint:
+            LOGGER.warning("Source folder has %s frames vs %s expected.", len(files), total_hint)
+        return files
+
     files = [
         os.path.join(source_dir, f)
         for f in sorted(os.listdir(source_dir))
@@ -121,7 +146,8 @@ class JobRegistry:
         push = lambda **kw: (self.update(job_id, **kw), syncer and syncer.push(job_id, kw))
 
         try:
-            files = _list_source(source_dir, job.get("subgrid"), job.get("total_items") or 0)
+            recursive = bool((settings or {}).get("recurse") or job_type == "BLUR")
+            files = _list_source(source_dir, job.get("subgrid"), job.get("total_items") or 0, recursive)
             total = job["total_items"] or len(files)
             push(status="IN_PROGRESS", total_items=total, progress=1, message="processing", started_at=_now())
         except OSError as exc:
@@ -175,26 +201,36 @@ class JobRegistry:
 
     @staticmethod
     def _process_one(job_id: str, src_path: str, output_dir: str, job_type: str, settings: dict) -> tuple[bool, str, str | None]:
-        name = os.path.basename(src_path)
+        # Recursive entries are (rel, full) tuples; flat entries are plain paths.
+        if isinstance(src_path, tuple):
+            rel, full = src_path
+            display = os.path.basename(full)
+        else:
+            rel, full = os.path.basename(src_path), src_path
+            display = rel
         try:
-            img = cv2.imread(src_path, cv2.IMREAD_COLOR)
+            img = cv2.imread(full, cv2.IMREAD_COLOR)
             if img is None:
-                return False, name, "unreadable image"
+                return False, display, "unreadable image"
+            if job_type == "BLUR":
+                img = apply_privacy_blur(img, settings.get("blur") or {})
             if job_type == "MASK" or "mask" in settings or (job_type == "ENHANCE" and settings.get("mask")):
                 img = apply_mask_pipeline(img, settings)
             if job_type == "ENHANCE" or settings.get("enhance"):
                 img = apply_enhancement(img, settings.get("enhance") or {})
-            ext = os.path.splitext(name)[1].lower()
+            ext = os.path.splitext(rel)[1].lower()
             if ext not in IMAGE_EXTS:
                 ext = ".jpg"
+            out_path = os.path.normpath(os.path.join(output_dir, rel))
+            os.makedirs(os.path.dirname(out_path), exist_ok=True)
             quality = int(settings.get("jpegQuality", 92))
-            ok = cv2.imwrite(os.path.join(output_dir, name), img, [int(cv2.IMWRITE_JPEG_QUALITY), quality])
+            ok = cv2.imwrite(out_path, img, [int(cv2.IMWRITE_JPEG_QUALITY), quality])
             if ok:
-                return True, name, None
-            return False, name, "write failed"
+                return True, display, None
+            return False, display, "write failed"
         except Exception as exc:  # noqa: BLE001
-            LOGGER.warning("frame failed %s: %s", name, exc)
-            return False, name, str(exc)
+            LOGGER.warning("frame failed %s: %s", display, exc)
+            return False, display, str(exc)
 
 
 def _now() -> str:

@@ -13,10 +13,10 @@ export const PROCESSING_TAB_LABELS: Record<string, string> = {
 };
 
 /** Worker-executable job types (NAS GPU Worker actually processes these). */
-export const WORKER_JOB_TYPES = ['ENHANCE', 'MASK'] as const;
+export const WORKER_JOB_TYPES = ['ENHANCE', 'MASK', 'BLUR'] as const;
 
 /** Job types handled via external-PC handoff orchestration. */
-export const EXTERNAL_JOB_TYPES = ['STITCH', 'BLUR', 'QAQC', 'REPORT', 'EXPORT'] as const;
+export const EXTERNAL_JOB_TYPES = ['STITCH', 'QAQC', 'REPORT', 'EXPORT'] as const;
 
 /** Reservved/tracked-only job types. */
 export const TRACKED_JOB_TYPES = ['AI_DETECT'] as const;
@@ -40,8 +40,8 @@ export function isWorkerJobType(jobType?: string): boolean {
 
 export function jobTypeDescription(jobType: string): string {
   const map: Record<string, string> = {
-    STITCH: 'External stitcher (e.g. Luminance HDR / PTGui) → out/frames',
-    BLUR: 'External blur pipeline (license plates / faces)',
+    STITCH: 'External stitcher (Creator 6 / PTGui) → out/frames',
+    BLUR: 'NAS GPU Worker — cascade face/plate privacy blur',
     ENHANCE: 'NAS GPU Worker — deterministic brightness/contrast/sharp/sat/denoise',
     MASK: 'NAS GPU Worker — generative-fill car-roof removal (LaMa)',
     QAQC: 'QA/QC review & decision (approve / reject with notes)',

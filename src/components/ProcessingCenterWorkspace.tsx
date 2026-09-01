@@ -136,6 +136,7 @@ export const ProcessingCenterWorkspace: React.FC<ProcessingCenterWorkspaceProps>
                 projectSettings={projectSettings}
                 isGuestUser={isGuestUser}
                 onRefreshJobs={refreshJobs}
+                onRefreshDatasets={refreshDatasets}
                 onAddNotification={addNotification}
                 onAddAuditLog={addAuditLog}
                 userLabel={userLabel}

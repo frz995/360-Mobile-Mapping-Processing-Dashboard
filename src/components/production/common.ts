@@ -33,7 +33,7 @@ export function getProductionApiSettings(
   };
 }
 
-/** Build a preview URL for a NAS folder + filename using the resolved nasServerUrl. */
+/** Build a preview URL for a NAS folder + filename using the resolved nasServerUrl / local worker. */
 export function productionNasUrlFor(
   projectSettings: ExtendedProjectSettings,
   folder?: string,
@@ -41,14 +41,23 @@ export function productionNasUrlFor(
 ): string {
   const base = (
     projectSettings?.nasServerUrl ||
+    projectSettings?.productionApiUrl ||
     import.meta.env.VITE_NAS_SERVER_URL ||
-    ''
+    import.meta.env.VITE_PRODUCTION_API_URL ||
+    'http://localhost:8000'
   ).replace(/\/+$/, '');
+
   const pfx = [folder || '', filename || '']
     .filter(Boolean)
     .join('/')
     .replace(/^\/+/, '');
-  return base ? `${base}/${pfx}` : pfx;
+
+  if (!pfx) return '';
+
+  if (base.endsWith('/api/images')) {
+    return `${base}/${pfx}`;
+  }
+  return `${base}/api/images/${pfx}`;
 }
 
 export function formatBytes(bytes?: number): string {
