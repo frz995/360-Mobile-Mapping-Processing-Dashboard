@@ -12,6 +12,7 @@ import { jobStatusMeta } from '../../../utils/productionQueue';
 import { formatDateTime, productionNasUrlFor } from '../common';
 import { isWorkerJobType } from './processingCommon';
 import { createNextVersion } from '../../../utils/datasetVersioning';
+import { extractCanonicalSubgrid } from '../../../utils/datasetLineage';
 
 export interface QAConsultPanelProps {
   jobs: ProcessingJobRecord[];
@@ -70,13 +71,14 @@ export const QAConsultPanel: React.FC<QAConsultPanelProps> = ({
     ? datasets.find(
         (d) =>
           d.dataset_type === 'PROCESSED' &&
-          d.subgrid === selected!.subgrid
+          extractCanonicalSubgrid(d.subgrid) === extractCanonicalSubgrid(selected!.subgrid)
       )
     : null;
 
-  const previewFilename = `${selected?.subgrid || 'N93E70'}-0001.jpg`;
+  const canonicalSg = extractCanonicalSubgrid(selected?.subgrid);
+  const previewFilename = canonicalSg ? `${canonicalSg}-0001.jpg` : '';
   const previewUrl =
-    selected && !isGuestUser && selected.job_type !== 'BLUR'
+    selected && !isGuestUser && selected.job_type !== 'BLUR' && previewFilename
       ? productionNasUrlFor(
           projectSettings,
           selected.output_folder,

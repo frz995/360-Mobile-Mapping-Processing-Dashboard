@@ -34,6 +34,7 @@ import {
   jobStatusMeta
 } from '../../../utils/productionQueue';
 import { formatDateTime } from '../common';
+import { extractCanonicalSubgrid } from '../../../utils/datasetLineage';
 import { validateFolderForImport } from '../../../utils/processedOutputValidation';
 import {
   ALL_JOB_TYPES,
@@ -68,12 +69,12 @@ interface NewJobDraft {
 
 const EMPTY_DRAFT: NewJobDraft = {
   name: '',
-  job_type: 'STITCH',
-  source_folder: 'RAW',
-  output_folder: 'stitchblur',
+  job_type: 'BLUR',
+  source_folder: '',
+  output_folder: '',
   subgrid: '',
-  total_items: 500,
-  provider: 'External PC',
+  total_items: 0,
+  provider: '4-PC Workstation Pipeline',
   software_version: ''
 };
 
@@ -81,17 +82,10 @@ const INPUT_CLASS =
   'w-full bg-inner border border-subtle rounded-lg px-3 py-2 text-xs text-text-base outline-none focus:border-sky-500/60 placeholder:text-text-muted';
 
 function typeChip(jobType: string): { label: string; cls: string } {
-  const map: Record<string, string> = {
-    STITCH: 'text-sky-300 border-sky-500/40 bg-sky-950/40',
-    BLUR: 'text-indigo-300 border-indigo-500/40 bg-indigo-950/40',
-    ENHANCE: 'text-emerald-300 border-emerald-500/40 bg-emerald-950/40',
-    MASK: 'text-sky-300 border-sky-500/40 bg-sky-950/40',
-    QAQC: 'text-amber-300 border-amber-500/40 bg-amber-950/40',
-    REPORT: 'text-teal-300 border-teal-500/40 bg-teal-950/40',
-    EXPORT: 'text-rose-300 border-rose-500/40 bg-rose-950/40',
-    AI_DETECT: 'text-text-base border-subtle/40 bg-slate-500/10'
+  return {
+    label: jobType,
+    cls: 'text-zinc-300 border-zinc-700 bg-zinc-800/70 font-mono text-[10px]'
   };
-  return { label: jobType, cls: map[jobType] || map.AI_DETECT };
 }
 
 function stageFromJobType(jobType: string): DatasetRecord['pipeline_stage'] {
@@ -476,13 +470,13 @@ export const JobBoardPanel: React.FC<JobBoardPanelProps> = ({
       )}
 
       {/* Board table */}
-      <div className="bg-inner border border-subtle rounded-xl overflow-x-auto">
+      <div className="bg-inner border border-subtle rounded-xl overflow-auto max-h-[520px]">
         {filtered.length === 0 ? (
           <p className="py-10 text-center text-[11px] text-text-muted">No jobs match the current filters.</p>
         ) : (
           <table className="w-full text-left text-[11px]">
-            <thead>
-              <tr className="text-text-muted uppercase tracking-wide text-[10px] border-b border-subtle">
+            <thead className="sticky top-0 bg-inner text-text-muted uppercase tracking-wide text-[10px] border-b border-subtle z-10 shadow-sm">
+              <tr>
                 <th className="py-2 px-3">Job</th>
                 <th className="py-2 px-3">Status</th>
                 <th className="py-2 px-3 w-44">Progress</th>
@@ -509,18 +503,45 @@ export const JobBoardPanel: React.FC<JobBoardPanelProps> = ({
                         <span className="text-text-base font-semibold">{job.name || job.job_type}</span>
                       </div>
                       <div className="text-[10px] text-text-muted font-sans">{job.id ? job.id.slice(0, 8) : ''} · <span className="font-sans">{formatDateTime(job.created_at)}</span></div>
-                      {job.output_folder && <div className="text-[10px] text-text-muted font-sans truncate max-w-[220px]">→ {job.output_folder}</div>}
+                      {job.source_folder && <div className="text-[10px] text-text-muted font-sans truncate max-w-[240px]">in: {job.source_folder}</div>}
+                      {job.output_folder && <div className="text-[10px] text-text-muted font-sans truncate max-w-[240px]">out: {job.output_folder}</div>}
                     </td>
                     <td className="py-2 px-3">
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase tracking-wide ${meta.className}`}>{meta.label}</span>
+                      <div className="flex items-center gap-1.5 font-mono text-[11px]">
+                        <span
+                          className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                            job.status === 'COMPLETED' || job.status === 'IMPORTED'
+                              ? 'bg-emerald-400'
+                              : isJobActive(job.status)
+                              ? 'bg-amber-400 animate-pulse'
+                              : job.status === 'FAILED' || job.status === 'REJECTED'
+                              ? 'bg-rose-400'
+                              : 'bg-zinc-500'
+                          }`}
+                        />
+                        <span
+                          className={`font-semibold uppercase tracking-wider text-[10px] ${
+                            job.status === 'COMPLETED' || job.status === 'IMPORTED'
+                              ? 'text-emerald-300'
+                              : isJobActive(job.status)
+                              ? 'text-amber-300'
+                              : job.status === 'FAILED' || job.status === 'REJECTED'
+                              ? 'text-rose-300'
+                              : 'text-zinc-400'
+                          }`}
+                        >
+                          {meta.label}
+                        </span>
+                      </div>
                       {job.qa_decision && (
-                        <div className="mt-1">
-                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border uppercase tracking-wide ${
-                            job.qa_decision === 'APPROVED' ? 'text-emerald-300 border-emerald-500/40 bg-emerald-950/40' : 'text-rose-300 border-rose-500/40 bg-rose-950/40'
-                          }`}>{job.qa_decision}</span>
+                        <div className="text-[10px] font-mono mt-0.5 flex items-center gap-1">
+                          <span className="text-zinc-500">QA:</span>
+                          <span className={job.qa_decision === 'APPROVED' ? 'text-emerald-400 font-semibold' : 'text-rose-400 font-semibold'}>
+                            {job.qa_decision}
+                          </span>
                         </div>
                       )}
-                      {job.error_count ? <div className="text-[10px] text-rose-300 mt-0.5">{job.error_count} error frames</div> : null}
+                      {job.error_count ? <div className="text-[10px] text-rose-400 font-mono mt-0.5">{job.error_count} error frames</div> : null}
                     </td>
                     <td className="py-2 px-3">
                       <div className="flex items-center gap-2">
@@ -532,13 +553,17 @@ export const JobBoardPanel: React.FC<JobBoardPanelProps> = ({
                       </div>
                       {job.current_item && <div className="text-[10px] text-text-muted font-sans truncate max-w-[180px] mt-0.5">{job.current_item}</div>}
                     </td>
-                    <td className="py-2 px-3">
-                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border uppercase tracking-wide ${type.cls}`}>{type.label}</span>
-                      <div className="mt-1">
-                        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border uppercase tracking-wide ${extMeta.className}`}>{extMeta.label}</span>
+                    <td className="py-2 px-3 font-mono">
+                      <div className="text-[11px] font-bold text-zinc-200 uppercase tracking-wide">
+                        {type.label}
                       </div>
+                      {job.external_status && job.external_status !== 'none' && (
+                        <div className="text-[10px] font-sans font-medium text-emerald-400/90 mt-0.5">
+                          {extMeta.label}
+                        </div>
+                      )}
                     </td>
-                    <td className="py-2 px-3 font-sans text-sky-300">{job.subgrid || '—'}</td>
+                    <td className="py-2 px-3 font-sans text-sky-300">{extractCanonicalSubgrid(job.subgrid) || '—'}</td>
                     <td className="py-2 px-3 text-text-muted">
                       {job.assigned_to || job.operator || '—'}
                       {job.launch_command && <div className="text-[10px] font-sans text-text-muted truncate max-w-[160px]">⮞ {job.launch_command}</div>}
@@ -550,7 +575,7 @@ export const JobBoardPanel: React.FC<JobBoardPanelProps> = ({
                         <div className="flex items-center justify-end gap-1">
                           {!isJobActive(job.status) && job.status !== 'IMPORTED' && job.status !== 'CANCELLED' && (
                             <button onClick={() => startJob(job)} disabled={busy}
-                              className="p-1.5 rounded-md bg-inner border border-subtle hover:bg-emerald-500/15 hover:border-emerald-500/40 text-emerald-300 cursor-pointer disabled:opacity-40 transition-colors" title="Start / requeue">
+                              className="p-1.5 rounded-md bg-inner border border-subtle hover:bg-card hover:border-subtle/80 text-text-muted hover:text-text-base cursor-pointer disabled:opacity-40 transition-colors" title="Start / requeue">
                               {busy ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
                             </button>
                           )}
@@ -558,31 +583,31 @@ export const JobBoardPanel: React.FC<JobBoardPanelProps> = ({
                             <>
                               {job.status === 'IN_PROGRESS' && (
                                 <button onClick={() => pauseJob(job)} disabled={busy}
-                                  className="p-1.5 rounded-md bg-inner border border-subtle hover:bg-amber-500/15 hover:border-amber-500/40 text-amber-300 cursor-pointer disabled:opacity-40 transition-colors" title="Pause">
+                                  className="p-1.5 rounded-md bg-inner border border-subtle hover:bg-card hover:border-subtle/80 text-text-muted hover:text-text-base cursor-pointer disabled:opacity-40 transition-colors" title="Pause">
                                   {busy ? <Loader2 size={12} className="animate-spin" /> : <Pause size={12} />}
                                 </button>
                               )}
                               <button onClick={() => cancelJob(job)} disabled={busy}
-                                className="p-1.5 rounded-md bg-inner border border-subtle hover:bg-rose-500/15 hover:border-rose-500/40 text-rose-300 cursor-pointer disabled:opacity-40 transition-colors" title="Cancel">
+                                className="p-1.5 rounded-md bg-inner border border-subtle hover:bg-card hover:border-subtle/80 text-text-muted hover:text-text-base cursor-pointer disabled:opacity-40 transition-colors" title="Cancel">
                                 {busy ? <Loader2 size={12} className="animate-spin" /> : <Ban size={12} />}
                               </button>
                             </>
                           )}
                           {(job.status === 'COMPLETED') && (
                             <button onClick={() => importOutput(job)} disabled={busy}
-                              className="p-1.5 rounded-md bg-inner border border-subtle hover:bg-sky-500/15 hover:border-sky-500/40 text-sky-300 cursor-pointer disabled:opacity-40 transition-colors" title="Import output as dataset">
+                              className="p-1.5 rounded-md bg-inner border border-subtle hover:bg-card hover:border-subtle/80 text-text-muted hover:text-text-base cursor-pointer disabled:opacity-40 transition-colors" title="Import output as dataset">
                               {busy ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
                             </button>
                           )}
                           {isJobTerminal(job.status) && (
                             <button onClick={() => retryJob(job)} disabled={busy}
-                              className="p-1.5 rounded-md bg-inner border border-subtle hover:bg-amber-500/15 hover:border-amber-500/40 text-amber-300 cursor-pointer disabled:opacity-40 transition-colors" title="Retry">
+                              className="p-1.5 rounded-md bg-inner border border-subtle hover:bg-card hover:border-subtle/80 text-text-muted hover:text-text-base cursor-pointer disabled:opacity-40 transition-colors" title="Retry">
                               {busy ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />}
                             </button>
                           )}
                           {isJobTerminal(job.status) && (
                             <button onClick={() => deleteJob(job)} disabled={busy}
-                              className="p-1.5 rounded-md bg-inner border border-subtle hover:bg-rose-500/15 hover:border-rose-500/40 text-rose-300 cursor-pointer disabled:opacity-40 transition-colors" title="Delete record">
+                              className="p-1.5 rounded-md bg-inner border border-subtle hover:bg-card hover:border-subtle/80 text-text-muted hover:text-text-base cursor-pointer disabled:opacity-40 transition-colors" title="Delete record">
                               <Trash2 size={12} />
                             </button>
                           )}

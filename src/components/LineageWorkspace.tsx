@@ -7,7 +7,8 @@ import type { LineageGraph, StagingAggregate } from '../utils/datasetLineage';
 import {
   aggregateStagingBySubgrid,
   buildLineageGraph,
-  lineageSummary
+  lineageSummary,
+  extractCanonicalSubgrid
 } from '../utils/datasetLineage';
 import { LINEAGE_TAB_LABELS } from './production/lineage/lineageCommon';
 import { UnderlineTabStrip, type ChromeTab } from './production/chrome';
@@ -66,12 +67,17 @@ export const LineageWorkspace: React.FC<LineageWorkspaceProps> = ({
   const subgrids = useMemo(() => {
     const set = new Set<string>();
     datasets.forEach((d) => {
-      if (d.subgrid) set.add((d.subgrid || '').toUpperCase());
+      const clean = extractCanonicalSubgrid(d.subgrid);
+      if (clean) set.add(clean);
     });
     jobs.forEach((j) => {
-      if (j.subgrid) set.add((j.subgrid || '').toUpperCase());
+      const clean = extractCanonicalSubgrid(j.subgrid);
+      if (clean) set.add(clean);
     });
-    aggregates.forEach((a) => set.add(a.subgrid));
+    aggregates.forEach((a) => {
+      const clean = extractCanonicalSubgrid(a.subgrid);
+      if (clean) set.add(clean);
+    });
     return Array.from(set).sort();
   }, [datasets, jobs, aggregates]);
 
@@ -83,13 +89,14 @@ export const LineageWorkspace: React.FC<LineageWorkspaceProps> = ({
   const summary = useMemo(() => lineageSummary(datasets, jobs, aggregates), [datasets, jobs, aggregates]);
 
   const handleSelectSubgrid = (sg: string | null) => {
-    setSelectedSubgrid(sg);
+    setSelectedSubgrid(sg ? extractCanonicalSubgrid(sg) : null);
     setSelectedNodeId(null);
   };
 
   const handleTraceSubgrid = (sg: string) => {
-    setSelectedSubgrid(sg);
-    setSelectedNodeId(`raw::${sg}`);
+    const clean = extractCanonicalSubgrid(sg);
+    setSelectedSubgrid(clean);
+    setSelectedNodeId(null);
     setActiveTab('graph');
   };
 
@@ -159,7 +166,7 @@ export const LineageWorkspace: React.FC<LineageWorkspaceProps> = ({
             />
           </div>
 
-          <div className="p-4 flex-1 flex flex-col min-h-0">
+          <div className="p-4 flex-1 flex flex-col min-h-0 overflow-y-auto">
             {/* Active tab panel */}
             {activeTab === 'graph' && (
               <GraphPanel

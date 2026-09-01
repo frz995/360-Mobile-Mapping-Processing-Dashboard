@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Table2, Unlink } from 'lucide-react';
 import type { LineageGraph, LineageNode } from '../../../utils/datasetLineage';
-import { findOrphans } from '../../../utils/datasetLineage';
+import { findOrphans, extractCanonicalSubgrid } from '../../../utils/datasetLineage';
 import { formatDateTime } from '../common';
 import type { TranslateFn } from '../common';
 import { qaBadge, statusTone } from './lineageCommon';
@@ -16,7 +16,7 @@ interface RegistryPanelProps {
   translate: TranslateFn;
 }
 
-type KindFilter = 'all' | 'parent' | 'job_source' | 'job_output' | 'raw_to_dataset';
+type KindFilter = 'all' | 'parent' | 'job_source' | 'job_output' | 'raw_to_dataset' | 'stage_flow';
 
 interface RegistryRow {
   id: string;
@@ -42,6 +42,15 @@ export function RegistryPanel({
 }: RegistryPanelProps) {
   const [kindFilter, setKindFilter] = useState<KindFilter>('all');
 
+  const uniqueSubgrids = useMemo(() => {
+    const set = new Set<string>();
+    subgrids.forEach((s) => {
+      const clean = extractCanonicalSubgrid(s);
+      if (clean) set.add(clean);
+    });
+    return Array.from(set).sort();
+  }, [subgrids]);
+
   const orphans = useMemo(() => findOrphans(graph), [graph]);
 
   const rows = useMemo<RegistryRow[]>(() => {
@@ -54,9 +63,10 @@ export function RegistryPanel({
       const t = byId.get(e.target);
       if (!s || !t) return;
       const jobNode = s.kind === 'job' ? s : t.kind === 'job' ? t : undefined;
+      const rawSg = t.subgrid || s.subgrid || '';
       out.push({
         id: e.id,
-        subgrid: t.subgrid || s.subgrid || '',
+        subgrid: extractCanonicalSubgrid(rawSg),
         source: s.label,
         target: t.label,
         sourceId: s.id,
@@ -81,11 +91,12 @@ export function RegistryPanel({
   }, [graph]);
 
   const filtered = rows.filter(
-    (r) => kindFilter === 'all' || r.kind === kindFilter
+    (r) => (kindFilter === 'all' || r.kind === kindFilter) &&
+           (!selectedSubgrid || r.subgrid === extractCanonicalSubgrid(selectedSubgrid))
   );
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-3 min-h-0">
       {/* Toolbar */}
       <div className="flex items-center gap-2 flex-wrap">
         <span className="text-[11px] font-bold uppercase tracking-wider text-text-muted">Subgrid</span>
@@ -99,7 +110,7 @@ export function RegistryPanel({
         >
           {translate('lineageGraphAllSubgrids')}
         </button>
-        {subgrids.map((sg) => (
+        {uniqueSubgrids.map((sg) => (
           <button
             key={sg}
             onClick={() => onSelectSubgrid(sg)}
@@ -143,9 +154,9 @@ export function RegistryPanel({
           </p>
         </div>
       ) : (
-        <div className="overflow-x-auto border border-subtle rounded-xl">
+        <div className="overflow-auto max-h-[500px] border border-subtle rounded-xl">
           <table className="w-full text-left text-[11px]">
-            <thead>
+            <thead className="sticky top-0 bg-card z-10">
               <tr className="border-b border-subtle text-[9px] uppercase tracking-wider text-text-muted">
                 <th className="px-3 py-2">{translate('lineageRegistrySubgrid')}</th>
                 <th className="px-3 py-2">{translate('lineageRegistrySource')}</th>

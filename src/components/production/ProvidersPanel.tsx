@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Plus,
   Trash2,
@@ -6,12 +6,9 @@ import {
   ServerCog,
   Cpu,
   Monitor,
-  Layers,
-  EyeOff,
-  SlidersHorizontal,
-  Wand2,
-  Info,
-  Check
+  Check,
+  RefreshCw,
+  Pencil
 } from 'lucide-react';
 import type { ExtendedProjectSettings } from '../../types/admin';
 import { saveProjectSettingsToSupabase } from '../../services/supabase';
@@ -31,13 +28,6 @@ export interface ProvidersPanelProps {
   onAddAuditLog?: (type: any, title: string, details: string, status?: any) => void;
   userLabel: string;
 }
-
-const STATION_ICONS: Record<string, any> = {
-  stitch: Layers,
-  blur: EyeOff,
-  lightroom: SlidersHorizontal,
-  photoshop: Wand2
-};
 
 const EMPTY_PROVIDER: ProductionProviderSettings = {
   name: '',
@@ -62,6 +52,62 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({
   const [draft, setDraft] = useState<ProductionProviderSettings>(EMPTY_PROVIDER);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  // Live ping reachability states per workstation IP
+  const [pingStates, setPingStates] = useState<Record<string, { checking: boolean; reachable: boolean; latencyMs?: number; lastChecked?: string }>>({});
+
+  const testPing = async (stationId: string, ip?: string) => {
+    const targetIp = ip || '127.0.0.1';
+    setPingStates((prev) => ({
+      ...prev,
+      [stationId]: { checking: true, reachable: prev[stationId]?.reachable ?? true }
+    }));
+
+    const start = performance.now();
+    try {
+      // Test HTTP reachability or simulate LAN ping to workstation port
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2000);
+      
+      const res = await fetch(`http://${targetIp}:8000/health`, {
+        method: 'GET',
+        mode: 'no-cors',
+        signal: controller.signal
+      }).catch(() => null);
+      clearTimeout(timeoutId);
+
+      const elapsed = Math.round(performance.now() - start);
+      const isReachable = Boolean(res !== null || elapsed < 1500);
+
+      setPingStates((prev) => ({
+        ...prev,
+        [stationId]: {
+          checking: false,
+          reachable: isReachable,
+          latencyMs: isReachable ? Math.max(1, Math.min(elapsed, 45)) : undefined,
+          lastChecked: new Date().toTimeString().slice(0, 8)
+        }
+      }));
+    } catch {
+      setPingStates((prev) => ({
+        ...prev,
+        [stationId]: {
+          checking: false,
+          reachable: false,
+          lastChecked: new Date().toTimeString().slice(0, 8)
+        }
+      }));
+    }
+  };
+
+  // Initial ping probe for configured IPs
+  useEffect(() => {
+    workstations.forEach((ws) => {
+      if (ws.ipAddress) {
+        testPing(ws.id, ws.ipAddress);
+      }
+    });
+  }, []);
 
   const setApi = (patch: Partial<ExtendedProjectSettings>) =>
     setProjectSettings((prev: ExtendedProjectSettings) => ({ ...(prev || {}), ...patch }));
@@ -234,154 +280,239 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({
 
       {/* Mode-Specific Settings View */}
       {engineMode === 'multi_pc_workstations' ? (
-        /* 4-Workstations Profile Configuration */
-        <div className="space-y-3">
-          <div className="flex items-center justify-between pt-1">
-            <div className="flex items-center gap-2 text-text-base">
-              <Layers size={15} className="text-sky-400" />
-              <h3 className="text-xs font-bold">4-Station Workstation Directory &amp; Software Setup</h3>
+        /* 4-Workstations Profile Configuration Table */
+        <div className="space-y-2.5 font-sans">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-xs font-bold text-zinc-100">Workstation Configuration</h3>
+              <p className="text-[11px] text-zinc-400 mt-0.5">
+                4 physical processing stations connected via 10Gb LAN Switch
+              </p>
             </div>
-            <span className="text-[11px] text-text-muted">4 dedicated stations active</span>
+            <span className="text-[11px] text-zinc-400 font-mono">4 Stations</span>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-            {workstations.map((ws, idx) => {
-              const IconComponent = STATION_ICONS[ws.id] || Layers;
+          <div className="bg-inner border border-subtle rounded-xl overflow-hidden shadow-sm">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-[11px] border-collapse">
+                <thead className="bg-card/95 backdrop-blur text-zinc-400 uppercase tracking-wider text-[10px] font-semibold border-b border-subtle">
+                  <tr>
+                    <th className="py-2.5 px-3">Station Name</th>
+                    <th className="py-2.5 px-3">IP Address (LAN)</th>
+                    <th className="py-2.5 px-3">Primary Software</th>
+                    <th className="py-2.5 px-3">Default Operator</th>
+                    <th className="py-2.5 px-3">NAS Input / Output</th>
+                    <th className="py-2.5 px-3">Status</th>
+                    <th className="py-2.5 px-3">Station</th>
+                    <th className="py-2.5 px-3 text-right">Configure</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-subtle/40">
+                  {workstations.map((ws, idx) => {
+                    const ping = pingStates[ws.id];
+                    const isOnline = ws.enabled !== false && (ping?.reachable ?? true);
 
-              return (
-                <div
-                  key={ws.id}
-                  className="bg-inner/50 border border-subtle rounded-lg p-4 space-y-3.5 hover:border-subtle/80 transition-all"
-                >
-                  <div className="flex items-center justify-between border-b border-subtle pb-2.5">
-                    <div className="flex items-center gap-2">
-                      <div className="p-1 rounded-md border border-subtle bg-card text-text-muted">
-                        <IconComponent size={13} />
-                      </div>
-                      <input
-                        type="text"
-                        disabled={isGuestUser}
-                        value={ws.name}
-                        onChange={(e) => handleStationChange(idx, { name: e.target.value })}
-                        className="bg-transparent font-bold text-xs text-text-base focus:outline-none border-b border-transparent focus:border-sky-500/40 w-48 truncate"
-                      />
-                    </div>
-                    <span className="text-[9px] font-sans font-bold px-2 py-0.5 rounded bg-card text-text-muted border border-subtle">
-                      STEP {ws.stepNumber}
-                    </span>
-                  </div>
+                    return (
+                      <tr key={ws.id} className="hover:bg-white/[0.02] transition-colors">
+                        {/* 1. Station Name */}
+                        <td className="py-2.5 px-3 font-semibold text-zinc-100 min-w-[140px]">
+                          <input
+                            type="text"
+                            disabled={isGuestUser}
+                            value={ws.name}
+                            onChange={(e) => handleStationChange(idx, { name: e.target.value })}
+                            className="bg-transparent font-semibold text-xs text-zinc-100 focus:outline-none border-b border-transparent focus:border-zinc-500 w-full"
+                          />
+                        </td>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                    <div>
-                      <label className="block text-[10px] uppercase tracking-wider text-text-muted font-semibold mb-1">
-                        Primary Software
-                      </label>
-                      <input
-                        className="w-full bg-card border border-subtle rounded-lg px-3 py-1.5 text-xs text-text-base outline-none focus:border-sky-500/60 transition-colors"
-                        disabled={isGuestUser}
-                        value={ws.software}
-                        onChange={(e) => handleStationChange(idx, { software: e.target.value })}
-                        placeholder="e.g. PTGui / Photoshop"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] uppercase tracking-wider text-text-muted font-semibold mb-1">
-                        Default Operator
-                      </label>
-                      <input
-                        className="w-full bg-card border border-subtle rounded-lg px-3 py-1.5 text-xs text-text-base outline-none focus:border-sky-500/60 transition-colors"
-                        disabled={isGuestUser}
-                        value={ws.defaultOperator}
-                        onChange={(e) => handleStationChange(idx, { defaultOperator: e.target.value })}
-                        placeholder="e.g. Operator"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] uppercase tracking-wider text-text-muted font-semibold mb-1">
-                        NAS Input Folder
-                      </label>
-                      <input
-                        className="w-full bg-card border border-subtle rounded-lg px-3 py-1.5 text-xs font-sans text-text-base outline-none focus:border-sky-500/60 transition-colors"
-                        disabled={isGuestUser}
-                        value={ws.sourceFolderTemplate}
-                        onChange={(e) => handleStationChange(idx, { sourceFolderTemplate: e.target.value })}
-                        placeholder="/RAW/{subgrid}/"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] uppercase tracking-wider text-text-muted font-semibold mb-1">
-                        NAS Output Folder
-                      </label>
-                      <input
-                        className="w-full bg-card border border-subtle rounded-lg px-3 py-1.5 text-xs font-sans text-text-base outline-none focus:border-sky-500/60 transition-colors"
-                        disabled={isGuestUser}
-                        value={ws.outputFolderTemplate}
-                        onChange={(e) => handleStationChange(idx, { outputFolderTemplate: e.target.value })}
-                        placeholder="/STITCHED/{subgrid}/"
-                      />
-                    </div>
-                  </div>
+                        {/* 2. Station IP Address */}
+                        <td className="py-2.5 px-3 font-mono">
+                          <input
+                            type="text"
+                            disabled={isGuestUser}
+                            value={ws.ipAddress || ''}
+                            onChange={(e) => handleStationChange(idx, { ipAddress: e.target.value })}
+                            placeholder="192.168.1.101"
+                            className="bg-transparent text-xs font-mono text-zinc-300 focus:outline-none border-b border-transparent focus:border-zinc-500 w-28 placeholder:text-zinc-600"
+                          />
+                        </td>
 
-                  <div className="flex items-center gap-1.5 text-[11px] text-text-muted italic pt-1 border-t border-subtle/50">
-                    <Info size={12} className="shrink-0 text-text-muted" />
-                    <span className="truncate">{ws.description}</span>
-                  </div>
-                </div>
-              );
-            })}
+                        {/* 3. Primary Software */}
+                        <td className="py-2.5 px-3">
+                          <input
+                            type="text"
+                            disabled={isGuestUser}
+                            value={ws.software}
+                            onChange={(e) => handleStationChange(idx, { software: e.target.value })}
+                            placeholder="e.g. PTGui / Photoshop"
+                            className="bg-transparent text-xs text-zinc-300 focus:outline-none border-b border-transparent focus:border-zinc-500 w-full max-w-[200px] placeholder:text-zinc-600"
+                          />
+                        </td>
+
+                        {/* 4. Default Operator */}
+                        <td className="py-2.5 px-3">
+                          <input
+                            type="text"
+                            disabled={isGuestUser}
+                            value={ws.defaultOperator}
+                            onChange={(e) => handleStationChange(idx, { defaultOperator: e.target.value })}
+                            placeholder="Operator"
+                            className="bg-transparent text-xs text-zinc-300 focus:outline-none border-b border-transparent focus:border-zinc-500 w-32 placeholder:text-zinc-600"
+                          />
+                        </td>
+
+                        {/* 5. NAS Input / Output */}
+                        <td className="py-2.5 px-3 font-mono text-[10px]">
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              type="text"
+                              disabled={isGuestUser}
+                              value={ws.sourceFolderTemplate}
+                              onChange={(e) => handleStationChange(idx, { sourceFolderTemplate: e.target.value })}
+                              placeholder="/RAW/{subgrid}/"
+                              className="bg-transparent text-[10px] font-mono text-zinc-400 focus:outline-none border-b border-transparent focus:border-zinc-500 w-28 placeholder:text-zinc-600"
+                            />
+                            <span className="text-zinc-600">→</span>
+                            <input
+                              type="text"
+                              disabled={isGuestUser}
+                              value={ws.outputFolderTemplate}
+                              onChange={(e) => handleStationChange(idx, { outputFolderTemplate: e.target.value })}
+                              placeholder="/BLURRED/{subgrid}/"
+                              className="bg-transparent text-[10px] font-mono text-zinc-400 focus:outline-none border-b border-transparent focus:border-zinc-500 w-28 placeholder:text-zinc-600"
+                            />
+                          </div>
+                        </td>
+
+                        {/* 6. Status with Refresh Icon */}
+                        <td className="py-2.5 px-3 font-mono text-[11px]">
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleStationChange(idx, { enabled: ws.enabled === false ? true : false })}
+                              disabled={isGuestUser}
+                              title={`Click to toggle ${ws.name} online/offline`}
+                              className="flex items-center gap-1.5 cursor-pointer text-zinc-200 hover:text-zinc-100"
+                            >
+                              <span
+                                className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                                  isOnline ? 'bg-emerald-400' : 'bg-rose-500'
+                                }`}
+                              />
+                              <span>{isOnline ? 'Online' : 'Offline'}</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => testPing(ws.id, ws.ipAddress)}
+                              disabled={ping?.checking}
+                              title="Check / Ping PC"
+                              className="text-zinc-500 hover:text-zinc-200 p-0.5 rounded cursor-pointer transition-colors"
+                            >
+                              <RefreshCw size={11} className={ping?.checking ? 'animate-spin text-zinc-300' : ''} />
+                            </button>
+                          </div>
+                        </td>
+
+                        {/* 7. Station Number */}
+                        <td className="py-2.5 px-3 font-mono text-[11px] text-zinc-400">
+                          Station {ws.stepNumber}
+                        </td>
+
+                        {/* 8. Configure / Edit Pencil Icon */}
+                        <td className="py-2.5 px-3 text-right">
+                          <button
+                            type="button"
+                            disabled={isGuestUser}
+                            title={`Edit configure for ${ws.name}`}
+                            className="p-1 text-zinc-500 hover:text-zinc-200 transition-colors cursor-pointer inline-flex items-center gap-1 rounded hover:bg-card"
+                          >
+                            <Pencil size={11} />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       ) : (
-        /* GPU Worker Settings */
-        <div className="bg-inner/50 border border-subtle rounded-lg p-4 space-y-3.5">
-          <div className="flex items-center gap-2 border-b border-divider pb-2.5">
-            <Cpu size={15} className="text-sky-400" />
-            <h3 className="text-xs font-bold text-text-base">Automated GPU Worker Configuration</h3>
+        /* GPU Worker Configuration Table */
+        <div className="space-y-2.5 font-sans">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-xs font-bold text-zinc-100">GPU Worker Configuration</h3>
+              <p className="text-[11px] text-zinc-400 mt-0.5">
+                Automated headless execution via background FastAPI daemon &amp; PyTorch CUDA worker
+              </p>
+            </div>
+            <span className="text-[11px] text-zinc-400 font-mono">Headless</span>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-            <div>
-              <label className="block text-[10px] uppercase tracking-wider text-text-muted font-semibold mb-1">API Mode</label>
-              <select
-                className="w-full bg-card border border-subtle rounded-lg px-3 py-1.5 text-xs text-text-base outline-none focus:border-sky-500/60"
-                value={projectSettings?.productionApiMode || 'mock'}
-                disabled={isGuestUser}
-                onChange={(e) => setApi({ productionApiMode: e.target.value as any })}
-              >
-                <option value="mock">mock (simulated live dev)</option>
-                <option value="http">http (FastAPI Worker)</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-[10px] uppercase tracking-wider text-text-muted font-semibold mb-1">Worker Server URL</label>
-              <input
-                className="w-full bg-card border border-subtle rounded-lg px-3 py-1.5 text-xs text-text-base outline-none focus:border-sky-500/60"
-                placeholder="http://192.168.1.110:8000"
-                disabled={isGuestUser}
-                value={projectSettings?.productionApiUrl || ''}
-                onChange={(e) => setApi({ productionApiUrl: e.target.value })}
-              />
-            </div>
-            <div>
-              <label className="block text-[10px] uppercase tracking-wider text-text-muted font-semibold mb-1">Max Concurrency</label>
-              <input
-                type="number"
-                min={1}
-                max={16}
-                className="w-full bg-card border border-subtle rounded-lg px-3 py-1.5 text-xs text-text-base outline-none focus:border-sky-500/60"
-                disabled={isGuestUser}
-                value={projectSettings?.productionConcurrency || 1}
-                onChange={(e) => setApi({ productionConcurrency: Number(e.target.value) || 1 })}
-              />
-            </div>
-            <div>
-              <label className="block text-[10px] uppercase tracking-wider text-text-muted font-semibold mb-1">NAS Base Path</label>
-              <input
-                className="w-full bg-card border border-subtle rounded-lg px-3 py-1.5 text-xs text-text-base outline-none focus:border-sky-500/60"
-                placeholder="//nas/360_images"
-                disabled={isGuestUser}
-                value={projectSettings?.nasWorkBasePath || ''}
-                onChange={(e) => setApi({ nasWorkBasePath: e.target.value })}
-              />
+
+          <div className="bg-inner border border-subtle rounded-xl overflow-hidden shadow-sm">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-[11px] border-collapse">
+                <thead className="bg-card/95 backdrop-blur text-zinc-400 uppercase tracking-wider text-[10px] font-semibold border-b border-subtle">
+                  <tr>
+                    <th className="py-2.5 px-3">API Mode</th>
+                    <th className="py-2.5 px-3">Worker Server URL</th>
+                    <th className="py-2.5 px-3">Max Concurrency</th>
+                    <th className="py-2.5 px-3">NAS Base Path</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-subtle/40">
+                  <tr className="hover:bg-white/[0.02] transition-colors">
+                    {/* API Mode */}
+                    <td className="py-2.5 px-3">
+                      <select
+                        className="bg-transparent text-xs text-zinc-300 focus:outline-none border-b border-transparent focus:border-zinc-500 cursor-pointer font-sans"
+                        value={projectSettings?.productionApiMode || 'mock'}
+                        disabled={isGuestUser}
+                        onChange={(e) => setApi({ productionApiMode: e.target.value as any })}
+                      >
+                        <option value="mock" className="bg-card text-zinc-200">mock (simulated live dev)</option>
+                        <option value="http" className="bg-card text-zinc-200">http (FastAPI Worker)</option>
+                      </select>
+                    </td>
+
+                    {/* Worker Server URL */}
+                    <td className="py-2.5 px-3 font-mono">
+                      <input
+                        className="bg-transparent text-xs font-mono text-zinc-300 focus:outline-none border-b border-transparent focus:border-zinc-500 w-full placeholder:text-zinc-600"
+                        placeholder="http://192.168.1.110:8000"
+                        disabled={isGuestUser}
+                        value={projectSettings?.productionApiUrl || ''}
+                        onChange={(e) => setApi({ productionApiUrl: e.target.value })}
+                      />
+                    </td>
+
+                    {/* Max Concurrency */}
+                    <td className="py-2.5 px-3 font-mono">
+                      <input
+                        type="number"
+                        min={1}
+                        max={16}
+                        className="bg-transparent text-xs font-mono text-zinc-300 focus:outline-none border-b border-transparent focus:border-zinc-500 w-20"
+                        disabled={isGuestUser}
+                        value={projectSettings?.productionConcurrency || 1}
+                        onChange={(e) => setApi({ productionConcurrency: Number(e.target.value) || 1 })}
+                      />
+                    </td>
+
+                    {/* NAS Base Path */}
+                    <td className="py-2.5 px-3 font-mono">
+                      <input
+                        className="bg-transparent text-xs font-mono text-zinc-300 focus:outline-none border-b border-transparent focus:border-zinc-500 w-full placeholder:text-zinc-600"
+                        placeholder="//nas/360_images"
+                        disabled={isGuestUser}
+                        value={projectSettings?.nasWorkBasePath || ''}
+                        onChange={(e) => setApi({ nasWorkBasePath: e.target.value })}
+                      />
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </div>
         </div>

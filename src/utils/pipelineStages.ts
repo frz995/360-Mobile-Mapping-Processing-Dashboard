@@ -97,6 +97,19 @@ export const PIPELINE_STAGE_DEFS: PipelineStageDef[] = [
         : { status: 'WAITING' }
   },
   {
+    key: 'privacy_blur',
+    labelKey: 'pipelineStagePrivacyBlur',
+    hint: 'BLUR',
+    jobTypes: ['BLUR'],
+    derive: ({ jobs }) => {
+      if (anyJob(jobs, ['BLUR'], 'FAILED')) return { status: 'FAILED' };
+      if (anyJob(jobs, ['BLUR'], 'COMPLETED')) return { status: 'COMPLETE' };
+      const active = jobs.find((j) => j.job_type === 'BLUR' && j.status !== 'COMPLETED');
+      if (active) return { status: 'IN_PROGRESS', pct: active.progress || 0 };
+      return { status: 'WAITING' };
+    }
+  },
+  {
     key: 'stitching',
     labelKey: 'pipelineStageStitching',
     hint: 'STITCH',
@@ -108,19 +121,6 @@ export const PIPELINE_STAGE_DEFS: PipelineStageDef[] = [
         const active = jobs.find((j) => j.job_type === 'STITCH' && j.status !== 'COMPLETED');
         return { status: 'IN_PROGRESS', pct: active?.progress || 0 };
       }
-      return { status: 'WAITING' };
-    }
-  },
-  {
-    key: 'privacy_blur',
-    labelKey: 'pipelineStagePrivacyBlur',
-    hint: 'BLUR',
-    jobTypes: ['BLUR'],
-    derive: ({ jobs }) => {
-      if (anyJob(jobs, ['BLUR'], 'FAILED')) return { status: 'FAILED' };
-      if (anyJob(jobs, ['BLUR'], 'COMPLETED')) return { status: 'COMPLETE' };
-      const active = jobs.find((j) => j.job_type === 'BLUR' && j.status !== 'COMPLETED');
-      if (active) return { status: 'IN_PROGRESS', pct: active.progress || 0 };
       return { status: 'WAITING' };
     }
   },

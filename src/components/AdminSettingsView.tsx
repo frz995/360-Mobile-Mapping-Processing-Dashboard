@@ -607,7 +607,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
             />
           </div>
 
-          <div className="p-4 sm:p-5 flex-1 flex flex-col min-h-0 space-y-4">
+          <div className="p-4 sm:p-5 flex-1 flex flex-col min-h-0 space-y-4 overflow-y-auto">
 
       {/* ========================================================================= */}
       {/* TAB 1: PROJECT & SECURITY SETTINGS */}

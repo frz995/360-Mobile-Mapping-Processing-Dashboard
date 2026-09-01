@@ -20,16 +20,16 @@ export function getProductionApiSettings(
   projectSettings: ExtendedProjectSettings
 ): ProductionApiSettings {
   return {
-    mode: projectSettings?.productionApiMode || 'mock',
+    mode: projectSettings?.productionApiMode || 'http',
     baseUrl:
       projectSettings?.productionApiUrl ||
       import.meta.env.VITE_PRODUCTION_API_URL ||
-      '',
-    concurrency: projectSettings?.productionConcurrency || 1,
+      'http://localhost:8000',
+    concurrency: projectSettings?.productionConcurrency || 4,
     nasWorkBasePath:
       projectSettings?.nasWorkBasePath ||
       import.meta.env.VITE_NAS_WORK_BASE_PATH ||
-      '//nas/360_images'
+      ''
   };
 }
 
