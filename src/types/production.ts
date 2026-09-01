@@ -187,6 +187,15 @@ export interface ProductionJobSettings {
     maskB64?: string;
     fillModel?: 'lama' | 'zits';
   };
+  blur?: {
+    detectFaces?: boolean;
+    detectPlates?: boolean;
+    blurStrength?: number;
+    boxMargin?: number;
+    fullFrameBlur?: number;
+    /** BLUR jobs scan the whole source tree (raw date/camera folders) recursively. */
+    recurse?: boolean;
+  };
   exportFormat?: 'original' | 'jpeg';
   jpegQuality?: number; // 0..100
 }
@@ -218,25 +227,25 @@ export interface WorkstationStationConfig {
 
 export const DEFAULT_4_WORKSTATIONS: WorkstationStationConfig[] = [
   {
-    id: 'stitch',
-    name: 'PC 1 — Stitching Station',
+    id: 'blur',
+    name: 'PC 1 — Privacy Blur Station',
     stepNumber: 1,
-    software: 'PTGui Pro / Insta360 Stitcher',
-    defaultOperator: 'Stitching Operator',
+    software: 'Privacy Keeper / Face & Plate Blur',
+    defaultOperator: 'Blurring Operator',
     sourceFolderTemplate: '/RAW/{subgrid}/',
-    outputFolderTemplate: '/STITCHED/{subgrid}/',
-    description: 'Ingests raw dual-fisheye frames and exports 360° equirectangular panoramas.',
+    outputFolderTemplate: '/BLURRED/{subgrid}/',
+    description: 'Detects and blurs pedestrian faces and license plates on the raw frames before stitching.',
     enabled: true
   },
   {
-    id: 'blur',
-    name: 'PC 2 — Privacy Blur Station',
+    id: 'stitch',
+    name: 'PC 2 — Stitching Station',
     stepNumber: 2,
-    software: 'YOLO Batch Blur / Face & Plate Tool',
-    defaultOperator: 'Blurring Operator',
-    sourceFolderTemplate: '/STITCHED/{subgrid}/',
-    outputFolderTemplate: '/BLURRED/{subgrid}/',
-    description: 'Scans stitched panoramas to blur pedestrian faces and license plates.',
+    software: 'Creator 6 / PTGui / Insta360 Stitcher',
+    defaultOperator: 'Stitching Operator',
+    sourceFolderTemplate: '/BLURRED/{subgrid}/',
+    outputFolderTemplate: '/STITCHED/{subgrid}/',
+    description: 'Stitches the blurred six-camera frames into 360° equirectangular panoramas.',
     enabled: true
   },
   {
@@ -245,7 +254,7 @@ export const DEFAULT_4_WORKSTATIONS: WorkstationStationConfig[] = [
     stepNumber: 3,
     software: 'Adobe Lightroom Classic / Camera RAW',
     defaultOperator: 'Colorist Operator',
-    sourceFolderTemplate: '/BLURRED/{subgrid}/',
+    sourceFolderTemplate: '/STITCHED/{subgrid}/',
     outputFolderTemplate: '/ENHANCED/{subgrid}/',
     description: 'Applies bulk color grading, shadow recovery, clarity, and sharpness presets.',
     enabled: true
@@ -258,7 +267,7 @@ export const DEFAULT_4_WORKSTATIONS: WorkstationStationConfig[] = [
     defaultOperator: 'Retouch Operator',
     sourceFolderTemplate: '/ENHANCED/{subgrid}/',
     outputFolderTemplate: '/PROCESSED/{subgrid}/',
-    description: 'Applies circular nadir hood mask or generative inpaint to remove the vehicle.',
+    description: 'Applies circular nadir hood mask or generative inpaint to remove the vehicle, plus watermark.',
     enabled: true
   }
 ];

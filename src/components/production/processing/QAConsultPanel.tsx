@@ -48,7 +48,10 @@ export const QAConsultPanel: React.FC<QAConsultPanelProps> = ({
         (j) =>
           j.status === 'QA_PENDING' ||
           j.status === 'REVIEW_REQUIRED' ||
-          (j.status === 'COMPLETED' && !j.qa_decision)
+          // Only final finished stages (Photoshop/MASK, QAQC, or explicit final jobs) await acceptance review
+          (j.status === 'COMPLETED' &&
+            (j.job_type === 'MASK' || j.job_type === 'QAQC' || (j.settings as any)?.isFinalStage) &&
+            !j.qa_decision)
       ),
     [jobs]
   );
@@ -71,12 +74,13 @@ export const QAConsultPanel: React.FC<QAConsultPanelProps> = ({
       )
     : null;
 
+  const previewFilename = `${selected?.subgrid || 'N93E70'}-0001.jpg`;
   const previewUrl =
-    selected && !isGuestUser
+    selected && !isGuestUser && selected.job_type !== 'BLUR'
       ? productionNasUrlFor(
           projectSettings,
           selected.output_folder,
-          `${selected.subgrid}-00001.jpg`
+          previewFilename
         )
       : '';
 
@@ -252,13 +256,25 @@ export const QAConsultPanel: React.FC<QAConsultPanelProps> = ({
               )}
             </div>
 
-            {previewUrl ? (
+            {selected.job_type === 'BLUR' ? (
+              <div className="bg-card border border-subtle rounded-xl p-4 text-center space-y-2">
+                <div className="text-xs font-semibold text-text-base">
+                  📷 Raw Multi-Camera Fisheye Stage (Station 1 — Privacy Blur)
+                </div>
+                <p className="text-[11px] text-text-muted max-w-md mx-auto">
+                  This station processes raw unstitched camera lenses (Lenses 1–6). 360° spherical equirectangular viewing is activated starting from <strong>Station 2 (Stitching)</strong>, <strong>Station 3 (Lightroom)</strong>, and <strong>Station 4 (Photoshop)</strong>.
+                </p>
+                <div className="text-[10px] text-sky-400 font-sans break-all">
+                  Output path: {selected.output_folder}
+                </div>
+              </div>
+            ) : previewUrl ? (
               <div className="bg-card border border-subtle rounded-xl p-3">
                 <div className="text-[10px] uppercase tracking-wider text-text-muted font-bold flex items-center gap-1.5 mb-2">
-                  <Eye size={12} className="text-sky-400" /> 360 preview · {selected.subgrid}-00001.jpg
+                  <Eye size={12} className="text-sky-400" /> 360 preview · {previewFilename}
                 </div>
                 <div className="h-[360px] rounded-lg overflow-hidden border border-subtle bg-black/40">
-                  <PhotoSphereViewerComponent key={`qa-${selected.id}`} panoramaUrl={previewUrl} caption={`${selected.subgrid}-00001.jpg`} initialFov={projectSettings?.defaultFov} />
+                  <PhotoSphereViewerComponent key={`qa-${selected.id}`} panoramaUrl={previewUrl} caption={previewFilename} initialFov={projectSettings?.defaultFov} />
                 </div>
                 <p className="text-[10px] text-text-muted font-sans break-all mt-1">{previewUrl}</p>
               </div>

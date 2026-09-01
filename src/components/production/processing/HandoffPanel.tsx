@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
   Send,
   CheckCircle2,
@@ -16,17 +16,26 @@ import {
   Activity,
   Terminal,
   Server,
-  Play
+  Play,
+  Edit2,
+  Trash2,
+  Table,
+  RefreshCw,
+  X,
+  Save,
+  AlertTriangle
 } from 'lucide-react';
 import type { ProductionApiClient } from '../../../services/productionApi';
 import {
   saveDatasetToSupabase,
   saveProcessingJobToSupabase,
   updateProcessingJobHandoffInSupabase,
-  updateProcessingJobStatusInSupabase
+  updateProcessingJobStatusInSupabase,
+  deleteProcessingJobFromSupabase
 } from '../../../services/supabase';
 import type {
   ProcessingJobRecord,
+  ProcessingJobType,
   WorkstationStationConfig
 } from '../../../types/production';
 import { DEFAULT_4_WORKSTATIONS } from '../../../types/production';
@@ -38,6 +47,7 @@ export interface HandoffPanelProps {
   projectSettings?: any;
   isGuestUser?: boolean;
   onRefreshJobs: () => void;
+  onRefreshDatasets?: () => void;
   onAddNotification?: (item: any) => void;
   onAddAuditLog?: (type: any, title: string, details: string, status?: any) => void;
   userLabel: string;
@@ -45,8 +55,8 @@ export interface HandoffPanelProps {
 }
 
 const STATION_JOB_TYPE_MAP: Record<string, { jobType: any; nextJobType: any; nextStageName: string }> = {
-  STITCH: { jobType: 'STITCH', nextJobType: 'BLUR', nextStageName: 'PC 2 — Privacy Blur' },
-  BLUR: { jobType: 'BLUR', nextJobType: 'ENHANCE', nextStageName: 'PC 3 — Lightroom' },
+  BLUR: { jobType: 'BLUR', nextJobType: 'STITCH', nextStageName: 'PC 2 — Stitching' },
+  STITCH: { jobType: 'STITCH', nextJobType: 'ENHANCE', nextStageName: 'PC 3 — Lightroom' },
   ENHANCE: { jobType: 'ENHANCE', nextJobType: 'MASK', nextStageName: 'PC 4 — Photoshop' },
   MASK: { jobType: 'MASK', nextJobType: null, nextStageName: 'Final PROCESSED Dataset' }
 };
@@ -57,6 +67,7 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
   projectSettings,
   isGuestUser,
   onRefreshJobs,
+  onRefreshDatasets,
   onAddNotification,
   onAddAuditLog,
   userLabel,
@@ -68,16 +79,123 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
 
   // New Batch Dispatch Modal (4-PC Workstations)
   const [showDispatchModal, setShowDispatchModal] = useState(false);
+  const [dispatchStationIdx, setDispatchStationIdx] = useState(0);
   const [dispatchSubgrid, setDispatchSubgrid] = useState('');
+  const [dispatchGrid, setDispatchGrid] = useState('Grid 1');
+  const [dispatchDate, setDispatchDate] = useState('20220904');
+  const [dispatchRunId] = useState('003485-20220904-144310');
+  const [dispatchTotalItems, setDispatchTotalItems] = useState(105);
   const [dispatching, setDispatching] = useState(false);
+
+  // Active Job Edit Modal State
+  const [editingJob, setEditingJob] = useState<ProcessingJobRecord | null>(null);
+  const [deleteConfirmJob, setDeleteConfirmJob] = useState<ProcessingJobRecord | null>(null);
+  const [advanceWarningJob, setAdvanceWarningJob] = useState<{ job: ProcessingJobRecord; fileCount: number } | null>(null);
+  const [clearAllConfirm, setClearAllConfirm] = useState(false);
+
+  const handleClearAllCards = async () => {
+    setBusyId('clear_all');
+    for (const j of jobs) {
+      if (j.id) await deleteProcessingJobFromSupabase(j.id);
+    }
+    setClearAllConfirm(false);
+    setBusyId(null);
+    notify('Board Reset', 'All workstation cards have been cleared.');
+    onRefreshJobs();
+  };
+
+  // Helper to dynamically resolve template variables against user workstation settings
+  const resolveStationPath = (
+    template: string,
+    vars: { subgrid: string; grid?: string; date?: string; run_id?: string }
+  ) => {
+    let res = (template || '').trim();
+    res = res.replace(/\{subgrid\}/gi, vars.subgrid || '');
+    res = res.replace(/\{grid\}/gi, vars.grid || 'Grid 1');
+    res = res.replace(/\{date\}/gi, vars.date || '20220904');
+    res = res.replace(/\{run_id\}/gi, vars.run_id || '');
+    return res;
+  };
+
+  // Editable 4-Station Table State
+  interface EditableStationRow {
+    id: 'blur' | 'stitch' | 'lightroom' | 'photoshop';
+    jobType: ProcessingJobType;
+    name: string;
+    software: string;
+    operator: string;
+    sourceFolder: string;
+    outputFolder: string;
+    totalItems: number;
+  }
+
+  const [tableRows, setTableRows] = useState<EditableStationRow[]>([]);
+
+  const workstations: WorkstationStationConfig[] =
+    (projectSettings?.workstationsConfig as WorkstationStationConfig[]) || DEFAULT_4_WORKSTATIONS;
+
+  // Initialize/refresh table rows whenever variables or templates change
+  useEffect(() => {
+    const vars = {
+      subgrid: dispatchSubgrid.trim() || '{subgrid}',
+      grid: dispatchGrid.trim() || 'Grid 1',
+      date: dispatchDate.trim() || '20220904',
+      run_id: dispatchRunId.trim() || ''
+    };
+    const rows: EditableStationRow[] = workstations.map((w) => {
+      const jType: ProcessingJobType =
+        w.id === 'blur' ? 'BLUR' : w.id === 'stitch' ? 'STITCH' : w.id === 'lightroom' ? 'ENHANCE' : 'MASK';
+      return {
+        id: w.id as any,
+        jobType: jType,
+        name: w.name,
+        software: w.software,
+        operator: w.defaultOperator,
+        sourceFolder: resolveStationPath(w.sourceFolderTemplate, vars),
+        outputFolder: resolveStationPath(w.outputFolderTemplate, vars),
+        totalItems: dispatchTotalItems || 105
+      };
+    });
+    setTableRows(rows);
+  }, [dispatchSubgrid, dispatchGrid, dispatchDate, dispatchTotalItems, showDispatchModal, workstations]);
+
+  const updateTableRow = (idx: number, field: keyof EditableStationRow, val: any) => {
+    setTableRows((prev) => {
+      const copy = [...prev];
+      copy[idx] = { ...copy[idx], [field]: val };
+      return copy;
+    });
+  };
+
+  const resetTableToTemplates = () => {
+    const vars = {
+      subgrid: dispatchSubgrid.trim() || '{subgrid}',
+      grid: dispatchGrid.trim() || 'Grid 1',
+      date: dispatchDate.trim() || '20220904',
+      run_id: dispatchRunId.trim() || ''
+    };
+    const rows: EditableStationRow[] = workstations.map((w) => {
+      const jType: ProcessingJobType =
+        w.id === 'blur' ? 'BLUR' : w.id === 'stitch' ? 'STITCH' : w.id === 'lightroom' ? 'ENHANCE' : 'MASK';
+      return {
+        id: w.id as any,
+        jobType: jType,
+        name: w.name,
+        software: w.software,
+        operator: w.defaultOperator,
+        sourceFolder: resolveStationPath(w.sourceFolderTemplate, vars),
+        outputFolder: resolveStationPath(w.outputFolderTemplate, vars),
+        totalItems: dispatchTotalItems || 105
+      };
+    });
+    setTableRows(rows);
+    notify('Reset to Templates', 'Restored table folder templates from settings.');
+  };
 
   // GPU Worker Dispatch State
   const [gpuSubgrid, setGpuSubgrid] = useState('');
   const [gpuJobType, setGpuJobType] = useState<'ENHANCE' | 'MASK' | 'STITCH' | 'BLUR'>('ENHANCE');
   const [gpuDispatching, setGpuDispatching] = useState(false);
-
-  const workstations: WorkstationStationConfig[] =
-    (projectSettings?.workstationsConfig as WorkstationStationConfig[]) || DEFAULT_4_WORKSTATIONS;
 
   const notify = (title: string, details: string) => {
     onAddNotification?.({ title, message: details, category: 'SYSTEM' as any, read: false });
@@ -100,6 +218,32 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
     onRefreshJobs();
   };
 
+  const handleDeleteJob = (job: ProcessingJobRecord) => {
+    if (isGuestUser || !job.id) return;
+    setDeleteConfirmJob(job);
+  };
+
+  const confirmDeleteJob = async () => {
+    if (!deleteConfirmJob?.id) return;
+    setBusyId(deleteConfirmJob.id);
+    await deleteProcessingJobFromSupabase(deleteConfirmJob.id);
+    notify('Job Removed', `Deleted ${deleteConfirmJob.name || deleteConfirmJob.subgrid} from board.`);
+    setDeleteConfirmJob(null);
+    setBusyId(null);
+    onRefreshJobs();
+  };
+
+  const handleSaveEditedJob = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingJob?.id) return;
+    setBusyId(editingJob.id);
+    await saveProcessingJobToSupabase(editingJob);
+    notify('Job Updated', `Updated parameters for ${editingJob.name || editingJob.subgrid}.`);
+    setEditingJob(null);
+    setBusyId(null);
+    onRefreshJobs();
+  };
+
   const advanceStation = async (job: ProcessingJobRecord) => {
     if (isGuestUser || !job.id) return;
     setBusyId(job.id);
@@ -108,28 +252,21 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
     const currentType = job.job_type;
     const stageMeta = STATION_JOB_TYPE_MAP[currentType];
 
-    // Check NAS folder for output files
+    // 1. Strict Check: Query the physical NAS output folder
     const listing = await api.listFolder(job.output_folder || '');
-    const fileCount = listing?.fileCount || job.total_items || 0;
+    const fileCount = listing?.fileCount || 0;
 
-    if (!fileCount && api.mode === 'http') {
-      const proceed = window.confirm(
-        `Warning: Output folder ${job.output_folder} appears empty.\nDo you want to mark this station complete anyway?`
-      );
-      if (!proceed) {
-        setBusyId(null);
-        return;
-      }
+    // In HTTP mode with real NAS connection: If output folder is empty (not processed yet by operator), DO NOT transfer!
+    if (api.mode === 'http' && fileCount === 0) {
+      setAdvanceWarningJob({ job, fileCount: 0 });
+      setBusyId(null);
+      return;
     }
 
-    // 1. Mark current job complete
-    await updateProcessingJobStatusInSupabase(job.id, {
-      status: 'COMPLETED',
-      completed_at: new Date().toISOString()
-    });
-    await updateProcessingJobHandoffInSupabase(job.id, { externalStatus: 'done' });
+    // 2. Permanently remove previous station job from board so it never hangs around as duplicate
+    await deleteProcessingJobFromSupabase(job.id);
 
-    // 2. If this was the last station (MASK / Photoshop), register final PROCESSED dataset
+    // 3. If this was the last station (MASK / Photoshop), register final PROCESSED dataset
     if (!stageMeta?.nextJobType) {
       await saveDatasetToSupabase({
         dataset_type: 'PROCESSED',
@@ -141,33 +278,40 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
         source_folder: job.source_folder,
         output_folder: job.output_folder,
         storage_provider: 'nas_local',
-        file_count: fileCount || 500,
+        file_count: fileCount || job.total_items || 105,
         size_bytes: listing?.sizeBytes || 0,
         status: 'READY',
         version: 1,
         created_by: userLabel,
-        metadata: { source: '4station-pipeline', final_job_id: job.id }
+        metadata: { source: '4station-pipeline', final_job_id: job.id, ...(job.settings || {}) }
       });
+
+      onRefreshDatasets?.();
 
       notify(
         `4-Station Pipeline Complete!`,
         `Subgrid ${subgrid} finished Station 4 (Photoshop) and is registered as final PROCESSED dataset.`
       );
     } else {
-      // 3. Create next station job automatically
+      // 4. Create next station job automatically
       const nextType = stageMeta.nextJobType;
-      const nextStation = workstations.find((w) =>
-        nextType === 'BLUR'
-          ? w.id === 'blur'
-          : nextType === 'ENHANCE'
-            ? w.id === 'lightroom'
-            : w.id === 'photoshop'
-      );
+      const nextStation = workstations.find((w) => {
+        if (nextType === 'BLUR') return w.id === 'blur';
+        if (nextType === 'STITCH') return w.id === 'stitch';
+        if (nextType === 'ENHANCE') return w.id === 'lightroom';
+        return w.id === 'photoshop'; // MASK / final
+      });
 
       const nextInFolder = job.output_folder;
-      const nextOutFolder = (nextStation?.outputFolderTemplate || '/ENHANCED/{subgrid}/').replace(
-        '{subgrid}',
-        subgrid
+      const vars = {
+        subgrid,
+        grid: (job.settings as any)?.grid || 'Grid 1',
+        date: (job.settings as any)?.date || '20220904',
+        run_id: (job.settings as any)?.run_id || ''
+      };
+      const nextOutFolder = resolveStationPath(
+        nextStation?.outputFolderTemplate || '/ENHANCED/{subgrid}/',
+        vars
       );
 
       await saveProcessingJobToSupabase({
@@ -181,12 +325,13 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
         operator: nextStation?.defaultOperator || 'Operator',
         assigned_to: nextStation?.defaultOperator || 'Operator',
         external_status: 'awaiting_submit',
-        total_items: fileCount || 500
+        total_items: fileCount || job.total_items || 105,
+        settings: { ...(job.settings || {}), ...vars }
       });
 
       notify(
         `Advanced to ${stageMeta.nextStageName}`,
-        `Subgrid ${subgrid} moved to next station with input folder ${nextInFolder}.`
+        `Subgrid ${subgrid} moved to ${stageMeta.nextStageName}.`
       );
     }
 
@@ -200,30 +345,32 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
     setDispatching(true);
 
     const sg = dispatchSubgrid.trim().toUpperCase();
-    const st1 = workstations[0] || DEFAULT_4_WORKSTATIONS[0];
-    const inFolder = st1.sourceFolderTemplate.replace('{subgrid}', sg);
-    const outFolder = st1.outputFolderTemplate.replace('{subgrid}', sg);
+    const row = tableRows[dispatchStationIdx] || tableRows[0];
 
     await saveProcessingJobToSupabase({
-      job_type: 'STITCH',
-      name: `${st1.name} • ${sg}`,
+      job_type: row.jobType,
+      name: `${row.name} • ${sg}`,
       subgrid: sg,
-      source_folder: inFolder,
-      output_folder: outFolder,
-      provider: st1.software,
+      source_folder: row.sourceFolder,
+      output_folder: row.outputFolder,
+      provider: row.software,
       status: 'PENDING',
-      operator: st1.defaultOperator,
-      assigned_to: st1.defaultOperator,
+      operator: row.operator,
+      assigned_to: row.operator,
       external_status: 'awaiting_submit',
-      total_items: 500
+      total_items: row.totalItems || 105,
+      settings: {
+        grid: dispatchGrid,
+        date: dispatchDate,
+        customTable: tableRows
+      } as any
     });
 
     notify(
-      `Dispatched to 4-Station Pipeline`,
-      `Subgrid ${sg} queued in Station 1 (${st1.name}) for ${st1.defaultOperator}.`
+      `Dispatched to ${row.name}`,
+      `Subgrid ${sg} queued in ${row.name} for ${row.operator}.`
     );
 
-    setDispatchSubgrid('');
     setShowDispatchModal(false);
     setDispatching(false);
     onRefreshJobs();
@@ -287,14 +434,41 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
         key={job.id || job.name}
         className="bg-card border border-subtle rounded-xl p-3.5 flex flex-col gap-2.5 shadow-sm hover:border-sky-500/30 transition-all text-xs"
       >
-        <div
-          className="flex items-center justify-between gap-2 cursor-pointer hover:opacity-90"
-          onClick={() => onOpenJobDetails?.(job)}
-        >
-          <span className="font-sans font-bold text-sky-300 text-xs">{job.subgrid || 'SUBGRID'}</span>
-          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border uppercase tracking-wider ${meta.className}`}>
-            {job.status}
-          </span>
+        <div className="flex items-center justify-between gap-2">
+          <div
+            className="flex items-center gap-2 cursor-pointer hover:opacity-90 min-w-0 flex-1"
+            onClick={() => onOpenJobDetails?.(job)}
+          >
+            <span className="font-sans font-bold text-sky-300 text-xs truncate">{job.subgrid || 'SUBGRID'}</span>
+            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border uppercase tracking-wider shrink-0 ${meta.className}`}>
+              {job.status}
+            </span>
+          </div>
+
+          {!isGuestUser && (
+            <div className="flex items-center gap-1 shrink-0">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setEditingJob({ ...job });
+                }}
+                className="p-1 text-text-muted hover:text-sky-300 hover:bg-inner rounded transition-colors cursor-pointer"
+                title="Edit Folder Paths & Operator"
+              >
+                <Edit2 size={12} />
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDeleteJob(job);
+                }}
+                className="p-1 text-text-muted hover:text-rose-400 hover:bg-inner rounded transition-colors cursor-pointer"
+                title="Delete Job from Board"
+              >
+                <Trash2 size={12} />
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="bg-inner border border-subtle rounded-lg p-2 space-y-1.5 text-[11px]">
@@ -563,53 +737,40 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
           <div>
             <h3 className="text-xs font-bold text-text-base">4-Station Workstation Handoff Board</h3>
             <p className="text-[11px] text-text-muted">
-              Track subgrids moving sequentially across Stitching, Blurring, Lightroom, and Photoshop stations
+              Track subgrids moving sequentially across Blurring, Stitching, Lightroom, and Photoshop stations
             </p>
           </div>
         </div>
 
         {!isGuestUser && (
-          <button
-            onClick={() => setShowDispatchModal(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-sky-500 text-slate-950 text-xs font-bold rounded-xl hover:bg-sky-400 transition-all shadow cursor-pointer"
-          >
-            <Plus size={13} /> Dispatch Subgrid to 4-PC Flow
-          </button>
+          <div className="flex items-center gap-2">
+            {jobs.length > 0 && (
+              <button
+                onClick={() => setClearAllConfirm(true)}
+                className="flex items-center gap-1.5 px-3 py-2 bg-inner border border-subtle text-text-muted hover:text-rose-400 text-xs font-semibold rounded-xl transition-all cursor-pointer"
+                title="Clear all cards from the workstation board"
+              >
+                <Trash2 size={13} />
+                <span>Reset Board</span>
+              </button>
+            )}
+            <button
+              onClick={() => setShowDispatchModal(true)}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-sky-500 text-slate-950 text-xs font-bold rounded-xl hover:bg-sky-400 transition-all shadow cursor-pointer"
+            >
+              <Plus size={13} /> Dispatch Subgrid to 4-PC Flow
+            </button>
+          </div>
         )}
       </div>
 
       {/* 4-Lane Kanban Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-        {/* Lane 1: Stitching PC */}
+        {/* Lane 1: Privacy Blur PC */}
         <div className="bg-inner border border-subtle rounded-xl p-3 flex flex-col gap-3 min-h-[400px]">
           <div className="flex items-center justify-between border-b border-subtle pb-2">
             <div className="flex items-center gap-2">
               <span className="w-5 h-5 rounded-full bg-card text-text-muted border border-subtle flex items-center justify-center text-[10px] font-bold">1</span>
-              <div className="flex items-center gap-1.5 text-text-muted">
-                <Layers size={13} />
-                <h4 className="text-xs font-bold text-text-base">Stitching PC</h4>
-              </div>
-            </div>
-            <span className="text-[10px] font-sans font-bold text-text-muted bg-card px-2 py-0.5 rounded border border-subtle">
-              {laneJobs.stitch.length}
-            </span>
-          </div>
-          <p className="text-[10px] text-text-muted italic">PTGui / Insta360 Stitcher</p>
-          <div className="flex-1 flex flex-col gap-2.5 overflow-y-auto">
-            {laneJobs.stitch.map((j) => renderWorkstationCard(j, workstations[0]))}
-            {laneJobs.stitch.length === 0 && (
-              <div className="flex-1 flex items-center justify-center text-center p-6 text-[11px] text-text-muted border border-dashed border-subtle rounded-lg">
-                No batches currently in Stitching
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Lane 2: Privacy Blur PC */}
-        <div className="bg-inner border border-subtle rounded-xl p-3 flex flex-col gap-3 min-h-[400px]">
-          <div className="flex items-center justify-between border-b border-subtle pb-2">
-            <div className="flex items-center gap-2">
-              <span className="w-5 h-5 rounded-full bg-card text-text-muted border border-subtle flex items-center justify-center text-[10px] font-bold">2</span>
               <div className="flex items-center gap-1.5 text-text-muted">
                 <EyeOff size={13} />
                 <h4 className="text-xs font-bold text-text-base">Privacy Blur PC</h4>
@@ -619,12 +780,37 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
               {laneJobs.blur.length}
             </span>
           </div>
-          <p className="text-[10px] text-text-muted italic">YOLO Blur / Face &amp; Plate Tool</p>
+          <p className="text-[10px] text-text-muted italic">Face &amp; Plate Blur</p>
           <div className="flex-1 flex flex-col gap-2.5 overflow-y-auto">
-            {laneJobs.blur.map((j) => renderWorkstationCard(j, workstations[1]))}
+            {laneJobs.blur.map((j) => renderWorkstationCard(j, workstations[0]))}
             {laneJobs.blur.length === 0 && (
               <div className="flex-1 flex items-center justify-center text-center p-6 text-[11px] text-text-muted border border-dashed border-subtle rounded-lg">
                 No batches currently in Privacy Blur
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Lane 2: Stitching PC */}
+        <div className="bg-inner border border-subtle rounded-xl p-3 flex flex-col gap-3 min-h-[400px]">
+          <div className="flex items-center justify-between border-b border-subtle pb-2">
+            <div className="flex items-center gap-2">
+              <span className="w-5 h-5 rounded-full bg-card text-text-muted border border-subtle flex items-center justify-center text-[10px] font-bold">2</span>
+              <div className="flex items-center gap-1.5 text-text-muted">
+                <Layers size={13} />
+                <h4 className="text-xs font-bold text-text-base">Stitching PC</h4>
+              </div>
+            </div>
+            <span className="text-[10px] font-sans font-bold text-text-muted bg-card px-2 py-0.5 rounded border border-subtle">
+              {laneJobs.stitch.length}
+            </span>
+          </div>
+          <p className="text-[10px] text-text-muted italic">Creator 6 / PTGui / Insta360 Stitcher</p>
+          <div className="flex-1 flex flex-col gap-2.5 overflow-y-auto">
+            {laneJobs.stitch.map((j) => renderWorkstationCard(j, workstations[1]))}
+            {laneJobs.stitch.length === 0 && (
+              <div className="flex-1 flex items-center justify-center text-center p-6 text-[11px] text-text-muted border border-dashed border-subtle rounded-lg">
+                No batches currently in Stitching
               </div>
             )}
           </div>
@@ -681,58 +867,472 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
         </div>
       </div>
 
-      {/* Dispatch Modal */}
+      {/* Full 4-Station Route Data Table Dispatch Modal */}
       {showDispatchModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fadeIn">
-          <div className="bg-app border border-subtle rounded-2xl w-full max-w-md shadow-2xl p-6 space-y-4">
-            <div className="flex items-center justify-between border-b border-subtle pb-3">
-              <h3 className="text-sm font-bold text-text-base">Dispatch Subgrid to 4-PC Pipeline</h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
+          <div className="bg-app border border-subtle rounded-2xl w-full max-w-5xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-subtle px-6 py-4 bg-card/60">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-sky-500/20 text-sky-400 rounded-lg border border-sky-500/30">
+                  <Table size={16} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-text-base">Dispatch Subgrid • 4-Station Pipeline Table</h3>
+                  <p className="text-[11px] text-text-muted">
+                    Review and edit the exact folder paths and assigned operators for each station before dispatching
+                  </p>
+                </div>
+              </div>
               <button
                 onClick={() => setShowDispatchModal(false)}
-                className="text-text-muted hover:text-text-base cursor-pointer"
+                className="text-text-muted hover:text-text-base p-1.5 rounded-lg hover:bg-inner transition-colors cursor-pointer"
               >
-                ✕
+                <X size={16} />
               </button>
             </div>
-            <form onSubmit={handleStart4StationPipeline} className="space-y-4 text-xs">
+
+            <form onSubmit={handleStart4StationPipeline} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+              {/* Batch Global Parameters */}
+              <div className="p-5 border-b border-subtle bg-inner/30 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                <div>
+                  <label className="block text-[11px] font-semibold text-text-muted uppercase tracking-wider mb-1">
+                    Subgrid Code *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. N93E70"
+                    value={dispatchSubgrid}
+                    onChange={(e) => setDispatchSubgrid(e.target.value.toUpperCase())}
+                    className="w-full bg-inner border border-subtle rounded-lg px-3 py-2 text-text-base font-sans font-bold uppercase focus:outline-none focus:border-sky-500/60"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-text-muted uppercase tracking-wider mb-1">
+                    Grid Region
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Grid 1"
+                    value={dispatchGrid}
+                    onChange={(e) => setDispatchGrid(e.target.value)}
+                    className="w-full bg-inner border border-subtle rounded-lg px-3 py-2 text-text-base font-sans focus:outline-none focus:border-sky-500/60"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-text-muted uppercase tracking-wider mb-1">
+                    Survey Date (YYYYMMDD)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 20220904"
+                    value={dispatchDate}
+                    onChange={(e) => setDispatchDate(e.target.value)}
+                    className="w-full bg-inner border border-subtle rounded-lg px-3 py-2 text-text-base font-sans focus:outline-none focus:border-sky-500/60"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-text-muted uppercase tracking-wider mb-1">
+                    Expected Frames
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={dispatchTotalItems}
+                    onChange={(e) => setDispatchTotalItems(Number(e.target.value))}
+                    className="w-full bg-inner border border-subtle rounded-lg px-3 py-2 text-text-base font-sans focus:outline-none focus:border-sky-500/60"
+                  />
+                </div>
+              </div>
+
+              {/* Editable 4-Station Route Data Table */}
+              <div className="flex-1 overflow-auto p-5 text-xs">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[11px] font-bold text-text-muted uppercase tracking-wider">
+                    Pipeline Routing &amp; Station Configuration Table
+                  </span>
+                  <button
+                    type="button"
+                    onClick={resetTableToTemplates}
+                    className="flex items-center gap-1 text-[11px] text-sky-400 hover:text-sky-300 font-semibold cursor-pointer"
+                  >
+                    <RefreshCw size={11} /> Reset to Defaults
+                  </button>
+                </div>
+
+                <div className="border border-subtle rounded-xl overflow-hidden bg-inner/40">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="border-b border-subtle bg-card/80 text-[10px] uppercase tracking-wider text-text-muted font-bold">
+                        <th className="py-2.5 px-3 w-12 text-center">Start</th>
+                        <th className="py-2.5 px-3 w-44">Station &amp; Tool</th>
+                        <th className="py-2.5 px-3 w-36">Operator PC</th>
+                        <th className="py-2.5 px-3">Input Folder Path (Source)</th>
+                        <th className="py-2.5 px-3">Output Folder Path (Destination)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-subtle/50 text-[11px]">
+                      {tableRows.map((row, idx) => {
+                        const isSelectedStart = dispatchStationIdx === idx;
+                        return (
+                          <tr
+                            key={row.id}
+                            className={`transition-colors ${
+                              isSelectedStart ? 'bg-sky-500/10' : 'hover:bg-inner/80'
+                            }`}
+                          >
+                            <td className="py-3 px-3 text-center">
+                              <input
+                                type="radio"
+                                name="startStation"
+                                checked={isSelectedStart}
+                                onChange={() => setDispatchStationIdx(idx)}
+                                className="accent-sky-500 cursor-pointer w-4 h-4"
+                                title={`Start pipeline at ${row.name}`}
+                              />
+                            </td>
+                            <td className="py-3 px-3">
+                              <div className="font-bold text-text-base mb-1">{row.name}</div>
+                              <input
+                                type="text"
+                                value={row.software}
+                                onChange={(e) => updateTableRow(idx, 'software', e.target.value)}
+                                className="w-full bg-inner border border-subtle rounded px-2 py-1 text-[11px] text-text-muted focus:text-text-base focus:border-sky-500/60"
+                                placeholder="Software tool"
+                              />
+                            </td>
+                            <td className="py-3 px-3">
+                              <input
+                                type="text"
+                                value={row.operator}
+                                onChange={(e) => updateTableRow(idx, 'operator', e.target.value)}
+                                className="w-full bg-inner border border-subtle rounded px-2 py-1 text-[11px] text-sky-300 font-semibold focus:border-sky-500/60"
+                                placeholder="Operator name"
+                              />
+                            </td>
+                            <td className="py-3 px-3">
+                              <input
+                                type="text"
+                                value={row.sourceFolder}
+                                onChange={(e) => updateTableRow(idx, 'sourceFolder', e.target.value)}
+                                className="w-full bg-inner border border-subtle rounded px-2.5 py-1.5 text-[11px] font-sans text-sky-300 focus:text-text-base focus:border-sky-500/60"
+                                placeholder="Source input folder"
+                              />
+                            </td>
+                            <td className="py-3 px-3">
+                              <input
+                                type="text"
+                                value={row.outputFolder}
+                                onChange={(e) => updateTableRow(idx, 'outputFolder', e.target.value)}
+                                className="w-full bg-inner border border-subtle rounded px-2.5 py-1.5 text-[11px] font-sans text-emerald-300 focus:text-text-base focus:border-emerald-500/60"
+                                placeholder="Destination output folder"
+                              />
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="flex items-center justify-between border-t border-subtle px-6 py-4 bg-card/60">
+                <div className="text-[11px] text-text-muted">
+                  Initial Station Target:{' '}
+                  <strong className="text-text-base">
+                    {tableRows[dispatchStationIdx]?.name || 'PC 1 — Privacy Blur'}
+                  </strong>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowDispatchModal(false)}
+                    className="px-4 py-2 bg-inner border border-subtle text-text-muted hover:text-text-base rounded-lg cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={dispatching || !dispatchSubgrid.trim()}
+                    className="px-5 py-2 bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold rounded-lg cursor-pointer disabled:opacity-50 shadow-md flex items-center gap-1.5"
+                  >
+                    {dispatching ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
+                    <span>
+                      {dispatching
+                        ? 'Dispatching...'
+                        : `Dispatch to ${tableRows[dispatchStationIdx]?.name?.split('—')[0]?.trim() || 'Station'}`}
+                    </span>
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Active Job Card Quick Edit Modal */}
+      {editingJob && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
+          <div className="bg-app border border-subtle rounded-2xl w-full max-w-lg shadow-2xl p-6 space-y-4">
+            <div className="flex items-center justify-between border-b border-subtle pb-3">
+              <div className="flex items-center gap-2">
+                <Edit2 size={16} className="text-sky-400" />
+                <h3 className="text-sm font-bold text-text-base">Edit Job Parameters • {editingJob.subgrid}</h3>
+              </div>
+              <button
+                onClick={() => setEditingJob(null)}
+                className="text-text-muted hover:text-text-base p-1 rounded-lg hover:bg-inner transition-colors cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditedJob} className="space-y-3.5 text-xs">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-semibold text-text-muted mb-1">Subgrid Code</label>
+                  <input
+                    type="text"
+                    value={editingJob.subgrid || ''}
+                    onChange={(e) => setEditingJob({ ...editingJob, subgrid: e.target.value.toUpperCase() })}
+                    className="w-full bg-inner border border-subtle rounded-lg px-3 py-2 text-text-base font-sans font-bold focus:outline-none focus:border-sky-500/60"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-text-muted mb-1">Status</label>
+                  <select
+                    value={editingJob.status}
+                    onChange={(e) => setEditingJob({ ...editingJob, status: e.target.value as any })}
+                    className="w-full bg-inner border border-subtle rounded-lg px-3 py-2 text-text-base focus:outline-none focus:border-sky-500/60"
+                  >
+                    <option value="PENDING">PENDING</option>
+                    <option value="IN_PROGRESS">IN_PROGRESS</option>
+                    <option value="COMPLETED">COMPLETED</option>
+                    <option value="FAILED">FAILED</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-semibold text-text-muted mb-1">Primary Tool</label>
+                  <input
+                    type="text"
+                    value={editingJob.provider || ''}
+                    onChange={(e) => setEditingJob({ ...editingJob, provider: e.target.value })}
+                    className="w-full bg-inner border border-subtle rounded-lg px-3 py-2 text-text-base focus:outline-none focus:border-sky-500/60"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-text-muted mb-1">Assigned Operator</label>
+                  <input
+                    type="text"
+                    value={editingJob.assigned_to || editingJob.operator || ''}
+                    onChange={(e) =>
+                      setEditingJob({
+                        ...editingJob,
+                        assigned_to: e.target.value,
+                        operator: e.target.value
+                      })
+                    }
+                    className="w-full bg-inner border border-subtle rounded-lg px-3 py-2 text-sky-300 font-semibold focus:outline-none focus:border-sky-500/60"
+                  />
+                </div>
+              </div>
+
               <div>
-                <label className="block text-[11px] font-semibold text-text-muted uppercase tracking-wider mb-1">
-                  Subgrid Code *
-                </label>
+                <label className="block text-[11px] font-semibold text-text-muted mb-1">Source Input Folder</label>
                 <input
                   type="text"
-                  required
-                  placeholder="e.g. N93E70"
-                  value={dispatchSubgrid}
-                  onChange={(e) => setDispatchSubgrid(e.target.value.toUpperCase())}
-                  className="w-full bg-inner border border-subtle rounded-lg px-3 py-2 text-text-base font-sans uppercase focus:outline-none focus:border-sky-500/60"
+                  value={editingJob.source_folder || ''}
+                  onChange={(e) => setEditingJob({ ...editingJob, source_folder: e.target.value })}
+                  className="w-full bg-inner border border-subtle rounded-lg px-3 py-2 font-sans text-sky-300 focus:outline-none focus:border-sky-500/60"
                 />
               </div>
 
-              <div className="p-3 bg-inner rounded-xl border border-subtle space-y-1 text-[11px] text-text-muted">
-                <div className="font-semibold text-text-base mb-1">Pipeline Initial Route:</div>
-                <div>• Initial Station: <strong>PC 1 — Stitching Station</strong></div>
-                <div>• Source Folder: <code className="text-sky-300 font-sans">/RAW/{dispatchSubgrid || 'SUBGRID'}/</code></div>
-                <div>• Output Folder: <code className="text-sky-300 font-sans">/STITCHED/{dispatchSubgrid || 'SUBGRID'}/</code></div>
+              <div>
+                <label className="block text-[11px] font-semibold text-text-muted mb-1">Output Folder</label>
+                <input
+                  type="text"
+                  value={editingJob.output_folder || ''}
+                  onChange={(e) => setEditingJob({ ...editingJob, output_folder: e.target.value })}
+                  className="w-full bg-inner border border-subtle rounded-lg px-3 py-2 font-sans text-emerald-300 focus:outline-none focus:border-emerald-500/60"
+                />
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-2">
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-subtle">
                 <button
                   type="button"
-                  onClick={() => setShowDispatchModal(false)}
+                  onClick={() => setEditingJob(null)}
                   className="px-4 py-2 bg-inner border border-subtle text-text-muted hover:text-text-base rounded-lg cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={dispatching || !dispatchSubgrid.trim()}
-                  className="px-5 py-2 bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold rounded-lg cursor-pointer disabled:opacity-50 shadow-md"
+                  disabled={busyId === editingJob.id}
+                  className="px-5 py-2 bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold rounded-lg cursor-pointer flex items-center gap-1.5 shadow-md"
                 >
-                  {dispatching ? 'Dispatching...' : 'Dispatch to Station 1'}
+                  {busyId === editingJob.id ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+                  <span>Save Changes</span>
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Professional Clean Dark Delete Confirmation Modal */}
+      {deleteConfirmJob && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
+          <div className="bg-app border border-subtle rounded-2xl w-full max-w-md shadow-2xl p-6 space-y-4">
+            <div className="flex items-start gap-3.5">
+              <div className="p-2.5 bg-inner border border-subtle text-text-muted rounded-xl shrink-0">
+                <Trash2 size={18} />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-sm font-bold text-text-base">Remove Workstation Job?</h3>
+                <p className="text-xs text-text-muted">
+                  Are you sure you want to remove this job from the workstation queue?
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-inner border border-subtle rounded-xl p-3.5 text-xs space-y-2 text-text-muted font-sans">
+              <div className="flex items-center justify-between">
+                <span>Subgrid Batch:</span>
+                <strong className="text-text-base font-bold font-sans">{deleteConfirmJob.subgrid || 'SUBGRID'}</strong>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>Station:</span>
+                <strong className="text-text-base">{deleteConfirmJob.name || deleteConfirmJob.job_type}</strong>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>Assigned PC:</span>
+                <strong className="text-text-muted">{deleteConfirmJob.assigned_to || deleteConfirmJob.operator || 'Unassigned'}</strong>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeleteConfirmJob(null)}
+                className="px-4 py-2 bg-inner border border-subtle text-text-muted hover:text-text-base rounded-xl text-xs font-semibold cursor-pointer transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteJob}
+                disabled={busyId === deleteConfirmJob.id}
+                className="px-5 py-2 bg-red-500/15 border border-red-500/30 hover:bg-red-500/25 text-red-300 font-bold rounded-xl text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-all"
+              >
+                {busyId === deleteConfirmJob.id ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                <span>Delete Job</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Strict Output File Verification Modal (Blocks advancing when 0 files exist) */}
+      {advanceWarningJob && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
+          <div className="bg-app border border-subtle rounded-2xl w-full max-w-md shadow-2xl p-6 space-y-4">
+            <div className="flex items-start gap-3.5">
+              <div className="p-2.5 bg-inner border border-subtle text-text-muted rounded-xl shrink-0">
+                <AlertTriangle size={18} />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-sm font-bold text-text-base">Output Files Required to Advance</h3>
+                <p className="text-xs text-text-muted">
+                  Cannot transfer to the next station because no output files were detected in the destination folder on the NAS.
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-inner border border-subtle rounded-xl p-3.5 text-xs text-text-muted space-y-2 font-sans">
+              <div>
+                <span className="text-[10px] uppercase font-bold text-text-muted block mb-0.5">Primary Software:</span>
+                <strong className="text-text-base">{advanceWarningJob.job.provider || 'Desktop Software'}</strong>
+              </div>
+              <div className="break-all">
+                <span className="text-[10px] uppercase font-bold text-text-muted block mb-0.5">Expected Output NAS Folder:</span>
+                <code className="text-sky-300 font-sans text-[11px]">{advanceWarningJob.job.output_folder || '—'}</code>
+              </div>
+              <p className="text-[11px] text-text-muted italic pt-1 border-t border-subtle">
+                Please process the images in {advanceWarningJob.job.provider || 'software'} and export them to this folder.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setAdvanceWarningJob(null)}
+                className="px-4 py-2 bg-inner border border-subtle text-text-muted hover:text-text-base rounded-xl text-xs font-semibold cursor-pointer transition-colors"
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const target = advanceWarningJob.job;
+                  setAdvanceWarningJob(null);
+                  advanceStation(target);
+                }}
+                className="px-5 py-2 bg-card border border-subtle hover:bg-inner text-text-base font-bold rounded-xl text-xs flex items-center gap-1.5 cursor-pointer transition-all"
+              >
+                <RefreshCw size={12} />
+                <span>Check NAS &amp; Advance</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Clear All Cards Confirmation Modal */}
+      {clearAllConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
+          <div className="bg-app border border-subtle rounded-2xl w-full max-w-md shadow-2xl p-6 space-y-4">
+            <div className="flex items-start gap-3.5">
+              <div className="p-2.5 bg-inner border border-subtle text-text-muted rounded-xl shrink-0">
+                <Trash2 size={18} />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-sm font-bold text-text-base">Reset Workstation Board?</h3>
+                <p className="text-xs text-text-muted">
+                  Are you sure you want to clear all active cards from the 4-station workstation board?
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-inner border border-subtle rounded-xl p-3 text-xs text-text-muted">
+              This will remove all {jobs.length} card(s) currently on the board so you can start fresh.
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setClearAllConfirm(false)}
+                className="px-4 py-2 bg-inner border border-subtle text-text-muted hover:text-text-base rounded-xl text-xs font-semibold cursor-pointer transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleClearAllCards}
+                disabled={busyId === 'clear_all'}
+                className="px-5 py-2 bg-red-500/15 border border-red-500/30 hover:bg-red-500/25 text-red-300 font-bold rounded-xl text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-all"
+              >
+                {busyId === 'clear_all' ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                <span>Clear All Cards</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

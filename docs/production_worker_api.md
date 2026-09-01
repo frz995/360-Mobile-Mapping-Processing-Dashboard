@@ -29,19 +29,27 @@ Request:
   "output_folder": "cleaned/N93E70",    // relative to NAS_BASE_PATH (created if missing)
   "subgrid": "N93E70",
   "total_items": 500,
-  "settings": {
-    "apiMode": "http",
-    "concurrency": 1,
-    "enhance": { "brightness": 0, "contrast": 0, "exposure": 0, "sharpness": 0, "saturation": 0, "denoise": 0 },
-    "mask": {
-      "detectAutomatically": true,
-      "bottomBandHeight": 0.18,
-      "fillModel": "lama",
-      "maskB64": "optional-client-annotated-mask"
-    },
-    "exportFormat": "jpeg",
-    "jpegQuality": 92
-  }
+    "settings": {
+      "apiMode": "http",
+      "concurrency": 1,
+      "enhance": { "brightness": 0, "contrast": 0, "exposure": 0, "sharpness": 0, "saturation": 0, "denoise": 0 },
+      "mask": {
+        "detectAutomatically": true,
+        "bottomBandHeight": 0.18,
+        "fillModel": "lama",
+        "maskB64": "optional-client-annotated-mask"
+      },
+      "blur": {
+        "detectFaces": true,
+        "detectPlates": false,
+        "blurStrength": 8,
+        "boxMargin": 6,
+        "fullFrameBlur": 0,
+        "recurse": true
+      },
+      "exportFormat": "jpeg",
+      "jpegQuality": 92
+    }
 }
 ```
 
@@ -131,12 +139,18 @@ Capacity + recursive inventory of the NAS working base. Cached for
 
 ## Execution scope
 
-Only `ENHANCE` and `MASK` execute on this worker (deterministic enhancement +
-LaMa generative-fill). Submitting `STITCH` / `BLUR` / `QAQC` / `REPORT` /
-`EXPORT` returns a "tracked dashboard-side" acknowledgement — such jobs are
-orchestrated by the Processing Center's external-PC handoff workflow (operator
-assignment → submit → validate output folder → import as dataset). `AI_DETECT`
-is reserved and not implemented on the worker yet.
+`ENHANCE`, `MASK` and `BLUR` execute on this worker:
+- **ENHANCE** — deterministic enhancement (brightness/contrast/etc.).
+- **MASK** — LaMa generative-fill car-hood removal (OpenCV TELEA fallback).
+- **BLUR** — privacy blur: OpenCV Haar face (+ optional plate) detection with
+  Gaussian blur per detection, full-frame Gaussian fallback. `BLUR` jobs scan the
+  source tree **recursively** (raw date/camera folders) and mirror the tree to the
+  output folder — unlike ENHANCE/MASK which read flat files.
+
+Submitting `STITCH` / `QAQC` / `REPORT` / `EXPORT` returns a "tracked dashboard-side"
+acknowledgement — such jobs are orchestrated by the Processing Center's external-PC
+handoff workflow (operator assignment → submit → validate output folder → import as
+dataset). `AI_DETECT` is reserved and not implemented on the worker yet.
 
 ## Status lifecycle (dashboard mirror)
 
