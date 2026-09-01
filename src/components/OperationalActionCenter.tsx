@@ -62,24 +62,24 @@ export const OperationalActionCenter: React.FC<OperationalActionCenterProps> = (
   const totalDefectsInLogs = batchLogs.reduce((acc, b) => acc + (b.defects || 0), 0);
   const effectiveDefectsCount = Math.max(qaDefectsCount, totalDefectsInLogs);
 
-  // Calculate specific subgrids that have defects
+  // Calculate specific subgrids that have defects (count each subgrid once — batch logs are derived
+  // from daily data via reconcileBatchLogs, so the same defects must not be added twice).
   const defectBreakdown: { subgrid: string; defects: number }[] = [];
   dailyData.forEach((d) => {
     const defs = Number(d.imagesDefected || d.defectCount || 0);
     const sg = (d.subgrid || '').toUpperCase().trim();
-    if (sg && (defs > 0 || d.publishToWebGIS === 'need to recheck' || d.publishToWebGIS === 'no')) {
-      const existing = defectBreakdown.find((x) => x.subgrid === sg);
-      if (existing) existing.defects += (defs || 1);
-      else defectBreakdown.push({ subgrid: sg, defects: defs || 1 });
-    }
-  });
-  batchLogs.forEach((b) => {
-    const defs = Number(b.defects || 0);
-    const sg = (b.subgrid || b.imageFilename || '').toUpperCase().trim();
     if (sg && defs > 0) {
       const existing = defectBreakdown.find((x) => x.subgrid === sg);
       if (existing) existing.defects += defs;
       else defectBreakdown.push({ subgrid: sg, defects: defs });
+    }
+  });
+  const defectSubgridsFromDaily = new Set(defectBreakdown.map((x) => x.subgrid));
+  batchLogs.forEach((b) => {
+    const defs = Number(b.defects || 0);
+    const sg = (b.subgrid || b.imageFilename || '').toUpperCase().trim();
+    if (sg && defs > 0 && !defectSubgridsFromDaily.has(sg)) {
+      defectBreakdown.push({ subgrid: sg, defects: defs });
     }
   });
 
@@ -88,9 +88,23 @@ export const OperationalActionCenter: React.FC<OperationalActionCenterProps> = (
     label: string;
     actionText: string;
     tooltip?: string;
+    hoverTitle?: string;
+    unit?: string;
     subgrids?: { subgrid: string; defects: number }[];
     onClick: () => void;
   }[] = [];
+
+  // Subgrids that are currently staging (have unpublished daily records)
+  const stagedSubgridBreakdown: { subgrid: string; defects: number }[] = [];
+  dailyData.forEach((d) => {
+    const isStaged = !d.publishToWebGIS || d.publishToWebGIS === 'no' || d.publishToWebGIS === 'in process';
+    const sg = (d.subgrid || '').toUpperCase().trim();
+    if (sg && isStaged) {
+      const existing = stagedSubgridBreakdown.find((x) => x.subgrid === sg);
+      if (existing) existing.defects += 1;
+      else stagedSubgridBreakdown.push({ subgrid: sg, defects: 1 });
+    }
+  });
 
   if (effectiveDefectsCount > 0) {
     const defectDaily = dailyData.find(
@@ -138,9 +152,16 @@ export const OperationalActionCenter: React.FC<OperationalActionCenterProps> = (
   }
 
   if (unpublishedCount > 0) {
+    const stagedTooltip = stagedSubgridBreakdown.length > 0
+      ? `Staging Subgrids:\n${stagedSubgridBreakdown.map((s) => `• ${s.subgrid}: ${s.defects} staged record(s)`).join('\n')}`
+      : undefined;
     attentionItems.push({
       label: `${unpublishedCount} staged subgrid${unpublishedCount === 1 ? '' : 's'}`,
       actionText: 'Publish',
+      tooltip: stagedTooltip,
+      hoverTitle: 'Staging Subgrids',
+      unit: 'staged',
+      subgrids: stagedSubgridBreakdown,
       onClick: () => onNavigate('data', { tab: 'daily', search: '' })
     });
   }
@@ -199,13 +220,13 @@ export const OperationalActionCenter: React.FC<OperationalActionCenterProps> = (
                     {item.subgrids && item.subgrids.length > 0 && (
                       <span className="invisible group-hover:visible absolute left-0 bottom-full mb-2 z-50 p-2.5 bg-card border border-subtle text-text-base text-xs rounded-xl shadow-2xl min-w-[200px] pointer-events-none transition-all animate-in fade-in zoom-in-95 duration-150">
                         <span className="font-bold text-[10px] uppercase tracking-wider text-text-muted block border-b border-subtle pb-1 mb-1.5">
-                          Defect Subgrids ({item.subgrids.length}):
+                          {item.hoverTitle || `Defect Subgrids (${item.subgrids.length}):`}
                         </span>
                         <div className="space-y-1">
                           {item.subgrids.map((sg) => (
                             <div key={sg.subgrid} className="flex items-center justify-between gap-3 text-[11px]">
                               <span className="font-semibold text-text-base">{sg.subgrid}</span>
-                              <span className="text-text-muted font-sans font-medium">{sg.defects} defect{sg.defects === 1 ? '' : 's'}</span>
+                              <span className="text-text-muted font-sans font-medium">{sg.defects} {item.unit || 'defect'}{sg.defects === 1 ? '' : 's'}</span>
                             </div>
                           ))}
                         </div>

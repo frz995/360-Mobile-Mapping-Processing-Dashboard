@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState, useImperativeHandle, forwardRef } from 'react';
+import { useEffect, useRef, useState, useCallback, useImperativeHandle, forwardRef } from 'react';
 import { Viewer } from '@photo-sphere-viewer/core';
 import { CubemapTilesAdapter } from '@photo-sphere-viewer/cubemap-tiles-adapter';
 import '@photo-sphere-viewer/core/index.css';
+import { setHeading } from '../utils/headingStore';
 
 export interface PhotoSphereViewerHandle {
   zoomIn: () => void;
@@ -17,7 +18,21 @@ export interface PhotoSphereViewerProps {
   configUrl?: string;
   caption?: string;
   className?: string;
+  /** Initial view heading (bearing) in degrees — orients the first frame. */
+  initialYaw?: number;
+  /** Initial field of view in degrees — sets the starting zoom (clamped to min/max FOV). */
+  initialFov?: number;
   onPositionChange?: (position: { yaw: number; pitch: number; fov?: number }) => void;
+}
+
+const DEFAULT_MIN_FOV = 30;
+const DEFAULT_MAX_FOV = 110;
+
+// Map a requested FOV (degrees) to PSV's zoom level (0..100). PSV zooms linearly
+// from maxFov (zoom 0) down to minFov (zoom 100).
+function fovToZoomLevel(fov: number, minFov: number, maxFov: number): number {
+  const clamped = Math.min(maxFov, Math.max(minFov, fov));
+  return ((maxFov - clamped) / (maxFov - minFov)) * 100;
 }
 
 const FACE_MAP: Record<string, string> = {
@@ -57,16 +72,59 @@ function buildCubemapPanorama(configUrl: string) {
 }
 
 export const PhotoSphereViewerComponent = forwardRef<PhotoSphereViewerHandle, PhotoSphereViewerProps>(
-  ({ panoramaUrl, configUrl, caption, className = 'w-full h-full min-h-[300px]', onPositionChange }, ref) => {
+  ({ panoramaUrl, configUrl, caption, className = 'w-full h-full min-h-[300px]', initialYaw = 0, initialFov, onPositionChange }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const viewerRef = useRef<Viewer | null>(null);
     const [isLoading, setIsLoading] = useState<boolean>(true);
     const [progress, setProgress] = useState<number | null>(null);
+    const [loadError, setLoadError] = useState<string | null>(null);
 
     const onPositionChangeRef = useRef(onPositionChange);
     useEffect(() => {
       onPositionChangeRef.current = onPositionChange;
     }, [onPositionChange]);
+
+    // Keep the latest initial heading without re-running the (heavy) panorama effect
+    // on every change — prevents the viewer from hot-swapping texture while rotating.
+    const initialYawRef = useRef(initialYaw);
+    useEffect(() => {
+      initialYawRef.current = initialYaw;
+    }, [initialYaw]);
+
+    // Keep the latest desired FOV without re-running the (heavy) panorama effect.
+    const initialFovRef = useRef(initialFov);
+    useEffect(() => {
+      initialFovRef.current = initialFov;
+    }, [initialFov]);
+
+    // rAF-batched onPositionChange: the host posts CAMERA_ROTATED to the map
+    // iframe; coalesce per-frame position events into a single callback (max one
+    // per animation frame) to avoid saturating the main thread with map updates.
+    const throttleAccumRef = useRef<{ has: boolean; yaw: number; pitch: number; fov?: number }>({ has: false, yaw: 0, pitch: 0 });
+    const throttleFrameRef = useRef<number | null>(null);
+
+    const flushPositionChange = useCallback(() => {
+      throttleFrameRef.current = null;
+      const acc = throttleAccumRef.current;
+      if (!acc.has) return;
+      acc.has = false;
+      onPositionChangeRef.current?.({
+        yaw: acc.yaw,
+        pitch: acc.pitch,
+        fov: acc.fov,
+      });
+    }, []);
+
+    const queuePositionChange = useCallback((pos: { yaw: number; pitch: number; fov?: number }) => {
+      const acc = throttleAccumRef.current;
+      acc.has = true;
+      acc.yaw = pos.yaw;
+      acc.pitch = pos.pitch;
+      acc.fov = pos.fov;
+      if (throttleFrameRef.current == null) {
+        throttleFrameRef.current = requestAnimationFrame(flushPositionChange);
+      }
+    }, [flushPositionChange]);
 
     useImperativeHandle(ref, () => ({
       zoomIn: () => {
@@ -114,6 +172,7 @@ export const PhotoSphereViewerComponent = forwardRef<PhotoSphereViewerHandle, Ph
 
       setIsLoading(true);
       setProgress(null);
+      setLoadError(null);
 
       // Instant preloader listener for single equirectangular images
       if (panoramaUrl) {
@@ -125,7 +184,10 @@ export const PhotoSphereViewerComponent = forwardRef<PhotoSphereViewerHandle, Ph
           }
         };
         preloadImg.onerror = () => {
-          if (isMounted) setIsLoading(false);
+          if (isMounted) {
+            setLoadError('Unable to load the 360° image (request failed or file missing).');
+            setIsLoading(false);
+          }
         };
         preloadImg.src = panoramaUrl.trim();
       }
@@ -138,13 +200,28 @@ export const PhotoSphereViewerComponent = forwardRef<PhotoSphereViewerHandle, Ph
         })
           .then(() => {
             if (isMounted) {
+              setLoadError(null);
               setIsLoading(false);
               setProgress(null);
+              // Orient the first frame to the new point's heading (bearing).
+              const iy = initialYawRef.current;
+              if (typeof iy === 'number' && isFinite(iy)) {
+                const curPos = viewerRef.current?.getPosition();
+                try {
+                  viewerRef.current?.rotate({
+                    yaw: (iy * Math.PI) / 180,
+                    pitch: curPos?.pitch ?? 0,
+                  });
+                } catch (_) { }
+              }
             }
           })
           .catch((err) => {
             console.warn('Fast panorama swap notice:', err);
-            if (isMounted) setIsLoading(false);
+            if (isMounted) {
+              setLoadError('Unable to load the 360° image (request failed or file missing).');
+              setIsLoading(false);
+            }
           });
         return;
       }
@@ -158,8 +235,14 @@ export const PhotoSphereViewerComponent = forwardRef<PhotoSphereViewerHandle, Ph
           navbar: false,
           panorama: targetPanorama,
           caption: caption || '360° Panorama Inspection',
-          defaultYaw: '0deg',
+          defaultYaw: `${initialYawRef.current ?? 0}deg`,
           defaultPitch: '0deg',
+          defaultZoomLvl: initialFovRef.current
+            ? fovToZoomLevel(initialFovRef.current, DEFAULT_MIN_FOV, DEFAULT_MAX_FOV)
+            : 0,
+          minFov: DEFAULT_MIN_FOV,
+          maxFov: DEFAULT_MAX_FOV,
+          moveSpeed: 1,
           touchmoveTwoFingers: false,
           mousewheel: true,
           mousewheelCtrlKey: false,
@@ -167,23 +250,33 @@ export const PhotoSphereViewerComponent = forwardRef<PhotoSphereViewerHandle, Ph
           loadingTxt: '',
         });
 
-        viewerInstance.addEventListener('ready', () => {
-          if (isMounted) setIsLoading(false);
+        viewerInstance.addEventListener('panorama-loaded', () => {
+          if (isMounted) {
+            setLoadError(null);
+            setIsLoading(false);
+          }
         });
 
-        viewerInstance.addEventListener('panorama-loaded', () => {
-          if (isMounted) setIsLoading(false);
+        viewerInstance.addEventListener('panorama-error' as any, () => {
+          if (isMounted) {
+            setLoadError('Unable to load the 360° image (request failed or file missing).');
+            setIsLoading(false);
+          }
         });
 
         viewerInstance.addEventListener('load-progress' as any, ({ progress: p }: any) => {
           if (isMounted && typeof p === 'number') {
             setProgress(Math.round(p));
-            if (p >= 100) setIsLoading(false);
+            if (p >= 100) {
+              setLoadError(null);
+              setIsLoading(false);
+            }
           }
         });
 
         viewerInstance.addEventListener('position-updated', ({ position }) => {
-          onPositionChangeRef.current?.({
+          setHeading((position.yaw * 180) / Math.PI);
+          queuePositionChange({
             yaw: (position.yaw * 180) / Math.PI,
             pitch: (position.pitch * 180) / Math.PI,
             fov: viewerInstance?.getZoomLevel() ?? 50,
@@ -193,7 +286,8 @@ export const PhotoSphereViewerComponent = forwardRef<PhotoSphereViewerHandle, Ph
         viewerInstance.addEventListener('zoom-updated', ({ zoomLevel }) => {
           const pos = viewerInstance?.getPosition();
           if (pos) {
-            onPositionChangeRef.current?.({
+            setHeading((pos.yaw * 180) / Math.PI);
+            queuePositionChange({
               yaw: (pos.yaw * 180) / Math.PI,
               pitch: (pos.pitch * 180) / Math.PI,
               fov: zoomLevel,
@@ -204,23 +298,32 @@ export const PhotoSphereViewerComponent = forwardRef<PhotoSphereViewerHandle, Ph
         viewerRef.current = viewerInstance;
       } catch (err) {
         console.error('Failed to initialize PhotoSphereViewer:', err);
-        if (isMounted) setIsLoading(false);
+        if (isMounted) {
+          setLoadError('Failed to initialize the 360° viewer.');
+          setIsLoading(false);
+        }
       }
 
-      // Guaranteed timeout safeguard: Ensures progress overlay always dismisses once loaded
-      const safetyTimer = setTimeout(() => {
+      // Last-resort timeout for loads that neither complete nor error (e.g. stalled
+      // cubemap tile fetch). Dismisses the spinner so the canvas isn't stuck forever.
+      // Genuine failures are caught earlier by panorama-error and show the placeholder.
+      const stallTimer = setTimeout(() => {
         if (isMounted) setIsLoading(false);
-      }, 700);
+      }, 6000);
 
       return () => {
         isMounted = false;
-        clearTimeout(safetyTimer);
+        clearTimeout(stallTimer);
       };
     }, [panoramaUrl, configUrl, caption]);
 
     // Unmount cleanup
     useEffect(() => {
       return () => {
+        if (throttleFrameRef.current != null) {
+          cancelAnimationFrame(throttleFrameRef.current);
+          throttleFrameRef.current = null;
+        }
         if (viewerRef.current) {
           viewerRef.current.destroy();
           viewerRef.current = null;
@@ -263,6 +366,21 @@ export const PhotoSphereViewerComponent = forwardRef<PhotoSphereViewerHandle, Ph
                     animation: progress === null ? 'pulse 1.2s infinite ease-in-out' : undefined
                   }}
                 />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Load Failure Placeholder (avoids a silent white canvas) */}
+        {!isLoading && loadError && (
+          <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-slate-950/80 backdrop-blur-sm transition-opacity duration-200 pointer-events-none select-none animate-in fade-in">
+            <div className="flex flex-col items-center gap-3 p-5 rounded-2xl bg-card/90 border border-rose-500/30 shadow-2xl min-w-[240px] max-w-[300px] text-center">
+              <div className="w-11 h-11 rounded-full bg-rose-500/15 border border-rose-500/30 flex items-center justify-center">
+                <span className="text-rose-400 font-bold text-lg leading-none">!</span>
+              </div>
+              <div className="space-y-1">
+                <div className="text-xs font-bold tracking-wide text-text-base">360° Image Unavailable</div>
+                <div className="text-[10px] text-text-muted leading-relaxed">{loadError}</div>
               </div>
             </div>
           </div>
