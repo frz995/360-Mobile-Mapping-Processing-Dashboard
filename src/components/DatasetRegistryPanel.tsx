@@ -24,7 +24,7 @@ import {
   checkDatasetDuplicates
 } from '../services/supabase';
 import type { DatasetRecord, DatasetType, ProcessingJobRecord } from '../types/production';
-import { buildLineageGraph, findOrphans } from '../utils/datasetLineage';
+import { buildLineageGraph, findOrphans, extractCanonicalSubgrid } from '../utils/datasetLineage';
 import { computeDatasetVersionState } from '../utils/datasetVersioning';
 import { formatBytes, formatDateTime } from './production/common';
 import type { TranslateFn } from './production/common';
@@ -117,7 +117,10 @@ export const DatasetRegistryPanel: React.FC<DatasetRegistryPanelProps> = ({
 
   const subgrids = useMemo(() => {
     const set = new Set<string>();
-    datasets.forEach((d) => d.subgrid && set.add(d.subgrid.trim().toUpperCase()));
+    datasets.forEach((d) => {
+      const clean = extractCanonicalSubgrid(d.subgrid);
+      if (clean) set.add(clean);
+    });
     return Array.from(set).sort();
   }, [datasets]);
 
@@ -163,7 +166,7 @@ export const DatasetRegistryPanel: React.FC<DatasetRegistryPanelProps> = ({
     const q = search.trim().toLowerCase();
     return rows.filter((r) => {
       if (typeFilter !== 'all' && r.dataset.dataset_type !== typeFilter) return false;
-      if (subgridFilter && (r.dataset.subgrid || '').toUpperCase() !== subgridFilter) return false;
+      if (subgridFilter && extractCanonicalSubgrid(r.dataset.subgrid) !== subgridFilter) return false;
       if (q) {
         const hay = [
           r.dataset.name,

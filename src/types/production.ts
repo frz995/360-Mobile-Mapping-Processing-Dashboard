@@ -223,6 +223,11 @@ export interface WorkstationStationConfig {
   description: string;
   iconName?: string;
   enabled: boolean;
+  ipAddress?: string;
+  port?: number;
+  lastHeartbeat?: string;
+  isOnline?: boolean;
+  latencyMs?: number;
 }
 
 export const DEFAULT_4_WORKSTATIONS: WorkstationStationConfig[] = [
@@ -230,6 +235,7 @@ export const DEFAULT_4_WORKSTATIONS: WorkstationStationConfig[] = [
     id: 'blur',
     name: 'PC 1 — Privacy Blur Station',
     stepNumber: 1,
+    ipAddress: '192.168.1.101',
     software: 'Privacy Keeper / Face & Plate Blur',
     defaultOperator: 'Blurring Operator',
     sourceFolderTemplate: '/RAW/{subgrid}/',
@@ -241,6 +247,7 @@ export const DEFAULT_4_WORKSTATIONS: WorkstationStationConfig[] = [
     id: 'stitch',
     name: 'PC 2 — Stitching Station',
     stepNumber: 2,
+    ipAddress: '192.168.1.102',
     software: 'Creator 6 / PTGui / Insta360 Stitcher',
     defaultOperator: 'Stitching Operator',
     sourceFolderTemplate: '/BLURRED/{subgrid}/',
@@ -252,6 +259,7 @@ export const DEFAULT_4_WORKSTATIONS: WorkstationStationConfig[] = [
     id: 'lightroom',
     name: 'PC 3 — Lightroom Station',
     stepNumber: 3,
+    ipAddress: '192.168.1.103',
     software: 'Adobe Lightroom Classic / Camera RAW',
     defaultOperator: 'Colorist Operator',
     sourceFolderTemplate: '/STITCHED/{subgrid}/',
@@ -263,6 +271,7 @@ export const DEFAULT_4_WORKSTATIONS: WorkstationStationConfig[] = [
     id: 'photoshop',
     name: 'PC 4 — Photoshop Station',
     stepNumber: 4,
+    ipAddress: '192.168.1.104',
     software: 'Adobe Photoshop (Batch Actions)',
     defaultOperator: 'Retouch Operator',
     sourceFolderTemplate: '/ENHANCED/{subgrid}/',

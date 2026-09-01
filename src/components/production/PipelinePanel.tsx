@@ -1,39 +1,22 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Plus,
-  Play,
-  Ban,
-  RotateCcw,
-  Trash2,
-  Download,
-  Loader2,
-  ChevronRight
+  Layers,
+  Search,
+  CheckCircle2,
+  Clock,
+  AlertTriangle
 } from 'lucide-react';
 import type { ProductionApiClient } from '../../services/productionApi';
-import {
-  deleteProcessingJobFromSupabase,
-  saveProcessingJobToSupabase,
-  updateProcessingJobStatusInSupabase,
-  saveDatasetToSupabase,
-  getStorageImageCountsFromSupabase
-} from '../../services/supabase';
+import { getStorageImageCountsFromSupabase } from '../../services/supabase';
 import type {
   DatasetRecord,
-  PipelineStageKey,
-  ProcessingJobRecord,
-  ProcessingJobType
+  ProcessingJobRecord
 } from '../../types/production';
-import {
-  estimateEtaSeconds,
-  formatEta,
-  isJobActive,
-  jobStatusMeta
-} from '../../utils/productionQueue';
-import { buildPipelineStages, stageJobsFor } from '../../utils/pipelineStages';
-import { validateFolderForImport } from '../../utils/processedOutputValidation';
+import { buildPipelineStages } from '../../utils/pipelineStages';
 import type { StagingAggregate } from '../../utils/datasetLineage';
-import { JOB_TYPE_OPTIONS, formatDateTime } from './common';
+import { extractCanonicalSubgrid, extractSurveyDate } from '../../utils/datasetLineage';
 import { ProcessStrip, Surface } from './chrome';
+import { formatBytes } from './common';
 
 export interface PipelinePanelProps {
   jobs: ProcessingJobRecord[];
@@ -50,71 +33,34 @@ export interface PipelinePanelProps {
   onOpenJobDetails?: (job: ProcessingJobRecord) => void;
 }
 
-interface NewJobDraft {
-  name: string;
-  job_type: ProcessingJobType;
-  provider: string;
-  software_version: string;
-  source_folder: string;
-  output_folder: string;
+interface SubgridLifecycleRow {
+  key: string;
   subgrid: string;
-  total_items: number;
-}
-
-const EMPTY_DRAFT: NewJobDraft = {
-  name: '',
-  job_type: 'ENHANCE',
-  provider: 'NAS GPU Worker',
-  software_version: '',
-  source_folder: 'stitchblur',
-  output_folder: 'cleaned',
-  subgrid: '',
-  total_items: 500
-};
-
-const NUMBER_INPUT_CLASS =
-  'w-full bg-inner border border-subtle rounded-lg px-3 py-2 text-xs text-text-base outline-none focus:border-sky-500/60 placeholder:text-text-muted';
-
-function stageFromJobType(jobType: ProcessingJobType): DatasetRecord['pipeline_stage'] {
-  switch (jobType) {
-    case 'ENHANCE':
-      return 'ENHANCE';
-    case 'MASK':
-      return 'MASK';
-    case 'STITCH':
-      return 'STITCH';
-    case 'BLUR':
-      return 'BLUR';
-    default:
-      return 'QAQC';
-  }
+  surveyDate?: string;
+  rawAggregate?: StagingAggregate;
+  rawDataset?: DatasetRecord;
+  blurJob?: ProcessingJobRecord;
+  stitchJob?: ProcessingJobRecord;
+  enhanceJob?: ProcessingJobRecord;
+  maskJob?: ProcessingJobRecord;
+  qaDecision?: string | null;
+  processedDataset?: DatasetRecord;
+  deliverableDataset?: DatasetRecord;
+  activeStageIndex: number;
+  isComplete: boolean;
 }
 
 export const PipelinePanel: React.FC<PipelinePanelProps> = ({
   jobs,
   datasets,
-  api,
-  projectSettings,
   stagingAggregates = [],
-  translate,
-  isGuestUser,
-  onRefreshJobs,
-  onAddNotification,
-  onAddAuditLog,
-  userLabel,
+  translate = (k) => k,
   onOpenJobDetails
 }) => {
-  const [draft, setDraft] = useState<NewJobDraft>(EMPTY_DRAFT);
-  const [showNewJob, setShowNewJob] = useState(false);
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
-  const [stageFilter, setStageFilter] = useState<PipelineStageKey | null>(null);
+  const [search, setSearch] = useState('');
+  const [filterState, setFilterState] = useState<'ALL' | 'ACTIVE' | 'QA' | 'COMPLETE'>('ALL');
   const [bucketFrames, setBucketFrames] = useState<number>(0);
-
-  const pipelineStages = useMemo(
-    () => buildPipelineStages({ jobs, datasets, stagingAggregates, bucketFrames }),
-    [jobs, datasets, stagingAggregates, bucketFrames]
-  );
+  const [selectedRowKey, setSelectedRowKey] = useState<string | null>(null);
 
   const refreshBucketFrames = useMemo(
     () => () => {
@@ -132,458 +78,438 @@ export const PipelinePanel: React.FC<PipelinePanelProps> = ({
     refreshBucketFrames();
   }, [refreshBucketFrames, jobs]);
 
-  const providers = useMemo(() => {
-    const list = (projectSettings?.productionProviders || []) as Array<{
-      name: string;
-      software: string;
-      version: string;
-      enabled: boolean;
-    }>;
-    const enabled = list.filter((p) => p.enabled !== false);
-    return enabled.length > 0 ? enabled : [];
-  }, [projectSettings?.productionProviders]);
+  // Aggregate subgrid lifecycle rows dynamically per (subgrid, surveyDate)
+  const subgridRows = useMemo<SubgridLifecycleRow[]>(() => {
+    const entryMap = new Map<string, { subgrid: string; surveyDate?: string }>();
 
-  const visibleJobs = useMemo(() => {
-    if (!stageFilter) return jobs;
-    const types = stageJobsFor(stageFilter);
-    if (types.length === 0) return jobs.filter((j) => j.pipeline_stage_key === stageFilter);
-    return jobs.filter((j) => types.includes(j.job_type));
-  }, [jobs, stageFilter]);
+    const register = (rawSg?: string, rawDateCandidate?: any, rawTs?: string) => {
+      const sg = extractCanonicalSubgrid(rawSg);
+      if (!sg) return;
+      const date = extractSurveyDate(rawDateCandidate || rawSg, rawTs) || 'undated';
+      const key = `${sg}::${date}`;
+      if (!entryMap.has(key)) {
+        entryMap.set(key, { subgrid: sg, surveyDate: date !== 'undated' ? date : undefined });
+      }
+    };
 
-  const activeCount = useMemo(
-    () => jobs.filter((j) => isJobActive(j.status)).length,
-    [jobs]
+    stagingAggregates.forEach((a) => {
+      register(a.subgrid, a.surveyDate || a.subgrid);
+    });
+    jobs.forEach((j) => {
+      register(j.subgrid, j.subgrid || j.name, j.created_at);
+    });
+    datasets.forEach((d) => {
+      register(d.subgrid, d.subgrid || d.name, d.created_at);
+    });
+
+    const entries = Array.from(entryMap.entries()).sort((a, b) => {
+      const cmp = a[1].subgrid.localeCompare(b[1].subgrid);
+      if (cmp !== 0) return cmp;
+      return (b[1].surveyDate || '').localeCompare(a[1].surveyDate || '');
+    });
+
+    return entries.map(([key, item]) => {
+      const sg = item.subgrid;
+      const targetDate = item.surveyDate || 'undated';
+
+      const matchDate = (val?: any, ts?: string) => {
+        const d = extractSurveyDate(val, ts) || 'undated';
+        return d === targetDate || (!item.surveyDate && d === 'undated');
+      };
+
+      const rawAgg = stagingAggregates.find(
+        (a) => extractCanonicalSubgrid(a.subgrid) === sg && matchDate(a.surveyDate || a.subgrid)
+      );
+      const rawDs = datasets.find(
+        (d) =>
+          extractCanonicalSubgrid(d.subgrid) === sg &&
+          d.dataset_type === 'RAW' &&
+          matchDate(d.subgrid || d.name, d.created_at)
+      );
+      const processedDs = datasets.find(
+        (d) =>
+          extractCanonicalSubgrid(d.subgrid) === sg &&
+          d.dataset_type === 'PROCESSED' &&
+          matchDate(d.subgrid || d.name, d.created_at)
+      );
+      const deliverableDs = datasets.find(
+        (d) =>
+          extractCanonicalSubgrid(d.subgrid) === sg &&
+          d.dataset_type === 'DELIVERABLE' &&
+          matchDate(d.subgrid || d.name, d.created_at)
+      );
+
+      const sgJobs = jobs.filter(
+        (j) =>
+          extractCanonicalSubgrid(j.subgrid) === sg &&
+          matchDate(j.subgrid || j.name, j.created_at)
+      );
+      const stitchJob = sgJobs.find((j) => j.job_type === 'STITCH');
+      const blurJob = sgJobs.find((j) => j.job_type === 'BLUR');
+      const enhanceJob = sgJobs.find((j) => j.job_type === 'ENHANCE');
+      const maskJob = sgJobs.find((j) => j.job_type === 'MASK');
+
+      const qaDecision =
+        maskJob?.qa_decision ||
+        sgJobs.find((j) => j.job_type === 'QAQC')?.qa_decision ||
+        (processedDs ? 'APPROVED' : null);
+
+      let activeStageIndex = 0;
+      if (rawAgg || rawDs) activeStageIndex = 1;
+      if (blurJob?.status === 'COMPLETED') activeStageIndex = 2;
+      if (stitchJob?.status === 'COMPLETED') activeStageIndex = 3;
+      if (enhanceJob?.status === 'COMPLETED') activeStageIndex = 4;
+      if (maskJob?.status === 'COMPLETED') activeStageIndex = 5;
+      if (qaDecision === 'APPROVED' || deliverableDs) activeStageIndex = 6;
+
+      const isComplete = Boolean(deliverableDs || (processedDs && qaDecision === 'APPROVED'));
+
+      return {
+        key,
+        subgrid: sg,
+        surveyDate: item.surveyDate,
+        rawAggregate: rawAgg,
+        rawDataset: rawDs,
+        blurJob,
+        stitchJob,
+        enhanceJob,
+        maskJob,
+        qaDecision,
+        processedDataset: processedDs,
+        deliverableDataset: deliverableDs,
+        activeStageIndex,
+        isComplete
+      };
+    });
+  }, [stagingAggregates, jobs, datasets]);
+
+  const selectedRow = useMemo(
+    () => (selectedRowKey ? subgridRows.find((r) => r.key === selectedRowKey) : null),
+    [subgridRows, selectedRowKey]
   );
 
-  const notify = (title: string, details: string, category: string) => {
-    onAddNotification?.({ title, message: details, category: category as any, read: false });
-    onAddAuditLog?.('CREATE', title, details, 'info');
-  };
+  const pipelineStages = useMemo(() => {
+    if (selectedRow) {
+      const sg = selectedRow.subgrid;
+      const targetDate = selectedRow.surveyDate || 'undated';
+      const matchDate = (val?: any, ts?: string) => {
+        const d = extractSurveyDate(val, ts) || 'undated';
+        return d === targetDate || (!selectedRow.surveyDate && d === 'undated');
+      };
 
-  const handleCreateAndStart = async () => {
-    if (isGuestUser) return;
-    if (!draft.subgrid.trim()) {
-      setMessage({ ok: false, text: 'Subgrid is required to create a job.' });
-      return;
-    }
-    setMessage(null);
-    const job: ProcessingJobRecord = {
-      job_type: draft.job_type,
-      name: draft.name || `${draft.job_type} • ${draft.subgrid}`,
-      source_folder: draft.source_folder || undefined,
-      output_folder: draft.output_folder || undefined,
-      subgrid: draft.subgrid.trim().toUpperCase(),
-      provider: draft.provider,
-      software_version: draft.software_version || undefined,
-      total_items: draft.total_items || undefined,
-      status: 'QUEUED',
-      progress: 0,
-      completed_items: 0,
-      error_count: 0,
-      operator: userLabel,
-      settings: { apiMode: api.mode }
-    };
-    const saved = await saveProcessingJobToSupabase(job);
-    if (!saved?.id) {
-      setMessage({ ok: false, text: 'Failed to persist the job.' });
-      return;
-    }
-    const res = await api.submitJob(saved);
-    if (res.ok) {
-      notify(`${saved.job_type} Job Started`, `${saved.name} submitted to ${api.mode === 'mock' ? 'mock' : 'NAS GPU Worker'} (${draft.subgrid || ''}).`, 'SYSTEM');
-    } else {
-      setMessage({ ok: false, text: res.message });
-      await updateProcessingJobStatusInSupabase(saved.id, { status: 'PENDING' });
-    }
-    setDraft(EMPTY_DRAFT);
-    setShowNewJob(false);
-    onRefreshJobs();
-  };
+      const sgJobs = jobs.filter(
+        (j) => extractCanonicalSubgrid(j.subgrid) === sg && matchDate(j.subgrid || j.name, j.created_at)
+      );
+      const sgDatasets = datasets.filter(
+        (d) => extractCanonicalSubgrid(d.subgrid) === sg && matchDate(d.subgrid || d.name, d.created_at)
+      );
+      const sgAggs = stagingAggregates.filter(
+        (a) => extractCanonicalSubgrid(a.subgrid) === sg && matchDate(a.surveyDate || a.subgrid)
+      );
 
-  const startJob = async (job: ProcessingJobRecord) => {
-    if (isGuestUser || !job.id) return;
-    setBusyId(job.id);
-    const res = await api.submitJob({ ...job });
-    if (!res.ok) {
-      setMessage({ ok: false, text: res.message });
-    } else {
-      setMessage({ ok: true, text: `${job.name || job.job_type} → ${res.message}` });
-    }
-    setBusyId(null);
-    onRefreshJobs();
-  };
-
-  const cancelJob = async (job: ProcessingJobRecord) => {
-    if (isGuestUser || !job.id) return;
-    setBusyId(job.id);
-    await api.cancelJob(job.id);
-    onAddAuditLog?.('EDIT', `Job Cancelled`, `${job.name || job.id} cancelled by ${userLabel}.`, 'warning');
-    setBusyId(null);
-    onRefreshJobs();
-  };
-
-  const retryJob = async (job: ProcessingJobRecord) => {
-    if (isGuestUser || !job.id) return;
-    setBusyId(job.id);
-    // Traceable retry: create a NEW child job preserving lineage instead of mutating in place.
-    const child: ProcessingJobRecord = {
-      job_type: job.job_type,
-      name: `${job.name || job.job_type} · retry`,
-      source_dataset_id: job.source_dataset_id,
-      source_folder: job.source_folder,
-      output_folder: job.output_folder,
-      subgrid: job.subgrid,
-      provider: job.provider,
-      software_version: job.software_version,
-      total_items: job.total_items,
-      status: 'QUEUED',
-      progress: 0,
-      completed_items: 0,
-      error_count: 0,
-      priority: typeof job.priority === 'number' ? job.priority : 0,
-      operator: userLabel,
-      retry_of: job.id,
-      retry_count: (job.retry_count || 0) + 1,
-      settings: { ...(job.settings || {}) }
-    };
-    const saved = await saveProcessingJobToSupabase(child);
-    if (saved?.id) {
-      onAddAuditLog?.('CREATE', 'Job Retried (traceable)', `${child.name} created as child of ${job.id} by ${userLabel}.`, 'info');
-    } else {
-      setMessage({ ok: false, text: 'Failed to create a traceable retry job.' });
-    }
-    setBusyId(null);
-    onRefreshJobs();
-  };
-
-  const importOutput = async (job: ProcessingJobRecord) => {
-    if (isGuestUser || !job.id) return;
-    setBusyId(job.id);
-    const title = `Import Output: ${job.name || job.id}`;
-    const listing = await api.listFolder(job.output_folder || '');
-    const fileCount =
-      listing?.fileCount || job.completed_items || job.total_items || 0;
-    const sizeBytes = listing?.sizeBytes || fileCount * 1840000;
-
-    // Phase 1 (task F): gate import on folder validation when real filenames are enumerable.
-    const v = validateFolderForImport(listing, job.subgrid || '', { expectedCount: fileCount });
-    if (v && !v.ok) {
-      const summary = v.issues.slice(0, 6).join('\n');
-      const proceed = window.confirm(`Output validation found issues:\n\n${summary}\n\nImport anyway?`);
-      if (!proceed) {
-        setMessage({ ok: false, text: `Import blocked — output failed validation.` });
-        setBusyId(null);
-        onAddAuditLog?.('WARN', `Import Blocked`, `${title} blocked by validation: ${v.issues.join('; ')}`, 'warning');
-        return;
-      }
-      onAddAuditLog?.('WARN', `Import Overridden`, `${title} imported despite validation issues: ${v.issues.join('; ')}`, 'warning');
-    }
-
-    const dataset: DatasetRecord = {
-      dataset_type: 'PROCESSED',
-      pipeline_stage: stageFromJobType(job.job_type),
-      name: `${job.job_type} • ${job.subgrid || ''}`.trim(),
-      subgrid: job.subgrid,
-      provider: job.provider,
-      software_version: job.software_version,
-      source_folder: job.source_folder,
-      output_folder: job.output_folder,
-      storage_provider: 'nas_local',
-      file_count: fileCount,
-      size_bytes: sizeBytes,
-      status: 'READY',
-      version: 1,
-      parent_dataset_id: job.source_dataset_id || null,
-      metadata: { origin_job_id: job.id },
-      created_by: userLabel
-    };
-    const saved = await saveDatasetToSupabase(dataset);
-    if (!saved?.id) {
-      setMessage({ ok: false, text: 'Failed to register processed dataset.' });
-    } else {
-      await updateProcessingJobStatusInSupabase(job.id, {
-        status: 'IMPORTED',
-        output_dataset_id: saved.id,
-        completed_at: new Date().toISOString()
+      return buildPipelineStages({
+        jobs: sgJobs,
+        datasets: sgDatasets,
+        stagingAggregates: sgAggs,
+        bucketFrames: selectedRow.rawAggregate?.frames || (selectedRow.deliverableDataset?.file_count || 0)
       });
-      notify(title, `Processed output registered as dataset "${saved.name}" (${fileCount.toLocaleString()} files).`, 'PUBLISH');
     }
-    setBusyId(null);
-    onRefreshJobs();
-  };
 
-  const deleteJob = async (job: ProcessingJobRecord) => {
-    if (isGuestUser || !job.id) return;
-    if (!window.confirm(`Delete job "${job.name || job.id}"? This does not touch any NAS files.`)) return;
-    await deleteProcessingJobFromSupabase(job.id);
-    onAddAuditLog?.('DELETE', `Job Deleted`, `${job.name || job.id} removed by ${userLabel}.`, 'warning');
-    onRefreshJobs();
-  };
+    return buildPipelineStages({ jobs, datasets, stagingAggregates, bucketFrames });
+  }, [selectedRow, jobs, datasets, stagingAggregates, bucketFrames]);
 
-  const canImport = (job: ProcessingJobRecord) =>
-    job.status === 'COMPLETED' && (job.completed_items || 0) > 0;
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return subgridRows.filter((r) => {
+      if (q && !r.subgrid.toLowerCase().includes(q)) return false;
+      if (filterState === 'COMPLETE' && !r.isComplete) return false;
+      if (filterState === 'QA' && r.qaDecision !== 'PENDING' && r.activeStageIndex !== 5) return false;
+      if (filterState === 'ACTIVE' && r.isComplete) return false;
+      return true;
+    });
+  }, [subgridRows, search, filterState]);
+
+  const totals = useMemo(() => {
+    const total = subgridRows.length;
+    const complete = subgridRows.filter((r) => r.isComplete).length;
+    const inProgress = subgridRows.filter((r) => !r.isComplete && r.activeStageIndex > 0).length;
+    const qaPending = subgridRows.filter((r) => r.activeStageIndex === 5 && !r.qaDecision).length;
+    return { total, complete, inProgress, qaPending };
+  }, [subgridRows]);
+
+  const segments = useMemo(() => {
+    return pipelineStages.map((st) => ({
+      key: st.key,
+      label: translate ? translate(st.labelKey) : st.labelKey,
+      status: (st.status === 'N/A' ? 'WAITING' : st.status) as 'COMPLETE' | 'IN_PROGRESS' | 'FAILED' | 'WAITING',
+      pct: st.pct,
+      note: st.note
+    }));
+  }, [pipelineStages, translate]);
+
+  const renderStageCell = (
+    _label: string,
+    job?: ProcessingJobRecord,
+    isCompleteDirect?: boolean
+  ) => {
+    const isDone = isCompleteDirect || job?.status === 'COMPLETED';
+    const isRunning = job?.status === 'IN_PROGRESS';
+    const isFailed = job?.status === 'FAILED' || job?.status === 'REJECTED';
+
+    return (
+      <div
+        onClick={(e) => {
+          if (job) {
+            e.stopPropagation();
+            onOpenJobDetails?.(job);
+          }
+        }}
+        className={`flex items-center gap-1.5 py-1 px-2 rounded font-mono text-[11px] transition-colors ${
+          job ? 'cursor-pointer hover:bg-white/5' : ''
+        }`}
+      >
+        <span
+          className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+            isDone
+              ? 'bg-emerald-400'
+              : isRunning
+              ? 'bg-amber-400 animate-pulse'
+              : isFailed
+              ? 'bg-rose-400'
+              : 'bg-zinc-600'
+          }`}
+        />
+        <span
+          className={`${
+            isDone
+              ? 'text-zinc-200 font-medium'
+              : isRunning
+              ? 'text-amber-300 font-medium'
+              : isFailed
+              ? 'text-rose-300'
+              : 'text-zinc-500'
+          }`}
+        >
+          {isDone
+            ? 'Done'
+            : isRunning
+            ? `${job?.progress || 0}%`
+            : isFailed
+            ? 'Fail'
+            : '—'}
+        </span>
+      </div>
+    );
+  };
 
   return (
-    <Surface className="flex flex-col min-h-0">
-      {/* 9-stage process strip */}
-      <ProcessStrip
-        flush
-        segments={pipelineStages.map((s) => ({
-          key: s.key,
-          label: translate(s.labelKey),
-          status: s.status === 'N/A' ? 'WAITING' : s.status,
-          pct: s.pct,
-          note: s.note,
-          active: stageFilter === s.key
-        }))}
-        onSelect={setStageFilter}
-      />
-
-      {/* Toolbar */}
-      <div className="flex items-center justify-between gap-3 flex-wrap px-4 py-2.5 border-t border-divider">
-        <div className="flex items-center gap-3 flex-wrap text-[11px]">
-          {stageFilter && (
+    <div className="flex flex-col gap-3">
+      {/* 9-Stage Project Lifecycle Process Strip */}
+      <Surface className="p-2.5 flex flex-col gap-1.5">
+        <div className="flex items-center justify-between text-[10px] font-mono text-zinc-400 uppercase tracking-wider px-1">
+          <span>
+            {selectedRow
+              ? `Subgrid Pipeline · ${selectedRow.subgrid}${selectedRow.surveyDate ? ` (${selectedRow.surveyDate})` : ''}`
+              : 'Project Pipeline · All Subgrids'}
+          </span>
+          {selectedRow ? (
             <button
-              onClick={() => setStageFilter(null)}
-              className="flex items-center gap-1.5 text-[10px] font-semibold text-sky-300 hover:text-sky-200 cursor-pointer"
+              onClick={() => setSelectedRowKey(null)}
+              className="text-sky-400 hover:text-sky-300 cursor-pointer font-sans normal-case text-[11px]"
             >
-              <RotateCcw size={11} /> {translate('pipelineClearFilter')}
+              Show All
             </button>
-          )}
-          <span className="text-text-muted font-sans">
-            {visibleJobs.length} of {jobs.length} jobs
-          </span>
-          <span className="text-text-muted">
-            · <span className="text-amber-300 font-semibold">{activeCount} active</span>
-          </span>
-          {projectSettings?.processingEngineMode === 'gpu_worker' && api.mode === 'mock' && (
-            <span className="text-sky-400/80">● mock worker</span>
+          ) : (
+            <span className="text-zinc-500 font-sans normal-case text-[11px]">
+              Click subgrid row to focus
+            </span>
           )}
         </div>
-        {!isGuestUser && (
-          <button
-            onClick={() => setShowNewJob((s) => !s)}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs font-semibold transition-colors cursor-pointer ${
-              showNewJob
-                ? 'bg-sky-500/10 border-sky-500/30 text-sky-300'
-                : 'bg-sky-500/15 hover:bg-sky-500/25 border-sky-500/40 text-sky-300'
-            }`}
-          >
-            {showNewJob ? <ChevronRight size={14} /> : <Plus size={14} />}
-            {showNewJob ? 'Close Form' : 'New Job'}
-          </button>
-        )}
+        <ProcessStrip segments={segments} />
+      </Surface>
+
+      {/* Engineering Control Bar */}
+      <div className="flex items-center justify-between gap-3 flex-wrap bg-inner border border-subtle rounded-xl px-3.5 py-2.5">
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-1.5 text-text-base text-xs font-semibold tracking-wide">
+            <Layers size={14} className="text-zinc-400" />
+            <span className="uppercase text-[11px] font-bold text-zinc-300">Subgrid Matrix</span>
+          </div>
+
+          <div className="h-3.5 w-[1px] bg-subtle" />
+
+          {/* Minimal Inline Telemetry */}
+          <div className="flex items-center gap-3 font-mono text-[11px] text-text-muted">
+            <span>
+              Total: <strong className="text-zinc-200 font-semibold">{totals.total}</strong>
+            </span>
+            <span>·</span>
+            <span>
+              In Production: <strong className="text-amber-300 font-semibold">{totals.inProgress}</strong>
+            </span>
+            <span>·</span>
+            <span>
+              QA Pending: <strong className="text-sky-300 font-semibold">{totals.qaPending}</strong>
+            </span>
+            <span>·</span>
+            <span>
+              Ready: <strong className="text-emerald-300 font-semibold">{totals.complete}</strong>
+            </span>
+          </div>
+        </div>
+
+        {/* Filters & Search */}
+        <div className="flex items-center gap-2">
+          <div className="flex items-center bg-card border border-subtle rounded-lg p-0.5">
+            {(['ALL', 'ACTIVE', 'QA', 'COMPLETE'] as const).map((mode) => (
+              <button
+                key={mode}
+                onClick={() => setFilterState(mode)}
+                className={`px-2.5 py-1 rounded text-[11px] font-medium transition-colors cursor-pointer ${
+                  filterState === mode
+                    ? 'bg-zinc-800 text-zinc-100 shadow-sm'
+                    : 'text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                {mode === 'ALL' ? 'All' : mode === 'ACTIVE' ? 'Active' : mode === 'QA' ? 'QA' : 'Ready'}
+              </button>
+            ))}
+          </div>
+
+          <div className="relative">
+            <Search size={12} className="absolute left-2.5 top-2.5 text-zinc-500" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search..."
+              className="bg-card border border-subtle rounded-lg pl-7 pr-2.5 py-1 text-xs text-zinc-200 font-mono outline-none focus:border-zinc-500 placeholder:text-zinc-600 w-32"
+            />
+          </div>
+        </div>
       </div>
 
-      {message && (
-        <div className={`mx-4 mb-3 text-[11px] px-3 py-2 rounded-lg border ${
-          message.ok ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' : 'bg-red-500/10 border-red-500/30 text-red-300'
-        }`}>
-          {message.text}
-        </div>
-      )}
-
-      {showNewJob && !isGuestUser && (
-        <div className="border-t border-divider px-4 py-3.5 flex flex-col gap-3 animate-in fade-in duration-150">
-          <div className="flex items-center gap-2">
-            <Plus size={13} className="text-sky-400" />
-            <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted">New Processing Job</span>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
-            <div>
-              <label className="text-[10px] uppercase tracking-wider text-text-muted font-semibold">Job Name</label>
-              <input className={NUMBER_INPUT_CLASS} placeholder="optional"
-                value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
-            </div>
-            <div>
-              <label className="text-[10px] uppercase tracking-wider text-text-muted font-semibold">Job Type</label>
-              <select className={NUMBER_INPUT_CLASS} value={draft.job_type}
-                onChange={(e) => setDraft({ ...draft, job_type: e.target.value as ProcessingJobType })}>
-                {JOB_TYPE_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="text-[10px] uppercase tracking-wider text-text-muted font-semibold">Subgrid</label>
-              <input className={NUMBER_INPUT_CLASS} placeholder="e.g. N93E70"
-                value={draft.subgrid} onChange={(e) => setDraft({ ...draft, subgrid: e.target.value })} />
-            </div>
-            <div>
-              <label className="text-[10px] uppercase tracking-wider text-text-muted font-semibold">Provider</label>
-              {providers.length > 0 ? (
-                <select
-                  className={NUMBER_INPUT_CLASS}
-                  value={draft.provider}
-                  onChange={(e) => {
-                    const p = providers.find((x) => x.name === e.target.value);
-                    setDraft({
-                      ...draft,
-                      provider: e.target.value,
-                      software_version: p?.version || draft.software_version
-                    });
-                  }}
-                >
-                  {providers.map((p) => (
-                    <option key={p.name} value={p.name}>
-                      {p.name}
-                      {p.version ? ` (v${p.version})` : ''}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <input className={NUMBER_INPUT_CLASS} value={draft.provider}
-                  onChange={(e) => setDraft({ ...draft, provider: e.target.value })} />
-              )}
-            </div>
-            <div>
-              <label className="text-[10px] uppercase tracking-wider text-text-muted font-semibold">Source Folder (NAS)</label>
-              <input className={NUMBER_INPUT_CLASS} placeholder="stitchblur/N93E70"
-                value={draft.source_folder} onChange={(e) => setDraft({ ...draft, source_folder: e.target.value })} />
-            </div>
-            <div>
-              <label className="text-[10px] uppercase tracking-wider text-text-muted font-semibold">Output Folder (NAS)</label>
-              <input className={NUMBER_INPUT_CLASS} placeholder="cleaned/N93E70"
-                value={draft.output_folder} onChange={(e) => setDraft({ ...draft, output_folder: e.target.value })} />
-            </div>
-            <div>
-              <label className="text-[10px] uppercase tracking-wider text-text-muted font-semibold">Frames</label>
-              <input type="number" min={1} className={NUMBER_INPUT_CLASS} value={draft.total_items}
-                onChange={(e) => setDraft({ ...draft, total_items: Number(e.target.value) || 0 })} />
-            </div>
-            <div className="flex items-end">
-              <button onClick={handleCreateAndStart}
-                className="w-full px-3 py-2 bg-emerald-500/15 hover:bg-emerald-500/25 active:bg-emerald-500/35 border border-emerald-500/40 text-emerald-300 text-xs font-semibold rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-1.5">
-                <Play size={13} /> Create &amp; Start
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Jobs register */}
-      <div className="flex-1 min-h-0 flex flex-col border-t border-divider">
-        <div className="max-h-[480px] overflow-y-auto">
-          <table className="w-full text-xs">
-            <thead className="sticky top-0 z-10 bg-card">
-              <tr className="text-left text-[10px] uppercase tracking-wider text-text-muted border-b border-subtle">
-                <th className="px-3 py-2.5 font-semibold">JOB</th>
-                <th className="px-3 py-2.5 font-semibold">FOLDERS</th>
-                <th className="px-3 py-2.5 font-semibold">STATUS</th>
-                <th className="px-3 py-2.5 font-semibold">PROGRESS</th>
-                <th className="px-3 py-2.5 font-semibold">ETA</th>
-                <th className="px-3 py-2.5 font-semibold">CREATED</th>
-                <th className="px-3 py-2.5 font-semibold text-right">ACTIONS</th>
+      {/* Dense Engineering Data Table */}
+      <div className="bg-inner border border-subtle rounded-xl overflow-hidden shadow-sm">
+        <div className="overflow-x-auto max-h-[540px]">
+          <table className="w-full text-left text-[11px] border-collapse">
+            <thead className="sticky top-0 bg-card/95 backdrop-blur text-zinc-400 uppercase tracking-wider text-[10px] font-semibold border-b border-subtle z-10">
+              <tr>
+                <th className="py-2.5 px-3">Subgrid</th>
+                <th className="py-2.5 px-3">RAW Intake</th>
+                <th className="py-2.5 px-3">PC 1 Blur</th>
+                <th className="py-2.5 px-3">PC 2 Stitch</th>
+                <th className="py-2.5 px-3">PC 3 Lightroom</th>
+                <th className="py-2.5 px-3">PC 4 Photoshop</th>
+                <th className="py-2.5 px-3">Acceptance QA</th>
+                <th className="py-2.5 px-3 text-right">Deliverable</th>
               </tr>
             </thead>
-            <tbody>
-              {visibleJobs.length === 0 && (
-                <tr><td colSpan={7} className="px-3 py-10 text-center text-text-muted">
-                  {stageFilter ? 'No jobs match this pipeline stage.' : 'No processing jobs yet. Create one to start the pipeline.'}
-                </td></tr>
-              )}
-              {visibleJobs.map((job) => {
-                const meta = jobStatusMeta(job.status);
-                const eta = estimateEtaSeconds(job);
-                const busy = busyId === job.id;
-                return (
-                  <tr
-                    key={job.id}
-                    onClick={() => onOpenJobDetails?.(job)}
-                    className={`border-b border-subtle/60 transition-colors ${onOpenJobDetails ? 'cursor-pointer hover:bg-inner/60' : ''}`}
-                  >
-                    <td className="px-3 py-2.5 align-top">
-                      <div className="font-semibold text-text-base flex items-center gap-2">
-                        <span className="text-[10px] font-sans px-1.5 py-0.5 rounded bg-inner border border-subtle text-sky-300">{job.job_type}</span>
-                        {typeof job.priority === 'number' && job.priority > 0 && (
-                          <span className="text-[10px] font-sans px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-300">P{job.priority}</span>
+            <tbody className="divide-y divide-subtle/40 font-mono">
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="py-12 text-center text-zinc-500 text-xs font-sans">
+                    No subgrids found.
+                  </td>
+                </tr>
+              ) : (
+                filtered.map((row) => {
+                  const isSelected = selectedRowKey === row.key;
+                  return (
+                    <tr
+                      key={row.key}
+                      onClick={() => setSelectedRowKey((prev) => (prev === row.key ? null : row.key))}
+                      className={`transition-colors cursor-pointer ${
+                        isSelected ? 'bg-sky-500/10 hover:bg-sky-500/15' : 'hover:bg-white/[0.02]'
+                      }`}
+                    >
+                    {/* 1. Subgrid Code */}
+                    <td className="py-2.5 px-3">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-zinc-100">{row.subgrid}</span>
+                        {row.surveyDate && (
+                          <span className="text-[10px] text-zinc-500 font-sans">
+                            {row.surveyDate}
+                          </span>
                         )}
-                        {job.name || job.id}
-                      </div>
-                      <div className="text-[10px] text-text-muted mt-0.5">
-                        {job.subgrid || '—'} · {job.provider || '—'}
-                        {job.software_version ? ` · v${job.software_version}` : ''}
                       </div>
                     </td>
-                    <td className="px-3 py-2.5 align-top text-[10px] text-text-muted font-sans">
-                      <div className="truncate max-w-[160px]">in: {job.source_folder || '—'}</div>
-                      <div className="truncate max-w-[160px]">out: {job.output_folder || '—'}</div>
+
+                    {/* 2. RAW Intake */}
+                    <td className="py-2.5 px-3">
+                      <div className="flex items-center gap-1.5">
+                        <span
+                          className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                            row.rawAggregate || row.rawDataset ? 'bg-emerald-400' : 'bg-zinc-600'
+                          }`}
+                        />
+                        <span className="text-zinc-300">
+                          {row.rawAggregate ? `${row.rawAggregate.frames} frames` : row.rawDataset ? 'Staged' : '—'}
+                        </span>
+                      </div>
                     </td>
-                    <td className="px-3 py-2.5 align-top">
-                      <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold border ${meta.className}`}>
-                        <span className={`w-1.5 h-1.5 rounded-full ${meta.dot} ${job.status === 'IN_PROGRESS' ? 'animate-pulse' : ''}`} />
-                        {meta.label}
-                      </span>
-                      {job.status === 'REVIEW_REQUIRED' && (
-                        <div className="text-[10px] text-orange-300 mt-1">{job.error_count || 0} frame(s) need manual retouch</div>
+
+                    {/* 3. PC 1 Blur */}
+                    <td className="py-2.5 px-3">
+                      {renderStageCell('BLUR', row.blurJob)}
+                    </td>
+
+                    {/* 4. PC 2 Stitch */}
+                    <td className="py-2.5 px-3">
+                      {renderStageCell('STITCH', row.stitchJob)}
+                    </td>
+
+                    {/* 5. PC 3 Lightroom */}
+                    <td className="py-2.5 px-3">
+                      {renderStageCell('ENHANCE', row.enhanceJob)}
+                    </td>
+
+                    {/* 6. PC 4 Photoshop */}
+                    <td className="py-2.5 px-3">
+                      {renderStageCell('MASK', row.maskJob, Boolean(row.processedDataset))}
+                    </td>
+
+                    {/* 7. QA Acceptance */}
+                    <td className="py-2.5 px-3 font-sans">
+                      {row.qaDecision === 'APPROVED' ? (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-400">
+                          <CheckCircle2 size={11} /> Approved
+                        </span>
+                      ) : row.qaDecision === 'REJECTED' ? (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-medium text-rose-400">
+                          <AlertTriangle size={11} /> Rejected
+                        </span>
+                      ) : row.activeStageIndex >= 5 ? (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-medium text-amber-400">
+                          <Clock size={11} /> Review
+                        </span>
+                      ) : (
+                        <span className="text-zinc-600">—</span>
                       )}
                     </td>
-                    <td className="px-3 py-2.5 align-top">
-                      <div className="flex items-center gap-1.5">
-                        <div className="w-28 h-1.5 bg-inner rounded-full overflow-hidden border border-subtle/60">
-                          <div
-                            className={`h-full rounded-full transition-all duration-500 ${
-                              job.status === 'FAILED' ? 'bg-red-400' : job.status === 'COMPLETED' ? 'bg-emerald-400' : 'bg-sky-400'
-                            }`}
-                            style={{ width: `${Math.min(100, job.progress || 0)}%` }}
-                          />
+
+                    {/* 8. Deliverable Dataset */}
+                    <td className="py-2.5 px-3 text-right">
+                      {row.deliverableDataset || row.processedDataset ? (
+                        <div className="flex items-center justify-end gap-1.5">
+                          <span className="text-zinc-300">
+                            {(row.deliverableDataset || row.processedDataset)?.file_count || 0} frames
+                          </span>
+                          <span className="text-[10px] text-zinc-500">
+                            ({formatBytes((row.deliverableDataset || row.processedDataset)?.size_bytes)})
+                          </span>
                         </div>
-                        <span className="text-[10px] text-text-muted font-sans">{job.progress || 0}%</span>
-                      </div>
-                      <div className="text-[10px] text-text-muted mt-0.5">
-                        {job.completed_items || 0}/{job.total_items || '?'} · {job.current_item || ''}
-                      </div>
-                    </td>
-                    <td className="px-3 py-2.5 align-top font-sans text-text-muted">{formatEta(eta)}</td>
-                    <td className="px-3 py-2.5 align-top text-[10px] text-text-muted">{formatDateTime(job.created_at)}</td>
-                    <td className="px-3 py-2.5 align-top">
-                      <div className="flex items-center justify-end gap-1.5">
-                        {isGuestUser ? (
-                          <span className="text-[10px] text-text-muted italic">read-only</span>
-                        ) : (
-                          <>
-                            {(job.status === 'PENDING' || job.status === 'QUEUED' || job.status === 'FAILED') && (
-                              <button title="Start" onClick={() => startJob(job)}
-                                className="p-1.5 rounded-md bg-inner border border-subtle hover:bg-sky-500/20 hover:border-sky-500/40 text-sky-300 transition-colors cursor-pointer">
-                                {busy ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
-                              </button>
-                            )}
-                            {isJobActive(job.status) && (
-                              <button title="Cancel" onClick={() => cancelJob(job)}
-                                className="p-1.5 rounded-md bg-inner border border-subtle hover:bg-red-500/20 hover:border-red-500/40 text-red-300 transition-colors cursor-pointer">
-                                <Ban size={13} />
-                              </button>
-                            )}
-                            {(job.status === 'FAILED' || job.status === 'CANCELLED') && (
-                              <button title="Retry" onClick={() => retryJob(job)}
-                                className="p-1.5 rounded-md bg-inner border border-subtle hover:bg-amber-500/20 hover:border-amber-500/40 text-amber-300 transition-colors cursor-pointer">
-                                <RotateCcw size={13} />
-                              </button>
-                            )}
-                            {canImport(job) && (
-                              <button title="Register output as PROCESSED dataset" onClick={() => importOutput(job)}
-                                className="flex items-center gap-1 px-2 py-1.5 rounded-md bg-emerald-500/15 border border-emerald-500/40 hover:bg-emerald-500/25 text-emerald-300 text-[10px] font-bold transition-colors cursor-pointer">
-                                {busy ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />} Import
-                              </button>
-                            )}
-                            <button title="Delete (metadata only)" onClick={() => deleteJob(job)}
-                              className="p-1.5 rounded-md bg-inner border border-subtle hover:bg-red-500/20 hover:border-red-500/40 text-red-400 transition-colors cursor-pointer">
-                              <Trash2 size={13} />
-                            </button>
-                          </>
-                        )}
-                      </div>
+                      ) : (
+                        <span className="text-zinc-600">—</span>
+                      )}
                     </td>
                   </tr>
                 );
-              })}
+              })
+            )}
             </tbody>
           </table>
         </div>
-        <div className="px-3 py-2 text-[10px] text-text-muted border-t border-divider flex flex-wrap gap-x-4 gap-y-1">
-          <span>PENDING → QUEUED → IN_PROGRESS → COMPLETED → (Import) → IMPORTED → QA_PENDING → APPROVED / REJECTED</span>
-          <span>· FAILED / REVIEW_REQUIRED → Retry or manual retouch</span>
-          <span>· NAS files are never modified; only the output folder receives results</span>
-        </div>
       </div>
-    </Surface>
+    </div>
   );
 };

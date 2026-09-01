@@ -61,9 +61,9 @@ export function CoveragePanel({ analytics, translate }: CoveragePanelProps) {
         </ResponsiveContainer>
       )}
 
-      <div className="overflow-x-auto border border-subtle rounded-xl">
+      <div className="overflow-auto max-h-[440px] border border-subtle rounded-xl">
         <table className="w-full text-left text-[11px]">
-          <thead>
+          <thead className="sticky top-0 bg-card z-10">
             <tr className="border-b border-subtle text-[9px] uppercase tracking-wider text-text-muted">
               <th className="px-3 py-2">{translate('analyticsColSubgrid')}</th>
               <th className="px-3 py-2 text-right">{translate('analyticsColPoi')}</th>

@@ -2261,7 +2261,7 @@ export async function fetchProjectSettingsFromSupabase(): Promise<any | null> {
       const parsed = data.settings || data;
       try {
         localStorage.setItem('geosphere_project_settings', JSON.stringify(parsed));
-      } catch (_) {}
+      } catch (_) { }
       return parsed;
     }
   } catch (err) {
@@ -2272,7 +2272,7 @@ export async function fetchProjectSettingsFromSupabase(): Promise<any | null> {
   try {
     const cached = localStorage.getItem('geosphere_project_settings');
     if (cached) return JSON.parse(cached);
-  } catch (_) {}
+  } catch (_) { }
 
   return null;
 }
@@ -2285,7 +2285,7 @@ export async function saveProjectSettingsToSupabase(settings: any): Promise<bool
     // 1. Immediately persist to localStorage
     try {
       localStorage.setItem('geosphere_project_settings', JSON.stringify(settings));
-    } catch (_) {}
+    } catch (_) { }
 
     // 2. Persist to Supabase project_settings table
     const { error } = await supabase.from('project_settings').upsert([
@@ -2483,7 +2483,7 @@ function getLocalDatasets(): DatasetRecord[] {
 function setLocalDatasets(datasets: DatasetRecord[]): void {
   try {
     localStorage.setItem('geosphere_datasets', JSON.stringify(datasets));
-  } catch (_) {}
+  } catch (_) { }
 }
 
 function getLocalJobs(): ProcessingJobRecord[] {
@@ -2498,7 +2498,7 @@ function getLocalJobs(): ProcessingJobRecord[] {
 function setLocalJobs(jobs: ProcessingJobRecord[]): void {
   try {
     localStorage.setItem('geosphere_processing_jobs', JSON.stringify(jobs));
-  } catch (_) {}
+  } catch (_) { }
 }
 
 export async function fetchDatasetsFromSupabase(): Promise<DatasetRecord[]> {
@@ -2650,7 +2650,7 @@ function getDeletedJobIds(): Set<string> {
 function saveDeletedJobIds(ids: Set<string>): void {
   try {
     localStorage.setItem('geosphere_deleted_job_ids', JSON.stringify(Array.from(ids)));
-  } catch (_) {}
+  } catch (_) { }
 }
 
 export async function fetchProcessingJobsFromSupabase(): Promise<ProcessingJobRecord[]> {

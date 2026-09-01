@@ -113,7 +113,7 @@ export const ProcessingCenterWorkspace: React.FC<ProcessingCenterWorkspaceProps>
             />
           </div>
 
-          <div className="p-4 flex-1 flex flex-col min-h-0">
+          <div className="p-4 flex-1 flex flex-col min-h-0 overflow-y-auto">
             {/* Active tab panel */}
             {activeTab === 'board' && (
               <JobBoardPanel

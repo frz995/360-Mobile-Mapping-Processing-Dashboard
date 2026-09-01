@@ -265,9 +265,9 @@ export const LedgerPanel: React.FC<LedgerPanelProps> = ({
           </span>
         </div>
 
-        <div className="border border-subtle rounded-xl overflow-hidden shadow-sm">
+        <div className="border border-subtle rounded-xl overflow-auto max-h-[480px] shadow-sm">
           <table className="w-full text-left text-xs">
-            <thead className="text-[11px] uppercase tracking-wider font-semibold border-b bg-card text-text-muted border-subtle">
+            <thead className="text-[11px] uppercase tracking-wider font-semibold border-b bg-card text-text-muted border-subtle sticky top-0 z-10">
               <tr>
                 <th className="px-3.5 py-2.5">Date</th>
                 <th className="px-3.5 py-2.5">Subgrid / Area</th>

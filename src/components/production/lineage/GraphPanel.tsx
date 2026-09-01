@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { GitBranch, ZoomIn } from 'lucide-react';
 import type { LineageGraph, LineageLayer, LineageNode } from '../../../utils/datasetLineage';
-import { LINEAGE_LAYERS, findOrphans } from '../../../utils/datasetLineage';
+import { LINEAGE_LAYERS, findOrphans, extractCanonicalSubgrid } from '../../../utils/datasetLineage';
 import type { TranslateFn } from '../common';
 
 interface GraphPanelProps {
@@ -14,12 +14,12 @@ interface GraphPanelProps {
   translate: TranslateFn;
 }
 
-const NODE_W = 190;
-const NODE_H = 60;
-const COL_W = 210;
-const COL_GAP = 60;
+const NODE_W = 214;
+const NODE_H = 68;
+const COL_W = 228;
+const COL_GAP = 52;
 const PAD = 20;
-const ROW_GAP = 22;
+const ROW_GAP = 20;
 const HEADER_H = 34;
 
 const LAYER_LABEL_KEY: Record<LineageLayer, string> = {
@@ -57,6 +57,22 @@ export function GraphPanel({
   onSelectNode,
   translate
 }: GraphPanelProps) {
+  // Normalize unique subgrid buttons to guarantee canonical codes
+  const uniqueSubgrids = useMemo(() => {
+    const set = new Set<string>();
+    subgrids.forEach((s) => {
+      const clean = extractCanonicalSubgrid(s);
+      if (clean) set.add(clean);
+    });
+    graph.nodes.forEach((n) => {
+      if (n.subgrid) {
+        const clean = extractCanonicalSubgrid(n.subgrid);
+        if (clean) set.add(clean);
+      }
+    });
+    return Array.from(set).sort();
+  }, [subgrids, graph.nodes]);
+
   const { itemsByLayer, svgW, svgH } = useMemo(() => {
     const colIndex = new Map<LineageLayer, number>(
       LINEAGE_LAYERS.map((l, i) => [l, i])
@@ -68,7 +84,8 @@ export function GraphPanel({
       if (lv > lastLayerIndex) lastLayerIndex = lv;
     });
 
-    // stable stack order within each layer
+    // Group nodes by layer and sort consistently by (subgrid -> surveyDate -> created_at)
+    // so pipeline stages for the same survey run line up on the exact same horizontal row!
     const byLayer = new Map<number, LineageNode[]>();
     graph.nodes.forEach((n) => {
       const lv = colIndex.get(n.layer) ?? 0;
@@ -76,10 +93,23 @@ export function GraphPanel({
       arr.push(n);
       byLayer.set(lv, arr);
     });
+
     byLayer.forEach((arr) => {
       arr.sort((a, b) => {
-        if (a.kind === 'raw') return -1;
-        if (b.kind === 'raw') return 1;
+        const sgA = a.subgrid || '';
+        const sgB = b.subgrid || '';
+        const cmpSg = sgA.localeCompare(sgB);
+        if (cmpSg !== 0) return cmpSg;
+
+        const dateA = a.surveyDate || '';
+        const dateB = b.surveyDate || '';
+        const cmpDate = dateA.localeCompare(dateB);
+        if (cmpDate !== 0) return cmpDate;
+
+        const vA = a.version || 1;
+        const vB = b.version || 1;
+        if (vA !== vB) return vA - vB;
+
         return (a.dataset?.created_at || a.job?.created_at || '').localeCompare(
           b.dataset?.created_at || b.job?.created_at || ''
         );
@@ -119,7 +149,7 @@ export function GraphPanel({
   }
 
   const edgePath = (sx: number, sy: number, tx: number, ty: number) => {
-    const dx = 40;
+    const dx = Math.max(30, (tx - sx) / 2);
     return `M ${sx} ${sy} C ${sx + dx} ${sy}, ${tx - dx} ${ty}, ${tx} ${ty}`;
   };
 
@@ -143,7 +173,7 @@ export function GraphPanel({
         >
           {translate('lineageGraphAllSubgrids')}
         </button>
-        {subgrids.map((sg) => (
+        {uniqueSubgrids.map((sg) => (
           <button
             key={sg}
             onClick={() => onSelectSubgrid(sg)}
@@ -178,7 +208,7 @@ export function GraphPanel({
       <div
         id="lineage-graph-scroll"
         className="overflow-auto border border-subtle rounded-xl bg-inner/50"
-        style={{ maxHeight: 480 }}
+        style={{ maxHeight: 520 }}
       >
         <svg
           width={svgW}
@@ -228,19 +258,21 @@ export function GraphPanel({
             const ty = t.y + NODE_H / 2;
             const kindDim =
               e.kind === 'raw_to_dataset'
-                ? { stroke: '#f59e0b', dash: '5 4' }
-                : e.kind === 'job_source' || e.kind === 'job_output'
-                  ? { stroke: '#8b5cf6', dash: '1 0' }
-                  : { stroke: '#38bdf8', dash: '1 0' };
+                ? { stroke: '#f59e0b', dash: '5 4', opacity: 0.8 }
+                : e.kind === 'stage_flow'
+                  ? { stroke: '#6366f1', dash: '1 0', opacity: 0.85 }
+                  : e.kind === 'job_source' || e.kind === 'job_output'
+                    ? { stroke: '#8b5cf6', dash: '1 0', opacity: 0.8 }
+                    : { stroke: '#38bdf8', dash: '1 0', opacity: 0.8 };
             return (
               <path
                 key={e.id}
                 d={edgePath(sx, sy, tx, ty)}
                 fill="none"
                 stroke={kindDim.stroke}
-                strokeWidth={1.4}
+                strokeWidth={1.5}
                 strokeDasharray={kindDim.dash}
-                opacity={0.75}
+                opacity={kindDim.opacity}
               />
             );
           })}
@@ -253,71 +285,108 @@ export function GraphPanel({
               graph.edges.every((e) => e.source !== node.id && e.target !== node.id);
             const statusText = node.status || (node.kind === 'raw' ? 'CAPTURED' : '');
             const qa = node.qaDecision;
+            const dateBadge = node.surveyDate;
+            const rawFrames = node.raw?.frames;
+
             return (
               <g
                 key={node.id}
                 onClick={() => onSelectNode(selected ? null : node.id)}
-                className="cursor-pointer"
+                className="cursor-pointer group"
               >
-                <title>{`${node.label} · ${node.status}`}</title>
+                <title>{`${node.label} · ${dateBadge ? `Survey: ${dateBadge} · ` : ''}${node.status}`}</title>
                 <rect
                   x={x}
                   y={y}
                   width={NODE_W}
                   height={NODE_H}
                   rx={10}
-                  fill="#0b1020"
-                  stroke={selected ? '#e2e8f0' : tone}
+                  fill="#090d18"
+                  stroke={selected ? '#38bdf8' : tone}
                   strokeWidth={selected ? 2 : 1.2}
                   opacity={isOrphan ? 0.55 : 1}
+                  className="transition-all"
                 />
-                {/* QA / status dot */}
+
+                {/* Top Right QA / status dot */}
                 {node.kind !== 'raw' && (
                   <circle
-                    cx={x + NODE_W - 10}
-                    cy={y + 12}
+                    cx={x + NODE_W - 12}
+                    cy={y + 13}
                     r={4}
                     fill={
                       qa === 'APPROVED'
                         ? '#10b981'
                         : qa === 'REJECTED'
                           ? '#f43f5e'
-                          : statusText === 'COMPLETED' || statusText === 'IMPORTED'
+                          : statusText === 'COMPLETED' || statusText === 'READY' || statusText === 'IMPORTED'
                             ? '#38bdf8'
                             : '#64748b'
                     }
                   />
                 )}
+
+                {/* Line 1: Main Title */}
                 <text
                   x={x + 10}
-                  y={y + 20}
-                  fill="#e2e8f0"
+                  y={y + 18}
+                  fill="#f1f5f9"
                   fontSize="11.5"
                   fontWeight={700}
                 >
-                  {truncate(node.label, 22)}
+                  {truncate(node.label, 23)}
                 </text>
+
+                {/* Line 2: Survey Date / Batch Tag Badge */}
+                {dateBadge ? (
+                  <g>
+                    <rect
+                      x={x + 10}
+                      y={y + 25}
+                      width={dateBadge.length * 6.5 + 28}
+                      height={16}
+                      rx={4}
+                      fill="#0f172a"
+                      stroke="#1e293b"
+                      strokeWidth={1}
+                    />
+                    <text
+                      x={x + 15}
+                      y={y + 36}
+                      fill="#38bdf8"
+                      fontSize="9"
+                      fontWeight={600}
+                    >
+                      📅 {dateBadge}
+                    </text>
+                  </g>
+                ) : (
+                  <text
+                    x={x + 10}
+                    y={y + 36}
+                    fill={tone}
+                    fontSize="9.5"
+                    fontWeight={700}
+                    letterSpacing="0.8"
+                  >
+                    {node.kind === 'raw'
+                      ? translate('lineageNodeRawAggregate').toUpperCase()
+                      : node.kind === 'job'
+                        ? `${translate('lineageNodeJob').toUpperCase()} · ${node.job?.job_type || ''}`
+                        : translate('lineageNodeDataset').toUpperCase()}
+                  </text>
+                )}
+
+                {/* Line 3: Subtitle / Status / Frame count */}
                 <text
                   x={x + 10}
-                  y={y + 37}
-                  fill={tone}
-                  fontSize="9.5"
-                  fontWeight={700}
-                  letterSpacing="1"
-                >
-                  {node.kind === 'raw'
-                    ? translate('lineageNodeRawAggregate').toUpperCase()
-                    : node.kind === 'job'
-                      ? `${translate('lineageNodeJob').toUpperCase()} · ${node.job?.job_type || ''}`
-                      : translate('lineageNodeDataset').toUpperCase()}
-                </text>
-                <text
-                  x={x + 10}
-                  y={y + 51}
+                  y={y + 54}
                   fill="#94a3b8"
-                  fontSize="9.5"
+                  fontSize="9"
                 >
-                  {truncate(statusText || '', 24)}
+                  {node.kind === 'raw' && rawFrames !== undefined
+                    ? `${rawFrames} RAW frames · CAPTURED`
+                    : truncate(`${node.kind.toUpperCase()} · ${statusText || 'READY'}`, 26)}
                 </text>
               </g>
             );

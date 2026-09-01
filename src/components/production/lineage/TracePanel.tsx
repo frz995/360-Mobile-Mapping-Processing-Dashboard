@@ -6,7 +6,7 @@ import type {
   StagingAggregate,
   DatasetChain
 } from '../../../utils/datasetLineage';
-import { chainForDataset } from '../../../utils/datasetLineage';
+import { chainForDataset, extractCanonicalSubgrid } from '../../../utils/datasetLineage';
 import { formatDateTime } from '../common';
 import type { TranslateFn } from '../common';
 import { qaBadge, statusTone } from './lineageCommon';
@@ -116,18 +116,34 @@ export function TracePanel({
 
   // RAW aggregate selected
   if (selectedNodeId.startsWith('raw::')) {
-    const sg = selectedNodeId.slice(5);
-    const agg = aggregates.find((a) => a.subgrid === sg) || {
+    const rawPayload = selectedNodeId.slice(5);
+    const parts = rawPayload.split('::');
+    const sg = extractCanonicalSubgrid(parts[0]);
+    const date = parts[1] !== 'default' ? parts[1] : undefined;
+
+    const agg = aggregates.find((a) => a.id === selectedNodeId) ||
+                aggregates.find((a) => extractCanonicalSubgrid(a.subgrid) === sg && (!date || a.surveyDate === date)) ||
+                aggregates.find((a) => extractCanonicalSubgrid(a.subgrid) === sg) || {
+      id: selectedNodeId,
       subgrid: sg,
+      surveyDate: date,
       frames: 0,
       statuses: {}
     };
-    const sgDatasets = datasets.filter((d) => (d.subgrid || '').toUpperCase() === sg);
+
+    const sgDatasets = datasets.filter((d) => extractCanonicalSubgrid(d.subgrid) === sg);
     return (
       <div className="flex flex-col gap-3">
         <div className="p-4 rounded-xl bg-inner border border-amber-500/40">
-          <div className="text-xs font-bold text-amber-300 uppercase tracking-wider mb-1">
-            RAW · {sg}
+          <div className="flex items-center justify-between gap-2 flex-wrap mb-1">
+            <div className="text-xs font-bold text-amber-300 uppercase tracking-wider">
+              RAW · {sg}
+            </div>
+            {agg.surveyDate && (
+              <span className="text-[10px] px-2 py-0.5 rounded bg-sky-500/10 border border-sky-500/20 text-sky-300 font-semibold">
+                📅 {agg.surveyDate}
+              </span>
+            )}
           </div>
           <div className="text-[11px] text-text-muted">
             {agg.frames} frames · {Object.entries(agg.statuses || {}).map(([k, v]) => `${k}: ${v}`).join(' · ') || '—'}

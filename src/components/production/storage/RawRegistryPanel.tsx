@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { ClipboardList, Loader2, RefreshCw, CheckCircle2 } from 'lucide-react';
 import type { ProductionApiClient } from '../../../services/productionApi';
 import type { DatasetRecord, NasFolderListing } from '../../../types/production';
+import { extractCanonicalSubgrid } from '../../../utils/datasetLineage';
 import { formatBytes } from './storageCommon';
 
 export interface RawRegistryPanelProps {
@@ -14,14 +15,23 @@ interface MaturityRow {
   subgrid: string;
   rawCount?: number;
   rawBytes?: number;
+  blurredCount?: number;
   stitchedCount?: number;
-  cleanedCount?: number;
+  enhancedCount?: number;
+  processedCount?: number;
   deliverableCount?: number;
   datasetCount: number;
   stages: string[];
 }
 
-const TOP_LEVELS = ['RAW', 'stitchblur', 'cleaned', 'deliverables'] as const;
+const WORKSTATION_STAGES = [
+  { key: 'RAW', label: 'RAW Frames' },
+  { key: 'BLURRED', label: 'PC 1 Blur' },
+  { key: 'STITCHED', label: 'PC 2 Stitch' },
+  { key: 'ENHANCED', label: 'PC 3 Lightroom' },
+  { key: 'PROCESSED', label: 'PC 4 Photoshop' },
+  { key: 'DELIVERABLES', label: 'Deliverables' }
+] as const;
 
 export const RawRegistryPanel: React.FC<RawRegistryPanelProps> = ({ api, datasets }) => {
   const [rows, setRows] = useState<MaturityRow[]>([]);
@@ -32,9 +42,9 @@ export const RawRegistryPanel: React.FC<RawRegistryPanelProps> = ({ api, dataset
     setLoading(true);
     setError('');
     const results = await Promise.all(
-      TOP_LEVELS.map(async (top) => {
-        const listing = await api.listFolder(top);
-        return { top, listing };
+      WORKSTATION_STAGES.map(async (stage) => {
+        const listing = await api.listFolder(stage.key);
+        return { top: stage.key, listing };
       })
     );
 
@@ -47,10 +57,14 @@ export const RawRegistryPanel: React.FC<RawRegistryPanelProps> = ({ api, dataset
     results.forEach(({ listing }) => {
       (listing?.entries || [])
         .filter((e) => e.isDirectory)
-        .forEach((e) => subgrids.add(e.name.toUpperCase()));
+        .forEach((e) => {
+          const clean = extractCanonicalSubgrid(e.name);
+          if (clean) subgrids.add(clean);
+        });
     });
     datasets.forEach((d) => {
-      if (d.subgrid) subgrids.add(d.subgrid.toUpperCase());
+      const clean = extractCanonicalSubgrid(d.subgrid);
+      if (clean) subgrids.add(clean);
     });
 
     const sorted = Array.from(subgrids).sort();
@@ -58,37 +72,48 @@ export const RawRegistryPanel: React.FC<RawRegistryPanelProps> = ({ api, dataset
       const row: MaturityRow = {
         subgrid: sg,
         datasetCount: datasets.filter(
-          (d) => (d.subgrid || '').toUpperCase() === sg
+          (d) => extractCanonicalSubgrid(d.subgrid) === sg
         ).length,
         stages: []
       };
       const getCount = (top: string) => {
         const listing = folderMap[top];
         const entry = listing?.entries.find(
-          (e) => e.isDirectory && e.name.toUpperCase() === sg
+          (e) => e.isDirectory && extractCanonicalSubgrid(e.name) === sg
         );
         return entry;
       };
+
       const raw = getCount('RAW');
       if (raw) {
         row.rawCount = raw.fileCount;
         row.rawBytes = raw.sizeBytes;
         row.stages.push('RAW');
       }
-      const stitched = getCount('stitchblur');
+      const blurred = getCount('BLURRED');
+      if (blurred) {
+        row.blurredCount = blurred.fileCount;
+        row.stages.push('BLURRED');
+      }
+      const stitched = getCount('STITCHED');
       if (stitched) {
         row.stitchedCount = stitched.fileCount;
-        row.stages.push('stitchblur');
+        row.stages.push('STITCHED');
       }
-      const cleaned = getCount('cleaned');
-      if (cleaned) {
-        row.cleanedCount = cleaned.fileCount;
-        row.stages.push('cleaned');
+      const enhanced = getCount('ENHANCED');
+      if (enhanced) {
+        row.enhancedCount = enhanced.fileCount;
+        row.stages.push('ENHANCED');
       }
-      const deliv = getCount('deliverables');
+      const processed = getCount('PROCESSED');
+      if (processed) {
+        row.processedCount = processed.fileCount;
+        row.stages.push('PROCESSED');
+      }
+      const deliv = getCount('DELIVERABLES');
       if (deliv) {
         row.deliverableCount = deliv.fileCount;
-        row.stages.push('deliverables');
+        row.stages.push('DELIVERABLES');
       }
       return row;
     });
@@ -101,7 +126,7 @@ export const RawRegistryPanel: React.FC<RawRegistryPanelProps> = ({ api, dataset
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api]);
 
-  const maturity = (row: MaturityRow): number => Math.min(4, row.stages.length) / 4;
+  const maturity = (row: MaturityRow): number => Math.min(5, row.stages.length) / 5;
 
   const statusFor = (row: MaturityRow): { label: string; cls: string } => {
     const m = maturity(row);
@@ -113,68 +138,83 @@ export const RawRegistryPanel: React.FC<RawRegistryPanelProps> = ({ api, dataset
   const cell = (count?: number, bytes?: number) =>
     count ? (
       <div className="text-text-base font-sans">{count.toLocaleString()}
-        <div className="text-[10px] text-text-muted font-sans">{formatBytes(bytes)}</div>
+        {bytes !== undefined && <div className="text-[10px] text-text-muted font-sans">{formatBytes(bytes)}</div>}
       </div>
     ) : (
       <span className="text-text-muted/50">—</span>
     );
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-center gap-2 flex-wrap">
-        <div className="flex items-center gap-2 text-text-base text-xs font-bold uppercase tracking-wide">
-          <ClipboardList size={15} className="text-sky-400" /> Per-subgrid maturity matrix
+    <div className="space-y-4 animate-in fade-in font-sans">
+      {/* Header with bottom divider line matching RBAC */}
+      <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-subtle">
+        <div>
+          <h3 className="text-sm font-bold text-text-base flex items-center gap-2">
+            <ClipboardList size={16} className="text-sky-400" />
+            4-PC Workstation Maturity Matrix
+          </h3>
+          <p className="text-xs text-text-muted mt-0.5">
+            Dataset progression across RAW, PC 1 Blur, PC 2 Stitch, PC 3 Lightroom, PC 4 Photoshop, and Deliverables.
+          </p>
         </div>
-        <div className="flex-1" />
-        <button onClick={load}
-          className="flex items-center gap-1.5 px-3 py-2 bg-inner border border-subtle hover:bg-sky-500/20 hover:border-sky-500/40 text-sky-300 text-xs font-semibold rounded-lg transition-colors cursor-pointer">
-          <RefreshCw size={13} className={loading ? 'animate-spin' : ''} /> Reload
+        <button
+          onClick={load}
+          disabled={loading}
+          className="px-3 py-1.5 bg-inner hover:bg-card border border-subtle rounded-lg text-xs font-semibold text-text-base flex items-center gap-1.5 cursor-pointer transition-all shadow-sm"
+        >
+          <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
+          <span>Scan Folders</span>
         </button>
       </div>
 
-      {error && <p className="text-[11px] text-amber-300">{error}</p>}
+      {error && <p className="text-xs text-amber-300">{error}</p>}
+
       {loading ? (
-        <div className="flex items-center gap-2 text-[11px] text-text-muted py-6 bg-inner border border-subtle rounded-xl justify-center">
-          <Loader2 size={14} className="animate-spin" /> Scanning top-level folders…
+        <div className="flex items-center gap-2 text-xs text-text-muted py-8 border border-subtle rounded-lg justify-center bg-inner/40">
+          <Loader2 size={14} className="animate-spin" /> Scanning workstation NAS folders…
         </div>
       ) : (
-        <div className="bg-inner border border-subtle rounded-xl overflow-x-auto">
+        <div className="border border-subtle rounded-lg overflow-x-auto">
           {rows.length === 0 ? (
-            <p className="py-8 text-center text-[11px] text-text-muted">
-              No subgrids found. Connect the NAS GPU Worker (http mode) or add datasets to populate the registry.
+            <p className="py-8 text-center text-xs text-text-muted">
+              No subgrids found. Connect the NAS Worker (http mode) or add datasets to populate the registry.
             </p>
           ) : (
-            <table className="w-full text-left text-[11px]">
+            <table className="w-full text-xs text-left border-collapse">
               <thead>
-                <tr className="text-text-muted uppercase tracking-wide text-[10px] border-b border-subtle">
-                  <th className="py-2 px-3">Subgrid</th>
-                  <th className="py-2 px-3 text-right">RAW frames</th>
-                  <th className="py-2 px-3 text-right">Stitch / Blur</th>
-                  <th className="py-2 px-3 text-right">Cleaned</th>
-                  <th className="py-2 px-3 text-right">Deliverables</th>
-                  <th className="py-2 px-3 text-right">Datasets</th>
-                  <th className="py-2 px-3 w-40">Maturity</th>
+                <tr className="bg-app text-text-muted uppercase text-[10px] tracking-wider border-b border-subtle">
+                  <th className="px-3.5 py-2.5">Subgrid</th>
+                  <th className="px-3.5 py-2.5 text-right">RAW Frames</th>
+                  <th className="px-3.5 py-2.5 text-right">PC 1 Blur</th>
+                  <th className="px-3.5 py-2.5 text-right">PC 2 Stitch</th>
+                  <th className="px-3.5 py-2.5 text-right">PC 3 Lightroom</th>
+                  <th className="px-3.5 py-2.5 text-right">PC 4 Photoshop</th>
+                  <th className="px-3.5 py-2.5 text-right">Deliverables</th>
+                  <th className="px-3.5 py-2.5 text-right">Datasets</th>
+                  <th className="px-3.5 py-2.5 w-36">Maturity</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-subtle/80">
                 {rows.map((row) => {
                   const st = statusFor(row);
                   return (
-                    <tr key={row.subgrid} className="border-b border-subtle/50">
-                      <td className="py-2.5 px-3 font-semibold text-sky-300">{row.subgrid}</td>
-                      <td className="py-2.5 px-3 text-right">{cell(row.rawCount, row.rawBytes)}</td>
-                      <td className="py-2.5 px-3 text-right">{cell(row.stitchedCount)}</td>
-                      <td className="py-2.5 px-3 text-right">{cell(row.cleanedCount)}</td>
-                      <td className="py-2.5 px-3 text-right">{cell(row.deliverableCount)}</td>
-                      <td className="py-2.5 px-3 text-right">
+                    <tr key={row.subgrid} className="hover:bg-inner transition-colors">
+                      <td className="px-3.5 py-2.5 font-semibold text-text-base">{row.subgrid}</td>
+                      <td className="px-3.5 py-2.5 text-right">{cell(row.rawCount, row.rawBytes)}</td>
+                      <td className="px-3.5 py-2.5 text-right">{cell(row.blurredCount)}</td>
+                      <td className="px-3.5 py-2.5 text-right">{cell(row.stitchedCount)}</td>
+                      <td className="px-3.5 py-2.5 text-right">{cell(row.enhancedCount)}</td>
+                      <td className="px-3.5 py-2.5 text-right">{cell(row.processedCount)}</td>
+                      <td className="px-3.5 py-2.5 text-right">{cell(row.deliverableCount)}</td>
+                      <td className="px-3.5 py-2.5 text-right">
                         <span className="flex items-center justify-end gap-1 text-text-base">
                           <CheckCircle2 size={12} className="text-sky-400" /> {row.datasetCount}
                         </span>
                       </td>
-                      <td className="py-2.5 px-3">
+                      <td className="px-3.5 py-2.5">
                         <div className="flex items-center gap-2">
                           <div className="h-1.5 flex-1 bg-black/40 rounded-full overflow-hidden">
-                            <div className="h-full rounded-full bg-gradient-to-r from-amber-400 via-sky-400 to-emerald-400 transition-all duration-500"
+                            <div className="h-full rounded-full bg-sky-400 transition-all duration-500"
                               style={{ width: `${maturity(row) * 100}%` }} />
                           </div>
                           <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border whitespace-nowrap ${st.cls}`}>
@@ -188,8 +228,8 @@ export const RawRegistryPanel: React.FC<RawRegistryPanelProps> = ({ api, dataset
               </tbody>
             </table>
           )}
-          <div className="px-3 py-2 border-t border-subtle text-[10px] text-text-muted">
-            Matrix is built live from {api.mode === 'mock' ? 'simulated' : 'working-dir'} top-level folders + the datasets table. {datasets.length} dataset records indexed.
+          <div className="px-3.5 py-2 border-t border-subtle text-[10px] text-text-muted bg-inner/40">
+            Matrix is queried dynamically from NAS worker directories + Supabase datasets table. {datasets.length} dataset records indexed.
           </div>
         </div>
       )}

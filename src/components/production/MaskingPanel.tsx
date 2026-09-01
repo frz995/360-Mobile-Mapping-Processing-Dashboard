@@ -17,6 +17,7 @@ import type {
 } from '../../types/production';
 import { loadImageWithRetry } from '../../utils/imageEnhancement';
 import { detectMaskFootprint } from '../../utils/maskFootprintDetector';
+import { extractCanonicalSubgrid } from '../../utils/datasetLineage';
 import { productionNasUrlFor } from './common';
 import { Surface } from './chrome';
 
@@ -59,10 +60,11 @@ export const MaskingPanel: React.FC<MaskingPanelProps> = ({
   const is4PcMode = (projectSettings?.processingEngineMode || 'multi_pc_workstations') === 'multi_pc_workstations';
 
   const selected = datasets.find((d) => d.id === selectedDatasetId);
+  const canonicalSg = extractCanonicalSubgrid(selected?.subgrid);
   const sourceUrl = productionNasUrlFor(
     projectSettings,
-    selected?.source_folder || 'stitchblur',
-    sampleName || `${selected?.subgrid || 'N93E70'}-00001.jpg`
+    selected?.source_folder || '',
+    sampleName || (canonicalSg ? `${canonicalSg}-00001.jpg` : '')
   );
 
   useEffect(() => {
@@ -224,7 +226,7 @@ Action Sequence:
 
       <div className="p-4 grid grid-cols-1 xl:grid-cols-3 gap-4 xl:gap-0 flex-1 min-h-0">
         {/* Inspector rail */}
-        <div className="flex flex-col gap-4 min-h-0 xl:pr-5">
+        <div className="flex flex-col gap-4 min-h-0 xl:pr-5 overflow-y-auto max-h-[600px] xl:max-h-none">
           <div>
             <label className="text-[10px] uppercase tracking-wider text-text-muted font-semibold">
               Source Dataset

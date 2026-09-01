@@ -347,7 +347,7 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
             />
           </div>
 
-          <div className="p-5 flex-1 flex flex-col min-h-0 space-y-4">
+          <div className="p-5 flex-1 flex flex-col min-h-0 space-y-4 overflow-y-auto">
             {/* TAB 1: USER MANAGEMENT */}
             {activeTab === 'users' && (
               <div className="space-y-4 animate-in fade-in">

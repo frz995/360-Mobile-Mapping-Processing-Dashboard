@@ -40,6 +40,7 @@ import type {
 } from '../../../types/production';
 import { DEFAULT_4_WORKSTATIONS } from '../../../types/production';
 import { jobStatusMeta } from '../../../utils/productionQueue';
+import { extractCanonicalSubgrid } from '../../../utils/datasetLineage';
 
 export interface HandoffPanelProps {
   jobs: ProcessingJobRecord[];
@@ -82,9 +83,15 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
   const [dispatchStationIdx, setDispatchStationIdx] = useState(0);
   const [dispatchSubgrid, setDispatchSubgrid] = useState('');
   const [dispatchGrid, setDispatchGrid] = useState('Grid 1');
-  const [dispatchDate, setDispatchDate] = useState('20220904');
-  const [dispatchRunId] = useState('003485-20220904-144310');
-  const [dispatchTotalItems, setDispatchTotalItems] = useState(105);
+  const [dispatchDate, setDispatchDate] = useState(() => {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}${m}${day}`;
+  });
+  const [dispatchRunId] = useState('');
+  const [dispatchTotalItems, setDispatchTotalItems] = useState(0);
   const [dispatching, setDispatching] = useState(false);
 
   // Active Job Edit Modal State
@@ -112,7 +119,7 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
     let res = (template || '').trim();
     res = res.replace(/\{subgrid\}/gi, vars.subgrid || '');
     res = res.replace(/\{grid\}/gi, vars.grid || 'Grid 1');
-    res = res.replace(/\{date\}/gi, vars.date || '20220904');
+    res = res.replace(/\{date\}/gi, vars.date || '');
     res = res.replace(/\{run_id\}/gi, vars.run_id || '');
     return res;
   };
@@ -138,9 +145,9 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
   useEffect(() => {
     const vars = {
       subgrid: dispatchSubgrid.trim() || '{subgrid}',
-      grid: dispatchGrid.trim() || 'Grid 1',
-      date: dispatchDate.trim() || '20220904',
-      run_id: dispatchRunId.trim() || ''
+      grid: dispatchGrid.trim() || '{grid}',
+      date: dispatchDate.trim() || '{date}',
+      run_id: dispatchRunId.trim() || '{run_id}'
     };
     const rows: EditableStationRow[] = workstations.map((w) => {
       const jType: ProcessingJobType =
@@ -153,11 +160,11 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
         operator: w.defaultOperator,
         sourceFolder: resolveStationPath(w.sourceFolderTemplate, vars),
         outputFolder: resolveStationPath(w.outputFolderTemplate, vars),
-        totalItems: dispatchTotalItems || 105
+        totalItems: dispatchTotalItems || 0
       };
     });
     setTableRows(rows);
-  }, [dispatchSubgrid, dispatchGrid, dispatchDate, dispatchTotalItems, showDispatchModal, workstations]);
+  }, [dispatchSubgrid, dispatchGrid, dispatchDate, dispatchRunId, dispatchTotalItems, showDispatchModal, workstations]);
 
   const updateTableRow = (idx: number, field: keyof EditableStationRow, val: any) => {
     setTableRows((prev) => {
@@ -170,9 +177,9 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
   const resetTableToTemplates = () => {
     const vars = {
       subgrid: dispatchSubgrid.trim() || '{subgrid}',
-      grid: dispatchGrid.trim() || 'Grid 1',
-      date: dispatchDate.trim() || '20220904',
-      run_id: dispatchRunId.trim() || ''
+      grid: dispatchGrid.trim() || '{grid}',
+      date: dispatchDate.trim() || '{date}',
+      run_id: dispatchRunId.trim() || '{run_id}'
     };
     const rows: EditableStationRow[] = workstations.map((w) => {
       const jType: ProcessingJobType =
@@ -185,7 +192,7 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
         operator: w.defaultOperator,
         sourceFolder: resolveStationPath(w.sourceFolderTemplate, vars),
         outputFolder: resolveStationPath(w.outputFolderTemplate, vars),
-        totalItems: dispatchTotalItems || 105
+        totalItems: dispatchTotalItems || 0
       };
     });
     setTableRows(rows);
@@ -248,7 +255,7 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
     if (isGuestUser || !job.id) return;
     setBusyId(job.id);
 
-    const subgrid = (job.subgrid || 'N93E70').toUpperCase().trim();
+    const subgrid = extractCanonicalSubgrid(job.subgrid || 'N93E70') || 'N93E70';
     const currentType = job.job_type;
     const stageMeta = STATION_JOB_TYPE_MAP[currentType];
 
@@ -411,8 +418,8 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
   // Group jobs by 4-station lanes
   const laneJobs = useMemo(() => {
     return {
-      stitch: jobs.filter((j) => j.job_type === 'STITCH' && j.status !== 'COMPLETED'),
       blur: jobs.filter((j) => j.job_type === 'BLUR' && j.status !== 'COMPLETED'),
+      stitch: jobs.filter((j) => j.job_type === 'STITCH' && j.status !== 'COMPLETED'),
       lightroom: jobs.filter((j) => j.job_type === 'ENHANCE' && j.status !== 'COMPLETED'),
       photoshop: jobs.filter((j) => j.job_type === 'MASK' && j.status !== 'COMPLETED')
     };

@@ -8,7 +8,7 @@ import {
   History
 } from 'lucide-react';
 import { fetchStagingPanoramasFromSupabase, fetchProcessingJobsFromSupabase, SUBGRID_COORDINATES } from '../services/supabase';
-import { aggregateStagingBySubgrid } from '../utils/datasetLineage';
+import { aggregateStagingBySubgrid, extractCanonicalSubgrid } from '../utils/datasetLineage';
 import { buildBoundarySubgridSet } from '../utils/projectBoundary';
 import type { ProcessingJobRecord } from '../types/production';
 import { computeSurveyAnalytics, type SurveyAnalytics } from '../utils/surveyAnalytics';
@@ -76,7 +76,7 @@ export const AnalyticsWorkspace: React.FC<AnalyticsWorkspaceProps> = ({
   const qaBySubgrid = useMemo(() => {
     const map: Record<string, { approved: number; rejected: number }> = {};
     for (const j of jobs) {
-      const sg = (j.subgrid || '').trim().toUpperCase();
+      const sg = extractCanonicalSubgrid(j.subgrid);
       if (!sg) continue;
       const entry = map[sg] || { approved: 0, rejected: 0 };
       if (j.qa_decision === 'APPROVED') entry.approved += 1;
@@ -90,9 +90,9 @@ export const AnalyticsWorkspace: React.FC<AnalyticsWorkspaceProps> = ({
     const boundary = (projectSettings as any)?.projectBoundary;
     if (!boundary?.geojson && !boundary?.bbox) return undefined;
     const all = new Set<string>();
-    batchLogs.forEach((b: any) => { const s = (b.subgrid || b.imageFilename || ''); if (s) all.add((s.match(/[nNsS]\d{2}[eEwW]\d{2,3}/) || [s.toUpperCase().trim()])[0].toUpperCase()); });
-    dailyData.forEach((d: any) => { const s = (d.subgrid || d.imageFilename || ''); if (s) all.add((s.match(/[nNsS]\d{2}[eEwW]\d{2,3}/) || [s.toUpperCase().trim()])[0].toUpperCase()); });
-    stagingRows.forEach((r: any) => { const s = (r.subgrid || ''); if (s) all.add(s.toUpperCase().trim()); });
+    batchLogs.forEach((b: any) => { const s = extractCanonicalSubgrid(b.subgrid || b.imageFilename || ''); if (s) all.add(s); });
+    dailyData.forEach((d: any) => { const s = extractCanonicalSubgrid(d.subgrid || d.imageFilename || ''); if (s) all.add(s); });
+    stagingRows.forEach((r: any) => { const s = extractCanonicalSubgrid(r.subgrid || ''); if (s) all.add(s); });
     const set = buildBoundarySubgridSet(Array.from(all), boundary, SUBGRID_COORDINATES as Record<string, [number, number]>);
     return set.size > 0 ? set : undefined;
   }, [batchLogs, dailyData, stagingRows, projectSettings]);
@@ -135,7 +135,7 @@ export const AnalyticsWorkspace: React.FC<AnalyticsWorkspaceProps> = ({
             />
           </div>
 
-          <div className="p-4 sm:p-5 flex-1 flex flex-col min-h-0">
+          <div className="p-4 sm:p-5 flex-1 flex flex-col min-h-0 overflow-y-auto">
             {/* Active tab panel */}
             {activeTab === 'overview' && <OverviewPanel analytics={analytics} translate={translate} />}
             {activeTab === 'ledger' && (
