@@ -3988,7 +3988,7 @@ const DataManagementPage = ({
               />
             </div>
 
-            <div className="p-4 flex-1 flex flex-col gap-4">
+            <div key={dataTab} className="p-4 flex-1 flex flex-col gap-4 animate-panel-enter">
 
             {/* Selection Map + Safe Deletion panel */}
             <div className="bg-inner/40 border border-subtle rounded-xl shadow-sm overflow-hidden">
@@ -4223,7 +4223,7 @@ const DataManagementPage = ({
 
           {/* Action Toolbar Row */}
           {(dataTab === 'batches' || dataTab === 'daily') && (
-            <div className="flex flex-wrap items-center justify-between gap-4 bg-inner/40 border border-subtle p-3 rounded-xl shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-4 bg-card border border-subtle p-3 rounded-2xl shadow-sm">
               {/* Search Bar & Filter Toggle Button */}
               <div className="flex items-center gap-3 flex-1 max-w-md">
                 <div className="relative flex-1 min-w-[200px]">
@@ -4270,7 +4270,6 @@ const DataManagementPage = ({
               {/* Action Buttons */}
               {(dataTab === 'daily' || dataTab === 'batches') && (
                 <div className="flex flex-wrap items-center gap-2.5">
-
                   <button
                     onClick={async () => {
                       setPublishMessage({ text: 'Syncing live records from Supabase mobilemapping database...', type: 'success' });
@@ -4285,7 +4284,7 @@ const DataManagementPage = ({
                         setPublishMessage({ text: `Successfully synced ${sDaily ? sDaily.length : 0} records directly from Supabase!`, type: 'success' });
                       }
                     }}
-                    className="flex items-center gap-2 bg-inner hover:bg-inner border border-subtle text-text-base px-3.5 py-2 rounded-xl transition-all text-xs font-semibold cursor-pointer shadow-sm"
+                    className="flex items-center gap-2 bg-card hover:bg-inner border border-subtle text-text-base px-3.5 py-2 rounded-xl transition-all text-xs font-semibold cursor-pointer shadow-sm"
                     title="Sync latest live records from Supabase mobilemapping database"
                   >
                     <RefreshCw size={13} className="text-sky-400" />
@@ -4293,7 +4292,7 @@ const DataManagementPage = ({
                   </button>
 
                   {!isGuestUser && (
-                    <label className="flex items-center gap-2 bg-inner hover:bg-inner border border-subtle px-3.5 py-2 rounded-xl transition-all cursor-pointer text-text-base font-semibold text-xs shadow-sm active:scale-95">
+                    <label className="flex items-center gap-2 bg-card hover:bg-inner border border-subtle px-3.5 py-2 rounded-xl transition-all cursor-pointer text-text-base font-semibold text-xs shadow-sm active:scale-95">
                       <FileText size={13} className="text-emerald-400" />
                       <span>Import CSV</span>
                       <input
@@ -4629,10 +4628,10 @@ const DataManagementPage = ({
                 </div>
               )}
 
-              <div className="bg-inner/20 border border-subtle rounded-xl shadow-sm overflow-hidden flex flex-col">
+              <div className="bg-card border border-subtle rounded-2xl shadow-sm overflow-hidden flex flex-col">
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left">
-                    <thead className="bg-card text-text-muted border-b border-subtle">
+                  <table className="w-full text-left border-collapse">
+                    <thead className="bg-card text-text-muted border-b border-subtle select-none">
                       <tr>
                         <th className="px-3 py-3.5 w-10 text-center">
                           <input
@@ -4664,31 +4663,31 @@ const DataManagementPage = ({
                         </th>
                         {dataTab === 'batches' ? (
                           <>
-                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Date</th>
-                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Grid</th>
-                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Subgrid</th>
-                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Frames</th>
-                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Distance (km)</th>
-                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Images</th>
-                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Defects</th>
-                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">PIC</th>
-                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Status</th>
-                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Configure</th>
+                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap text-text-muted">Date</th>
+                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap text-text-muted">Grid</th>
+                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap text-text-muted">Subgrid</th>
+                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap text-text-muted">Frames</th>
+                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap text-text-muted">KM Processed</th>
+                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap text-text-muted">Images Processed</th>
+                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap text-text-muted">Defects</th>
+                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap text-text-muted">PIC</th>
+                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap text-text-muted">Status</th>
+                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap text-text-muted">Configure</th>
                           </>
                         ) : (
                           <>
-                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Date</th>
-                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Grid</th>
-                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Subgrid</th>
-                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Frames</th>
-                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">KM Processed</th>
-                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Images Processed</th>
-                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Capture Equipment</th>
-                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Defects</th>
-                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">PIC</th>
-                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Publish to WEBGIS</th>
-                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Status</th>
-                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">Configure</th>
+                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap text-text-muted">Date</th>
+                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap text-text-muted">Grid</th>
+                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap text-text-muted">Subgrid</th>
+                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap text-text-muted">Frames</th>
+                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap text-text-muted">KM Processed</th>
+                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap text-text-muted">Images Processed</th>
+                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap text-text-muted">Capture Equipment</th>
+                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap text-text-muted">Defects</th>
+                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap text-text-muted">PIC</th>
+                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap text-text-muted">Publish to WebGIS</th>
+                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap text-text-muted">Status</th>
+                            <th className="px-4 py-3.5 font-bold text-[11px] uppercase tracking-wider whitespace-nowrap text-text-muted">Configure</th>
                           </>
                         )}
                       </tr>
@@ -4701,7 +4700,7 @@ const DataManagementPage = ({
                             return (
                               <tr
                                 key={batch.id || `b-${index}`}
-                                className="hover:bg-inner transition-all text-text-base"
+                                className="border-t border-subtle hover:bg-inner/60 transition-colors text-text-base"
                               >
                                 <td className="px-3 py-3.5 w-10 text-center" onClick={(e) => e.stopPropagation()}>
                                   <input
@@ -4719,13 +4718,13 @@ const DataManagementPage = ({
                                     className="rounded border-subtle bg-app text-sky-500 focus:ring-sky-500 cursor-pointer w-4 h-4 accent-sky-500"
                                   />
                                 </td>
-                                <td className="px-4 py-3.5 font-sans text-xs text-text-base whitespace-nowrap">{formatDisplayDate(batch.date)}</td>
-                                <td className="px-4 py-3.5 font-sans text-text-base font-semibold whitespace-nowrap">{batch.grid}</td>
-                                <td className="px-4 py-3.5 font-semibold text-text-base whitespace-nowrap flex items-center gap-2">
+                                <td className="px-4 py-3.5 text-xs text-text-base whitespace-nowrap font-medium">{formatDisplayDate(batch.date)}</td>
+                                <td className="px-4 py-3.5 text-xs text-text-base font-bold whitespace-nowrap">{batch.grid}</td>
+                                <td className="px-4 py-3.5 text-xs font-bold text-text-base whitespace-nowrap flex items-center gap-2">
                                   <span>{batchSubgrid}</span>
                                 </td>
-                                <td className="px-4 py-3.5 font-sans text-xs text-text-base font-semibold whitespace-nowrap">{getPOICount(batch).toLocaleString()}</td>
-                                <td className="px-4 py-3.5 font-semibold text-text-base whitespace-nowrap">{batch.kmProcessed.toFixed(1)}</td>
+                                <td className="px-4 py-3.5 text-xs text-text-base font-medium whitespace-nowrap">{getPOICount(batch).toLocaleString()}</td>
+                                <td className="px-4 py-3.5 text-xs text-text-base font-medium whitespace-nowrap">{batch.kmProcessed.toFixed(1)}</td>
                                 <td className="px-4 py-3.5 whitespace-nowrap">
                                   <button
                                     onClick={(e) => {
@@ -4744,29 +4743,33 @@ const DataManagementPage = ({
                                         customFilenames: customFn && customFn.length > 0 ? customFn : undefined
                                       });
                                     }}
-                                    className="text-text-base hover:text-text-base hover:underline font-semibold text-xs cursor-pointer inline-flex items-center gap-1.5 whitespace-nowrap"
+                                    className="text-text-base hover:text-sky-300 hover:underline font-medium text-xs cursor-pointer inline-flex items-center gap-1.5 whitespace-nowrap"
                                     title="Click to view list of image filenames"
                                   >
                                     <span>{getImagesProcessedCount(batch).toLocaleString()} frames</span>
                                     <ExternalLink size={11} className="shrink-0 text-text-muted" />
                                   </button>
                                 </td>
-                                <td className="px-4 py-3.5 text-text-base font-medium whitespace-nowrap">
+                                <td className="px-4 py-3.5 text-xs text-text-base font-medium whitespace-nowrap">
                                   {batch.defects || 0}
                                 </td>
-                                <td className="px-4 py-3.5 text-text-base font-medium whitespace-nowrap">
+                                <td className="px-4 py-3.5 text-xs text-text-base font-medium whitespace-nowrap">
                                   {(batch.pic && batch.pic.trim().toLowerCase() !== 'unassigned') ? batch.pic : (activeAuthUserName || 'Admin')}
                                 </td>
                                 <td className="px-4 py-3.5 whitespace-nowrap">
-                                  <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${batch.status === 'Complete'
-                                    ? 'bg-inner text-text-base border border-subtle'
-                                    : 'bg-app text-text-muted border border-subtle'
-                                    }`}>
-                                    {batch.status === 'Complete' ? <CheckCircle size={10} className="text-emerald-400" /> : <Clock size={10} className="text-amber-400" />}
-                                    {batch.status}
-                                  </span>
+                                  {batch.status === 'Complete' ? (
+                                    <div className="inline-flex items-center gap-2 text-xs font-medium text-text-base whitespace-nowrap">
+                                      <CheckCircle size={14} className="text-emerald-400 shrink-0" />
+                                      <span>Published in database</span>
+                                    </div>
+                                  ) : (
+                                    <div className="inline-flex items-center gap-2 text-xs font-medium text-text-base whitespace-nowrap">
+                                      <Clock size={14} className="text-amber-400 shrink-0" />
+                                      <span>Ready to publish</span>
+                                    </div>
+                                  )}
                                 </td>
-                                <td className="px-4 py-3.5 flex items-center gap-2 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                                <td className="px-4 py-3.5 flex items-center gap-2.5 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                                   <button
                                     onClick={() => setQcModal({
                                       isOpen: true,
@@ -4777,10 +4780,10 @@ const DataManagementPage = ({
                                       availableFilenames: batch.availableFilenames,
                                       expectedFilenames: batch.panoramas?.map((p: any) => p.filename).filter(Boolean)
                                     })}
-                                    className="px-2.5 py-1 rounded-lg border text-xs font-medium bg-inner hover:bg-inner text-text-base border-subtle transition-all cursor-pointer flex items-center gap-1.5 shadow-sm"
+                                    className="text-text-base hover:text-white text-xs font-medium transition-colors cursor-pointer inline-flex items-center gap-1.5 p-1"
                                     title="View QC Audit Details"
                                   >
-                                    <ShieldAlert size={13} className="text-sky-400" />
+                                    <ShieldAlert size={14} className="text-rose-400 shrink-0" />
                                     <span>QC Audit</span>
                                   </button>
                                   {!isGuestUser ? (
@@ -4790,17 +4793,17 @@ const DataManagementPage = ({
                                           setEditingItem(batch);
                                           setIsFormOpen(true);
                                         }}
-                                        className="text-text-muted hover:text-sky-400 transition-colors p-1"
-                                        title="Edit"
+                                        className="text-text-muted hover:text-sky-400 transition-colors p-1 cursor-pointer"
+                                        title="Edit Record"
                                       >
-                                        <Edit2 size={18} />
+                                        <Edit2 size={16} />
                                       </button>
                                       <button
                                         onClick={() => initiateDelete(batch)}
-                                        className="text-text-muted hover:text-red-400 transition-colors p-1 cursor-pointer"
+                                        className="text-text-muted hover:text-rose-400 transition-colors p-1 cursor-pointer"
                                         title="Delete Record (Admin Authorization Required)"
                                       >
-                                        <Trash2 size={18} />
+                                        <Trash2 size={16} />
                                       </button>
                                     </>
                                   ) : (
@@ -4825,7 +4828,7 @@ const DataManagementPage = ({
                             return (
                               <tr
                                 key={daily.id || `d-${daily.date}-${daily.subgrid}-${index}`}
-                                className="hover:bg-inner transition-all text-text-base"
+                                className="border-t border-subtle hover:bg-inner/60 transition-colors text-text-base"
                               >
                                 <td className="px-3 py-3.5 w-10 text-center" onClick={(e) => e.stopPropagation()}>
                                   <input
@@ -4843,13 +4846,13 @@ const DataManagementPage = ({
                                     className="rounded border-subtle bg-app text-sky-500 focus:ring-sky-500 cursor-pointer w-4 h-4 accent-sky-500"
                                   />
                                 </td>
-                                <td className="px-4 py-3.5 text-text-base font-sans text-xs whitespace-nowrap">{formatDisplayDate(daily.date)}</td>
-                                <td className="px-4 py-3.5 text-text-base font-semibold whitespace-nowrap">{daily.grid}</td>
-                                <td className="px-4 py-3.5 text-text-base font-semibold whitespace-nowrap flex items-center gap-2">
-                                  <span>{daily.subgrid}</span>
+                                <td className="px-4 py-3.5 text-xs text-text-base whitespace-nowrap font-medium">{formatDisplayDate(daily.date)}</td>
+                                <td className="px-4 py-3.5 text-xs text-text-base font-bold whitespace-nowrap">{daily.grid}</td>
+                                <td className="px-4 py-3.5 text-xs font-bold text-text-base whitespace-nowrap flex items-center gap-2">
+                                  <span>{dailySubgrid}</span>
                                 </td>
-                                <td className="px-4 py-3.5 font-sans text-xs text-text-base font-semibold whitespace-nowrap">{getPOICount(daily).toLocaleString()}</td>
-                                <td className="px-4 py-3.5 text-text-base font-semibold whitespace-nowrap">{daily.kmProcessed.toFixed(1)}</td>
+                                <td className="px-4 py-3.5 text-xs text-text-base font-medium whitespace-nowrap">{getPOICount(daily).toLocaleString()}</td>
+                                <td className="px-4 py-3.5 text-xs text-text-base font-medium whitespace-nowrap">{daily.kmProcessed.toFixed(1)}</td>
                                 <td className="px-4 py-3.5 whitespace-nowrap">
                                   <button
                                     onClick={(e) => {
@@ -4870,7 +4873,7 @@ const DataManagementPage = ({
                                         customFilenames: customFn && customFn.length > 0 ? customFn : undefined
                                       });
                                     }}
-                                    className="text-text-base hover:text-text-base hover:underline font-semibold text-xs cursor-pointer inline-flex items-center gap-1.5 whitespace-nowrap"
+                                    className="text-text-base hover:text-sky-300 hover:underline font-medium text-xs cursor-pointer inline-flex items-center gap-1.5 whitespace-nowrap"
                                     title="Click to view list of image filenames"
                                   >
                                     <span>{getImagesProcessedCount(daily).toLocaleString()} frames</span>
@@ -4887,18 +4890,18 @@ const DataManagementPage = ({
                                       setDailyData(updated);
                                       setBatchLogs(reconcileBatchLogs(updated, batchLogs));
                                     }}
-                                    className="bg-app border border-subtle rounded-lg px-2 py-1 text-xs font-semibold text-text-base focus:outline-none focus:ring-1 focus:ring-accent cursor-pointer"
+                                    className="bg-card border border-subtle hover:border-slate-600 rounded-lg px-2.5 py-1 text-xs font-semibold text-text-base focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer"
                                   >
-                                    <option value="MMS" className="bg-app text-text-base">MMS</option>
-                                    <option value="Backpack" className="bg-app text-text-base">Backpack</option>
-                                    <option value="Drone" className="bg-app text-text-base">Drone</option>
-                                    <option value="Handheld" className="bg-app text-text-base">Handheld</option>
+                                    <option value="MMS" className="bg-card text-text-base">MMS</option>
+                                    <option value="Backpack" className="bg-card text-text-base">Backpack</option>
+                                    <option value="Drone" className="bg-card text-text-base">Drone</option>
+                                    <option value="Handheld" className="bg-card text-text-base">Handheld</option>
                                   </select>
                                 </td>
-                                <td className="px-4 py-3.5 text-text-base font-medium whitespace-nowrap">
+                                <td className="px-4 py-3.5 text-xs text-text-base font-medium whitespace-nowrap">
                                   {daily.imagesDefected || daily.defectCount || 0}
                                 </td>
-                                <td className="px-4 py-3.5 text-text-base font-medium whitespace-nowrap">
+                                <td className="px-4 py-3.5 text-xs text-text-base font-medium whitespace-nowrap">
                                   {(daily.pic && daily.pic.trim().toLowerCase() !== 'unassigned')
                                     ? daily.pic
                                     : (activeAuthUserName || (authSession?.user?.email ? authSession.user.email.split('@')[0] : '') || 'Operator')}
@@ -4916,25 +4919,25 @@ const DataManagementPage = ({
                                         setDailyData(updated);
                                       }
                                     }}
-                                    className="bg-app border border-subtle rounded-lg px-2 py-1 text-xs font-semibold text-text-base focus:outline-none focus:ring-1 focus:ring-accent cursor-pointer"
+                                    className="bg-card border border-subtle hover:border-slate-600 rounded-lg px-2.5 py-1 text-xs font-semibold text-text-base focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer"
                                   >
-                                    <option value="in process" className="bg-app text-text-base">In Process</option>
-                                    <option value="yes" className="bg-app text-text-base">Yes - Publish</option>
-                                    <option value="need to recheck" className="bg-app text-text-base">Need to Recheck</option>
-                                    <option value="no" className="bg-app text-text-muted">No</option>
+                                    <option value="in process" className="bg-card text-text-base">In Process</option>
+                                    <option value="yes" className="bg-card text-text-base">Yes - Publish</option>
+                                    <option value="need to recheck" className="bg-card text-text-base">Need to Recheck</option>
+                                    <option value="no" className="bg-card text-text-muted">No</option>
                                   </select>
                                 </td>
                                 <td className="px-4 py-3.5 whitespace-nowrap">
                                   {isPublished ? (
-                                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold bg-inner text-text-base border border-subtle">
-                                      <CheckCircle size={12} className="text-emerald-400 shrink-0" />
-                                      Published in database
-                                    </span>
+                                    <div className="inline-flex items-center gap-2 text-xs font-medium text-text-base whitespace-nowrap">
+                                      <CheckCircle size={14} className="text-emerald-400 shrink-0" />
+                                      <span>Published in database</span>
+                                    </div>
                                   ) : (
-                                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold bg-inner text-text-base border border-subtle">
-                                      <Clock size={12} className="text-amber-400 shrink-0" />
-                                      Ready to publish
-                                    </span>
+                                    <div className="inline-flex items-center gap-2 text-xs font-medium text-text-base whitespace-nowrap">
+                                      <Clock size={14} className="text-amber-400 shrink-0" />
+                                      <span>Ready to publish</span>
+                                    </div>
                                   )}
                                 </td>
                                 <td className="px-4 py-3.5 flex items-center gap-2 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
@@ -4943,13 +4946,13 @@ const DataManagementPage = ({
                                       <button
                                         onClick={() => handlePublishRecord(daily)}
                                         disabled={isPublished || publishingId === getItemId(daily)}
-                                        className={`transition-colors p-1 ${isPublished ? 'text-text-muted cursor-not-allowed opacity-40' : 'text-emerald-400 hover:text-emerald-300 cursor-pointer'}`}
+                                        className={`p-1.5 rounded-lg transition-colors ${isPublished ? 'text-text-muted cursor-not-allowed opacity-40' : 'text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 cursor-pointer'}`}
                                         title={isPublished ? 'Already published in database' : 'Click to publish to database'}
                                       >
                                         {publishingId === getItemId(daily) ? (
-                                          <RefreshCw size={18} className="animate-spin text-sky-400" />
+                                          <RefreshCw size={16} className="animate-spin text-sky-400" />
                                         ) : (
-                                          <Database size={18} />
+                                          <Database size={16} />
                                         )}
                                       </button>
                                       <button
@@ -4957,17 +4960,17 @@ const DataManagementPage = ({
                                           setEditingItem(daily);
                                           setIsFormOpen(true);
                                         }}
-                                        className="text-text-muted hover:text-sky-400 transition-colors p-1 cursor-pointer"
+                                        className="text-text-muted hover:text-sky-400 hover:bg-sky-500/10 transition-colors p-1.5 rounded-lg cursor-pointer"
                                         title="Edit Record"
                                       >
-                                        <Edit2 size={18} />
+                                        <Edit2 size={16} />
                                       </button>
                                       <button
                                         onClick={() => initiateDelete(daily)}
-                                        className="text-text-muted hover:text-red-400 transition-colors p-1 cursor-pointer"
+                                        className="text-text-muted hover:text-rose-400 hover:bg-rose-500/10 transition-colors p-1.5 rounded-lg cursor-pointer"
                                         title="Delete Record (Admin Authorization Required)"
                                       >
-                                        <Trash2 size={18} />
+                                        <Trash2 size={16} />
                                       </button>
                                     </>
                                   ) : (
@@ -4991,19 +4994,19 @@ const DataManagementPage = ({
 
                 {/* Pagination Controls Footer */}
                 {totalItems > 0 && (
-                  <div className="px-5 py-3 bg-card border-t border-subtle flex flex-wrap items-center justify-between gap-3 text-xs text-text-muted">
+                  <div className="px-5 py-3.5 bg-card border-t border-subtle flex flex-wrap items-center justify-between gap-3 text-xs text-text-muted">
                     <div className="flex items-center gap-4">
                       <span>
-                        Showing <strong className="text-text-base">{(safePage - 1) * pageSize + 1}</strong> to{' '}
-                        <strong className="text-text-base">{Math.min(safePage * pageSize, totalItems)}</strong> of{' '}
-                        <strong className="text-text-base">{totalItems}</strong> entries
+                        Showing <strong className="text-text-base font-bold">{(safePage - 1) * pageSize + 1}</strong> to{' '}
+                        <strong className="text-text-base font-bold">{Math.min(safePage * pageSize, totalItems)}</strong> of{' '}
+                        <strong className="text-text-base font-bold">{totalItems}</strong> entries
                       </span>
                       <div className="flex items-center gap-2">
                         <span>Rows per page:</span>
                         <select
                           value={pageSize}
                           onChange={(e) => setPageSize(Number(e.target.value))}
-                          className="bg-inner border border-subtle text-text-base rounded px-2 py-1 focus:outline-none focus:border-sky-500 cursor-pointer"
+                          className="bg-card border border-subtle hover:border-slate-600 text-text-base rounded-lg px-2.5 py-1 text-xs font-semibold focus:outline-none focus:border-sky-500 cursor-pointer"
                         >
                           <option value={10}>10</option>
                           <option value={25}>25</option>
@@ -5017,20 +5020,20 @@ const DataManagementPage = ({
                       <button
                         onClick={() => setPage(p => Math.max(1, p - 1))}
                         disabled={safePage === 1}
-                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-inner hover:bg-inner disabled:opacity-40 disabled:hover:bg-inner text-text-base font-medium transition-colors cursor-pointer"
+                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-card hover:bg-inner disabled:opacity-40 text-text-base font-medium transition-colors cursor-pointer border border-subtle text-xs"
                       >
                         <ChevronLeft size={14} />
                         Previous
                       </button>
 
-                      <span className="px-3 py-1 bg-inner rounded-lg text-text-base font-semibold border border-subtle">
+                      <span className="px-3.5 py-1.5 bg-card rounded-lg text-text-base font-semibold border border-subtle text-xs">
                         Page {safePage} of {totalPages}
                       </span>
 
                       <button
                         onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                         disabled={safePage === totalPages}
-                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-inner hover:bg-inner disabled:opacity-40 disabled:hover:bg-inner text-text-base font-medium transition-colors cursor-pointer"
+                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-card hover:bg-inner disabled:opacity-40 text-text-base font-medium transition-colors cursor-pointer border border-subtle text-xs"
                       >
                         Next
                         <ChevronRight size={14} />
@@ -6669,28 +6672,29 @@ export default function App() {
       // Direct launch into dashboard (clean view, no spotlight dimming)
       goToWorkspace('dashboard');
       setFocusedSection(null);
-    } else if (targetView === 'webgis') {
-      // 1. WebGIS Coverage Map Spotlight
+    } else if (targetView === 'webgis' || targetView === 'dashboard') {
+      // 1. WebGIS & Main Dashboard
       goToWorkspace('dashboard');
       setFocusedSection('map');
-    } else if (targetView === 'processing') {
-      // 2. Batch Processing Spotlight
-      goToWorkspace('dashboard');
-      setFocusedSection('processing');
-    } else if (targetView === 'qa-inspector') {
-      // 3. 360° Inspector Spotlight
-      goToWorkspace('dashboard');
-      setFocusedSection('qa');
-    } else if (targetView === 'postgis' || targetView === 'data') {
-      // 4. PostGIS Data Management Canvas
+    } else if (targetView === 'data' || targetView === 'processing') {
+      // 2. Data Management & Masterlist Ledgers
       goToWorkspace('data');
       setFocusedSection(null);
-    } else if (targetView === 'analytics-audit' || targetView === 'settings') {
-      // 5. Executive Reports & Audit Canvas
-      goToWorkspace('settings');
-      setFocusedSection(null);
     } else if (targetView === 'production') {
+      // 3. Production Workspace & 4-Station Processing
       goToWorkspace('production');
+      setFocusedSection(null);
+    } else if (targetView === 'qaqc' || targetView === 'qa-inspector') {
+      // 4. QA/QC 360° Spherical Defect Workspace
+      goToWorkspace('dashboard');
+      setFocusedSection('qa');
+    } else if (targetView === 'postgis') {
+      // 5. PostGIS Spatial Hub & Vector Staging
+      goToWorkspace('data');
+      setFocusedSection(null);
+    } else if (targetView === 'reports' || targetView === 'reports-rbac' || targetView === 'analytics-audit' || targetView === 'settings') {
+      // 6. Reports, Audit Trail & RBAC Governance
+      goToWorkspace('reports');
       setFocusedSection(null);
     } else if (targetView === 'storage') {
       goToWorkspace('storage');
@@ -6748,13 +6752,13 @@ export default function App() {
   const [isAboutModalOpen, setIsAboutModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'batches' | 'daily'>('batches');
 
-  // Unified Theme State
+  // Unified Theme State (Clean Professional GIS Themes)
   const [currentTheme, setCurrentTheme] = useState<string>(() => {
-    return localStorage.getItem('app_dashboard_theme') || 'midnight';
+    return localStorage.getItem('app_dashboard_theme') || 'graphite';
   });
 
   // Derived themeMode for backward compatibility
-  const themeMode = currentTheme === 'daylight' ? 'light' : 'dark';
+  const themeMode = currentTheme === 'daylight' || currentTheme === 'alabaster' ? 'light' : 'dark';
 
   // Global Theme Listener
   useEffect(() => {
@@ -6763,22 +6767,9 @@ export default function App() {
     const handleThemeEvent = (e: any) => {
       if (e.detail) {
         setCurrentTheme(e.detail);
-        if (e.detail !== 'daylight') {
+        if (e.detail !== 'daylight' && e.detail !== 'alabaster') {
           localStorage.setItem('app_last_dark_theme', e.detail);
         }
-      }
-    };
-
-    window.addEventListener('app-theme-changed', handleThemeEvent);
-    return () => window.removeEventListener('app-theme-changed', handleThemeEvent);
-  }, [currentTheme]);
-
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', currentTheme);
-
-    const handleThemeEvent = (e: any) => {
-      if (e.detail) {
-        setCurrentTheme(e.detail);
       }
     };
 
@@ -8691,6 +8682,11 @@ export default function App() {
 
   useEffect(() => {
     const handlePanoramaMessage = (e: MessageEvent) => {
+      // Prevent clicks inside QAQC Workbench from triggering the background main dashboard map & viewer
+      if (isQAQCRunnerModalOpen || e.data?.source === 'qaqcWorkbench' || e.data?.isQAQC) {
+        return;
+      }
+
       // ONLY update inspector coords when a valid point track is explicitly selected (prevents minimap point moving bug)
       if (e.data?.type === 'MAP_POINT_SELECTED') {
         const pt = e.data.point || e.data.payload;
@@ -8777,7 +8773,7 @@ export default function App() {
     };
     window.addEventListener('message', handlePanoramaMessage);
     return () => window.removeEventListener('message', handlePanoramaMessage);
-  }, [qaSubgridRecords, activePanoramaFilename, inspectorSubgrid]);
+  }, [qaSubgridRecords, activePanoramaFilename, inspectorSubgrid, isQAQCRunnerModalOpen]);
 
   // Restore or reset QA defect state per panotrack image/point whenever navigating
   useEffect(() => {
@@ -9293,7 +9289,7 @@ export default function App() {
       activeJobs: 'ACTIVE PROCESSING JOBS',
       pipelineHealth: 'PIPELINE QUALITY SLA HEALTH',
       coverageMapTitle: 'INTERACTIVE COVERAGE MAP',
-      processingControlTitle: 'PROCESSING CONTROL & ADMIN',
+      processingControlTitle: 'WEBGIS DATABASE & ADMIN',
       generatePdfReport: 'GENERATE EXECUTIVE PDF REPORT',
       spatialFilter: 'SPATIAL FILTER (BBOX)',
       streetViewInspector: '360° VIEW INSPECTOR & QA',
@@ -9434,7 +9430,7 @@ export default function App() {
       productionTabMasking: 'Masking',
       storageTabOverview: 'Overview',
       storageTabBrowser: 'Folders',
-      storageTabRawRegistry: 'RAW Registry',
+      storageTabRawRegistry: 'Data Registry',
       storageTabValidation: 'Validation',
       storageTabIndex: 'Index',
       processingTabBoard: 'Job Board',
@@ -9720,7 +9716,7 @@ export default function App() {
       productionTabMasking: 'Topeng',
       storageTabOverview: 'Ringkasan',
       storageTabBrowser: 'Folder',
-      storageTabRawRegistry: 'Daftar RAW',
+      storageTabRawRegistry: 'Data Registry',
       storageTabValidation: 'Pengesahan',
       storageTabIndex: 'Indeks',
       processingTabBoard: 'Papan Kerja',
@@ -10298,12 +10294,12 @@ export default function App() {
           )}
 
           {currentPage === 'dashboard' ? (
-            <div key="dashboard-canvas" className="flex-1 flex flex-col gap-3 min-h-0 overflow-y-auto md:overflow-hidden animate-in fade-in zoom-in-98 duration-300 ease-out">
+            <div key="dashboard-canvas" className="flex-1 flex flex-col gap-3 min-h-0 overflow-y-auto md:overflow-hidden animate-workspace-focus">
               {/* TOP ROW: EXECUTIVE KPI SUMMARY (4 Cards) */}
               <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 shrink-0 transition-all duration-300 ${tourStep === 1 ? 'ring-2 ring-sky-400/90 shadow-[0_0_35px_rgba(56,189,248,0.4)] z-30 relative rounded-xl p-1 bg-sky-950/20' : tourStep !== null ? 'opacity-30 blur-[1.5px] pointer-events-none' : ''
                 }`}>
                 {/* Card 1: Total Distance Mapped */}
-                <div className="bg-card border border-subtle backdrop-blur-md rounded-xl p-3.5 flex flex-col justify-between shadow-sm">
+                <div className="bg-card border border-subtle backdrop-blur-md rounded-xl p-3.5 flex flex-col justify-between shadow-sm animate-waterfall stagger-1">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-text-base uppercase tracking-tight">{t('totalDistance')}</span>
                     <Navigation size={15} className="text-sky-400 shrink-0" />
@@ -10327,7 +10323,7 @@ export default function App() {
                 </div>
 
                 {/* Card 2: Processed Panoramas */}
-                <div className="bg-card border border-subtle backdrop-blur-md rounded-xl p-3.5 flex flex-col justify-between shadow-sm">
+                <div className="bg-card border border-subtle backdrop-blur-md rounded-xl p-3.5 flex flex-col justify-between shadow-sm animate-waterfall stagger-2">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-text-base uppercase tracking-tight">{t('processedPanoramas')}</span>
                     <Camera size={15} className="text-sky-400 shrink-0" />
@@ -10348,7 +10344,7 @@ export default function App() {
                 </div>
 
                 {/* Card 3: Active Processing Jobs */}
-                <div className="bg-card border border-subtle backdrop-blur-md rounded-xl p-3.5 flex flex-col justify-between shadow-sm">
+                <div className="bg-card border border-subtle backdrop-blur-md rounded-xl p-3.5 flex flex-col justify-between shadow-sm animate-waterfall stagger-3">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-text-base uppercase tracking-tight">{t('activeJobs')}</span>
                     <Database size={15} className="text-sky-400 shrink-0" />
@@ -10378,7 +10374,7 @@ export default function App() {
                 </div>
 
                 {/* Card 4: Pipeline Health */}
-                <div className="bg-card border border-subtle backdrop-blur-md rounded-xl p-3.5 flex flex-col justify-between shadow-sm">
+                <div className="bg-card border border-subtle backdrop-blur-md rounded-xl p-3.5 flex flex-col justify-between shadow-sm animate-waterfall stagger-4">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-text-base uppercase tracking-tight">{t('pipelineHealth')}</span>
                     <div className="w-14 h-5">
@@ -10754,7 +10750,7 @@ export default function App() {
                 {/* RIGHT COLUMN: PROCESSING CONTROL & 360 QA INSPECTOR (5 Cols) */}
                 <div className="col-span-1 lg:col-span-5 flex flex-col gap-3 min-h-[400px] lg:min-h-0">
 
-                  {/* TOP RIGHT PANEL: PROCESSING CONTROL & ADMIN */}
+                  {/* TOP RIGHT PANEL: WEBGIS DATABASE & ADMIN */}
                   <div className={`flex-1 bg-card border border-subtle backdrop-blur-md rounded-xl flex flex-col overflow-hidden transition-all duration-700 ${focusedSection === 'processing'
                     ? 'relative z-30 ring-4 ring-emerald-400 shadow-[0_0_50px_rgba(52,211,153,0.5)] scale-[1.005]'
                     : focusedSection
@@ -10765,7 +10761,7 @@ export default function App() {
                       <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
                         <span className="text-xs font-bold uppercase tracking-wider text-text-base flex items-center gap-1.5 sm:gap-2">
                           <Database size={14} className="text-sky-400 shrink-0" />
-                          <span>PROCESSING CONTROL & ADMIN</span>
+                          <span>{t('processingControlTitle')}</span>
                         </span>
                         <div className="flex bg-inner border border-subtle rounded-lg p-0.5 text-[10px]">
                           <button
@@ -11892,6 +11888,7 @@ export default function App() {
             </div>
           ) : currentPage === 'production' ? (
             <ImageProductionWorkspace
+              key="workspace-production"
               projectSettings={projectSettings}
               setProjectSettings={setProjectSettings}
               authSession={authSession}
@@ -11903,6 +11900,7 @@ export default function App() {
             />
           ) : currentPage === 'storage' ? (
             <NASStorageWorkspace
+              key="workspace-storage"
               projectSettings={projectSettings}
               setProjectSettings={setProjectSettings}
               authSession={authSession}
@@ -11914,6 +11912,7 @@ export default function App() {
             />
           ) : currentPage === 'processing' ? (
             <ProcessingCenterWorkspace
+              key="workspace-processing"
               projectSettings={projectSettings}
               setProjectSettings={setProjectSettings}
               authSession={authSession}
@@ -11925,6 +11924,7 @@ export default function App() {
             />
           ) : currentPage === 'lineage' ? (
             <LineageWorkspace
+              key="workspace-lineage"
               projectSettings={projectSettings}
               setProjectSettings={setProjectSettings}
               authSession={authSession}
@@ -11936,6 +11936,7 @@ export default function App() {
             />
           ) : currentPage === 'analytics' ? (
             <AnalyticsWorkspace
+              key="workspace-analytics"
               projectSettings={projectSettings}
               setProjectSettings={setProjectSettings}
               authSession={authSession}
@@ -11950,6 +11951,7 @@ export default function App() {
             />
           ) : currentPage === 'reports' ? (
             <ReportsWorkspace
+              key="workspace-reports"
               projectSettings={projectSettings}
               setProjectSettings={setProjectSettings}
               authSession={authSession}
@@ -11964,6 +11966,7 @@ export default function App() {
             />
           ) : currentPage === 'administration' ? (
             <AdministrationWorkspace
+              key="workspace-administration"
               authSession={authSession}
               isGuestUser={isGuestUser}
               addNotification={addNotification}
@@ -11974,7 +11977,7 @@ export default function App() {
               onRefreshData={handleRefreshMap}
             />
           ) : (
-            <div className="flex-1 flex flex-col min-h-0 overflow-hidden animate-in fade-in duration-500">
+            <div key={`workspace-${currentPage}`} className="flex-1 flex flex-col min-h-0 overflow-hidden animate-panel-enter">
               <WorkspacePlaceholder workspace={getWorkspaceDefinition(currentPage)} translate={t} />
             </div>
           )}
@@ -12461,7 +12464,6 @@ export default function App() {
               }}
               onClose={() => {
                 setIsQAQCRunnerModalOpen(false);
-                setQaqcWorkbenchSubgrid(null);
               }}
               onOpenDefectsGallery={(sg) => {
                 setSelectedDefectSubgrid(sg);

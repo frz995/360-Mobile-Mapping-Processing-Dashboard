@@ -97,7 +97,7 @@ export const IndexPanel: React.FC<IndexPanelProps> = ({ datasets }) => {
                     )}
                   </td>
                   <td className="px-3.5 py-2.5">
-                    <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded border border-subtle bg-inner text-text-base">
+                    <span className="text-[10px] font-mono font-semibold text-text-muted">
                       {d.dataset_type}
                     </span>
                   </td>

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { ClipboardList, Loader2, RefreshCw, CheckCircle2 } from 'lucide-react';
+import { ClipboardList, RefreshCw, CheckCircle2 } from 'lucide-react';
+import { ContentLoading } from '../../common/ContentLoading';
 import type { ProductionApiClient } from '../../../services/productionApi';
 import type { DatasetRecord, NasFolderListing } from '../../../types/production';
 import { extractCanonicalSubgrid } from '../../../utils/datasetLineage';
@@ -170,9 +171,7 @@ export const RawRegistryPanel: React.FC<RawRegistryPanelProps> = ({ api, dataset
       {error && <p className="text-xs text-amber-300">{error}</p>}
 
       {loading ? (
-        <div className="flex items-center gap-2 text-xs text-text-muted py-8 border border-subtle rounded-lg justify-center bg-inner/40">
-          <Loader2 size={14} className="animate-spin" /> Scanning workstation NAS folders…
-        </div>
+        <ContentLoading variant="table" label="Scanning workstation NAS folders…" rows={5} />
       ) : (
         <div className="border border-subtle rounded-lg overflow-x-auto">
           {rows.length === 0 ? (

@@ -91,7 +91,7 @@ export const NASStorageWorkspace: React.FC<NASStorageWorkspaceProps> = ({
             />
           </div>
 
-          <div className="p-4 flex-1 flex flex-col min-h-0 overflow-y-auto">
+          <div key={activeTab} className="p-4 flex-1 flex flex-col min-h-0 overflow-y-auto animate-panel-enter">
             {/* Active tab panel */}
             {activeTab === 'overview' && (
               <OverviewPanel

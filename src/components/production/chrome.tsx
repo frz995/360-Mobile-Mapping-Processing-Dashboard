@@ -90,14 +90,16 @@ export function UnderlineTabStrip<K extends string>({
           <button
             key={tab.key}
             onClick={() => onChange(tab.key)}
-            className={`relative flex items-center gap-1.5 px-3.5 py-2.5 text-[11px] font-semibold tracking-wide whitespace-nowrap transition-colors cursor-pointer ${
+            className={`relative flex items-center gap-1.5 px-3.5 py-2.5 text-[11px] font-semibold tracking-wide whitespace-nowrap transition-all duration-200 ease-out cursor-pointer ${
               isActive ? 'text-sky-400' : 'text-text-muted hover:text-text-base'
             }`}
           >
             {tab.icon}
             {tabLabel ? tabLabel(tab.key) : tab.label}
             {tab.badge}
-            {isActive && <span className="absolute inset-x-2 bottom-0 h-[2px] bg-sky-400 rounded-full" />}
+            {isActive && (
+              <span className="absolute inset-x-2 bottom-0 h-[2px] bg-sky-400 rounded-full shadow-[0_0_8px_rgba(56,189,248,0.7)] animate-[tabUnderlineBreathable_0.22s_cubic-bezier(0.16,1,0.3,1)_forwards]" />
+            )}
           </button>
         );
       })}

@@ -143,7 +143,7 @@ export const ImageProductionWorkspace: React.FC<ImageProductionWorkspaceProps> =
             />
           </div>
 
-          <div className="p-4 flex-1 flex flex-col min-h-0 overflow-y-auto">
+          <div key={activeTab} className="p-4 flex-1 flex flex-col min-h-0 overflow-y-auto animate-panel-enter">
             {/* Active tab panel */}
             {activeTab === 'pipeline' && (
               <PipelinePanel
@@ -155,6 +155,7 @@ export const ImageProductionWorkspace: React.FC<ImageProductionWorkspaceProps> =
                 translate={translate}
                 isGuestUser={isGuestUser}
                 onRefreshJobs={refreshJobs}
+                onRefreshDatasets={refreshDatasets}
                 onAddNotification={addNotification}
                 onAddAuditLog={addAuditLog}
                 userLabel={userLabel}

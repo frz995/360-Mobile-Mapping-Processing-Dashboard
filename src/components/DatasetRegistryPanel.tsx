@@ -17,6 +17,7 @@ import {
   Folder,
   CheckCircle2
 } from 'lucide-react';
+import { ContentLoading } from './common/ContentLoading';
 import {
   fetchDatasetsFromSupabase,
   fetchProcessingJobsFromSupabase,
@@ -418,9 +419,7 @@ export const DatasetRegistryPanel: React.FC<DatasetRegistryPanelProps> = ({
 
       {/* Table */}
       {loading ? (
-        <div className="flex items-center gap-2 text-[11px] text-text-muted py-8 justify-center">
-          <Loader2 size={14} className="animate-spin text-sky-400" /> {translate('dataRegistryLoading')}
-        </div>
+        <ContentLoading variant="table" label={translate('dataRegistryLoading')} rows={6} />
       ) : error ? (
         <div className="p-4 rounded-xl border border-rose-800/60 bg-rose-950/30 text-xs text-rose-300">
           {error} — <button onClick={load} className="underline cursor-pointer">{translate('dataRegistryRefresh')}</button>

@@ -135,7 +135,7 @@ export const AnalyticsWorkspace: React.FC<AnalyticsWorkspaceProps> = ({
             />
           </div>
 
-          <div className="p-4 sm:p-5 flex-1 flex flex-col min-h-0 overflow-y-auto">
+          <div key={activeTab} className="p-4 sm:p-5 flex-1 flex flex-col min-h-0 overflow-y-auto animate-panel-enter">
             {/* Active tab panel */}
             {activeTab === 'overview' && <OverviewPanel analytics={analytics} translate={translate} />}
             {activeTab === 'ledger' && (

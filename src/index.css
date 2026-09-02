@@ -588,3 +588,150 @@ textarea::placeholder {
   visibility: hidden !important;
   opacity: 0 !important;
 }
+
+/* ==========================================================================
+   SMOOTH SLIDE-IN & FADE-IN ANIMATION SYSTEM
+   ========================================================================== */
+@keyframes slideInRight {
+  0% {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideInLeft {
+  0% {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideInUp {
+  0% {
+    transform: translateY(24px) scale(0.98);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
+/* ========================================================================= */
+/* MODERN OPTICAL & SPATIAL ANIMATION SYSTEM (Option B)                      */
+/* ========================================================================= */
+
+@keyframes cinematicFocus {
+  0% {
+    opacity: 0;
+    filter: blur(2.5px);
+    transform: translateY(2px);
+  }
+  100% {
+    opacity: 1;
+    filter: blur(0px);
+    transform: translateY(0);
+  }
+}
+
+@keyframes silkDissolve {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes waterfallEnter {
+  0% {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes tabUnderlineBreathable {
+  0% {
+    transform: scaleX(0.85);
+    opacity: 0.3;
+  }
+  100% {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+}
+
+@keyframes auroraShimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.aurora-shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.03) 0%,
+    rgba(56, 189, 248, 0.1) 50%,
+    rgba(255, 255, 255, 0.03) 100%
+  ) !important;
+  background-size: 200% 100% !important;
+  animation: auroraShimmer 3.2s ease-in-out infinite !important;
+}
+
+.animate-workspace-focus {
+  animation: cinematicFocus 0.42s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
+  will-change: transform, opacity, filter;
+}
+
+.animate-panel-enter,
+.panel-breathable-enter,
+.animate-silk-dissolve,
+.animate-fade-in,
+.fade-in,
+.animate-fadeIn {
+  animation: silkDissolve 0.38s cubic-bezier(0.25, 1, 0.5, 1) forwards !important;
+  will-change: opacity;
+}
+
+.animate-waterfall {
+  animation: waterfallEnter 0.42s cubic-bezier(0.22, 1, 0.36, 1) forwards !important;
+  will-change: transform, opacity;
+}
+
+.stagger-1 { animation-delay: 35ms !important; }
+.stagger-2 { animation-delay: 70ms !important; }
+.stagger-3 { animation-delay: 105ms !important; }
+.stagger-4 { animation-delay: 140ms !important; }
+.stagger-5 { animation-delay: 175ms !important; }
+
+.slide-in-from-right,
+.drawer-slide-in {
+  animation: slideInRight 0.38s cubic-bezier(0.22, 1, 0.36, 1) forwards !important;
+  will-change: transform, opacity;
+}
+
+.slide-in-from-left {
+  animation: slideInLeft 0.38s cubic-bezier(0.22, 1, 0.36, 1) forwards !important;
+  will-change: transform, opacity;
+}
+
+.slide-in-from-bottom,
+.modal-slide-in {
+  animation: slideInUp 0.35s cubic-bezier(0.22, 1, 0.36, 1) forwards !important;
+  will-change: transform, opacity;
+}
