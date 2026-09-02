@@ -327,6 +327,7 @@ export interface ProductionApiSettings {
   baseUrl: string;
   concurrency: number;
   nasWorkBasePath: string;
+  apiKey?: string;
 }
 
 export interface ProcessedOutputValidationResult {

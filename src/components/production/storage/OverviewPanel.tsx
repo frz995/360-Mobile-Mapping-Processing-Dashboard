@@ -201,8 +201,10 @@ export const OverviewPanel: React.FC<OverviewPanelProps> = ({
         {/* Progress Bar and Summary */}
         <div className="p-3.5 bg-inner/40 border-b border-subtle">
           {loading ? (
-            <div className="flex items-center gap-2 text-xs text-text-muted py-2">
-              <Loader2 size={13} className="animate-spin" /> Querying worker for disk usage…
+            <div aria-hidden="true" className="space-y-1.5 py-2 animate-pulse">
+              <div className="h-2.5 w-40 rounded bg-inner border border-subtle/50" />
+              <div className="h-2.5 w-5/6 rounded bg-inner border border-subtle/50" />
+              <div className="h-2.5 w-2/3 rounded bg-inner border border-subtle/50" />
             </div>
           ) : storage ? (
             <div>

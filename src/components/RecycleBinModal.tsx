@@ -15,6 +15,7 @@ import {
   fetchRecycleBinFromSupabase,
   deleteFromRecycleBinInSupabase
 } from '../services/supabase';
+import { useDialogEscape } from './common/dialog';
 
 export interface RecycleBinModalProps {
   isOpen: boolean;
@@ -49,6 +50,8 @@ export const RecycleBinModal: React.FC<RecycleBinModalProps> = ({
     }
   }, [isOpen]);
 
+  useDialogEscape(onClose, isOpen);
+
   if (!isOpen) return null;
 
   const filteredItems = items.filter(
@@ -75,7 +78,7 @@ export const RecycleBinModal: React.FC<RecycleBinModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 z-[1250] animate-in fade-in">
+    <div role="dialog" aria-modal="true" aria-label="Recycle Bin & Data Restore" className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 z-[1250] animate-in fade-in">
       <div className="bg-card border border-subtle rounded-2xl max-w-2xl w-full shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
         {/* Header */}
         <div className="px-6 py-4 border-b border-subtle flex items-center justify-between bg-card shrink-0">
@@ -130,9 +133,14 @@ export const RecycleBinModal: React.FC<RecycleBinModalProps> = ({
         {/* Body */}
         <div className="p-6 overflow-y-auto min-h-0 space-y-3 flex-1">
           {loading && items.length === 0 ? (
-            <div className="flex items-center justify-center py-12 gap-2 text-xs text-text-muted">
-              <Loader2 size={16} className="animate-spin text-sky-400" />
-              <span>Loading deleted records from Supabase...</span>
+            <div aria-hidden="true" className="space-y-2.5 animate-pulse">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="flex items-center gap-3.5 p-3 rounded-xl bg-card border border-subtle">
+                  <div className="w-9 h-9 rounded-lg bg-inner border border-subtle/60 shrink-0" />
+                  <div className="h-3.5 w-1/4 rounded bg-inner border border-subtle/60" />
+                  <div className="h-3.5 w-1/6 rounded bg-inner border border-subtle/60 ml-auto" />
+                </div>
+              ))}
             </div>
           ) : filteredItems.length === 0 ? (
             <div className="text-center py-12 text-text-muted space-y-2">

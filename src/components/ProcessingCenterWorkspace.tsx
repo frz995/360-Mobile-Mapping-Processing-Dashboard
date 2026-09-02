@@ -5,7 +5,7 @@ import {
   ListChecks,
   Gauge
 } from 'lucide-react';
-import { fetchDatasetsFromSupabase, fetchProcessingJobsFromSupabase } from '../services/supabase';
+import { fetchDatasetsFromSupabase, fetchProcessingJobsFromSupabase, supabase } from '../services/supabase';
 import { createProductionApiClient } from '../services/productionApi';
 import type { ProductionApiClient } from '../services/productionApi';
 import type { DatasetRecord, ProcessingCenterTab, ProcessingJobRecord } from '../types/production';
@@ -84,6 +84,24 @@ export const ProcessingCenterWorkspace: React.FC<ProcessingCenterWorkspaceProps>
       pollStopRef.current = null;
     };
   }, [projectSettings?.dbAutoSyncSec]);
+
+  // Realtime subscription to processing_jobs for live job status updates.
+  useEffect(() => {
+    const channelName = `processing-jobs-live-${Date.now()}`;
+    const channel = supabase
+      .channel(channelName)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'processing_jobs' }, () => {
+        refreshJobs();
+      });
+    try {
+      channel.subscribe();
+    } catch (e) {
+      console.warn('Processing jobs realtime subscription notice:', e);
+    }
+    return () => {
+      try { supabase.removeChannel(channel); } catch { }
+    };
+  }, [refreshJobs]);
 
   const userEmail =
     authSession?.user?.email || authSession?.user?.user_metadata?.full_name || 'Operator';

@@ -51,17 +51,23 @@ export interface ProductionApiClient {
 // HTTP client for the NAS GPU Worker (FastAPI)
 // ---------------------------------------------------------------------
 
-function buildHttpClient(baseUrl: string): ProductionApiClient {
-  const cleanBase = (baseUrl || 'http://localhost:8000').replace(/\/+$/, '');
+function buildHttpClient(settings: ProductionApiSettings): ProductionApiClient {
+  const baseUrl = (settings.baseUrl || 'http://localhost:8000').replace(/\/+$/, '');
+  const apiKey = settings.apiKey || '';
   const api = (path: string, init?: RequestInit) =>
-    fetch(`${cleanBase}${path}`, {
+    fetch(`${baseUrl}${path}`, {
       ...init,
-      headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) }
+      signal: init?.signal ?? AbortSignal.timeout(10_000),
+      headers: {
+        'Content-Type': 'application/json',
+        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+        ...(init?.headers || {})
+      }
     });
 
   return {
     mode: 'http' as const,
-    baseUrl: cleanBase,
+    baseUrl,
     async submitJob(job: ProcessingJobRecord): Promise<SubmitJobResult> {
       try {
         const res = await api('/api/jobs', {
@@ -82,7 +88,7 @@ function buildHttpClient(baseUrl: string): ProductionApiClient {
       } catch (err) {
         return {
           ok: false,
-          message: `Unable to reach NAS GPU Worker at ${cleanBase}: ${err instanceof Error ? err.message : String(err)}`
+          message: `Unable to reach NAS GPU Worker at ${baseUrl}: ${err instanceof Error ? err.message : String(err)}`
         };
       }
     },
@@ -141,7 +147,5 @@ export function createProductionApiClient(settings: ProductionApiSettings): Prod
     settings.baseUrl ||
     (typeof window !== 'undefined' && (window as any).__NAS_WORKER_URL__) ||
     'http://localhost:8000';
-  return buildHttpClient(baseUrl);
+  return buildHttpClient({ ...settings, baseUrl });
 }
-
-export const mockSimulatorRegistry = new Map<string, any>();

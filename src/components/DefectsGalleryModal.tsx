@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { QADefectRecord, ExtendedProjectSettings } from '../types/admin';
 import { fetchQADefectsForSubgrid, resolveQADefectInSupabase, resolvePanoramaUrl } from '../services/supabase';
+import { useDialogEscape } from './common/dialog';
 
 interface DefectsGalleryModalProps {
   isOpen: boolean;
@@ -68,6 +69,8 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
   const [lightboxZoom, setLightboxZoom] = useState<number>(1);
 
   const cleanSubgrid = (subgrid || '').toUpperCase().trim();
+
+  useDialogEscape(onClose, isOpen);
 
   // Load defects from Supabase on modal open or subgrid change
   useEffect(() => {
@@ -208,7 +211,7 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
+    <div role="dialog" aria-modal="true" aria-label="Acquisition QC Review" className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
       <div className="relative w-full max-w-5xl h-[94vh] sm:h-[88vh] bg-card border border-subtle rounded-2xl shadow-2xl flex flex-col overflow-hidden text-text-base">
         
         {/* HEADER BAR */}
@@ -333,9 +336,14 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
         {/* DEFECT CARDS GRID BODY */}
         <div className="flex-1 p-4 sm:p-6 overflow-y-auto min-h-0 bg-inner/60">
           {isLoading ? (
-            <div className="h-full flex flex-col items-center justify-center gap-3 text-text-muted">
-              <Loader2 size={28} className="animate-spin text-text-muted" />
-              <span className="text-xs font-medium text-text-base">Loading defects for {cleanSubgrid}...</span>
+            <div aria-hidden="true" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 animate-pulse">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="bg-card border border-subtle rounded-xl p-3 space-y-2.5">
+                  <div className="h-28 rounded-lg bg-inner border border-subtle/60" />
+                  <div className="h-3 w-1/2 rounded bg-inner border border-subtle/60" />
+                  <div className="h-3 w-1/3 rounded bg-inner border border-subtle/60" />
+                </div>
+              ))}
             </div>
           ) : filteredDefects.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center gap-3 text-center p-8">

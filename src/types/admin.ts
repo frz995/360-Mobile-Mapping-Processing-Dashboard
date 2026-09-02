@@ -83,6 +83,7 @@ export interface ExtendedProjectSettings {
   }>;
   productionApiMode?: 'mock' | 'http';
   productionApiUrl?: string;
+  productionApiKey?: string; // API key/JWT sent as Authorization Bearer to the NAS GPU Worker
   productionConcurrency?: number; // 1 - 16
   nasWorkBasePath?: string; // NAS mount path the worker reads/writes under
 
