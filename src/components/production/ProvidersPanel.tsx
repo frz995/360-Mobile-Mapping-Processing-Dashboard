@@ -8,7 +8,11 @@ import {
   Monitor,
   Check,
   RefreshCw,
-  Pencil
+  Pencil,
+  X,
+  Folder,
+  RotateCcw,
+  Loader2
 } from 'lucide-react';
 import type { ExtendedProjectSettings } from '../../types/admin';
 import { saveProjectSettingsToSupabase } from '../../services/supabase';
@@ -49,9 +53,25 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({
   const workstations: WorkstationStationConfig[] =
     (projectSettings?.workstationsConfig as WorkstationStationConfig[]) || DEFAULT_4_WORKSTATIONS;
 
+  const [savedEngineMode, setSavedEngineMode] = useState<'multi_pc_workstations' | 'gpu_worker'>(engineMode);
+  const [selectedEngineMode, setSelectedEngineMode] = useState<'multi_pc_workstations' | 'gpu_worker'>(engineMode);
+
   const [draft, setDraft] = useState<ProductionProviderSettings>(EMPTY_PROVIDER);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [isSaved, setIsSaved] = useState(true);
+
+  // Sync saved mode when projectSettings change from outside
+  useEffect(() => {
+    if (projectSettings?.processingEngineMode) {
+      setSavedEngineMode(projectSettings.processingEngineMode);
+      setSelectedEngineMode(projectSettings.processingEngineMode);
+    }
+  }, [projectSettings?.processingEngineMode]);
+
+  // Workstation Station Edit Modal state
+  const [editingStationIndex, setEditingStationIndex] = useState<number | null>(null);
+  const [stationDraft, setStationDraft] = useState<WorkstationStationConfig | null>(null);
 
   // Live ping reachability states per workstation IP
   const [pingStates, setPingStates] = useState<Record<string, { checking: boolean; reachable: boolean; latencyMs?: number; lastChecked?: string }>>({});
@@ -109,24 +129,34 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({
     });
   }, []);
 
-  const setApi = (patch: Partial<ExtendedProjectSettings>) =>
+  const setApi = (patch: Partial<ExtendedProjectSettings>) => {
+    setIsSaved(false);
     setProjectSettings((prev: ExtendedProjectSettings) => ({ ...(prev || {}), ...patch }));
+  };
 
   const saveAll = async () => {
     if (isGuestUser || saving) return;
     setSaving(true);
-    const ok = await saveProjectSettingsToSupabase(projectSettings);
+    const updatedSettings: ExtendedProjectSettings = {
+      ...(projectSettings || {}),
+      processingEngineMode: selectedEngineMode
+    };
+    setProjectSettings(updatedSettings);
+
+    const ok = await saveProjectSettingsToSupabase(updatedSettings);
     if (ok) {
+      setSavedEngineMode(selectedEngineMode);
+      setIsSaved(true);
       onAddNotification?.({
         title: 'Production Settings Saved',
-        message: 'Engine mode + workstation configuration persisted.',
+        message: `Engine mode (${selectedEngineMode === 'multi_pc_workstations' ? '4-Station Multi-PC' : 'NAS GPU Worker'}) + workstation configuration persisted.`,
         category: 'SYSTEM',
         read: false
       });
       onAddAuditLog?.(
         'EDIT',
         'Production Settings Updated',
-        `${userLabel} updated engine mode (${engineMode}) and workstation configuration.`,
+        `${userLabel} activated and saved engine mode (${selectedEngineMode === 'multi_pc_workstations' ? '4-Station Multi-PC' : 'NAS GPU Worker'}).`,
         'success'
       );
     } else {
@@ -140,38 +170,72 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({
     setSaving(false);
   };
 
+  const handleSelectEngineMode = (mode: 'multi_pc_workstations' | 'gpu_worker') => {
+    if (isGuestUser || mode === selectedEngineMode) return;
+    setSelectedEngineMode(mode);
+
+    // Reset open station/provider drafts to avoid stale cross-engine states
+    setEditingStationIndex(null);
+    setStationDraft(null);
+    setEditing(false);
+    setDraft(EMPTY_PROVIDER);
+
+    // Mark unsaved if different from persisted savedEngineMode
+    setIsSaved(mode === savedEngineMode);
+  };
+
+  const handleResetWorkstationsToDefaults = () => {
+    if (isGuestUser) return;
+    const updatedSettings: ExtendedProjectSettings = {
+      ...(projectSettings || {}),
+      workstationsConfig: DEFAULT_4_WORKSTATIONS
+    };
+    setProjectSettings(updatedSettings);
+    setEditingStationIndex(null);
+    setStationDraft(null);
+
+    // User must click "Save Configuration" to persist
+    setIsSaved(false);
+  };
+
   const handleStationChange = (index: number, patch: Partial<WorkstationStationConfig>) => {
     if (isGuestUser) return;
+    setIsSaved(false);
     const next = [...workstations];
     next[index] = { ...next[index], ...patch };
-    setApi({ workstationsConfig: next });
+    setProjectSettings((prev) => ({ ...(prev || {}), workstationsConfig: next }));
   };
 
   const upsertProvider = () => {
     if (isGuestUser || !editing) return;
+    setIsSaved(false);
     const next = [...providers];
     const idx = next.findIndex((p) => p.name === draft.name && p.software === draft.software);
     if (idx >= 0) next[idx] = { ...draft };
     else next.push({ ...draft });
-    setApi({ productionProviders: next });
+    setProjectSettings((prev) => ({ ...(prev || {}), productionProviders: next }));
     setDraft(EMPTY_PROVIDER);
     setEditing(false);
   };
 
   const removeProvider = (name: string, software: string) => {
     if (isGuestUser) return;
-    setApi({
+    setIsSaved(false);
+    setProjectSettings((prev) => ({
+      ...(prev || {}),
       productionProviders: providers.filter((p) => !(p.name === name && p.software === software))
-    });
+    }));
   };
 
   const toggleProvider = (name: string, software: string, enabled: boolean) => {
     if (isGuestUser) return;
-    setApi({
+    setIsSaved(false);
+    setProjectSettings((prev) => ({
+      ...(prev || {}),
       productionProviders: providers.map((p) =>
         p.name === name && p.software === software ? { ...p, enabled } : p
       )
-    });
+    }));
   };
 
   return (
@@ -189,12 +253,31 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({
 
         {!isGuestUser && (
           <button
+            type="button"
             onClick={saveAll}
-            disabled={saving}
-            className="flex items-center gap-2 px-4 py-2 bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs rounded-lg shadow-sm transition-all cursor-pointer disabled:opacity-50"
+            disabled={saving || isSaved}
+            className={`flex items-center gap-2 px-4 py-2 font-bold text-xs rounded-lg shadow-sm transition-all ${
+              isSaved
+                ? 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 opacity-60 cursor-default'
+                : 'bg-sky-500 hover:bg-sky-400 text-slate-950 opacity-100 cursor-pointer shadow-sky-950/40'
+            }`}
           >
-            <Save size={14} />
-            <span>{saving ? 'Saving...' : 'Save Configuration'}</span>
+            {saving ? (
+              <>
+                <Loader2 size={14} className="animate-spin" />
+                <span>Saving...</span>
+              </>
+            ) : isSaved ? (
+              <>
+                <Check size={14} className="stroke-[2.5]" />
+                <span>Saved</span>
+              </>
+            ) : (
+              <>
+                <Save size={14} />
+                <span>Save Configuration</span>
+              </>
+            )}
           </button>
         )}
       </div>
@@ -203,15 +286,15 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
         {/* Mode 1: 4-PC Workstations */}
         <div
-          onClick={() => !isGuestUser && setApi({ processingEngineMode: 'multi_pc_workstations' })}
+          onClick={() => handleSelectEngineMode('multi_pc_workstations')}
           className={`rounded-lg border transition-all cursor-pointer flex items-center gap-3 px-4 py-3 ${
-            engineMode === 'multi_pc_workstations'
-              ? 'bg-inner/60 border-sky-500/50'
+            selectedEngineMode === 'multi_pc_workstations'
+              ? 'bg-inner/60 border-sky-500/50 shadow-sm'
               : 'bg-inner/40 border-subtle hover:border-subtle/80 opacity-70 hover:opacity-100'
           }`}
         >
           <div className={`p-2 rounded-lg border ${
-            engineMode === 'multi_pc_workstations'
+            selectedEngineMode === 'multi_pc_workstations'
               ? 'bg-card text-sky-400 border-sky-500/40'
               : 'bg-inner text-text-muted border-subtle'
           }`}>
@@ -220,36 +303,32 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <h3 className="text-xs font-bold text-text-base">4-Station Multi-PC Workflow</h3>
-              <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border uppercase ${
-                engineMode === 'multi_pc_workstations'
-                  ? 'bg-sky-500/10 text-sky-300 border-sky-500/30'
-                  : 'bg-inner text-text-muted border-subtle'
-              }`}>
-                {engineMode === 'multi_pc_workstations' ? 'Active Mode' : 'Standby'}
-              </span>
+              {savedEngineMode === 'multi_pc_workstations' && (
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_5px_rgba(52,211,153,0.6)] shrink-0" title="Active Engine" />
+              )}
             </div>
             <p className="text-[11px] text-text-muted mt-1">
               Sequential desktop handoff across Stitching, Privacy Blur, Lightroom, and Photoshop PCs
             </p>
           </div>
           <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${
-            engineMode === 'multi_pc_workstations' ? 'border-sky-400 bg-sky-500 text-slate-950' : 'border-subtle bg-inner'
+            selectedEngineMode === 'multi_pc_workstations' ? 'border-sky-400 bg-sky-500 text-slate-950' : 'border-subtle bg-inner'
           }`}>
-            {engineMode === 'multi_pc_workstations' && <Check size={10} className="stroke-[3]" />}
+            {selectedEngineMode === 'multi_pc_workstations' && <Check size={10} className="stroke-[3]" />}
           </div>
         </div>
 
         {/* Mode 2: GPU Worker */}
         <div
-          onClick={() => !isGuestUser && setApi({ processingEngineMode: 'gpu_worker' })}
+          onClick={() => handleSelectEngineMode('gpu_worker')}
           className={`rounded-lg border transition-all cursor-pointer flex items-center gap-3 px-4 py-3 ${
-            engineMode === 'gpu_worker'
-              ? 'bg-inner/60 border-sky-500/50'
+            selectedEngineMode === 'gpu_worker'
+              ? 'bg-inner/60 border-sky-500/50 shadow-sm'
               : 'bg-inner/40 border-subtle hover:border-subtle/80 opacity-70 hover:opacity-100'
           }`}
         >
           <div className={`p-2 rounded-lg border ${
-            engineMode === 'gpu_worker'
+            selectedEngineMode === 'gpu_worker'
               ? 'bg-card text-sky-400 border-sky-500/40'
               : 'bg-inner text-text-muted border-subtle'
           }`}>
@@ -258,28 +337,24 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <h3 className="text-xs font-bold text-text-base">Automated NAS GPU Worker</h3>
-              <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border uppercase ${
-                engineMode === 'gpu_worker'
-                  ? 'bg-sky-500/10 text-sky-300 border-sky-500/30'
-                  : 'bg-inner text-text-muted border-subtle'
-              }`}>
-                {engineMode === 'gpu_worker' ? 'Active Mode' : 'Standby'}
-              </span>
+              {savedEngineMode === 'gpu_worker' && (
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_5px_rgba(52,211,153,0.6)] shrink-0" title="Active Engine" />
+              )}
             </div>
             <p className="text-[11px] text-text-muted mt-1">
               Automated headless execution via background FastAPI daemon + PyTorch CUDA worker
             </p>
           </div>
           <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${
-            engineMode === 'gpu_worker' ? 'border-sky-400 bg-sky-500 text-slate-950' : 'border-subtle bg-inner'
+            selectedEngineMode === 'gpu_worker' ? 'border-sky-400 bg-sky-500 text-slate-950' : 'border-subtle bg-inner'
           }`}>
-            {engineMode === 'gpu_worker' && <Check size={10} className="stroke-[3]" />}
+            {selectedEngineMode === 'gpu_worker' && <Check size={10} className="stroke-[3]" />}
           </div>
         </div>
       </div>
 
       {/* Mode-Specific Settings View */}
-      {engineMode === 'multi_pc_workstations' ? (
+      {selectedEngineMode === 'multi_pc_workstations' ? (
         /* 4-Workstations Profile Configuration Table */
         <div className="space-y-2.5 font-sans">
           <div className="flex items-center justify-between">
@@ -289,7 +364,19 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({
                 4 physical processing stations connected via 10Gb LAN Switch
               </p>
             </div>
-            <span className="text-[11px] text-zinc-400 font-mono">4 Stations</span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={isGuestUser || saving}
+                onClick={handleResetWorkstationsToDefaults}
+                className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-semibold text-zinc-300 hover:text-zinc-100 bg-inner hover:bg-card border border-subtle rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                title="Reset all 4 workstation folders, operators, and software to standard defaults"
+              >
+                <RotateCcw size={11} />
+                <span>Reset Defaults</span>
+              </button>
+              <span className="text-[11px] text-zinc-400 font-mono">4 Stations</span>
+            </div>
           </div>
 
           <div className="bg-inner border border-subtle rounded-xl overflow-hidden shadow-sm">
@@ -423,10 +510,15 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({
                           <button
                             type="button"
                             disabled={isGuestUser}
-                            title={`Edit configure for ${ws.name}`}
-                            className="p-1 text-zinc-500 hover:text-zinc-200 transition-colors cursor-pointer inline-flex items-center gap-1 rounded hover:bg-card"
+                            onClick={() => {
+                              if (isGuestUser) return;
+                              setEditingStationIndex(idx);
+                              setStationDraft({ ...ws });
+                            }}
+                            title={`Edit configuration for ${ws.name}`}
+                            className="p-1.5 text-sky-400 hover:text-sky-300 hover:bg-sky-500/10 transition-colors cursor-pointer inline-flex items-center gap-1 rounded-lg border border-sky-500/20"
                           >
-                            <Pencil size={11} />
+                            <Pencil size={12} />
                           </button>
                         </td>
                       </tr>
@@ -620,6 +712,205 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({
           )}
         </div>
       </div>
+      {/* Workstation Configuration Edit Modal */}
+      {editingStationIndex !== null && stationDraft !== null && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-card border border-subtle rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col font-sans max-h-[90vh]">
+            {/* Modal Header */}
+            <div className="px-5 py-4 border-b border-subtle flex items-center justify-between bg-inner/60">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-sky-500/10 text-sky-400 border border-sky-500/20">
+                  <Monitor size={18} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-text-base">
+                    Configure Station {stationDraft.stepNumber}
+                  </h3>
+                  <p className="text-[11px] text-text-muted">
+                    {stationDraft.name || `Station ${stationDraft.stepNumber}`} Profile &amp; Directory Routing
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setEditingStationIndex(null);
+                  setStationDraft(null);
+                }}
+                className="p-1.5 text-text-muted hover:text-text-base rounded-lg hover:bg-inner transition-colors cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Modal Form Body */}
+            <div className="p-5 space-y-4 overflow-y-auto flex-1">
+              {/* Station Name */}
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-text-muted mb-1.5">
+                  Station Name
+                </label>
+                <input
+                  type="text"
+                  value={stationDraft.name}
+                  onChange={(e) => setStationDraft({ ...stationDraft, name: e.target.value })}
+                  placeholder="e.g. PC 1 - Privacy Blur Station"
+                  className="w-full bg-inner border border-subtle rounded-xl px-3.5 py-2 text-xs font-semibold text-text-base outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500"
+                />
+              </div>
+
+              {/* IP Address & Ping */}
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-text-muted mb-1.5">
+                  LAN IP Address / Hostname
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={stationDraft.ipAddress || ''}
+                    onChange={(e) => setStationDraft({ ...stationDraft, ipAddress: e.target.value })}
+                    placeholder="192.168.1.101"
+                    className="flex-1 bg-inner border border-subtle rounded-xl px-3.5 py-2 text-xs font-mono text-text-base outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => testPing(stationDraft.id, stationDraft.ipAddress)}
+                    disabled={pingStates[stationDraft.id]?.checking}
+                    className="px-3 py-2 bg-inner hover:bg-card border border-subtle rounded-xl text-xs font-semibold text-text-base flex items-center gap-1.5 cursor-pointer transition-colors shrink-0"
+                    title="Test connection to workstation"
+                  >
+                    <RefreshCw size={12} className={pingStates[stationDraft.id]?.checking ? 'animate-spin text-sky-400' : ''} />
+                    <span>Ping</span>
+                  </button>
+                </div>
+                {pingStates[stationDraft.id] && (
+                  <div className="mt-1.5 flex items-center gap-2 text-[11px]">
+                    <span className={`inline-block w-2 h-2 rounded-full ${pingStates[stationDraft.id].reachable ? 'bg-emerald-400' : 'bg-rose-500'}`} />
+                    <span className={pingStates[stationDraft.id].reachable ? 'text-emerald-400 font-medium' : 'text-rose-400 font-medium'}>
+                      {pingStates[stationDraft.id].reachable ? `Reachable (${pingStates[stationDraft.id].latencyMs ?? 1}ms)` : 'Unreachable on LAN'}
+                    </span>
+                    <span className="text-text-muted">· Checked {pingStates[stationDraft.id].lastChecked}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Primary Software & Default Operator */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-text-muted mb-1.5">
+                    Primary Software
+                  </label>
+                  <input
+                    type="text"
+                    value={stationDraft.software}
+                    onChange={(e) => setStationDraft({ ...stationDraft, software: e.target.value })}
+                    placeholder="e.g. YOLOv8 Blur / PTGui Pro"
+                    className="w-full bg-inner border border-subtle rounded-xl px-3.5 py-2 text-xs font-semibold text-text-base outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-text-muted mb-1.5">
+                    Default Operator
+                  </label>
+                  <input
+                    type="text"
+                    value={stationDraft.defaultOperator}
+                    onChange={(e) => setStationDraft({ ...stationDraft, defaultOperator: e.target.value })}
+                    placeholder="Operator Name / ID"
+                    className="w-full bg-inner border border-subtle rounded-xl px-3.5 py-2 text-xs font-semibold text-text-base outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500"
+                  />
+                </div>
+              </div>
+
+              {/* NAS Source & Output Template Folders */}
+              <div className="space-y-3 p-3.5 bg-inner/50 border border-subtle rounded-xl">
+                <div className="text-xs font-bold text-text-base flex items-center gap-1.5">
+                  <Folder size={14} className="text-amber-400" />
+                  <span>NAS Directory Mapping</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-semibold text-text-muted mb-1">
+                      Source Folder Template
+                    </label>
+                    <input
+                      type="text"
+                      value={stationDraft.sourceFolderTemplate}
+                      onChange={(e) => setStationDraft({ ...stationDraft, sourceFolderTemplate: e.target.value })}
+                      placeholder="/RAW/{subgrid}/"
+                      className="w-full bg-card border border-subtle rounded-lg px-3 py-1.5 text-xs font-mono text-text-base outline-none focus:border-sky-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-semibold text-text-muted mb-1">
+                      Output Folder Template
+                    </label>
+                    <input
+                      type="text"
+                      value={stationDraft.outputFolderTemplate}
+                      onChange={(e) => setStationDraft({ ...stationDraft, outputFolderTemplate: e.target.value })}
+                      placeholder="/BLURRED/{subgrid}/"
+                      className="w-full bg-card border border-subtle rounded-lg px-3 py-1.5 text-xs font-mono text-text-base outline-none focus:border-sky-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Online Status Toggle */}
+              <div className="flex items-center justify-between p-3.5 bg-inner/50 border border-subtle rounded-xl">
+                <div>
+                  <div className="text-xs font-bold text-text-base">Station Enabled &amp; Active</div>
+                  <p className="text-[11px] text-text-muted mt-0.5">Allow dispatching processing batches to this station</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setStationDraft({ ...stationDraft, enabled: stationDraft.enabled === false ? true : false })}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${
+                    stationDraft.enabled !== false
+                      ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
+                      : 'bg-inner text-text-muted border-subtle'
+                  }`}
+                >
+                  {stationDraft.enabled !== false ? 'ENABLED' : 'DISABLED'}
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-5 py-3.5 border-t border-subtle flex items-center justify-end gap-2.5 bg-inner/60">
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingStationIndex(null);
+                  setStationDraft(null);
+                }}
+                className="px-4 py-2 bg-inner hover:bg-card border border-subtle rounded-xl text-xs font-semibold text-text-base transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (editingStationIndex === null || !stationDraft) return;
+                  const next = [...workstations];
+                  next[editingStationIndex] = stationDraft;
+                  const updatedSettings: ExtendedProjectSettings = {
+                    ...(projectSettings || {}),
+                    workstationsConfig: next
+                  };
+                  setProjectSettings(updatedSettings);
+                  setEditingStationIndex(null);
+                  setStationDraft(null);
+                  setIsSaved(false);
+                }}
+                className="px-4 py-2 bg-sky-500 hover:bg-sky-400 text-slate-950 rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer flex items-center gap-1.5"
+              >
+                <Check size={14} className="stroke-[2.5]" />
+                <span>Apply Changes</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </Surface>
   );
 };

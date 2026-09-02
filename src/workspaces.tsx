@@ -75,7 +75,7 @@ export function WorkspacePlaceholder({ workspace, translate }: WorkspacePlacehol
   const Icon = workspace.icon;
 
   return (
-    <div className="flex-1 flex flex-col gap-3 min-h-0 overflow-y-auto animate-in fade-in zoom-in-98 duration-300 ease-out">
+    <div className="flex-1 flex flex-col gap-3 min-h-0 overflow-y-auto animate-panel-enter">
       <div className="bg-card border border-[rgba(255,255,255,0.08)] backdrop-blur-md rounded-xl p-4 flex items-center gap-3 shadow-sm">
         <div className="p-2.5 bg-inner rounded-xl border border-subtle text-sky-400 shrink-0">
           <Icon size={22} />

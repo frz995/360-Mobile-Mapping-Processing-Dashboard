@@ -179,7 +179,7 @@ Sharpness Amount: ${Math.round(params.sharpness * 0.8)}`;
         : projectSettings?.productionApiMode === 'http'
           ? 'enhance-worker'
           : 'mock',
-      total_items: selected.file_count || 500,
+      total_items: selected.file_count || 0,
       status: 'QUEUED',
       progress: 0,
       completed_items: 0,
@@ -226,7 +226,7 @@ Sharpness Amount: ${Math.round(params.sharpness * 0.8)}`;
               &nbsp;— bulk color grading, shadow recovery &amp; dehaze executed on <strong className="text-text-base">PC 3</strong> by the Colorist Operator. Use the live designer to test adjustment parameters before running Lightroom batch presets.
             </span>
           </div>
-          <span className="text-[10px] font-sans text-text-muted bg-inner border border-subtle px-2.5 py-1 rounded shrink-0">
+          <span className="text-[10px] font-sans text-text-muted shrink-0">
             Input: /BLURRED/ &rarr; Output: /ENHANCED/
           </span>
         </div>

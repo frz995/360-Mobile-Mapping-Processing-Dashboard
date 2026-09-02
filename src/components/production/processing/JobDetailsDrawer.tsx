@@ -111,15 +111,15 @@ export const JobDetailsDrawer: React.FC<JobDetailsDrawerProps> = ({
 
   return (
     <div className="fixed inset-0 z-[900] flex justify-end">
-      <div className="absolute inset-0 bg-[var(--modal-overlay)] backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-xl h-full bg-app border-l border-subtle shadow-2xl overflow-y-auto animate-in slide-in-from-right duration-300">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-fade-in" onClick={onClose} />
+      <div className="relative w-full max-w-xl h-full bg-app border-l border-subtle shadow-2xl overflow-y-auto drawer-slide-in">
         <div className="sticky top-0 z-10 bg-app/95 backdrop-blur-md border-b border-subtle px-5 py-4 flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="text-[10px] uppercase tracking-wider text-text-muted font-bold flex items-center gap-1.5">
               <Cpu size={12} /> {translate('jobDetailsTitle')}
             </div>
             <div className="text-sm font-bold text-text-base truncate mt-0.5 flex items-center gap-2">
-              <span className="text-[10px] font-sans px-1.5 py-0.5 rounded bg-inner border border-subtle text-sky-300">{job.job_type}</span>
+              <span className="text-xs font-bold text-sky-400">{job.job_type}</span>
               {job.name || job.id}
             </div>
           </div>
@@ -133,9 +133,10 @@ export const JobDetailsDrawer: React.FC<JobDetailsDrawerProps> = ({
           <Section title={translate('jobDetailsOverview')} icon={<Layers size={13} />}>
             <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[11px]">
               <KV k={translate('jobDetailsStatus')}>
-                <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold border ${meta.className}`}>
-                  <span className={`w-1.5 h-1.5 rounded-full ${meta.dot}`} /> {meta.label}
-                </span>
+                <div className="inline-flex items-center gap-1.5 text-xs font-medium text-text-base">
+                  <span className={`w-2 h-2 rounded-full shrink-0 ${meta.dot}`} />
+                  <span>{meta.label}</span>
+                </div>
               </KV>
               <KV k={translate('jobDetailsWorker')}>{job.worker || job.assigned_to || '—'}</KV>
               <KV k="Subgrid">{job.subgrid || '—'}</KV>
@@ -162,7 +163,7 @@ export const JobDetailsDrawer: React.FC<JobDetailsDrawerProps> = ({
             </div>
             <div className="grid grid-cols-4 gap-2 mt-3 text-center">
               <Stat label="Total" value={job.total_items || 0} />
-              <Stat label="Processed" value={job.completed_items || 0} tone="text-emerald-300" />
+              <Stat label="Processed" value={job.completed_items || 0} />
               <Stat label="Failed" value={failed} tone={failed > 0 ? 'text-red-300' : undefined} />
               <Stat label="Skipped" value={skipped} tone={skipped > 0 ? 'text-amber-300' : undefined} />
             </div>
@@ -180,22 +181,23 @@ export const JobDetailsDrawer: React.FC<JobDetailsDrawerProps> = ({
 
           {/* Timeline */}
           <Section title={translate('jobDetailsTimeline')} icon={<CalendarClock size={13} />}>
-            <div className="flex items-center gap-1 overflow-x-auto pb-1">
+            <div className="flex items-center gap-2 overflow-x-auto pb-1">
               {TIMELINE.map((step, i) => {
                 const done = activeIndex >= i;
                 const current = i === activeIndex;
                 return (
-                  <div key={step} className="flex items-center gap-1 shrink-0">
-                    <div className={`px-1.5 py-0.5 rounded-md text-[9px] font-bold border ${
+                  <div key={step} className="flex items-center gap-2 shrink-0">
+                    <div className={`text-[10px] font-medium flex items-center gap-1.5 ${
                       current
-                        ? 'border-sky-500/50 bg-sky-500/20 text-sky-200'
+                        ? 'text-sky-400 font-bold'
                         : done
-                          ? 'border-emerald-500/40 bg-emerald-950/30 text-emerald-300'
-                          : 'border-subtle bg-inner text-text-muted'
+                          ? 'text-emerald-400'
+                          : 'text-text-muted'
                     }`}>
-                      {step}
+                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${current ? 'bg-sky-400' : done ? 'bg-emerald-400' : 'bg-zinc-600'}`} />
+                      <span>{step}</span>
                     </div>
-                    {i < TIMELINE.length - 1 && <span className="text-text-muted">→</span>}
+                    {i < TIMELINE.length - 1 && <span className="text-text-muted text-[10px]">→</span>}
                   </div>
                 );
               })}
@@ -317,9 +319,9 @@ function Stat({ label, value, tone }: { label: string; value: number | string; t
 
 function LineageChip({ label, name, highlight }: { label: string; name: string; highlight?: boolean }) {
   return (
-    <div className={`px-2 py-1 rounded-lg border text-[10px] ${highlight ? 'border-sky-500/40 bg-sky-950/30 text-sky-200' : 'border-subtle bg-inner text-text-muted'}`}>
-      <div className="text-[9px] uppercase tracking-wider opacity-70">{label}</div>
-      <div className="font-semibold max-w-[140px] truncate">{name}</div>
+    <div className={`px-2.5 py-1.5 rounded-lg border text-[10px] ${highlight ? 'border-sky-500/40 bg-inner text-text-base' : 'border-subtle bg-inner text-text-muted'}`}>
+      <div className="text-[9px] uppercase tracking-wider text-text-muted">{label}</div>
+      <div className="font-semibold max-w-[140px] truncate text-text-base">{name}</div>
     </div>
   );
 }

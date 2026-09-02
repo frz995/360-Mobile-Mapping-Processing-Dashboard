@@ -536,7 +536,7 @@ export const DatasetsPanel: React.FC<DatasetsPanelProps> = ({
 
                       {/* 2. Equipment */}
                       <td className="py-2.5 px-3 font-sans">
-                        <span className="text-[10px] text-zinc-400 bg-black/30 px-1.5 py-0.5 rounded border border-subtle/40">
+                        <span className="text-[10px] text-zinc-400">
                           {track.equipment}
                         </span>
                       </td>
@@ -595,7 +595,7 @@ export const DatasetsPanel: React.FC<DatasetsPanelProps> = ({
 
                       {/* 4. GPS Points */}
                       <td className="py-2.5 px-3 text-zinc-200">
-                        {track.pointCount.toLocaleString()} frames
+                        {track.pointCount.toLocaleString()} POI
                       </td>
 
                       {/* 5. GPS Bounds & Precision */}

@@ -126,7 +126,7 @@ export const ReportsWorkspace: React.FC<ReportsWorkspaceProps> = ({
             />
           </div>
 
-          <div className="p-4 sm:p-5 flex flex-col gap-4 min-h-0 overflow-y-auto">
+          <div key={activeTab} className="p-4 sm:p-5 flex flex-col gap-4 min-h-0 overflow-y-auto animate-panel-enter">
             {/* Reports Telemetry Strip */}
             <div className="bg-inner/40 border border-subtle rounded-xl px-4 py-2.5 shadow-sm text-xs flex flex-wrap items-center gap-x-4 gap-y-2">
               <span className="text-[11px] font-bold text-text-muted shrink-0 uppercase tracking-wider">

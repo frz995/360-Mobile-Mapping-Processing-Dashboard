@@ -13,7 +13,17 @@ import {
     Maximize2
 } from 'lucide-react';
 
-export type ThemeKey = 'midnight' | 'obsidian' | 'graphite' | 'teal-slate' | 'daylight';
+export type ThemeKey =
+    | 'graphite'
+    | 'monochrome'
+    | 'geodetic-sage'
+    | 'naval-steel'
+    | 'industrial-basalt'
+    | 'alabaster'
+    | 'daylight'
+    | 'midnight'
+    | 'obsidian'
+    | 'teal-slate';
 
 export interface ThemeDefinition {
     id: ThemeKey;
@@ -34,80 +44,112 @@ export interface ThemeDefinition {
 
 export const THEME_PRESETS: ThemeDefinition[] = [
     {
-        id: 'midnight',
-        name: 'Midnight Navy',
-        badge: 'System Default',
-        tagline: 'Default production theme with deep navy card layers and clear sky-blue telemetry accents.',
-        bgApp: '#080e1a',
-        bgCard: '#0f172a',
-        innerCard: '#162138',
-        borderSubtle: '#1e2e4a',
-        accent: '#38bdf8',
-        accentBg: 'rgba(56, 189, 248, 0.12)',
-        textPrimary: '#f8fafc',
-        textMuted: '#94a3b8',
-        mapTileUrl: 'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
-        mapStyle: 'Positron Carto Light'
-    },
-    {
-        id: 'obsidian',
-        name: 'Obsidian Pure Dark',
-        badge: 'OLED Contrast',
-        tagline: 'Monochromatic pitch-black carbon surfaces for darkroom surveying and minimal eye fatigue.',
-        bgApp: '#030305',
-        bgCard: '#0a0b10',
-        innerCard: '#12131a',
-        borderSubtle: '#1e202c',
-        accent: '#818cf8',
-        accentBg: 'rgba(129, 140, 248, 0.14)',
-        textPrimary: '#f8fafc',
-        textMuted: '#8b949e',
-        mapTileUrl: 'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-        mapStyle: 'Carto Dark Matter'
-    },
-    {
         id: 'graphite',
         name: 'Titanium Graphite',
         badge: 'Neutral Studio',
-        tagline: 'Balanced matte charcoal surfaces with soft metallic borders for technical inspection.',
-        bgApp: '#121418',
-        bgCard: '#181b22',
-        innerCard: '#21252f',
-        borderSubtle: '#2d3340',
+        tagline: 'Balanced matte charcoal surfaces with soft metallic borders for color-accurate technical inspection.',
+        bgApp: '#111317',
+        bgCard: '#161920',
+        innerCard: '#1f242e',
+        borderSubtle: '#2a313e',
         accent: '#cbd5e1',
-        accentBg: 'rgba(203, 213, 225, 0.12)',
+        accentBg: 'rgba(203, 213, 225, 0.10)',
         textPrimary: '#f1f5f9',
         textMuted: '#94a3b8',
         mapTileUrl: 'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
         mapStyle: 'Carto Voyager'
     },
     {
-        id: 'teal-slate',
-        name: 'Precision Teal',
-        badge: 'GIS Telemetry',
-        tagline: 'Cool dark maritime slate with muted teal trajectory highlights.',
-        bgApp: '#030d12',
-        bgCard: '#071924',
-        innerCard: '#0d2737',
-        borderSubtle: '#13394d',
-        accent: '#14b8a6',
-        accentBg: 'rgba(20, 184, 166, 0.14)',
-        textPrimary: '#f0fdfa',
-        textMuted: '#7ba4b8',
+        id: 'monochrome',
+        name: 'Monochrome Slate',
+        badge: 'Minimal Dark',
+        tagline: 'High-contrast pure carbon surfaces with crisp white typography and zero color distortion.',
+        bgApp: '#08090a',
+        bgCard: '#0f1113',
+        innerCard: '#171a1d',
+        borderSubtle: '#23272d',
+        accent: '#f4f4f5',
+        accentBg: 'rgba(244, 244, 245, 0.10)',
+        textPrimary: '#fafafa',
+        textMuted: '#8b949e',
+        mapTileUrl: 'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+        mapStyle: 'Carto Dark Matter'
+    },
+    {
+        id: 'geodetic-sage',
+        name: 'Geodetic Sage',
+        badge: 'Field Survey',
+        tagline: 'Muted botanical slate with subdued alpine sage highlights for environmental and geodetic mapping.',
+        bgApp: '#0a0e0c',
+        bgCard: '#101714',
+        innerCard: '#16201b',
+        borderSubtle: '#1f2d27',
+        accent: '#34d399',
+        accentBg: 'rgba(52, 211, 153, 0.12)',
+        textPrimary: '#f0fdf4',
+        textMuted: '#7f9f8f',
+        mapTileUrl: 'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+        mapStyle: 'Dark Topo'
+    },
+    {
+        id: 'naval-steel',
+        name: 'Naval Steel',
+        badge: 'Maritime Dark',
+        tagline: 'Deep naval slate with restrained technical steel blue accents for mission operations.',
+        bgApp: '#070c14',
+        bgCard: '#0d1420',
+        innerCard: '#121c2c',
+        borderSubtle: '#1a273c',
+        accent: '#38bdf8',
+        accentBg: 'rgba(56, 189, 248, 0.12)',
+        textPrimary: '#f8fafc',
+        textMuted: '#869bb8',
         mapTileUrl: 'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
         mapStyle: 'Dark Telemetry'
+    },
+    {
+        id: 'industrial-basalt',
+        name: 'Industrial Basalt',
+        badge: 'GNSS Hardware',
+        tagline: 'Warm dark basalt carbon with muted topographic gold inspired by field GNSS surveying hardware.',
+        bgApp: '#0c0b0a',
+        bgCard: '#141311',
+        innerCard: '#1c1b18',
+        borderSubtle: '#262420',
+        accent: '#d97706',
+        accentBg: 'rgba(217, 119, 6, 0.12)',
+        textPrimary: '#fafaf9',
+        textMuted: '#9c9589',
+        mapTileUrl: 'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+        mapStyle: 'Basalt Topo'
+    },
+    {
+        id: 'alabaster',
+        name: 'Alabaster Warm Light',
+        badge: 'Warm Light',
+        tagline: 'Warm stone off-white canvas with deep charcoal typography for glare-free daytime processing.',
+        bgApp: '#f6f5f1',
+        bgCard: '#ffffff',
+        innerCard: '#eceae3',
+        borderSubtle: '#d8d4c7',
+        accent: '#1c1917',
+        accentBg: 'rgba(28, 25, 23, 0.08)',
+        textPrimary: '#1c1917',
+        textMuted: '#57534e',
+        mapTileUrl: 'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
+        mapStyle: 'Positron Clean'
     },
     {
         id: 'daylight',
         name: 'Daylight Clean',
         badge: 'Clean Light',
-        tagline: 'Crisp high-luminance workspace with navy typography and soft borders.',
-        bgApp: '#f4f6f9',
+        tagline: 'High-luminance crisp workspace with soft slate borders and deep navy typography for client reporting.',
+        bgApp: '#f8fafc',
         bgCard: '#ffffff',
-        innerCard: '#f8fafc',
+        innerCard: '#f1f5f9',
         borderSubtle: '#e2e8f0',
-        accent: '#2563eb',
-        accentBg: '#eff6ff',
+        accent: '#0f172a',
+        accentBg: 'rgba(15, 23, 42, 0.08)',
         textPrimary: '#0f172a',
         textMuted: '#64748b',
         mapTileUrl: 'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
@@ -202,12 +244,12 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
     batchLogs = [],
     projectSettings
 }) => {
-    const [stagedTheme, setStagedTheme] = useState<ThemeKey>('midnight');
-    const [activeTheme, setActiveTheme] = useState<ThemeKey>('midnight');
+    const [stagedTheme, setStagedTheme] = useState<ThemeKey>('graphite');
+    const [activeTheme, setActiveTheme] = useState<ThemeKey>('graphite');
     const [isSavedBanner, setIsSavedBanner] = useState(false);
 
     useEffect(() => {
-        const saved = (localStorage.getItem('app_dashboard_theme') as ThemeKey) || 'midnight';
+        const saved = (localStorage.getItem('app_dashboard_theme') as ThemeKey) || 'graphite';
         setActiveTheme(saved);
         setStagedTheme(saved);
     }, []);

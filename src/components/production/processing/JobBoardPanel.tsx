@@ -1,6 +1,5 @@
 import React, { useMemo, useState } from 'react';
 import {
-  Plus,
   Play,
   Ban,
   RotateCcw,
@@ -11,7 +10,10 @@ import {
   Filter,
   ExternalLink,
   Pause,
-  UserRound
+  UserRound,
+  AlertTriangle,
+  AlertCircle,
+  X
 } from 'lucide-react';
 import type { ProductionApiClient } from '../../../services/productionApi';
 import {
@@ -23,8 +25,7 @@ import {
 } from '../../../services/supabase';
 import type {
   DatasetRecord,
-  ProcessingJobRecord,
-  ProcessingJobType
+  ProcessingJobRecord
 } from '../../../types/production';
 import {
   estimateEtaSeconds,
@@ -56,28 +57,6 @@ export interface JobBoardPanelProps {
   onOpenJobDetails?: (job: ProcessingJobRecord) => void;
 }
 
-interface NewJobDraft {
-  name: string;
-  job_type: ProcessingJobType;
-  source_folder: string;
-  output_folder: string;
-  subgrid: string;
-  total_items: number;
-  provider: string;
-  software_version: string;
-}
-
-const EMPTY_DRAFT: NewJobDraft = {
-  name: '',
-  job_type: 'BLUR',
-  source_folder: '',
-  output_folder: '',
-  subgrid: '',
-  total_items: 0,
-  provider: '4-PC Workstation Pipeline',
-  software_version: ''
-};
-
 const INPUT_CLASS =
   'w-full bg-inner border border-subtle rounded-lg px-3 py-2 text-xs text-text-base outline-none focus:border-sky-500/60 placeholder:text-text-muted';
 
@@ -98,11 +77,14 @@ function stageFromJobType(jobType: string): DatasetRecord['pipeline_stage'] {
 
 const STATUS_FILTERS = ['ALL', 'ACTIVE', 'QA', 'REVIEW', 'DONE', 'FAILED'] as const;
 
+interface SafeJobAction {
+  type: 'PAUSE' | 'RESUME' | 'CANCEL' | 'DELETE';
+  job: ProcessingJobRecord;
+}
+
 export const JobBoardPanel: React.FC<JobBoardPanelProps> = ({
   jobs,
-  datasets,
   api,
-  projectSettings,
   isGuestUser,
   onRefreshJobs,
   onAddNotification,
@@ -110,8 +92,6 @@ export const JobBoardPanel: React.FC<JobBoardPanelProps> = ({
   userLabel,
   onOpenJobDetails
 }) => {
-  const [draft, setDraft] = useState<NewJobDraft>(EMPTY_DRAFT);
-  const [showNewJob, setShowNewJob] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>('ALL');
@@ -119,22 +99,9 @@ export const JobBoardPanel: React.FC<JobBoardPanelProps> = ({
   const [search, setSearch] = useState('');
   const [mineOnly, setMineOnly] = useState(false);
 
-  const providers = useMemo(() => {
-    const list = (projectSettings?.productionProviders || []) as Array<{
-      name: string;
-      software: string;
-      version: string;
-      enabled: boolean;
-    }>;
-    return list.filter((p) => p.enabled !== false);
-  }, [projectSettings?.productionProviders]);
-
-  const subgrids = useMemo(() => {
-    const set = new Set<string>();
-    jobs.forEach((j) => j.subgrid && set.add(j.subgrid));
-    datasets.forEach((d) => d.subgrid && set.add(d.subgrid));
-    return Array.from(set).sort();
-  }, [jobs, datasets]);
+  // Safe Action confirmation modal state
+  const [safeAction, setSafeAction] = useState<SafeJobAction | null>(null);
+  const [safeActionInput, setSafeActionInput] = useState('');
 
   const filtered = useMemo(() => {
     let out = jobs;
@@ -163,48 +130,55 @@ export const JobBoardPanel: React.FC<JobBoardPanelProps> = ({
     onAddAuditLog?.('CREATE', title, details, audit);
   };
 
-  const startJob = async (job: ProcessingJobRecord) => {
-    if (isGuestUser || !job.id) return;
+  const handleExecuteSafeAction = async () => {
+    if (!safeAction || !safeAction.job || isGuestUser) return;
+    const { type, job } = safeAction;
+    if (!job.id) return;
     setBusyId(job.id);
-    if (isWorkerJobType(job.job_type)) {
-      const res = await api.submitJob({ ...job, status: 'QUEUED', progress: 0 });
-      if (res.ok) {
-        notify(`Job Started`, `${job.name || job.job_type} submitted to NAS GPU Worker.`, 'SYSTEM', 'info');
-      } else {
-        setMessage({ ok: false, text: res.message });
+
+    try {
+      if (type === 'PAUSE') {
+        await updateProcessingJobStatusInSupabase(job.id, { status: 'QUEUED' });
+        notify('Job Paused', `Paused processing for ${job.name || job.id}.`, 'SYSTEM', 'info');
+        onAddAuditLog?.('EDIT', 'Job Paused', `${job.name || job.id} paused by ${userLabel}.`, 'info');
+      } else if (type === 'RESUME') {
+        if (isWorkerJobType(job.job_type)) {
+          const res = await api.submitJob({ ...job, status: 'QUEUED', progress: 0 });
+          if (res.ok) {
+            notify(`Job Resumed`, `${job.name || job.job_type} resumed on NAS GPU Worker.`, 'SYSTEM', 'info');
+          } else {
+            setMessage({ ok: false, text: res.message });
+          }
+        } else if (isExternalJobType(job.job_type)) {
+          await updateProcessingJobStatusInSupabase(job.id, {
+            status: 'QUEUED',
+            progress: 0,
+            completed_items: 0,
+            error_count: 0,
+            current_item: ''
+          });
+          await updateProcessingJobHandoffInSupabase(job.id, { externalStatus: 'awaiting_submit' });
+          notify(`External Job Queued`, `${job.name || job.job_type} queued — ready for operator execution.`, 'SYSTEM', 'info');
+        } else {
+          await updateProcessingJobStatusInSupabase(job.id, { status: 'QUEUED', progress: 0 });
+          notify(`Job Resumed`, `${job.name || job.job_type} queued for execution.`, 'SYSTEM', 'info');
+        }
+      } else if (type === 'CANCEL') {
+        if (isWorkerJobType(job.job_type)) await api.cancelJob(job.id);
+        else await updateProcessingJobStatusInSupabase(job.id, { status: 'CANCELLED' });
+        notify('Job Cancelled', `Cancelled execution for ${job.name || job.id}.`, 'SYSTEM', 'warning');
+        onAddAuditLog?.('EDIT', 'Job Cancelled', `${job.name || job.id} cancelled by ${userLabel}.`, 'warning');
+      } else if (type === 'DELETE') {
+        await deleteProcessingJobFromSupabase(job.id);
+        notify('Job Deleted', `Deleted job record ${job.name || job.id}.`, 'SYSTEM', 'warning');
+        onAddAuditLog?.('DELETE', 'Job Deleted', `${job.name || job.id} deleted by ${userLabel}.`, 'warning');
       }
-    } else if (isExternalJobType(job.job_type)) {
-      await updateProcessingJobStatusInSupabase(job.id, {
-        status: 'QUEUED',
-        progress: 0,
-        completed_items: 0,
-        error_count: 0,
-        current_item: ''
-      });
-      await updateProcessingJobHandoffInSupabase(job.id, { externalStatus: 'awaiting_submit' });
-      notify(`External Job Queued`, `${job.name || job.job_type} queued — assign an operator to submit it externally.`, 'SYSTEM', 'info');
-    } else {
-      await updateProcessingJobStatusInSupabase(job.id, { status: 'QUEUED', progress: 0 });
+    } catch (err: any) {
+      setMessage({ ok: false, text: err?.message || 'Failed to execute action.' });
     }
-    setBusyId(null);
-    onRefreshJobs();
-  };
 
-  const cancelJob = async (job: ProcessingJobRecord) => {
-    if (isGuestUser || !job.id) return;
-    setBusyId(job.id);
-    if (isWorkerJobType(job.job_type)) await api.cancelJob(job.id);
-    else await updateProcessingJobStatusInSupabase(job.id, { status: 'CANCELLED' });
-    onAddAuditLog?.('EDIT', `Job Cancelled`, `${job.name || job.id} cancelled by ${userLabel}.`, 'warning');
-    setBusyId(null);
-    onRefreshJobs();
-  };
-
-  const pauseJob = async (job: ProcessingJobRecord) => {
-    if (isGuestUser || !job.id) return;
-    setBusyId(job.id);
-    await updateProcessingJobStatusInSupabase(job.id, { status: 'QUEUED' });
-    onAddAuditLog?.('EDIT', `Job Paused`, `${job.name || job.id} paused by ${userLabel}.`, 'info');
+    setSafeAction(null);
+    setSafeActionInput('');
     setBusyId(null);
     onRefreshJobs();
   };
@@ -291,60 +265,6 @@ export const JobBoardPanel: React.FC<JobBoardPanelProps> = ({
     onRefreshJobs();
   };
 
-  const deleteJob = async (job: ProcessingJobRecord) => {
-    if (isGuestUser || !job?.id) return;
-    setBusyId(job.id);
-    await deleteProcessingJobFromSupabase(job.id);
-    onAddAuditLog?.('DELETE', `Job Deleted`, `${job.name || job.id} deleted by ${userLabel}.`, 'info');
-    setBusyId(null);
-    onRefreshJobs();
-  };
-
-  const createJob = async () => {
-    if (isGuestUser) return;
-    if (!draft.subgrid.trim()) {
-      setMessage({ ok: false, text: 'Subgrid is required to create a job.' });
-      return;
-    }
-    setMessage(null);
-    const external = isExternalJobType(draft.job_type);
-    const job: ProcessingJobRecord = {
-      job_type: draft.job_type,
-      name: draft.name || `${draft.job_type} • ${draft.subgrid.trim().toUpperCase()}`,
-      source_folder: draft.source_folder || undefined,
-      output_folder: draft.output_folder || undefined,
-      subgrid: draft.subgrid.trim().toUpperCase(),
-      provider: draft.provider || (isWorkerJobType(draft.job_type) ? 'NAS GPU Worker' : external ? 'External PC' : 'Tracked'),
-      software_version: draft.software_version || undefined,
-      status: 'PENDING',
-      progress: 0,
-      completed_items: 0,
-      error_count: 0,
-      operator: userLabel,
-      external_status: external ? ('none' as const) : ('none' as const),
-      settings: { apiMode: api.mode }
-    };
-    const saved = await saveProcessingJobToSupabase(job);
-    if (!saved?.id) {
-      setMessage({ ok: false, text: 'Failed to persist the job.' });
-      return;
-    }
-    if (isWorkerJobType(saved.job_type)) {
-      const res = await api.submitJob(saved);
-      if (res.ok) {
-        notify(`Job Started`, `${saved.name} submitted to NAS GPU Worker.`, 'SYSTEM', 'info');
-      } else {
-        setMessage({ ok: false, text: res.message });
-        await updateProcessingJobStatusInSupabase(saved.id, { status: 'PENDING' });
-      }
-    } else {
-      notify(`Job Created`, `${saved.name} created (${external ? 'external handoff' : 'tracked'}).`, 'SYSTEM', 'info');
-    }
-    setDraft(EMPTY_DRAFT);
-    setShowNewJob(false);
-    onRefreshJobs();
-  };
-
   const activeCount = useMemo(() => jobs.filter((j) => isJobActive(j.status)).length, [jobs]);
 
   return (
@@ -354,13 +274,6 @@ export const JobBoardPanel: React.FC<JobBoardPanelProps> = ({
           <ListChecks size={15} className="text-sky-400" /> Global job board
         </div>
         <span className="text-[11px] text-text-muted font-sans">{filtered.length}/{jobs.length} jobs · {activeCount} active</span>
-        <div className="flex-1" />
-        {!isGuestUser && (
-          <button onClick={() => setShowNewJob((v) => !v)}
-            className="flex items-center gap-1.5 px-3 py-2 bg-sky-500/15 border border-sky-500/30 hover:bg-sky-500/25 text-sky-300 text-xs font-semibold rounded-lg transition-colors cursor-pointer">
-            <Plus size={13} /> New job
-          </button>
-        )}
       </div>
 
       {/* Filters */}
@@ -395,77 +308,6 @@ export const JobBoardPanel: React.FC<JobBoardPanelProps> = ({
       {message && (
         <div className={`text-[11px] px-3 py-2 rounded-lg border ${message.ok ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' : 'bg-rose-500/10 border-rose-500/30 text-rose-300'}`}>
           {message.text}
-        </div>
-      )}
-
-      {showNewJob && !isGuestUser && (
-        <div className="bg-inner border border-subtle rounded-xl p-4">
-          <div className="text-xs font-bold text-text-base uppercase tracking-wide mb-3">Create processing job</div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            <label className="flex flex-col gap-1">
-              <span className="text-[10px] uppercase tracking-wider text-text-muted">Job type</span>
-              <select value={draft.job_type} onChange={(e) => setDraft({ ...draft, job_type: e.target.value as ProcessingJobType })} className={INPUT_CLASS}>
-                {ALL_JOB_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-              </select>
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-[10px] uppercase tracking-wider text-text-muted">Subgrid *</span>
-              <input list="board-subgrids" value={draft.subgrid} onChange={(e) => setDraft({ ...draft, subgrid: e.target.value })}
-                placeholder="e.g. N93E70" className={INPUT_CLASS} />
-              <datalist id="board-subgrids">
-                {subgrids.map((s) => <option key={s} value={s} />)}
-              </datalist>
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-[10px] uppercase tracking-wider text-text-muted">Name (optional)</span>
-              <input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="Stitch N93E70 batch 1" className={INPUT_CLASS} />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-[10px] uppercase tracking-wider text-text-muted">Source folder</span>
-              <input value={draft.source_folder} onChange={(e) => setDraft({ ...draft, source_folder: e.target.value })} className={INPUT_CLASS} />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-[10px] uppercase tracking-wider text-text-muted">Output folder</span>
-              <input value={draft.output_folder} onChange={(e) => setDraft({ ...draft, output_folder: e.target.value })} className={INPUT_CLASS} />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-[10px] uppercase tracking-wider text-text-muted">Expected frames</span>
-              <input type="number" min={1} value={draft.total_items}
-                onChange={(e) => setDraft({ ...draft, total_items: parseInt(e.target.value || '0', 10) || 0 })} className={INPUT_CLASS} />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-[10px] uppercase tracking-wider text-text-muted">Provider</span>
-              {providers.length > 0 ? (
-                <select value={draft.provider}
-                  onChange={(e) => {
-                    const p = providers.find((x) => x.name === e.target.value);
-                    setDraft({ ...draft, provider: e.target.value, software_version: p?.version || draft.software_version });
-                  }}
-                  className={INPUT_CLASS}>
-                  {providers.map((p) => (
-                    <option key={p.name} value={p.name}>{p.name}{p.version ? ` (v${p.version})` : ''}</option>
-                  ))}
-                </select>
-              ) : (
-                <input value={draft.provider} onChange={(e) => setDraft({ ...draft, provider: e.target.value })} className={INPUT_CLASS} />
-              )}
-            </label>
-          </div>
-          <p className="text-[11px] text-text-muted mt-2">
-            {isWorkerJobType(draft.job_type) ? 'Executed by the NAS GPU Worker (deterministic params).' :
-             isExternalJobType(draft.job_type) ? 'External-PC handoff — an operator runs the tool, then submits output for validation + import.' :
-             'Tracked-only job (AI_DETECT reserved — not yet implemented on the worker).'}
-          </p>
-          <div className="flex items-center gap-2 mt-3">
-            <button onClick={createJob}
-              className="flex items-center gap-1.5 px-4 py-2 bg-sky-500/15 border border-sky-500/30 hover:bg-sky-500/25 text-sky-300 text-xs font-semibold rounded-lg transition-colors cursor-pointer">
-              <Play size={13} /> Create {isWorkerJobType(draft.job_type) ? '& start' : ''}
-            </button>
-            <button onClick={() => setShowNewJob(false)}
-              className="px-3 py-2 bg-inner border border-subtle hover:bg-rose-500/15 hover:border-rose-500/30 text-text-muted hover:text-rose-300 text-xs font-semibold rounded-lg transition-colors cursor-pointer">
-              Cancel
-            </button>
-          </div>
         </div>
       )}
 
@@ -574,21 +416,45 @@ export const JobBoardPanel: React.FC<JobBoardPanelProps> = ({
                       ) : (
                         <div className="flex items-center justify-end gap-1">
                           {!isJobActive(job.status) && job.status !== 'IMPORTED' && job.status !== 'CANCELLED' && (
-                            <button onClick={() => startJob(job)} disabled={busy}
-                              className="p-1.5 rounded-md bg-inner border border-subtle hover:bg-card hover:border-subtle/80 text-text-muted hover:text-text-base cursor-pointer disabled:opacity-40 transition-colors" title="Start / requeue">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSafeAction({ type: 'RESUME', job });
+                                setSafeActionInput('');
+                              }}
+                              disabled={busy}
+                              className="p-1.5 rounded-md bg-inner border border-subtle hover:bg-card hover:border-subtle/80 text-text-muted hover:text-text-base cursor-pointer disabled:opacity-40 transition-colors"
+                              title="Start / resume execution"
+                            >
                               {busy ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
                             </button>
                           )}
                           {isJobActive(job.status) && (
                             <>
                               {job.status === 'IN_PROGRESS' && (
-                                <button onClick={() => pauseJob(job)} disabled={busy}
-                                  className="p-1.5 rounded-md bg-inner border border-subtle hover:bg-card hover:border-subtle/80 text-text-muted hover:text-text-base cursor-pointer disabled:opacity-40 transition-colors" title="Pause">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSafeAction({ type: 'PAUSE', job });
+                                    setSafeActionInput('');
+                                  }}
+                                  disabled={busy}
+                                  className="p-1.5 rounded-md bg-inner border border-subtle hover:bg-card hover:border-subtle/80 text-text-muted hover:text-text-base cursor-pointer disabled:opacity-40 transition-colors"
+                                  title="Safe pause"
+                                >
                                   {busy ? <Loader2 size={12} className="animate-spin" /> : <Pause size={12} />}
                                 </button>
                               )}
-                              <button onClick={() => cancelJob(job)} disabled={busy}
-                                className="p-1.5 rounded-md bg-inner border border-subtle hover:bg-card hover:border-subtle/80 text-text-muted hover:text-text-base cursor-pointer disabled:opacity-40 transition-colors" title="Cancel">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSafeAction({ type: 'CANCEL', job });
+                                  setSafeActionInput('');
+                                }}
+                                disabled={busy}
+                                className="p-1.5 rounded-md bg-inner border border-subtle hover:bg-card hover:border-subtle/80 text-text-muted hover:text-text-base cursor-pointer disabled:opacity-40 transition-colors"
+                                title="Safe cancel"
+                              >
                                 {busy ? <Loader2 size={12} className="animate-spin" /> : <Ban size={12} />}
                               </button>
                             </>
@@ -606,8 +472,16 @@ export const JobBoardPanel: React.FC<JobBoardPanelProps> = ({
                             </button>
                           )}
                           {isJobTerminal(job.status) && (
-                            <button onClick={() => deleteJob(job)} disabled={busy}
-                              className="p-1.5 rounded-md bg-inner border border-subtle hover:bg-card hover:border-subtle/80 text-text-muted hover:text-text-base cursor-pointer disabled:opacity-40 transition-colors" title="Delete record">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSafeAction({ type: 'DELETE', job });
+                                setSafeActionInput('');
+                              }}
+                              disabled={busy}
+                              className="p-1.5 rounded-md bg-inner border border-subtle hover:bg-card hover:border-subtle/80 text-text-muted hover:text-text-base cursor-pointer disabled:opacity-40 transition-colors"
+                              title="Safe delete"
+                            >
                               <Trash2 size={12} />
                             </button>
                           )}
@@ -624,6 +498,217 @@ export const JobBoardPanel: React.FC<JobBoardPanelProps> = ({
           </table>
         )}
       </div>
+
+      {/* Safe Action Confirmation Modal */}
+      {safeAction && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-card border border-subtle rounded-2xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col font-sans modal-slide-in">
+            {/* Modal Header */}
+            <div className="px-5 py-4 border-b border-subtle flex items-center justify-between bg-inner/60">
+              <div className="flex items-center gap-2.5">
+                <div
+                  className={`p-2 rounded-xl border ${
+                    safeAction.type === 'PAUSE'
+                      ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                      : safeAction.type === 'RESUME'
+                      ? 'bg-sky-500/10 text-sky-400 border-sky-500/20'
+                      : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                  }`}
+                >
+                  {safeAction.type === 'PAUSE' ? (
+                    <Pause size={18} />
+                  ) : safeAction.type === 'RESUME' ? (
+                    <Play size={18} />
+                  ) : (
+                    <AlertTriangle size={18} />
+                  )}
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-text-base">
+                    {safeAction.type === 'PAUSE'
+                      ? 'Confirm Pause Job'
+                      : safeAction.type === 'RESUME'
+                      ? 'Confirm Resume Job'
+                      : safeAction.type === 'CANCEL'
+                      ? 'Safe Cancel Job'
+                      : 'Safe Delete Job'}
+                  </h3>
+                  <p className="text-[11px] text-text-muted">
+                    {safeAction.type === 'PAUSE'
+                      ? 'Temporarily halt workstation pipeline execution'
+                      : safeAction.type === 'RESUME'
+                      ? 'Resume and queue pipeline job for execution'
+                      : safeAction.type === 'CANCEL'
+                      ? 'Terminate active processing for this subgrid'
+                      : 'Permanently remove job record from database'}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setSafeAction(null);
+                  setSafeActionInput('');
+                }}
+                className="p-1.5 text-text-muted hover:text-text-base rounded-lg hover:bg-inner transition-colors cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-5 space-y-3.5">
+              {/* Job Summary Pill */}
+              <div className="p-3 bg-inner/50 rounded-xl border border-subtle space-y-2 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-text-base truncate max-w-[260px]">
+                    {safeAction.job.name || safeAction.job.job_type}
+                  </span>
+                  <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-300 border border-subtle">
+                    {safeAction.job.job_type}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-[11px] text-text-muted">
+                  <div>
+                    <span className="text-zinc-500">Subgrid:</span>{' '}
+                    <span className="font-semibold text-zinc-200">
+                      {extractCanonicalSubgrid(safeAction.job.subgrid) || '—'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-zinc-500">Operator:</span>{' '}
+                    <span className="font-semibold text-zinc-200">
+                      {safeAction.job.assigned_to || safeAction.job.operator || '—'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-zinc-500">Status:</span>{' '}
+                    <span className="font-mono font-semibold text-zinc-200">
+                      {safeAction.job.status}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-zinc-500">Progress:</span>{' '}
+                    <span className="font-mono font-semibold text-zinc-200">
+                      {safeAction.job.progress || 0}%
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Warning Context */}
+              <div
+                className={`flex items-start gap-2.5 p-3 rounded-xl border text-xs leading-relaxed ${
+                  safeAction.type === 'PAUSE'
+                    ? 'bg-amber-500/10 border-amber-500/20 text-amber-300'
+                    : safeAction.type === 'RESUME'
+                    ? 'bg-sky-500/10 border-sky-500/20 text-sky-300'
+                    : 'bg-rose-500/10 border-rose-500/20 text-rose-300'
+                }`}
+              >
+                <AlertCircle
+                  size={16}
+                  className={`shrink-0 mt-0.5 ${
+                    safeAction.type === 'PAUSE'
+                      ? 'text-amber-400'
+                      : safeAction.type === 'RESUME'
+                      ? 'text-sky-400'
+                      : 'text-rose-400'
+                  }`}
+                />
+                <div>
+                  {safeAction.type === 'PAUSE'
+                    ? 'Pausing will hold this job in queue. Ongoing external processing on workstations will be flagged to wait until resumed.'
+                    : safeAction.type === 'RESUME'
+                    ? 'Resuming will queue this job and signal the assigned workstation or worker to begin/continue processing.'
+                    : safeAction.type === 'CANCEL'
+                    ? 'Cancelling will immediately terminate execution. You will need to retry or create a new job to process this subgrid stage again.'
+                    : 'Deleting will remove this job record completely. Ensure you have backed up any relevant logs.'}
+                </div>
+              </div>
+
+              {/* Typed Safety Guard for CANCEL & DELETE */}
+              {(safeAction.type === 'CANCEL' || safeAction.type === 'DELETE') && (
+                <div className="pt-1 space-y-1.5">
+                  <label className="block text-[11px] font-semibold text-text-muted">
+                    Type{' '}
+                    <span className="font-mono font-bold text-rose-400 bg-rose-500/10 px-1.5 py-0.5 rounded border border-rose-500/20">
+                      {safeAction.type.toLowerCase()}
+                    </span>{' '}
+                    to confirm:
+                  </label>
+                  <input
+                    type="text"
+                    autoFocus
+                    value={safeActionInput}
+                    onChange={(e) => setSafeActionInput(e.target.value)}
+                    placeholder={`Type '${safeAction.type.toLowerCase()}' here...`}
+                    className="w-full bg-inner border border-subtle focus:border-rose-500 focus:ring-1 focus:ring-rose-500/50 rounded-xl px-3.5 py-2 text-xs font-mono text-zinc-100 outline-none placeholder:text-zinc-600 transition-colors"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            {(() => {
+              const isTypedValid =
+                safeAction.type === 'PAUSE' ||
+                safeAction.type === 'RESUME' ||
+                safeActionInput.trim().toLowerCase() === safeAction.type.toLowerCase();
+
+              return (
+                <div className="px-5 py-3.5 border-t border-subtle flex items-center justify-end gap-2.5 bg-inner/60">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSafeAction(null);
+                      setSafeActionInput('');
+                    }}
+                    disabled={busyId === safeAction.job.id}
+                    className="px-4 py-2 bg-inner hover:bg-card border border-subtle rounded-xl text-xs font-semibold text-text-base transition-colors cursor-pointer"
+                  >
+                    Dismiss
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleExecuteSafeAction}
+                    disabled={!isTypedValid || busyId === safeAction.job.id}
+                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-1.5 ${
+                      !isTypedValid
+                        ? 'bg-zinc-800 text-zinc-500 border border-subtle cursor-not-allowed opacity-60'
+                        : safeAction.type === 'PAUSE'
+                        ? 'bg-amber-500 hover:bg-amber-400 text-zinc-950 cursor-pointer shadow-amber-950/40'
+                        : safeAction.type === 'RESUME'
+                        ? 'bg-sky-500 hover:bg-sky-400 text-white cursor-pointer shadow-sky-950/40'
+                        : 'bg-rose-500 hover:bg-rose-400 text-white cursor-pointer shadow-rose-950/40'
+                    }`}
+                  >
+                    {busyId === safeAction.job.id ? (
+                      <Loader2 size={13} className="animate-spin" />
+                    ) : safeAction.type === 'PAUSE' ? (
+                      <Pause size={13} />
+                    ) : safeAction.type === 'RESUME' ? (
+                      <Play size={13} />
+                    ) : (
+                      <AlertTriangle size={13} />
+                    )}
+                    <span>
+                      {busyId === safeAction.job.id
+                        ? 'Processing...'
+                        : safeAction.type === 'PAUSE'
+                        ? 'Confirm Pause'
+                        : safeAction.type === 'RESUME'
+                        ? 'Confirm Resume'
+                        : safeAction.type === 'CANCEL'
+                        ? 'Confirm Cancel'
+                        : 'Confirm Delete'}
+                    </span>
+                  </button>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

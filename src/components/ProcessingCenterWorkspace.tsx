@@ -113,7 +113,7 @@ export const ProcessingCenterWorkspace: React.FC<ProcessingCenterWorkspaceProps>
             />
           </div>
 
-          <div className="p-4 flex-1 flex flex-col min-h-0 overflow-y-auto">
+          <div key={activeTab} className="p-4 flex-1 flex flex-col min-h-0 overflow-y-auto animate-panel-enter">
             {/* Active tab panel */}
             {activeTab === 'board' && (
               <JobBoardPanel
@@ -132,6 +132,7 @@ export const ProcessingCenterWorkspace: React.FC<ProcessingCenterWorkspaceProps>
             {activeTab === 'handoff' && (
               <HandoffPanel
                 jobs={jobs}
+                datasets={datasets}
                 api={api}
                 projectSettings={projectSettings}
                 isGuestUser={isGuestUser}

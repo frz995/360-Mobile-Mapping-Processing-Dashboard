@@ -107,14 +107,34 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
   const sendPreviewData = React.useCallback(() => {
     if (previewIframeRef.current && previewIframeRef.current.contentWindow) {
       try {
-        const formattedStaged = (dailyData || []).map((item: any) => ({
-          ...item,
-          status: item.publishToWebGIS === 'yes' ? 'published' : 'staged',
-          strokeColor: item.publishToWebGIS === 'yes' ? (projectSettings.publishedTrackColor || '#10B981') : (projectSettings.stagingTrackColor || '#F59E0B'),
-          fillColor: item.publishToWebGIS === 'yes' ? (projectSettings.publishedTrackColor || '#10B981') : (projectSettings.stagingTrackColor || '#F59E0B'),
-          panoramas: item.panoramas || [],
-          points: item.panoramas || []
-        }));
+        const formattedStaged = (dailyData || []).map((item: any) => {
+          const isPub = item.publishToWebGIS === 'yes';
+          const defaultItemColor = isPub ? (projectSettings.publishedTrackColor || '#10B981') : (projectSettings.stagingTrackColor || '#F59E0B');
+          return {
+            ...item,
+            status: isPub ? 'published' : 'staged',
+            isPublished: isPub,
+            strokeColor: defaultItemColor,
+            fillColor: defaultItemColor,
+            statusColor: defaultItemColor,
+            panoramas: (item.panoramas || []).map((p: any) => {
+              const isPanDefect = p.isDefect || p.is_defect || p.status === 'defect';
+              return {
+                ...p,
+                isPublished: isPub || p.publishToWebGIS === 'yes',
+                color: isPanDefect ? (projectSettings.defectTrackColor || '#EF4444') : (isPub || p.publishToWebGIS === 'yes' ? (projectSettings.publishedTrackColor || '#10B981') : (projectSettings.stagingTrackColor || '#F59E0B'))
+              };
+            }),
+            points: (item.points || item.panoramas || []).map((p: any) => {
+              const isPanDefect = p.isDefect || p.is_defect || p.status === 'defect';
+              return {
+                ...p,
+                isPublished: isPub || p.publishToWebGIS === 'yes',
+                color: isPanDefect ? (projectSettings.defectTrackColor || '#EF4444') : (isPub || p.publishToWebGIS === 'yes' ? (projectSettings.publishedTrackColor || '#10B981') : (projectSettings.stagingTrackColor || '#F59E0B'))
+              };
+            })
+          };
+        });
 
         // 1. Send Theme Mode (Dark/Light)
         previewIframeRef.current.contentWindow.postMessage({
@@ -378,14 +398,34 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
       layerOpacity: (c.layerOpacity ?? 100) / 100
     };
 
-    const formattedStaged = (dailyData || []).map((item: any) => ({
-      ...item,
-      status: item.publishToWebGIS === 'yes' ? 'published' : 'staged',
-      strokeColor: item.publishToWebGIS === 'yes' ? (c.publishedTrackColor || '#10B981') : (c.stagingTrackColor || '#F59E0B'),
-      fillColor: item.publishToWebGIS === 'yes' ? (c.publishedTrackColor || '#10B981') : (c.stagingTrackColor || '#F59E0B'),
-      panoramas: item.panoramas || [],
-      points: item.panoramas || []
-    }));
+    const formattedStaged = (dailyData || []).map((item: any) => {
+      const isPub = item.publishToWebGIS === 'yes';
+      const defaultItemColor = isPub ? (c.publishedTrackColor || '#10B981') : (c.stagingTrackColor || '#F59E0B');
+      return {
+        ...item,
+        status: isPub ? 'published' : 'staged',
+        isPublished: isPub,
+        strokeColor: defaultItemColor,
+        fillColor: defaultItemColor,
+        statusColor: defaultItemColor,
+        panoramas: (item.panoramas || []).map((p: any) => {
+          const isPanDefect = p.isDefect || p.is_defect || p.status === 'defect';
+          return {
+            ...p,
+            isPublished: isPub || p.publishToWebGIS === 'yes',
+            color: isPanDefect ? (c.defectTrackColor || '#EF4444') : (isPub || p.publishToWebGIS === 'yes' ? (c.publishedTrackColor || '#10B981') : (c.stagingTrackColor || '#F59E0B'))
+          };
+        }),
+        points: (item.points || item.panoramas || []).map((p: any) => {
+          const isPanDefect = p.isDefect || p.is_defect || p.status === 'defect';
+          return {
+            ...p,
+            isPublished: isPub || p.publishToWebGIS === 'yes',
+            color: isPanDefect ? (c.defectTrackColor || '#EF4444') : (isPub || p.publishToWebGIS === 'yes' ? (c.publishedTrackColor || '#10B981') : (c.stagingTrackColor || '#F59E0B'))
+          };
+        })
+      };
+    });
 
     const iframes = document.querySelectorAll<HTMLIFrameElement>('iframe');
     iframes.forEach(f => {
@@ -435,14 +475,34 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
       layerOpacity: (c.layerOpacity ?? 100) / 100
     };
 
-    const formattedStaged = (dailyData || []).map((item: any) => ({
-      ...item,
-      status: item.publishToWebGIS === 'yes' ? 'published' : 'staged',
-      strokeColor: item.publishToWebGIS === 'yes' ? (c.publishedTrackColor || '#10B981') : (c.stagingTrackColor || '#F59E0B'),
-      fillColor: item.publishToWebGIS === 'yes' ? (c.publishedTrackColor || '#10B981') : (c.stagingTrackColor || '#F59E0B'),
-      panoramas: item.panoramas || [],
-      points: item.panoramas || []
-    }));
+    const formattedStaged = (dailyData || []).map((item: any) => {
+      const isPub = item.publishToWebGIS === 'yes';
+      const defaultItemColor = isPub ? (c.publishedTrackColor || '#10B981') : (c.stagingTrackColor || '#F59E0B');
+      return {
+        ...item,
+        status: isPub ? 'published' : 'staged',
+        isPublished: isPub,
+        strokeColor: defaultItemColor,
+        fillColor: defaultItemColor,
+        statusColor: defaultItemColor,
+        panoramas: (item.panoramas || []).map((p: any) => {
+          const isPanDefect = p.isDefect || p.is_defect || p.status === 'defect';
+          return {
+            ...p,
+            isPublished: isPub || p.publishToWebGIS === 'yes',
+            color: isPanDefect ? (c.defectTrackColor || '#EF4444') : (isPub || p.publishToWebGIS === 'yes' ? (c.publishedTrackColor || '#10B981') : (c.stagingTrackColor || '#F59E0B'))
+          };
+        }),
+        points: (item.points || item.panoramas || []).map((p: any) => {
+          const isPanDefect = p.isDefect || p.is_defect || p.status === 'defect';
+          return {
+            ...p,
+            isPublished: isPub || p.publishToWebGIS === 'yes',
+            color: isPanDefect ? (c.defectTrackColor || '#EF4444') : (isPub || p.publishToWebGIS === 'yes' ? (c.publishedTrackColor || '#10B981') : (c.stagingTrackColor || '#F59E0B'))
+          };
+        })
+      };
+    });
 
     if (previewIframeRef.current && previewIframeRef.current.contentWindow) {
       try {
@@ -607,7 +667,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
             />
           </div>
 
-          <div className="p-4 sm:p-5 flex-1 flex flex-col min-h-0 space-y-4 overflow-y-auto">
+          <div key={activeTab} className="p-4 sm:p-5 flex-1 flex flex-col min-h-0 space-y-4 overflow-y-auto animate-panel-enter">
 
       {/* ========================================================================= */}
       {/* TAB 1: PROJECT & SECURITY SETTINGS */}

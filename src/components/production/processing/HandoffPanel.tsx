@@ -34,6 +34,7 @@ import {
   deleteProcessingJobFromSupabase
 } from '../../../services/supabase';
 import type {
+  DatasetRecord,
   ProcessingJobRecord,
   ProcessingJobType,
   WorkstationStationConfig
@@ -44,6 +45,7 @@ import { extractCanonicalSubgrid } from '../../../utils/datasetLineage';
 
 export interface HandoffPanelProps {
   jobs: ProcessingJobRecord[];
+  datasets?: DatasetRecord[];
   api: ProductionApiClient;
   projectSettings?: any;
   isGuestUser?: boolean;
@@ -64,6 +66,7 @@ const STATION_JOB_TYPE_MAP: Record<string, { jobType: any; nextJobType: any; nex
 
 export const HandoffPanel: React.FC<HandoffPanelProps> = ({
   jobs,
+  datasets = [],
   api,
   projectSettings,
   isGuestUser,
@@ -91,7 +94,6 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
     return `${y}${m}${day}`;
   });
   const [dispatchRunId] = useState('');
-  const [dispatchTotalItems, setDispatchTotalItems] = useState(0);
   const [dispatching, setDispatching] = useState(false);
 
   // Active Job Edit Modal State
@@ -149,6 +151,7 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
       date: dispatchDate.trim() || '{date}',
       run_id: dispatchRunId.trim() || '{run_id}'
     };
+    const dynamicCount = datasets.find((d) => d.subgrid === dispatchSubgrid.trim().toUpperCase())?.file_count || 0;
     const rows: EditableStationRow[] = workstations.map((w) => {
       const jType: ProcessingJobType =
         w.id === 'blur' ? 'BLUR' : w.id === 'stitch' ? 'STITCH' : w.id === 'lightroom' ? 'ENHANCE' : 'MASK';
@@ -160,11 +163,11 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
         operator: w.defaultOperator,
         sourceFolder: resolveStationPath(w.sourceFolderTemplate, vars),
         outputFolder: resolveStationPath(w.outputFolderTemplate, vars),
-        totalItems: dispatchTotalItems || 0
+        totalItems: dynamicCount
       };
     });
     setTableRows(rows);
-  }, [dispatchSubgrid, dispatchGrid, dispatchDate, dispatchRunId, dispatchTotalItems, showDispatchModal, workstations]);
+  }, [dispatchSubgrid, dispatchGrid, dispatchDate, dispatchRunId, datasets, showDispatchModal, workstations]);
 
   const updateTableRow = (idx: number, field: keyof EditableStationRow, val: any) => {
     setTableRows((prev) => {
@@ -181,6 +184,7 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
       date: dispatchDate.trim() || '{date}',
       run_id: dispatchRunId.trim() || '{run_id}'
     };
+    const dynamicCount = datasets.find((d) => d.subgrid === dispatchSubgrid.trim().toUpperCase())?.file_count || 0;
     const rows: EditableStationRow[] = workstations.map((w) => {
       const jType: ProcessingJobType =
         w.id === 'blur' ? 'BLUR' : w.id === 'stitch' ? 'STITCH' : w.id === 'lightroom' ? 'ENHANCE' : 'MASK';
@@ -192,7 +196,7 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
         operator: w.defaultOperator,
         sourceFolder: resolveStationPath(w.sourceFolderTemplate, vars),
         outputFolder: resolveStationPath(w.outputFolderTemplate, vars),
-        totalItems: dispatchTotalItems || 0
+        totalItems: dynamicCount
       };
     });
     setTableRows(rows);
@@ -285,7 +289,7 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
         source_folder: job.source_folder,
         output_folder: job.output_folder,
         storage_provider: 'nas_local',
-        file_count: fileCount || job.total_items || 105,
+        file_count: fileCount || job.total_items || (datasets.find((d) => d.subgrid === subgrid)?.file_count) || 0,
         size_bytes: listing?.sizeBytes || 0,
         status: 'READY',
         version: 1,
@@ -332,7 +336,7 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
         operator: nextStation?.defaultOperator || 'Operator',
         assigned_to: nextStation?.defaultOperator || 'Operator',
         external_status: 'awaiting_submit',
-        total_items: fileCount || job.total_items || 105,
+        total_items: fileCount || job.total_items || (datasets.find((d) => d.subgrid === subgrid)?.file_count) || 0,
         settings: { ...(job.settings || {}), ...vars }
       });
 
@@ -353,6 +357,7 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
 
     const sg = dispatchSubgrid.trim().toUpperCase();
     const row = tableRows[dispatchStationIdx] || tableRows[0];
+    const dynamicCount = row.totalItems || (datasets.find((d) => d.subgrid === sg)?.file_count) || 0;
 
     await saveProcessingJobToSupabase({
       job_type: row.jobType,
@@ -365,7 +370,7 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
       operator: row.operator,
       assigned_to: row.operator,
       external_status: 'awaiting_submit',
-      total_items: row.totalItems || 105,
+      total_items: dynamicCount,
       settings: {
         grid: dispatchGrid,
         date: dispatchDate,
@@ -391,6 +396,7 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
     const sg = gpuSubgrid.trim().toUpperCase();
     const inFolder = `/RAW/${sg}/`;
     const outFolder = `/PROCESSED/${sg}/`;
+    const dynamicCount = (datasets.find((d) => d.subgrid === sg)?.file_count) || 0;
 
     await saveProcessingJobToSupabase({
       job_type: gpuJobType,
@@ -402,7 +408,7 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
       software_version: 'PyTorch CUDA / FastAPI',
       status: 'QUEUED',
       operator: userLabel,
-      total_items: 500
+      total_items: dynamicCount
     });
 
     notify(
@@ -705,7 +711,7 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
                   {/* Progress Bar */}
                   <div className="space-y-1">
                     <div className="flex items-center justify-between text-[10px] text-text-muted font-sans">
-                      <span>Frames: {j.completed_items || 0} / {j.total_items || 500}</span>
+                      <span>Frames: {j.completed_items || 0} / {j.total_items || (datasets.find((d) => d.subgrid === j.subgrid)?.file_count) || j.completed_items || 0}</span>
                       <span className="text-text-muted">{progressPct}%</span>
                     </div>
                     <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
@@ -783,7 +789,7 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
                 <h4 className="text-xs font-bold text-text-base">Privacy Blur PC</h4>
               </div>
             </div>
-            <span className="text-[10px] font-sans font-bold text-text-muted bg-card px-2 py-0.5 rounded border border-subtle">
+            <span className="text-[10px] font-sans font-bold text-text-muted">
               {laneJobs.blur.length}
             </span>
           </div>
@@ -808,7 +814,7 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
                 <h4 className="text-xs font-bold text-text-base">Stitching PC</h4>
               </div>
             </div>
-            <span className="text-[10px] font-sans font-bold text-text-muted bg-card px-2 py-0.5 rounded border border-subtle">
+            <span className="text-[10px] font-sans font-bold text-text-muted">
               {laneJobs.stitch.length}
             </span>
           </div>
@@ -833,7 +839,7 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
                 <h4 className="text-xs font-bold text-text-base">Lightroom PC</h4>
               </div>
             </div>
-            <span className="text-[10px] font-sans font-bold text-text-muted bg-card px-2 py-0.5 rounded border border-subtle">
+            <span className="text-[10px] font-sans font-bold text-text-muted">
               {laneJobs.lightroom.length}
             </span>
           </div>
@@ -858,7 +864,7 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
                 <h4 className="text-xs font-bold text-text-base">Photoshop PC</h4>
               </div>
             </div>
-            <span className="text-[10px] font-sans font-bold text-text-muted bg-card px-2 py-0.5 rounded border border-subtle">
+            <span className="text-[10px] font-sans font-bold text-text-muted">
               {laneJobs.photoshop.length}
             </span>
           </div>
@@ -901,7 +907,7 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
 
             <form onSubmit={handleStart4StationPipeline} className="flex-1 flex flex-col min-h-0 overflow-hidden">
               {/* Batch Global Parameters */}
-              <div className="p-5 border-b border-subtle bg-inner/30 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+              <div className="p-5 border-b border-subtle bg-inner/30 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
                 <div>
                   <label className="block text-[11px] font-semibold text-text-muted uppercase tracking-wider mb-1">
                     Subgrid Code *
@@ -938,19 +944,6 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
                     placeholder="e.g. 20220904"
                     value={dispatchDate}
                     onChange={(e) => setDispatchDate(e.target.value)}
-                    className="w-full bg-inner border border-subtle rounded-lg px-3 py-2 text-text-base font-sans focus:outline-none focus:border-sky-500/60"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-semibold text-text-muted uppercase tracking-wider mb-1">
-                    Expected Frames
-                  </label>
-                  <input
-                    type="number"
-                    min={1}
-                    value={dispatchTotalItems}
-                    onChange={(e) => setDispatchTotalItems(Number(e.target.value))}
                     className="w-full bg-inner border border-subtle rounded-lg px-3 py-2 text-text-base font-sans focus:outline-none focus:border-sky-500/60"
                   />
                 </div>

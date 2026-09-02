@@ -139,13 +139,41 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
   onOpenDefectsGallery,
   onSignOffAndPublish,
 }) => {
-  const [targetTab, setTargetTab] = useState<'daily' | 'masterlist'>(initialRunId ? 'daily' : 'masterlist');
-  const [categoryFilter, setCategoryFilter] = useState<'all' | 'staging' | 'published'>('all');
-  const [searchQuery, setSearchQuery] = useState<string>('');
-  const [showOnlyWithFrames, setShowOnlyWithFrames] = useState<boolean>(false);
+  // Load saved dynamic environment state
+  const savedState = useMemo(() => {
+    try {
+      const raw = localStorage.getItem('GEOSPHERE_QAQC_LAST_STATE');
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  }, []);
 
-  const [selectedSubgrid, setSelectedSubgrid] = useState<string>(initialSubgrid || '');
-  const [selectedRunId, setSelectedRunId] = useState<string | null>(initialRunId || null);
+  const [targetTab, setTargetTab] = useState<'daily' | 'masterlist'>(() => {
+    if (initialRunId) return 'daily';
+    if (savedState?.targetTab) return savedState.targetTab;
+    return 'masterlist';
+  });
+  const [categoryFilter, setCategoryFilter] = useState<'all' | 'staging' | 'published'>(() => {
+    return savedState?.categoryFilter || 'all';
+  });
+  const [searchQuery, setSearchQuery] = useState<string>(() => {
+    return savedState?.searchQuery || '';
+  });
+  const [showOnlyWithFrames, setShowOnlyWithFrames] = useState<boolean>(() => {
+    return savedState?.showOnlyWithFrames || false;
+  });
+
+  const [selectedSubgrid, setSelectedSubgrid] = useState<string>(() => {
+    if (initialSubgrid) return initialSubgrid;
+    return savedState?.selectedSubgrid || '';
+  });
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(() => {
+    if (initialRunId !== undefined) return initialRunId;
+    return savedState?.selectedRunId ?? null;
+  });
+
+  const [isMinimized, setIsMinimized] = useState<boolean>(false);
 
   useEffect(() => {
     if (initialSubgrid) setSelectedSubgrid(initialSubgrid);
@@ -155,28 +183,86 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
     }
   }, [initialSubgrid, initialRunId]);
 
-  const [config, setConfig] = useState<QAQCConfig>({
-    checkBlur: true,
-    checkObstruction: true,
-    checkGps: true
+  const [config, setConfig] = useState<QAQCConfig>(() => {
+    return savedState?.config || {
+      checkBlur: true,
+      checkObstruction: true,
+      checkGps: true
+    };
   });
-  const [isAutoPacing, setIsAutoPacing] = useState<boolean>(true);
-  const [stepIntervalMs, setStepIntervalMs] = useState<number>(200);
-  const [inspectorPic, setInspectorPic] = useState<string>(activeUserName || 'Operator');
+  const [isAutoPacing, setIsAutoPacing] = useState<boolean>(() => {
+    return savedState?.isAutoPacing !== undefined ? savedState.isAutoPacing : true;
+  });
+  const [stepIntervalMs, setStepIntervalMs] = useState<number>(() => {
+    return savedState?.stepIntervalMs || 200;
+  });
+  const [inspectorPic, setInspectorPic] = useState<string>(() => {
+    return activeUserName || savedState?.inspectorPic || 'Operator';
+  });
 
-  const [viewportMode, setViewportMode] = useState<'horizontal' | 'vertical' | 'pip' | 'full'>('horizontal');
-  const [isPipCollapsed, setIsPipCollapsed] = useState<boolean>(false);
+  const [viewportMode, setViewportMode] = useState<'horizontal' | 'vertical' | 'pip' | 'full'>(() => {
+    return savedState?.viewportMode || 'horizontal';
+  });
+  const [isPipCollapsed, setIsPipCollapsed] = useState<boolean>(() => {
+    return savedState?.isPipCollapsed || false;
+  });
   const mapIframeRef = useRef<HTMLIFrameElement | null>(null);
   const psvRef = useRef<PhotoSphereViewerHandle | null>(null);
   const [_isMapReady, setIsMapReady] = useState<boolean>(false);
 
-  const [selectedStationIndex, setSelectedStationIndex] = useState<number | null>(null);
-  const [filterMode, setFilterMode] = useState<'all' | 'flagged'>('all');
+  const [selectedStationIndex, setSelectedStationIndex] = useState<number | null>(() => {
+    return typeof savedState?.selectedStationIndex === 'number' ? savedState.selectedStationIndex : null;
+  });
+  const [filterMode, setFilterMode] = useState<'all' | 'flagged'>(() => {
+    return savedState?.filterMode || 'all';
+  });
 
-  const [workbenchTab, setWorkbenchTab] = useState<'console' | 'thresholds' | 'audit'>('console');
+  const [workbenchTab, setWorkbenchTab] = useState<'console' | 'thresholds' | 'audit'>(() => {
+    return savedState?.workbenchTab || 'console';
+  });
   const [mobileConsoleTab, setMobileConsoleTab] = useState<'canvas' | 'targets' | 'telemetry'>('canvas');
   const [auditLogFilter, setAuditLogFilter] = useState<'all' | 'flagged' | 'passed'>('all');
   const [auditSearchQuery, setAuditSearchQuery] = useState<string>('');
+
+  // Persist dynamic environment state so user can resume last state on minimize or reopen
+  useEffect(() => {
+    try {
+      const stateToSave = {
+        targetTab,
+        categoryFilter,
+        searchQuery,
+        showOnlyWithFrames,
+        selectedSubgrid,
+        selectedRunId,
+        selectedStationIndex,
+        viewportMode,
+        isPipCollapsed,
+        filterMode,
+        workbenchTab,
+        stepIntervalMs,
+        isAutoPacing,
+        config,
+        inspectorPic
+      };
+      localStorage.setItem('GEOSPHERE_QAQC_LAST_STATE', JSON.stringify(stateToSave));
+    } catch { }
+  }, [
+    targetTab,
+    categoryFilter,
+    searchQuery,
+    showOnlyWithFrames,
+    selectedSubgrid,
+    selectedRunId,
+    selectedStationIndex,
+    viewportMode,
+    isPipCollapsed,
+    filterMode,
+    workbenchTab,
+    stepIntervalMs,
+    isAutoPacing,
+    config,
+    inspectorPic
+  ]);
 
   const [localThresholds, setLocalThresholds] = useState<{
     blurVarianceThreshold: number;
@@ -1193,6 +1279,58 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
 
   if (!isOpen) return null;
 
+  if (isMinimized) {
+    return (
+      <div className="fixed bottom-4 right-4 z-[99999] animate-in fade-in slide-in-from-bottom-3 duration-200">
+        <div className="bg-card/95 backdrop-blur-xl border border-subtle rounded-2xl p-3 shadow-2xl flex items-center gap-3 text-text-base ring-1 ring-sky-500/30">
+          <div className="p-2 bg-gradient-to-tr from-sky-600 to-emerald-500 rounded-xl shadow-md text-white">
+            <Activity size={16} className={isRunning ? 'animate-pulse' : ''} />
+          </div>
+
+          <div className="cursor-pointer select-none" onClick={() => setIsMinimized(false)}>
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-xs text-text-base">
+                Acquisition QC
+              </span>
+              <span className="px-2 py-0.5 rounded-full bg-inner text-[10px] font-sans font-bold text-sky-400 border border-subtle">
+                {activeRunningSubgrid || selectedSubgrid || 'Standby'}
+              </span>
+              {isRunning && (
+                <span className="flex items-center gap-1 text-[10px] font-semibold text-emerald-400">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                  Running
+                </span>
+              )}
+            </div>
+            <p className="text-[10px] text-text-muted mt-0.5 font-sans">
+              Station {activeDisplayIndex} of {selectedStations.length || totalStations} • {effectiveDefectsList.length} Defect(s)
+            </p>
+          </div>
+
+          <div className="flex items-center gap-1.5 pl-2 border-l border-subtle">
+            <button
+              type="button"
+              onClick={() => setIsMinimized(false)}
+              className="px-2.5 py-1.5 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-xs font-semibold shadow transition-all cursor-pointer flex items-center gap-1 active:scale-95"
+              title="Restore Acquisition QC Workbench"
+            >
+              <Maximize2 size={13} />
+              <span>Restore</span>
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1.5 hover:bg-rose-950/40 text-text-muted hover:text-rose-400 rounded-lg transition-all cursor-pointer"
+              title="Exit Acquisition QC"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 z-[99999] bg-app flex flex-col text-text-base select-none font-sans overflow-hidden">
       {/* 1. TOP PRECISION CONSOLE HEADER BAR */}
@@ -1392,9 +1530,10 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
           )}
 
           <button
-            onClick={onClose}
+            type="button"
+            onClick={() => setIsMinimized(true)}
             className="px-3 py-1.5 bg-card hover:bg-inner text-text-muted hover:text-text-base rounded-xl border border-subtle text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95"
-            title="Minimize console"
+            title="Minimize console to floating dock"
           >
             <Minimize2 size={13} />
             <span className="hidden sm:inline">Minimize</span>
@@ -1402,6 +1541,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
 
           {isRunning ? (
             <button
+              type="button"
               onClick={onAbort}
               className="px-3 py-1.5 bg-inner hover:bg-rose-950/30 text-rose-400 rounded-xl border border-subtle hover:border-rose-800/40 text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95"
               title="Abort inspection loop"
@@ -1411,9 +1551,10 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
             </button>
           ) : (
             <button
+              type="button"
               onClick={onClose}
               className="px-3 py-1.5 bg-card hover:bg-rose-950/30 text-text-muted hover:text-rose-400 rounded-xl border border-subtle hover:border-rose-800/40 text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95"
-              title="Exit console"
+              title="Exit QAQC Workspace"
             >
               <X size={14} />
               <span className="hidden sm:inline">Exit</span>

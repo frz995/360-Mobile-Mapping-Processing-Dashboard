@@ -13,6 +13,7 @@ import {
   CheckCircle2,
   AlertTriangle
 } from 'lucide-react';
+import { ContentLoading } from './common/ContentLoading';
 import {
   RecycleBinItem,
   fetchRecycleBinFromSupabase,
@@ -238,10 +239,7 @@ export const DatasetRecoveryPanel: React.FC<DatasetRecoveryPanelProps> = ({
       {/* Deleted Items List */}
       <div className="space-y-3">
         {loading && items.length === 0 ? (
-          <div className="bg-card border border-subtle rounded-2xl p-12 text-center text-xs text-text-muted flex items-center justify-center gap-2.5">
-            <Loader2 size={16} className="animate-spin text-sky-400" />
-            <span>Loading recovery records from Supabase...</span>
-          </div>
+          <ContentLoading variant="cards" label="Loading recovery records from Supabase..." rows={3} />
         ) : filteredItems.length === 0 ? (
           <div className="bg-card border border-subtle rounded-2xl p-12 text-center text-text-muted space-y-2.5">
             <div className="w-12 h-12 rounded-2xl bg-inner border border-subtle flex items-center justify-center mx-auto text-text-muted">

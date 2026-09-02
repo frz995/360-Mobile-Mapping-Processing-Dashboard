@@ -168,7 +168,7 @@ Action Sequence:
         : projectSettings?.productionApiMode === 'http'
           ? 'lama-cleaner'
           : 'mock',
-      total_items: selected.file_count || 500,
+      total_items: selected.file_count || 0,
       status: 'QUEUED',
       progress: 0,
       completed_items: 0,

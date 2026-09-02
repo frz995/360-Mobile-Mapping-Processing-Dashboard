@@ -184,7 +184,7 @@ export const OperationalActionCenter: React.FC<OperationalActionCenterProps> = (
             <span className="font-semibold text-text-base">
               {activeJobs[0].name || activeJobs[0].job_type}
             </span>
-            <span className="text-[10px] font-sans font-medium px-1.5 py-0.2 rounded bg-inner text-text-base border border-subtle">
+            <span className="text-[10px] font-sans text-text-muted">
               {activeJobs[0].progress || 0}% &bull; {activeJobs[0].provider || 'PC-01'}
             </span>
             {activeJobs.length > 1 && (
