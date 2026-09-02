@@ -41,10 +41,10 @@ import { PhotoSphereViewerComponent, type PhotoSphereViewerHandle } from './Phot
 import { usePanoramaViewer } from '../hooks/usePanoramaViewer';
 import { isGpuAccelerationSupported, getGpuHardwareName } from '../utils/qaqcAnalyzer';
 import { QAQCThresholdStudioView } from './QAQCThresholdStudioModal';
+import { extractSubgridName } from '../utils/subgrid';
 import {
   getImagesProcessedCount,
   formatDisplayDate,
-  extractSubgridName,
   formatBatchIdDisplay,
   reconcileBatchLogs,
   getItemId
@@ -83,7 +83,6 @@ export interface QAQCWorkbenchProps {
     runId?: string | null;
     stations: StationNode[];
     config: QAQCConfig;
-    stepIntervalMs: number;
     pic: string;
     customThresholds?: {
       blurVarianceThreshold?: number;
@@ -190,12 +189,6 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
       checkGps: true
     };
   });
-  const [isAutoPacing, setIsAutoPacing] = useState<boolean>(() => {
-    return savedState?.isAutoPacing !== undefined ? savedState.isAutoPacing : true;
-  });
-  const [stepIntervalMs, setStepIntervalMs] = useState<number>(() => {
-    return savedState?.stepIntervalMs || 200;
-  });
   const [inspectorPic, setInspectorPic] = useState<string>(() => {
     return activeUserName || savedState?.inspectorPic || 'Operator';
   });
@@ -239,8 +232,6 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
         isPipCollapsed,
         filterMode,
         workbenchTab,
-        stepIntervalMs,
-        isAutoPacing,
         config,
         inspectorPic
       };
@@ -258,8 +249,6 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
     isPipCollapsed,
     filterMode,
     workbenchTab,
-    stepIntervalMs,
-    isAutoPacing,
     config,
     inspectorPic
   ]);
@@ -706,7 +695,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
       ? 100
       : 0;
   const remainingStations = Math.max(0, totalStations - (currentIndex + 1));
-  const estimatedSecondsLeft = Math.ceil((remainingStations * stepIntervalMs) / 1000);
+  const estimatedSecondsLeft = Math.ceil(remainingStations * 0.25);
 
   const selectedStationFallback = useMemo(() => {
     if (selectedStationIndex !== null && selectedStations.length >= selectedStationIndex) {
@@ -1212,7 +1201,6 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
       runId: selectedRunId,
       stations: selectedStations,
       config,
-      stepIntervalMs,
       pic: inspectorPic.trim() || activeUserName || 'Operator',
       customThresholds: localThresholds
     });
@@ -1400,7 +1388,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                 }`} />
               <span className="text-text-muted font-medium text-[11px]">
                 {isRunning && !isPaused
-                  ? `Active (${Math.round(1000 / stepIntervalMs)} FPS)`
+                  ? `Active`
                   : isPaused
                     ? 'Paused'
                     : isCompleted || (cachedAudit && !isRunning)
@@ -1921,53 +1909,6 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                 >
                   {projectSettings?.qaFlag3 || 'Bad GPS Signal'}
                 </button>
-              </div>
-
-              <div className="space-y-1.5 text-xs">
-                <div className="flex items-center justify-between text-[11px] text-text-muted">
-                  <span>Pacing Rate:</span>
-                  <span className="font-semibold text-text-base font-sans">
-                    {isAutoPacing ? `Auto (${stepIntervalMs}ms)` : `${stepIntervalMs}ms (${(1000 / stepIntervalMs).toFixed(1)} FPS)`}
-                  </span>
-                </div>
-                <div className="grid grid-cols-4 gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsAutoPacing(true);
-                      setStepIntervalMs(200);
-                    }}
-                    className={`py-1.5 px-1 rounded-lg text-xs font-semibold border text-center transition-all cursor-pointer flex items-center justify-center font-sans ${isAutoPacing
-                      ? 'bg-card border-subtle text-text-base shadow-sm'
-                      : 'bg-card hover:bg-inner border-subtle text-text-muted hover:text-text-base'
-                      }`}
-                  >
-                    <span>Auto</span>
-                  </button>
-                  {[
-                    { label: '200ms', ms: 200 },
-                    { label: '300ms', ms: 300 },
-                    { label: '500ms', ms: 500 }
-                  ].map(speed => {
-                    const isActive = !isAutoPacing && stepIntervalMs === speed.ms;
-                    return (
-                      <button
-                        key={speed.ms}
-                        type="button"
-                        onClick={() => {
-                          setIsAutoPacing(false);
-                          setStepIntervalMs(speed.ms);
-                        }}
-                        className={`py-1.5 px-1 rounded-lg text-xs font-semibold border text-center transition-all cursor-pointer font-sans ${isActive
-                          ? 'bg-card border-subtle text-text-base shadow-sm'
-                          : 'bg-card hover:bg-inner border-subtle text-text-muted hover:text-text-base'
-                          }`}
-                      >
-                        {speed.label}
-                      </button>
-                    );
-                  })}
-                </div>
               </div>
 
               <div className="space-y-1.5 text-xs">

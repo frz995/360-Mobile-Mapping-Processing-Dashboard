@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
-  ArrowRight,
-  Loader2
+  ArrowRight
 } from 'lucide-react';
 import type { ProcessingJobRecord } from '../types/production';
 import { fetchProcessingJobsFromSupabase } from '../services/supabase';
@@ -176,9 +175,10 @@ export const OperationalActionCenter: React.FC<OperationalActionCenterProps> = (
           Active Work:
         </span>
         {isLoadingJobs ? (
-          <span className="text-text-muted flex items-center gap-1">
-            <Loader2 size={11} className="animate-spin text-text-muted" /> Syncing...
-          </span>
+          <div aria-hidden="true" className="flex items-center gap-2">
+            <div className="h-3 w-20 animate-pulse rounded bg-inner border border-subtle/50" />
+            <div className="h-3 w-10 animate-pulse rounded bg-inner border border-subtle/50" />
+          </div>
         ) : activeJobs.length > 0 ? (
           <div className="flex items-center gap-2">
             <span className="font-semibold text-text-base">

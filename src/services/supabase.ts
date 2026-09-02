@@ -1,13 +1,18 @@
 import { createClient } from '@supabase/supabase-js';
 import type { QADefectRecord, QAQCAuditRunRecord, ExtendedProjectSettings } from '../types/admin';
 import type { DatasetRecord, ExternalJobStatus, ProcessingJobRecord, ProcessingJobStatus } from '../types/production';
+import { calculatePathDistanceKm } from '../utils/geo';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_KEY || '';
 
 function createSafeSupabaseClient() {
-  const url = supabaseUrl || 'https://tqqybumedywzylujjkqa.supabase.co';
-  const key = supabaseKey || 'sb_publishable_Nf52vHR8rCpvoj-w77ZehQ_QniT4-EV';
+  const url = supabaseUrl || '';
+  const key = supabaseKey || '';
+
+  if (!url || !key) {
+    console.error('[Supabase] VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY is not configured. Check your .env file.');
+  }
 
   try {
     return createClient(url, key, {
@@ -19,7 +24,7 @@ function createSafeSupabaseClient() {
     });
   } catch (err) {
     console.warn('Supabase client creation fallback:', err);
-    return createClient(url, 'sb_publishable_Nf52vHR8rCpvoj-w77ZehQ_QniT4-EV', {
+    return createClient(url, key, {
       auth: { persistSession: false, autoRefreshToken: false }
     });
   }
@@ -62,22 +67,8 @@ export interface SupabasePanoramaRecord {
 
 // Subgrid centroid coordinates (longitude, latitude) populated dynamically from real database records
 
-// Dynamically extracts subgrid prefix from any filename or string
-export function extractSubgridName(filenameOrSubgrid?: string): string {
-  if (!filenameOrSubgrid) return '';
-  const clean = filenameOrSubgrid.split('/').pop()?.trim() || filenameOrSubgrid.trim();
-
-  // 1. Check GIS coordinate syntax: NxxExx / SxxWxx
-  const coordMatch = clean.match(/([NS]\d+[EW]\d+)/i);
-  if (coordMatch) return coordMatch[1].toUpperCase();
-
-  // 2. Check general prefix before hyphen or underscore
-  const prefixMatch = clean.match(/^([A-Za-z0-9]+)[-_]/);
-  if (prefixMatch) return prefixMatch[1].toUpperCase();
-
-  // 3. Fallback: file basename without extension
-  return clean.replace(/\.[^/.]+$/, '').toUpperCase();
-}
+import { extractSubgridName } from '../utils/subgrid';
+export { extractSubgridName };
 
 export const SUBGRID_COORDINATES: Record<string, [number, number]> = {};
 
@@ -99,26 +90,94 @@ function extractSubgrid(filename: string): string {
   return base || '';
 }
 
-// Helper: Calculate geodesic distance in km
-function calculateDistance(points: { lat: number; lon: number }[]): number {
-  if (!points || points.length < 2) return 0;
-  let totalKm = 0;
-  for (let i = 0; i < points.length - 1; i++) {
-    const p1 = points[i];
-    const p2 = points[i + 1];
-    const R = 6371; // Earth radius in km
-    const dLat = (p2.lat - p1.lat) * (Math.PI / 180);
-    const dLon = (p2.lon - p1.lon) * (Math.PI / 180);
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(p1.lat * (Math.PI / 180)) *
-      Math.cos(p2.lat * (Math.PI / 180)) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    totalKm += R * c;
+// Helper: Calculate geodesic distance in km (consolidated in utils/geo.ts)
+
+const FILE_INVENTORY_TABLE = 'file_inventory';
+
+export interface FileInventoryResult {
+  /** `true` when the server-side `file_inventory` table was queried successfully (bucket enumeration avoided). */
+  fromInventory: boolean;
+  fileSet: Set<string>;
+  countsBySubgrid: Map<string, number>;
+  /** Total number of distinct uploaded image files found. */
+  totalFiles: number;
+}
+
+/**
+ * Resolve uploaded 360 image filenames for a storage bucket/path.
+ * Prefers the server-side `file_inventory` table (no client-side bucket enumeration),
+ * and falls back to direct storage `.list()` only if that table is unavailable.
+ */
+async function resolveStorageFiles(
+  candidates: Array<{ bucket: string; path: string }>
+): Promise<FileInventoryResult> {
+  const result: FileInventoryResult = {
+    fromInventory: false,
+    fileSet: new Set<string>(),
+    countsBySubgrid: new Map<string, number>(),
+    totalFiles: 0
+  };
+
+  const addFile = (name: string) => {
+    if (name && name.includes('.') && !name.startsWith('.')) {
+      const fullClean = name.toLowerCase().trim();
+      const baseName = name.split('/').pop()?.toLowerCase().trim();
+      if (!result.fileSet.has(fullClean)) {
+        result.totalFiles++;
+      }
+      result.fileSet.add(fullClean);
+      if (baseName) result.fileSet.add(baseName);
+      const sg = extractSubgrid(name);
+      if (sg && sg !== 'N/A') {
+        const normSg = sg.toUpperCase().trim();
+        result.countsBySubgrid.set(normSg, (result.countsBySubgrid.get(normSg) || 0) + 1);
+      }
+    }
+  };
+
+  // 1) Try server-side file_inventory table first (avoids client bucket enumeration)
+  try {
+    const uniqueBuckets = Array.from(new Set(candidates.map(c => c.bucket)));
+    let inventoryRows: any[] = [];
+    for (const bucket of uniqueBuckets) {
+      const { data, error } = await supabase
+        .from(FILE_INVENTORY_TABLE)
+        .select('filename, subgrid')
+        .eq('bucket', bucket)
+        .limit(10000);
+      if (!error && Array.isArray(data)) {
+        inventoryRows = inventoryRows.concat(data);
+      }
+    }
+    if (inventoryRows.length > 0) {
+      inventoryRows.forEach((row: any) => {
+        const name = row?.filename || row?.name || row?.file_name || '';
+        if (name) addFile(name);
+      });
+      result.fromInventory = true;
+      return result;
+    }
+  } catch (_) { /* table or query unavailable -> fall back to storage listing */ }
+
+  // 2) Fallback: enumerate files directly from the storage bucket(s)
+  for (const loc of candidates) {
+    try {
+      let offset = 0;
+      const limit = 100;
+      let hasMore = true;
+      let totalFetched = 0;
+      while (hasMore && totalFetched < 10000) {
+        const { data, error } = await supabase.storage.from(loc.bucket).list(loc.path, { limit, offset });
+        if (error || !data || data.length === 0) break;
+        totalFetched += data.length;
+        data.forEach(item => addFile(item.name));
+        if (data.length < limit) hasMore = false;
+        else offset += limit;
+      }
+    } catch (_) { /* skip inaccessible bucket */ }
   }
-  return parseFloat(totalKm.toFixed(2));
+
+  return result;
 }
 
 /**
@@ -180,8 +239,7 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
     const publishedRows = data || [];
 
     // Count actual available images in storage bucket if accessible
-    const storageImageCounts = new Map<string, number>();
-    const storageFileSet = new Set<string>();
+    // (prefers server-side file_inventory table, falls back to bucket listing)
     const primaryBucket = settings?.supabaseBucket || (settings as any)?.storageBucket || import.meta.env.VITE_SUPABASE_BUCKET || import.meta.env.VITE_STORAGE_BUCKET || 'MMS_PIC';
     const candidateLocations: Array<{ bucket: string; path: string }> = [
       { bucket: primaryBucket, path: '' },
@@ -198,43 +256,11 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
       idx === self.findIndex(t => t.bucket === loc.bucket && t.path === loc.path)
     );
 
-    for (const loc of uniqueLocations) {
-      try {
-        let offset = 0;
-        const limit = 100;
-        let hasMore = true;
-        let totalFetched = 0;
+    const storageResolved = await resolveStorageFiles(uniqueLocations);
+    const storageImageCounts = storageResolved.countsBySubgrid;
+    const storageFileSet = storageResolved.fileSet;
 
-        while (hasMore && totalFetched < 10000) {
-          const { data: storageFiles, error: storageError } = await supabase.storage.from(loc.bucket).list(loc.path, { limit, offset });
-          if (storageError || !storageFiles || storageFiles.length === 0) {
-            break;
-          }
-          totalFetched += storageFiles.length;
-          storageFiles.forEach(file => {
-            if (file.name && file.name.includes('.') && !file.name.startsWith('.')) {
-              const fullClean = file.name.toLowerCase().trim();
-              const baseName = file.name.split('/').pop()?.toLowerCase().trim();
-              storageFileSet.add(fullClean);
-              if (baseName) storageFileSet.add(baseName);
 
-              const sg = extractSubgrid(file.name);
-              if (sg && sg !== 'N/A') {
-                const normSg = sg.toUpperCase().trim();
-                storageImageCounts.set(normSg, (storageImageCounts.get(normSg) || 0) + 1);
-              }
-            }
-          });
-          if (storageFiles.length < limit) {
-            hasMore = false;
-          } else {
-            offset += limit;
-          }
-        }
-      } catch (_) { }
-    }
-
-    console.log('Verified Supabase storage file count:', storageFileSet.size, 'Subgrid counts:', Object.fromEntries(storageImageCounts));
 
     // Helper to verify image filenames directly against storage
     function verifyFilenamesAgainstStorage(
@@ -279,7 +305,7 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
     const qaqcRunsTable = settings?.qaqcRunsTable || import.meta.env.VITE_DB_QAQC_RUNS_TABLE || 'qaqc_audit_runs';
     let cloudAuditCache: Record<string, any> = {};
     try {
-      const { data: auditRows } = await supabase.from(qaqcRunsTable).select('*');
+      const { data: auditRows } = await supabase.from(qaqcRunsTable).select('subgrid, run_id, total_stations, defect_count, pass_rate, mean_tenengrad_score, defects_list, history, pic, user_id, user_email, completed_at, created_at');
       if (auditRows && auditRows.length > 0) {
         auditRows.forEach((r: any) => {
           const norm = (extractSubgrid(r.subgrid) || r.subgrid || '').toUpperCase().trim();
@@ -422,7 +448,7 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
       const pic = formatPIC(g.pic || knownMetadata[subgrid]?.pic || 'Unassigned');
       const equipment = 'MMS';
 
-      const calcKm = calculateDistance(g.points);
+      const calcKm = calculatePathDistanceKm(g.points);
       const km = calcKm > 0 ? calcKm : Math.round((poiCount * 0.005) * 100) / 100;
 
       const normSubgrid = subgrid.toUpperCase().trim();
@@ -570,7 +596,7 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
           const sg = g.subgrid;
           const explicitPoi = g.poiCount || g.imagesProcessed || g.imageFilenames.length || g.points.length || 0;
           const count = explicitPoi;
-          const calcKm = calculateDistance(g.points);
+          const calcKm = calculatePathDistanceKm(g.points);
           const km = g.kmProcessed > 0 ? g.kmProcessed : (calcKm > 0 ? calcKm : Math.round((count * 0.005) * 100) / 100);
           const rawDate = g.capturedAt ? new Date(g.capturedAt).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
           let dateFormatted = rawDate;
@@ -756,7 +782,7 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
       });
     });
 
-    console.log('Supabase sync complete. Subgrids processed:', Array.from(batchMap.keys()), 'Daily:', dailyData.length, 'Batches:', batchLogs.length);
+
     return { batchLogs, dailyData };
   } catch (err) {
     console.error('Error in fetchSupabaseData:', err);
@@ -1296,7 +1322,6 @@ export async function updateDefectStatusInSupabase(
       console.warn('qa_defects sync notice (non-fatal):', qaErr);
     }
 
-    console.log(`Successfully synced QA status to Supabase for ${cleanKey}`);
     return { success: true, message: `Synced QA status for ${cleanKey} in Supabase` };
   } catch (err) {
     console.warn('Supabase defect update error:', err);
@@ -1337,7 +1362,7 @@ export async function fetchQaRecordsFromSupabase(settings?: any): Promise<Record
 export async function fetchQaAuditRunsFromSupabase(settings?: any): Promise<Record<string, QAQCAuditRunRecord>> {
   try {
     const qaqcRunsTable = settings?.qaqcRunsTable || import.meta.env.VITE_DB_QAQC_RUNS_TABLE || 'qaqc_audit_runs';
-    const { data, error } = await supabase.from(qaqcRunsTable).select('*').order('completed_at', { ascending: false });
+    const { data, error } = await supabase.from(qaqcRunsTable).select('subgrid, run_id, id, total_stations, defect_count, pass_rate, mean_tenengrad_score, defects_list, history, pic, user_id, user_email, completed_at, created_at, updated_at').order('completed_at', { ascending: false });
     if (error) {
       console.warn('fetchQaAuditRunsFromSupabase notice:', error.message);
       return {};
@@ -1437,34 +1462,8 @@ export async function verifyCsvImageFilenamesInStorage(filenames: string[], sett
     idx === self.findIndex(t => t.bucket === loc.bucket && t.path === loc.path)
   );
 
-  const fileSet = new Set<string>();
-
-  for (const loc of uniqueLocations) {
-    try {
-      let offset = 0;
-      const limit = 100;
-      let hasMore = true;
-      let totalFetched = 0;
-
-      while (hasMore && totalFetched < 10000) {
-        const { data, error } = await supabase.storage.from(loc.bucket).list(loc.path, { limit, offset });
-        if (error || !data || data.length === 0) break;
-        totalFetched += data.length;
-
-        data.forEach(item => {
-          if (item.name && item.name.includes('.') && !item.name.startsWith('.')) {
-            const fullClean = item.name.toLowerCase().trim();
-            const baseName = item.name.split('/').pop()?.toLowerCase().trim();
-            fileSet.add(fullClean);
-            if (baseName) fileSet.add(baseName);
-          }
-        });
-
-        if (data.length < limit) hasMore = false;
-        else offset += limit;
-      }
-    } catch (_) { }
-  }
+  const storageResolved = await resolveStorageFiles(uniqueLocations);
+  const fileSet = storageResolved.fileSet;
 
   if (fileSet.size > 0) {
     const verifiedFilenames: string[] = [];
@@ -1839,34 +1838,18 @@ export async function getStorageImageCountsFromSupabase(forceRefresh: boolean = 
   const storageCounts: Record<string, number> = {};
 
   try {
-    let offset = 0;
-    const limit = 100;
-    let hasMore = true;
-    let totalFetched = 0;
-
-    while (hasMore && totalFetched < 10000) {
-      const { data: storageFiles, error: storageError } = await supabase.storage.from(bucketName).list('', { limit, offset });
-      if (storageError || !storageFiles || storageFiles.length === 0) {
-        break;
-      }
-      totalFetched += storageFiles.length;
-      storageFiles.forEach(file => {
-        if (file.name && file.name.includes('.') && !file.name.startsWith('.')) {
-          const sg = extractSubgrid(file.name);
-          if (sg && sg !== 'N/A') {
-            const normSg = sg.toUpperCase().trim();
-            storageCounts[normSg] = (storageCounts[normSg] || 0) + 1;
-          }
-        }
-      });
-      if (storageFiles.length < limit) {
-        hasMore = false;
-      } else {
-        offset += limit;
-      }
-    }
+    const storageResolved = await resolveStorageFiles([
+      { bucket: bucketName, path: '' },
+      { bucket: bucketName.toLowerCase(), path: '' },
+      { bucket: bucketName.toUpperCase(), path: '' },
+      { bucket: 'MMS_PIC', path: '' },
+      { bucket: 'panoramas', path: '' }
+    ]);
+    storageResolved.countsBySubgrid.forEach((count, sg) => {
+      storageCounts[sg] = count;
+    });
   } catch (err) {
-    console.warn('Storage bucket list exception:', err);
+    console.warn('Storage file inventory exception:', err);
   }
 
   storageCountsCache = { data: storageCounts, timestamp: now };
@@ -2029,12 +2012,13 @@ export async function testDatabaseHealth(): Promise<{
 
   try {
     const bucket = import.meta.env.VITE_SUPABASE_BUCKET || 'MMS_PIC';
-    const { data, error } = await supabase.storage.from(bucket).list('', { limit: 100 });
-    if (error) {
-      storageStatus = 'degraded';
-    } else if (data) {
-      totalFiles = data.length;
-    }
+    const storageResolved = await resolveStorageFiles([
+      { bucket, path: '' },
+      { bucket: bucket.toLowerCase(), path: '' },
+      { bucket: bucket.toUpperCase(), path: '' },
+      { bucket: 'MMS_PIC', path: '' }
+    ]);
+    totalFiles = storageResolved.totalFiles;
   } catch {
     storageStatus = 'degraded';
   }
@@ -2253,7 +2237,7 @@ export async function fetchProjectSettingsFromSupabase(): Promise<any | null> {
   try {
     const { data, error } = await supabase
       .from('project_settings')
-      .select('*')
+      .select('id, settings, updated_at')
       .eq('id', 'default')
       .maybeSingle();
 
@@ -2322,7 +2306,7 @@ export async function fetchQADefectsForSubgrid(subgrid: string): Promise<QADefec
     try {
       const { data: qaRows, error } = await supabase
         .from('qa_defects')
-        .select('*')
+        .select('point_id, filename, item_key, id, subgrid, frame_index, defect_flags, defect_type, pic, image_url, lat, lng, bearing, is_resolved, resolved_at, created_at')
         .eq('subgrid', cleanSub)
         .order('frame_index', { ascending: true });
 
@@ -2354,7 +2338,7 @@ export async function fetchQADefectsForSubgrid(subgrid: string): Promise<QADefec
     try {
       const { data: auditRows, error: auditError } = await supabase
         .from('qaqc_audit_runs')
-        .select('*')
+        .select('id, defects_list, pic, created_at')
         .ilike('subgrid', `%${cleanSub}%`)
         .order('created_at', { ascending: false });
 

@@ -82,14 +82,35 @@ export function UnderlineTabStrip<K extends string>({
   onChange: (key: K) => void;
   tabLabel?: (key: K) => string;
 }) {
+  const tabsRef = React.useRef<Record<string, HTMLButtonElement | null>>({});
+
+  const onKeyDown = (event: React.KeyboardEvent) => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight' && event.key !== 'Home' && event.key !== 'End') return;
+    const currentIndex = tabs.findIndex((t) => t.key === active);
+    if (currentIndex < 0) return;
+    event.preventDefault();
+    let nextIndex = currentIndex;
+    if (event.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + tabs.length) % tabs.length;
+    else if (event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % tabs.length;
+    else if (event.key === 'Home') nextIndex = 0;
+    else if (event.key === 'End') nextIndex = tabs.length - 1;
+    onChange(tabs[nextIndex].key);
+    tabsRef.current[String(tabs[nextIndex].key)]?.focus();
+  };
+
   return (
-    <div className="flex items-stretch gap-1 overflow-x-auto border-b border-divider shrink-0">
+    <div role="tablist" aria-label="Panel tabs" className="flex items-stretch gap-1 overflow-x-auto border-b border-divider shrink-0">
       {tabs.map((tab) => {
         const isActive = active === tab.key;
         return (
           <button
             key={tab.key}
+            ref={(el) => { tabsRef.current[String(tab.key)] = el; }}
+            role="tab"
+            aria-selected={isActive}
+            tabIndex={isActive ? 0 : -1}
             onClick={() => onChange(tab.key)}
+            onKeyDown={onKeyDown}
             className={`relative flex items-center gap-1.5 px-3.5 py-2.5 text-[11px] font-semibold tracking-wide whitespace-nowrap transition-all duration-200 ease-out cursor-pointer ${
               isActive ? 'text-sky-400' : 'text-text-muted hover:text-text-base'
             }`}

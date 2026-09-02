@@ -8,6 +8,33 @@
 
 import { gpuAnalyzer, isGpuAccelerationSupported, getGpuHardwareName } from './gpuAnalyzer';
 export { gpuAnalyzer, isGpuAccelerationSupported, getGpuHardwareName };
+import { calculateGeodesicDistanceMeters } from './geo';
+
+/**
+ * Resolves a 2D pixel-draw context that works in BOTH the main thread and a
+ * Web Worker. Prefers OffscreenCanvas (available in both contexts); falls back
+ * to a hidden HTMLCanvasElement when OffscreenCanvas is unavailable on the
+ * main thread. This keeps the pixel-math identical everywhere while removing
+ * the hard dependency on `document` for image decoding.
+ */
+function getCanvasPixelContext(width: number, height: number): CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null {
+  if (typeof OffscreenCanvas !== 'undefined') {
+    try {
+      const canvas = new OffscreenCanvas(width, height);
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      if (ctx) return ctx;
+    } catch (_err) {
+      // fall through to the HTML canvas path below
+    }
+  }
+  if (typeof document !== 'undefined') {
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    return canvas.getContext('2d', { willReadFrequently: true });
+  }
+  return null;
+}
 
 export interface GeoPoint {
   lat?: number | null;
@@ -71,54 +98,6 @@ export const DEFAULT_QAQC_THRESHOLDS: Required<QAQCThresholdSettings> = {
   gradientMagnitudeThreshold: 400.0,
   deliverableModel: 'masked_car'
 };
-
-/**
- * Calculates geodesic distance in meters between two lat/lng coordinates using the Haversine formula.
- */
-export function calculateGeodesicDistanceMeters(
-  lat1: number,
-  lon1: number,
-  lat2: number,
-  lon2: number
-): number {
-  if (lat1 === lat2 && lon1 === lon2) return 0;
-
-  const R = 6371000; // Earth radius in meters
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
-  const radLat1 = (lat1 * Math.PI) / 180;
-  const radLat2 = (lat2 * Math.PI) / 180;
-
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(radLat1) * Math.cos(radLat2) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-  return R * c;
-}
-
-/**
- * Calculates geodesic forward azimuth / bearing in degrees [0, 360) between two coordinates.
- */
-export function calculateForwardBearing(
-  lat1: number,
-  lon1: number,
-  lat2: number,
-  lon2: number
-): number {
-  if (lat1 === lat2 && lon1 === lon2) return 0;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
-  const radLat1 = (lat1 * Math.PI) / 180;
-  const radLat2 = (lat2 * Math.PI) / 180;
-
-  const y = Math.sin(dLon) * Math.cos(radLat2);
-  const x =
-    Math.cos(radLat1) * Math.sin(radLat2) -
-    Math.sin(radLat1) * Math.cos(radLat2) * Math.cos(dLon);
-
-  const brng = (Math.atan2(y, x) * 180) / Math.PI;
-  return (brng + 360) % 360;
-}
 
 /**
  * Detects invalid GPS coordinates (0/null) or geodesic distance jumps exceeding dynamic thresholds.
@@ -275,10 +254,7 @@ export async function detectBlurAndObstruction(
         if (!res.ok) throw new Error('Fetch failed');
         const blob = await res.blob();
 
-        const canvas = document.createElement('canvas');
-        canvas.width = sampleWidth;
-        canvas.height = sampleHeight;
-        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const ctx = getCanvasPixelContext(sampleWidth, sampleHeight);
         if (!ctx) return null;
 
         if (typeof createImageBitmap === 'function') {
@@ -290,7 +266,7 @@ export async function detectBlurAndObstruction(
           ctx.drawImage(bmp, 0, 0, sampleWidth, sampleHeight);
           bmp.close();
           return ctx.getImageData(0, 0, sampleWidth, sampleHeight);
-        } else {
+        } else if (typeof document !== 'undefined' && typeof Image !== 'undefined') {
           const blobUrl = URL.createObjectURL(blob);
           const img = new Image();
           await new Promise((resolve, reject) => {
@@ -302,9 +278,11 @@ export async function detectBlurAndObstruction(
           URL.revokeObjectURL(blobUrl);
           return ctx.getImageData(0, 0, sampleWidth, sampleHeight);
         }
+        return null;
       } catch (_fetchErr) {
         // Attempt 2: Direct Image element with crossOrigin anonymous
         try {
+          if (typeof document === 'undefined' || typeof Image === 'undefined') return null;
           const img = new Image();
           img.crossOrigin = 'anonymous';
           img.decoding = 'async';
@@ -313,10 +291,7 @@ export async function detectBlurAndObstruction(
             img.onerror = reject;
             img.src = src;
           });
-          const canvas = document.createElement('canvas');
-          canvas.width = sampleWidth;
-          canvas.height = sampleHeight;
-          const ctx = canvas.getContext('2d', { willReadFrequently: true });
+          const ctx = getCanvasPixelContext(sampleWidth, sampleHeight);
           if (!ctx) return null;
           ctx.drawImage(img, 0, 0, sampleWidth, sampleHeight);
           return ctx.getImageData(0, 0, sampleWidth, sampleHeight);
@@ -588,10 +563,7 @@ export async function analyzeImageSharpness(
         if (!res.ok) throw new Error('Fetch failed');
         const blob = await res.blob();
 
-        const canvas = document.createElement('canvas');
-        canvas.width = sampleWidth;
-        canvas.height = sampleHeight;
-        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const ctx = getCanvasPixelContext(sampleWidth, sampleHeight);
         if (!ctx) return null;
 
         if (typeof createImageBitmap === 'function') {
@@ -612,7 +584,7 @@ export async function analyzeImageSharpness(
             naturalWidth,
             naturalHeight
           };
-        } else {
+        } else if (typeof document !== 'undefined' && typeof Image !== 'undefined') {
           const blobUrl = URL.createObjectURL(blob);
           const img = new Image();
           await new Promise((resolve, reject) => {
@@ -630,8 +602,10 @@ export async function analyzeImageSharpness(
             naturalHeight
           };
         }
+        return null;
       } catch (_err) {
         try {
+          if (typeof document === 'undefined' || typeof Image === 'undefined') return null;
           const img = new Image();
           img.crossOrigin = 'anonymous';
           img.decoding = 'async';
@@ -642,10 +616,7 @@ export async function analyzeImageSharpness(
           });
           const naturalWidth = img.naturalWidth || img.width;
           const naturalHeight = img.naturalHeight || img.height;
-          const canvas = document.createElement('canvas');
-          canvas.width = sampleWidth;
-          canvas.height = sampleHeight;
-          const ctx = canvas.getContext('2d', { willReadFrequently: true });
+          const ctx = getCanvasPixelContext(sampleWidth, sampleHeight);
           if (!ctx) return null;
           ctx.drawImage(img, 0, 0, sampleWidth, sampleHeight);
           return {

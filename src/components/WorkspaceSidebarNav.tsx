@@ -50,6 +50,8 @@ function NavItem({
       onClick={() => onNavigate(definition.key)}
       className={`${activeButtonClass(active, isSidebarExpanded)} ${tourActive ? 'ring-2 ring-slate-300 shadow-[0_0_20px_rgba(255,255,255,0.25)] z-30 bg-inner' : ''}`}
       title={translate(definition.labelKey)}
+      aria-label={translate(definition.labelKey)}
+      aria-current={active ? 'page' : undefined}
     >
       <div className="relative shrink-0 flex items-center justify-center">
         <Icon size={20} className="shrink-0 transition-transform duration-200" />
@@ -94,7 +96,7 @@ export function WorkspaceSidebarNav({
   const settingsDef = WORKSPACES.find((w) => w.key === 'settings')!;
 
   return (
-    <nav className={`bg-card border-r border-subtle flex flex-col py-3 gap-2 shrink-0 ${navContainerClass}`}>
+    <nav aria-label="Workspace navigation" className={`bg-card border-r border-subtle flex flex-col py-3 gap-2 shrink-0 ${navContainerClass}`}>
       {WORKSPACE_CATEGORIES.map((category, catIndex) => (
         <div key={category.key} className="flex flex-col gap-0.5">
           {isSidebarExpanded && (
@@ -127,6 +129,7 @@ export function WorkspaceSidebarNav({
         onClick={onRefresh}
         className={`${actionButtonClass(isSidebarExpanded)} ${tourStep === 9 ? 'ring-2 ring-slate-300 shadow-[0_0_20px_rgba(255,255,255,0.25)] z-30 bg-inner' : ''}`}
         title={translate('refresh')}
+        aria-label={translate('refresh')}
       >
         <div className="relative shrink-0 flex items-center justify-center">
           <RefreshCw size={20} className="shrink-0 transition-transform duration-300 active:rotate-180" />
@@ -149,6 +152,7 @@ export function WorkspaceSidebarNav({
         onClick={onOpenAbout}
         className={`${actionButtonClass(isSidebarExpanded)} ${tourStep === 11 ? 'ring-2 ring-slate-300 shadow-[0_0_20px_rgba(255,255,255,0.25)] z-30 bg-inner' : ''}`}
         title={translate('about')}
+        aria-label={translate('about')}
       >
         <div className="relative shrink-0 flex items-center justify-center">
           <Info size={20} className="shrink-0 transition-transform duration-200 hover:scale-110" />
@@ -165,6 +169,8 @@ export function WorkspaceSidebarNav({
         onClick={onToggleSidebar}
         className={`rounded-xl text-text-muted hover:text-text-base hover:bg-inner transition-all duration-300 cursor-pointer flex items-center overflow-hidden ${tourStep === 12 ? 'ring-2 ring-slate-300 shadow-[0_0_20px_rgba(255,255,255,0.25)] z-30 bg-inner' : ''} ${isSidebarExpanded ? 'justify-between w-full px-3 py-2 bg-inner border border-subtle shadow-sm' : 'justify-center w-10 h-10'}`}
         title={isSidebarExpanded ? 'Collapse Navigation Panel' : 'Expand Navigation Panel'}
+        aria-label={isSidebarExpanded ? 'Collapse navigation panel' : 'Expand navigation panel'}
+        aria-expanded={isSidebarExpanded}
       >
         <span className={`transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] text-[10px] font-bold text-text-base uppercase tracking-wider whitespace-nowrap overflow-hidden origin-left ${isSidebarExpanded ? 'opacity-100 max-w-[120px] translate-x-0' : 'opacity-0 max-w-0 -translate-x-3 pointer-events-none'}`}>
           {translate('collapsePanel')}

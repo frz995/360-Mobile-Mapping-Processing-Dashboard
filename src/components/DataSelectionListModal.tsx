@@ -15,6 +15,7 @@ import {
 import type { SelectedPointInfo, SubgridPointRow } from './DeletionSelectionMap';
 import type { DailyTimeSeriesLike, BatchLogLike } from '../utils/deletionImpact';
 import { extractSubgridName } from '../services/supabase';
+import { useDialogEscape } from './common/dialog';
 
 export interface DataSelectionListModalProps {
   isOpen: boolean;
@@ -61,6 +62,8 @@ export const DataSelectionListModal: React.FC<DataSelectionListModalProps> = ({
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
   const [deleteInputText, setDeleteInputText] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
+
+  useDialogEscape(onClose, isOpen);
 
   // Auto-initialize points for newly selected subgrids on modal open if none exist
   const initializedSubgridsRef = React.useRef<Set<string>>(new Set());
@@ -154,7 +157,7 @@ export const DataSelectionListModal: React.FC<DataSelectionListModalProps> = ({
   const remainingBucketCount = Math.max(0, totalAvailableBucketCount - selectedAvailableBucketCount);
 
   return (
-    <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 z-[1200] animate-in fade-in">
+    <div role="dialog" aria-modal="true" aria-label="Selected Data & Point Inspector" className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 z-[1200] animate-in fade-in">
       <div className="bg-card border border-subtle rounded-2xl max-w-3xl w-full shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
         {/* Header */}
         <div className="px-6 py-4 border-b border-subtle flex items-center justify-between bg-card shrink-0">

@@ -287,7 +287,6 @@ export const SelectionMapOverlay: React.FC<SelectionMapOverlayProps> = ({
       const maxY = Math.max(b.y1, b.y2);
 
       if (iframeRef.current && iframeRef.current.contentWindow) {
-        console.log('[SelectionOverlay] sending QUERY_RENDERED_FEATURES', [[minX, minY], [maxX, maxY]]);
         iframeRef.current.contentWindow.postMessage({
           type: 'QUERY_RENDERED_FEATURES',
           bbox: [[minX, minY], [maxX, maxY]]

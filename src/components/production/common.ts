@@ -29,6 +29,10 @@ export function getProductionApiSettings(
     nasWorkBasePath:
       projectSettings?.nasWorkBasePath ||
       import.meta.env.VITE_NAS_WORK_BASE_PATH ||
+      '',
+    apiKey:
+      projectSettings?.productionApiKey ||
+      import.meta.env.VITE_PRODUCTION_API_KEY ||
       ''
   };
 }

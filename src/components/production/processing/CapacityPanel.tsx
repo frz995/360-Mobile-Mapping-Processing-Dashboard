@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Cpu, Gauge, Loader2, RefreshCw, Activity, ServerCog } from 'lucide-react';
+import { Cpu, Gauge, RefreshCw, Activity, ServerCog } from 'lucide-react';
 import type { ProductionApiClient } from '../../../services/productionApi';
 import type { ProcessingJobRecord, WorkerHealthInfo } from '../../../types/production';
 import { isJobActive, isJobTerminal } from '../../../utils/productionQueue';
@@ -92,8 +92,9 @@ export const CapacityPanel: React.FC<CapacityPanelProps> = ({ jobs, api, project
             <Cpu size={14} className="text-sky-400" /> NAS GPU Worker
           </div>
           {loading ? (
-            <div className="flex items-center gap-2 text-[11px] text-text-muted py-3">
-              <Loader2 size={13} className="animate-spin" /> probing /health…
+            <div aria-hidden="true" className="space-y-1.5 py-2 animate-pulse">
+              <div className="h-3 w-28 rounded bg-inner border border-subtle/50" />
+              <div className="h-2.5 w-20 rounded bg-inner border border-subtle/50" />
             </div>
           ) : health ? (
             <>
