@@ -22,12 +22,13 @@ Automated tests are the single biggest missing enterprise property: there are
 currently zero test files. Adding vitest + React Testing Library + Playwright
 does not change any runtime behavior — it only locks in what exists.
 
-- [ ] **6.1 Unit test harness (Vitest)**
+- [x] **6.1 Unit test harness (Vitest)** ✅
   - Add `vitest`, `@testing-library/react`, `@testing-library/jest-dom`, `jsdom`,
     `@vitejs/plugin-react` (present) and a `vitest.config.ts` + `vitest.setup.ts`.
   - Add `"test": "vitest run"` and `"test:watch": "vitest"` scripts to `package.json`.
   - Verify: `npx vitest run` executes a trivial smoke test; `npx vite build` still green.
-- [ ] **6.2 Unit tests for pure utils** (highest value, zero DOM)
+  - Note: pinned `vitest@^1.6.1` + `jsdom@^24` for Node 18 compatibility (vitest 4 / jsdom 30 need Node ≥20/22).
+- [x] **6.2 Unit tests for pure utils** (highest value, zero DOM) ✅
   - Cover `geo.ts` (`calculateGeodesicDistanceMeters`, `calculateForwardBearing`,
     `calculatePathDistanceKm`), `qaqcAnalyzer.detectBadGps`,
     `dashboardData.getImagesProcessedCount` / `parseFlexibleDate`,
@@ -35,32 +36,50 @@ does not change any runtime behavior — it only locks in what exists.
     `deletionImpact.computeDeletionImpact`.
   - Thresholds: fixed known inputs vs expected numeric output (assert ± small epsilon
     on geodesic meters), edge cases (null/zero coords, same-point, missing files).
-- [ ] **6.3 Component tests for the new common kit**
+  - Added 5 test files (geo, subgrid, dashboardData, qaqcAnalyzer, deletionImpact, pipelineStages = 6 files, 94 tests). GPU module mocked in qaqcAnalyzer test to avoid jsdom WebGL load. `tsc -b` + `vitest run` green.
+- [x] **6.3 Component tests for the new common kit** ✅
   - `Toaster` (renders aria-live status region, dismisses after timeout, dismiss
     button closes), `WorkspaceErrorBoundary` (catches a throwing child, shows
     retry card, resets on `resetKey`), `WorkspaceSidebarNav` (active workspace
     gets `aria-current="page"`), `UnderlineTabStrip` roving-tab arrow keys.
-- [ ] **6.4 Integration tests for workflows**
-  - QA/QC worker message flow using the real `qaqc.worker.ts` via `new Worker`
-    in a jsdom Vitest (assert a START yields STATION followed by COMPLETE, and
-    ABORT during a run yields ABORTED).
-  - `useAppData` reducer/derived-state paths (loading/success/error).
-- [ ] **6.5 Single-workspace smoke (vitest + mocked Supabase)**
-  - Import `DataManagementPage` / a dashboard KPI block with the supabase client
-    module mocked; assert no `alert()`, row render, empty state render.
-- [ ] **6.6 CI pipeline (GitHub Actions)**
-  - Add `.github/workflows/ci.yml`: on push/PR — `npm ci`, `npm run build`
-    (tsc + vite), `npm run test`.
-  - Add `branches.mass: production` lint as a non-blocking job only once an
-    ESLint flat config exists (see 6.7).
-  - Verify: run `npm run build` and `npm run test` locally first so CI is green
-    on first push.
-- [ ] **6.7 Restore a working ESLint config**
-  - Add `eslint.config.mjs` (flat config — ESLint 8.57 supports `--config` with
-    `ESLINT_USE_FLAT_CONFIG`). Wire `npm run lint` to it. Fix only the errors it
-    introduces in NEW files; scope the old files to warn so the gate is real but
-    not blocking yet.
-  - (Optional, later) tighten to error and fix the ~170 legacy `as any`/
+  - Added 4 test files (Toaster, WorkspaceErrorBoundary, WorkspaceSidebarNav, chrome/UnderlineTabStrip = 24 tests). Toaster test uses a mocked isolated toast store to avoid module-global state leaking between tests.
+- [x] **6.4 Integration tests for workflows** ✅
+  - QA/QC worker message flow using the real `qaqc.worker.ts` (jsdom has no
+    `Worker` constructor, so the test drives the module directly via the global
+    `self.onmessage` entry point and captures `self.postMessage` output; the
+    image-analysis module is mocked so the WebGL/GPU singleton never loads).
+    Asserts START → STATION×N → COMPLETE, GPS-jump defect flagging, check-skip
+    behavior, and ABORT during an in-flight analysis → ABORTED (no COMPLETE).
+  - `useAppData` derived-state paths (loading success, `liveDefectCount`,
+    `dailyData`/`batchLogs` hydration and clamping) with the `supabase` service
+    module mocked.
+  - Added 2 files: `src/workers/__tests__/qaqc.worker.test.ts` (4 tests),
+    `src/hooks/__tests__/useAppData.test.tsx` (5 tests).
+- [x] **6.5 Single-workspace smoke (vitest + mocked Supabase)** ✅
+  - Import `DataManagementPage` with the `../services/supabase` module mocked;
+    asserts no `alert()` during mount, a populated daily row renders (subgrid +
+    frame count), the daily empty state renders, a reconciled batch row renders,
+    and the batch empty state renders.
+  - Added `src/components/__tests__/DataManagementPage.smoke.test.tsx` (5 tests).
+    Note: jsdom lacks a `Worker`/WebGL path, so the page's heavy child modals and
+    Leaflet map are only loaded, not rendered (they mount closed by default).
+- [x] **6.6 CI pipeline (GitHub Actions)** ✅
+  - Added `.github/workflows/ci.yml`: on push/PR — `npm ci`, `npm run build`
+    (tsc + vite), `npm run test`. Lint job is `continue-on-error: true`
+    (non-blocking) and becomes a real gate once the ESLint flat config lands in
+    6.7.
+  - Verified locally: `npm run build` (tsc -b + vite) and `npm run test`
+    (133 tests) are both green, so CI will be green on first push.
+- [x] **6.7 Restore a working ESLint config** ✅
+  - Added `eslint.config.mjs` (flat config — ESLint 8.57 with
+    `ESLINT_USE_FLAT_CONFIG=true`). Wired `npm run lint` to it via a small
+    cross-platform Node launcher (`scripts/lint.mjs`) that sets the env var and
+    spawns the ESLint CLI (avoids fragile inline env vars on Windows).
+  - Legacy `src/**` code is linted at WARN severity (non-blocking); the new
+    Phase-6 test files are linted at ERROR severity as a real gate. `npm run lint`
+    exits 0 with 0 errors / 685 warnings. Verified clean: `tsc -b`, 133 vitest
+    tests, and `vite build` all green.
+  - (Optional, later) tighten to error and fix the legacy `as any`/
     `@ts-ignore` occurrences file-by-file — tracked separately from this plan.
 
 ---
