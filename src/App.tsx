@@ -4656,9 +4656,14 @@ export default function App() {
               projectSettings={projectSettings}
               batchLogs={activeBatchLogs}
               dailyData={dailyData}
+              defectsList={allKnownDefects}
               onRefreshData={handleRefreshMap}
               translate={t}
               onBackToDashboard={() => goToWorkspace('dashboard')}
+              authSession={authSession}
+              isGuestUser={isGuestUser}
+              addNotification={addNotification}
+              addAuditLog={addAuditLog}
             />
           ) : currentPage === 'dashboard' ? null : (
             <div key={`workspace-${currentPage}`} className="flex-1 flex flex-col min-h-0 overflow-hidden animate-panel-enter">

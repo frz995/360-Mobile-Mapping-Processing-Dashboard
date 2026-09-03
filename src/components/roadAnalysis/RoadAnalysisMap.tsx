@@ -28,8 +28,10 @@ export interface RoadAnalysisMapProps {
    * Rendered as a dimmed shade so the selected region stands out.
    */
   dimmedRegionsGeojson?: any;
-  capturedPoints?: Array<[number, number]>;
-  /** Clipped road-runs from the extraction service. */
+  capturedPoints?: Array<[number, number] | any>;
+  /** Real captured survey trajectory tracks from dailyData / batchLogs. */
+  capturedTracks?: Array<Array<[number, number]>>;
+  /** Clipped road-runs from the extraction service or manual plan line. */
   roadRuns?: Array<Array<[number, number]>>;
   /**
    * Map style: an OpenFreeMap style URL (string) or a raster fallback style
@@ -50,7 +52,7 @@ const DEFAULT_ZOOM = 7;
 const DEFAULT_STYLE = 'https://tiles.openfreemap.org/styles/positron';
 
 /** Source ids created by this component (for teardown/rebuild). */
-const SOURCE_IDS = ['ra-dim', 'ra-districts', 'ra-captured', 'ra-captured-track', 'ra-roads'] as const;
+const SOURCE_IDS = ['ra-dim', 'ra-districts', 'ra-captured', 'ra-roads'] as const;
 
 /** Layer ids created by this component. */
 const LAYER_IDS = [
@@ -58,7 +60,6 @@ const LAYER_IDS = [
   'ra-districts',
   'ra-districts-line',
   'ra-captured',
-  'ra-captured-track',
   'ra-roads'
 ] as const;
 
@@ -75,26 +76,33 @@ function extractLineStringRuns(runs: Array<Array<[number, number]>>): GeoJSON.Fe
   };
 }
 
-function extractPointCollection(points: Array<[number, number]>): GeoJSON.FeatureCollection {
+function extractPointCollection(points: Array<[number, number] | any>): GeoJSON.FeatureCollection {
+  // Sort points so defect frames are drawn on top of normal points
+  const sorted = [...points].sort((a, b) => {
+    const aDef = (!Array.isArray(a) && (a.color === '#ef4444' || a.status === 'defect')) ? 1 : 0;
+    const bDef = (!Array.isArray(b) && (b.color === '#ef4444' || b.status === 'defect')) ? 1 : 0;
+    return aDef - bDef;
+  });
+
   return {
     type: 'FeatureCollection',
-    features: points.slice(0, 800).map((p) => ({
-      type: 'Feature' as const,
-      properties: {},
-      geometry: { type: 'Point' as const, coordinates: [p[0], p[1]] }
-    }))
-  };
-}
-
-function extractTrackLine(points: Array<[number, number]>): GeoJSON.Feature | null {
-  if (points.length < 2) return null;
-  return {
-    type: 'Feature',
-    properties: {},
-    geometry: {
-      type: 'LineString',
-      coordinates: points.slice(0, 800).map((p) => [p[0], p[1]] as [number, number])
-    }
+    features: sorted.map((p, idx) => {
+      const lng = Array.isArray(p) ? Number(p[0]) : Number(p.lng ?? p.lon ?? p.longitude);
+      const lat = Array.isArray(p) ? Number(p[1]) : Number(p.lat ?? p.latitude);
+      const isDefect = !Array.isArray(p) && (p.color === '#ef4444' || p.status === 'defect');
+      const color = isDefect ? '#ef4444' : (!Array.isArray(p) && p.color ? p.color : '#10b981');
+      return {
+        type: 'Feature' as const,
+        properties: {
+          id: !Array.isArray(p) ? (p.id || `pt-${idx}`) : `pt-${idx}`,
+          subgrid: !Array.isArray(p) ? (p.subgrid || '') : '',
+          filename: !Array.isArray(p) ? (p.filename || '') : '',
+          status: !Array.isArray(p) ? (isDefect ? 'defect' : (p.status || (p.isPublished ? 'published' : 'staging'))) : 'published',
+          color
+        },
+        geometry: { type: 'Point' as const, coordinates: [lng, lat] }
+      };
+    })
   };
 }
 
@@ -153,7 +161,7 @@ export const RoadAnalysisMap: React.FC<RoadAnalysisMapProps> = ({
       });
     }
 
-    // Captured points + track.
+    // 1. Captured panotrack points (individual survey frames, colored by status)
     if (capturedPoints.length > 0) {
       map.addSource('ra-captured', { type: 'geojson', data: extractPointCollection(capturedPoints) });
       map.addLayer({
@@ -161,36 +169,72 @@ export const RoadAnalysisMap: React.FC<RoadAnalysisMapProps> = ({
         type: 'circle',
         source: 'ra-captured',
         paint: {
-          'circle-radius': 3,
-          'circle-color': '#f59e0b',
+          'circle-radius': [
+            'interpolate',
+            ['linear'],
+            ['zoom'],
+            6, 3,
+            11, 4.5,
+            15, 7
+          ],
+          'circle-color': ['get', 'color'],
           'circle-stroke-color': '#ffffff',
-          'circle-stroke-width': 0.6
+          'circle-stroke-width': 1,
+          'circle-opacity': 0.95
         }
       });
-      const track = extractTrackLine(capturedPoints);
-      if (track) {
-        map.addSource('ra-captured-track', { type: 'geojson', data: track });
-        map.addLayer({
-          id: 'ra-captured-track',
-          type: 'line',
-          source: 'ra-captured-track',
-          paint: { 'line-color': '#f59e0b', 'line-width': 1.5, 'line-opacity': 0.55, 'line-dasharray': [2, 4] }
-        });
-      }
+
+      // Pointer cursor on hover
+      map.on('mouseenter', 'ra-captured', () => {
+        map.getCanvas().style.cursor = 'pointer';
+      });
+      map.on('mouseleave', 'ra-captured', () => {
+        map.getCanvas().style.cursor = '';
+      });
+
+      // Click popup on panotrack point
+      map.on('click', 'ra-captured', (e) => {
+        const feat = e.features?.[0];
+        if (!feat) return;
+        const coords = (feat.geometry as any).coordinates.slice();
+        const p = feat.properties || {};
+        const color = p.color || '#10b981';
+        const isDef = color === '#ef4444' || p.status === 'defect';
+        new maplibregl.Popup({ className: 'custom-panotrack-popup', offset: 8 })
+          .setLngLat(coords)
+          .setHTML(`
+            <div style="font-family: system-ui, sans-serif; font-size: 11px; line-height: 1.4; color: #f1f5f9; background: #0f172a; padding: 6px 10px; border-radius: 8px; border: 1px solid ${isDef ? '#ef444480' : 'rgba(255,255,255,0.12)'}; box-shadow: 0 4px 12px rgba(0,0,0,0.5);">
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 3px;">
+                <span style="font-weight: 700; color: ${isDef ? '#f87171' : '#38bdf8'}; font-size: 12px;">
+                  ${p.subgrid || 'Panotrack Point'}
+                </span>
+                <span style="font-size: 9px; font-weight: 700; text-transform: uppercase; padding: 1.5px 6px; border-radius: 4px; background: ${color}25; color: ${color}; border: 1px solid ${color}60;">
+                  ${isDef ? 'DEFECT / FLAGGED' : (p.status || 'ACTIVE')}
+                </span>
+              </div>
+              ${p.filename ? `<div style="color: #94a3b8; word-break: break-all; margin-bottom: 3px;">${p.filename}</div>` : ''}
+              <div style="color: #cbd5e1; font-size: 10px;">
+                ${Number(coords[1]).toFixed(5)}° N, ${Number(coords[0]).toFixed(5)}° E
+              </div>
+            </div>
+          `)
+          .addTo(map);
+      });
     }
 
-    // Extracted road lines (toggleable).
-    map.addSource('ra-roads', { type: 'geojson', data: extractLineStringRuns(roadRuns) });
-    map.addLayer({
-      id: 'ra-roads',
-      type: 'line',
-      source: 'ra-roads',
-      paint: { 'line-color': '#6b7280', 'line-width': 3, 'line-opacity': 0.6 }
-    });
-    // Initial visibility from the toggle.
-    map.setLayoutProperty('ra-roads', 'visibility', showRoadLines ? 'visible' : 'none');
+    // 2. Extracted / Road Plan Lines (only rendered for actual road networks from Option A or manual Option B)
+    if (roadRuns.length > 0) {
+      map.addSource('ra-roads', { type: 'geojson', data: extractLineStringRuns(roadRuns) });
+      map.addLayer({
+        id: 'ra-roads',
+        type: 'line',
+        source: 'ra-roads',
+        paint: { 'line-color': '#10b981', 'line-width': 3.5, 'line-opacity': 0.85 }
+      });
+      map.setLayoutProperty('ra-roads', 'visibility', showRoadLines ? 'visible' : 'none');
+    }
 
-    // Fit the map to the region.
+    // Fit the map to the region or panotracks.
     const fitBounds = () => {
       if (bbox) {
         map.fitBounds(
@@ -199,18 +243,22 @@ export const RoadAnalysisMap: React.FC<RoadAnalysisMapProps> = ({
         );
         return;
       }
-      if (roadRuns.length > 0 || capturedPoints.length > 0) {
-        const pts: Array<[number, number]> = [];
-        roadRuns.forEach((r) => r.forEach((p) => pts.push(p)));
-        capturedPoints.forEach((p) => pts.push(p));
-        if (pts.length > 0) {
-          const lngs = pts.map((p) => p[0]);
-          const lats = pts.map((p) => p[1]);
-          map.fitBounds(
-            [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
-            { padding: 28 }
-          );
+      const allCoords: Array<[number, number]> = [];
+      roadRuns.forEach((r) => r.forEach((p) => allCoords.push(p)));
+      capturedPoints.forEach((p) => {
+        const lng = Array.isArray(p) ? p[0] : (p.lng ?? p.lon ?? p.longitude);
+        const lat = Array.isArray(p) ? p[1] : (p.lat ?? p.latitude);
+        if (Number.isFinite(lng) && Number.isFinite(lat)) {
+          allCoords.push([lng, lat]);
         }
+      });
+      if (allCoords.length > 0) {
+        const lngs = allCoords.map((p) => p[0]);
+        const lats = allCoords.map((p) => p[1]);
+        map.fitBounds(
+          [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
+          { padding: 36, maxZoom: 15 }
+        );
       }
     };
     fitBounds();

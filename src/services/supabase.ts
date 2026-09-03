@@ -215,6 +215,7 @@ async function resolveStorageFiles(
 export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Promise<{
   dailyData: any[];
   batchLogs: any[];
+  defectsList?: any[];
   error?: string;
 }> {
   try {
@@ -322,10 +323,17 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
 
     // Query qa_defects table to aggregate actual defect counts per subgrid
     const qaDefectsPerSubgrid = new Map<string, number>();
+    const knownDefectFilenames = new Set<string>();
+    const knownDefectsList: any[] = [];
     try {
-      const { data: qdRows } = await supabase.from('qa_defects').select('subgrid, qa_status, defect_flags, defect_count');
+      const { data: qdRows } = await supabase.from('qa_defects').select('point_id, filename, item_key, subgrid, qa_status, defect_flags, defect_count, defect_type, is_resolved');
       if (qdRows && qdRows.length > 0) {
         qdRows.forEach((r: any) => {
+          const fn = (r.point_id || r.filename || r.item_key || '').split('/').pop()?.toUpperCase().trim();
+          if (fn) {
+            knownDefectFilenames.add(fn);
+            knownDefectsList.push(r);
+          }
           const isFlagged = r.qa_status === 'flagged' ||
             (r.defect_flags && typeof r.defect_flags === 'object' && Object.values(r.defect_flags).some(Boolean)) ||
             (r.defect_count && Number(r.defect_count) > 0);
@@ -363,6 +371,15 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
           cloudAuditCache[`${norm}_${runId}`] = entry;
           if (!cloudAuditCache[`${norm}_default`]) {
             cloudAuditCache[`${norm}_default`] = entry;
+          }
+          if (Array.isArray(r.defects_list)) {
+            r.defects_list.forEach((d: any) => {
+              const dfn = (d.point_id || d.filename || d.pointId || d.image_url || '').split('/').pop()?.toUpperCase().trim();
+              if (dfn) {
+                knownDefectFilenames.add(dfn);
+                knownDefectsList.push(d);
+              }
+            });
           }
         });
       }
@@ -528,6 +545,8 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
         points: g.points,
         panoramas: g.points.map((pt, pIdx) => {
           const fn = g.imageFilenames[pIdx] || `${subgrid}-${String(pIdx + 1).padStart(4, '0')}.jpg`;
+          const cleanFn = (fn.split('/').pop() || '').toUpperCase().trim();
+          const isDef = cleanFn ? knownDefectFilenames.has(cleanFn) : false;
           const isAvail = verifiedFiles.length > 0 ? (verifiedFiles.includes(fn) || verifiedFiles.some(vf => vf.toLowerCase() === fn.toLowerCase())) : true;
           return {
             id: `pub-pt-${runKey}-${pIdx}`,
@@ -538,18 +557,20 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
             lat: pt.lat,
             lon: pt.lon,
             subgrid: subgrid,
-            status: 'yes',
-            qa_status: 'published',
-            publishToWebGIS: 'yes',
-            publishToUSVPRO: 'yes',
-            isPublished: true,
-            published: true,
+            status: isDef ? 'defect' : 'yes',
+            qa_status: isDef ? 'defect' : 'published',
+            publishToWebGIS: isDef ? 'need to recheck' : 'yes',
+            publishToUSVPRO: isDef ? 'need to recheck' : 'yes',
+            isPublished: !isDef,
+            published: !isDef,
+            isDefect: isDef,
+            is_defect: isDef,
             isAvailable: isAvail,
             opacity: 1.0,
-            color: '#10b981',
-            statusColor: '#10b981',
-            strokeColor: '#10b981',
-            fillColor: '#10b981'
+            color: isDef ? '#ef4444' : '#10b981',
+            statusColor: isDef ? '#ef4444' : '#10b981',
+            strokeColor: isDef ? '#ef4444' : '#10b981',
+            fillColor: isDef ? '#ef4444' : '#10b981'
           };
         })
       });
@@ -696,6 +717,8 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
             points: g.points,
             panoramas: g.points.map((pt: any, pIdx: number) => {
               const fn = g.imageFilenames[pIdx] || `${sg}-${String(pIdx + 1).padStart(4, '0')}.jpg`;
+              const cleanFn = (fn.split('/').pop() || '').toUpperCase().trim();
+              const isDef = cleanFn ? knownDefectFilenames.has(cleanFn) : false;
               const isAvail = verifiedFiles.length > 0 ? (verifiedFiles.includes(fn) || verifiedFiles.some((vf: string) => vf.toLowerCase() === fn.toLowerCase())) : false;
               return {
                 id: `staging-pt-${runKey}-${pIdx}`,
@@ -706,18 +729,20 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
                 lat: pt.lat,
                 lon: pt.lon,
                 subgrid: sg,
-                status: 'in process',
-                qa_status: 'in process',
-                publishToWebGIS: 'in process',
-                publishToUSVPRO: 'in process',
+                status: isDef ? 'defect' : 'in process',
+                qa_status: isDef ? 'defect' : 'in process',
+                publishToWebGIS: isDef ? 'need to recheck' : 'in process',
+                publishToUSVPRO: isDef ? 'need to recheck' : 'in process',
                 isPublished: false,
                 published: false,
+                isDefect: isDef,
+                is_defect: isDef,
                 isAvailable: isAvail,
                 opacity: 0.5,
-                color: '#f59e0b',
-                statusColor: '#f59e0b',
-                strokeColor: '#f59e0b',
-                fillColor: '#f59e0b'
+                color: isDef ? '#ef4444' : '#f59e0b',
+                statusColor: isDef ? '#ef4444' : '#f59e0b',
+                strokeColor: isDef ? '#ef4444' : '#f59e0b',
+                fillColor: isDef ? '#ef4444' : '#f59e0b'
               };
             })
           });
@@ -819,7 +844,7 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
     });
 
 
-    return { batchLogs, dailyData };
+    return { batchLogs, dailyData, defectsList: knownDefectsList };
   } catch (err) {
     console.error('Error in fetchSupabaseData:', err);
     return { dailyData: [], batchLogs: [], error: (err as Error).message };
@@ -2326,6 +2351,131 @@ export async function saveProjectSettingsToSupabase(settings: any): Promise<bool
     console.warn('Exception saving project settings:', err);
     return true;
   }
+}
+
+export interface RoadAnalysisProductionState {
+  activeTab?: 'region' | 'plan' | 'compare';
+  selectedStateCode?: string;
+  selectedDistrictIds?: string[];
+  planSource?: 'system' | 'manual' | 'extracted';
+  mapBasemap?: string;
+  showRoadLines?: boolean;
+  manualGeoJson?: any;
+  extractedLines?: any[];
+  updatedAt?: string;
+  updatedBy?: string;
+}
+
+/**
+ * Persist Road Analysis region and workspace configuration to Supabase.
+ * Updates both the authenticated user metadata in auth.users and the project_settings database table.
+ */
+export async function saveRoadAnalysisStateToSupabase(
+  state: RoadAnalysisProductionState,
+  user?: { id?: string; email?: string }
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const timestamp = new Date().toISOString();
+    const userEmail = user?.email || 'authenticated-user';
+
+    // 1. If user is authenticated in Supabase, update their user metadata in auth.users
+    try {
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      if (currentUser) {
+        await supabase.auth.updateUser({
+          data: {
+            roadAnalysisState: {
+              ...state,
+              updatedAt: timestamp,
+              updatedBy: userEmail
+            }
+          }
+        });
+      }
+    } catch (authErr) {
+      console.warn('[Supabase] auth.updateUser notice:', authErr);
+    }
+
+    // 2. Persist to project_settings table in Supabase
+    try {
+      const { data } = await supabase
+        .from('project_settings')
+        .select('id, settings')
+        .eq('id', 'default')
+        .maybeSingle();
+
+      const existingSettings = data?.settings || {};
+      const updatedSettings = {
+        ...existingSettings,
+        roadAnalysisState: {
+          ...state,
+          updatedAt: timestamp,
+          updatedBy: userEmail
+        }
+      };
+
+      await supabase.from('project_settings').upsert([
+        {
+          id: 'default',
+          settings: updatedSettings,
+          updated_at: timestamp
+        }
+      ], { onConflict: 'id' });
+    } catch (dbErr) {
+      console.warn('[Supabase] project_settings upsert notice:', dbErr);
+    }
+
+    // 3. Log to audit trail
+    try {
+      await saveAuditLogToSupabase({
+        timestamp,
+        type: 'EDIT',
+        title: 'Road Analysis Region & Workspace Saved',
+        details: `Saved region configuration (${state.selectedStateCode || 'N/A'}, ${state.selectedDistrictIds?.length || 0} districts) by ${userEmail}`,
+        user: userEmail,
+        status: 'success'
+      });
+    } catch {
+      // ignore
+    }
+
+    return { success: true };
+  } catch (err: any) {
+    console.error('[Supabase] saveRoadAnalysisStateToSupabase exception:', err);
+    return { success: false, error: err?.message || 'Failed to save to database' };
+  }
+}
+
+/**
+ * Fetch saved Road Analysis configuration from Supabase.
+ */
+export async function fetchRoadAnalysisStateFromSupabase(): Promise<RoadAnalysisProductionState | null> {
+  try {
+    // 1. Try authenticated user's metadata first
+    try {
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      if (currentUser?.user_metadata?.roadAnalysisState) {
+        return currentUser.user_metadata.roadAnalysisState as RoadAnalysisProductionState;
+      }
+    } catch {
+      // ignore
+    }
+
+    // 2. Fall back to project_settings table in Supabase
+    const { data, error } = await supabase
+      .from('project_settings')
+      .select('settings')
+      .eq('id', 'default')
+      .maybeSingle();
+
+    if (!error && data?.settings?.roadAnalysisState) {
+      return data.settings.roadAnalysisState as RoadAnalysisProductionState;
+    }
+  } catch (err) {
+    console.warn('[Supabase] fetchRoadAnalysisStateFromSupabase notice:', err);
+  }
+
+  return null;
 }
 
 /**
