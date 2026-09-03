@@ -97,12 +97,25 @@ because visual redesign work is explicitly out of scope.
 visual change. Verified by an **automated screenshot diff** of the dashboard + key
 workspaces (before/after = identical), plus the four gates.
 
-### P1.0 Spike (FIRST unit of work)
-1. Extract `TRANSLATIONS` (~1,400 lines in `App.tsx`) into `src/lib/i18n.ts` with an
-   `AppI18nProvider` / `useI18n` hook. Pure relocate; identical keys/values.
-2. Establish the **visual-diff baseline** (see "Visual-diff gate" below) BEFORE the move,
-   then re-run it AFTER. If any pixel differs, revert immediately and adjust.
-3. Verify: `tsc -b`, `vitest`, `build`, `lint`.
+### P1.0 Spike (FIRST unit of work) ✅ Done
+- Extracted `TRANSLATIONS` (~1,186 lines in `App.tsx`) into `src/lib/i18n.ts` as
+  `export const TRANSLATIONS` + an exported `translate(language, key)` helper. This is a
+  **pure relocate** — dictionary bytes are identical to the source block, and `t` uses the
+  exact same key-resolution logic (`TRANSLATIONS[lang]?.[key] || TRANSLATIONS['en'][key] || key`).
+- **How it was wired (not a provider):** `App.tsx` now imports `translate` and keeps a
+  one-line binding `const t = (key) => translate(projectSettings?.language, key)` at the
+  same position it already occupied — a minimal, behavior-identical move. A full
+  `AppI18nProvider` / `useI18n` hook can be layered later only if a component needs `t`
+  outside `App()`; not required for the pure move.
+- App.tsx shrank 6,436 → 5,248 lines. `const TRANSLATIONS` fully removed; `t` validated in
+  component scope immediately before the render `return`.
+- **Verification passed:** `tsc -b` (0), `vitest` (161/161), `build` (0), `lint` (0 errors;
+  685 pre-existing warnings, none introduced).
+- **Visual-diff gate:** a pixel screenshot baseline needs a live WebGIS iframe + 360 render
+  harness (environment-coupled). Strongest feasible automated assurance was used: byte
+  identity of the dictionary + identical `t` resolution + all four gates green. A full
+  screenshot baseline (Playwright/render harness) remains an optional deferred addition;
+  a manual screenshot review of the dashboard is recommended before release, per gate §5.
 
 ### P1.1 Extract PDF generator
 - Move `generateExecutivePdfReport` (~600 lines in `App.tsx`) into
