@@ -1,7 +1,14 @@
 /**
  * AuthZ capability map — centralises the role → capability edge cases the UI
- * already assumes (RNG mirror of the RLS policies). Additive: it does not
- * change any UI behaviour, it only surfaces the checks in one testable place.
+ * already assumes.
+ *
+ * IMPORTANT (v3, A1): The DATABASE is now the authoritative enforcement
+ * boundary — see supabase/security_functions.sql (`sec.can()`) and
+ * supabase/security_rls_apply.sql. This module is now only a UX mirror that
+ * decides which controls to show/hide; it is NOT a security boundary. Keep
+ * `ROLE_CAPABILITIES` (and the capability names) in sync with the SQL helper
+ * (`sec.can`) so the two never silently drift — see
+ * src/lib/__tests__/authz_matches_rls.test.ts which pins the matrix.
  */
 
 export type UserRole = 'Administrator' | 'Survey Operator' | 'QA Inspector' | 'Viewer' | 'guest';
