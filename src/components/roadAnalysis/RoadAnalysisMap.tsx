@@ -15,10 +15,10 @@ import type { StyleSpecification, Map as MaplibreMap } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 // Let Vite resolve & serve maplibre's worker as a proper asset instead of
 // maplibre self-constructing its own worker path (which Vite dev serves with
-// a disallowed MIME type, blocking Worker creation and leaving a blank map).
-import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
+import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 
-maplibregl.setWorkerUrl(workerUrl);
+const effectiveWorkerUrl = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_MAPLIBRE_WORKER_URL) || workerUrl;
+maplibregl.setWorkerUrl(effectiveWorkerUrl);
 
 export interface RoadAnalysisMapProps {
   bbox?: [number, number, number, number] | null;
@@ -216,6 +216,17 @@ export const RoadAnalysisMap: React.FC<RoadAnalysisMapProps> = ({
     fitBounds();
   }, [bbox, districtGeojson, dimmedRegionsGeojson, capturedPoints, roadRuns, showRoadLines]);
 
+function areStylesEqual(a?: string | StyleSpecification, b?: string | StyleSpecification): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  if (typeof a === 'string' && typeof b === 'string') return a === b;
+  try {
+    return JSON.stringify(a) === JSON.stringify(b);
+  } catch {
+    return false;
+  }
+}
+
   buildOverlayRef.current = buildOverlay;
 
   const initMap = useCallback((container: HTMLDivElement, styleVal?: string | StyleSpecification) => {
@@ -230,6 +241,10 @@ export const RoadAnalysisMap: React.FC<RoadAnalysisMapProps> = ({
     map.on('load', () => {
       styleLoadedRef.current = true;
       buildOverlayRef.current?.();
+    });
+    map.on('error', (e) => {
+      // Non-fatal warning for individual missing tiles / network drops
+      console.warn('[RoadAnalysisMap] MapLibre warning/error:', e);
     });
     return map;
   }, []);
@@ -261,7 +276,7 @@ export const RoadAnalysisMap: React.FC<RoadAnalysisMapProps> = ({
     const map = mapRef.current;
     const container = containerRef.current;
     if (!map || !container) return;
-    if (prevStyleRef.current === style) return;
+    if (areStylesEqual(prevStyleRef.current, style)) return;
     const camera = {
       center: map.getCenter(),
       zoom: map.getZoom(),
@@ -277,6 +292,19 @@ export const RoadAnalysisMap: React.FC<RoadAnalysisMapProps> = ({
     mapRef.current = next;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [style, initMap]);
+
+  // Continuously observe container resizing (sidebar toggle, layout reflow, window resize)
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => {
+      if (mapRef.current) {
+        mapRef.current.resize();
+      }
+    });
+    ro.observe(container);
+    return () => ro.disconnect();
+  }, []);
 
   // Resize when the surface becomes visible from a hidden state.
   useEffect(() => {

@@ -28,13 +28,11 @@ export const WORKSPACE_KEYS: WorkspaceKey[] = [
 export const DEFAULT_WORKSPACE: WorkspaceKey = 'dashboard';
 
 export function parseHashWorkspace(hash: string = window.location.hash): WorkspaceKey {
-  const raw = hash.replace(/^#\/?/, '').trim().toLowerCase();
+  const raw = hash.replace(/^#\/?/, '').trim();
   if (!raw) return DEFAULT_WORKSPACE;
-  const key = raw.split(/[?#]/)[0];
-  if ((WORKSPACE_KEYS as string[]).includes(key)) {
-    return key as WorkspaceKey;
-  }
-  return DEFAULT_WORKSPACE;
+  const key = raw.split(/[?#]/)[0].toLowerCase();
+  const matched = WORKSPACE_KEYS.find((k) => k.toLowerCase() === key);
+  return matched ?? DEFAULT_WORKSPACE;
 }
 
 export function setHashWorkspace(key: WorkspaceKey): void {
