@@ -28,3 +28,16 @@ CREATE INDEX IF NOT EXISTS idx_processing_jobs_qa_decision ON public.processing_
 
 -- NOTE: idx_processing_jobs_status / idx_processing_jobs_type were already
 -- created by foundation_production_migration.sql â€” no need to re-create.
+-- =====================================================================
+-- ROLLBACK / SUPPORTED VERSIONS
+--   Down (rollback) — this migration is additive (ADD COLUMN / CREATE
+--   INDEX only; no data rewrite). To revert:
+--     ALTER TABLE public.processing_jobs DROP COLUMN IF EXISTS external_status;
+--     ALTER TABLE public.processing_jobs DROP COLUMN IF EXISTS assigned_to;
+--     ALTER TABLE public.processing_jobs DROP COLUMN IF EXISTS qa_decision;
+--     DROP INDEX IF EXISTS idx_processing_jobs_external_status;
+--     DROP INDEX IF EXISTS idx_processing_jobs_assigned;
+--     DROP INDEX IF EXISTS idx_processing_jobs_qa_decision;
+--   Supported versions: Supabase (Postgres 15), schema 'public'. Applies
+--   on top of foundation_production_migration.sql. Safe to re-run.
+-- =====================================================================

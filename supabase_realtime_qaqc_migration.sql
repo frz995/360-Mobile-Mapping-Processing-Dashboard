@@ -233,3 +233,10 @@ BEGIN
     EXECUTE 'CREATE POLICY "Allow public read on spatial_ref_sys" ON public.spatial_ref_sys FOR SELECT USING (true)';
 EXCEPTION WHEN OTHERS THEN
 END $$;
+-- =====================================================================
+-- ROLLBACK / SUPPORTED VERSIONS
+--   Down (rollback): realtime publications/policies added here can be
+--   removed with:
+--     DROP POLICY IF EXISTS "Allow public read on spatial_ref_sys" ON public.spatial_ref_sys;
+--   Supported versions: Supabase (Postgres 15), schema 'public'. Safe to re-run.
+-- =====================================================================

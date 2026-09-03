@@ -35,10 +35,12 @@ import {
   testCloudflareStorageHealth
 } from '../services/supabase';
 import { ThemeManagementCanvas } from './ThemeSelector';
+import { DiagnosticsPanel } from './DiagnosticsPanel';
 import { MALAYSIA_REGIONS, regionToGeoJSON, CUSTOM_REGION_ID } from './boundary/malaysiaRegions';
 import { UnderlineTabStrip, type ChromeTab } from './production/chrome';
+import { isAdminRole, isGuestEmail } from '../lib/authz';
 
-const SETTINGS_TABS: ChromeTab<'settings' | 'theme-pack'>[] = [
+const SETTINGS_TABS: ChromeTab<'settings' | 'theme-pack' | 'diagnostics'>[] = [
   {
     key: 'settings',
     label: 'Project & Map Settings',
@@ -48,6 +50,11 @@ const SETTINGS_TABS: ChromeTab<'settings' | 'theme-pack'>[] = [
     key: 'theme-pack',
     label: 'Theme Packages',
     icon: <Palette size={14} />
+  },
+  {
+    key: 'diagnostics',
+    label: 'Diagnostics',
+    icon: <Activity size={14} />
   }
 ];
 
@@ -76,7 +83,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
   authSession,
   addAuditLog
 }) => {
-  const [activeTab, setActiveTab] = useState<'settings' | 'theme-pack'>('settings');
+  const [activeTab, setActiveTab] = useState<'settings' | 'theme-pack' | 'diagnostics'>('settings');
 
   // Storage Probe & Multi-Resolution Health State
   const [cfTestLoading, setCfTestLoading] = useState(false);
@@ -568,7 +575,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
 
   // Authorization RBAC helper: Only Administrator can modify settings
   const currentAuthEmail = (authSession?.user?.email || '').toLowerCase().trim();
-  const isGuest = Boolean(authSession?.isGuest || authSession?.user?.role === 'guest' || currentAuthEmail.includes('guest'));
+  const isGuest = Boolean(authSession?.isGuest || authSession?.user?.role === 'guest' || isGuestEmail(currentAuthEmail));
 
   // User role is strictly derived from Supabase auth metadata or default
   const userEffectiveRole = isGuest
@@ -582,10 +589,9 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
     );
 
   const isAdmin = !isGuest && (
-    userEffectiveRole === 'Administrator' ||
-    userEffectiveRole === 'admin' ||
-    authSession?.user?.role === 'admin' ||
-    authSession?.user?.app_metadata?.role === 'admin' ||
+    isAdminRole(userEffectiveRole) ||
+    isAdminRole(authSession?.user?.role) ||
+    isAdminRole(authSession?.user?.app_metadata?.role) ||
     currentAuthEmail.includes('admin')
   );
 
@@ -2681,6 +2687,9 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
           batchLogs={batchLogs}
           projectSettings={projectSettings}
         />
+      )}
+      {activeTab === 'diagnostics' && (
+        <DiagnosticsPanel cardBg={cardBg} />
       )}
           </div>
         </div>

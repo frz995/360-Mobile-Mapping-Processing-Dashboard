@@ -9,6 +9,7 @@
 import { gpuAnalyzer, isGpuAccelerationSupported, getGpuHardwareName } from './gpuAnalyzer';
 export { gpuAnalyzer, isGpuAccelerationSupported, getGpuHardwareName };
 import { calculateGeodesicDistanceMeters } from './geo';
+import { quietWarn } from '../lib/quiet';
 
 /**
  * Resolves a 2D pixel-draw context that works in BOTH the main thread and a
@@ -727,7 +728,7 @@ export async function analyzeImageSharpness(
         };
       }
     } catch (gpuErr) {
-      console.warn('[GPU Engine] Fallback to CPU pipeline:', gpuErr);
+      quietWarn('GPU Engine', 'Fallback to CPU pipeline:', gpuErr);
     }
   }
 

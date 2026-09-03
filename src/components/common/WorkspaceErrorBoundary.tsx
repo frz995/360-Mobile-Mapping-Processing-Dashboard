@@ -1,4 +1,5 @@
 import React from 'react';
+import { captureException } from '../../lib/sentry';
 
 interface WorkspaceErrorBoundaryProps {
   children: React.ReactNode;
@@ -22,6 +23,7 @@ export class WorkspaceErrorBoundary extends React.Component<WorkspaceErrorBounda
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     console.error('WorkspaceErrorBoundary caught an error:', error, errorInfo);
+    captureException(error, { workspace: 'unknown', errorInfo: String(errorInfo?.componentStack || '') });
   }
 
   componentDidUpdate(prevProps: WorkspaceErrorBoundaryProps) {

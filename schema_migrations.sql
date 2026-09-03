@@ -230,3 +230,13 @@ BEGIN
 END $$;
 
 
+-- =====================================================================
+-- ROLLBACK / SUPPORTED VERSIONS
+--   Down (rollback): all tables are CREATE TABLE IF NOT EXISTS / ADD
+--   COLUMN IF NOT EXISTS with guarded DO $$ constraints, so reverting
+--   means manually dropping only what you added; nothing here rewrites
+--   existing rows. To drop a table you newly created:
+--     DROP TABLE IF EXISTS public.qa_defects;
+--     DROP TABLE IF EXISTS public.qaqc_audit_runs;
+--   Supported versions: Supabase (Postgres 15), schema 'public'. Safe to re-run.
+-- =====================================================================

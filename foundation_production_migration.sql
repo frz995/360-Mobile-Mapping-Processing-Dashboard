@@ -95,4 +95,16 @@ BEGIN
         ALTER PUBLICATION supabase_realtime ADD TABLE public.processing_jobs;
     EXCEPTION WHEN duplicate_object THEN
     END;
-END $$;
+END $$;-- =====================================================================
+-- ROLLBACK / SUPPORTED VERSIONS
+--   Down (rollback) for this migration. Tables are CREATE TABLE IF NOT
+--   EXISTS so nothing is dropped unless you do so manually. To fully
+--   remove the production pipeline:
+--     ALTER TABLE public.processing_jobs DISABLE ROW LEVEL SECURITY;
+--     ALTER TABLE public.datasets DISABLE ROW LEVEL SECURITY;
+--     DROP TABLE IF EXISTS public.processing_jobs CASCADE;
+--     DROP TABLE IF EXISTS public.datasets CASCADE;
+--   (CASCADE removes dependent FKs from child tables). RLS policies are
+--   re-created by supabase_rls_application_tables.sql.
+--   Supported versions: Supabase (Postgres 15), schema 'public'. Safe to re-run.
+-- =====================================================================
