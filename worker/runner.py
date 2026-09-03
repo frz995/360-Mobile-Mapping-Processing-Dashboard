@@ -4,6 +4,8 @@ processing_jobs so the dashboard shows live status either way.
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import os
 import threading
@@ -19,6 +21,8 @@ from blur import apply_privacy_blur
 
 if TYPE_CHECKING:
     import sync as syncmod
+
+from store import SQLiteJobJournal, serializable_job, hydrate_job
 
 LOGGER = logging.getLogger("nas-worker.runner")
 
@@ -63,13 +67,63 @@ def _list_source(source_dir: str, subgrid: str | None, total_hint: int, recursiv
     return files
 
 
-class JobRegistry:
-    """In-memory job store + worker pool."""
+def _settings_hash(job_type: str, settings: dict) -> str:
+    """Stable signature of the processing recipe (type + settings).
 
-    def __init__(self, concurrency: int = 1) -> None:
+    Used for idempotent resume (B1.2): a frame whose output already exists is
+    only skipped when the current job's recipe hash matches the hash the output
+    was produced under. Deterministic across restarts and re-submits.
+    """
+    recipe = json.dumps([job_type or "", settings or {}], sort_keys=True, default=str)
+    return hashlib.sha256(recipe.encode("utf-8")).hexdigest()
+
+
+def _output_path_for(frame, output_dir: str, recursive: bool) -> str:
+    """Mirror _process_one's output-path logic to test frame completion."""
+    if isinstance(frame, tuple):
+        rel, _full = frame
+    else:
+        rel = os.path.basename(frame)
+    ext = os.path.splitext(rel)[1].lower()
+    if ext not in IMAGE_EXTS:
+        ext = ".jpg"
+    return os.path.normpath(os.path.join(output_dir, rel))
+
+
+class JobRegistry:
+    """Job store + worker pool, optionally backed by a durable SQLite journal."""
+
+    def __init__(self, concurrency: int = 1, journal: Optional[SQLiteJobJournal] = None) -> None:
         self.concurrency = max(1, concurrency)
         self.jobs: dict[str, dict] = {}
         self._lock = threading.Lock()
+        self._journal: Optional[SQLiteJobJournal] = journal
+
+    def _persist(self, job_id: str) -> None:
+        job = self.jobs.get(job_id)
+        if self._journal and job is not None:
+            self._journal.write(job_id, serializable_job(job))
+
+    def recover(self) -> list[str]:
+        """Reload persisted jobs after a restart.
+
+        Interrupted (QUEUED / IN_PROGRESS) jobs are surfaced as FAILED with a
+        clear message so nothing is silently lost, and an operator can re-run.
+        Returns the list of recovered job ids.
+        """
+        if not self._journal:
+            return []
+        recovered: list[str] = []
+        with self._lock:
+            for job_id, snapshot in self._journal.read_all().items():
+                job = hydrate_job(job_id, snapshot)
+                if job.get("status") in ("QUEUED", "IN_PROGRESS"):
+                    job["status"] = "FAILED"
+                    job["message"] = "Worker restarted — job interrupted (recoverable via re-run)"
+                    job["completed_at"] = _now()
+                self.jobs[job_id] = job
+                recovered.append(job_id)
+        return recovered
 
     @property
     def active(self) -> dict[str, dict]:
@@ -86,6 +140,11 @@ class JobRegistry:
             if not job:
                 return
             job.update(fields)
+            if self._journal:
+                try:
+                    self._persist(job_id)
+                except Exception:  # noqa: BLE001
+                    LOGGER.exception("journal write failed for %s", job_id)
 
     def cancel(self, job_id: str) -> bool:
         with self._lock:
@@ -94,6 +153,11 @@ class JobRegistry:
                 return False
             job["cancel"].set()
             job["status"] = "CANCELLED"
+            if self._journal:
+                try:
+                    self._persist(job_id)
+                except Exception:  # noqa: BLE001
+                    LOGGER.exception("journal write failed for %s", job_id)
             return True
 
     def start(
@@ -109,6 +173,11 @@ class JobRegistry:
         settings: dict,
         syncer: "Optional[syncmod.SupabaseSyncer]",
     ) -> None:
+        # Idempotent resume (B1.2): if this job_id was already seen (e.g.
+        # recovered from the journal as interrupted), the worker may skip frames
+        # whose output already exists under the same recipe hash on re-run.
+        resume = job_id in self.jobs
+        recipe_hash = _settings_hash(job_type, settings or {})
         with self._lock:
             self.jobs[job_id] = {
                 "job_id": job_id,
@@ -120,6 +189,8 @@ class JobRegistry:
                 "subgrid": subgrid,
                 "total_items": total_items,
                 "settings": settings,
+                "settings_hash": recipe_hash,
+                "_resume": resume,
                 "status": "QUEUED",
                 "progress": 0,
                 "completed_items": 0,
@@ -131,6 +202,11 @@ class JobRegistry:
                 "cancel": threading.Event(),
                 "syncer": syncer,
             }
+        if self._journal:
+            try:
+                self._persist(job_id)
+            except Exception:  # noqa: BLE001
+                LOGGER.exception("journal write failed for %s", job_id)
         thread = threading.Thread(target=self._worker, args=(job_id,), daemon=True)
         thread.start()
 
@@ -154,11 +230,27 @@ class JobRegistry:
             push(status="FAILED", message=str(exc))
             return
 
-        completed, errors = 0, 0
+        # Idempotent resume (B1.2): when re-running an interrupted job under the
+        # same recipe, skip frames whose output already exists so a restart does
+        # not redo completed work. Fresh jobs (not resumed) process everything.
+        skipped = 0
+        if job.get("_resume"):
+            still_to_do: list = []
+            for f in files:
+                if os.path.exists(_output_path_for(f, output_dir, recursive)):
+                    skipped += 1
+                else:
+                    still_to_do.append(f)
+            if skipped:
+                LOGGER.info("job %s resuming: skipping %d already-produced frames", job_id, skipped)
+                files = still_to_do
+
+        completed, errors = skipped, 0
         failed_items: list = []
         error_log: list = []
+        retry_limit = int((settings or {}).get("retryLimit", 2))
         with ThreadPoolExecutor(max_workers=self.concurrency) as pool:
-            futures = {pool.submit(self._process_one, job_id, f, output_dir, job_type, settings): f for f in files}
+            futures = {pool.submit(self._process_with_retry, job_id, f, output_dir, job_type, settings, retry_limit): f for f in files}
             try:
                 for fut in as_completed(futures, timeout=3600 * 8):
                     if job["cancel"].is_set():
@@ -231,6 +323,19 @@ class JobRegistry:
         except Exception as exc:  # noqa: BLE001
             LOGGER.warning("frame failed %s: %s", display, exc)
             return False, display, str(exc)
+
+    @staticmethod
+    def _process_with_retry(job_id: str, src_path: str, output_dir: str, job_type: str, settings: dict, retry_limit: int) -> tuple[bool, str, str | None]:
+        """Bounded at-least-once retry (B1.3): retry transient frame failures."""
+        last: tuple[bool, str, str | None] = (False, "", None)
+        for attempt in range(max(1, retry_limit + 1)):
+            last = JobRegistry._process_one(job_id, src_path, output_dir, job_type, settings)
+            if last[0]:
+                return last
+            if attempt < retry_limit:
+                LOGGER.info("job %s frame %s failed (attempt %d/%d); retrying",
+                            job_id, last[1], attempt + 1, retry_limit + 1)
+        return last
 
 
 def _now() -> str:

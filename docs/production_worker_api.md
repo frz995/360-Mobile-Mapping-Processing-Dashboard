@@ -172,6 +172,28 @@ receives image bytes.
   `error_count` and `message`, not as HTTP errors.
 - Folder paths escaping `NAS_BASE_PATH` are rejected with HTTP 400.
 
+## Retry & recovery (at-least-once)
+
+Each frame is processed at-least-once. A frame that fails is retried up to
+`retryLimit` times before it is recorded as failed (the default is 2 retries,
+i.e. 3 total attempts; set `"retryLimit": N` in `settings` to override).
+
+- **Transient failures** (e.g. read/write I/O hiccups) are retried automatically
+  with a short per-attempt gap; if a retry succeeds the frame is marked complete.
+- **Persistent failures** (unreadable/corrupt image, mask model error, write
+  failure) return `FAILED` for that frame after the limit and are pushed into the
+  job's `failed_items` list — this list is the **dead-letter queue (DLQ)** the
+  dashboard surfaces under `error_count` / `error_log` for operator retouch.
+- If the job had some successes and some permanent failures it ends as
+  `REVIEW_REQUIRED` (auto-flag for manual retouch); if all frames permanently fail
+  it ends as `FAILED`.
+- **Restart recovery:** the worker can persist job state to a local SQLite journal
+  (set `WORKER_JOB_DB`; see `worker/.env.example`). On restart, interrupted
+  (`QUEUED`/`IN_PROGRESS`) jobs are surfaced as `FAILED` with a recoverable message,
+  never silently dropped. Re-submitting the same `job_id` resumes idempotently:
+  frames whose output already exists under the same settings hash are skipped
+  (see `retryPolicy`/`settings_hash` notes in `worker/runner.py`).
+
 ## Auth (optional)
 
 Set `NAS_WORKER_TOKEN` on the worker and send `Authorization: Bearer <token>`

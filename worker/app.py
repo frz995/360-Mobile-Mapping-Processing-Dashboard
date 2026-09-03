@@ -23,7 +23,28 @@ import sync as syncmod
 from dotenv import load_dotenv
 load_dotenv()
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+if os.environ.get("NAS_LOG_JSON") == "1":
+    import json as _json
+
+    class _JsonFormatter(logging.Formatter):
+        def format(self, record: logging.LogRecord) -> str:
+            payload = {
+                "ts": self.formatTime(record, "%Y-%m-%dT%H:%M:%S%z"),
+                "level": record.levelname,
+                "logger": record.name,
+                "msg": record.getMessage(),
+            }
+            if record.exc_info:
+                payload["exc"] = self.formatException(record.exc_info)
+            return _json.dumps(payload)
+
+    _handler = logging.StreamHandler()
+    _handler.setFormatter(_JsonFormatter())
+    root = logging.getLogger()
+    root.handlers = [_handler]
+    root.setLevel(logging.INFO)
+else:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logger = logging.getLogger("nas-worker")
 
 NAS_BASE_PATH = os.environ.get("NAS_BASE_PATH", "/nas/360_images").rstrip("/\\")
@@ -54,7 +75,15 @@ syncer: Optional[syncmod.SupabaseSyncer] = None
 @app.on_event("startup")
 def _startup() -> None:
     global registry, syncer
-    registry = JobRegistry(concurrency=int(os.environ.get("CONCURRENCY", "1")))
+    journal = None
+    if os.environ.get("WORKER_JOB_DB", "").strip():
+        from store import SQLiteJobJournal
+        journal = SQLiteJobJournal(os.environ["WORKER_JOB_DB"].strip())
+        logger.info("Durable job journal enabled at %s", journal.path)
+    registry = JobRegistry(concurrency=int(os.environ.get("CONCURRENCY", "1")), journal=journal)
+    recovered = registry.recover()
+    if recovered:
+        logger.warning("Recovered %d persisted jobs after restart: %s", len(recovered), recovered)
     syncer = syncmod.SupabaseSyncer.from_env()
     if syncer is None:
         logger.warning("Supabase sync disabled (SUPABASE_URL / service role missing). Dashboard will poll HTTP.")
@@ -240,3 +269,45 @@ def storage_info() -> dict:
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok", "jobs_active": len(registry.active) if registry else 0, "nas_base": NAS_BASE_PATH}
+
+
+# ---------------------------------------------------------------------------
+# Observability: dependency-free /metrics (Prometheus text format) + uptime.
+# ---------------------------------------------------------------------------
+import datetime as _dt
+
+_START_TIME = _dt.datetime.now(_dt.timezone.utc)
+
+
+def _uptime_seconds() -> float:
+    return (_dt.datetime.now(_dt.timezone.utc) - _START_TIME).total_seconds()
+
+
+def _gauge(name: str, help_: str, value: float) -> str:
+    return f"# HELP {name} {help_}\n# TYPE {name} gauge\n{name} {value}\n"
+
+
+def _counter(name: str, help_: str, value: float) -> str:
+    return f"# HELP {name} {help_}\n# TYPE {name} counter\n{name} {value}\n"
+
+
+@app.get("/metrics")
+def metrics() -> dict:
+    active = len(registry.active) if registry else 0
+    done = len(registry.completed) if registry else 0
+    failed = len(registry.failed) if registry else 0
+    lines: list[str] = []
+    lines.append(_gauge("nas_worker_info", "Worker identity", 1) + f'nas_worker_info{{worker="{_WORKER_ID}"}} 1\n')
+    lines.append(_gauge("nas_worker_uptime_seconds", "Worker process uptime in seconds", _uptime_seconds()))
+    lines.append(_counter("nas_jobs_active", "Running jobs", active))
+    lines.append(_counter("nas_jobs_completed", "Completed jobs this process", done))
+    lines.append(_counter("nas_jobs_failed", "Failed jobs this process", failed))
+    lines.append(_counter("nas_jobs_total", "All tracked jobs this process", (done + failed + active)))
+    try:
+        du = shutil.disk_usage(resolve_fs(""))
+        lines.append(_gauge("nas_storage_total_bytes", "NAS storage total bytes", float(du.total)))
+        lines.append(_gauge("nas_storage_free_bytes", "NAS storage free bytes", float(du.free)))
+        lines.append(_gauge("nas_storage_used_bytes", "NAS storage used bytes", float(du.used)))
+    except HTTPException:
+        pass
+    return {"status": "ok", "metrics_text": "\n".join(lines)}
