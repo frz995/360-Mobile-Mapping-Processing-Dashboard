@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import type { QADefectRecord, QAQCAuditRunRecord, ExtendedProjectSettings } from '../types/admin';
 import type { DatasetRecord, ExternalJobStatus, ProcessingJobRecord, ProcessingJobStatus } from '../types/production';
 import { calculatePathDistanceKm } from '../utils/geo';
+import { withRetry } from '../lib/retry';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_KEY || '';
@@ -192,9 +193,18 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
 }> {
   try {
     // Try fetching from panoramas_view or fallback to panoramas table
-    let { data, error } = await supabase
-      .from('panoramas_view')
-      .select('*');
+    let data: any[] | null = null;
+    let error: any = null;
+    const viewResult = await withRetry(
+      async () => {
+        const res = await supabase.from('panoramas_view').select('*');
+        if (res.error) throw new Error(res.error.message);
+        return res;
+      },
+      { retries: 2 }
+    );
+    data = viewResult.data;
+    error = viewResult.error;
 
     if (error || !data || data.length === 0) {
       const res = await supabase
@@ -2440,10 +2450,18 @@ const STAGING_PANORAMAS_TABLE = 'staging_panoramas';
 /** Minimal capture-metadata fetch from the RAW staging table (lineage Survey tab). */
 export async function fetchStagingPanoramasFromSupabase(): Promise<StagingPanoramaRow[]> {
   try {
-    const { data, error } = await supabase
-      .from(STAGING_PANORAMAS_TABLE)
-      .select('id, subgrid, filename, status, created_at')
-      .order('created_at', { ascending: true });
+    const result = await withRetry(
+      async () => {
+        const res = await supabase
+          .from(STAGING_PANORAMAS_TABLE)
+          .select('id, subgrid, filename, status, created_at')
+          .order('created_at', { ascending: true });
+        if (res.error) throw new Error(res.error.message);
+        return res;
+      },
+      { retries: 2 }
+    );
+    const { data, error } = result as { data: StagingPanoramaRow[] | null; error: any };
     if (error) {
       console.warn('fetchStagingPanoramasFromSupabase:', error.message);
       return [];

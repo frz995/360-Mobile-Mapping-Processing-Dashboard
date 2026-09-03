@@ -3,6 +3,12 @@ import ReactDOM from 'react-dom/client'
 import App from './App.tsx'
 import './index.css'
 import './themes.css';
+import { initSentry, captureException, sentryReportSink } from './lib/sentry';
+import { addReportSink, installReporters } from './lib/report';
+
+initSentry();
+installReporters();
+addReportSink(sentryReportSink);
 
 class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean; error: Error | null }> {
   constructor(props: { children: React.ReactNode }) {
@@ -16,6 +22,7 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     console.error('React ErrorBoundary caught an error:', error, errorInfo);
+    captureException(error, { errorInfo: String(errorInfo?.componentStack || '') });
   }
 
   handleReset = () => {

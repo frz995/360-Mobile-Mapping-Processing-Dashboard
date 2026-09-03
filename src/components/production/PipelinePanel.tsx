@@ -8,6 +8,7 @@ import {
   X,
   AlertCircle
 } from 'lucide-react';
+import { EmptyState } from '../common/EmptyState';
 import type { ProductionApiClient } from '../../services/productionApi';
 import {
   getStorageImageCountsFromSupabase,
@@ -525,8 +526,13 @@ export const PipelinePanel: React.FC<PipelinePanelProps> = ({
             <tbody className="divide-y divide-subtle/40 font-mono">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="py-12 text-center text-zinc-500 text-xs font-sans">
-                    No subgrids found.
+                  <td colSpan={10} className="py-6">
+                    <EmptyState
+                      className="py-6"
+                      icon={Layers}
+                      title="No subgrids found"
+                      hint="Try a different search term or register datasets from the Production workspace / Folder Browser."
+                    />
                   </td>
                 </tr>
               ) : (

@@ -334,3 +334,12 @@ CREATE POLICY "Allow authenticated access on recycle_bin"
 -- still read data), change auth.uid() IS NOT NULL to `true` for SELECT policies
 -- on any table that should be visible to guests.
 -- ─────────────────────────────────────────────────────────────────────────────
+-- =====================================================================
+-- ROLLBACK / SUPPORTED VERSIONS
+--   Down (rollback): policies are DROP + CREATE (idempotent). To revert
+--   to open anon access for a table, drop the auth-scoped policy and
+--   re-create a USING (true) one, e.g.:
+--     DROP POLICY "Allow authenticated access on qa_defects" ON public.qa_defects;
+--     CREATE POLICY "Allow public read on qa_defects" ON public.qa_defects FOR SELECT USING (true);
+--   Supported versions: Supabase (Postgres 15), schema 'public'. Safe to re-run.
+-- =====================================================================

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { ClipboardList, RefreshCw, CheckCircle2 } from 'lucide-react';
 import { ContentLoading } from '../../common/ContentLoading';
+import { EmptyState } from '../../common/EmptyState';
 import type { ProductionApiClient } from '../../../services/productionApi';
 import type { DatasetRecord, NasFolderListing } from '../../../types/production';
 import { extractCanonicalSubgrid } from '../../../utils/datasetLineage';
@@ -175,9 +176,11 @@ export const RawRegistryPanel: React.FC<RawRegistryPanelProps> = ({ api, dataset
       ) : (
         <div className="border border-subtle rounded-lg overflow-x-auto">
           {rows.length === 0 ? (
-            <p className="py-8 text-center text-xs text-text-muted">
-              No subgrids found. Connect the NAS Worker (http mode) or add datasets to populate the registry.
-            </p>
+            <EmptyState
+              icon={ClipboardList}
+              title="No subgrids found"
+              hint="Connect the NAS Worker (http mode) or add datasets to populate the registry, then re-scan folders."
+            />
           ) : (
             <table className="w-full text-xs text-left border-collapse">
               <thead>

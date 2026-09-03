@@ -4,6 +4,8 @@
  * 4-sector Laplacian variance, and parallel luminance analysis.
  */
 
+import { quietWarn } from '../lib/quiet';
+
 export interface GpuAnalysisResult {
   isGpuAccelerated: boolean;
   minScore: number;
@@ -83,7 +85,7 @@ class WebGLGpuAnalyzer {
       this.initBuffers();
       this.isInitialized = true;
     } catch (err) {
-      console.warn('[GPU Engine] Initialization notice (using CPU fallback):', err);
+      quietWarn('GPU Engine', 'Initialization notice (using CPU fallback):', err);
       this.gl = null;
       this.isInitialized = false;
     }
@@ -147,7 +149,7 @@ class WebGLGpuAnalyzer {
     gl.linkProgram(prog);
 
     if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
-      console.warn('[GPU Engine] Shader link error:', gl.getProgramInfoLog(prog));
+      quietWarn('GPU Engine', 'Shader link error:', gl.getProgramInfoLog(prog));
       return;
     }
     this.program = prog;
@@ -160,7 +162,7 @@ class WebGLGpuAnalyzer {
     this.gl.shaderSource(shader, source);
     this.gl.compileShader(shader);
     if (!this.gl.getShaderParameter(shader, this.gl.COMPILE_STATUS)) {
-      console.warn('[GPU Engine] Shader compile error:', this.gl.getShaderInfoLog(shader));
+      quietWarn('GPU Engine', 'Shader compile error:', this.gl.getShaderInfoLog(shader));
       this.gl.deleteShader(shader);
       return null;
     }

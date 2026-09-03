@@ -5,6 +5,7 @@
  */
 
 export interface PanoramaItem {
+  id?: string;
   filename?: string;
   latitude?: number;
   longitude?: number;

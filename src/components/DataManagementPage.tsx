@@ -27,6 +27,7 @@ import {
   ClipboardList,
   Calendar,
   Copy,
+  Download,
   ExternalLink,
   Loader2,
   Info,
@@ -43,6 +44,7 @@ import { UnderlineTabStrip, type ChromeTab } from './production/chrome';
 import { MapComponent } from './MapComponent';
 import { QCAuditModal } from './QCAuditModal';
 import { toast } from './common/toast';
+import { EmptyState } from './common/EmptyState';
 import {
   publishToSupabase,
   saveToStagingSupabase,
@@ -57,6 +59,7 @@ import {
   saveToRecycleBinInSupabase,
   fetchRecycleBinFromSupabase,
   formatPIC,
+  saveAuditLogToSupabase,
   type RecycleBinItem
 } from '../services/supabase';
 import type { DatasetRecord, ProcessingJobRecord } from '../types/production';
@@ -497,6 +500,44 @@ export const DataManagementPage = ({
     if (selectedRowIds.size === 0) return;
     setDeleteTarget('BULK_SELECTION' as any);
     openDeleteModalForMode('bulk');
+  };
+
+  const handleBulkExportCsv = () => {
+    if (selectedRowIds.size === 0) return;
+    const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const targetList = dataTab === 'batches' ? activeBatchLogs : draftDailyData;
+    const items = targetList.filter(item => selectedRowIds.has(getItemId(item)));
+    if (items.length === 0) return;
+
+    let headers: string[];
+    let rows: string[];
+    if (dataTab === 'batches') {
+      headers = ['Date', 'Grid', 'Subgrid', 'Image Filename', 'Images', 'POI Count', 'Available', 'Defects', 'KM Processed', 'Status', 'Equipment', 'PIC'];
+      rows = (items as BatchLog[]).map(b => [
+        esc(b.date), esc(b.grid), esc(b.subgrid), esc(b.imageFilename), String(b.images),
+        String(b.poiCount ?? ''), String(b.availableImagesCount ?? ''), String(b.defects),
+        String(b.kmProcessed), esc(b.status), esc(b.captureEquipment ?? ''), esc(b.pic ?? '')
+      ].join(','));
+    } else {
+      headers = ['Date', 'Grid', 'Subgrid', 'Images Processed', 'POI Count', 'Available', 'Defects', 'Images Defected', 'KM Processed', 'Equipment', 'Publish To WebGIS', 'PIC', 'Action'];
+      rows = (items as DailyTimeSeries[]).map(d => [
+        esc(d.date), esc(d.grid), esc(d.subgrid), String(d.imagesProcessed),
+        String(d.poiCount ?? ''), String(d.availableImagesCount ?? ''), String(d.defectCount),
+        String(d.imagesDefected), String(d.kmProcessed), esc(d.captureEquipment),
+        esc(d.publishToWebGIS), esc(d.pic ?? ''), esc(d.action)
+      ].join(','));
+    }
+
+    const csvContent = [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([`\uFEFF${csvContent}`], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `Data_${dataTab}_Selected_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   // Sync draftDailyData whenever dailyData changes
@@ -1286,6 +1327,34 @@ export const DataManagementPage = ({
     });
     addAuditLog?.('CREATE', 'CSV Import Executed', `Imported ${imported.length} separate record(s) into Daily Data staging list.`, 'success');
 
+    // 8.5 — Durable import trace to audit_logs (operator, date, source files,
+    // generated subgrid set) so a corrupted import can be traced back.
+    const importOperator = authSession?.user?.email?.split('@')[0] || authSession?.user?.user_metadata?.full_name || 'Operator';
+    const importedFileNames = filesToProcess.map(f => f.fileName);
+    const generatedSubgrids = Array.from(new Set(imported.map(i => i.subgrid).filter(Boolean)));
+    void saveAuditLogToSupabase({
+      timestamp: new Date().toISOString(),
+      type: 'IMPORT',
+      title: `CSV upload trace: ${importedFileNames.join(', ')}`,
+      details: JSON.stringify({
+        files: importedFileNames,
+        recordCount: imported.length,
+        subgrids: generatedSubgrids,
+        operator: importOperator,
+        date: new Date().toISOString().slice(0, 10),
+        directPublish: Boolean(directPublish),
+        invalidGpsWarning: imported.reduce((acc, imp) => {
+          let bad = 0;
+          (imp.panoramas || []).forEach(p => {
+            if (!(typeof p.latitude === 'number' && typeof p.longitude === 'number' && p.latitude !== 0 && p.longitude !== 0)) bad++;
+          });
+          return acc + bad;
+        }, 0)
+      }),
+      user: importOperator,
+      status: 'success'
+    });
+
     // 3. Persist imported items to staging_panoramas in Supabase asynchronously
     imported.forEach(imp => {
       saveToStagingSupabase(imp).catch(err => console.warn('Background staging insert notice:', err));
@@ -1691,6 +1760,20 @@ export const DataManagementPage = ({
     const start = (safePage - 1) * pageSize;
     return filteredDailyData.slice(start, start + pageSize);
   }, [filteredDailyData, safePage, pageSize]);
+
+  // Memoized column-filter option lists (pure derivation from draftDailyData;
+  // avoids re-deriving Sets on every render/keystroke when data is unchanged).
+  const dailyColumnOptions = React.useMemo(() => {
+    const uniq = (vals: Array<string | undefined | null>) =>
+      Array.from(new Set(vals.filter((v): v is string => Boolean(v)))).sort();
+    return {
+      grids: uniq(draftDailyData.map(d => d.grid)),
+      subgrids: uniq(draftDailyData.map(d => (d.subgrid || '').toUpperCase().trim())),
+      equipment: uniq(draftDailyData.map(d => d.captureEquipment)),
+      pics: uniq(draftDailyData.map(d => d.pic)),
+      publishStatus: uniq(draftDailyData.map(d => d.publishToWebGIS)),
+    };
+  }, [draftDailyData]);
 
 
 
@@ -2958,7 +3041,7 @@ export const DataManagementPage = ({
                     className="w-full bg-card border border-subtle text-text-base rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-sky-500/80"
                   >
                     <option value="">All Grids</option>
-                    {Array.from(new Set(draftDailyData.map(d => d.grid).filter(Boolean))).sort().map(g => (
+                    {dailyColumnOptions.grids.map(g => (
                       <option key={g} value={g}>Grid {g}</option>
                     ))}
                   </select>
@@ -2973,7 +3056,7 @@ export const DataManagementPage = ({
                     className="w-full bg-card border border-subtle text-text-base rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-sky-500/80"
                   >
                     <option value="">All Subgrids</option>
-                    {Array.from(new Set(draftDailyData.map(d => (d.subgrid || '').toUpperCase().trim()).filter(Boolean))).sort().map(sg => (
+                    {dailyColumnOptions.subgrids.map(sg => (
                       <option key={sg} value={sg}>{sg}</option>
                     ))}
                   </select>
@@ -2988,7 +3071,7 @@ export const DataManagementPage = ({
                     className="w-full bg-card border border-subtle text-text-base rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-sky-500/80"
                   >
                     <option value="">All Equipment</option>
-                    {Array.from(new Set(draftDailyData.map(d => d.captureEquipment).filter(Boolean))).sort().map(eq => (
+                    {dailyColumnOptions.equipment.map(eq => (
                       <option key={eq} value={eq}>{eq}</option>
                     ))}
                   </select>
@@ -3003,7 +3086,7 @@ export const DataManagementPage = ({
                     className="w-full bg-card border border-subtle text-text-base rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-sky-500/80"
                   >
                     <option value="">All PICs</option>
-                    {Array.from(new Set(draftDailyData.map(d => d.pic).filter(Boolean))).sort().map(p => (
+                    {dailyColumnOptions.pics.map(p => (
                       <option key={p} value={p}>{p}</option>
                     ))}
                   </select>
@@ -3018,7 +3101,7 @@ export const DataManagementPage = ({
                     className="w-full bg-card border border-subtle text-text-base rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-sky-500/80"
                   >
                     <option value="">All Statuses</option>
-                    {Array.from(new Set(draftDailyData.map(d => d.publishToWebGIS).filter(Boolean))).sort().map(st => (
+                    {dailyColumnOptions.publishStatus.map(st => (
                       <option key={st} value={st}>{st}</option>
                     ))}
                   </select>
@@ -3239,6 +3322,14 @@ export const DataManagementPage = ({
                       </button>
                     )}
                     <button
+                      onClick={handleBulkExportCsv}
+                      className="px-4 py-2 bg-inner hover:bg-sky-950/60 text-sky-400 hover:text-sky-300 border border-subtle rounded-xl font-semibold flex items-center gap-2 transition-all shadow-sm cursor-pointer active:scale-95"
+                      title="Export the selected records as a CSV file"
+                    >
+                      <Download size={14} />
+                      <span>Export Selected ({selectedRowIds.size})</span>
+                    </button>
+                    <button
                       onClick={() => setSelectedRowIds(new Set())}
                       className="px-3 py-2 text-text-muted hover:text-text-base transition-colors cursor-pointer text-xs"
                     >
@@ -3435,8 +3526,13 @@ export const DataManagementPage = ({
                           })
                         ) : (
                           <tr>
-                            <td colSpan={10} className="px-4 py-12 text-center text-text-muted">
-                              {searchQuery ? `No batch logs found matching "${searchQuery}"` : 'No batch logs available'}
+                            <td colSpan={10} className="px-4 py-6">
+                              <EmptyState
+                                className="py-6"
+                                icon={FileText}
+                                title={searchQuery ? `No batch logs found matching "${searchQuery}"` : 'No batch logs available'}
+                                hint="Upload a new batch from the toolbar, or adjust your filters to see more records."
+                              />
                             </td>
                           </tr>
                         )
@@ -3602,8 +3698,13 @@ export const DataManagementPage = ({
                           })
                         ) : (
                           <tr>
-                            <td colSpan={12} className="px-4 py-12 text-center text-text-muted">
-                              {searchQuery ? `No daily records found matching "${searchQuery}"` : 'No daily data available'}
+                            <td colSpan={12} className="px-4 py-6">
+                              <EmptyState
+                                className="py-6"
+                                icon={ClipboardList}
+                                title={searchQuery ? `No daily records found matching "${searchQuery}"` : 'No daily data available'}
+                                hint="Register daily data from the production workspace, or try clearing your search and filters."
+                              />
                             </td>
                           </tr>
                         )

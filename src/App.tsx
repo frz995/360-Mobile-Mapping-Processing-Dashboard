@@ -2,7 +2,7 @@
 import { PhotoSphereViewerComponent, type PhotoSphereViewerHandle } from './components/PhotoSphereViewerComponent';
 import { WebGISHUDViewerOverlay } from './components/WebGISHUDViewerOverlay';
 import { setHeading } from './utils/headingStore';
-import { extractSubgridName, generateImageFilenamesList } from './utils/subgrid';
+import { extractSubgridName } from './utils/subgrid';
 import {
   AlertTriangle,
   CheckCircle,
@@ -10,7 +10,6 @@ import {
   Clock,
   Camera,
   Navigation,
-  Trash2,
   Edit2,
   X,
   Folder,
@@ -18,19 +17,17 @@ import {
   FileText,
   RefreshCw,
   Database,
-  UploadCloud,
   User,
   LogOut,
+  Map as MapIcon,
   ShieldCheck,
   Maximize2,
   Filter,
   Globe,
-  Bell,
   ClipboardList,
   History,
   Calendar,
   HelpCircle,
-  Copy,
   ExternalLink,
   Loader2,
   Info,
@@ -48,7 +45,6 @@ export { DataManagementPage };
 import { DefectsGalleryModal } from './components/DefectsGalleryModal';
 import { ContentLoading } from './components/common/ContentLoading';
 import { Toaster } from './components/common/Toaster';
-import { toast } from './components/common/toast';
 import { Skeleton } from './components/common/Skeleton';
 import { WorkspaceErrorBoundary } from './components/common/WorkspaceErrorBoundary';
 
@@ -67,6 +63,8 @@ import { useAppData } from './hooks/useAppData';
 import './themes.css';
 import { SystemShowcase } from './components/SystemShowcase';
 import { DailyHandoverModal } from './components/DailyHandoverModal';
+import { SubgridImagesListModal } from './components/SubgridImagesListModal';
+import { NotificationPopover } from './components/NotificationPopover';
 import { WorkspaceSidebarNav } from './components/WorkspaceSidebarNav';
 import { WorkspacePlaceholder, getWorkspaceDefinition } from './workspaces';
 import { parseHashWorkspace, setHashWorkspace, subscribeHashWorkspace } from './utils/hashRouter';
@@ -534,6 +532,17 @@ export default function App() {
 
   const isGuestUser = Boolean(authSession?.isGuest || authSession?.user?.role === 'guest' || authSession?.user?.email?.toLowerCase().includes('guest'));
 
+  useEffect(() => {
+    if (!authSession || authLoading || isGuestUser) return;
+    try {
+      if (localStorage.getItem('tourFirstRunSeen')) return;
+      const t = window.setTimeout(() => setTourFirstRunOpen(true), 1400);
+      return () => window.clearTimeout(t);
+    } catch {
+      // localStorage unavailable — skip the auto-suggest
+    }
+  }, [authSession, authLoading, isGuestUser]);
+
   const activeAuthUserName = React.useMemo(() => {
     if (!authSession || !authSession.user) return '';
     const u = authSession.user;
@@ -861,9 +870,27 @@ export default function App() {
   const [auditFilterTab, setAuditFilterTab] = useState<'ALL' | 'EDIT' | 'DELETE' | 'CREATE' | 'PUBLISH' | 'ERROR'>('ALL');
   const [auditDateFilter, setAuditDateFilter] = useState<string>('');
   const [isHelpGuideOpen, setIsHelpGuideOpen] = useState(false);
-  const [helpGuideTab, setHelpGuideTab] = useState<'map' | 'panorama' | 'data' | 'audit'>('map');
+  const [helpGuideTab, setHelpGuideTab] = useState<'map' | 'panorama' | 'data' | 'audit' | 'shortcuts'>('map');
   const [tourStep, setTourStep] = useState<number | null>(null);
   const [settingsSaveToast, setSettingsSaveToast] = useState<{ show: boolean; message: string } | null>(null);
+  const [tourFirstRunOpen, setTourFirstRunOpen] = useState(false);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === '?') {
+        e.preventDefault();
+        setHelpGuideTab('shortcuts');
+        setTourStep(null);
+        setIsHelpGuideOpen(true);
+      } else if (e.key === 'Escape') {
+        if (isHelpGuideOpen) {
+          setIsHelpGuideOpen(false);
+        }
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isHelpGuideOpen]);
 
   const handleSaveAllSettings = () => {
     try {
@@ -4032,138 +4059,22 @@ export default function App() {
           </div>
 
           {/* NOTIFICATIONS ICON (Publish Progress & Pending Tasks) */}
-          <div className="relative">
-            <button
-              onClick={() => {
-                const nextState = !isNotifOpen;
-                setIsNotifOpen(nextState);
-                if (nextState) {
-                  markNotificationsAsRead();
-                }
-                setIsAuditLogOpen(false);
-              }}
-              className={`p-1.5 transition-colors cursor-pointer relative ${isNotifOpen ? 'text-sky-400 bg-inner rounded-lg border border-subtle' : 'hover:text-text-base'
-                }`}
-              title="Notifications (Publish Progress & Pending Tasks)"
-            >
-              <Activity size={18} />
-              {unreadNotifCount > 0 && (
-                <span className="absolute -top-1 -right-1.5 px-1 py-0.2 min-w-[15px] h-[15px] rounded-full bg-red-500 text-text-base text-[9px] font-bold flex items-center justify-center shadow-md">
-                  {unreadNotifCount}
-                </span>
-              )}
-            </button>
-
-            {/* NOTIFICATIONS POPOVER */}
-            {isNotifOpen && (
-              <div className="absolute right-0 top-10 w-96 max-w-[90vw] bg-card border border-subtle rounded-xl shadow-2xl z-50 overflow-hidden text-text-base animate-in fade-in duration-150 backdrop-blur-md">
-                <div className="p-3 bg-card border-b border-subtle flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Bell size={15} className="text-sky-400" />
-                    <span className="text-xs font-semibold uppercase tracking-wider text-text-base">
-                      Notifications
-                    </span>
-                    {unreadNotifCount > 0 && (
-                      <span className="bg-inner text-sky-400 border border-subtle text-[10px] font-medium px-1.5 py-0.2 rounded-full">
-                        {unreadNotifCount} new
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {notifications.length > 0 && (
-                      <button
-                        onClick={clearNotifications}
-                        className="text-text-muted hover:text-rose-400 text-[10px] font-medium transition-colors flex items-center gap-1 cursor-pointer"
-                        title="Clear all notifications"
-                      >
-                        <Trash2 size={11} /> Clear All
-                      </button>
-                    )}
-                    <button
-                      onClick={() => setIsNotifOpen(false)}
-                      className="text-text-muted hover:text-text-base p-0.5 cursor-pointer"
-                    >
-                      <X size={14} />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Notifications List */}
-                <div className="max-h-80 overflow-y-auto divide-y divide-[rgba(255,255,255,0.06)] p-1">
-                  {notifications.length > 0 ? (
-                    notifications.map(notif => {
-                      const isPublish = notif.category === 'PUBLISH';
-                      const isPending = notif.category === 'PENDING';
-
-                      return (
-                        <div
-                          key={notif.id}
-                          className={`p-3 transition-colors rounded-lg space-y-1.5 relative group ${!notif.read ? 'bg-card border-l-2 border-sky-400' : 'hover:bg-inner'
-                            }`}
-                        >
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-1.5">
-                              {isPublish ? (
-                                <span className="bg-sky-950/60 text-sky-300 border border-sky-800/60 px-1.5 py-0.2 rounded text-[9px] font-medium">
-                                  PUBLISH SUCCESS
-                                </span>
-                              ) : isPending ? (
-                                <span className="bg-inner text-text-base border border-subtle px-1.5 py-0.2 rounded text-[9px] font-medium">
-                                  PENDING TASK
-                                </span>
-                              ) : (
-                                <span className="bg-inner text-text-muted border border-subtle px-1.5 py-0.2 rounded text-[9px] font-medium">
-                                  {notif.category}
-                                </span>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-[10px] text-text-muted">{notif.timestamp}</span>
-                              <button
-                                onClick={() => {
-                                  const strId = String(notif.id);
-                                  try {
-                                    const currentRead = new Set(JSON.parse(localStorage.getItem('app_read_notif_ids') || '[]'));
-                                    currentRead.add(strId);
-                                    currentRead.add(`notif-${strId}`);
-                                    localStorage.setItem('app_read_notif_ids', JSON.stringify(Array.from(currentRead)));
-                                  } catch (_) { }
-                                  setNotifications(prev => prev.filter(n => String(n.id) !== strId));
-                                }}
-                                className="text-text-muted hover:text-rose-400 p-0.5 cursor-pointer opacity-80 hover:opacity-100 transition-opacity"
-                                title="Dismiss notification"
-                              >
-                                <X size={12} />
-                              </button>
-                            </div>
-                          </div>
-
-                          <div className="text-xs font-medium text-text-base flex items-center gap-1.5">
-                            {isPublish ? <UploadCloud size={14} className="text-sky-400 shrink-0" /> : isPending ? <Clock size={14} className="text-text-muted shrink-0" /> : <Activity size={14} className="text-sky-400 shrink-0" />}
-                            <span>{notif.title}</span>
-                          </div>
-
-                          <p className="text-[11px] text-text-muted leading-snug">{notif.message}</p>
-
-                          {/* Detail Badges: Total Data & Published Timestamp */}
-                          {isPublish && (
-                            <div className="pt-1.5 border-t border-subtle flex items-center justify-between text-[10px]">
-                              <span className="text-text-muted">Total Data Included: <strong className="text-text-base">{notif.totalItems || 1} subgrid(s)</strong></span>
-                              <span className="text-text-muted">Date Published: <strong className="text-sky-400">{notif.timestamp}</strong></span>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })
-                  ) : (
-                    <div className="p-8 text-center text-text-muted text-xs">
-                      No notifications available
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
+          <NotificationPopover
+            isOpen={isNotifOpen}
+            notifications={notifications}
+            unreadCount={unreadNotifCount}
+            setNotifications={setNotifications}
+            onToggleOpen={() => {
+              const nextState = !isNotifOpen;
+              setIsNotifOpen(nextState);
+              if (nextState) {
+                markNotificationsAsRead();
+              }
+              setIsAuditLogOpen(false);
+            }}
+            onClose={() => setIsNotifOpen(false)}
+            clearAll={clearNotifications}
+          />
           <div className="flex items-center gap-2 pl-2 border-l border-subtle">
 
             {/* User Avatar Initial */}
@@ -4858,7 +4769,7 @@ export default function App() {
                                             : (dailyAvailFiles.length > 0
                                               ? Array.from(new Set(dailyAvailFiles))
                                               : (log.panoramas && log.panoramas.length > 0
-                                                ? log.panoramas.filter((p: any) => p.isAvailable !== false).map((p: any) => p.filename).filter((f): f is string => Boolean(f) && (extractSubgridName(f) || '').toUpperCase().trim() === subFilter)
+                                                ? log.panoramas.filter((p) => p.isAvailable !== false).map((p) => p.filename).filter((f): f is string => Boolean(f) && (extractSubgridName(f) || '').toUpperCase().trim() === subFilter)
                                                 : undefined));
                                           setImagesListModal({
                                             isOpen: true,
@@ -5124,7 +5035,7 @@ export default function App() {
                                             const customFn = log.availableFilenames && log.availableFilenames.length > 0
                                               ? log.availableFilenames
                                               : (log.panoramas && log.panoramas.length > 0
-                                                ? log.panoramas.filter((p: any) => p.isAvailable !== false).map((p: any) => p.filename).filter((f): f is string => Boolean(f) && (extractSubgridName(f) || '').toUpperCase().trim() === subFilter)
+                                                ? log.panoramas.filter((p) => p.isAvailable !== false).map((p) => p.filename).filter((f): f is string => Boolean(f) && (extractSubgridName(f) || '').toUpperCase().trim() === subFilter)
                                                 : undefined);
                                             const rowFrameCount = getImagesProcessedCount(log);
                                             setImagesListModal({
@@ -5155,7 +5066,7 @@ export default function App() {
                                                 subgrid: dailySubgrid,
                                                 surveyDate: log.date || ((log as any).created_at ? new Date((log as any).created_at).toLocaleDateString() : undefined),
                                                 totalPoi: log.poiCount || dailyPanos.length || getImagesProcessedCount(log),
-                                                batchFilenames: dailyPanos.map((p: any) => p.filename || p.id).filter(Boolean)
+                                                batchFilenames: dailyPanos.map((p) => p.filename || p.id).filter((f): f is string => Boolean(f))
                                               });
                                               setIsDefectsGalleryOpen(true);
                                             }}
@@ -5905,63 +5816,56 @@ export default function App() {
         </main>
 
         {/* Subgrid Image Filenames List View Modal (Main Canvas) */}
-        {
-          imagesListModal && imagesListModal.isOpen && (() => {
-            const filenames = (imagesListModal.customFilenames && imagesListModal.customFilenames.length > 0)
-              ? imagesListModal.customFilenames
-              : generateImageFilenamesList(imagesListModal.subgrid, imagesListModal.count > 0 ? imagesListModal.count : (imagesListModal.poiCount || 1), imagesListModal.baseFilename);
-            return (
-              <div role="dialog" aria-modal="true" aria-label={`Subgrid ${imagesListModal.subgrid} image filenames`} className="fixed inset-0 bg-[var(--modal-overlay)] flex items-center justify-center z-[1000] p-4 backdrop-blur-sm">
-                <div className="bg-card border border-subtle rounded-xl p-5 max-w-md w-full max-h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-                  <div className="flex justify-between items-center pb-3 mb-3 border-b border-subtle shrink-0">
-                    <div>
-                      <h2 className="text-sm font-bold text-text-base tracking-wide flex items-center gap-2">
-                        <Camera size={16} className="text-sky-400" />
-                        Subgrid {imagesListModal.subgrid} Filenames
-                      </h2>
-                      <span className="text-[11px] text-text-muted font-sans">
-                        {imagesListModal.poiCount !== undefined ? `POI: ${imagesListModal.poiCount.toLocaleString()}  •  ` : ''}
-                        Available Frames: <strong className="text-sky-400 font-bold">{filenames.length.toLocaleString()}</strong>
-                      </span>
-                    </div>
-                    <button
-                      onClick={() => setImagesListModal(null)}
-                      className="text-text-muted hover:text-text-base text-lg p-1 cursor-pointer transition-colors"
-                      aria-label="Close image filenames popup dialog"
-                    >
-                      &times;
-                    </button>
-                  </div>
-                  <div className="flex-1 overflow-y-auto font-sans text-xs text-text-base space-y-1 p-2 bg-card rounded-lg border border-subtle max-h-96">
-                    {filenames.map((name, idx) => (
-                      <div key={idx} className="flex items-center justify-between px-2.5 py-1 hover:bg-inner rounded transition-colors">
-                        <span className="text-text-muted text-[10px] w-10 shrink-0">{idx + 1}.</span>
-                        <span className="text-text-base font-semibold flex-1 truncate">{name}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="pt-3 border-t border-subtle flex items-center justify-between shrink-0">
-                    <button
-                      onClick={() => {
-                        navigator.clipboard.writeText(filenames.join('\n'));
-                        toast.success(`Copied ${filenames.length} image filenames to clipboard!`);
-                      }}
-                      className="px-3 py-1.5 bg-inner hover:bg-inner text-text-base border border-subtle rounded-lg text-xs font-medium cursor-pointer transition-colors flex items-center gap-1.5"
-                    >
-                      <Copy size={13} /> Copy List ({filenames.length})
-                    </button>
-                    <button
-                      onClick={() => setImagesListModal(null)}
-                      className="px-4 py-1.5 bg-sky-600 hover:bg-sky-500 text-text-base rounded-lg text-xs font-medium cursor-pointer transition-colors"
-                    >
-                      Close
-                    </button>
-                  </div>
-                </div>
+        <SubgridImagesListModal
+          modal={imagesListModal}
+          onClose={() => setImagesListModal(null)}
+        />
+
+        {/* ========================================================= */}
+        {/* FIRST-RUN ONBOARDING NUDGE (auto-suggested once, dismissible) */}
+        {/* ========================================================= */}
+        {tourFirstRunOpen && tourStep === null && !isHelpGuideOpen && (
+          <div className="fixed bottom-6 right-6 z-[99998] w-[340px] max-w-[calc(100vw-2rem)] bg-card border border-subtle rounded-2xl shadow-2xl p-4 text-text-base backdrop-blur-xl animate-in fade-in slide-in-from-bottom-4 duration-200">
+            <div className="flex items-start justify-between gap-3 mb-2.5">
+              <div className="flex items-center gap-2">
+                <span className="flex items-center justify-center w-7 h-7 rounded-lg bg-sky-500/15 text-sky-400">
+                  <MapIcon style={{ width: 14, height: 14 }} />
+                </span>
+                <h4 className="text-xs font-bold text-text-base tracking-wide">
+                  New here? Take the interactive tour
+                </h4>
               </div>
-            );
-          })()
-        }
+              <button
+                onClick={() => { setTourFirstRunOpen(false); try { localStorage.setItem('tourFirstRunSeen', '1'); } catch { /* ignore */ } }}
+                className="text-text-muted hover:text-text-base p-1 rounded-lg hover:bg-inner transition-colors cursor-pointer"
+                title="Dismiss onboarding"
+              >
+                <X size={14} />
+              </button>
+            </div>
+            <p className="text-[11px] text-text-muted leading-relaxed mb-3">
+              A short guided spotlight walks through the Dashboard KPIs, WebGIS map, 360° inspector and data tools.
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  setTourFirstRunOpen(false);
+                  setTourStep(1);
+                  try { localStorage.setItem('tourFirstRunSeen', '1'); } catch { /* ignore */ }
+                }}
+                className="flex-1 px-3 py-1.5 bg-sky-500/15 hover:bg-sky-500/25 text-sky-400 border border-subtle text-xs font-semibold rounded-lg transition-all cursor-pointer"
+              >
+                Start Tour
+              </button>
+              <button
+                onClick={() => { setTourFirstRunOpen(false); try { localStorage.setItem('tourFirstRunSeen', '1'); } catch { /* ignore */ } }}
+                className="px-3 py-1.5 bg-inner hover:bg-inner text-text-muted hover:text-text-base border border-subtle text-xs font-medium rounded-lg transition-all cursor-pointer"
+              >
+                Not now
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* ========================================================= */}
         {/* INTERACTIVE GUIDED TOUR FLOATING TOOLTIP OVERLAY */}
@@ -6084,7 +5988,8 @@ export default function App() {
                     { id: 'map', label: 'Interactive Map' },
                     { id: 'panorama', label: '360° Street View' },
                     { id: 'data', label: 'Daily Progress & DB' },
-                    { id: 'audit', label: 'Notifications & Audit' }
+                    { id: 'audit', label: 'Notifications & Audit' },
+                    { id: 'shortcuts', label: 'Keyboard Shortcuts' }
                   ].map(tab => (
                     <button
                       key={tab.id}
@@ -6191,6 +6096,32 @@ export default function App() {
                           Export one-click PDF QA summary reports containing subgrid defect pass rates, total surveyed kilometers, and client SLA verification sign-offs.
                         </p>
                       </div>
+                    </div>
+                  )}
+
+                  {helpGuideTab === 'shortcuts' && (
+                    <div className="space-y-1.5">
+                      {[
+                        { keys: ['?'], action: 'Open this keyboard shortcuts / help guide' },
+                        { keys: ['Esc'], action: 'Close any open modal, dialog or help guide' },
+                        { keys: ['Tab'], action: 'Move focus between panels, toolbars and tables' },
+                        { keys: ['↑ ↓'], action: 'Navigate rows within the active data table' },
+                        { keys: ['← →'], action: 'Step forward / backward through 360° trajectory frames' },
+                        { keys: ['Enter'], action: 'Confirm the focused action or selection' },
+                        { keys: ['Space'], action: 'Toggle selection / check the focused checkbox' }
+                      ].map((row, idx) => (
+                        <div key={idx} className="flex items-center gap-3 bg-card p-3 rounded-lg border border-subtle">
+                          <div className="flex flex-wrap gap-1.5 shrink-0">
+                            {row.keys.map(k => (
+                              <kbd key={k} className="px-2 py-1 bg-inner border border-subtle rounded-md font-mono text-[10px] text-text-base shadow-sm">{k}</kbd>
+                            ))}
+                          </div>
+                          <span className="text-text-muted">{row.action}</span>
+                        </div>
+                      ))}
+                      <p className="pt-1 text-[11px] text-text-muted">
+                        Press <kbd className="px-1.5 py-0.5 bg-inner border border-subtle rounded font-mono text-[10px]">?</kbd> from the main dashboard to reopen this guide at any time.
+                      </p>
                     </div>
                   )}
                 </div>

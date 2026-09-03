@@ -2,6 +2,8 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import type { ExtendedProjectSettings, QADefectRecord, QAQCConfig } from '../types/admin';
 import { analyzeImageSharpness, detectBlurAndObstruction } from '../utils/qaqcAnalyzer';
 import { resolvePanoramaUrl, supabase } from '../services/supabase';
+import { withRetry } from '../lib/retry';
+import { reportWarn } from '../lib/report';
 import type {
   QaqcWorkerRequest,
   QaqcWorkerResponse,
@@ -201,7 +203,22 @@ async function persistDefectBatch(
       created_at: defectRecord.created_at,
       updated_at: new Date().toISOString()
     }));
-    const { error: upsertErr } = await supabase.from(table).upsert(chunk, { onConflict: 'subgrid,point_id' });
+    const { error: upsertErr } = await withRetry(
+      async () => {
+        const res = await supabase.from(table).upsert(chunk, { onConflict: 'subgrid,point_id' });
+        if (res.error) throw new Error(res.error.message);
+        return res;
+      },
+      { retries: 2 }
+    ).catch((err) => {
+      console.warn('qa_defects batch sync notice:', err);
+      try {
+        reportWarn(`qa_defects batch sync failed after retries: ${err instanceof Error ? err.message : String(err)}`, 'persistDefectBatch');
+      } catch {
+        // logging must never break the batch loop
+      }
+      return { error: { message: String(err), code: 'RETRY_FAILED' } as any, data: null };
+    });
     if (upsertErr) {
       console.warn('qa_defects batch sync notice:', upsertErr);
     } else {
