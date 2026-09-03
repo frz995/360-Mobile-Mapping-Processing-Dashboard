@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import { PhotoSphereViewerComponent, type PhotoSphereViewerHandle } from '../PhotoSphereViewerComponent';
 import { WebGISHUDViewerOverlay } from '../WebGISHUDViewerOverlay';
 import { MapComponent } from '../MapComponent';
@@ -23,6 +23,7 @@ import {
   StopCircle
 } from 'lucide-react';
 import { updateDefectStatusInSupabase, resolvePanoramaUrl, resolvePanoramaConfigUrl, SUBGRID_COORDINATES, formatPIC, saveProcessingJobToSupabase } from '../../services/supabase';
+import type { WorkspaceKey } from '../../utils/hashRouter';
 import { extractSubgridName } from '../../utils/subgrid';
 import { formatBatchIdDisplay, getPOICount, getImagesProcessedCount, formatDisplayDate } from '../../utils/dashboardData';
 import { getItemId } from '../../utils/items';
@@ -87,7 +88,7 @@ export interface DashboardWorkspaceProps {
   allKnownDefects: any[];
   dashboardPsvRef: React.MutableRefObject<PhotoSphereViewerHandle | null>;
   inspectionMapIframeRef: React.MutableRefObject<HTMLIFrameElement | null>;
-  goToWorkspace: (key: 'dashboard' | 'data' | 'settings' | 'production' | 'storage' | 'processing' | 'lineage' | 'analytics' | 'reports' | 'administration') => void;
+  goToWorkspace: (key: WorkspaceKey) => void;
   generateExecutivePdfReport: () => void;
   handleRefreshMap: () => void;
   handleSelectDailyRun: (daily: DailyTimeSeries) => void;

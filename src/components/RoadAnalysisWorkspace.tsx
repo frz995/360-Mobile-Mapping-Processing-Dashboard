@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Route,
   Map,
@@ -145,9 +145,20 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
   const [extracting, setExtracting] = useState(false);
   const [extractError, setExtractError] = useState<string>('');
   const [showRoadLines, setShowRoadLines] = useState(true);
-  const [mapBasemap, setMapBasemap] = useState<string | undefined>(
-    projectSettings?.defaultBasemap || 'ofm-positron'
-  );
+  const defaultBasemapKey = useMemo(() => {
+    if (projectSettings?.defaultBasemap) return projectSettings.defaultBasemap;
+    if (projectSettings?.defaultBasemapStyle === 'dark') return 'ofm-dark';
+    return 'ofm-positron';
+  }, [projectSettings?.defaultBasemap, projectSettings?.defaultBasemapStyle]);
+
+  const [mapBasemap, setMapBasemap] = useState<string>(defaultBasemapKey);
+
+  // Sync if project settings update dynamically from Supabase / Admin Settings
+  useEffect(() => {
+    if (projectSettings?.defaultBasemap) {
+      setMapBasemap(projectSettings.defaultBasemap);
+    }
+  }, [projectSettings?.defaultBasemap]);
 
   const stateOptions = useMemo(() => DISTRICT_STATES.filter((s) => s.name !== 'Unknown'), []);
 
@@ -571,28 +582,28 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                 >
                   <ScanLine size={13} /> {showRoadLines ? 'Hide road lines' : 'Show road lines'}
                 </button>
-                <label className="flex items-center gap-1.5 px-2 py-1.5 rounded-md text-text-muted cursor-pointer">
-                  <Layers size={13} />
+                <label className="flex items-center gap-1.5 px-2 py-1 rounded-md text-text-muted cursor-pointer hover:text-text-base transition-colors">
+                  <Layers size={13} className="shrink-0" />
                   <select
                     value={mapBasemap}
                     onChange={(e) => setMapBasemap(e.target.value)}
-                    className="bg-transparent text-[11px] font-semibold text-text-base focus:outline-none cursor-pointer"
+                    className="bg-inner/80 px-2 py-0.5 rounded text-[11px] font-semibold text-text-base border border-subtle focus:outline-none cursor-pointer"
                     title="Map basemap"
                   >
-                    <option value="ofm-positron">Positron (OpenFreeMap)</option>
-                    <option value="ofm-bright">Bright (OpenFreeMap)</option>
-                    <option value="ofm-liberty">Liberty (OpenFreeMap)</option>
-                    <option value="ofm-dark">Dark (OpenFreeMap)</option>
-                    <option value="ofm-fiord">Fiord (OpenFreeMap)</option>
-                    <option value="esri_satellite">Esri Satellite</option>
-                    <option value="osm_standard">OpenStreetMap</option>
-                    <option value="carto_light">Carto Light</option>
-                    <option value="carto_dark">Carto Dark</option>
-                    <option value="google-satellite">Google Satellite</option>
-                    <option value="google-streets">Google Streets</option>
-                    <option value="google-hybrid">Google Hybrid</option>
-                    <option value="google-terrain">Google Terrain</option>
-                    <option value="custom_tile">Custom XYZ</option>
+                    <option value="ofm-dark" className="bg-card text-text-base">Dark (OpenFreeMap)</option>
+                    <option value="ofm-positron" className="bg-card text-text-base">Positron (OpenFreeMap)</option>
+                    <option value="ofm-bright" className="bg-card text-text-base">Bright (OpenFreeMap)</option>
+                    <option value="ofm-liberty" className="bg-card text-text-base">Liberty (OpenFreeMap)</option>
+                    <option value="ofm-fiord" className="bg-card text-text-base">Fiord (OpenFreeMap)</option>
+                    <option value="esri_satellite" className="bg-card text-text-base">Esri Satellite</option>
+                    <option value="osm_standard" className="bg-card text-text-base">OpenStreetMap</option>
+                    <option value="carto_dark" className="bg-card text-text-base">Carto Dark</option>
+                    <option value="carto_light" className="bg-card text-text-base">Carto Light</option>
+                    <option value="google-satellite" className="bg-card text-text-base">Google Satellite</option>
+                    <option value="google-streets" className="bg-card text-text-base">Google Streets</option>
+                    <option value="google-hybrid" className="bg-card text-text-base">Google Hybrid</option>
+                    <option value="google-terrain" className="bg-card text-text-base">Google Terrain</option>
+                    <option value="custom_tile" className="bg-card text-text-base">Custom XYZ</option>
                   </select>
                 </label>
               </div>
