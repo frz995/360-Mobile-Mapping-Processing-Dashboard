@@ -8,10 +8,12 @@ import {
   HardDrive,
   Workflow,
   LayoutDashboard,
+  Route,
   Settings,
   Shield
 } from 'lucide-react';
 import type { WorkspaceKey } from './utils/hashRouter';
+import type { AuthzCapability } from './lib/authz';
 
 export type WorkspaceTag = 'live' | 'planned' | 'reserved';
 
@@ -21,23 +23,40 @@ export interface WorkspaceDefinition {
   descriptionKey: string;
   icon: ElementType;
   tag: WorkspaceTag;
+  /**
+   * Optional AuthZ capabilities that grant access to this workspace. A
+   * user may open the workspace if they hold ANY of these capabilities.
+   * Undefined (or empty) means "no special restriction" (viewAll applies).
+   * Metadata only for P1.3 — enforcement is wired in P2; setting this has
+   * no effect on current rendering, so the dashboard is visually untouched.
+   */
+  guard?: AuthzCapability[];
 }
 
 export const WORKSPACES: WorkspaceDefinition[] = [
   { key: 'dashboard', labelKey: 'dashboard', descriptionKey: 'workspaceDashboardDesc', icon: LayoutDashboard, tag: 'live' },
   { key: 'data', labelKey: 'data', descriptionKey: 'workspaceDataDesc', icon: Database, tag: 'live' },
-  { key: 'settings', labelKey: 'settings', descriptionKey: 'workspaceSettingsDesc', icon: Settings, tag: 'live' },
+  { key: 'settings', labelKey: 'settings', descriptionKey: 'workspaceSettingsDesc', icon: Settings, tag: 'live', guard: ['manageSettings'] },
   { key: 'production', labelKey: 'workspaceProduction', descriptionKey: 'workspaceProductionDesc', icon: Workflow, tag: 'live' },
   { key: 'storage', labelKey: 'workspaceStorage', descriptionKey: 'workspaceStorageDesc', icon: HardDrive, tag: 'live' },
   { key: 'processing', labelKey: 'workspaceProcessing', descriptionKey: 'workspaceProcessingDesc', icon: Cpu, tag: 'live' },
   { key: 'lineage', labelKey: 'workspaceLineage', descriptionKey: 'workspaceLineageDesc', icon: GitBranch, tag: 'live' },
   { key: 'analytics', labelKey: 'workspaceAnalytics', descriptionKey: 'workspaceAnalyticsDesc', icon: BarChart3, tag: 'live' },
   { key: 'reports', labelKey: 'workspaceReports', descriptionKey: 'workspaceReportsDesc', icon: FileText, tag: 'live' },
-  { key: 'administration', labelKey: 'workspaceAdministration', descriptionKey: 'workspaceAdministrationDesc', icon: Shield, tag: 'live' }
+  { key: 'administration', labelKey: 'workspaceAdministration', descriptionKey: 'workspaceAdministrationDesc', icon: Shield, tag: 'live', guard: ['manageUsers', 'approveDeletions'] },
+  { key: 'roadAnalysis', labelKey: 'workspaceRoadAnalysis', descriptionKey: 'workspaceRoadAnalysisDesc', icon: Route, tag: 'live' }
 ];
 
 export function getWorkspaceDefinition(key: WorkspaceKey): WorkspaceDefinition {
   return WORKSPACES.find((w) => w.key === key) || WORKSPACES[0];
+}
+
+/**
+ * AuthZ capabilities that grant access to a workspace (any-of semantics).
+ * Returns an empty array when no explicit guard is defined (no restriction).
+ */
+export function getWorkspaceGuards(key: WorkspaceKey): AuthzCapability[] {
+  return getWorkspaceDefinition(key).guard || [];
 }
 
 export interface WorkspaceCategory {
@@ -52,12 +71,12 @@ export const WORKSPACE_CATEGORIES: WorkspaceCategory[] = [
   {
     key: 'production',
     labelKey: 'workspaceCategoryProduction',
-    members: ['production', 'storage', 'processing', 'lineage']
+    members: ['production', 'processing', 'lineage', 'storage']
   },
   {
     key: 'insights',
     labelKey: 'workspaceCategoryInsights',
-    members: ['analytics', 'reports']
+    members: ['analytics', 'reports', 'roadAnalysis']
   },
   {
     key: 'governance',

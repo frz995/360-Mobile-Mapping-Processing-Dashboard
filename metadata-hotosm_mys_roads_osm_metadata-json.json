@@ -1,0 +1,15 @@
+{
+    "created": "2026-05-14T21:01:35.646759",
+    "description": "roads (osm) layer metadata",
+    "format": "JSON",
+    "download_url": "https://production-raw-data-api.s3.amazonaws.com/ISO3/MYS/roads/hotosm_mys_roads_osm_metadata.json",
+    "id": "02853af4-dfa4-4f65-ab74-fecda604dc71",
+    "last_modified": "2026-08-07T12:35:25.204628",
+    "metadata_modified": "2026-08-08T09:48:32.026257",
+    "microdata": false,
+    "dataset_id": "6a51ef58-edfa-4f6b-aca6-ce5939eddd46",
+    "resource_type": "api",
+    "name": "hotosm_mys_roads_osm_metadata.json",
+    "mimetype": null,
+    "size": "10.3K"
+}

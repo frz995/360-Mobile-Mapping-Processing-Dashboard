@@ -38,13 +38,13 @@ export const DailyHandoverModal: React.FC<DailyHandoverModalProps> = ({
     onOpenDefectsGallery,
     onOpenBatchProcessing
 }) => {
-    const [dontShowToday, setDontShowToday] = useState(false);
+    const [dontShowAgainToday, setDontShowAgainToday] = useState(false);
 
-    // Save dismissal preference
+    // Save dismissal preference: if ticked, suppress for today; resets day by day
     const handleDismiss = () => {
-        if (dontShowToday) {
+        if (dontShowAgainToday) {
             const todayStr = new Date().toISOString().slice(0, 10);
-            localStorage.setItem('geosphere360_handover_dismissed_date', todayStr);
+            localStorage.setItem('geosphere360_briefing_suppressed_date', todayStr);
         }
         onClose();
     };
@@ -337,14 +337,14 @@ export const DailyHandoverModal: React.FC<DailyHandoverModalProps> = ({
 
                 {/* 3. Footer Controls */}
                 <div className="px-5 py-3.5 border-t border-subtle flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
-                    <label className="flex items-center gap-2 text-xs text-text-muted cursor-pointer select-none">
+                    <label className="flex items-center gap-2 text-xs text-text-muted hover:text-text-base cursor-pointer select-none">
                         <input
                             type="checkbox"
-                            checked={dontShowToday}
-                            onChange={(e) => setDontShowToday(e.target.checked)}
-                            className="rounded border-subtle bg-card text-text-base focus:ring-0 cursor-pointer"
+                            checked={dontShowAgainToday}
+                            onChange={(e) => setDontShowAgainToday(e.target.checked)}
+                            className="rounded border-subtle bg-card text-sky-500 focus:ring-0 accent-sky-400 cursor-pointer"
                         />
-                        <span>Don't show briefing automatically today</span>
+                        <span>Don't show again today</span>
                     </label>
 
                     <div className="flex items-center gap-2 w-full sm:w-auto">

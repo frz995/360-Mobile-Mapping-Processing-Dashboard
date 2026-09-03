@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { PhotoSphereViewerComponent, type PhotoSphereViewerHandle } from './components/PhotoSphereViewerComponent';
 import { WebGISHUDViewerOverlay } from './components/WebGISHUDViewerOverlay';
 import { setHeading } from './utils/headingStore';
@@ -58,6 +58,7 @@ const LineageWorkspace = React.lazy(() => import('./components/LineageWorkspace'
 const AnalyticsWorkspace = React.lazy(() => import('./components/AnalyticsWorkspace').then(m => ({ default: m.AnalyticsWorkspace })));
 const ReportsWorkspace = React.lazy(() => import('./components/ReportsWorkspace').then(m => ({ default: m.ReportsWorkspace })));
 const AdministrationWorkspace = React.lazy(() => import('./components/AdministrationWorkspace').then(m => ({ default: m.AdministrationWorkspace })));
+const RoadAnalysisWorkspace = React.lazy(() => import('./components/RoadAnalysisWorkspace'));
 const QAQCWorkbench = React.lazy(() => import('./components/QAQCWorkbench').then(m => ({ default: m.QAQCWorkbench })));
 import { useQAQCWorker, type StationNode } from './hooks/useQAQCWorker';
 import { useAppData } from './hooks/useAppData';
@@ -179,11 +180,8 @@ export default function App() {
   const [selectedDailyRunId, setSelectedDailyRunId] = useState<string | null>(null);
 
   // Daily Operations Handover & Briefing Modal State
-  const [isHandoverModalOpen, setIsHandoverModalOpen] = useState<boolean>(() => {
-    const todayStr = new Date().toISOString().slice(0, 10);
-    const dismissedDate = localStorage.getItem('geosphere360_handover_dismissed_date');
-    return dismissedDate !== todayStr;
-  });
+  const [isHandoverModalOpen, setIsHandoverModalOpen] = useState<boolean>(false);
+  const hasAutoOpenedBriefingRef = useRef<boolean>(false);
 
   // 1. Core Dynamic States (owned by useAppData hook)
   const {
@@ -205,6 +203,19 @@ export default function App() {
     projectSettings,
     setProjectSettings
   } = useAppData();
+
+  // Pop up daily briefing modal once initial dashboard data loading completes (unless suppressed for today)
+  useEffect(() => {
+    if (!isDataLoading && !hasAutoOpenedBriefingRef.current) {
+      hasAutoOpenedBriefingRef.current = true;
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const suppressedDate = localStorage.getItem('geosphere360_briefing_suppressed_date');
+      if (suppressedDate !== todayStr) {
+        setIsHandoverModalOpen(true);
+      }
+    }
+  }, [isDataLoading]);
+
   const [dataManagementTab, setDataManagementTab] = useState<'batches' | 'daily' | 'vector' | 'datasets' | 'recovery'>('batches');
   const [dataManagementSearch, setDataManagementSearch] = useState<string>('');
 
@@ -779,6 +790,16 @@ export default function App() {
   const ongoingMasterlistCount = batchLogs.filter(b => b.status === 'Ongoing').length;
   const stagedDailyBatchesCount = dailyData.filter(d => (d.publishToWebGIS || (d as any).publishToUSVPRO) !== 'yes').length;
 
+  const dailyDataBySubgrid = useMemo(() => {
+    const map = new Map<string, DailyTimeSeries[]>();
+    dailyData.forEach((d) => {
+      const sg = (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim();
+      if (!map.has(sg)) map.set(sg, []);
+      map.get(sg)!.push(d);
+    });
+    return map;
+  }, [dailyData]);
+
   const [mapRefreshKey, setMapRefreshKey] = useState<number>(Date.now());
   const handleRefreshMap = () => {
     setMapRefreshKey(Date.now());
@@ -991,6 +1012,18 @@ export default function App() {
   });
 
   const hasActiveDashFilters = Object.values(dashDailyFilters).some(Boolean);
+
+  const filteredDailyData = useMemo(() => {
+    return [...dailyData]
+      .reverse()
+      .filter(log => {
+        if (dashDailyFilters.grid && log.grid !== dashDailyFilters.grid) return false;
+        if (dashDailyFilters.subgrid && (log.subgrid || '').toUpperCase().trim() !== dashDailyFilters.subgrid.toUpperCase().trim()) return false;
+        if (dashDailyFilters.pic && (log.pic || '') !== dashDailyFilters.pic) return false;
+        if (dashDailyFilters.equipment && (log.captureEquipment || 'MMS') !== dashDailyFilters.equipment) return false;
+        return true;
+      });
+  }, [dailyData, dashDailyFilters]);
   const [isDrawingBBox, setIsDrawingBBox] = useState(false);
   const [statusFilters, setStatusFilters] = useState<{ published: boolean; defect: boolean; stitching: boolean }>({
     published: true,
@@ -2947,7 +2980,14 @@ export default function App() {
 
           <WorkspaceErrorBoundary resetKey={currentPage}>
           <React.Suspense fallback={<ContentLoading label="Loading workspace..." variant="spinner" sublabel="Preparing your module" />}>
-          {currentPage === 'dashboard' ? (
+          <div
+            className={`flex-1 flex flex-col min-h-0 overflow-hidden ${
+              currentPage === 'dashboard'
+                ? 'relative'
+                : 'absolute inset-0 pointer-events-none opacity-0 -z-50 invisible'
+            }`}
+            aria-hidden={currentPage !== 'dashboard'}
+          >
             <div key="dashboard-canvas" className="flex-1 flex flex-col gap-3 min-h-0 overflow-y-auto md:overflow-hidden animate-workspace-focus">
               {/* TOP ROW: EXECUTIVE KPI SUMMARY (4 Cards) */}
               <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 shrink-0 transition-all duration-300 ${tourStep === 1 ? 'ring-2 ring-sky-400/90 shadow-[0_0_35px_rgba(56,189,248,0.4)] z-30 relative rounded-xl p-1 bg-sky-950/20' : tourStep !== null ? 'opacity-30 blur-[1.5px] pointer-events-none' : ''
@@ -3574,7 +3614,7 @@ export default function App() {
                                         onClick={(e) => {
                                           e.stopPropagation();
                                           const subFilter = (extractSubgridName(batchSubgrid) || batchSubgrid).toUpperCase().trim();
-                                          const matchingDaily = dailyData.filter(d => (extractSubgridName(d.subgrid) || d.subgrid).toUpperCase().trim() === subFilter);
+                                          const matchingDaily = dailyDataBySubgrid.get(subFilter) || [];
                                           const dailyAvailFiles = matchingDaily.flatMap(d => d.availableFilenames || []);
                                           const customFn = log.availableFilenames && log.availableFilenames.length > 0
                                             ? log.availableFilenames
@@ -3619,7 +3659,7 @@ export default function App() {
                                         if (isWholeSubgridActive) {
                                           dCount = qaqcWorkerState.defectsList.length;
                                         } else {
-                                          const subgridDailyRuns = dailyData.filter(d => (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim() === batchSubgrid);
+                                          const subgridDailyRuns = dailyDataBySubgrid.get(batchSubgrid) || [];
                                           if (subgridDailyRuns.length > 0) {
                                             let sumDefects = 0;
                                             let anyDailyInspected = false;
@@ -3773,16 +3813,7 @@ export default function App() {
                                 </td>
                               </tr>
                             ) : (
-                              [...dailyData]
-                                .reverse()
-                                .filter(log => {
-                                  if (dashDailyFilters.grid && log.grid !== dashDailyFilters.grid) return false;
-                                  if (dashDailyFilters.subgrid && (log.subgrid || '').toUpperCase().trim() !== dashDailyFilters.subgrid.toUpperCase().trim()) return false;
-                                  if (dashDailyFilters.pic && (log.pic || '') !== dashDailyFilters.pic) return false;
-                                  if (dashDailyFilters.equipment && (log.captureEquipment || 'MMS') !== dashDailyFilters.equipment) return false;
-                                  return true;
-                                })
-                                .map((log, i) => {
+                              filteredDailyData.map((log, i) => {
                                   const dailySubgrid = (log.subgrid || '').toUpperCase().trim();
                                   const runId = getItemId(log);
                                   const frameCount = getImagesProcessedCount(log);
@@ -4064,7 +4095,7 @@ export default function App() {
                               return (
                                 <PhotoSphereViewerComponent
                                   ref={dashboardPsvRef}
-                                  key={`pano-psv-${targetSubgrid}-${provider}`}
+                                  key={`pano-psv-${provider}`}
                                   configUrl={shouldUseMultiRes && dynamicConfigUrl ? dynamicConfigUrl : undefined}
                                   panoramaUrl={!shouldUseMultiRes ? dynamicPanoUrl : undefined}
                                   initialYaw={panoramaTelemetry.yaw}
@@ -4485,7 +4516,8 @@ export default function App() {
                 </div>
               </div>
             </div>
-          ) : currentPage === 'data' ? (
+          </div>
+          {currentPage === 'data' ? (
             <div className="flex-1 flex flex-col min-h-0 overflow-hidden animate-in fade-in duration-500">
               <DataManagementPage
                 dailyData={dailyData}
@@ -4618,7 +4650,17 @@ export default function App() {
               auditLogs={auditLogs}
               onRefreshData={handleRefreshMap}
             />
-          ) : (
+          ) : currentPage === 'roadAnalysis' ? (
+            <RoadAnalysisWorkspace
+              key="workspace-road-analysis"
+              projectSettings={projectSettings}
+              batchLogs={activeBatchLogs}
+              dailyData={dailyData}
+              onRefreshData={handleRefreshMap}
+              translate={t}
+              onBackToDashboard={() => goToWorkspace('dashboard')}
+            />
+          ) : currentPage === 'dashboard' ? null : (
             <div key={`workspace-${currentPage}`} className="flex-1 flex flex-col min-h-0 overflow-hidden animate-panel-enter">
               <WorkspacePlaceholder workspace={getWorkspaceDefinition(currentPage)} translate={t} />
             </div>
