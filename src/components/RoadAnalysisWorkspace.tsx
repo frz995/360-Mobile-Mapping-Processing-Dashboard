@@ -6,33 +6,119 @@ import {
   Upload,
   RefreshCw,
   FileJson,
-  ScanLine
+  ScanLine,
+  Save,
+  Check,
+  Loader2
 } from 'lucide-react';
-import { Masthead, UnderlineTabStrip, Surface, StatusDot, type ChromeTab } from './production/chrome';
+import { UnderlineTabStrip, StatusDot, type ChromeTab } from './production/chrome';
 import {
   MALAYSIA_DISTRICTS,
   DISTRICT_STATES,
   districtsToGeoJSON,
-  pointInDistricts,
   clipLineStringsToDistricts,
   linesLengthKm,
   type MalaysiaDistrict
 } from './boundary/malaysiaDistricts';
 import { RoadAnalysisMap } from './roadAnalysis/RoadAnalysisMap';
 import { getRoadExtractionAdapter, type ExtractedRoadLine } from '../services/roadExtraction';
-import { SUBGRID_COORDINATES } from '../services/supabase';
+import { parseRoadPlanFile, extractLineCoords } from '../utils/roadPlanParser';
+import { extractPanotrackPoints, filterPanotrackByDistricts } from '../utils/panotrackExtractor';
+import {
+  saveRoadAnalysisStateToSupabase,
+  fetchRoadAnalysisStateFromSupabase,
+  fetchSupabaseData,
+  type RoadAnalysisProductionState
+} from '../services/supabase';
+import type { AuditLogItem } from '../types/dashboard';
 
 export interface RoadAnalysisWorkspaceProps {
   projectSettings?: any;
   batchLogs?: any[];
   dailyData?: any[];
+  defectsList?: any[];
   onRefreshData?: () => void;
   translate?: (key: string) => string;
   onBackToDashboard?: () => void;
+  authSession?: any;
+  isGuestUser?: boolean;
+  addNotification?: (item: any) => void;
+  addAuditLog?: (type: AuditLogItem['type'], title: string, details: string, status?: AuditLogItem['status']) => void;
 }
 
 type RoadTab = 'region' | 'plan' | 'compare';
 type PlanSource = 'system' | 'manual' | 'extracted';
+
+export function getAuthStorageUserKey(authSession?: any, isGuestUser?: boolean): string {
+  if (isGuestUser) return 'guest';
+  const sessionUser = authSession?.user;
+  if (sessionUser?.id) return String(sessionUser.id);
+  if (sessionUser?.email) return String(sessionUser.email).toLowerCase().trim();
+
+  try {
+    const sbKey = Object.keys(localStorage).find((k) => k.startsWith('sb-') && k.endsWith('-auth-token'));
+    if (sbKey) {
+      const raw = localStorage.getItem(sbKey);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        const user = parsed?.user;
+        if (user?.id) return String(user.id);
+        if (user?.email) return String(user.email).toLowerCase().trim();
+      }
+    }
+  } catch {
+    // ignore
+  }
+
+  return 'anonymous';
+}
+
+export interface RoadAnalysisSavedState {
+  activeTab?: RoadTab;
+  selectedStateCode?: string;
+  selectedDistrictIds?: string[];
+  planSource?: PlanSource;
+  mapBasemap?: string;
+  showRoadLines?: boolean;
+  manualGeoJson?: any;
+  extractedLines?: ExtractedRoadLine[];
+}
+
+export function getRoadAnalysisStorageKey(userKey: string): string {
+  return `geosphere_road_analysis_state_${userKey}`;
+}
+
+export function computeRoadAnalysisFingerprint(
+  stateCode: string,
+  districtIds: string[],
+  plan: PlanSource,
+  basemap: string,
+  roadLines: boolean,
+  manual: any,
+  extracted: ExtractedRoadLine[]
+): string {
+  return JSON.stringify({
+    stateCode: stateCode || '',
+    districts: [...(districtIds || [])].sort(),
+    plan: plan || 'system',
+    basemap: basemap || '',
+    roadLines: !!roadLines,
+    hasManual: !!manual,
+    manualGeoJson: manual ? JSON.stringify(manual) : null,
+    extractedCount: extracted?.length || 0,
+    extractedSample: (extracted || []).slice(0, 3).map((l) => l.coordinates.length)
+  });
+}
+
+export function loadRoadAnalysisState(userKey: string): RoadAnalysisSavedState | null {
+  try {
+    const raw = localStorage.getItem(getRoadAnalysisStorageKey(userKey));
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
 
 const TABS: ChromeTab<RoadTab>[] = [
   { key: 'region', icon: <Map size={14} /> },
@@ -50,14 +136,18 @@ function haversineKm(p1: [number, number], p2: [number, number]): number {
   const R = 6371;
   const toRad = (d: number) => (d * Math.PI) / 180;
   const dLat = toRad(p2[1] - p1[1]);
-  const dLng = toRad(p2[0] - p1[0]);
+  const dLon = toRad(p2[0] - p1[0]);
+  const lat1 = toRad(p1[1]);
+  const lat2 = toRad(p2[1]);
   const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(p1[1])) * Math.cos(toRad(p2[1])) * Math.sin(dLng / 2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(a));
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.sin(dLon / 2) * Math.sin(dLon / 2) * Math.cos(lat1) * Math.cos(lat2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
 }
 
 function pathLengthKm(coords: Array<[number, number]>): number {
+  if (!coords || coords.length < 2) return 0;
   let total = 0;
   for (let i = 1; i < coords.length; i++) {
     total += haversineKm(coords[i - 1], coords[i]);
@@ -65,46 +155,40 @@ function pathLengthKm(coords: Array<[number, number]>): number {
   return total;
 }
 
-function extractLineCoords(geojson: any): Array<[number, number]> {
-  const geom = geojson?.geometry;
-  if (!geom || geom.type !== 'LineString' || !Array.isArray(geom.coordinates)) return [];
-  return geom.coordinates
-    .filter((c: any) => Array.isArray(c) && c.length >= 2)
-    .map((c: any) => [Number(c[0]), Number(c[1])] as [number, number]);
-}
-
-/**
- * Map the dashboard's basemap key (projectSettings.defaultBasemap) to a
- * MapLibre style so the Road Analysis map matches the main dashboard.
- * OpenFreeMap (the dashboard default) serves vector tiles via style URLs, so
- * 'ofm-*' keys resolve to OpenFreeMap style URLs (positron/bright/liberty/
- * dark/fiord) — exactly the basemap the dashboard renders. Non-OFM keys fall
- * back to a minimal raster MapLibre style.
- */
-function rasterStyle(tiles: string): any {
+function rasterStyle(tilesUrl: string) {
   return {
-    version: 8,
+    version: 8 as const,
     sources: {
-      base: { type: 'raster', tiles: [tiles], tileSize: 256 }
+      'raster-source': {
+        type: 'raster' as const,
+        tiles: [tilesUrl],
+        tileSize: 256
+      }
     },
-    layers: [{ id: 'base', type: 'raster', source: 'base' }]
+    layers: [
+      {
+        id: 'raster-layer',
+        type: 'raster' as const,
+        source: 'raster-source',
+        minzoom: 0,
+        maxzoom: 19
+      }
+    ]
   };
 }
 
-function basemapToMapStyle(basemap?: string, customUrl?: string): any {
-  switch (basemap) {
+function basemapToMapStyle(key?: string, customUrl?: string) {
+  switch (key) {
     case 'ofm-dark':
       return 'https://tiles.openfreemap.org/styles/dark';
-    case 'ofm-fiord':
-      return 'https://tiles.openfreemap.org/styles/fiord';
-    case 'ofm-liberty':
-      return 'https://tiles.openfreemap.org/styles/liberty';
+    case 'ofm-positron':
+      return 'https://tiles.openfreemap.org/styles/positron';
     case 'ofm-bright':
       return 'https://tiles.openfreemap.org/styles/bright';
-    case 'ofm-positron':
-    default:
-      // Positron is the OpenFreeMap default and dashboard default.
-      return 'https://tiles.openfreemap.org/styles/positron';
+    case 'ofm-liberty':
+      return 'https://tiles.openfreemap.org/styles/liberty';
+    case 'ofm-fiord':
+      return 'https://tiles.openfreemap.org/styles/fiord';
     case 'esri_satellite':
       return rasterStyle('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}');
     case 'osm_standard':
@@ -113,15 +197,16 @@ function basemapToMapStyle(basemap?: string, customUrl?: string): any {
       return rasterStyle('https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png');
     case 'carto_light':
       return rasterStyle('https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png');
-    case 'google-streets':
-      return rasterStyle('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}');
     case 'google-satellite':
       return rasterStyle('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}');
+    case 'google-streets':
+      return rasterStyle('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}');
     case 'google-hybrid':
       return rasterStyle('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}');
     case 'google-terrain':
       return rasterStyle('https://mt1.google.com/vt/lyrs=p&x={x}&y={y}&z={z}');
     case 'custom_tile':
+    default:
       return rasterStyle(customUrl || 'https://tile.openstreetmap.org/{z}/{x}/{y}.png');
   }
 }
@@ -130,28 +215,261 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
   translate = (k) => k,
   onBackToDashboard: _onBackToDashboard,
   projectSettings,
-  onRefreshData
+  batchLogs = [],
+  dailyData = [],
+  defectsList = [],
+  onRefreshData,
+  authSession,
+  isGuestUser,
+  addNotification,
+  addAuditLog
 }) => {
-  const [activeTab, setActiveTab] = useState<RoadTab>('region');
-  const [selectedStateCode, setSelectedStateCode] = useState<string>('');
-  const [selectedDistrictIds, setSelectedDistrictIds] = useState<string[]>([]);
-  const [planSource, setPlanSource] = useState<PlanSource>('system');
-  const [manualGeoJson, setManualGeoJson] = useState<any>(null);
-  const [manualError, setManualError] = useState<string>('');
-  const [refreshTick, setRefreshTick] = useState(0);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [extractedLines, setExtractedLines] = useState<ExtractedRoadLine[]>([]);
-  const [extracting, setExtracting] = useState(false);
-  const [extractError, setExtractError] = useState<string>('');
-  const [showRoadLines, setShowRoadLines] = useState(true);
+  const userKey = useMemo(() => getAuthStorageUserKey(authSession, isGuestUser), [authSession, isGuestUser]);
+
   const defaultBasemapKey = useMemo(() => {
     if (projectSettings?.defaultBasemap) return projectSettings.defaultBasemap;
     if (projectSettings?.defaultBasemapStyle === 'dark') return 'ofm-dark';
     return 'ofm-positron';
   }, [projectSettings?.defaultBasemap, projectSettings?.defaultBasemapStyle]);
 
-  const [mapBasemap, setMapBasemap] = useState<string>(defaultBasemapKey);
+  const [activeTab, setActiveTab] = useState<RoadTab>(() => {
+    const saved = loadRoadAnalysisState(userKey);
+    return saved?.activeTab || 'region';
+  });
+
+  const [selectedStateCode, setSelectedStateCode] = useState<string>(() => {
+    const saved = loadRoadAnalysisState(userKey);
+    return saved?.selectedStateCode || '';
+  });
+
+  const [selectedDistrictIds, setSelectedDistrictIds] = useState<string[]>(() => {
+    const saved = loadRoadAnalysisState(userKey);
+    return Array.isArray(saved?.selectedDistrictIds) ? saved.selectedDistrictIds : [];
+  });
+
+  const [planSource, setPlanSource] = useState<PlanSource>(() => {
+    const saved = loadRoadAnalysisState(userKey);
+    return saved?.planSource || 'system';
+  });
+
+  const [manualGeoJson, setManualGeoJson] = useState<any>(() => {
+    const saved = loadRoadAnalysisState(userKey);
+    return saved?.manualGeoJson || null;
+  });
+
+  const [manualError, setManualError] = useState<string>('');
+  const [refreshTick, setRefreshTick] = useState(0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Maintain operational panotrack datasets from dashboard / Supabase
+  const [internalDailyData, setInternalDailyData] = useState<any[]>(() => dailyData || []);
+  const [internalBatchLogs, setInternalBatchLogs] = useState<any[]>(() => batchLogs || []);
+  const [internalDefectsList, setInternalDefectsList] = useState<any[]>(() => defectsList || []);
+  const [isLoadingPanotrack, setIsLoadingPanotrack] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (Array.isArray(dailyData) && dailyData.length > 0) {
+      setInternalDailyData(dailyData);
+    }
+  }, [dailyData]);
+
+  useEffect(() => {
+    if (Array.isArray(batchLogs) && batchLogs.length > 0) {
+      setInternalBatchLogs(batchLogs);
+    }
+  }, [batchLogs]);
+
+  useEffect(() => {
+    if (Array.isArray(defectsList) && defectsList.length > 0) {
+      setInternalDefectsList(defectsList);
+    }
+  }, [defectsList]);
+
+  // Automatically hydrate from Supabase if dailyData is initially empty or on refresh
+  useEffect(() => {
+    let cancelled = false;
+    if (internalDailyData.length === 0 || refreshTick > 0) {
+      setIsLoadingPanotrack(true);
+      fetchSupabaseData(projectSettings)
+        .then(({ dailyData: sDaily, batchLogs: sBatches, defectsList: sDefects }) => {
+          if (cancelled) return;
+          if (Array.isArray(sDaily) && sDaily.length > 0) {
+            setInternalDailyData(sDaily);
+          }
+          if (Array.isArray(sBatches) && sBatches.length > 0) {
+            setInternalBatchLogs(sBatches);
+          }
+          if (Array.isArray(sDefects) && sDefects.length > 0) {
+            setInternalDefectsList(sDefects);
+          }
+        })
+        .catch((err) => {
+          console.warn('[RoadAnalysis] fetchSupabaseData error:', err);
+        })
+        .finally(() => {
+          if (!cancelled) setIsLoadingPanotrack(false);
+        });
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshTick, projectSettings]);
+
+  const [extractedLines, setExtractedLines] = useState<ExtractedRoadLine[]>(() => {
+    const saved = loadRoadAnalysisState(userKey);
+    return Array.isArray(saved?.extractedLines) ? saved.extractedLines : [];
+  });
+
+  const [extracting, setExtracting] = useState(false);
+  const [extractError, setExtractError] = useState<string>('');
+
+  const [showRoadLines, setShowRoadLines] = useState<boolean>(() => {
+    const saved = loadRoadAnalysisState(userKey);
+    return typeof saved?.showRoadLines === 'boolean' ? saved.showRoadLines : true;
+  });
+
+  const [mapBasemap, setMapBasemap] = useState<string>(() => {
+    const saved = loadRoadAnalysisState(userKey);
+    if (saved?.mapBasemap) return saved.mapBasemap;
+    return defaultBasemapKey;
+  });
+
+  const [isSaving, setIsSaving] = useState(false);
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
+
+  const [lastSavedFingerprint, setLastSavedFingerprint] = useState<string | null>(() => {
+    const saved = loadRoadAnalysisState(userKey);
+    if (saved) {
+      return computeRoadAnalysisFingerprint(
+        saved.selectedStateCode || '',
+        saved.selectedDistrictIds || [],
+        saved.planSource || 'system',
+        saved.mapBasemap || defaultBasemapKey,
+        typeof saved.showRoadLines === 'boolean' ? saved.showRoadLines : true,
+        saved.manualGeoJson || null,
+        saved.extractedLines || []
+      );
+    }
+    return null;
+  });
+
+  // Calculate current fingerprint across all configuration dimensions:
+  // state, districts, plan source, basemap, road lines visibility, manual GeoJSON, and road extraction
+  const currentFingerprint = useMemo(() => {
+    return computeRoadAnalysisFingerprint(
+      selectedStateCode,
+      selectedDistrictIds,
+      planSource,
+      mapBasemap,
+      showRoadLines,
+      manualGeoJson,
+      extractedLines
+    );
+  }, [
+    selectedStateCode,
+    selectedDistrictIds,
+    planSource,
+    mapBasemap,
+    showRoadLines,
+    manualGeoJson,
+    extractedLines
+  ]);
+
+  // True only when current state strictly matches the last saved/remote state
+  const isSaved = lastSavedFingerprint !== null && lastSavedFingerprint === currentFingerprint;
+
+  // Fetch and restore saved configuration from Supabase Cloud on mount
+  useEffect(() => {
+    let cancelled = false;
+
+    async function restoreFromSupabase() {
+      // 1. Check live projectSettings if passed down from live Supabase subscription
+      if (projectSettings?.roadAnalysisState) {
+        const saved = projectSettings.roadAnalysisState;
+        if (saved.activeTab) setActiveTab(saved.activeTab);
+        if (saved.selectedStateCode !== undefined) setSelectedStateCode(saved.selectedStateCode);
+        if (Array.isArray(saved.selectedDistrictIds)) setSelectedDistrictIds(saved.selectedDistrictIds);
+        if (saved.planSource) setPlanSource(saved.planSource);
+        if (saved.manualGeoJson !== undefined) setManualGeoJson(saved.manualGeoJson);
+        if (Array.isArray(saved.extractedLines)) setExtractedLines(saved.extractedLines);
+        if (typeof saved.showRoadLines === 'boolean') setShowRoadLines(saved.showRoadLines);
+        if (saved.mapBasemap) setMapBasemap(saved.mapBasemap);
+        if (saved.updatedAt) setLastSavedAt(new Date(saved.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+
+        setLastSavedFingerprint(
+          computeRoadAnalysisFingerprint(
+            saved.selectedStateCode || '',
+            saved.selectedDistrictIds || [],
+            saved.planSource || 'system',
+            saved.mapBasemap || defaultBasemapKey,
+            typeof saved.showRoadLines === 'boolean' ? saved.showRoadLines : true,
+            saved.manualGeoJson || null,
+            saved.extractedLines || []
+          )
+        );
+        return;
+      }
+
+      // 2. Fetch directly from Supabase Cloud
+      const remoteState = await fetchRoadAnalysisStateFromSupabase();
+      if (cancelled || !remoteState) return;
+
+      if (remoteState.activeTab) setActiveTab(remoteState.activeTab);
+      if (remoteState.selectedStateCode !== undefined) setSelectedStateCode(remoteState.selectedStateCode);
+      if (Array.isArray(remoteState.selectedDistrictIds)) setSelectedDistrictIds(remoteState.selectedDistrictIds);
+      if (remoteState.planSource) setPlanSource(remoteState.planSource);
+      if (remoteState.manualGeoJson !== undefined) setManualGeoJson(remoteState.manualGeoJson);
+      if (Array.isArray(remoteState.extractedLines)) setExtractedLines(remoteState.extractedLines);
+      if (typeof remoteState.showRoadLines === 'boolean') setShowRoadLines(remoteState.showRoadLines);
+      if (remoteState.mapBasemap) setMapBasemap(remoteState.mapBasemap);
+      if (remoteState.updatedAt) setLastSavedAt(new Date(remoteState.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+
+      setLastSavedFingerprint(
+        computeRoadAnalysisFingerprint(
+          remoteState.selectedStateCode || '',
+          remoteState.selectedDistrictIds || [],
+          remoteState.planSource || 'system',
+          remoteState.mapBasemap || defaultBasemapKey,
+          typeof remoteState.showRoadLines === 'boolean' ? remoteState.showRoadLines : true,
+          remoteState.manualGeoJson || null,
+          remoteState.extractedLines || []
+        )
+      );
+    }
+
+    restoreFromSupabase();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [projectSettings?.roadAnalysisState, defaultBasemapKey]);
+
+  // Re-sync if the authenticated user changes
+  useEffect(() => {
+    const saved = loadRoadAnalysisState(userKey);
+    if (saved) {
+      if (saved.activeTab) setActiveTab(saved.activeTab);
+      if (saved.selectedStateCode !== undefined) setSelectedStateCode(saved.selectedStateCode);
+      if (Array.isArray(saved.selectedDistrictIds)) setSelectedDistrictIds(saved.selectedDistrictIds);
+      if (saved.planSource) setPlanSource(saved.planSource);
+      if (saved.manualGeoJson !== undefined) setManualGeoJson(saved.manualGeoJson);
+      if (Array.isArray(saved.extractedLines)) setExtractedLines(saved.extractedLines);
+      if (typeof saved.showRoadLines === 'boolean') setShowRoadLines(saved.showRoadLines);
+      if (saved.mapBasemap) setMapBasemap(saved.mapBasemap);
+      setLastSavedFingerprint(
+        computeRoadAnalysisFingerprint(
+          saved.selectedStateCode || '',
+          saved.selectedDistrictIds || [],
+          saved.planSource || 'system',
+          saved.mapBasemap || defaultBasemapKey,
+          typeof saved.showRoadLines === 'boolean' ? saved.showRoadLines : true,
+          saved.manualGeoJson || null,
+          saved.extractedLines || []
+        )
+      );
+    }
+  }, [userKey, defaultBasemapKey]);
 
   // Sync if project settings update dynamically from Supabase / Admin Settings
   useEffect(() => {
@@ -159,6 +477,84 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
       setMapBasemap(projectSettings.defaultBasemap);
     }
   }, [projectSettings?.defaultBasemap]);
+
+  // Explicit Save button action: persists to Supabase production database
+  const handleSaveState = useCallback(async () => {
+    if (isSaving) return;
+    setIsSaving(true);
+
+    const userEmail = authSession?.user?.email || (isGuestUser ? 'guest@example.com' : 'authenticated-user');
+    const statePayload: RoadAnalysisProductionState = {
+      activeTab,
+      selectedStateCode,
+      selectedDistrictIds,
+      planSource,
+      mapBasemap,
+      showRoadLines,
+      manualGeoJson,
+      extractedLines,
+      updatedAt: new Date().toISOString(),
+      updatedBy: userEmail
+    };
+
+    // 1. Primary: Save to Supabase Cloud Database (Auth Metadata & project_settings)
+    const result = await saveRoadAnalysisStateToSupabase(statePayload, {
+      id: authSession?.user?.id,
+      email: authSession?.user?.email
+    });
+
+    // 2. Local cache fallback for offline resiliency
+    try {
+      localStorage.setItem(getRoadAnalysisStorageKey(userKey), JSON.stringify(statePayload));
+    } catch (_) { }
+
+    setIsSaving(false);
+
+    if (result.success) {
+      setLastSavedFingerprint(currentFingerprint);
+      const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      setLastSavedAt(timeStr);
+
+      addNotification?.({
+        id: `road-saved-${Date.now()}`,
+        title: 'Road Analysis Saved to Database',
+        message: `Configuration saved to Supabase (State: ${selectedStateCode || 'All'}, Districts: ${selectedDistrictIds.length}, Basemap: ${mapBasemap}, Plan: ${planSource}).`,
+        category: 'SUCCESS',
+        read: false
+      });
+
+      addAuditLog?.(
+        'EDIT',
+        'Road Analysis State Saved',
+        `Region ${selectedStateCode || 'N/A'} (${selectedDistrictIds.length} districts), basemap ${mapBasemap}, plan ${planSource} saved by ${userEmail}`,
+        'success'
+      );
+    } else {
+      addNotification?.({
+        id: `road-error-${Date.now()}`,
+        title: 'Database Notice',
+        message: result.error || 'Failed to save configuration to Supabase database.',
+        category: 'WARNING',
+        read: false
+      });
+    }
+  }, [
+    isSaving,
+    authSession,
+    isGuestUser,
+    activeTab,
+    selectedStateCode,
+    selectedDistrictIds,
+    planSource,
+    mapBasemap,
+    showRoadLines,
+    manualGeoJson,
+    extractedLines,
+    userKey,
+    currentFingerprint,
+    addNotification,
+    addAuditLog
+  ]);
 
   const stateOptions = useMemo(() => DISTRICT_STATES.filter((s) => s.name !== 'Unknown'), []);
 
@@ -195,43 +591,80 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
     );
   };
 
-  const capturedPoints = useMemo(() => {
-    if (selectedDistricts.length === 0) return [] as Array<{ subgrid: string; lng: number; lat: number }>;
-    const pts: Array<{ subgrid: string; lng: number; lat: number }> = [];
-    Object.entries(SUBGRID_COORDINATES).forEach(([key, coord]) => {
-      const lng = Number(coord?.[0]);
-      const lat = Number(coord?.[1]);
-      if (!Number.isFinite(lng) || !Number.isFinite(lat)) return;
-      if (pointInDistricts([lng, lat], selectedDistricts)) {
-        pts.push({ subgrid: key, lng, lat });
-      }
+  // Extract all panotrack survey points and tracks from operational dashboard data
+  const rawPanotrack = useMemo(() => {
+    return extractPanotrackPoints(internalDailyData, internalBatchLogs, internalDefectsList);
+  }, [internalDailyData, internalBatchLogs, internalDefectsList, refreshTick]);
+
+  // Active region filtering boundaries
+  const activeRegionDistricts = useMemo(() => {
+    if (selectedDistricts.length > 0) return selectedDistricts;
+    if (districtsOfState.length > 0) return districtsOfState;
+    return [];
+  }, [selectedDistricts, districtsOfState]);
+
+  const { capturedPoints, capturedTracks } = useMemo(() => {
+    if (activeRegionDistricts.length > 0) {
+      const res = filterPanotrackByDistricts(rawPanotrack.points, rawPanotrack.tracks, activeRegionDistricts);
+      return {
+        capturedPoints: res.filteredPoints,
+        capturedTracks: res.filteredTracks
+      };
+    }
+    // If no state or district is selected, show all panotracks across the entire dashboard
+    return {
+      capturedPoints: rawPanotrack.points,
+      capturedTracks: rawPanotrack.tracks
+    };
+  }, [rawPanotrack, activeRegionDistricts]);
+
+  const panotrackCounts = useMemo(() => {
+    let published = 0;
+    let staging = 0;
+    let defect = 0;
+    capturedPoints.forEach((p) => {
+      if (p.color === '#ef4444' || p.status === 'defect') defect++;
+      else if (p.color === '#10b981' || p.isPublished) published++;
+      else staging++;
     });
-    return pts;
-  }, [selectedDistricts, refreshTick]);
+    return { published, staging, defect, total: capturedPoints.length };
+  }, [capturedPoints]);
 
-  const planCoords: Array<[number, number]> = useMemo(() => {
-    if (planSource === 'manual') return extractLineCoords(manualGeoJson);
-    const pts = capturedPoints
-      .map((p) => [p.lng, p.lat] as [number, number])
-      .sort((a, b) => a[0] - b[0] || a[1] - b[1]);
-    return pts;
-  }, [planSource, manualGeoJson, capturedPoints]);
+  const capturedCoords = useMemo(
+    () => capturedPoints.map((p) => [p.lng, p.lat] as [number, number]),
+    [capturedPoints]
+  );
 
-  const capturedDistanceKm = useMemo(() => pathLengthKm(capturedPoints.map((p) => [p.lng, p.lat] as [number, number])), [capturedPoints]);
-  const planDistanceKm = useMemo(() => pathLengthKm(planCoords), [planCoords]);
-  const ratio = useMemo(() => {
-    if (planDistanceKm <= 0) return null;
-    return Math.min(100, Math.round((capturedDistanceKm / planDistanceKm) * 100));
-  }, [capturedDistanceKm, planDistanceKm]);
+  const capturedDistanceKm = useMemo(() => {
+    if (capturedTracks.length > 0) {
+      return capturedTracks.reduce((sum, trk) => sum + pathLengthKm(trk), 0);
+    }
+    return pathLengthKm(capturedCoords);
+  }, [capturedTracks, capturedCoords]);
 
   const extractedRuns = useMemo(
     () => clipLineStringsToDistricts(extractedLines, selectedDistricts),
     [extractedLines, selectedDistricts]
   );
-  const capturedCoords = useMemo(
-    () => capturedPoints.map((p) => [p.lng, p.lat] as [number, number]),
-    [capturedPoints]
-  );
+
+  const planCoords: Array<[number, number]> = useMemo(() => {
+    if (planSource === 'manual') return extractLineCoords(manualGeoJson);
+    if (planSource === 'extracted') return extractedRuns.flat();
+    return capturedCoords;
+  }, [planSource, manualGeoJson, capturedCoords, extractedRuns]);
+
+  const planDistanceKm = useMemo(() => {
+    if (planSource === 'system' && capturedTracks.length > 0) {
+      return capturedTracks.reduce((sum, trk) => sum + pathLengthKm(trk), 0);
+    }
+    return pathLengthKm(planCoords);
+  }, [planSource, capturedTracks, planCoords]);
+
+  const ratio = useMemo(() => {
+    if (planDistanceKm <= 0) return null;
+    return Math.min(100, Math.round((capturedDistanceKm / planDistanceKm) * 100));
+  }, [capturedDistanceKm, planDistanceKm]);
+
   const extractedLengthKm = useMemo(() => linesLengthKm(extractedRuns), [extractedRuns]);
   const extractedRatio = useMemo(() => {
     if (extractedLengthKm <= 0) return null;
@@ -276,26 +709,30 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
     window.setTimeout(() => setIsRefreshing(false), 600);
   }, [onRefreshData]);
 
-  const handleFile = useCallback((file?: File | null) => {
+  const [manualFileMeta, setManualFileMeta] = useState<{ filename: string; format: string; count: number } | null>(null);
+  const [isParsingFile, setIsParsingFile] = useState(false);
+
+  const handleFile = useCallback(async (file?: File | null) => {
     setManualError('');
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const parsed = JSON.parse(String(reader.result));
-        const line = extractLineCoords(parsed);
-        if (line.length < 2) {
-          setManualError('GeoJSON must contain a LineString with at least 2 points.');
-          setManualGeoJson(null);
-          return;
-        }
-        setManualGeoJson(parsed);
-      } catch {
-        setManualError('Invalid GeoJSON file.');
-        setManualGeoJson(null);
-      }
-    };
-    reader.readAsText(file);
+    setIsParsingFile(true);
+    try {
+      const result = await parseRoadPlanFile(file);
+      setManualGeoJson(result.geojson);
+      setManualFileMeta({
+        filename: result.filename,
+        format: result.format.toUpperCase(),
+        count: result.featureCount
+      });
+      setPlanSource('manual');
+      setShowRoadLines(true);
+    } catch (err: any) {
+      setManualError(err?.message || 'Failed to parse file. For Shapefile, please upload a .zip containing .shp, .dbf, and .shx.');
+      setManualGeoJson(null);
+      setManualFileMeta(null);
+    } finally {
+      setIsParsingFile(false);
+    }
   }, []);
 
   const mapStyle = useMemo(
@@ -306,31 +743,60 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
   const selectedDistrictsList = selectedDistricts.length > 0 ? selectedDistricts : [];
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 overflow-hidden animate-panel-enter">
-      <div className="flex-1 flex flex-col gap-3 min-h-0 overflow-y-auto md:overflow-hidden p-3">
-        <Masthead
-          icon={<Route size={18} />}
-          context="SURVEY QA / ROAD"
-          title={translate('workspaceRoadAnalysis')}
-          badge={
-            <span className="px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider bg-sky-500/10 text-sky-400 border border-sky-500/30">
-              Captured vs Plan
-            </span>
-          }
-          subtitle={translate('workspaceRoadAnalysisDesc')}
-          actions={
+    <div className="flex-1 flex flex-col min-h-0 overflow-hidden animate-in fade-in duration-500">
+      <div className="flex-1 flex flex-col gap-3 min-h-0 overflow-y-auto md:overflow-hidden p-4">
+        {/* Header */}
+        <div className="px-1 flex items-center justify-between gap-3 shrink-0 flex-wrap">
+          <div>
+            <h2 className="text-base font-bold text-text-base tracking-wide">
+              {translate('workspaceRoadAnalysis')}
+            </h2>
+            <p className="text-xs text-text-muted mt-0.5 leading-relaxed">
+              {translate('workspaceRoadAnalysisDesc')}
+            </p>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {lastSavedAt && (
+              <span className="text-[10px] text-text-muted hidden sm:inline-block">
+                Saved {lastSavedAt}
+              </span>
+            )}
             <button
+              type="button"
+              onClick={handleSaveState}
+              disabled={isSaving || isSaved}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all shadow-sm ${
+                isSaved
+                  ? 'bg-sky-600 opacity-60 text-white cursor-default'
+                  : 'bg-sky-600 hover:bg-sky-500 text-white opacity-100 cursor-pointer active:scale-95'
+              } disabled:cursor-not-allowed`}
+              title={isSaved ? 'All changes saved to database' : 'Save region, plan source, basemap and road extraction to database'}
+            >
+              {isSaving ? (
+                <Loader2 size={13} className="animate-spin" />
+              ) : isSaved ? (
+                <Check size={13} />
+              ) : (
+                <Save size={13} />
+              )}
+              <span>{isSaving ? 'Saving…' : isSaved ? 'Saved' : 'Save State'}</span>
+            </button>
+            <button
+              type="button"
               onClick={handleRefresh}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-inner border border-subtle text-[11px] font-semibold text-text-base hover:text-sky-400 transition-colors cursor-pointer"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-inner border border-subtle text-[11px] font-semibold text-text-base hover:text-sky-400 transition-colors cursor-pointer shrink-0"
             >
               <RefreshCw size={13} className={isRefreshing ? 'animate-spin' : ''} />
-              Refresh from map
+              <span>Refresh from map</span>
             </button>
-          }
-        />
+          </div>
+        </div>
 
-        <Surface className="flex-1 flex flex-col min-h-0">
-          <UnderlineTabStrip tabs={TABS} active={activeTab} onChange={setActiveTab} tabLabel={(k) => TAB_LABEL[k]} />
+        {/* Main Panel Canvas */}
+        <div className="bg-card border border-subtle rounded-2xl shadow-md overflow-hidden flex flex-col flex-1 min-h-0">
+          <div className="px-3 pt-2 border-b border-divider bg-card shrink-0">
+            <UnderlineTabStrip tabs={TABS} active={activeTab} onChange={setActiveTab} tabLabel={(k) => TAB_LABEL[k]} />
+          </div>
 
           <div className="flex flex-1 min-h-0">
             <aside className="w-72 shrink-0 border-r border-divider overflow-y-auto p-3 flex flex-col gap-3 bg-app/40">
@@ -385,10 +851,18 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                     )}
                   </div>
 
-                  <div className="border-t border-divider pt-2">
-                    <div className="flex items-center justify-between text-[11px]">
-                      <span className="text-text-muted">Districts selected</span>
-                      <span className="font-semibold text-text-base">{selectedDistricts.length}</span>
+                  <div className="border-t border-divider pt-2 mt-auto">
+                    <div className="flex flex-col gap-1 text-[11px]">
+                      <div className="flex items-center justify-between">
+                        <span className="text-text-muted">Districts selected</span>
+                        <span className="font-semibold text-text-base">{selectedDistricts.length}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="text-text-muted">Panotrack points</span>
+                        <span className="font-semibold text-sky-400">
+                          {isLoadingPanotrack ? 'Loading…' : capturedPoints.length.toLocaleString()}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 </>
@@ -411,98 +885,159 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                         <span className="leading-snug">
                           <span className="block font-semibold">System-derived baseline</span>
                           <span className="block text-[10px] text-text-muted mt-0.5">
-                            Built from real captured subgrid points in the selected area.
+                            {capturedPoints.length > 0
+                              ? `${capturedPoints.length.toLocaleString()} panotrack points · ${capturedDistanceKm.toFixed(2)} km`
+                              : 'Built from real captured subgrid points in the selected area.'}
                           </span>
                         </span>
                       </button>
+
+                      {extractedLines.length > 0 && (
+                        <button
+                          onClick={() => { setPlanSource('extracted'); setShowRoadLines(true); }}
+                          className={`flex items-start gap-2 px-2.5 py-2 rounded-lg border text-left text-xs transition-colors ${
+                            planSource === 'extracted'
+                              ? 'border-sky-500/40 bg-sky-500/10 text-text-base'
+                              : 'border-subtle bg-inner/40 text-text-muted hover:text-text-base'
+                          }`}
+                        >
+                          <StatusDot tone={planSource === 'extracted' ? 'bg-sky-400' : 'bg-text-muted/60'} />
+                          <span className="leading-snug">
+                            <span className="block font-semibold">Extracted road network (Option A)</span>
+                            <span className="block text-[10px] text-text-muted mt-0.5">
+                              {extractedRuns.length} road segment(s) · {extractedLengthKm.toFixed(2)} km
+                            </span>
+                          </span>
+                        </button>
+                      )}
+
+                      {manualGeoJson && (
+                        <button
+                          onClick={() => { setPlanSource('manual'); setShowRoadLines(true); }}
+                          className={`flex items-start gap-2 px-2.5 py-2 rounded-lg border text-left text-xs transition-colors ${
+                            planSource === 'manual'
+                              ? 'border-sky-500/40 bg-sky-500/10 text-text-base'
+                              : 'border-subtle bg-inner/40 text-text-muted hover:text-text-base'
+                          }`}
+                        >
+                          <StatusDot tone={planSource === 'manual' ? 'bg-sky-400' : 'bg-text-muted/60'} />
+                          <span className="leading-snug">
+                            <span className="block font-semibold">Manual GeoJSON (Option B)</span>
+                            <span className="block text-[10px] text-text-muted mt-0.5">
+                              Custom road-plan LineString loaded
+                            </span>
+                          </span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Unified Road Extraction Section */}
+                  <div className="border-t border-divider pt-2 mt-2 flex flex-col gap-2.5">
+                    <h3 className="text-[9px] uppercase tracking-widest text-text-muted font-bold mb-0.5">
+                      Road extraction
+                    </h3>
+
+                    {/* Option A */}
+                    <div className="flex flex-col gap-1">
+                      <div className="text-[10px] font-semibold text-text-muted uppercase tracking-wider">
+                        Option A
+                      </div>
                       <button
-                        onClick={() => setPlanSource('manual')}
-                        className={`flex items-start gap-2 px-2.5 py-2 rounded-lg border text-left text-xs transition-colors ${
+                        onClick={handleExtract}
+                        disabled={extracting || selectedDistricts.length === 0}
+                        className={`flex items-center gap-2 px-2.5 py-2 rounded-lg border text-left text-xs transition-colors disabled:opacity-50 disabled:cursor-not-allowed hover:border-sky-500/40 cursor-pointer ${
+                          planSource === 'extracted'
+                            ? 'border-sky-500/40 bg-sky-500/10 text-text-base'
+                            : 'bg-inner/40 border-subtle text-text-base'
+                        }`}
+                      >
+                        <ScanLine size={14} className="text-sky-400 shrink-0" />
+                        <span className="leading-snug">
+                          <span className="block font-semibold">
+                            {extracting ? 'Extracting road network…' : 'Extract road network'}
+                          </span>
+                          <span className="block text-[10px] text-text-muted mt-0.5">
+                            Pull real OSM road lines within the selected district(s).
+                          </span>
+                        </span>
+                      </button>
+                      {selectedDistricts.length === 0 && (
+                        <p className="text-[10px] text-text-muted">Select state districts first.</p>
+                      )}
+                      {extractError && (
+                        <div className="text-[11px] text-rose-400 leading-snug">{extractError}</div>
+                      )}
+                    </div>
+
+                    {/* Option B */}
+                    <div className="flex flex-col gap-1">
+                      <div className="text-[10px] font-semibold text-text-muted uppercase tracking-wider">
+                        Option B
+                      </div>
+                      <button
+                        onClick={() => {
+                          setPlanSource('manual');
+                          fileInputRef.current?.click();
+                        }}
+                        disabled={isParsingFile}
+                        className={`flex items-start gap-2 px-2.5 py-2 rounded-lg border text-left text-xs transition-colors hover:border-sky-500/40 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
                           planSource === 'manual'
                             ? 'border-sky-500/40 bg-sky-500/10 text-text-base'
                             : 'border-subtle bg-inner/40 text-text-muted hover:text-text-base'
                         }`}
                       >
-                        <StatusDot tone={planSource === 'manual' ? 'bg-sky-400' : 'bg-text-muted/60'} />
+                        {isParsingFile ? (
+                          <Loader2 size={14} className="text-sky-400 shrink-0 mt-0.5 animate-spin" />
+                        ) : (
+                          <Upload size={14} className="text-sky-400 shrink-0 mt-0.5" />
+                        )}
                         <span className="leading-snug">
-                          <span className="block font-semibold">Manual override</span>
+                          <span className="block font-semibold">
+                            {isParsingFile ? 'Parsing road file…' : 'Manual override'}
+                          </span>
                           <span className="block text-[10px] text-text-muted mt-0.5">
-                            Load a GeoJSON LineString as the road-plan line.
+                            Load a GeoJSON, KML, or Shapefile ZIP (with .shp, .dbf, .shx).
                           </span>
                         </span>
                       </button>
-                    </div>
-                  </div>
 
-                  {planSource === 'manual' && (
-                    <div>
                       <input
                         ref={fileInputRef}
                         type="file"
-                        accept=".json,.geojson,application/json"
+                        accept=".geojson,.json,.kml,.zip,.shp,application/json,application/zip,application/x-zip-compressed,application/vnd.google-earth.kml+xml"
                         className="hidden"
-                        onChange={(e) => handleFile(e.target.files?.[0])}
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f) handleFile(f);
+                          e.target.value = '';
+                        }}
                       />
-                      <button
-                        onClick={() => fileInputRef.current?.click()}
-                        className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-inner border border-subtle text-[11px] font-semibold text-text-base hover:text-sky-400 transition-colors cursor-pointer w-full"
-                      >
-                        <Upload size={13} /> Upload GeoJSON plan line
-                      </button>
+
                       {manualGeoJson && (
-                        <div className="mt-2 flex items-center gap-1.5 text-[11px] text-emerald-300">
-                          <FileJson size={13} /> LineString loaded
+                        <div className="flex items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-[11px] text-emerald-300">
+                          <div className="flex items-center gap-1.5 truncate">
+                            <FileJson size={13} className="shrink-0" />
+                            <span className="truncate">
+                              {manualFileMeta ? `${manualFileMeta.filename} (${manualFileMeta.format})` : 'Road-plan LineString loaded'}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => fileInputRef.current?.click()}
+                            className="text-[10px] text-sky-400 hover:underline cursor-pointer shrink-0"
+                          >
+                            Replace
+                          </button>
                         </div>
                       )}
+
                       {manualError && (
-                        <div className="mt-2 text-[11px] text-rose-400">{manualError}</div>
+                        <div className="text-[11px] text-rose-400 leading-snug p-2 rounded-lg bg-rose-500/10 border border-rose-500/20">
+                          {manualError}
+                        </div>
                       )}
                     </div>
-                  )}
-
-                  <div className="border-t border-divider pt-2 mt-2 flex flex-col gap-1.5">
-                    <h3 className="text-[9px] uppercase tracking-widest text-text-muted font-bold mb-0.5">
-                      Road extraction (Option A)
-                    </h3>
-                    <button
-                      onClick={handleExtract}
-                      disabled={extracting || selectedDistricts.length === 0}
-                      className="flex items-center gap-2 px-2.5 py-2 rounded-lg border text-left text-xs transition-colors disabled:opacity-50 disabled:cursor-not-allowed hover:border-sky-500/40 cursor-pointer bg-inner/40 border-subtle text-text-base"
-                    >
-                      <ScanLine size={14} className="text-sky-400" />
-                      <span className="leading-snug">
-                        <span className="block font-semibold">
-                          {extracting ? 'Extracting road network…' : 'Extract road network'}
-                        </span>
-                        <span className="block text-[10px] text-text-muted mt-0.5">
-                          Pull real OSM road lines within the selected district(s).
-                        </span>
-                      </span>
-                    </button>
-                    {selectedDistricts.length === 0 && (
-                      <p className="text-[10px] text-text-muted">Select state districts first.</p>
-                    )}
-                    {extractedLines.length > 0 && (
-                      <button
-                        onClick={() => { setPlanSource('extracted'); setShowRoadLines(true); }}
-                        className={`flex items-start gap-2 px-2.5 py-2 rounded-lg border text-left text-xs transition-colors ${
-                          planSource === 'extracted'
-                            ? 'border-sky-500/40 bg-sky-500/10 text-text-base'
-                            : 'border-subtle bg-inner/40 text-text-muted hover:text-text-base'
-                        }`}
-                      >
-                        <StatusDot tone={planSource === 'extracted' ? 'bg-sky-400' : 'bg-text-muted/60'} />
-                        <span className="leading-snug">
-                          <span className="block font-semibold">Extracted network</span>
-                          <span className="block text-[10px] text-text-muted mt-0.5">
-                            {extractedRuns.length} road segment(s) · {extractedLengthKm.toFixed(2)} km
-                          </span>
-                        </span>
-                      </button>
-                    )}
-                    {extractError && (
-                      <div className="text-[11px] text-rose-400 leading-snug">{extractError}</div>
-                    )}
                   </div>
                 </>
               )}
@@ -573,39 +1108,67 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
             </aside>
 
             <div className="flex-1 min-w-0 bg-app overflow-hidden relative">
-              <div className="absolute top-3 left-3 z-[1000] flex items-center gap-1 p-1 rounded-lg bg-card/90 border border-subtle backdrop-blur shadow-sm">
+              {/* Top-Left Floating Map Controls Box Card */}
+              <div
+                style={{
+                  backgroundColor: 'var(--bg-card)',
+                  borderColor: 'var(--border-subtle)',
+                  boxShadow: 'var(--card-shadow)'
+                }}
+                className="absolute top-3 left-3 z-[1000] flex items-center gap-1.5 p-1.5 rounded-xl border backdrop-blur-md shadow-lg transition-colors"
+              >
                 <button
+                  type="button"
                   onClick={() => setShowRoadLines((v) => !v)}
-                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-semibold transition-colors cursor-pointer ${
-                    showRoadLines ? 'bg-sky-500/15 text-sky-300' : 'text-text-muted hover:text-text-base'
+                  style={{
+                    backgroundColor: showRoadLines ? 'var(--bg-inner)' : 'transparent',
+                    borderColor: showRoadLines ? 'var(--border-subtle)' : 'transparent'
+                  }}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-all cursor-pointer ${
+                    showRoadLines
+                      ? 'text-sky-400 shadow-sm'
+                      : 'text-text-muted hover:text-text-base hover:bg-inner/50'
                   }`}
+                  title={showRoadLines ? 'Hide road lines overlay' : 'Show road lines overlay'}
                 >
-                  <ScanLine size={13} /> {showRoadLines ? 'Hide road lines' : 'Show road lines'}
+                  <ScanLine size={13} className={showRoadLines ? 'text-sky-400' : 'text-text-muted'} />
+                  <span>{showRoadLines ? 'Hide road lines' : 'Show road lines'}</span>
                 </button>
-                <label className="flex items-center gap-1.5 px-2 py-1 rounded-md text-text-muted cursor-pointer hover:text-text-base transition-colors">
-                  <Layers size={13} className="shrink-0" />
+
+                <div
+                  style={{ backgroundColor: 'var(--divider)' }}
+                  className="w-[1px] h-4 mx-0.5 shrink-0"
+                />
+
+                <div className="flex items-center gap-1.5 px-1">
+                  <Layers size={13} style={{ color: 'var(--text-muted)' }} className="shrink-0" />
                   <select
                     value={mapBasemap}
                     onChange={(e) => setMapBasemap(e.target.value)}
-                    className="bg-inner/80 px-2 py-0.5 rounded text-[11px] font-semibold text-text-base border border-subtle focus:outline-none cursor-pointer"
+                    style={{
+                      backgroundColor: 'var(--bg-inner)',
+                      borderColor: 'var(--border-subtle)',
+                      color: 'var(--text-primary)'
+                    }}
+                    className="px-2.5 py-1 rounded-lg text-[11px] font-semibold border focus:outline-none focus:ring-1 focus:ring-sky-400/50 cursor-pointer shadow-sm transition-colors"
                     title="Map basemap"
                   >
-                    <option value="ofm-dark" className="bg-card text-text-base">Dark (OpenFreeMap)</option>
-                    <option value="ofm-positron" className="bg-card text-text-base">Positron (OpenFreeMap)</option>
-                    <option value="ofm-bright" className="bg-card text-text-base">Bright (OpenFreeMap)</option>
-                    <option value="ofm-liberty" className="bg-card text-text-base">Liberty (OpenFreeMap)</option>
-                    <option value="ofm-fiord" className="bg-card text-text-base">Fiord (OpenFreeMap)</option>
-                    <option value="esri_satellite" className="bg-card text-text-base">Esri Satellite</option>
-                    <option value="osm_standard" className="bg-card text-text-base">OpenStreetMap</option>
-                    <option value="carto_dark" className="bg-card text-text-base">Carto Dark</option>
-                    <option value="carto_light" className="bg-card text-text-base">Carto Light</option>
-                    <option value="google-satellite" className="bg-card text-text-base">Google Satellite</option>
-                    <option value="google-streets" className="bg-card text-text-base">Google Streets</option>
-                    <option value="google-hybrid" className="bg-card text-text-base">Google Hybrid</option>
-                    <option value="google-terrain" className="bg-card text-text-base">Google Terrain</option>
-                    <option value="custom_tile" className="bg-card text-text-base">Custom XYZ</option>
+                    <option value="ofm-dark" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}>Dark (OpenFreeMap)</option>
+                    <option value="ofm-positron" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}>Positron (OpenFreeMap)</option>
+                    <option value="ofm-bright" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}>Bright (OpenFreeMap)</option>
+                    <option value="ofm-liberty" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}>Liberty (OpenFreeMap)</option>
+                    <option value="ofm-fiord" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}>Fiord (OpenFreeMap)</option>
+                    <option value="esri_satellite" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}>Esri Satellite</option>
+                    <option value="osm_standard" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}>OpenStreetMap</option>
+                    <option value="carto_dark" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}>Carto Dark</option>
+                    <option value="carto_light" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}>Carto Light</option>
+                    <option value="google-satellite" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}>Google Satellite</option>
+                    <option value="google-streets" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}>Google Streets</option>
+                    <option value="google-hybrid" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}>Google Hybrid</option>
+                    <option value="google-terrain" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}>Google Terrain</option>
+                    <option value="custom_tile" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}>Custom XYZ</option>
                   </select>
-                </label>
+                </div>
               </div>
 
               <RoadAnalysisMap
@@ -615,26 +1178,85 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                 bbox={regionGeo?.bbox ?? null}
                 districtGeojson={regionGeo?.geojson}
                 dimmedRegionsGeojson={dimmedRegionsGeojson}
-                capturedPoints={capturedCoords}
-                roadRuns={extractedRuns}
+                capturedPoints={capturedPoints}
+                roadRuns={
+                  planSource === 'extracted'
+                    ? extractedRuns
+                    : planSource === 'manual'
+                      ? (manualGeoJson ? [extractLineCoords(manualGeoJson)] : [])
+                      : []
+                }
               />
-              {extracting && (
-                <div className="absolute inset-0 z-[1000] flex items-center justify-center pointer-events-none">
-                  <p className="px-3 py-2 rounded-lg bg-card/90 border border-subtle text-[11px] text-text-muted backdrop-blur">
-                    Extracting road network…
-                  </p>
+
+              {/* Panotrack Operational Status Legend */}
+              {capturedPoints.length > 0 && (
+                <div
+                  style={{
+                    backgroundColor: 'var(--bg-card)',
+                    borderColor: 'var(--border-subtle)',
+                    boxShadow: 'var(--card-shadow)',
+                    color: 'var(--text-primary)'
+                  }}
+                  className="absolute bottom-6 right-6 z-[1000] flex items-center gap-3 px-3 py-1.5 rounded-xl border backdrop-blur-md shadow-lg text-[11px] font-medium animate-in fade-in duration-200"
+                >
+                  <span className="text-[10px] uppercase font-bold tracking-wider text-text-muted mr-0.5">Panotrack:</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-sm" />
+                    <span className="text-text-muted">Published ({panotrackCounts.published})</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-amber-500 shadow-sm" />
+                    <span className="text-text-muted">Staging ({panotrackCounts.staging})</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-rose-500 shadow-sm" />
+                    <span className={panotrackCounts.defect > 0 ? "text-rose-400 font-bold" : "text-text-muted"}>
+                      Defect ({panotrackCounts.defect})
+                    </span>
+                  </div>
                 </div>
               )}
-              {selectedDistricts.length === 0 && (
+
+              {extracting && (
+                <div className="absolute inset-0 z-[1000] flex items-center justify-center pointer-events-none">
+                  <div
+                    style={{
+                      backgroundColor: 'var(--bg-card)',
+                      borderColor: 'var(--border-subtle)',
+                      boxShadow: 'var(--card-shadow)',
+                      color: 'var(--text-primary)'
+                    }}
+                    className="px-4 py-2.5 rounded-xl border flex items-center gap-2.5 backdrop-blur-md shadow-xl animate-in fade-in duration-200"
+                  >
+                    <RefreshCw size={14} className="text-sky-400 animate-spin shrink-0" />
+                    <span className="text-xs font-semibold">
+                      Extracting road network…
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {selectedDistricts.length === 0 && capturedPoints.length === 0 && (
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                  <p className="px-3 py-2 rounded-lg bg-card/90 border border-subtle text-[11px] text-text-muted backdrop-blur">
-                    Select state districts to focus the map.
-                  </p>
+                  <div
+                    style={{
+                      backgroundColor: 'var(--bg-card)',
+                      borderColor: 'var(--border-subtle)',
+                      boxShadow: 'var(--card-shadow)',
+                      color: 'var(--text-primary)'
+                    }}
+                    className="px-4 py-2.5 rounded-xl border flex items-center gap-2.5 backdrop-blur-md shadow-xl animate-in fade-in duration-200"
+                  >
+                    <Map size={14} className="text-sky-400 shrink-0" />
+                    <span className="text-xs font-medium text-text-muted">
+                      Select state districts to focus the map.
+                    </span>
+                  </div>
                 </div>
               )}
             </div>
           </div>
-        </Surface>
+        </div>
       </div>
     </div>
   );
