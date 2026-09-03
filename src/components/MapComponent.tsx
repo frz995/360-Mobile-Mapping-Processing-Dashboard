@@ -35,6 +35,7 @@ export const MapComponent = ({
 }) => {
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  const stagedDataRafRef = useRef<number | null>(null);
 
   const effectiveSettings = useMemo(() => {
     return (passedSettings && typeof passedSettings === 'object') ? passedSettings : {};
@@ -191,13 +192,12 @@ export const MapComponent = ({
     });
   }, [stagedItems, defectsList, selectedSubgrids, selectedPoints, isAfterDeletionPreview]);
 
-  const sendStagedData = useCallback(() => {
+  const sendStagedDataImmediate = useCallback(() => {
     if (iframeRef.current && iframeRef.current.contentWindow && formattedStagedItems.length > 0) {
       try {
         const isSingle = Boolean(selectedDailyRunId);
         const allPoints = formattedStagedItems.flatMap(it => it.panoramas || it.points || []);
         const viewMode = selectedDailyRunId ? 'SINGLE_RUN' : (selectedSubgridFilter ? 'SUBGRID' : 'ALL');
-
 
         // 0. Send Unified SET_MAP_VIEW_STATE
         iframeRef.current.contentWindow.postMessage({
@@ -218,16 +218,7 @@ export const MapComponent = ({
           runId: selectedDailyRunId || null
         }, '*');
 
-        // 2. Send STAGED_DATA_PREVIEW fallback
-        iframeRef.current.contentWindow.postMessage({
-          type: 'STAGED_DATA_PREVIEW',
-          isStagingPreview: Boolean(dataManagement),
-          stagedItems: formattedStagedItems,
-          isSingleRun: isSingle,
-          runId: selectedDailyRunId || null
-        }, '*');
-
-        // 3. Send explicit selection messages for WebGIS viewer layers
+        // 2. Send explicit selection messages for WebGIS viewer layers
         if (selectedSubgrids && selectedSubgrids.length > 0) {
           const highlightHex = isAfterDeletionPreview ? '#64748b' : '#38bdf8';
           iframeRef.current.contentWindow.postMessage({
@@ -244,14 +235,14 @@ export const MapComponent = ({
           }, '*');
         }
 
-        // 4. Send FILTER_STATUS_TYPES to ensure stitching/in-progress trajectory filter is active
+        // 3. Send FILTER_STATUS_TYPES to ensure stitching/in-progress trajectory filter is active
         iframeRef.current.contentWindow.postMessage({
           type: 'FILTER_STATUS_TYPES',
           statusFilters: { published: true, defect: true, stitching: true, selected: true },
           showPanotrackData: true
         }, '*');
 
-        // 5. Send QAQC_DEFECTS_SYNC with all known defect items
+        // 4. Send QAQC_DEFECTS_SYNC with all known defect items
         const defectsArray: any[] = [];
         if (Array.isArray(defectsList)) {
           defectsArray.push(...defectsList);
@@ -264,7 +255,26 @@ export const MapComponent = ({
         }
       } catch (e) { }
     }
-  }, [formattedStagedItems, dataManagement, defectsList, selectedDailyRunId, selectedSubgridFilter, selectedSubgrids]);
+  }, [formattedStagedItems, dataManagement, defectsList, selectedDailyRunId, selectedSubgridFilter, selectedSubgrids, isAfterDeletionPreview, selectedDateFilter]);
+
+  // Debounced wrapper using requestAnimationFrame to coalesce bursts and avoid locking the main thread
+  const sendStagedData = useCallback(() => {
+    if (stagedDataRafRef.current != null) {
+      cancelAnimationFrame(stagedDataRafRef.current);
+    }
+    stagedDataRafRef.current = requestAnimationFrame(() => {
+      stagedDataRafRef.current = null;
+      sendStagedDataImmediate();
+    });
+  }, [sendStagedDataImmediate]);
+
+  useEffect(() => {
+    return () => {
+      if (stagedDataRafRef.current != null) {
+        cancelAnimationFrame(stagedDataRafRef.current);
+      }
+    };
+  }, []);
 
   const syncMapSettings = useCallback(() => {
     if (!iframeRef.current || !iframeRef.current.contentWindow) return;
@@ -431,8 +441,8 @@ export const MapComponent = ({
           iframeRef.current = el;
           if (iframeRefCb) iframeRefCb(el);
         }}
-        key={`${refreshKey || 0}-${effectiveSettings?.defaultBasemap || 'ofm-positron'}`}
-        src={`${import.meta.env.VITE_MAP_URL || 'https://mobilemapping-nine.vercel.app'}/?embed=true&dashboard=true&basemap=${encodeURIComponent(effectiveSettings?.defaultBasemap || 'ofm-positron')}${refreshKey ? `&t=${refreshKey}` : ''}${dataManagement ? '&noSonar=1' : ''}`}
+        key="webgis-map"
+        src={`${import.meta.env.VITE_MAP_URL || 'https://mobilemapping-nine.vercel.app'}/?embed=true&dashboard=true${dataManagement ? '&noSonar=1' : ''}`}
         onLoad={() => {
           if (iframeRef.current && iframeRef.current.contentWindow) {
             iframeRef.current.contentWindow.postMessage({

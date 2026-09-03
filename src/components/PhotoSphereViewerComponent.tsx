@@ -331,6 +331,31 @@ export const PhotoSphereViewerComponent = forwardRef<PhotoSphereViewerHandle, Ph
       };
     }, []);
 
+    // Handle container resize cleanly (e.g. workspace switching or window resize)
+    useEffect(() => {
+      const container = containerRef.current;
+      if (!container || typeof ResizeObserver === 'undefined') return;
+
+      let rafId: number | null = null;
+      const ro = new ResizeObserver(() => {
+        if (rafId != null) cancelAnimationFrame(rafId);
+        rafId = requestAnimationFrame(() => {
+          rafId = null;
+          if (viewerRef.current && container.clientWidth > 0 && container.clientHeight > 0) {
+            try {
+              (viewerRef.current as any).autoSize?.();
+            } catch (_) { }
+          }
+        });
+      });
+
+      ro.observe(container);
+      return () => {
+        if (rafId != null) cancelAnimationFrame(rafId);
+        ro.disconnect();
+      };
+    }, []);
+
     return (
       <div className={`relative overflow-hidden ${className}`}>
         <div ref={containerRef} className="w-full h-full" />

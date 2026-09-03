@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   supabase,
   fetchSupabaseData,
@@ -79,9 +79,12 @@ export function useAppData() {
   const [projectSettings, setProjectSettings] = useState<any>(() => ({ ...DEFAULT_PROJECT_SETTINGS }));
   const [liveDefectCount, setLiveDefectCount] = useState<number>(0);
 
+  // Only flash the loading overlay on the very first load; subsequent refreshes keep cached data visible
+  const hasLoadedDataRef = useRef(false);
+
   useEffect(() => {
     async function initLiveSupabaseData(isSilent: boolean = false) {
-      if (!isSilent) {
+      if (!isSilent && !hasLoadedDataRef.current) {
         setIsDataLoading(true);
       }
 

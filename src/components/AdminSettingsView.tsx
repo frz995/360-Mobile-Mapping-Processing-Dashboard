@@ -25,7 +25,8 @@ import {
   Lock,
   Trash2,
   SlidersHorizontal,
-  Crosshair
+  Crosshair,
+  Search
 } from 'lucide-react';
 import { ExtendedProjectSettings } from '../types/admin';
 import {
@@ -37,6 +38,10 @@ import {
 import { ThemeManagementCanvas } from './ThemeSelector';
 import { DiagnosticsPanel } from './DiagnosticsPanel';
 import { MALAYSIA_REGIONS, regionToGeoJSON, CUSTOM_REGION_ID } from './boundary/malaysiaRegions';
+import {
+  MALAYSIA_DISTRICTS,
+  districtsToGeoJSON
+} from './boundary/malaysiaDistricts';
 import { UnderlineTabStrip, type ChromeTab } from './production/chrome';
 import { isAdminRole, isGuestEmail } from '../lib/authz';
 
@@ -108,7 +113,13 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
   const previewIframeRef = React.useRef<HTMLIFrameElement | null>(null);
   const [previewRefreshKey, setPreviewRefreshKey] = useState(0);
   const [previewCoords, setPreviewCoords] = useState<{ lat: number; lng: number } | null>(null);
-  const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null);
+  const [selectedRegionId, setSelectedRegionId] = useState<string | null>(() => {
+    return (projectSettings as any)?.projectBoundary?.regionId || null;
+  });
+  const [selectedDistrictIds, setSelectedDistrictIds] = useState<string[]>(() => {
+    return (projectSettings as any)?.projectBoundary?.districtIds || [];
+  });
+  const [districtSearchQuery, setDistrictSearchQuery] = useState<string>('');
 
   // Sync staged items & theme settings to preview iframe just like Dashboard Map
   const sendPreviewData = React.useCallback(() => {
@@ -354,41 +365,163 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, storageTrack);
 
-  // Apply a selected Malaysia region as the committed Project Boundary.
-  const handleApplyRegion = React.useCallback((regionId: string) => {
-    const region = MALAYSIA_REGIONS.find((r) => r.id === regionId);
-    if (!region || region.id === CUSTOM_REGION_ID) return;
-    const { geojson, bbox } = regionToGeoJSON(region);
-    // Keep the region selected in the dropdown and persist the region id so it
-    // still shows after the settings panel reloads.
-    setProjectSettings(prev => ({
-      ...(prev as any),
-      projectBoundary: { geojson, bbox, focusActive: true, regionId: region.id, regionName: region.name }
-    }));
-    broadcastProjectBoundary('focus');
-    showToast(`Project boundary applied: ${region.name}`);
-  }, [setProjectSettings, broadcastProjectBoundary]);
+  const currentRegion = React.useMemo(() => {
+    const rId = selectedRegionId || (projectSettings as any)?.projectBoundary?.regionId;
+    return MALAYSIA_REGIONS.find((r) => r.id === rId);
+  }, [selectedRegionId, projectSettings]);
 
-  // Preview a selected region on the Section 4 live WebGIS preview map
-  // WITHOUT committing it. Only affects the preview iframe until applied.
-  const handlePreviewRegion = React.useCallback((regionId: string | null) => {
-    setSelectedRegionId(regionId);
+  const availableDistricts = React.useMemo(() => {
+    if (!currentRegion || currentRegion.id === CUSTOM_REGION_ID) return [];
+    if (currentRegion.id === 'malaysia') return MALAYSIA_DISTRICTS;
+    const cleanRegionName = currentRegion.name.toLowerCase().replace(/^w\.?p\.?\s*/i, '').trim();
+    return MALAYSIA_DISTRICTS.filter((d) => {
+      const cleanStateName = d.stateName.toLowerCase().replace(/^w\.?p\.?\s*/i, '').trim();
+      return cleanStateName === cleanRegionName || d.stateName.toLowerCase() === currentRegion.name.toLowerCase();
+    });
+  }, [currentRegion]);
+
+  const filteredDistricts = React.useMemo(() => {
+    if (!districtSearchQuery.trim()) return availableDistricts;
+    const q = districtSearchQuery.toLowerCase().trim();
+    return availableDistricts.filter(d => d.name.toLowerCase().includes(q));
+  }, [availableDistricts, districtSearchQuery]);
+
+  const selectedDistrictsList = React.useMemo(() => {
+    return MALAYSIA_DISTRICTS.filter(d => selectedDistrictIds.includes(d.id));
+  }, [selectedDistrictIds]);
+
+  const activeBbox = React.useMemo(() => {
+    if (selectedDistrictIds.length > 0) {
+      const chosen = MALAYSIA_DISTRICTS.filter(d => selectedDistrictIds.includes(d.id));
+      const g = districtsToGeoJSON(chosen);
+      if (g?.bbox) return g.bbox;
+    }
+    if (currentRegion && currentRegion.id !== CUSTOM_REGION_ID) {
+      const g = regionToGeoJSON(currentRegion);
+      if (g?.bbox) return g.bbox;
+    }
+    return (projectSettings as any)?.projectBoundary?.bbox || null;
+  }, [selectedDistrictIds, currentRegion, projectSettings]);
+
+  // Preview combined boundary (Region or Selected Districts) on live WebGIS preview iframe
+  const previewBoundary = React.useCallback((region: any, districtIds: string[]) => {
     const iframe = previewIframeRef.current;
     if (!iframe || !iframe.contentWindow) return;
     try {
       const win = iframe.contentWindow;
-      if (!regionId || regionId === CUSTOM_REGION_ID) {
+      if (!region || region.id === CUSTOM_REGION_ID) {
         win.postMessage({ type: 'DIM_OUTSIDE_BOUNDARY', enabled: false }, '*');
         win.postMessage({ type: 'CLEAR_BOUNDARY_FOCUS' }, '*');
         return;
       }
-      const region = MALAYSIA_REGIONS.find((r) => r.id === regionId);
-      if (!region) return;
-      const { geojson, bbox } = regionToGeoJSON(region);
+
+      const chosenDistricts = districtIds.length > 0
+        ? MALAYSIA_DISTRICTS.filter((d) => districtIds.includes(d.id))
+        : [];
+
+      let geojson: any;
+      let bbox: [number, number, number, number];
+
+      if (chosenDistricts.length > 0) {
+        const dGeo = districtsToGeoJSON(chosenDistricts);
+        if (dGeo) {
+          geojson = dGeo.geojson;
+          bbox = dGeo.bbox;
+        } else {
+          const rGeo = regionToGeoJSON(region);
+          geojson = rGeo.geojson;
+          bbox = rGeo.bbox;
+        }
+      } else {
+        const rGeo = regionToGeoJSON(region);
+        geojson = rGeo.geojson;
+        bbox = rGeo.bbox;
+      }
+
       win.postMessage({ type: 'SET_PROJECT_BOUNDARY', geojson, bbox }, '*');
       win.postMessage({ type: 'DIM_OUTSIDE_BOUNDARY', enabled: true }, '*');
     } catch (e) { }
   }, []);
+
+  const handlePreviewRegion = React.useCallback((regionId: string | null) => {
+    setSelectedRegionId(regionId);
+    setSelectedDistrictIds([]);
+    const region = MALAYSIA_REGIONS.find((r) => r.id === regionId);
+    previewBoundary(region, []);
+  }, [previewBoundary]);
+
+  const handleToggleDistrict = React.useCallback((districtId: string) => {
+    setSelectedDistrictIds(prev => {
+      const next = prev.includes(districtId)
+        ? prev.filter(id => id !== districtId)
+        : [...prev, districtId];
+      const rId = selectedRegionId || (projectSettings as any)?.projectBoundary?.regionId;
+      const region = MALAYSIA_REGIONS.find((r) => r.id === rId);
+      previewBoundary(region, next);
+      return next;
+    });
+  }, [selectedRegionId, projectSettings, previewBoundary]);
+
+  const handleSelectAllDistricts = React.useCallback(() => {
+    const allIds = availableDistricts.map(d => d.id);
+    setSelectedDistrictIds(allIds);
+    const rId = selectedRegionId || (projectSettings as any)?.projectBoundary?.regionId;
+    const region = MALAYSIA_REGIONS.find((r) => r.id === rId);
+    previewBoundary(region, allIds);
+  }, [availableDistricts, selectedRegionId, projectSettings, previewBoundary]);
+
+  const handleClearDistricts = React.useCallback(() => {
+    setSelectedDistrictIds([]);
+    const rId = selectedRegionId || (projectSettings as any)?.projectBoundary?.regionId;
+    const region = MALAYSIA_REGIONS.find((r) => r.id === rId);
+    previewBoundary(region, []);
+  }, [selectedRegionId, projectSettings, previewBoundary]);
+
+  // Apply a selected Malaysia region as the committed Project Boundary.
+  const handleApplyRegion = React.useCallback((regionId: string) => {
+    const region = MALAYSIA_REGIONS.find((r) => r.id === regionId);
+    if (!region || region.id === CUSTOM_REGION_ID) return;
+
+    const chosenDistricts = selectedDistrictIds.length > 0
+      ? MALAYSIA_DISTRICTS.filter((d) => selectedDistrictIds.includes(d.id))
+      : [];
+
+    let geojson: any;
+    let bbox: [number, number, number, number];
+    let boundaryLabel = region.name;
+
+    if (chosenDistricts.length > 0) {
+      const dGeo = districtsToGeoJSON(chosenDistricts);
+      if (dGeo) {
+        geojson = dGeo.geojson;
+        bbox = dGeo.bbox;
+        boundaryLabel = `${region.name} (${chosenDistricts.length} ${chosenDistricts.length === 1 ? 'district' : 'districts'}: ${chosenDistricts.map(d => d.name).join(', ')})`;
+      } else {
+        const rGeo = regionToGeoJSON(region);
+        geojson = rGeo.geojson;
+        bbox = rGeo.bbox;
+      }
+    } else {
+      const rGeo = regionToGeoJSON(region);
+      geojson = rGeo.geojson;
+      bbox = rGeo.bbox;
+    }
+
+    setProjectSettings(prev => ({
+      ...(prev as any),
+      projectBoundary: {
+        geojson,
+        bbox,
+        focusActive: true,
+        regionId: region.id,
+        regionName: region.name,
+        districtIds: chosenDistricts.map(d => d.id),
+        districtNames: chosenDistricts.map(d => d.name)
+      }
+    }));
+    broadcastProjectBoundary('focus');
+    showToast(`Project boundary applied: ${boundaryLabel}`);
+  }, [setProjectSettings, broadcastProjectBoundary, selectedDistrictIds]);
 
   // Broadcast layer theme settings to all iframes (Dashboard map + Preview map)
   const broadcastLayerTheme = React.useCallback((colorsToBroadcast?: any) => {
@@ -2194,18 +2327,97 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                       </p>
                     </div>
 
+                    {/* District Boundary (Multi-choice) */}
+                    {availableDistricts.length > 0 && (
+                      <div className="pt-2.5 border-t border-subtle/50 space-y-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <label className="text-text-muted font-medium flex items-center gap-1.5 text-xs">
+                            <span>District Boundary (Multi-choice)</span>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-400 font-semibold border border-sky-500/20">
+                              {selectedDistrictIds.length > 0
+                                ? `${selectedDistrictIds.length} of ${availableDistricts.length} selected`
+                                : 'All Districts (Whole State)'}
+                            </span>
+                          </label>
+                          <div className="flex items-center gap-2 text-[10px]">
+                            <button
+                              type="button"
+                              onClick={handleSelectAllDistricts}
+                              className="text-sky-400 hover:text-sky-300 hover:underline font-semibold cursor-pointer"
+                            >
+                              Select All
+                            </button>
+                            <span className="text-text-muted">·</span>
+                            <button
+                              type="button"
+                              onClick={handleClearDistricts}
+                              className="text-text-muted hover:text-text-base hover:underline font-medium cursor-pointer"
+                            >
+                              Clear
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Search Filter for Districts */}
+                        {availableDistricts.length > 6 && (
+                          <div className="relative">
+                            <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+                            <input
+                              type="text"
+                              value={districtSearchQuery}
+                              onChange={(e) => setDistrictSearchQuery(e.target.value)}
+                              placeholder={`Filter ${availableDistricts.length} districts in ${currentRegion?.name || 'region'}...`}
+                              className={`w-full pl-7 pr-3 py-1 text-[11px] rounded-lg border font-medium focus:outline-none ${inputBg}`}
+                            />
+                          </div>
+                        )}
+
+                        {/* Multi-choice District Checkboxes */}
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 max-h-48 overflow-y-auto p-1.5 rounded-lg border border-subtle bg-inner/30">
+                          {filteredDistricts.map((d) => {
+                            const isSelected = selectedDistrictIds.includes(d.id);
+                            return (
+                              <label
+                                key={d.id}
+                                className={`flex items-center gap-2 px-2.5 py-1.5 rounded-md border text-xs cursor-pointer select-none transition-all ${
+                                  isSelected
+                                    ? 'bg-sky-500/15 border-sky-400/50 text-sky-300 font-semibold shadow-xs'
+                                    : 'bg-card/50 border-subtle text-text-muted hover:text-text-base hover:border-subtle/80'
+                                }`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => handleToggleDistrict(d.id)}
+                                  className="rounded border-subtle bg-card text-sky-500 focus:ring-0 accent-sky-400 cursor-pointer shrink-0"
+                                />
+                                <span className="truncate text-[11px]" title={d.name}>{d.name}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
                     <div className="flex flex-wrap items-center gap-2 pt-1">
+                      {/* 1. Apply Project Boundary (Soft Pastel Mint) */}
                       <button
                         type="button"
                         disabled={!isAdmin || !selectedRegionId || selectedRegionId === CUSTOM_REGION_ID}
                         onClick={() => handleApplyRegion(selectedRegionId!)}
-                        className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold transition-all border ${isAdmin && selectedRegionId && selectedRegionId !== CUSTOM_REGION_ID
-                          ? 'bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-300 border-emerald-500/40 cursor-pointer active:scale-95'
-                          : 'bg-inner text-text-muted border border-subtle cursor-not-allowed'
-                          }`}
+                        className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all border shadow-xs ${
+                          isAdmin && selectedRegionId && selectedRegionId !== CUSTOM_REGION_ID
+                            ? themeMode === 'light'
+                              ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-300 cursor-pointer active:scale-95'
+                              : 'bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border-emerald-500/30 hover:border-emerald-500/50 cursor-pointer active:scale-95'
+                            : 'bg-inner/40 text-text-muted border-subtle/60 cursor-not-allowed opacity-60'
+                        }`}
                       >
-                        <CheckCircle size={14} /> Apply Project Boundary
+                        <CheckCircle size={13} className="shrink-0" />
+                        <span>Apply Project Boundary</span>
                       </button>
+
+                      {/* 2. Focus & Dim (Soft Pastel Sky) */}
                       <button
                         type="button"
                         disabled={!isAdmin || !(projectSettings as any)?.projectBoundary?.geojson}
@@ -2214,13 +2426,19 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                           broadcastProjectBoundary('focus');
                           showToast('Map focused & dimmed to project boundary.');
                         }}
-                        className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-all border ${isAdmin && (projectSettings as any)?.projectBoundary?.geojson
-                          ? 'bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-300 border-emerald-500/40 cursor-pointer active:scale-95'
-                          : 'bg-inner text-text-muted border border-subtle cursor-not-allowed'
-                          }`}
+                        className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all border shadow-xs ${
+                          isAdmin && (projectSettings as any)?.projectBoundary?.geojson
+                            ? themeMode === 'light'
+                              ? 'bg-sky-50 hover:bg-sky-100 text-sky-700 border-sky-300 cursor-pointer active:scale-95'
+                              : 'bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 border-sky-500/30 hover:border-sky-500/50 cursor-pointer active:scale-95'
+                            : 'bg-inner/40 text-text-muted border-subtle/60 cursor-not-allowed opacity-60'
+                        }`}
                       >
-                        <Crosshair size={13} /> Focus &amp; Dim
+                        <Crosshair size={13} className="shrink-0" />
+                        <span>Focus &amp; Dim</span>
                       </button>
+
+                      {/* 3. Clear Focus (Soft Neutral Slate) */}
                       <button
                         type="button"
                         disabled={!isAdmin || !(projectSettings as any)?.projectBoundary?.geojson}
@@ -2229,38 +2447,72 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                           broadcastProjectBoundary('clear');
                           showToast('Boundary focus/dim cleared.');
                         }}
-                        className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-all border ${isAdmin && (projectSettings as any)?.projectBoundary?.geojson
-                          ? 'bg-inner/40 hover:bg-inner/70 text-text-base border-subtle cursor-pointer active:scale-95'
-                          : 'bg-inner text-text-muted border border-subtle cursor-not-allowed'
-                          }`}
+                        className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all border shadow-xs ${
+                          isAdmin && (projectSettings as any)?.projectBoundary?.geojson
+                            ? themeMode === 'light'
+                              ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300 cursor-pointer active:scale-95'
+                              : 'bg-inner/60 hover:bg-inner text-text-base border-subtle hover:border-subtle/80 cursor-pointer active:scale-95'
+                            : 'bg-inner/40 text-text-muted border-subtle/60 cursor-not-allowed opacity-60'
+                        }`}
                       >
-                        <Eye size={13} /> Clear Focus
+                        <Eye size={13} className="shrink-0" />
+                        <span>Clear Focus</span>
                       </button>
+
+                      {/* 4. Clear (Soft Pastel Rose) */}
                       <button
                         type="button"
                         disabled={!isAdmin}
                         onClick={() => {
                           setSelectedRegionId(null);
+                          setSelectedDistrictIds([]);
                           setProjectSettings(prev => ({ ...prev, projectBoundary: undefined }));
                           broadcastProjectBoundary('clear');
                           showToast('Project geographic boundary removed.');
                         }}
-                        className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-all border ${isAdmin
-                          ? 'bg-rose-600/20 hover:bg-rose-600/40 text-rose-300 border-rose-500/40 cursor-pointer active:scale-95'
-                          : 'bg-inner text-text-muted border border-subtle cursor-not-allowed'
-                          }`}
+                        className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all border shadow-xs ${
+                          isAdmin
+                            ? themeMode === 'light'
+                              ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-300 cursor-pointer active:scale-95'
+                              : 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-300/85 hover:text-rose-200 border-rose-500/25 hover:border-rose-500/40 cursor-pointer active:scale-95'
+                            : 'bg-inner/40 text-text-muted border-subtle/60 cursor-not-allowed opacity-60'
+                        }`}
                       >
-                        <Trash2 size={13} /> Clear
+                        <Trash2 size={13} className="shrink-0" />
+                        <span>Clear</span>
                       </button>
                     </div>
                   </div>
 
-                  {(projectSettings as any)?.projectBoundary?.bbox && (
+                  {activeBbox && (
                     <div className={`p-2.5 rounded-lg border ${innerCardBg}`}>
-                      <span className="text-[10px] uppercase tracking-wider text-text-muted font-semibold">Bounding Box (minLng, minLat, maxLng, maxLat)</span>
-                      <div className="text-[11px] font-sans text-emerald-300 mt-1">
-                        {(projectSettings as any)?.projectBoundary?.bbox?.map((n: number) => Number(n).toFixed(6)).join(' · ')}
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-[10px] uppercase tracking-wider text-text-muted font-semibold">
+                          Bounding Box (minLng, minLat, maxLng, maxLat)
+                        </span>
+                        {selectedDistrictsList.length > 0 ? (
+                          <span className="text-[10px] font-sans font-medium text-sky-400">
+                            {selectedDistrictsList.length} {selectedDistrictsList.length === 1 ? 'district' : 'districts'} selected
+                          </span>
+                        ) : currentRegion ? (
+                          <span className="text-[10px] font-sans font-medium text-emerald-400">
+                            {currentRegion.name} (Whole state)
+                          </span>
+                        ) : null}
                       </div>
+                      <div className="text-[11px] font-sans text-emerald-300 font-semibold tracking-wide">
+                        {activeBbox.map((n: number) => Number(n).toFixed(6)).join(' · ')}
+                      </div>
+                      {selectedDistrictsList.length > 0 && (
+                        <div className="text-[10px] text-text-muted mt-1.5 flex flex-wrap items-center gap-1">
+                          <span className="text-text-muted font-semibold">Districts:</span>
+                          {selectedDistrictsList.map(d => (
+                            <span key={d.id} className="px-1.5 py-0.5 rounded bg-inner border border-subtle text-[9px] text-text-base">
+                              {d.name}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

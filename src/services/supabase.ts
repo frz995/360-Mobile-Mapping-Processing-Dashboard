@@ -109,9 +109,31 @@ export interface FileInventoryResult {
  * Prefers the server-side `file_inventory` table (no client-side bucket enumeration),
  * and falls back to direct storage `.list()` only if that table is unavailable.
  */
+let storageInventoryCache: { result: FileInventoryResult; timestamp: number; key: string } | null = null;
+
 async function resolveStorageFiles(
   candidates: Array<{ bucket: string; path: string }>
 ): Promise<FileInventoryResult> {
+  // 0) Deduplicate candidate locations case-insensitively
+  const seenLoc = new Set<string>();
+  const deduplicatedCandidates = candidates.filter(c => {
+    const k = `${(c.bucket || '').trim().toLowerCase()}::${(c.path || '').trim().toLowerCase()}`;
+    if (!k || seenLoc.has(k)) return false;
+    seenLoc.add(k);
+    return true;
+  });
+
+  const cacheKey = deduplicatedCandidates.map(c => `${c.bucket}:${c.path}`).sort().join('|');
+  const now = Date.now();
+  if (storageInventoryCache && storageInventoryCache.key === cacheKey && (now - storageInventoryCache.timestamp) < 45000) {
+    return {
+      fromInventory: storageInventoryCache.result.fromInventory,
+      fileSet: new Set(storageInventoryCache.result.fileSet),
+      countsBySubgrid: new Map(storageInventoryCache.result.countsBySubgrid),
+      totalFiles: storageInventoryCache.result.totalFiles
+    };
+  }
+
   const result: FileInventoryResult = {
     fromInventory: false,
     fileSet: new Set<string>(),
@@ -138,7 +160,7 @@ async function resolveStorageFiles(
 
   // 1) Try server-side file_inventory table first (avoids client bucket enumeration)
   try {
-    const uniqueBuckets = Array.from(new Set(candidates.map(c => c.bucket)));
+    const uniqueBuckets = Array.from(new Set(deduplicatedCandidates.map(c => c.bucket)));
     let inventoryRows: any[] = [];
     for (const bucket of uniqueBuckets) {
       const { data, error } = await supabase
@@ -156,12 +178,13 @@ async function resolveStorageFiles(
         if (name) addFile(name);
       });
       result.fromInventory = true;
+      storageInventoryCache = { result, timestamp: Date.now(), key: cacheKey };
       return result;
     }
   } catch (_) { /* table or query unavailable -> fall back to storage listing */ }
 
   // 2) Fallback: enumerate files directly from the storage bucket(s)
-  for (const loc of candidates) {
+  for (const loc of deduplicatedCandidates) {
     try {
       let offset = 0;
       const limit = 100;
@@ -175,9 +198,12 @@ async function resolveStorageFiles(
         if (data.length < limit) hasMore = false;
         else offset += limit;
       }
+      // If we found files in the primary/candidate location, stop probing fallback buckets
+      if (result.totalFiles > 0) break;
     } catch (_) { /* skip inaccessible bucket */ }
   }
 
+  storageInventoryCache = { result, timestamp: Date.now(), key: cacheKey };
   return result;
 }
 

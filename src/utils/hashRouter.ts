@@ -8,7 +8,8 @@ export type WorkspaceKey =
   | 'lineage'
   | 'analytics'
   | 'reports'
-  | 'administration';
+  | 'administration'
+  | 'roadAnalysis';
 
 export const WORKSPACE_KEYS: WorkspaceKey[] = [
   'dashboard',
@@ -20,7 +21,8 @@ export const WORKSPACE_KEYS: WorkspaceKey[] = [
   'lineage',
   'analytics',
   'reports',
-  'administration'
+  'administration',
+  'roadAnalysis'
 ];
 
 export const DEFAULT_WORKSPACE: WorkspaceKey = 'dashboard';
