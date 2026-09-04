@@ -15,6 +15,8 @@ interface ImportMetaEnv {
   readonly VITE_ROAD_EXTRACTION_ROUTE?: string;
   readonly VITE_ROAD_EXTRACTION_URL?: string;
   readonly VITE_ROAD_EXTRACTION_KEY?: string;
+  readonly VITE_ROAD_EXTRACTION_PROXY?: string;
+  readonly VITE_ROAD_EXTRACTION_DIRECT?: string;
 }
 
 interface ImportMeta {
