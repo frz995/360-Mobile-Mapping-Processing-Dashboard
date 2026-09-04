@@ -32,7 +32,7 @@ import {
   Play,
   StopCircle
 } from 'lucide-react';
-import { supabase, fetchSupabaseData, updateDefectStatusInSupabase, saveQaAuditRunToSupabase, saveAuditLogToSupabase, saveNotificationToSupabase, saveProjectSettingsToSupabase, resolvePanoramaUrl, resolvePanoramaConfigUrl, getDatabaseTableMapping, SUBGRID_COORDINATES, saveProcessingJobToSupabase } from './services/supabase';
+import { supabase, fetchSupabaseData, updateDefectStatusInSupabase, saveQaAuditRunToSupabase, saveAuditLogToSupabase, saveNotificationToSupabase, saveProjectSettingsToSupabase, resolvePanoramaUrl, resolvePanoramaConfigUrl, getDatabaseTableMapping, SUBGRID_COORDINATES, saveProcessingJobToSupabase, pruneBloatedUserMetadata } from './services/supabase';
 import type { QAQCAuditRunRecord } from './types/admin';
 import { MapComponent } from './components/MapComponent';
 export { MapComponent };
@@ -521,6 +521,7 @@ export default function App() {
       if (session) {
         setAuthSession(session);
         setShowLanding(false); // Authenticated user stays on Dashboard
+        pruneBloatedUserMetadata();
       } else {
         setAuthSession(null);
         setShowLanding(true);  // Guest / unauthenticated user returns to Landing
@@ -535,6 +536,7 @@ export default function App() {
       if (session) {
         setAuthSession(session);
         setShowLanding(false);
+        pruneBloatedUserMetadata();
       }
       setAuthLoading(false);
     });
@@ -580,6 +582,7 @@ export default function App() {
     } else if (data.session) {
       setAuthSession(data.session);
       setShowLanding(false);
+      pruneBloatedUserMetadata();
 
       // Direct navigation for authenticated user
       navigateToModule(pendingModule);

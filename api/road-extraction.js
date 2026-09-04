@@ -28,7 +28,7 @@ const UPSTREAMS = [
 
 const OVERPASS_HEADERS = {
   'Content-Type': 'application/x-www-form-urlencoded',
-  'Accept': 'application/json',
+  'Accept': '*/*',
   'User-Agent': 'RoadExtractionDashboard/1.0 (https://github.com/your-repo; contact@your-domain.com)'
 };
 
