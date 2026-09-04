@@ -63,9 +63,10 @@ function safeSupabaseFetch(input: RequestInfo | URL, init?: RequestInit): Promis
   const authHeader = headers.get('Authorization') || headers.get('authorization') || '';
   const isBloatedToken = authHeader.length > MAX_SAFE_HEADER_LENGTH;
 
-  // On REST queries, if the user token is bloated, proactively swap it for the anon key
-  // so Kong/Cloudflare never rejects the request with HTTP 431 / CORS NetworkError.
-  if (isBloatedToken && urlStr.includes('/rest/v1/')) {
+  // If the user token is bloated (> 2500 chars), proactively swap it for the anon key
+  // on ALL Supabase API queries (REST tables, Storage list/download, Realtime) so Kong/Cloudflare
+  // never rejects the request with HTTP 431 / CORS NetworkError.
+  if (isBloatedToken && !urlStr.includes('/auth/v1/')) {
     headers.set('Authorization', `Bearer ${supabaseKey}`);
   }
 
@@ -76,8 +77,8 @@ function safeSupabaseFetch(input: RequestInfo | URL, init?: RequestInit): Promis
 
   return fetch(input, safeInit)
     .then(async (res) => {
-      if (res.status === 431 && urlStr.includes('/rest/v1/')) {
-        console.warn('[Supabase] Received HTTP 431. Retrying with anon key...');
+      if (res.status === 431) {
+        console.warn('[Supabase] Received HTTP 431 on', urlStr, 'Retrying with safe anon key...');
         const retryHeaders = new Headers(headers);
         retryHeaders.set('Authorization', `Bearer ${supabaseKey}`);
         return fetch(input, { ...safeInit, headers: retryHeaders });
@@ -86,12 +87,8 @@ function safeSupabaseFetch(input: RequestInfo | URL, init?: RequestInit): Promis
     })
     .catch(async (err: any) => {
       const currentAuth = headers.get('Authorization') || '';
-      if (
-        urlStr.includes('/rest/v1/') &&
-        currentAuth &&
-        !currentAuth.includes(supabaseKey)
-      ) {
-        console.warn('[Supabase] NetworkError on authenticated request. Retrying with anon key...', err);
+      if (currentAuth && !currentAuth.includes(supabaseKey)) {
+        console.warn('[Supabase] NetworkError on', urlStr, 'Retrying with anon key...', err);
         const retryHeaders = new Headers(headers);
         retryHeaders.set('Authorization', `Bearer ${supabaseKey}`);
         return fetch(input, { ...safeInit, headers: retryHeaders });
@@ -99,6 +96,35 @@ function safeSupabaseFetch(input: RequestInfo | URL, init?: RequestInit): Promis
       throw err;
     });
 }
+
+/**
+ * Clean legacy bloated roadAnalysisState directly from browser localStorage session
+ * so supabase-js does not load an oversized JWT token into memory.
+ */
+export function pruneLocalStorageSession(): void {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return;
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && (key.startsWith('sb-') || key.includes('supabase.auth.token'))) {
+        const raw = localStorage.getItem(key);
+        if (raw && raw.includes('roadAnalysisState')) {
+          try {
+            const parsed = JSON.parse(raw);
+            if (parsed?.user?.user_metadata?.roadAnalysisState) {
+              console.warn('[Supabase] Clearing bloated roadAnalysisState from localStorage key:', key);
+              delete parsed.user.user_metadata.roadAnalysisState;
+              localStorage.setItem(key, JSON.stringify(parsed));
+            }
+          } catch { }
+        }
+      }
+    }
+  } catch { }
+}
+
+// Immediately run local storage pruning on module load
+pruneLocalStorageSession();
 
 /**
  * Automatically prunes bloated legacy roadAnalysisState from auth.users metadata
@@ -626,7 +652,6 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
         verifiedImagesCount = typeof verifyRes.count === 'number' ? verifyRes.count : 0;
         verifiedFiles = verifyRes.verifiedFilenames || [];
       } else {
-        // No filenames in DB - default to 0 frames
         verifiedImagesCount = 0;
         verifiedFiles = [];
       }
