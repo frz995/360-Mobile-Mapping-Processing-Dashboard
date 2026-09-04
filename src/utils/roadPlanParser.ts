@@ -195,10 +195,18 @@ export async function parseRoadPlanFile(file: File): Promise<ParseRoadPlanResult
       return eLower.endsWith('.dbf') && (eLower === `${baseName}.dbf` || !zipEntries.some(x => x.name.toLowerCase() === `${baseName}.dbf`));
     });
 
-    const source = await shapefile.open(
-      shpEntry.data.buffer,
-      dbfEntry ? dbfEntry.data.buffer : undefined
+    const shpBuffer = shpEntry.data.buffer.slice(
+      shpEntry.data.byteOffset,
+      shpEntry.data.byteOffset + shpEntry.data.byteLength
     );
+    const dbfBuffer = dbfEntry
+      ? dbfEntry.data.buffer.slice(
+          dbfEntry.data.byteOffset,
+          dbfEntry.data.byteOffset + dbfEntry.data.byteLength
+        )
+      : undefined;
+
+    const source = await shapefile.open(shpBuffer, dbfBuffer);
 
     const features: any[] = [];
     let record = await source.read();

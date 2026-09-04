@@ -734,4 +734,71 @@ textarea::placeholder {
 .modal-slide-in {
   animation: slideInUp 0.35s cubic-bezier(0.22, 1, 0.36, 1) forwards !important;
   will-change: transform, opacity;
+}
+
+/* ==========================================================================
+   Compact Sleek Range Sliders (.slider-sm)
+   ========================================================================== */
+.slider-sm {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 3px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.14);
+  outline: none;
+  cursor: pointer;
+  margin: 3px 0;
+  padding: 0;
+  transition: background 0.15s ease;
+}
+
+.slider-sm:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.slider-sm::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--slider-thumb-color, #38bdf8);
+  border: 1.5px solid #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.slider-sm::-webkit-slider-thumb:hover {
+  transform: scale(1.25);
+  box-shadow: 0 0 0 4px var(--slider-thumb-glow, rgba(56, 189, 248, 0.25));
+}
+
+.slider-sm::-moz-range-thumb {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--slider-thumb-color, #38bdf8);
+  border: 1.5px solid #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+  transition: transform 0.12s ease;
+}
+
+.slider-sm::-moz-range-thumb:hover {
+  transform: scale(1.25);
+  box-shadow: 0 0 0 4px var(--slider-thumb-glow, rgba(56, 189, 248, 0.25));
+}
+
+.slider-sm.slider-emerald::-webkit-slider-thumb {
+  background: var(--slider-thumb-color, #10b981);
+}
+
+.slider-sm.slider-emerald::-moz-range-thumb {
+  background: var(--slider-thumb-color, #10b981);
+}
+
+.slider-sm.slider-emerald::-webkit-slider-thumb:hover {
+  box-shadow: 0 0 0 4px var(--slider-thumb-glow, rgba(16, 185, 129, 0.25));
 }

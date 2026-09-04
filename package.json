@@ -21,6 +21,7 @@
     "@supabase/supabase-js": "^2.111.0",
     "@tmcw/togeojson": "^7.1.2",
     "esri-leaflet": "^3.0.19",
+    "fflate": "^0.8.3",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.400.0",
     "maplibre-gl": "^6.7.0",
