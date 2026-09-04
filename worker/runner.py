@@ -13,11 +13,19 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from typing import Optional, TYPE_CHECKING
 
-import cv2
+try:
+    import cv2  # type: ignore
+except ImportError:  # pragma: no cover
+    cv2 = None  # type: ignore[assignment]
 
-from enhancement import apply_enhancement
-from masking import apply_mask_pipeline
-from blur import apply_privacy_blur
+try:
+    from enhancement import apply_enhancement
+    from masking import apply_mask_pipeline
+    from blur import apply_privacy_blur
+except ImportError:  # pragma: no cover
+    apply_enhancement = None  # type: ignore[assignment]
+    apply_mask_pipeline = None  # type: ignore[assignment]
+    apply_privacy_blur = None  # type: ignore[assignment]
 
 if TYPE_CHECKING:
     import sync as syncmod

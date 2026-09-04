@@ -82,7 +82,7 @@ jobs:
         run: pip install pytest
 
       - name: Compile check (worker + BFF)
-        run: python -m py_compile worker/runner.py worker/store.py worker/app.py worker/bff/app.py worker/tests/test_store.py
+        run: python -m py_compile worker/runner.py worker/store.py worker/app.py worker/bff/app.py worker/tests/test_store.py worker/tests/test_worker_admission.py
 
       - name: Run worker store tests
         run: |
