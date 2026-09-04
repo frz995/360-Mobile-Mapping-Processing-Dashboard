@@ -52,6 +52,12 @@ class SupabaseSyncer:
     def push(self, job_id: str, fields: dict) -> bool:
         """Push status update to Supabase with exponential backoff and dead-letter queue."""
         if not requests:
+            self.dead_letter_queue.append({
+                "job_id": job_id,
+                "fields": fields,
+                "error": "requests library not available",
+                "timestamp": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
+            })
             return False
 
         url = f"{self.base}/{self.table}?id=eq.{job_id}"

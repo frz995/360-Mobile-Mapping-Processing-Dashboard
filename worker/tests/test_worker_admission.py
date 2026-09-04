@@ -10,12 +10,15 @@ try:
     HAS_RUNNER = True
 except ImportError:
     HAS_RUNNER = False
+    JobRegistry = None  # type: ignore
+    QueueFullError = Exception  # type: ignore
 
 try:
     from sync import SupabaseSyncer
     HAS_SYNC = True
 except ImportError:
     HAS_SYNC = False
+    SupabaseSyncer = None  # type: ignore
 
 try:
     from fastapi.testclient import TestClient
@@ -23,6 +26,8 @@ try:
     HAS_APP = True
 except ImportError:
     HAS_APP = False
+    TestClient = None  # type: ignore
+    app = None  # type: ignore
 
 
 @pytest.mark.skipif(not HAS_RUNNER, reason="runner dependencies not available")
