@@ -67,65 +67,113 @@ function isDrivable(tags?: Record<string, string>): boolean {
 }
 
 /**
+ * Decode an Overpass JSON payload into drivable road lines.
+ */
+function decodeOverpassPayload(payload: any): ExtractedRoadLine[] {
+  const elements: OverpassElement[] =
+    payload && Array.isArray(payload.elements) ? payload.elements : [];
+
+  const lines: ExtractedRoadLine[] = [];
+  for (const el of elements) {
+    if (el.type !== 'way' || !Array.isArray(el.geometry)) continue;
+    if (!isDrivable(el.tags)) continue;
+    const coords: Array<[number, number]> = [];
+    for (const g of el.geometry) {
+      const lng = Number(g?.lon);
+      const lat = Number(g?.lat);
+      if (!Number.isFinite(lng) || !Number.isFinite(lat)) continue;
+      coords.push([lng, lat]);
+    }
+    if (coords.length < 2) continue;
+    lines.push({
+      id: el.id != null ? `overpass-${el.id}` : undefined,
+      coordinates: coords,
+      highway: el.tags?.highway,
+      name: el.tags?.name
+    });
+  }
+  return lines;
+}
+
+/**
  * OSM / Overpass provider. Free, no credentials, returns the real road
- * network for the requested bounding box. Response elements are decoded
- * into road lines; only drivable highway ways are kept.
+ * network for the requested bounding box.
+ *
+ * The request is routed through the Vercel serverless proxy
+ * (`/api/road-extraction`) so the browser never talks to Overpass
+ * cross-origin (public Overpass instances don't send CORS headers, which
+ * blocks browser fetches on deployed origins). When the proxy is
+ * unavailable (e.g. raw `vite dev` without the Vercel CLI) it falls back to
+ * a direct Overpass POST for local development.
+ *
+ * Env overrides:
+ *   VITE_ROAD_EXTRACTION_PROXY  : client-side proxy endpoint (default /api/road-extraction)
+ *   VITE_ROAD_EXTRACTION_URL    : direct Overpass URL (local fallback only;
+ *                                 upstream of the proxy uses its own server env)
+ *   VITE_ROAD_EXTRACTION_DIRECT : set to '1' to skip the proxy entirely
  */
 const overpassAdapter: RoadExtractionAdapter = {
   name: 'OSM / Overpass',
   async extract(bbox): Promise<RoadExtractionResult> {
-    const url = import.meta.env.VITE_ROAD_EXTRACTION_URL || 'https://overpass-api.de/api/interpreter';
     const query = [
       '[out:json][timeout:30];',
       `(way["highway"](${bboxToString(bbox)}););`,
       'out geom;'
     ].join('');
 
-    let res: Response;
-    try {
-      res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: 'data=' + encodeURIComponent(query)
-      });
-    } catch (err) {
-      throw new Error(`Road extraction unreachable (${url}): ${String(err)}`);
-    }
-    if (!res.ok) {
-      throw new Error(`Road extraction failed (${res.status} ${res.statusText}).`);
+    const directUrl = import.meta.env.VITE_ROAD_EXTRACTION_URL || 'https://overpass-api.de/api/interpreter';
+    const proxyEndpoint = import.meta.env.VITE_ROAD_EXTRACTION_PROXY || '/api/road-extraction';
+    const forceDirect = import.meta.env.VITE_ROAD_EXTRACTION_DIRECT === '1';
+
+    // 1) Serverless proxy (production path; CORS-safe).
+    let payload: any = null;
+    if (!forceDirect) {
+      payload = await fetchViaProxy(proxyEndpoint, query);
     }
 
-    const payload: any = await res.json().catch(() => null);
-    const elements: OverpassElement[] =
-      payload && Array.isArray(payload.elements) ? payload.elements : [];
-
-    const lines: ExtractedRoadLine[] = [];
-    for (const el of elements) {
-      if (el.type !== 'way' || !Array.isArray(el.geometry)) continue;
-      if (!isDrivable(el.tags)) continue;
-      const coords: Array<[number, number]> = [];
-      for (const g of el.geometry) {
-        const lng = Number(g?.lon);
-        const lat = Number(g?.lat);
-        if (!Number.isFinite(lng) || !Number.isFinite(lat)) continue;
-        coords.push([lng, lat]);
-      }
-      if (coords.length < 2) continue;
-      lines.push({
-        id: el.id != null ? `overpass-${el.id}` : undefined,
-        coordinates: coords,
-        highway: el.tags?.highway,
-        name: el.tags?.name
-      });
+    // 2) Direct fallback (local dev without the proxy).
+    if (payload === null) {
+      payload = await fetchOverpassDirect(directUrl, query);
     }
 
     return {
       source: this.name,
       timestamp: new Date().toISOString(),
-      lines
+      lines: decodeOverpassPayload(payload)
     };
   }
 };
+
+async function fetchViaProxy(endpoint: string, query: string): Promise<any | null> {
+  try {
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query })
+    });
+    if (!res.ok) return null;
+    return await res.json().catch(() => null);
+  } catch {
+    return null;
+  }
+}
+
+async function fetchOverpassDirect(url: string, query: string): Promise<any> {
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'data=' + encodeURIComponent(query)
+    });
+  } catch (err) {
+    throw new Error(`Road extraction unreachable (${url}): ${String(err)}`);
+  }
+  if (!res.ok) {
+    throw new Error(`Road extraction failed (${res.status} ${res.statusText}).`);
+  }
+  return await res.json().catch(() => null);
+}
 
 /** Resolve the active adapter from env; default is Overpass. */
 export function getRoadExtractionAdapter(): RoadExtractionAdapter {
