@@ -45,9 +45,9 @@ function createSafeSupabaseClient(): SupabaseClientInstance {
   try {
     return createClient(url, key, {
       auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-        detectSessionInUrl: true
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false
       }
     });
   } catch (err) {
