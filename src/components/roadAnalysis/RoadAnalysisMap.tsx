@@ -161,7 +161,21 @@ export const RoadAnalysisMap: React.FC<RoadAnalysisMapProps> = ({
       });
     }
 
-    // 1. Captured panotrack points (individual survey frames, colored by status)
+    // 1. Extracted / Road Plan Lines (below panotrack points so points stay
+    //    clickable and visually on top). Rendered for Option A / Option B roads.
+    if (roadRuns.length > 0) {
+      map.addSource('ra-roads', { type: 'geojson', data: extractLineStringRuns(roadRuns) });
+      map.addLayer({
+        id: 'ra-roads',
+        type: 'line',
+        source: 'ra-roads',
+        paint: { 'line-color': '#10b981', 'line-width': 3.5, 'line-opacity': 0.85 }
+      });
+      map.setLayoutProperty('ra-roads', 'visibility', showRoadLines ? 'visible' : 'none');
+    }
+
+    // 2. Captured panotrack points (individual survey frames, colored by status).
+    //    Added after the road lines so they render on top of them.
     if (capturedPoints.length > 0) {
       map.addSource('ra-captured', { type: 'geojson', data: extractPointCollection(capturedPoints) });
       map.addLayer({
@@ -220,18 +234,6 @@ export const RoadAnalysisMap: React.FC<RoadAnalysisMapProps> = ({
           `)
           .addTo(map);
       });
-    }
-
-    // 2. Extracted / Road Plan Lines (only rendered for actual road networks from Option A or manual Option B)
-    if (roadRuns.length > 0) {
-      map.addSource('ra-roads', { type: 'geojson', data: extractLineStringRuns(roadRuns) });
-      map.addLayer({
-        id: 'ra-roads',
-        type: 'line',
-        source: 'ra-roads',
-        paint: { 'line-color': '#10b981', 'line-width': 3.5, 'line-opacity': 0.85 }
-      });
-      map.setLayoutProperty('ra-roads', 'visibility', showRoadLines ? 'visible' : 'none');
     }
 
     // Fit the map to the region or panotracks.
@@ -303,8 +305,15 @@ function areStylesEqual(a?: string | StyleSpecification, b?: string | StyleSpeci
     const map = initMap(containerRef.current, style);
     mapRef.current = map;
     return () => {
-      map.remove();
-      mapRef.current = null;
+      // Always remove the currently-active map. The basemap-change effect may
+      // have recreated mapRef.current after this effect mounted, so read the
+      // live reference rather than the one captured at initialization to avoid
+      // leaking the replaced map.
+      const current = mapRef.current;
+      if (current) {
+        current.remove();
+        mapRef.current = null;
+      }
       styleLoadedRef.current = false;
     };
     // Init with the initial style only.

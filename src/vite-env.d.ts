@@ -30,6 +30,5 @@ declare module 'shapefile' {
 declare module '@tmcw/togeojson' {
   export function kml(doc: Document): any;
   export function gpx(doc: Document): any;
-  export function gpx(doc: Document): any;
   export function tcx(doc: Document): any;
 }

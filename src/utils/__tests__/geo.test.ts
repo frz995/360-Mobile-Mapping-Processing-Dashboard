@@ -10,10 +10,21 @@ describe('calculateGeodesicDistanceMeters', () => {
     expect(calculateGeodesicDistanceMeters(5.5, 100.2, 5.5, 100.2)).toBe(0)
   })
 
-  it('returns 0 for zero/undefined coordinates', () => {
-    expect(calculateGeodesicDistanceMeters(0, 0, 5.5, 100.2)).toBe(0)
-    expect(calculateGeodesicDistanceMeters(5.5, 0, 5.5, 100.2)).toBe(0)
-    expect(calculateGeodesicDistanceMeters(5.5, 100.2, 0, 100.2)).toBe(0)
+  it('treats zero lat/lng as valid coordinates (equator/prime meridian)', () => {
+    // 0 is a VALID coordinate (equator / prime meridian) and must produce a
+    // real distance, not be mistaken for a missing value.
+    const d = calculateGeodesicDistanceMeters(0, 0, 5.5, 100.2)
+    expect(d).toBeGreaterThan(
+      calculateGeodesicDistanceMeters(5.5, 100.2, 5.5, 100.2)
+    )
+    expect(d).toBeGreaterThan(1)
+    expect(d).not.toBe(0)
+  })
+
+  it('returns 0 for undefined/non-finite coordinates', () => {
+    expect(calculateGeodesicDistanceMeters(NaN, NaN, 5.5, 100.2)).toBe(0)
+    expect(calculateGeodesicDistanceMeters(undefined as any, 100.2, 5.5, 100.2)).toBe(0)
+    expect(calculateGeodesicDistanceMeters(5.5, 100.2, Infinity, 100.2)).toBe(0)
   })
 
   it('returns ~0 for two negligible-distance points (epsilon)', () => {

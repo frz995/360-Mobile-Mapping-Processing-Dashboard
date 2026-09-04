@@ -14,7 +14,16 @@ export function calculateGeodesicDistanceMeters(
   lon2: number
 ): number {
   if (lat1 === lat2 && lon1 === lon2) return 0;
-  if (!lat1 || !lon1 || !lat2 || !lon2) return 0;
+  // Reject non-finite / missing inputs, but `0` is a VALID lat/lng (equator,
+  // prime meridian), so it must NOT be treated as falsy/missing.
+  if (
+    !Number.isFinite(lat1) ||
+    !Number.isFinite(lon1) ||
+    !Number.isFinite(lat2) ||
+    !Number.isFinite(lon2)
+  ) {
+    return 0;
+  }
 
   const R = 6371000; // Earth radius in meters
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -52,6 +61,23 @@ export function calculateForwardBearing(
 
   const brng = (Math.atan2(y, x) * 180) / Math.PI;
   return (brng + 360) % 360;
+}
+
+/**
+ * Calculates cumulative geodesic path distance in kilometers for an array
+ * of consecutive [lng, lat] point pairs using the Haversine formula.
+ * Accepts the `[lng, lat]` tuple convention used by the road analysis
+ * workspace and GeoJSON coordinate arrays.
+ */
+export function pathLengthLngLatKm(coords: Array<[number, number]>): number {
+  if (!coords || coords.length < 2) return 0;
+  let totalKm = 0;
+  for (let i = 0; i < coords.length - 1; i++) {
+    const [lng1, lat1] = coords[i];
+    const [lng2, lat2] = coords[i + 1];
+    totalKm += calculateGeodesicDistanceMeters(lat1, lng1, lat2, lng2) / 1000;
+  }
+  return totalKm;
 }
 
 /**

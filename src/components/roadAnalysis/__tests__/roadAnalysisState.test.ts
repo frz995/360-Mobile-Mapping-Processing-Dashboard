@@ -3,7 +3,10 @@ import {
   getAuthStorageUserKey,
   getRoadAnalysisStorageKey,
   loadRoadAnalysisState,
+  persistRoadAnalysisCache,
+  mirrorRoadAnalysisToCache,
   computeRoadAnalysisFingerprint,
+  ROAD_ANALYSIS_CACHE_VERSION,
   type RoadAnalysisSavedState
 } from '../../RoadAnalysisWorkspace';
 
@@ -131,7 +134,7 @@ describe('RoadAnalysisWorkspace state persistence', () => {
   });
 
   describe('computeRoadAnalysisFingerprint', () => {
-    const baseExtracted = [{ id: '1', name: 'Road A', coordinates: [[100, 1], [100.1, 1.1]] as Array<[number, number]>, lengthKm: 1.5, source: 'osm' }];
+    const baseExtracted = [{ id: '1', name: 'Road A', coordinates: [[100, 1], [100.1, 1.1]] as Array<[number, number]> }];
 
     it('generates identical fingerprint regardless of district array ordering', () => {
       const fp1 = computeRoadAnalysisFingerprint('JHR', ['JHR-007', 'JHR-009'], 'system', 'ofm-dark', true, null, []);
@@ -169,6 +172,67 @@ describe('RoadAnalysisWorkspace state persistence', () => {
       const fpExtracted = computeRoadAnalysisFingerprint('JHR', ['JHR-007'], 'system', 'ofm-dark', true, null, baseExtracted);
 
       expect(fpEmpty).not.toBe(fpExtracted);
+    });
+  });
+
+  describe('local cache metadata (single source of truth / sync markers)', () => {
+    it('persistRoadAnalysisCache marks edits as unsaved and bumps the local-edit clock', () => {
+      const state: RoadAnalysisSavedState = { planSource: 'extracted', showRoadLines: true };
+      persistRoadAnalysisCache('user-cache-1', state);
+
+      const cache = loadRoadAnalysisState('user-cache-1')!;
+      expect(cache.schemaVersion).toBe(ROAD_ANALYSIS_CACHE_VERSION);
+      expect(cache.savedToCloud).toBe(false);
+      expect(typeof cache.lastLocalEditAt).toBe('string');
+      expect(Date.parse(cache.lastLocalEditAt!)).not.toBeNaN();
+      expect(cache.planSource).toBe('extracted');
+    });
+
+    it('a later edit produces a strictly newer lastLocalEditAt', async () => {
+      persistRoadAnalysisCache('user-cache-2', { planSource: 'extracted' });
+      const first = loadRoadAnalysisState('user-cache-2')!.lastLocalEditAt!;
+      await new Promise((r) => setTimeout(r, 5));
+      persistRoadAnalysisCache('user-cache-2', { planSource: 'manual' });
+
+      const second = loadRoadAnalysisState('user-cache-2')!.lastLocalEditAt!;
+      expect(Date.parse(second)).toBeGreaterThan(Date.parse(first));
+      expect(loadRoadAnalysisState('user-cache-2')!.savedToCloud).toBe(false);
+    });
+
+    it('mirrorRoadAnalysisToCache marks a snapshot as synced with the cloud timestamp', () => {
+      const savedAt = '2026-09-04T08:30:00.000Z';
+      mirrorRoadAnalysisToCache('user-cache-3', {
+        activeTab: 'plan',
+        planSource: 'extracted',
+        extractedLines: [
+          {
+            id: 'r1',
+            name: 'Road',
+            coordinates: [
+              [100, 1], [100.1, 1.1]
+            ] as Array<[number, number]>
+          }
+        ],
+        updatedAt: savedAt
+      });
+
+      const cache = loadRoadAnalysisState('user-cache-3')!;
+      expect(cache.savedToCloud).toBe(true);
+      expect(cache.cloudUpdatedAt).toBe(savedAt);
+      expect(cache.updatedAt).toBe(savedAt);
+      expect(cache.extractedLines?.length).toBe(1);
+      expect(cache.schemaVersion).toBe(ROAD_ANALYSIS_CACHE_VERSION);
+    });
+
+    it('clears the unsaved marker once mirrored (savedToCloud true)', () => {
+      persistRoadAnalysisCache('user-cache-4', { planSource: 'extracted' });
+      expect(loadRoadAnalysisState('user-cache-4')!.savedToCloud).toBe(false);
+
+      mirrorRoadAnalysisToCache('user-cache-4', {
+        planSource: 'extracted',
+        updatedAt: '2026-09-04T09:00:00.000Z'
+      });
+      expect(loadRoadAnalysisState('user-cache-4')!.savedToCloud).toBe(true);
     });
   });
 });
