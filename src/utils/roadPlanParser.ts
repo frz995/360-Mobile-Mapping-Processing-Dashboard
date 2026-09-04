@@ -56,6 +56,48 @@ export function extractLineCoords(geojson: any): Array<[number, number]> {
   return [];
 }
 
+/**
+ * Extract each road line as its own coordinate run so lengths can be
+ * computed per-line (instead of across a flattened array, which introduces
+ * phantom distances between disconnected lines).
+ */
+export function extractLineRuns(geojson: any): Array<Array<[number, number]>> {
+  if (!geojson) return [];
+
+  const toRun = (coords: any): Array<[number, number]> =>
+    (Array.isArray(coords) ? coords : [])
+      .filter((c: any) => Array.isArray(c) && c.length >= 2)
+      .map((c: any) => [Number(c[0]), Number(c[1])] as [number, number]);
+
+  if (geojson.type === 'LineString' && Array.isArray(geojson.coordinates)) {
+    return [toRun(geojson.coordinates)].filter((r) => r.length >= 2);
+  }
+
+  if (geojson.type === 'MultiLineString' && Array.isArray(geojson.coordinates)) {
+    return geojson.coordinates
+      .map((line: any) => toRun(line))
+      .filter((r: Array<[number, number]>) => r.length >= 2);
+  }
+
+  if (geojson.type === 'Feature' && geojson.geometry) {
+    return extractLineRuns(geojson.geometry);
+  }
+
+  if (geojson.type === 'FeatureCollection' && Array.isArray(geojson.features)) {
+    const runs: Array<Array<[number, number]>> = [];
+    for (const feat of geojson.features) {
+      if (feat?.geometry) runs.push(...extractLineRuns(feat.geometry));
+    }
+    return runs;
+  }
+
+  if (geojson.geometry) {
+    return extractLineRuns(geojson.geometry);
+  }
+
+  return [];
+}
+
 export function readFileAsText(file: Blob): Promise<string> {
   if (typeof file.text === 'function') {
     return file.text();

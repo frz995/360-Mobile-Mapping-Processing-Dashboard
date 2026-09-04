@@ -3,13 +3,13 @@ import {
   Route,
   Map,
   Layers,
-  Upload,
   RefreshCw,
   FileJson,
   ScanLine,
   Save,
   Check,
-  Loader2
+  Loader2,
+  ExternalLink
 } from 'lucide-react';
 import { UnderlineTabStrip, StatusDot, type ChromeTab } from './production/chrome';
 import {
@@ -22,8 +22,9 @@ import {
 } from './boundary/malaysiaDistricts';
 import { RoadAnalysisMap } from './roadAnalysis/RoadAnalysisMap';
 import { getRoadExtractionAdapter, type ExtractedRoadLine } from '../services/roadExtraction';
-import { parseRoadPlanFile, extractLineCoords } from '../utils/roadPlanParser';
+import { parseRoadPlanFile, extractLineRuns } from '../utils/roadPlanParser';
 import { extractPanotrackPoints, filterPanotrackByDistricts } from '../utils/panotrackExtractor';
+import { pathLengthLngLatKm } from '../utils/geo';
 import {
   saveRoadAnalysisStateToSupabase,
   fetchRoadAnalysisStateFromSupabase,
@@ -82,7 +83,19 @@ export interface RoadAnalysisSavedState {
   showRoadLines?: boolean;
   manualGeoJson?: any;
   extractedLines?: ExtractedRoadLine[];
+  /** Cache schema version, bumped whenever the stored shape changes. */
+  schemaVersion?: number;
+  /** True once this snapshot has been pushed to Supabase. */
+  savedToCloud?: boolean;
+  /** ISO timestamp of the last local edit made in this browser (monotonic). */
+  lastLocalEditAt?: string;
+  /** ISO updatedAt of the cloud snapshot this cache currently mirrors. */
+  cloudUpdatedAt?: string;
+  /** ISO timestamp of the saved snapshot (cloud authoritative time). */
+  updatedAt?: string;
 }
+
+export const ROAD_ANALYSIS_CACHE_VERSION = 2;
 
 export function getRoadAnalysisStorageKey(userKey: string): string {
   return `geosphere_road_analysis_state_${userKey}`;
@@ -120,6 +133,64 @@ export function loadRoadAnalysisState(userKey: string): RoadAnalysisSavedState |
   }
 }
 
+/**
+ * Persist a Road Analysis snapshot to the local (offline) cache. Used to make
+ * freshly-extracted road networks and live edits survive a remount or a hard
+ * reload without requiring an explicit Save State click first.
+ *
+ * Local edits are marked `savedToCloud: false` and flagged with a monotonic
+ * `lastLocalEditAt` so, on reload, the cloud snapshot is treated as
+ * authoritative EXCEPT when the cache holds newer unsaved local edits (which
+ * must not be silently overwritten).
+ */
+export function persistRoadAnalysisCache(userKey: string, state: RoadAnalysisSavedState): boolean {
+  try {
+    if (!state) return false;
+    const existing = loadRoadAnalysisState(userKey) || {};
+    // Edits bump the local-edit clock and clear the cloud-synced marker.
+    const lastLocalEditAt = new Date().toISOString();
+    localStorage.setItem(
+      getRoadAnalysisStorageKey(userKey),
+      JSON.stringify({
+        ...existing,
+        ...state,
+        schemaVersion: ROAD_ANALYSIS_CACHE_VERSION,
+        lastLocalEditAt,
+        savedToCloud: false
+      })
+    );
+    return true;
+  } catch (err) {
+    // Quota / serialization errors: the cache write failed. Surface it so the
+    // UI can keep the "unsaved edits" banner visible instead of lying.
+    console.warn('[RoadAnalysis] persistRoadAnalysisCache failed (likely quota):', err);
+    return false;
+  }
+}
+
+/**
+ * Mirror a successfully cloud-saved snapshot back into the local cache so the
+ * cache becomes an exact, synced mirror of the DB (marked `savedToCloud: true`)
+ * rather than a competing source of truth.
+ */
+export function mirrorRoadAnalysisToCache(userKey: string, state: RoadAnalysisSavedState): void {
+  try {
+    const cloudUpdatedAt = state.updatedAt;
+    localStorage.setItem(
+      getRoadAnalysisStorageKey(userKey),
+      JSON.stringify({
+        ...state,
+        schemaVersion: ROAD_ANALYSIS_CACHE_VERSION,
+        savedToCloud: true,
+        cloudUpdatedAt: cloudUpdatedAt || null,
+        updatedAt: cloudUpdatedAt
+      })
+    );
+  } catch {
+    // ignore quota / serialization errors
+  }
+}
+
 const TABS: ChromeTab<RoadTab>[] = [
   { key: 'region', icon: <Map size={14} /> },
   { key: 'plan', icon: <Route size={14} /> },
@@ -131,29 +202,6 @@ const TAB_LABEL: Record<RoadTab, string> = {
   plan: 'Plan',
   compare: 'Compare'
 };
-
-function haversineKm(p1: [number, number], p2: [number, number]): number {
-  const R = 6371;
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  const dLat = toRad(p2[1] - p1[1]);
-  const dLon = toRad(p2[0] - p1[0]);
-  const lat1 = toRad(p1[1]);
-  const lat2 = toRad(p2[1]);
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.sin(dLon / 2) * Math.sin(dLon / 2) * Math.cos(lat1) * Math.cos(lat2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
-}
-
-function pathLengthKm(coords: Array<[number, number]>): number {
-  if (!coords || coords.length < 2) return 0;
-  let total = 0;
-  for (let i = 1; i < coords.length; i++) {
-    total += haversineKm(coords[i - 1], coords[i]);
-  }
-  return total;
-}
 
 function rasterStyle(tilesUrl: string) {
   return {
@@ -337,6 +385,21 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
 
   const [isSaving, setIsSaving] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
+  const [hasUnsavedEdits, setHasUnsavedEdits] = useState<boolean>(false);
+
+  // Reflect unsaved-edit state from the local cache whenever it changes.
+  useEffect(() => {
+    const cache = loadRoadAnalysisState(userKey);
+    if (!cache) {
+      setHasUnsavedEdits(false);
+      return;
+    }
+    const localEditAt = cache.lastLocalEditAt ? Date.parse(cache.lastLocalEditAt) : 0;
+    const cloudEditAt = cache.cloudUpdatedAt ? Date.parse(cache.cloudUpdatedAt) : 0;
+    const dirty = cache.savedToCloud === false ||
+      (Number.isFinite(localEditAt) && Number.isFinite(cloudEditAt) && localEditAt > cloudEditAt);
+    setHasUnsavedEdits(!!dirty);
+  }, [userKey, refreshTick, extractedLines, planSource, manualGeoJson]);
 
   const [lastSavedFingerprint, setLastSavedFingerprint] = useState<string | null>(() => {
     const saved = loadRoadAnalysisState(userKey);
@@ -379,48 +442,75 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
   // True only when current state strictly matches the last saved/remote state
   const isSaved = lastSavedFingerprint !== null && lastSavedFingerprint === currentFingerprint;
 
-  // Fetch and restore saved configuration from Supabase Cloud on mount
+  // Track the updatedAt of the saved state most recently applied from storage.
+  // Used to avoid clobbering a user's newer, in-progress (unsaved) edits —
+  // e.g. a freshly-extracted road network — with an older saved state that
+  // arrives async from Supabase moments later.
+  const lastAppliedRemoteAtRef = useRef<string | null>(null);
+
+  // Fetch and restore saved configuration from Supabase Cloud on mount.
+  // Gates each restore by `updatedAt` so a stale saved snapshot (older than or
+  // equal to the baseline already applied) never reverts the live workspace.
   useEffect(() => {
     let cancelled = false;
 
     async function restoreFromSupabase() {
-      // 1. Check live projectSettings if passed down from live Supabase subscription
-      if (projectSettings?.roadAnalysisState) {
-        const saved = projectSettings.roadAnalysisState;
-        if (saved.activeTab) setActiveTab(saved.activeTab);
-        if (saved.selectedStateCode !== undefined) setSelectedStateCode(saved.selectedStateCode);
-        if (Array.isArray(saved.selectedDistrictIds)) setSelectedDistrictIds(saved.selectedDistrictIds);
-        if (saved.planSource) setPlanSource(saved.planSource);
-        if (saved.manualGeoJson !== undefined) setManualGeoJson(saved.manualGeoJson);
-        if (Array.isArray(saved.extractedLines)) setExtractedLines(saved.extractedLines);
-        if (typeof saved.showRoadLines === 'boolean') setShowRoadLines(saved.showRoadLines);
-        if (saved.mapBasemap) setMapBasemap(saved.mapBasemap);
-        if (saved.updatedAt) setLastSavedAt(new Date(saved.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-
-        setLastSavedFingerprint(
-          computeRoadAnalysisFingerprint(
-            saved.selectedStateCode || '',
-            saved.selectedDistrictIds || [],
-            saved.planSource || 'system',
-            saved.mapBasemap || defaultBasemapKey,
-            typeof saved.showRoadLines === 'boolean' ? saved.showRoadLines : true,
-            saved.manualGeoJson || null,
-            saved.extractedLines || []
-          )
-        );
-        return;
-      }
-
-      // 2. Fetch directly from Supabase Cloud
-      const remoteState = await fetchRoadAnalysisStateFromSupabase();
+      // Prefer fresh data straight from Supabase so a stale App-level
+      // projectSettings snapshot (loaded before a recent save, e.g. when
+      // navigating back in the same session) never overrides newer DB state.
+      let remoteState = await fetchRoadAnalysisStateFromSupabase();
+      if (!remoteState) remoteState = projectSettings?.roadAnalysisState;
       if (cancelled || !remoteState) return;
+
+      // Only apply when the incoming remote state is strictly newer than the
+      // baseline already applied. This prevents the async arrival of the last
+      // saved (pre-extraction) snapshot from resetting the basemap and wiping
+      // the freshly extracted road lines the user is currently viewing.
+      const incomingAt = remoteState.updatedAt ? Date.parse(remoteState.updatedAt) : 0;
+      const appliedAt = lastAppliedRemoteAtRef.current ? Date.parse(lastAppliedRemoteAtRef.current) : 0;
+      if (Number.isFinite(incomingAt) && appliedAt >= incomingAt) return;
+
+      lastAppliedRemoteAtRef.current = remoteState.updatedAt || null;
+
+      // General merge rule: the cloud snapshot is authoritative UNLESS the
+      // local cache holds newer state. Two cases are handled:
+      //   a) The local cache has unsaved edits newer than the cloud snapshot
+      //      (`lastLocalEditAt`). A stale/empty cloud snapshot must not delete
+      //      work the user is still viewing.
+      //   b) This device last synced to the cloud at a timestamp NEWER than
+      //      the incoming snapshot's `updatedAt`. This happens when the
+      //      App-level projectSettings snapshot is STALE (loaded before the
+      //      user saved extraction, e.g. navigating back in the same session);
+      //      trusting it would wipe a just-saved road extraction off the map.
+      const localCache = loadRoadAnalysisState(userKey);
+      const localEditAt = localCache?.lastLocalEditAt ? Date.parse(localCache.lastLocalEditAt) : 0;
+      const localCloudAt = localCache?.cloudUpdatedAt ? Date.parse(localCache.cloudUpdatedAt) : 0;
+      const localNewer =
+        Number.isFinite(localEditAt) &&
+        Number.isFinite(incomingAt) &&
+        incomingAt > 0 &&
+        localEditAt > incomingAt;
+      const localSyncedNewer =
+        Number.isFinite(localCloudAt) &&
+        Number.isFinite(incomingAt) &&
+        incomingAt > 0 &&
+        localCloudAt > incomingAt;
+
+      const preferLocal = localNewer || localSyncedNewer;
+
+      const effectiveExtractedLines =
+        preferLocal && Array.isArray(localCache?.extractedLines)
+          ? localCache.extractedLines
+          : Array.isArray(remoteState.extractedLines)
+            ? remoteState.extractedLines
+            : [];
 
       if (remoteState.activeTab) setActiveTab(remoteState.activeTab);
       if (remoteState.selectedStateCode !== undefined) setSelectedStateCode(remoteState.selectedStateCode);
       if (Array.isArray(remoteState.selectedDistrictIds)) setSelectedDistrictIds(remoteState.selectedDistrictIds);
-      if (remoteState.planSource) setPlanSource(remoteState.planSource);
-      if (remoteState.manualGeoJson !== undefined) setManualGeoJson(remoteState.manualGeoJson);
-      if (Array.isArray(remoteState.extractedLines)) setExtractedLines(remoteState.extractedLines);
+      if (!preferLocal && remoteState.planSource) setPlanSource(remoteState.planSource);
+      if (!preferLocal && remoteState.manualGeoJson !== undefined) setManualGeoJson(remoteState.manualGeoJson);
+      setExtractedLines(effectiveExtractedLines);
       if (typeof remoteState.showRoadLines === 'boolean') setShowRoadLines(remoteState.showRoadLines);
       if (remoteState.mapBasemap) setMapBasemap(remoteState.mapBasemap);
       if (remoteState.updatedAt) setLastSavedAt(new Date(remoteState.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
@@ -429,11 +519,11 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
         computeRoadAnalysisFingerprint(
           remoteState.selectedStateCode || '',
           remoteState.selectedDistrictIds || [],
-          remoteState.planSource || 'system',
+          (!preferLocal && remoteState.planSource) || localCache?.planSource || 'system',
           remoteState.mapBasemap || defaultBasemapKey,
           typeof remoteState.showRoadLines === 'boolean' ? remoteState.showRoadLines : true,
-          remoteState.manualGeoJson || null,
-          remoteState.extractedLines || []
+          (!preferLocal && remoteState.manualGeoJson !== undefined) ? remoteState.manualGeoJson : (localCache?.manualGeoJson ?? null),
+          effectiveExtractedLines
         )
       );
     }
@@ -503,16 +593,17 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
       email: authSession?.user?.email
     });
 
-    // 2. Local cache fallback for offline resiliency
-    try {
-      localStorage.setItem(getRoadAnalysisStorageKey(userKey), JSON.stringify(statePayload));
-    } catch (_) { }
-
     setIsSaving(false);
 
     if (result.success) {
+      // 2. Mirror the successfully-saved snapshot back into the local cache,
+      //    marked as synced so the cache is a faithful mirror of the DB.
+      const savedAt = result.updatedAt || statePayload.updatedAt || new Date().toISOString();
+      mirrorRoadAnalysisToCache(userKey, { ...statePayload, updatedAt: savedAt });
+
+      setHasUnsavedEdits(false);
       setLastSavedFingerprint(currentFingerprint);
-      const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const timeStr = new Date(savedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       setLastSavedAt(timeStr);
 
       addNotification?.({
@@ -637,9 +728,9 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
 
   const capturedDistanceKm = useMemo(() => {
     if (capturedTracks.length > 0) {
-      return capturedTracks.reduce((sum, trk) => sum + pathLengthKm(trk), 0);
+      return capturedTracks.reduce((sum, trk) => sum + pathLengthLngLatKm(trk), 0);
     }
-    return pathLengthKm(capturedCoords);
+    return pathLengthLngLatKm(capturedCoords);
   }, [capturedTracks, capturedCoords]);
 
   const extractedRuns = useMemo(
@@ -647,29 +738,34 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
     [extractedLines, selectedDistricts]
   );
 
-  const planCoords: Array<[number, number]> = useMemo(() => {
-    if (planSource === 'manual') return extractLineCoords(manualGeoJson);
-    if (planSource === 'extracted') return extractedRuns.flat();
-    return capturedCoords;
-  }, [planSource, manualGeoJson, capturedCoords, extractedRuns]);
+  const manualRuns = useMemo(
+    () => (planSource === 'manual' ? extractLineRuns(manualGeoJson) : []),
+    [planSource, manualGeoJson]
+  );
 
+  const extractedLengthKm = useMemo(() => linesLengthKm(extractedRuns), [extractedRuns]);
+
+  // Runs currently used as the plan (for map rendering and guards).
+  const activePlanRuns = useMemo(() => {
+    if (planSource === 'extracted') return extractedRuns;
+    if (planSource === 'manual') return manualRuns;
+    return [];
+  }, [planSource, extractedRuns, manualRuns]);
+
+  // Plan length is measured PER run (each disconnected road segment summed
+  // independently). Flattening the runs into one array and measuring
+  // consecutive points creates phantom distances between the end of one run
+  // and the start of the next, inflating the plan length enormously.
   const planDistanceKm = useMemo(() => {
-    if (planSource === 'system' && capturedTracks.length > 0) {
-      return capturedTracks.reduce((sum, trk) => sum + pathLengthKm(trk), 0);
-    }
-    return pathLengthKm(planCoords);
-  }, [planSource, capturedTracks, planCoords]);
+    if (planSource === 'extracted') return extractedLengthKm;
+    if (planSource === 'manual') return linesLengthKm(manualRuns);
+    return 0;
+  }, [planSource, extractedLengthKm, manualRuns]);
 
   const ratio = useMemo(() => {
     if (planDistanceKm <= 0) return null;
     return Math.min(100, Math.round((capturedDistanceKm / planDistanceKm) * 100));
   }, [capturedDistanceKm, planDistanceKm]);
-
-  const extractedLengthKm = useMemo(() => linesLengthKm(extractedRuns), [extractedRuns]);
-  const extractedRatio = useMemo(() => {
-    if (extractedLengthKm <= 0) return null;
-    return Math.min(100, Math.round((capturedDistanceKm / extractedLengthKm) * 100));
-  }, [capturedDistanceKm, extractedLengthKm]);
 
   const handleExtract = useCallback(async () => {
     setExtractError('');
@@ -686,10 +782,32 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
     try {
       const adapter = getRoadExtractionAdapter();
       const result = await adapter.extract({ minLng: b[0], minLat: b[1], maxLng: b[2], maxLat: b[3] });
-      setExtractedLines(result.lines);
+
+      // Clip the raw OSM/Overpass response down to the selected district(s)
+      // immediately, so we only ever store/render/persist the road runs that
+      // actually fall inside the region. This keeps the saved payload small
+      // enough to persist to Supabase / localStorage reliably.
+      const clippedRuns = clipLineStringsToDistricts(result.lines, selectedDistricts);
+      const clippedLines: ExtractedRoadLine[] = clippedRuns.map((run, i) => ({
+        id: `clip-${i}`,
+        coordinates: run,
+        highway: 'extracted'
+      }));
+
+      setExtractedLines(clippedLines);
       setPlanSource('extracted');
       setShowRoadLines(true);
-      if (result.lines.length === 0) {
+      persistRoadAnalysisCache(userKey, {
+        activeTab,
+        selectedStateCode,
+        selectedDistrictIds,
+        planSource: 'extracted',
+        mapBasemap,
+        showRoadLines: true,
+        manualGeoJson,
+        extractedLines: clippedLines
+      });
+      if (clippedLines.length === 0) {
         setExtractError(
           `No roads found in the selected area (${result.source}). Try a road basemap or a wider region.`
         );
@@ -700,7 +818,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
     } finally {
       setExtracting(false);
     }
-  }, [regionGeo, selectedDistricts]);
+  }, [regionGeo, selectedDistricts, userKey, activeTab, selectedStateCode, selectedDistrictIds, mapBasemap, manualGeoJson]);
 
   const handleRefresh = useCallback(() => {
     setIsRefreshing(true);
@@ -726,6 +844,16 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
       });
       setPlanSource('manual');
       setShowRoadLines(true);
+      persistRoadAnalysisCache(userKey, {
+        activeTab,
+        selectedStateCode,
+        selectedDistrictIds,
+        planSource: 'manual',
+        mapBasemap,
+        showRoadLines: true,
+        manualGeoJson: result.geojson,
+        extractedLines
+      });
     } catch (err: any) {
       setManualError(err?.message || 'Failed to parse file. For Shapefile, please upload a .zip containing .shp, .dbf, and .shx.');
       setManualGeoJson(null);
@@ -733,11 +861,52 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
     } finally {
       setIsParsingFile(false);
     }
-  }, []);
+  }, [userKey, activeTab, selectedStateCode, selectedDistrictIds, mapBasemap, extractedLines]);
+
+  // Unload the current plan's road lines. For Option A this clears the
+  // extracted OSM network; for Option B it clears the manual GeoJSON.
+  const handleClearRoads = useCallback(
+    (target: 'extracted' | 'manual') => {
+      let nextExtracted = extractedLines;
+      let nextManual = manualGeoJson;
+      let nextPlan = planSource;
+
+      if (target === 'extracted') {
+        nextExtracted = [];
+        if (nextPlan === 'extracted') nextPlan = 'system';
+      } else {
+        nextManual = null;
+        setManualFileMeta(null);
+        if (nextPlan === 'manual') nextPlan = 'system';
+      }
+
+      setExtractedLines(nextExtracted);
+      setManualGeoJson(nextManual);
+      setPlanSource(nextPlan);
+      setShowRoadLines(false);
+
+      persistRoadAnalysisCache(userKey, {
+        selectedStateCode,
+        selectedDistrictIds,
+        planSource: nextPlan,
+        mapBasemap,
+        showRoadLines: false,
+        manualGeoJson: nextManual,
+        extractedLines: nextExtracted
+      });
+      setHasUnsavedEdits(true);
+    },
+    [userKey, extractedLines, manualGeoJson, planSource, selectedStateCode, selectedDistrictIds, mapBasemap]
+  );
 
   const mapStyle = useMemo(
     () => basemapToMapStyle(mapBasemap, projectSettings?.customBasemapUrl),
     [mapBasemap, projectSettings?.customBasemapUrl]
+  );
+
+  const webGisUrl = useMemo(
+    () => `${import.meta.env.VITE_MAP_URL || 'https://mobilemapping-nine.vercel.app'}/?embed=true&viewerOnly=true&dashboard=true`,
+    []
   );
 
   const selectedDistrictsList = selectedDistricts.length > 0 ? selectedDistricts : [];
@@ -781,6 +950,16 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
               )}
               <span>{isSaving ? 'Saving…' : isSaved ? 'Saved' : 'Save State'}</span>
             </button>
+            <a
+              href={webGisUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-inner border border-subtle text-[11px] font-semibold text-text-base hover:text-sky-400 hover:border-sky-500/40 transition-colors cursor-pointer shrink-0"
+              title="Open the live WebGIS / 360 map in a new tab to verify the road plan"
+            >
+              <ExternalLink size={13} className="text-sky-400" />
+              <span>Open WebGIS</span>
+            </a>
             <button
               type="button"
               onClick={handleRefresh}
@@ -791,6 +970,19 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
             </button>
           </div>
         </div>
+
+        {/* Unsaved local edits notice */}
+        {hasUnsavedEdits && (
+          <div
+            className="px-3 py-2 rounded-lg border flex items-center gap-2 text-[11px] font-medium"
+            style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-inner/40)' }}
+          >
+            <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
+            <span className="text-text-base">
+              You have unsaved edits not yet pushed to the cloud — click <b>Save State</b> to sync this workspace.
+            </span>
+          </div>
+        )}
 
         {/* Main Panel Canvas */}
         <div className="bg-card border border-subtle rounded-2xl shadow-md overflow-hidden flex flex-col flex-1 min-h-0">
@@ -870,92 +1062,43 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
 
               {activeTab === 'plan' && (
                 <>
+                  {/* Actual — system-derived baseline (the captured reference) */}
                   <div>
-                    <h3 className="text-[9px] uppercase tracking-widest text-text-muted font-bold mb-1.5">Plan source</h3>
-                    <div className="flex flex-col gap-1.5">
-                      <button
-                        onClick={() => setPlanSource('system')}
-                        className={`flex items-start gap-2 px-2.5 py-2 rounded-lg border text-left text-xs transition-colors ${
-                          planSource === 'system'
-                            ? 'border-sky-500/40 bg-sky-500/10 text-text-base'
-                            : 'border-subtle bg-inner/40 text-text-muted hover:text-text-base'
-                        }`}
-                      >
-                        <StatusDot tone={planSource === 'system' ? 'bg-sky-400' : 'bg-text-muted/60'} />
-                        <span className="leading-snug">
-                          <span className="block font-semibold">System-derived baseline</span>
-                          <span className="block text-[10px] text-text-muted mt-0.5">
-                            {capturedPoints.length > 0
-                              ? `${capturedPoints.length.toLocaleString()} panotrack points · ${capturedDistanceKm.toFixed(2)} km`
-                              : 'Built from real captured subgrid points in the selected area.'}
-                          </span>
+                    <h3 className="text-[9px] uppercase tracking-widest text-text-muted font-bold mb-1.5">Actual</h3>
+                    <div className="flex items-start gap-2 px-2.5 py-2 rounded-lg border border-subtle bg-inner/40">
+                      <StatusDot tone="bg-emerald-400" />
+                      <span className="leading-snug">
+                        <span className="block text-xs font-semibold">System-derived baseline</span>
+                        <span className="block text-[10px] text-text-muted mt-0.5">
+                          {capturedPoints.length > 0
+                            ? `${capturedPoints.length.toLocaleString()} captured points · ${capturedDistanceKm.toFixed(2)} km`
+                            : 'Built from real captured subgrid points in the selected area.'}
                         </span>
-                      </button>
-
-                      {extractedLines.length > 0 && (
-                        <button
-                          onClick={() => { setPlanSource('extracted'); setShowRoadLines(true); }}
-                          className={`flex items-start gap-2 px-2.5 py-2 rounded-lg border text-left text-xs transition-colors ${
-                            planSource === 'extracted'
-                              ? 'border-sky-500/40 bg-sky-500/10 text-text-base'
-                              : 'border-subtle bg-inner/40 text-text-muted hover:text-text-base'
-                          }`}
-                        >
-                          <StatusDot tone={planSource === 'extracted' ? 'bg-sky-400' : 'bg-text-muted/60'} />
-                          <span className="leading-snug">
-                            <span className="block font-semibold">Extracted road network (Option A)</span>
-                            <span className="block text-[10px] text-text-muted mt-0.5">
-                              {extractedRuns.length} road segment(s) · {extractedLengthKm.toFixed(2)} km
-                            </span>
-                          </span>
-                        </button>
-                      )}
-
-                      {manualGeoJson && (
-                        <button
-                          onClick={() => { setPlanSource('manual'); setShowRoadLines(true); }}
-                          className={`flex items-start gap-2 px-2.5 py-2 rounded-lg border text-left text-xs transition-colors ${
-                            planSource === 'manual'
-                              ? 'border-sky-500/40 bg-sky-500/10 text-text-base'
-                              : 'border-subtle bg-inner/40 text-text-muted hover:text-text-base'
-                          }`}
-                        >
-                          <StatusDot tone={planSource === 'manual' ? 'bg-sky-400' : 'bg-text-muted/60'} />
-                          <span className="leading-snug">
-                            <span className="block font-semibold">Manual GeoJSON (Option B)</span>
-                            <span className="block text-[10px] text-text-muted mt-0.5">
-                              Custom road-plan LineString loaded
-                            </span>
-                          </span>
-                        </button>
-                      )}
+                      </span>
                     </div>
                   </div>
 
-                  {/* Unified Road Extraction Section */}
+                  {/* Plan Source — the plan to compare against (Option A or Option B) */}
                   <div className="border-t border-divider pt-2 mt-2 flex flex-col gap-2.5">
                     <h3 className="text-[9px] uppercase tracking-widest text-text-muted font-bold mb-0.5">
-                      Road extraction
+                      Plan Source
                     </h3>
 
                     {/* Option A */}
                     <div className="flex flex-col gap-1">
-                      <div className="text-[10px] font-semibold text-text-muted uppercase tracking-wider">
-                        Option A
-                      </div>
                       <button
                         onClick={handleExtract}
                         disabled={extracting || selectedDistricts.length === 0}
-                        className={`flex items-center gap-2 px-2.5 py-2 rounded-lg border text-left text-xs transition-colors disabled:opacity-50 disabled:cursor-not-allowed hover:border-sky-500/40 cursor-pointer ${
+                        className={`flex items-start gap-2 px-2.5 py-2 rounded-lg border text-left text-xs transition-colors disabled:opacity-50 disabled:cursor-not-allowed hover:border-sky-500/40 cursor-pointer ${
                           planSource === 'extracted'
                             ? 'border-sky-500/40 bg-sky-500/10 text-text-base'
-                            : 'bg-inner/40 border-subtle text-text-base'
+                            : 'border-subtle bg-inner/40 text-text-muted hover:text-text-base'
                         }`}
                       >
-                        <ScanLine size={14} className="text-sky-400 shrink-0" />
+                        <StatusDot tone={planSource === 'extracted' ? 'bg-emerald-400' : 'bg-text-muted/60'} />
                         <span className="leading-snug">
                           <span className="block font-semibold">
-                            {extracting ? 'Extracting road network…' : 'Extract road network'}
+                            {extracting ? 'Extracting road network…' : 'Option A — Extracted road network'}
                           </span>
                           <span className="block text-[10px] text-text-muted mt-0.5">
                             Pull real OSM road lines within the selected district(s).
@@ -965,16 +1108,51 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                       {selectedDistricts.length === 0 && (
                         <p className="text-[10px] text-text-muted">Select state districts first.</p>
                       )}
-                      {extractError && (
+                      {extractError ? (
                         <div className="text-[11px] text-rose-400 leading-snug">{extractError}</div>
+                      ) : extractedLines.length > 0 ? (
+                        <div
+                          className={`flex items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] ${
+                            planSource === 'extracted'
+                              ? 'bg-sky-500/10 border border-sky-500/30 text-sky-300'
+                              : 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-300'
+                          }`}
+                        >
+                          <div className="flex items-center gap-1.5 truncate">
+                            <ScanLine size={13} className="shrink-0" />
+                            <span className="truncate">
+                              {extractedRuns.length} road segment(s) · {extractedLengthKm.toFixed(2)} km
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            {planSource !== 'extracted' && (
+                              <button
+                                type="button"
+                                onClick={() => { setPlanSource('extracted'); setShowRoadLines(true); }}
+                                className="text-[10px] text-sky-400 hover:underline cursor-pointer shrink-0"
+                              >
+                                Select as plan
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleClearRoads('extracted')}
+                              className="text-[10px] text-rose-400 hover:underline cursor-pointer shrink-0"
+                              title="Reset / unload the extracted road network"
+                            >
+                              Reset
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-[10px] text-text-muted">
+                          No plan loaded yet — click above to extract the road network.
+                        </p>
                       )}
                     </div>
 
                     {/* Option B */}
                     <div className="flex flex-col gap-1">
-                      <div className="text-[10px] font-semibold text-text-muted uppercase tracking-wider">
-                        Option B
-                      </div>
                       <button
                         onClick={() => {
                           setPlanSource('manual');
@@ -987,14 +1165,10 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                             : 'border-subtle bg-inner/40 text-text-muted hover:text-text-base'
                         }`}
                       >
-                        {isParsingFile ? (
-                          <Loader2 size={14} className="text-sky-400 shrink-0 mt-0.5 animate-spin" />
-                        ) : (
-                          <Upload size={14} className="text-sky-400 shrink-0 mt-0.5" />
-                        )}
+                        <StatusDot tone={planSource === 'manual' ? 'bg-emerald-400' : 'bg-text-muted/60'} />
                         <span className="leading-snug">
                           <span className="block font-semibold">
-                            {isParsingFile ? 'Parsing road file…' : 'Manual override'}
+                            {isParsingFile ? 'Parsing road file…' : 'Option B — Manual GeoJSON'}
                           </span>
                           <span className="block text-[10px] text-text-muted mt-0.5">
                             Load a GeoJSON, KML, or Shapefile ZIP (with .shp, .dbf, .shx).
@@ -1014,22 +1188,51 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                         }}
                       />
 
-                      {manualGeoJson && (
-                        <div className="flex items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-[11px] text-emerald-300">
+                      {manualGeoJson ? (
+                        <div
+                          className={`flex items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] ${
+                            planSource === 'manual'
+                              ? 'bg-sky-500/10 border border-sky-500/30 text-sky-300'
+                              : 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-300'
+                          }`}
+                        >
                           <div className="flex items-center gap-1.5 truncate">
                             <FileJson size={13} className="shrink-0" />
                             <span className="truncate">
                               {manualFileMeta ? `${manualFileMeta.filename} (${manualFileMeta.format})` : 'Road-plan LineString loaded'}
                             </span>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => fileInputRef.current?.click()}
-                            className="text-[10px] text-sky-400 hover:underline cursor-pointer shrink-0"
-                          >
-                            Replace
-                          </button>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {planSource !== 'manual' && (
+                              <button
+                                type="button"
+                                onClick={() => { setPlanSource('manual'); setShowRoadLines(true); }}
+                                className="text-[10px] text-sky-400 hover:underline cursor-pointer"
+                              >
+                                Select as plan
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => fileInputRef.current?.click()}
+                              className="text-[10px] text-sky-400 hover:underline cursor-pointer"
+                            >
+                              Replace
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleClearRoads('manual')}
+                              className="text-[10px] text-rose-400 hover:underline cursor-pointer"
+                              title="Reset / unload the manual road plan"
+                            >
+                              Reset
+                            </button>
+                          </div>
                         </div>
+                      ) : (
+                        <p className="text-[10px] text-text-muted">
+                          No plan loaded yet — click above to upload a plan file.
+                        </p>
                       )}
 
                       {manualError && (
@@ -1046,61 +1249,45 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                 <>
                   {selectedDistrictsList.length === 0 ? (
                     <p className="text-[11px] text-text-muted leading-relaxed">
-                      Select region districts to compute captured vs plan.
+                      Select region districts to compute actual vs plan.
                     </p>
-                  ) : planSource !== 'extracted' && planCoords.length < 2 ? (
+                  ) : activePlanRuns.length < 1 ? (
                     <p className="text-[11px] text-text-muted leading-relaxed">
-                      Select a plan source to compare captured vs plan.
+                      Select a plan (Option A or Option B) to compare actual captured vs plan.
                     </p>
                   ) : (
                     <>
+                      {/* Actual — system-derived baseline */}
                       <div className="flex items-center justify-between text-[11px]">
-                        <span className="text-text-muted">Captured points</span>
+                        <span className="text-text-muted">Actual captured points</span>
                         <span className="font-semibold text-text-base">{capturedPoints.length}</span>
                       </div>
                       <div className="flex items-center justify-between text-[11px]">
-                        <span className="text-text-muted">Captured length</span>
+                        <span className="text-text-muted">Actual captured length</span>
                         <span className="font-semibold text-text-base">{capturedDistanceKm.toFixed(2)} km</span>
                       </div>
-                      {planSource === 'extracted' ? (
-                        <>
-                          <div className="flex items-center justify-between text-[11px]">
-                            <span className="text-text-muted">Extracted (OSM) length</span>
-                            <span className="font-semibold text-text-base">{extractedLengthKm.toFixed(2)} km</span>
-                          </div>
-                          <div className="flex items-center justify-between text-[11px]">
-                            <span className="text-text-muted">Extracted segments</span>
-                            <span className="font-semibold text-text-base">{extractedRuns.length}</span>
-                          </div>
-                          <div className="flex items-center justify-between text-[11px]">
-                            <span className="text-text-muted">Captured / extracted</span>
-                            <span className="font-semibold text-sky-400">
-                              {extractedRatio === null ? '—' : `${extractedRatio}%`}
-                            </span>
-                          </div>
-                          <div className="border-t border-divider pt-2 text-[10px] text-text-muted leading-relaxed">
-                            Road network extracted from OSM within the selected district(s).
-                          </div>
-                        </>
-                      ) : (
-                        <>
-                          <div className="flex items-center justify-between text-[11px]">
-                            <span className="text-text-muted">Plan length</span>
-                            <span className="font-semibold text-text-base">{planDistanceKm.toFixed(2)} km</span>
-                          </div>
-                          <div className="flex items-center justify-between text-[11px]">
-                            <span className="text-text-muted">Captured / plan</span>
-                            <span className="font-semibold text-sky-400">
-                              {ratio === null ? '—' : `${ratio}%`}
-                            </span>
-                          </div>
-                          <div className="border-t border-divider pt-2 text-[10px] text-text-muted leading-relaxed">
-                            {planSource === 'system'
-                              ? 'Plan is a system-derived baseline from real captured subgrid points.'
-                              : 'Plan is a manual GeoJSON override.'}
-                          </div>
-                        </>
-                      )}
+
+                      {/* Plan — Option A or Option B */}
+                      <div className="border-t border-divider pt-2 mt-2">
+                        <div className="text-[9px] uppercase tracking-widest text-text-muted font-bold mb-1.5">
+                          Plan ({planSource === 'extracted' ? 'Option A' : 'Option B'})
+                        </div>
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-text-muted">Plan length</span>
+                          <span className="font-semibold text-text-base">{planDistanceKm.toFixed(2)} km</span>
+                        </div>
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-text-muted">Actual captured / plan</span>
+                          <span className="font-semibold text-sky-400">
+                            {ratio === null ? '—' : `${ratio}%`}
+                          </span>
+                        </div>
+                        <div className="border-t border-divider pt-2 mt-2 text-[10px] text-text-muted leading-relaxed">
+                          {planSource === 'extracted'
+                            ? 'Plan is the OSM-extracted road network (Option A) within the selected district(s).'
+                            : 'Plan is a manual GeoJSON override (Option B).'}
+                        </div>
+                      </div>
                     </>
                   )}
                 </>
@@ -1179,13 +1366,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                 districtGeojson={regionGeo?.geojson}
                 dimmedRegionsGeojson={dimmedRegionsGeojson}
                 capturedPoints={capturedPoints}
-                roadRuns={
-                  planSource === 'extracted'
-                    ? extractedRuns
-                    : planSource === 'manual'
-                      ? (manualGeoJson ? [extractLineCoords(manualGeoJson)] : [])
-                      : []
-                }
+                roadRuns={activePlanRuns}
               />
 
               {/* Panotrack Operational Status Legend */}

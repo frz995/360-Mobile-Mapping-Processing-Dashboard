@@ -10,6 +10,7 @@
 // =====================================================================
 
 import malaysiaDistrictRaw from '../../../malaysia.district.geojson?raw';
+import { pathLengthLngLatKm } from '../../utils/geo';
 
 const malaysiaDistrictData: any = (() => {
   try {
@@ -280,20 +281,9 @@ export function clipLineStringsToDistricts(
  * Total length (km) of a set of clipped coordinate runs using haversine.
  */
 export function linesLengthKm(runs: Array<Array<[number, number]>>): number {
-  const R = 6371;
-  const toRad = (d: number) => (d * Math.PI) / 180;
   let total = 0;
   for (const run of runs) {
-    for (let i = 1; i < run.length; i++) {
-      const [lng1, lat1] = run[i - 1];
-      const [lng2, lat2] = run[i];
-      const dLat = toRad(lat2 - lat1);
-      const dLng = toRad(lng2 - lng1);
-      const a =
-        Math.sin(dLat / 2) ** 2 +
-        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
-      total += 2 * R * Math.asin(Math.sqrt(a));
-    }
+    total += pathLengthLngLatKm(run);
   }
   return total;
 }

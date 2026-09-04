@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import type { QADefectRecord, QAQCAuditRunRecord, ExtendedProjectSettings } from '../types/admin';
 import type { DatasetRecord, ExternalJobStatus, ProcessingJobRecord, ProcessingJobStatus } from '../types/production';
 import { calculatePathDistanceKm } from '../utils/geo';
+import type { ExtractedRoadLine } from './roadExtraction';
 import { withRetry } from '../lib/retry';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
@@ -2361,7 +2362,7 @@ export interface RoadAnalysisProductionState {
   mapBasemap?: string;
   showRoadLines?: boolean;
   manualGeoJson?: any;
-  extractedLines?: any[];
+  extractedLines?: ExtractedRoadLine[];
   updatedAt?: string;
   updatedBy?: string;
 }
@@ -2373,7 +2374,7 @@ export interface RoadAnalysisProductionState {
 export async function saveRoadAnalysisStateToSupabase(
   state: RoadAnalysisProductionState,
   user?: { id?: string; email?: string }
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; updatedAt?: string }> {
   try {
     const timestamp = new Date().toISOString();
     const userEmail = user?.email || 'authenticated-user';
@@ -2396,7 +2397,7 @@ export async function saveRoadAnalysisStateToSupabase(
       console.warn('[Supabase] auth.updateUser notice:', authErr);
     }
 
-    // 2. Persist to project_settings table in Supabase
+    // 2. Persist to project_settings table in Supabase (authoritative store)
     try {
       const { data } = await supabase
         .from('project_settings')
@@ -2414,15 +2415,27 @@ export async function saveRoadAnalysisStateToSupabase(
         }
       };
 
-      await supabase.from('project_settings').upsert([
-        {
-          id: 'default',
-          settings: updatedSettings,
-          updated_at: timestamp
-        }
-      ], { onConflict: 'id' });
-    } catch (dbErr) {
-      console.warn('[Supabase] project_settings upsert notice:', dbErr);
+      const { error: dbError } = await supabase.from('project_settings').upsert(
+        [
+          {
+            id: 'default',
+            settings: updatedSettings,
+            updated_at: timestamp
+          }
+        ],
+        { onConflict: 'id' }
+      );
+
+      if (dbError) {
+        console.error('[Supabase] project_settings upsert failed:', dbError);
+        return { success: false, error: dbError.message || 'Failed to save to database' };
+      }
+    } catch (dbErr: any) {
+      console.error('[Supabase] project_settings upsert exception:', dbErr);
+      return {
+        success: false,
+        error: dbErr?.message || 'Failed to save to database (project_settings write error).'
+      };
     }
 
     // 3. Log to audit trail
@@ -2439,7 +2452,7 @@ export async function saveRoadAnalysisStateToSupabase(
       // ignore
     }
 
-    return { success: true };
+    return { success: true, updatedAt: timestamp };
   } catch (err: any) {
     console.error('[Supabase] saveRoadAnalysisStateToSupabase exception:', err);
     return { success: false, error: err?.message || 'Failed to save to database' };
