@@ -67,16 +67,15 @@ export interface WorkspaceCategory {
 
 /** Content grouping for the workspace navigation bar (separated by dashed dividers). */
 export const WORKSPACE_CATEGORIES: WorkspaceCategory[] = [
-  { key: 'core', labelKey: 'workspaceCategoryCore', members: ['dashboard', 'data'] },
+  {
+    key: 'webgis',
+    labelKey: 'workspaceCategoryWebGIS',
+    members: ['dashboard', 'data', 'analytics', 'reports', 'roadAnalysis']
+  },
   {
     key: 'production',
     labelKey: 'workspaceCategoryProduction',
     members: ['production', 'processing', 'lineage', 'storage']
-  },
-  {
-    key: 'insights',
-    labelKey: 'workspaceCategoryInsights',
-    members: ['analytics', 'reports', 'roadAnalysis']
   },
   {
     key: 'governance',

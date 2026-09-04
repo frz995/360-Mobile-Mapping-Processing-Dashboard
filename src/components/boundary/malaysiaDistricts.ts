@@ -1,146 +1,83 @@
 // =====================================================================
 // Malaysia District boundary selection — driven by the real district
-// geo-boundary file (`malaysia.district.geojson`, 160 districts, all
-// MultiPolygon). Each feature: `id` (e.g. 'kuala-selangor'),
-// `properties.name` (display), `properties.state` (state CODE, e.g.
-// 'SGR'), `properties.code_state` (state numeric code — repeated for
-// every district in a state, so NOT a unique district id).
-// Districts are therefore keyed by `name`/`id` and grouped by `state`.
-// Loaded via `?raw` (Vite) because `.geojson` is not a `.json` module.
+// geo-boundary file (`public/data/malaysia.district.geojson`, 160 districts,
+// all MultiPolygon).
+// Lightweight metadata is bundled directly (~44KB) to avoid embedding the
+// 878KB raw GeoJSON into the main JS chunk. Detailed MultiPolygon geometries
+// are loaded on-demand via `ensureDistrictGeometriesLoaded()`.
 // =====================================================================
 
-import malaysiaDistrictRaw from '../../../malaysia.district.geojson?raw';
+import { DISTRICT_METADATA, type DistrictMeta } from './districtMetadata';
 import { pathLengthLngLatKm } from '../../utils/geo';
 
-const malaysiaDistrictData: any = (() => {
-  try {
-    return JSON.parse(malaysiaDistrictRaw);
-  } catch {
-    return null;
-  }
-})();
-
-/** Real Malaysia standard state codes → display name (16 states). */
-const STATE_CODE_NAMES: Record<string, string> = {
-  JHR: 'Johor',
-  KDH: 'Kedah',
-  KTN: 'Kelantan',
-  MLK: 'Melaka',
-  NSN: 'Negeri Sembilan',
-  PHG: 'Pahang',
-  PRK: 'Perak',
-  PLS: 'Perlis',
-  PNG: 'Pulau Pinang',
-  SBH: 'Sabah',
-  SWK: 'Sarawak',
-  SGR: 'Selangor',
-  TRG: 'Terengganu',
-  KUL: 'W.P. Kuala Lumpur',
-  LBN: 'W.P. Labuan',
-  PJY: 'W.P. Putrajaya'
-};
-
-export interface MalaysiaDistrict {
-  id: string;
-  name: string;
-  /** State CODE, e.g. 'SGR'. */
-  state: string;
-  /** Friendly state display name. */
-  stateName: string;
-  /** [minLng, minLat, maxLng, maxLat] */
-  bbox: [number, number, number, number];
-  /** [lat, lng] map focus center */
-  center?: [number, number];
-  /** Suggested map zoom level when flying to this region */
-  zoom?: number;
-  /** Grouping label (state display name) used to group the list. */
-  group: string;
+export interface MalaysiaDistrict extends DistrictMeta {
   /** Committed boundary geo (FeatureCollection). */
   geojson?: any;
 }
 
-/** Compute the bbox of a Polygon / MultiPolygon geometry, or null. */
-function bboxOfGeometry(geometry?: any): [number, number, number, number] | null {
-  if (!geometry) return null;
-  const rings: number[][][] = [];
-  if (geometry.type === 'Polygon' && Array.isArray(geometry.coordinates)) {
-    rings.push(...geometry.coordinates);
-  } else if (geometry.type === 'MultiPolygon' && Array.isArray(geometry.coordinates)) {
-    geometry.coordinates.forEach((poly: any) => {
-      if (Array.isArray(poly)) rings.push(...poly);
-    });
-  }
-  if (rings.length === 0) return null;
-  let minLng = Infinity;
-  let minLat = Infinity;
-  let maxLng = -Infinity;
-  let maxLat = -Infinity;
-  rings.forEach((ring) => {
-    ring.forEach((c: number[]) => {
-      if (!Array.isArray(c) || c.length < 2) return;
-      const [lng, lat] = c;
-      if (lng < minLng) minLng = lng;
-      if (lng > maxLng) maxLng = lng;
-      if (lat < minLat) minLat = lat;
-      if (lat > maxLat) maxLat = lat;
-    });
+let isGeometriesLoaded = false;
+let loadPromise: Promise<void> | null = null;
+
+// Initialize MALAYSIA_DISTRICTS with pre-computed metadata
+export const MALAYSIA_DISTRICTS: MalaysiaDistrict[] = DISTRICT_METADATA.map((d) => ({
+  ...d,
+  geojson: undefined
+}));
+
+export function isDistrictGeometriesLoaded(): boolean {
+  return isGeometriesLoaded;
+}
+
+/** Attach full GeoJSON MultiPolygon geometries to the in-memory district items. */
+export function attachDistrictGeometries(featureCollection: any): void {
+  if (!featureCollection || !Array.isArray(featureCollection.features)) return;
+  const featureMap = new Map<string, any>();
+  featureCollection.features.forEach((f: any) => {
+    if (f.id) featureMap.set(String(f.id).toLowerCase(), f);
+    if (f.properties?.name) {
+      const slug = String(f.properties.name).toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      featureMap.set(slug, f);
+    }
   });
-  if (minLng === Infinity) return null;
-  return [minLng, minLat, maxLng, maxLat];
-}
 
-function pickZoom(b: [number, number, number, number]): number {
-  const lng = b[2] - b[0];
-  const lat = b[3] - b[1];
-  const diag = Math.sqrt(lng * lng + lat * lat);
-  if (diag < 0.15) return 13;
-  if (diag < 0.4) return 11;
-  if (diag < 1.2) return 9;
-  if (diag < 3) return 8;
-  return 7;
-}
-
-const sourceDistrictFc: any =
-  (malaysiaDistrictData as any)?.type === 'FeatureCollection' ? malaysiaDistrictData as any : null;
-
-const DISTRICT_LIST: MalaysiaDistrict[] = [];
-if (sourceDistrictFc && Array.isArray(sourceDistrictFc.features)) {
-  sourceDistrictFc.features.forEach((feature: any) => {
-    const props = feature?.properties || {};
-    const name = props.name || 'Unknown';
-    const state = props.state || '';
-    const stateName = STATE_CODE_NAMES[state] || state || 'Unknown';
-    const bbox = bboxOfGeometry(feature?.geometry);
-    if (!bbox) return;
-    const geojson: any = {
-      type: 'FeatureCollection',
-      features: [
-        {
-          type: 'Feature',
-          properties: props,
-          id: feature.id,
-          geometry: feature.geometry
-        }
-      ]
-    };
-    DISTRICT_LIST.push({
-      id: String(feature?.id ?? name.toLowerCase().replace(/[^a-z0-9]+/g, '-')),
-      name,
-      state,
-      stateName,
-      bbox,
-      center: [(bbox[1] + bbox[3]) / 2, (bbox[0] + bbox[2]) / 2],
-      zoom: pickZoom(bbox),
-      group: stateName,
-      geojson
-    });
+  MALAYSIA_DISTRICTS.forEach((d) => {
+    const f = featureMap.get(d.id.toLowerCase());
+    if (f) {
+      d.geojson = {
+        type: 'FeatureCollection',
+        features: [
+          {
+            type: 'Feature',
+            properties: f.properties || {},
+            id: f.id,
+            geometry: f.geometry
+          }
+        ]
+      };
+    }
   });
+  isGeometriesLoaded = true;
 }
 
-DISTRICT_LIST.sort((a, b) => a.stateName.localeCompare(b.stateName) || a.name.localeCompare(b.name));
-
-/** All real districts, grouped under state display name. */
-export const MALAYSIA_DISTRICTS: MalaysiaDistrict[] = DISTRICT_LIST;
+/** Lazily load the full 878KB GeoJSON features from static asset without blocking initial render. */
+export async function ensureDistrictGeometriesLoaded(): Promise<void> {
+  if (isGeometriesLoaded) return;
+  if (loadPromise) return loadPromise;
+  loadPromise = (async () => {
+    try {
+      const res = await fetch('/data/malaysia.district.geojson');
+      if (!res.ok) throw new Error(`Failed to load district boundaries: ${res.statusText}`);
+      const data = await res.json();
+      attachDistrictGeometries(data);
+    } catch (e) {
+      console.error('Failed to load district geometries', e);
+      throw e;
+    } finally {
+      loadPromise = null;
+    }
+  })();
+  return loadPromise;
+}
 
 /** Duplicates of a city name across states are disambiguated by state. */
 export function findDistrictByName(name: string, state?: string): MalaysiaDistrict | undefined {
@@ -163,6 +100,22 @@ export function districtsToGeoJSON(districts: MalaysiaDistrict[]): { geojson: an
   districts.forEach((d) => {
     if (d.geojson?.features) {
       d.geojson.features.forEach((f: any) => features.push(f));
+    } else {
+      features.push({
+        type: 'Feature',
+        id: d.id,
+        properties: { name: d.name, state: d.state },
+        geometry: {
+          type: 'Polygon',
+          coordinates: [[
+            [d.bbox[0], d.bbox[1]],
+            [d.bbox[2], d.bbox[1]],
+            [d.bbox[2], d.bbox[3]],
+            [d.bbox[0], d.bbox[3]],
+            [d.bbox[0], d.bbox[1]]
+          ]]
+        }
+      });
     }
     const [a, b, c, e] = d.bbox;
     if (a < minLng) minLng = a;
@@ -192,11 +145,11 @@ export function groupMalaysiaDistricts(districts: MalaysiaDistrict[]): Array<{ g
 }
 
 /** All distinct state display names present in the district data. */
-export const DISTRICT_STATE_NAMES: string[] = Array.from(new Set(DISTRICT_LIST.map((d) => d.stateName))).sort();
+export const DISTRICT_STATE_NAMES: string[] = Array.from(new Set(MALAYSIA_DISTRICTS.map((d) => d.stateName))).sort();
 
 /** States present in the district data as { code, name }. */
 export const DISTRICT_STATES: Array<{ code: string; name: string }> = Array.from(
-  new Map(DISTRICT_LIST.map((d) => [d.state, d.stateName]))
+  new Map(MALAYSIA_DISTRICTS.map((d) => [d.state, d.stateName]))
     .entries()
 ).map(([code, name]) => ({ code, name })).sort((a, b) => a.name.localeCompare(b.name));
 
@@ -238,7 +191,11 @@ export function pointInDistricts(point: [number, number], districts: MalaysiaDis
     const [minLng, minLat, maxLng, maxLat] = d.bbox;
     if (point[0] < minLng || point[0] > maxLng || point[1] < minLat || point[1] > maxLat) continue;
     const geom = d.geojson?.features?.[0]?.geometry;
-    if (pointInGeometry(point, geom)) return true;
+    if (geom) {
+      if (pointInGeometry(point, geom)) return true;
+    } else {
+      return true;
+    }
   }
   return false;
 }

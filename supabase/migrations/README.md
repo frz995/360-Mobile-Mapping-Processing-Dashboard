@@ -19,6 +19,7 @@ REPLACE`) and safe to re-run from the Supabase SQL Editor or `psql`.
 | 0009 | `0009_security_functions.sql` | **A1.1** SECURITY DEFINER helpers (`sec.get_app_role`, `sec.can`, `sec.is_role`). |
 | 0010 | `0010_security_rls_apply.sql` | **A1.2** Role-guarded RLS on privileged tables. |
 | 0011 | `0011_security_tests.sql` | **A1.3** Security-boundary test script (run, not a schema change). |
+| 0012 | `0012_core_tables_and_rls.sql` | **Phase 3** Missing PostGIS DDL (`panoramas`, `staging_panoramas`, `panoramas_view`), `is_fallback_coord`, drop orphaned `recycle_bin`, and role-guarded RLS on core tables. |
 
 ## Ordering rule
 

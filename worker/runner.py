@@ -90,13 +90,27 @@ def _output_path_for(frame, output_dir: str, recursive: bool) -> str:
     return os.path.normpath(os.path.join(output_dir, rel))
 
 
+class QueueFullError(Exception):
+    """Raised when the job queue exceeds maximum queue depth."""
+    pass
+
+
 class JobRegistry:
     """Job store + worker pool, optionally backed by a durable SQLite journal."""
 
-    def __init__(self, concurrency: int = 1, journal: Optional[SQLiteJobJournal] = None) -> None:
+    def __init__(
+        self,
+        concurrency: int = 1,
+        max_active_jobs: int = 1,
+        max_queue_depth: int = 20,
+        journal: Optional[SQLiteJobJournal] = None
+    ) -> None:
         self.concurrency = max(1, concurrency)
+        self.max_active_jobs = max(1, max_active_jobs)
+        self.max_queue_depth = max(1, max_queue_depth)
         self.jobs: dict[str, dict] = {}
         self._lock = threading.Lock()
+        self._job_semaphore = threading.Semaphore(self.max_active_jobs)
         self._journal: Optional[SQLiteJobJournal] = journal
 
     def _persist(self, job_id: str) -> None:
@@ -129,6 +143,26 @@ class JobRegistry:
     def active(self) -> dict[str, dict]:
         with self._lock:
             return {k: v for k, v in self.jobs.items() if v["status"] in ("QUEUED", "IN_PROGRESS")}
+
+    @property
+    def running(self) -> dict[str, dict]:
+        with self._lock:
+            return {k: v for k, v in self.jobs.items() if v["status"] == "IN_PROGRESS"}
+
+    @property
+    def queued(self) -> dict[str, dict]:
+        with self._lock:
+            return {k: v for k, v in self.jobs.items() if v["status"] == "QUEUED"}
+
+    @property
+    def completed(self) -> dict[str, dict]:
+        with self._lock:
+            return {k: v for k, v in self.jobs.items() if v["status"] == "COMPLETED"}
+
+    @property
+    def failed(self) -> dict[str, dict]:
+        with self._lock:
+            return {k: v for k, v in self.jobs.items() if v["status"] in ("FAILED", "REVIEW_REQUIRED", "CANCELLED")}
 
     def get(self, job_id: str) -> dict | None:
         with self._lock:
@@ -173,12 +207,18 @@ class JobRegistry:
         settings: dict,
         syncer: "Optional[syncmod.SupabaseSyncer]",
     ) -> None:
-        # Idempotent resume (B1.2): if this job_id was already seen (e.g.
-        # recovered from the journal as interrupted), the worker may skip frames
-        # whose output already exists under the same recipe hash on re-run.
-        resume = job_id in self.jobs
-        recipe_hash = _settings_hash(job_type, settings or {})
         with self._lock:
+            queued_count = sum(1 for j in self.jobs.values() if j.get("status") == "QUEUED")
+            if queued_count >= self.max_queue_depth:
+                raise QueueFullError(
+                    f"Job queue is full ({queued_count}/{self.max_queue_depth} jobs queued). Try again later."
+                )
+
+            # Idempotent resume (B1.2): if this job_id was already seen (e.g.
+            # recovered from the journal as interrupted), the worker may skip frames
+            # whose output already exists under the same recipe hash on re-run.
+            resume = job_id in self.jobs
+            recipe_hash = _settings_hash(job_type, settings or {})
             self.jobs[job_id] = {
                 "job_id": job_id,
                 "job_type": job_type,
@@ -214,82 +254,87 @@ class JobRegistry:
         job = self.get(job_id)
         if not job:
             return
-        job_type, source_dir, output_dir = job["job_type"], job["source_dir"], job["output_dir"]
-        settings = job["settings"]
-        syncer = job.get("syncer")
-        os.makedirs(output_dir, exist_ok=True)
 
-        push = lambda **kw: (self.update(job_id, **kw), syncer and syncer.push(job_id, kw))
+        with self._job_semaphore:
+            job = self.get(job_id)
+            if not job or job.get("cancel", threading.Event()).is_set():
+                return
+            job_type, source_dir, output_dir = job["job_type"], job["source_dir"], job["output_dir"]
+            settings = job["settings"]
+            syncer = job.get("syncer")
+            os.makedirs(output_dir, exist_ok=True)
 
-        try:
-            recursive = bool((settings or {}).get("recurse") or job_type == "BLUR")
-            files = _list_source(source_dir, job.get("subgrid"), job.get("total_items") or 0, recursive)
-            total = job["total_items"] or len(files)
-            push(status="IN_PROGRESS", total_items=total, progress=1, message="processing", started_at=_now())
-        except OSError as exc:
-            push(status="FAILED", message=str(exc))
-            return
+            push = lambda **kw: (self.update(job_id, **kw), syncer and syncer.push(job_id, kw))
 
-        # Idempotent resume (B1.2): when re-running an interrupted job under the
-        # same recipe, skip frames whose output already exists so a restart does
-        # not redo completed work. Fresh jobs (not resumed) process everything.
-        skipped = 0
-        if job.get("_resume"):
-            still_to_do: list = []
-            for f in files:
-                if os.path.exists(_output_path_for(f, output_dir, recursive)):
-                    skipped += 1
-                else:
-                    still_to_do.append(f)
-            if skipped:
-                LOGGER.info("job %s resuming: skipping %d already-produced frames", job_id, skipped)
-                files = still_to_do
-
-        completed, errors = skipped, 0
-        failed_items: list = []
-        error_log: list = []
-        retry_limit = int((settings or {}).get("retryLimit", 2))
-        with ThreadPoolExecutor(max_workers=self.concurrency) as pool:
-            futures = {pool.submit(self._process_with_retry, job_id, f, output_dir, job_type, settings, retry_limit): f for f in files}
             try:
-                for fut in as_completed(futures, timeout=3600 * 8):
-                    if job["cancel"].is_set():
-                        pool.shutdown(wait=False, cancel_futures=True)
-                        push(status="CANCELLED", message="cancelled by operator")
-                        return
-                    ok, name, err_msg = fut.result()
-                    if ok:
-                        completed += 1
-                    else:
-                        errors += 1
-                        failed_items.append(name)
-                        error_log.append({"at": _now(), "message": err_msg or "frame failed"})
-                    progress = int((completed / total) * 100) if total else 100
-                    push(
-                        status="IN_PROGRESS",
-                        progress=min(100, progress),
-                        completed_items=completed,
-                        current_item=name,
-                        error_count=errors,
-                        failed_items=failed_items,
-                        error_log=error_log,
-                    )
-            except Exception as exc:  # noqa: BLE001
-                LOGGER.exception("batch worker failed")
-                push(status="FAILED", message=str(exc),
-                     failed_items=failed_items, error_log=error_log)
+                recursive = bool((settings or {}).get("recurse") or job_type == "BLUR")
+                files = _list_source(source_dir, job.get("subgrid"), job.get("total_items") or 0, recursive)
+                total = job["total_items"] or len(files)
+                push(status="IN_PROGRESS", total_items=total, progress=1, message="processing", started_at=_now())
+            except OSError as exc:
+                push(status="FAILED", message=str(exc))
                 return
 
-        if errors > 0 and completed > 0:
-            push(status="REVIEW_REQUIRED", progress=100, completed_items=completed,
-                 message=f"{completed} ok, {errors} frames need manual retouch", completed_at=_now(),
-                 failed_items=failed_items, error_log=error_log)
-        elif errors > 0:
-            push(status="FAILED", message=f"{errors} frames failed", completed_at=_now(),
-                 failed_items=failed_items, error_log=error_log)
-        else:
-            push(status="COMPLETED", progress=100, completed_items=completed,
-                 message="batch complete — clean panoramas in output folder", completed_at=_now())
+            # Idempotent resume (B1.2): when re-running an interrupted job under the
+            # same recipe, skip frames whose output already exists so a restart does
+            # not redo completed work. Fresh jobs (not resumed) process everything.
+            skipped = 0
+            if job.get("_resume"):
+                still_to_do: list = []
+                for f in files:
+                    if os.path.exists(_output_path_for(f, output_dir, recursive)):
+                        skipped += 1
+                    else:
+                        still_to_do.append(f)
+                if skipped:
+                    LOGGER.info("job %s resuming: skipping %d already-produced frames", job_id, skipped)
+                    files = still_to_do
+
+            completed, errors = skipped, 0
+            failed_items: list = []
+            error_log: list = []
+            retry_limit = int((settings or {}).get("retryLimit", 2))
+            with ThreadPoolExecutor(max_workers=self.concurrency) as pool:
+                futures = {pool.submit(self._process_with_retry, job_id, f, output_dir, job_type, settings, retry_limit): f for f in files}
+                try:
+                    for fut in as_completed(futures, timeout=3600 * 8):
+                        if job["cancel"].is_set():
+                            pool.shutdown(wait=False, cancel_futures=True)
+                            push(status="CANCELLED", message="cancelled by operator")
+                            return
+                        ok, name, err_msg = fut.result()
+                        if ok:
+                            completed += 1
+                        else:
+                            errors += 1
+                            failed_items.append(name)
+                            error_log.append({"at": _now(), "message": err_msg or "frame failed"})
+                        progress = int((completed / total) * 100) if total else 100
+                        push(
+                            status="IN_PROGRESS",
+                            progress=min(100, progress),
+                            completed_items=completed,
+                            current_item=name,
+                            error_count=errors,
+                            failed_items=failed_items,
+                            error_log=error_log,
+                        )
+                except Exception as exc:  # noqa: BLE001
+                    LOGGER.exception("batch worker failed")
+                    push(status="FAILED", message=str(exc),
+                         failed_items=failed_items, error_log=error_log)
+                    return
+
+            if errors > 0 and completed > 0:
+                push(status="REVIEW_REQUIRED", progress=100, completed_items=completed,
+                     message=f"{completed} ok, {errors} frames need manual retouch", completed_at=_now(),
+                     failed_items=failed_items, error_log=error_log)
+            elif errors > 0:
+                push(status="FAILED", message=f"{errors} frames failed", completed_at=_now(),
+                     failed_items=failed_items, error_log=error_log)
+            else:
+                push(status="COMPLETED", progress=100, completed_items=completed,
+                     message="batch complete — clean panoramas in output folder", completed_at=_now())
 
     @staticmethod
     def _process_one(job_id: str, src_path: str, output_dir: str, job_type: str, settings: dict) -> tuple[bool, str, str | None]:

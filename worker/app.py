@@ -75,12 +75,22 @@ syncer: Optional[syncmod.SupabaseSyncer] = None
 @app.on_event("startup")
 def _startup() -> None:
     global registry, syncer
-    journal = None
-    if os.environ.get("WORKER_JOB_DB", "").strip():
-        from store import SQLiteJobJournal
-        journal = SQLiteJobJournal(os.environ["WORKER_JOB_DB"].strip())
-        logger.info("Durable job journal enabled at %s", journal.path)
-    registry = JobRegistry(concurrency=int(os.environ.get("CONCURRENCY", "1")), journal=journal)
+    db_path = os.environ.get("WORKER_JOB_DB", "").strip()
+    if not db_path:
+        db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "jobs_journal.sqlite")
+    from store import SQLiteJobJournal
+    journal = SQLiteJobJournal(db_path)
+    logger.info("Durable job journal enabled at %s", journal.path)
+
+    concurrency = int(os.environ.get("CONCURRENCY", "1"))
+    max_active_jobs = int(os.environ.get("MAX_ACTIVE_JOBS", "1"))
+    max_queue_depth = int(os.environ.get("MAX_QUEUE_DEPTH", "20"))
+    registry = JobRegistry(
+        concurrency=concurrency,
+        max_active_jobs=max_active_jobs,
+        max_queue_depth=max_queue_depth,
+        journal=journal,
+    )
     recovered = registry.recover()
     if recovered:
         logger.warning("Recovered %d persisted jobs after restart: %s", len(recovered), recovered)
@@ -91,7 +101,7 @@ def _startup() -> None:
 
 class JobSubmit(BaseModel):
     job_id: Optional[str] = None
-    job_type: str = "ENHANCE"  # ENHANCE | MASK | BLUR | STITCH | QAQC | REPORT | EXPORT | AI_DETECT (only ENHANCE/MASK/BLUR/AI_DETECT/QAQC processed here)
+    job_type: str = "ENHANCE"  # Only ENHANCE | MASK | BLUR executable by this worker
     source_folder: str
     output_folder: str
     subgrid: Optional[str] = None
@@ -118,29 +128,36 @@ def _guard(auth: Optional[str]) -> None:
 @app.post("/api/jobs")
 def submit_job(body: JobSubmit, authorization: Optional[str] = None) -> dict:
     _guard(authorization)
+    if body.job_type not in ("ENHANCE", "MASK", "BLUR"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Job type '{body.job_type}' is not executable by this worker. Supported types: ENHANCE, MASK, BLUR. External tasks (STITCH, AI_DETECT, QAQC) are handled at workstations.",
+        )
     if registry is None:
         raise HTTPException(status_code=503, detail="Worker still initialising.")
-    if body.job_type not in ("ENHANCE", "MASK", "BLUR", "AI_DETECT", "QAQC"):
-        # Externally-processed job types are tracked via the dashboard only.
-        return {"ok": True, "message": f"Job type {body.job_type} is not executed by this worker; tracked dashboard-side."}
 
     src = resolve_fs(body.source_folder)
     dst = resolve_fs(body.output_folder)
     os.makedirs(dst, exist_ok=True)
 
+    from runner import QueueFullError
     job_id = body.job_id or str(uuid.uuid4())
-    registry.start(
-        job_id=job_id,
-        job_type=body.job_type,
-        source_dir=src,
-        output_dir=dst,
-        source_rel=body.source_folder,
-        output_rel=body.output_folder,
-        subgrid=body.subgrid,
-        total_items=body.total_items or 0,
-        settings=body.settings or {},
-        syncer=syncer,
-    )
+    try:
+        registry.start(
+            job_id=job_id,
+            job_type=body.job_type,
+            source_dir=src,
+            output_dir=dst,
+            source_rel=body.source_folder,
+            output_rel=body.output_folder,
+            subgrid=body.subgrid,
+            total_items=body.total_items or 0,
+            settings=body.settings or {},
+            syncer=syncer,
+        )
+    except QueueFullError as qe:
+        raise HTTPException(status_code=429, detail=str(qe))
+
     return {"ok": True, "message": f"Job {job_id} accepted into the batch queue."}
 
 
@@ -266,9 +283,44 @@ def storage_info() -> dict:
     return data
 
 
+def _query_gpu_telemetry() -> dict:
+    """Attempts to query GPU telemetry via nvidia-smi. Returns honest metrics without fabrication."""
+    import subprocess
+    try:
+        res = subprocess.run(
+            ["nvidia-smi", "--query-gpu=memory.total,memory.used,utilization.gpu", "--format=csv,noheader,nounits"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+        if res.returncode == 0 and res.stdout.strip():
+            first_line = res.stdout.strip().splitlines()[0]
+            parts = [p.strip() for p in first_line.split(",")]
+            if len(parts) >= 3:
+                return {
+                    "available": True,
+                    "total_bytes": float(parts[0]) * 1024 * 1024,
+                    "used_bytes": float(parts[1]) * 1024 * 1024,
+                    "utilization_pct": float(parts[2]),
+                }
+    except Exception:
+        pass
+    return {"available": False}
+
+
 @app.get("/health")
 def health() -> dict:
-    return {"status": "ok", "jobs_active": len(registry.active) if registry else 0, "nas_base": NAS_BASE_PATH}
+    running_count = len(registry.running) if registry else 0
+    queued_count = len(registry.queued) if registry else 0
+    max_active = registry.max_active_jobs if registry else 1
+    return {
+        "status": "ok",
+        "jobs_active": running_count,
+        "jobs_queued": queued_count,
+        "max_active_jobs": max_active,
+        "nas_base": NAS_BASE_PATH,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -293,16 +345,33 @@ def _counter(name: str, help_: str, value: float) -> str:
 
 @app.get("/metrics")
 def metrics() -> dict:
-    active = len(registry.active) if registry else 0
+    running = len(registry.running) if registry else 0
+    queued = len(registry.queued) if registry else 0
     done = len(registry.completed) if registry else 0
     failed = len(registry.failed) if registry else 0
+    max_active = registry.max_active_jobs if registry else 1
+    queue_cap = registry.max_queue_depth if registry else 20
+
     lines: list[str] = []
     lines.append(_gauge("nas_worker_info", "Worker identity", 1) + f'nas_worker_info{{worker="{_WORKER_ID}"}} 1\n')
     lines.append(_gauge("nas_worker_uptime_seconds", "Worker process uptime in seconds", _uptime_seconds()))
-    lines.append(_counter("nas_jobs_active", "Running jobs", active))
+    lines.append(_counter("nas_jobs_active", "Currently executing jobs", running))
+    lines.append(_counter("nas_jobs_queued", "Queued waiting jobs", queued))
+    lines.append(_gauge("nas_jobs_max_active", "Max concurrent active jobs limit", float(max_active)))
+    lines.append(_gauge("nas_jobs_queue_capacity", "Max queue depth limit", float(queue_cap)))
     lines.append(_counter("nas_jobs_completed", "Completed jobs this process", done))
     lines.append(_counter("nas_jobs_failed", "Failed jobs this process", failed))
-    lines.append(_counter("nas_jobs_total", "All tracked jobs this process", (done + failed + active)))
+    lines.append(_counter("nas_jobs_total", "All tracked jobs this process", (done + failed + running + queued)))
+
+    gpu = _query_gpu_telemetry()
+    if gpu.get("available"):
+        lines.append(_gauge("nas_gpu_available", "NVIDIA GPU presence", 1.0))
+        lines.append(_gauge("nas_gpu_memory_total_bytes", "GPU VRAM total bytes", gpu["total_bytes"]))
+        lines.append(_gauge("nas_gpu_memory_used_bytes", "GPU VRAM used bytes", gpu["used_bytes"]))
+        lines.append(_gauge("nas_gpu_utilization_percent", "GPU compute utilization percentage", gpu["utilization_pct"]))
+    else:
+        lines.append(_gauge("nas_gpu_available", "NVIDIA GPU presence", 0.0))
+
     try:
         du = shutil.disk_usage(resolve_fs(""))
         lines.append(_gauge("nas_storage_total_bytes", "NAS storage total bytes", float(du.total)))

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeAll } from 'vitest'
 import {
   MALAYSIA_DISTRICTS,
   DISTRICT_STATES,
@@ -7,7 +7,8 @@ import {
   pointInDistricts,
   groupMalaysiaDistricts,
   clipLineStringsToDistricts,
-  linesLengthKm
+  linesLengthKm,
+  ensureDistrictGeometriesLoaded
 } from '../malaysiaDistricts'
 
 // The district dataset (`malaysia.district.geojson`) is the authoritative
@@ -15,6 +16,10 @@ import {
 // verify the typed module built from that file behaves honestly.
 
 describe('malaysiaDistricts module', () => {
+  beforeAll(async () => {
+    await ensureDistrictGeometriesLoaded()
+  })
+
   it('loads the full real district dataset (160 districts)', () => {
     expect(MALAYSIA_DISTRICTS.length).toBe(160)
   })
