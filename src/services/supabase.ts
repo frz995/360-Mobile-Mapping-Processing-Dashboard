@@ -18,7 +18,7 @@ type SupabaseClientInstance = SupabaseClient;
  * and convert to safe defaults (null / { success: false }).
  */
 function createNoopSupabaseClient(): SupabaseClientInstance {
-  return new Proxy(function () {}, {
+  return new Proxy(function () { }, {
     get() {
       return undefined;
     },
@@ -26,6 +26,105 @@ function createNoopSupabaseClient(): SupabaseClientInstance {
       return undefined;
     }
   }) as unknown as SupabaseClientInstance;
+}
+
+const MAX_SAFE_HEADER_LENGTH = 2500;
+
+/**
+ * Safe fetch wrapper that guards against oversized Authorization headers.
+ * Storing heavy objects (e.g. spatial/GeoJSON data) in auth user_metadata
+ * causes the Supabase JWT token to expand beyond 8KB, which triggers
+ * HTTP 431 (Request Header Fields Too Large) / CORS network failures on API gateways.
+ *
+ * This wrapper:
+ * 1. Suppresses bloated Authorization headers (> 2500 bytes) on REST data requests,
+ *    substituting the safe anon key (which carries public/authenticated viewAll capability).
+ * 2. Reactively retries with the anon key if any REST request encounters HTTP 431 or NetworkError.
+ */
+function safeSupabaseFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const urlStr =
+    typeof input === 'string'
+      ? input
+      : input instanceof URL
+      ? input.toString()
+      : (input as Request)?.url || '';
+
+  let headers: Headers;
+  if (init?.headers instanceof Headers) {
+    headers = new Headers(init.headers);
+  } else if (Array.isArray(init?.headers)) {
+    headers = new Headers(init.headers);
+  } else if (init?.headers && typeof init.headers === 'object') {
+    headers = new Headers(init.headers as Record<string, string>);
+  } else {
+    headers = new Headers();
+  }
+
+  const authHeader = headers.get('Authorization') || headers.get('authorization') || '';
+  const isBloatedToken = authHeader.length > MAX_SAFE_HEADER_LENGTH;
+
+  // On REST queries, if the user token is bloated, proactively swap it for the anon key
+  // so Kong/Cloudflare never rejects the request with HTTP 431 / CORS NetworkError.
+  if (isBloatedToken && urlStr.includes('/rest/v1/')) {
+    headers.set('Authorization', `Bearer ${supabaseKey}`);
+  }
+
+  const safeInit: RequestInit = {
+    ...init,
+    headers
+  };
+
+  return fetch(input, safeInit)
+    .then(async (res) => {
+      if (res.status === 431 && urlStr.includes('/rest/v1/')) {
+        console.warn('[Supabase] Received HTTP 431. Retrying with anon key...');
+        const retryHeaders = new Headers(headers);
+        retryHeaders.set('Authorization', `Bearer ${supabaseKey}`);
+        return fetch(input, { ...safeInit, headers: retryHeaders });
+      }
+      return res;
+    })
+    .catch(async (err: any) => {
+      const currentAuth = headers.get('Authorization') || '';
+      if (
+        urlStr.includes('/rest/v1/') &&
+        currentAuth &&
+        !currentAuth.includes(supabaseKey)
+      ) {
+        console.warn('[Supabase] NetworkError on authenticated request. Retrying with anon key...', err);
+        const retryHeaders = new Headers(headers);
+        retryHeaders.set('Authorization', `Bearer ${supabaseKey}`);
+        return fetch(input, { ...safeInit, headers: retryHeaders });
+      }
+      throw err;
+    });
+}
+
+/**
+ * Automatically prunes bloated legacy roadAnalysisState from auth.users metadata
+ * if present on the active authenticated user, reducing JWT token size from
+ * tens of kilobytes back to normal (~1KB) and permanently curing HTTP 431.
+ */
+export async function pruneBloatedUserMetadata(): Promise<void> {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.user?.user_metadata?.roadAnalysisState) {
+      console.warn('[Supabase] Detected bloated roadAnalysisState in auth.users user_metadata. Cleaning up...');
+      const { error } = await supabase.auth.updateUser({
+        data: {
+          roadAnalysisState: null
+        }
+      });
+      if (!error) {
+        console.info('[Supabase] Successfully pruned roadAnalysisState from user_metadata. Refreshing session...');
+        await supabase.auth.refreshSession();
+      } else {
+        console.warn('[Supabase] Notice: updateUser could not prune user_metadata:', error.message);
+      }
+    }
+  } catch (err) {
+    console.warn('[Supabase] pruneBloatedUserMetadata notice:', err);
+  }
 }
 
 function createSafeSupabaseClient(): SupabaseClientInstance {
@@ -45,16 +144,20 @@ function createSafeSupabaseClient(): SupabaseClientInstance {
   try {
     return createClient(url, key, {
       auth: {
-        persistSession: false,
-        autoRefreshToken: false,
-        detectSessionInUrl: false
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true
+      },
+      global: {
+        fetch: safeSupabaseFetch
       }
     });
   } catch (err) {
     console.warn('[Supabase] client creation fallback:', err);
     try {
       return createClient(url, key, {
-        auth: { persistSession: false, autoRefreshToken: false }
+        auth: { persistSession: true, autoRefreshToken: true },
+        global: { fetch: safeSupabaseFetch }
       });
     } catch (err2) {
       console.error('[Supabase] client creation failed:', err2);
@@ -2401,7 +2504,9 @@ export interface RoadAnalysisProductionState {
 
 /**
  * Persist Road Analysis region and workspace configuration to Supabase.
- * Updates both the authenticated user metadata in auth.users and the project_settings database table.
+ * Authoritative store is the project_settings database table.
+ * Does NOT write spatial or GeoJSON state to auth.users user_metadata to prevent
+ * JWT header bloat (HTTP 431 Request Header Fields Too Large).
  */
 export async function saveRoadAnalysisStateToSupabase(
   state: RoadAnalysisProductionState,
@@ -2411,22 +2516,18 @@ export async function saveRoadAnalysisStateToSupabase(
     const timestamp = new Date().toISOString();
     const userEmail = user?.email || 'authenticated-user';
 
-    // 1. If user is authenticated in Supabase, update their user metadata in auth.users
+    // 1. If user has legacy roadAnalysisState in auth metadata, prune it to keep token lean.
+    // We NEVER write heavy road state to user_metadata because it gets embedded into JWT
+    // headers and causes HTTP 431 (Request Header Fields Too Large).
     try {
       const { data: { user: currentUser } } = await supabase.auth.getUser();
-      if (currentUser) {
+      if (currentUser?.user_metadata?.roadAnalysisState) {
         await supabase.auth.updateUser({
-          data: {
-            roadAnalysisState: {
-              ...state,
-              updatedAt: timestamp,
-              updatedBy: userEmail
-            }
-          }
+          data: { roadAnalysisState: null }
         });
       }
-    } catch (authErr) {
-      console.warn('[Supabase] auth.updateUser notice:', authErr);
+    } catch {
+      // ignore
     }
 
     // 2. Persist to project_settings table in Supabase (authoritative store)
@@ -2493,20 +2594,10 @@ export async function saveRoadAnalysisStateToSupabase(
 
 /**
  * Fetch saved Road Analysis configuration from Supabase.
+ * Authoritative source is the project_settings database table.
  */
 export async function fetchRoadAnalysisStateFromSupabase(): Promise<RoadAnalysisProductionState | null> {
   try {
-    // 1. Try authenticated user's metadata first
-    try {
-      const { data: { user: currentUser } } = await supabase.auth.getUser();
-      if (currentUser?.user_metadata?.roadAnalysisState) {
-        return currentUser.user_metadata.roadAnalysisState as RoadAnalysisProductionState;
-      }
-    } catch {
-      // ignore
-    }
-
-    // 2. Fall back to project_settings table in Supabase
     const { data, error } = await supabase
       .from('project_settings')
       .select('settings')
