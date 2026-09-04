@@ -2385,7 +2385,7 @@ export async function saveProjectSettingsToSupabase(settings: any): Promise<bool
 }
 
 export interface RoadAnalysisProductionState {
-  activeTab?: 'region' | 'plan' | 'compare';
+  activeTab?: 'region' | 'plan' | 'import' | 'catalog' | 'compare';
   selectedStateCode?: string;
   selectedDistrictIds?: string[];
   planSource?: 'system' | 'manual' | 'extracted';
@@ -2393,6 +2393,8 @@ export interface RoadAnalysisProductionState {
   showRoadLines?: boolean;
   manualGeoJson?: any;
   extractedLines?: ExtractedRoadLine[];
+  catalogLayers?: any[];
+  systemStyles?: any;
   updatedAt?: string;
   updatedBy?: string;
 }

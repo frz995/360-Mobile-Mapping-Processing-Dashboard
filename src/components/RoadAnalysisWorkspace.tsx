@@ -9,7 +9,8 @@ import {
   Save,
   Check,
   Loader2,
-  ExternalLink
+  Upload,
+  GitCompare
 } from 'lucide-react';
 import { UnderlineTabStrip, StatusDot, type ChromeTab } from './production/chrome';
 import {
@@ -23,6 +24,9 @@ import {
   type MalaysiaDistrict
 } from './boundary/malaysiaDistricts';
 import { RoadAnalysisMap } from './roadAnalysis/RoadAnalysisMap';
+import { RoadImportPanel } from './roadAnalysis/RoadImportPanel';
+import { RoadCatalogPanel, RoadAttributeTableDrawer, type SystemLayerStyles } from './roadAnalysis/RoadCatalogPanel';
+import type { CatalogVectorLayer } from '../utils/gisImportParser';
 import { getRoadExtractionAdapter, type ExtractedRoadLine } from '../services/roadExtraction';
 import { parseRoadPlanFile, extractLineRuns } from '../utils/roadPlanParser';
 import { extractPanotrackPoints, filterPanotrackByDistricts } from '../utils/panotrackExtractor';
@@ -49,7 +53,7 @@ export interface RoadAnalysisWorkspaceProps {
   addAuditLog?: (type: AuditLogItem['type'], title: string, details: string, status?: AuditLogItem['status']) => void;
 }
 
-type RoadTab = 'region' | 'plan' | 'compare';
+type RoadTab = 'region' | 'plan' | 'import' | 'catalog' | 'compare';
 type PlanSource = 'system' | 'manual' | 'extracted';
 
 export function getAuthStorageUserKey(authSession?: any, isGuestUser?: boolean): string {
@@ -85,6 +89,8 @@ export interface RoadAnalysisSavedState {
   showRoadLines?: boolean;
   manualGeoJson?: any;
   extractedLines?: ExtractedRoadLine[];
+  catalogLayers?: CatalogVectorLayer[];
+  systemStyles?: SystemLayerStyles;
   /** Cache schema version, bumped whenever the stored shape changes. */
   schemaVersion?: number;
   /** True once this snapshot has been pushed to Supabase. */
@@ -97,7 +103,7 @@ export interface RoadAnalysisSavedState {
   updatedAt?: string;
 }
 
-export const ROAD_ANALYSIS_CACHE_VERSION = 2;
+export const ROAD_ANALYSIS_CACHE_VERSION = 3;
 
 export function getRoadAnalysisStorageKey(userKey: string): string {
   return `geosphere_road_analysis_state_${userKey}`;
@@ -110,7 +116,9 @@ export function computeRoadAnalysisFingerprint(
   basemap: string,
   roadLines: boolean,
   manual: any,
-  extracted: ExtractedRoadLine[]
+  extracted: ExtractedRoadLine[],
+  catalogLayers?: CatalogVectorLayer[],
+  systemStyles?: SystemLayerStyles
 ): string {
   return JSON.stringify({
     stateCode: stateCode || '',
@@ -121,7 +129,13 @@ export function computeRoadAnalysisFingerprint(
     hasManual: !!manual,
     manualGeoJson: manual ? JSON.stringify(manual) : null,
     extractedCount: extracted?.length || 0,
-    extractedSample: (extracted || []).slice(0, 3).map((l) => l.coordinates.length)
+    extractedSample: (extracted || []).slice(0, 3).map((l) => l.coordinates.length),
+    catalogCount: catalogLayers?.length || 0,
+    catalogIds: (catalogLayers || []).map(
+      (l) =>
+        `${l.id}:${l.visible}:${l.color}:${l.opacity}:${l.strokeWidth}:${l.fillColor || ''}:${l.fillOpacity ?? ''}:${l.strokeStyle || ''}:${l.pointRadius ?? ''}:${l.pointStrokeColor || ''}:${l.pointStrokeWidth ?? ''}`
+    ),
+    systemStyles: systemStyles ? JSON.stringify(systemStyles) : null
   });
 }
 
@@ -196,12 +210,16 @@ export function mirrorRoadAnalysisToCache(userKey: string, state: RoadAnalysisSa
 const TABS: ChromeTab<RoadTab>[] = [
   { key: 'region', icon: <Map size={14} /> },
   { key: 'plan', icon: <Route size={14} /> },
-  { key: 'compare', icon: <Layers size={14} /> }
+  { key: 'import', icon: <Upload size={14} /> },
+  { key: 'catalog', icon: <Layers size={14} /> },
+  { key: 'compare', icon: <GitCompare size={14} /> }
 ];
 
 const TAB_LABEL: Record<RoadTab, string> = {
   region: 'Region',
   plan: 'Plan',
+  import: 'Import Data',
+  catalog: 'Data Catalog',
   compare: 'Compare'
 };
 
@@ -308,8 +326,33 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
   });
 
   const [manualError, setManualError] = useState<string>('');
+  const [catalogLayers, setCatalogLayers] = useState<CatalogVectorLayer[]>(() => {
+    const saved = loadRoadAnalysisState(userKey);
+    return Array.isArray(saved?.catalogLayers) ? saved.catalogLayers : [];
+  });
+  const [systemStyles, setSystemStyles] = useState<SystemLayerStyles>(() => {
+    const saved = loadRoadAnalysisState(userKey);
+    return (
+      saved?.systemStyles || {
+        districtBoundary: { visible: true, color: '#000000', opacity: 1, strokeWidth: 2.5 },
+        capturedPoints: { visible: true, opacity: 0.95, pointRadius: 5 },
+        roadPlan: { visible: true, color: '#10b981', opacity: 0.85, strokeWidth: 3.5 }
+      }
+    );
+  });
+  const [focusBbox, setFocusBbox] = useState<[number, number, number, number] | null>(null);
+  const [activePlanName, setActivePlanName] = useState<string>('');
+  const [activeTableLayer, setActiveTableLayer] = useState<CatalogVectorLayer | null>(null);
+  const [selectedTableFeature, setSelectedTableFeature] = useState<any | null>(null);
   const [, setGeometriesLoaded] = useState(() => isDistrictGeometriesLoaded());
   const [refreshTick, setRefreshTick] = useState(0);
+
+  useEffect(() => {
+    if (activeTableLayer && !catalogLayers.some((l) => l.id === activeTableLayer.id)) {
+      setActiveTableLayer(null);
+      setSelectedTableFeature(null);
+    }
+  }, [catalogLayers, activeTableLayer]);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -408,7 +451,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
     const dirty = cache.savedToCloud === false ||
       (Number.isFinite(localEditAt) && Number.isFinite(cloudEditAt) && localEditAt > cloudEditAt);
     setHasUnsavedEdits(!!dirty);
-  }, [userKey, refreshTick, extractedLines, planSource, manualGeoJson]);
+  }, [userKey, refreshTick, extractedLines, planSource, manualGeoJson, catalogLayers, systemStyles]);
 
   const [lastSavedFingerprint, setLastSavedFingerprint] = useState<string | null>(() => {
     const saved = loadRoadAnalysisState(userKey);
@@ -420,14 +463,16 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
         saved.mapBasemap || defaultBasemapKey,
         typeof saved.showRoadLines === 'boolean' ? saved.showRoadLines : true,
         saved.manualGeoJson || null,
-        saved.extractedLines || []
+        saved.extractedLines || [],
+        saved.catalogLayers || [],
+        saved.systemStyles
       );
     }
     return null;
   });
 
   // Calculate current fingerprint across all configuration dimensions:
-  // state, districts, plan source, basemap, road lines visibility, manual GeoJSON, and road extraction
+  // state, districts, plan source, basemap, road lines visibility, manual GeoJSON, road extraction, catalog layers & styles
   const currentFingerprint = useMemo(() => {
     return computeRoadAnalysisFingerprint(
       selectedStateCode,
@@ -436,7 +481,9 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
       mapBasemap,
       showRoadLines,
       manualGeoJson,
-      extractedLines
+      extractedLines,
+      catalogLayers,
+      systemStyles
     );
   }, [
     selectedStateCode,
@@ -445,7 +492,9 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
     mapBasemap,
     showRoadLines,
     manualGeoJson,
-    extractedLines
+    extractedLines,
+    catalogLayers,
+    systemStyles
   ]);
 
   // True only when current state strictly matches the last saved/remote state
@@ -520,6 +569,16 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
       if (!preferLocal && remoteState.planSource) setPlanSource(remoteState.planSource);
       if (!preferLocal && remoteState.manualGeoJson !== undefined) setManualGeoJson(remoteState.manualGeoJson);
       setExtractedLines(effectiveExtractedLines);
+      if (Array.isArray(remoteState.catalogLayers)) {
+        setCatalogLayers(preferLocal && Array.isArray(localCache?.catalogLayers) ? localCache.catalogLayers : remoteState.catalogLayers);
+      } else if (Array.isArray(localCache?.catalogLayers)) {
+        setCatalogLayers(localCache.catalogLayers);
+      }
+      if (remoteState.systemStyles) {
+        setSystemStyles(preferLocal && localCache?.systemStyles ? localCache.systemStyles : remoteState.systemStyles);
+      } else if (localCache?.systemStyles) {
+        setSystemStyles(localCache.systemStyles);
+      }
       if (typeof remoteState.showRoadLines === 'boolean') setShowRoadLines(remoteState.showRoadLines);
       if (remoteState.mapBasemap) setMapBasemap(remoteState.mapBasemap);
       if (remoteState.updatedAt) setLastSavedAt(new Date(remoteState.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
@@ -532,7 +591,9 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
           remoteState.mapBasemap || defaultBasemapKey,
           typeof remoteState.showRoadLines === 'boolean' ? remoteState.showRoadLines : true,
           (!preferLocal && remoteState.manualGeoJson !== undefined) ? remoteState.manualGeoJson : (localCache?.manualGeoJson ?? null),
-          effectiveExtractedLines
+          effectiveExtractedLines,
+          (preferLocal && localCache?.catalogLayers) || remoteState.catalogLayers || [],
+          (preferLocal && localCache?.systemStyles) || remoteState.systemStyles
         )
       );
     }
@@ -554,6 +615,8 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
       if (saved.planSource) setPlanSource(saved.planSource);
       if (saved.manualGeoJson !== undefined) setManualGeoJson(saved.manualGeoJson);
       if (Array.isArray(saved.extractedLines)) setExtractedLines(saved.extractedLines);
+      if (Array.isArray(saved.catalogLayers)) setCatalogLayers(saved.catalogLayers);
+      if (saved.systemStyles) setSystemStyles(saved.systemStyles);
       if (typeof saved.showRoadLines === 'boolean') setShowRoadLines(saved.showRoadLines);
       if (saved.mapBasemap) setMapBasemap(saved.mapBasemap);
       setLastSavedFingerprint(
@@ -564,7 +627,9 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
           saved.mapBasemap || defaultBasemapKey,
           typeof saved.showRoadLines === 'boolean' ? saved.showRoadLines : true,
           saved.manualGeoJson || null,
-          saved.extractedLines || []
+          saved.extractedLines || [],
+          saved.catalogLayers || [],
+          saved.systemStyles
         )
       );
     }
@@ -592,6 +657,8 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
       showRoadLines,
       manualGeoJson,
       extractedLines,
+      catalogLayers,
+      systemStyles,
       updatedAt: new Date().toISOString(),
       updatedBy: userEmail
     };
@@ -650,6 +717,8 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
     showRoadLines,
     manualGeoJson,
     extractedLines,
+    catalogLayers,
+    systemStyles,
     userKey,
     currentFingerprint,
     addNotification,
@@ -908,14 +977,169 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
     [userKey, extractedLines, manualGeoJson, planSource, selectedStateCode, selectedDistrictIds, mapBasemap]
   );
 
+  const handleLayerImported = useCallback(
+    (layer: CatalogVectorLayer) => {
+      setCatalogLayers((prev) => {
+        const next = [layer, ...prev];
+        persistRoadAnalysisCache(userKey, {
+          activeTab: 'catalog',
+          selectedStateCode,
+          selectedDistrictIds,
+          planSource,
+          mapBasemap,
+          showRoadLines,
+          manualGeoJson,
+          extractedLines,
+          catalogLayers: next,
+          systemStyles
+        });
+        return next;
+      });
+      setHasUnsavedEdits(true);
+      setActiveTab('catalog');
+      if (layer.bbox) {
+        setFocusBbox(layer.bbox);
+      }
+      addNotification?.({
+        id: `layer-imported-${Date.now()}`,
+        title: 'GIS Layer Imported',
+        message: `"${layer.name}" (${layer.featureCount} features) added to catalog.`,
+        category: 'SUCCESS',
+        read: false
+      });
+    },
+    [
+      userKey,
+      selectedStateCode,
+      selectedDistrictIds,
+      planSource,
+      mapBasemap,
+      showRoadLines,
+      manualGeoJson,
+      extractedLines,
+      systemStyles,
+      addNotification
+    ]
+  );
+
+  const handleUpdateCatalogLayer = useCallback(
+    (layerId: string, updates: Partial<CatalogVectorLayer>) => {
+      setActiveTableLayer((prev) => (prev?.id === layerId ? { ...prev, ...updates } : prev));
+      setCatalogLayers((prev) => {
+        const next = prev.map((l) => (l.id === layerId ? { ...l, ...updates } : l));
+        persistRoadAnalysisCache(userKey, {
+          activeTab,
+          selectedStateCode,
+          selectedDistrictIds,
+          planSource,
+          mapBasemap,
+          showRoadLines,
+          manualGeoJson,
+          extractedLines,
+          catalogLayers: next,
+          systemStyles
+        });
+        return next;
+      });
+      setHasUnsavedEdits(true);
+    },
+    [
+      userKey,
+      activeTab,
+      selectedStateCode,
+      selectedDistrictIds,
+      planSource,
+      mapBasemap,
+      showRoadLines,
+      manualGeoJson,
+      extractedLines,
+      systemStyles
+    ]
+  );
+
+  const handleRemoveCatalogLayer = useCallback(
+    (layerId: string) => {
+      setActiveTableLayer((prev) => (prev?.id === layerId ? null : prev));
+      setCatalogLayers((prev) => {
+        const next = prev.filter((l) => l.id !== layerId);
+        persistRoadAnalysisCache(userKey, {
+          activeTab,
+          selectedStateCode,
+          selectedDistrictIds,
+          planSource,
+          mapBasemap,
+          showRoadLines,
+          manualGeoJson,
+          extractedLines,
+          catalogLayers: next,
+          systemStyles
+        });
+        return next;
+      });
+      setHasUnsavedEdits(true);
+    },
+    [
+      userKey,
+      activeTab,
+      selectedStateCode,
+      selectedDistrictIds,
+      planSource,
+      mapBasemap,
+      showRoadLines,
+      manualGeoJson,
+      extractedLines,
+      systemStyles
+    ]
+  );
+
+  const handleZoomToLayer = useCallback((bbox: [number, number, number, number]) => {
+    setFocusBbox([...bbox]);
+  }, []);
+
+  const handleSetAsActivePlan = useCallback(
+    (layer: CatalogVectorLayer) => {
+      if (!layer.geojson) return;
+      setManualGeoJson(layer.geojson);
+      setPlanSource('manual');
+      setShowRoadLines(true);
+      setActivePlanName(layer.name);
+      persistRoadAnalysisCache(userKey, {
+        activeTab,
+        selectedStateCode,
+        selectedDistrictIds,
+        planSource: 'manual',
+        mapBasemap,
+        showRoadLines: true,
+        manualGeoJson: layer.geojson,
+        extractedLines,
+        catalogLayers,
+        systemStyles
+      });
+      setHasUnsavedEdits(true);
+      addNotification?.({
+        id: `plan-active-${Date.now()}`,
+        title: 'Active Plan Promoted',
+        message: `"${layer.name}" is now the active road comparison plan.`,
+        category: 'INFO',
+        read: false
+      });
+    },
+    [
+      userKey,
+      activeTab,
+      selectedStateCode,
+      selectedDistrictIds,
+      mapBasemap,
+      extractedLines,
+      catalogLayers,
+      systemStyles,
+      addNotification
+    ]
+  );
+
   const mapStyle = useMemo(
     () => basemapToMapStyle(mapBasemap, projectSettings?.customBasemapUrl),
     [mapBasemap, projectSettings?.customBasemapUrl]
-  );
-
-  const webGisUrl = useMemo(
-    () => `${import.meta.env.VITE_MAP_URL || 'https://mobilemapping-nine.vercel.app'}/?embed=true&viewerOnly=true&dashboard=true`,
-    []
   );
 
   const selectedDistrictsList = selectedDistricts.length > 0 ? selectedDistricts : [];
@@ -959,16 +1183,6 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
               )}
               <span>{isSaving ? 'Saving…' : isSaved ? 'Saved' : 'Save State'}</span>
             </button>
-            <a
-              href={webGisUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-inner border border-subtle text-[11px] font-semibold text-text-base hover:text-sky-400 hover:border-sky-500/40 transition-colors cursor-pointer shrink-0"
-              title="Open the live WebGIS / 360 map in a new tab to verify the road plan"
-            >
-              <ExternalLink size={13} className="text-sky-400" />
-              <span>Open WebGIS</span>
-            </a>
             <button
               type="button"
               onClick={handleRefresh}
@@ -1000,7 +1214,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
           </div>
 
           <div className="flex flex-1 min-h-0">
-            <aside className="w-72 shrink-0 border-r border-divider overflow-y-auto p-3 flex flex-col gap-3 bg-app/40">
+            <aside className="w-80 shrink-0 border-r border-divider overflow-y-auto p-3 flex flex-col gap-3 bg-app/40">
               {activeTab === 'region' && (
                 <>
                   <div>
@@ -1254,6 +1468,31 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                 </>
               )}
 
+              {activeTab === 'import' && (
+                <RoadImportPanel
+                  onLayerImported={handleLayerImported}
+                  onNavigateToCatalog={() => setActiveTab('catalog')}
+                />
+              )}
+
+              {activeTab === 'catalog' && (
+                <RoadCatalogPanel
+                  catalogLayers={catalogLayers}
+                  systemStyles={systemStyles}
+                  onUpdateSystemStyles={setSystemStyles}
+                  onUpdateCatalogLayer={handleUpdateCatalogLayer}
+                  onRemoveCatalogLayer={handleRemoveCatalogLayer}
+                  onZoomToLayer={handleZoomToLayer}
+                  onSetAsActivePlan={handleSetAsActivePlan}
+                  onNavigateToImport={() => setActiveTab('import')}
+                  panotrackCount={capturedPoints.length}
+                  planDistanceKm={planDistanceKm}
+                  activePlanName={activePlanName}
+                  activeTableLayer={activeTableLayer}
+                  onOpenAttributeTable={setActiveTableLayer}
+                />
+              )}
+
               {activeTab === 'compare' && (
                 <>
                   {selectedDistrictsList.length === 0 ? (
@@ -1303,112 +1542,89 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
               )}
             </aside>
 
-            <div className="flex-1 min-w-0 bg-app overflow-hidden relative">
-              {/* Top-Left Floating Map Controls Box Card */}
-              <div
-                style={{
-                  backgroundColor: 'var(--bg-card)',
-                  borderColor: 'var(--border-subtle)',
-                  boxShadow: 'var(--card-shadow)'
-                }}
-                className="absolute top-3 left-3 z-[1000] flex items-center gap-1.5 p-1.5 rounded-xl border backdrop-blur-md shadow-lg transition-colors"
-              >
-                <button
-                  type="button"
-                  onClick={() => setShowRoadLines((v) => !v)}
-                  style={{
-                    backgroundColor: showRoadLines ? 'var(--bg-inner)' : 'transparent',
-                    borderColor: showRoadLines ? 'var(--border-subtle)' : 'transparent'
-                  }}
-                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-all cursor-pointer ${
-                    showRoadLines
-                      ? 'text-sky-400 shadow-sm'
-                      : 'text-text-muted hover:text-text-base hover:bg-inner/50'
-                  }`}
-                  title={showRoadLines ? 'Hide road lines overlay' : 'Show road lines overlay'}
-                >
-                  <ScanLine size={13} className={showRoadLines ? 'text-sky-400' : 'text-text-muted'} />
-                  <span>{showRoadLines ? 'Hide road lines' : 'Show road lines'}</span>
-                </button>
-
-                <div
-                  style={{ backgroundColor: 'var(--divider)' }}
-                  className="w-[1px] h-4 mx-0.5 shrink-0"
-                />
-
-                <div className="flex items-center gap-1.5 px-1">
-                  <Layers size={13} style={{ color: 'var(--text-muted)' }} className="shrink-0" />
-                  <select
-                    value={mapBasemap}
-                    onChange={(e) => setMapBasemap(e.target.value)}
-                    style={{
-                      backgroundColor: 'var(--bg-inner)',
-                      borderColor: 'var(--border-subtle)',
-                      color: 'var(--text-primary)'
-                    }}
-                    className="px-2.5 py-1 rounded-lg text-[11px] font-semibold border focus:outline-none focus:ring-1 focus:ring-sky-400/50 cursor-pointer shadow-sm transition-colors"
-                    title="Map basemap"
-                  >
-                    <option value="ofm-dark" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}>Dark (OpenFreeMap)</option>
-                    <option value="ofm-positron" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}>Positron (OpenFreeMap)</option>
-                    <option value="ofm-bright" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}>Bright (OpenFreeMap)</option>
-                    <option value="ofm-liberty" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}>Liberty (OpenFreeMap)</option>
-                    <option value="ofm-fiord" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}>Fiord (OpenFreeMap)</option>
-                    <option value="esri_satellite" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}>Esri Satellite</option>
-                    <option value="osm_standard" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}>OpenStreetMap</option>
-                    <option value="carto_dark" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}>Carto Dark</option>
-                    <option value="carto_light" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}>Carto Light</option>
-                    <option value="google-satellite" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}>Google Satellite</option>
-                    <option value="google-streets" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}>Google Streets</option>
-                    <option value="google-hybrid" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}>Google Hybrid</option>
-                    <option value="google-terrain" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}>Google Terrain</option>
-                    <option value="custom_tile" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}>Custom XYZ</option>
-                  </select>
-                </div>
-              </div>
-
-              <RoadAnalysisMap
-                active
-                showRoadLines={showRoadLines}
-                style={mapStyle}
-                bbox={regionGeo?.bbox ?? null}
-                districtGeojson={regionGeo?.geojson}
-                dimmedRegionsGeojson={dimmedRegionsGeojson}
-                capturedPoints={capturedPoints}
-                roadRuns={activePlanRuns}
-              />
-
-              {/* Panotrack Operational Status Legend */}
-              {capturedPoints.length > 0 && (
+            <div className="flex-1 min-w-0 bg-app overflow-hidden relative flex flex-col">
+              {/* Main Map View Area */}
+              <div className="flex-1 min-h-0 relative overflow-hidden">
+                {/* Top-Left Floating Map Controls Box Card */}
                 <div
                   style={{
                     backgroundColor: 'var(--bg-card)',
                     borderColor: 'var(--border-subtle)',
-                    boxShadow: 'var(--card-shadow)',
-                    color: 'var(--text-primary)'
+                    boxShadow: 'var(--card-shadow)'
                   }}
-                  className="absolute bottom-6 right-6 z-[1000] flex items-center gap-3 px-3 py-1.5 rounded-xl border backdrop-blur-md shadow-lg text-[11px] font-medium animate-in fade-in duration-200"
+                  className="absolute top-3 left-3 z-[1000] flex items-center gap-1.5 p-1.5 rounded-xl border backdrop-blur-md shadow-lg transition-colors"
                 >
-                  <span className="text-[10px] uppercase font-bold tracking-wider text-text-muted mr-0.5">Panotrack:</span>
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-sm" />
-                    <span className="text-text-muted">Published ({panotrackCounts.published})</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-amber-500 shadow-sm" />
-                    <span className="text-text-muted">Staging ({panotrackCounts.staging})</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-rose-500 shadow-sm" />
-                    <span className={panotrackCounts.defect > 0 ? "text-rose-400 font-bold" : "text-text-muted"}>
-                      Defect ({panotrackCounts.defect})
-                    </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowRoadLines((v) => !v)}
+                    style={{
+                      backgroundColor: showRoadLines ? 'var(--bg-inner)' : 'transparent',
+                      borderColor: showRoadLines ? 'var(--border-subtle)' : 'transparent'
+                    }}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-all cursor-pointer ${
+                      showRoadLines
+                        ? 'text-sky-400 shadow-sm'
+                        : 'text-text-muted hover:text-text-base hover:bg-inner/50'
+                    }`}
+                    title={showRoadLines ? 'Hide road lines overlay' : 'Show road lines overlay'}
+                  >
+                    <ScanLine size={13} className={showRoadLines ? 'text-sky-400' : 'text-text-muted'} />
+                    <span>{showRoadLines ? 'Hide road lines' : 'Show road lines'}</span>
+                  </button>
+
+                  <div
+                    style={{ backgroundColor: 'var(--divider)' }}
+                    className="w-[1px] h-4 mx-0.5 shrink-0"
+                  />
+
+                  <div className="flex items-center gap-1.5 px-1">
+                    <Layers size={13} style={{ color: 'var(--text-muted)' }} className="shrink-0" />
+                    <select
+                      value={mapBasemap}
+                      onChange={(e) => setMapBasemap(e.target.value)}
+                      style={{
+                        backgroundColor: 'var(--bg-inner)',
+                        borderColor: 'var(--border-subtle)',
+                        color: 'var(--text-primary)'
+                      }}
+                      className="px-2.5 py-1 rounded-lg text-[11px] font-semibold border focus:outline-none focus:ring-1 focus:ring-sky-400/50 cursor-pointer shadow-sm transition-colors"
+                      title="Map basemap"
+                    >
+                      <option value="ofm-dark" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}>Dark (OpenFreeMap)</option>
+                      <option value="ofm-positron" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}>Positron (OpenFreeMap)</option>
+                      <option value="ofm-bright" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}>Bright (OpenFreeMap)</option>
+                      <option value="ofm-liberty" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}>Liberty (OpenFreeMap)</option>
+                      <option value="ofm-fiord" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}>Fiord (OpenFreeMap)</option>
+                      <option value="esri_satellite" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}>Esri Satellite</option>
+                      <option value="osm_standard" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}>OpenStreetMap</option>
+                      <option value="carto_dark" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}>Carto Dark</option>
+                      <option value="carto_light" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}>Carto Light</option>
+                      <option value="google-satellite" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}>Google Satellite</option>
+                      <option value="google-streets" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}>Google Streets</option>
+                      <option value="google-hybrid" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}>Google Hybrid</option>
+                      <option value="google-terrain" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}>Google Terrain</option>
+                      <option value="custom_tile" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}>Custom XYZ</option>
+                    </select>
                   </div>
                 </div>
-              )}
 
-              {extracting && (
-                <div className="absolute inset-0 z-[1000] flex items-center justify-center pointer-events-none">
+                <RoadAnalysisMap
+                  active
+                  showRoadLines={showRoadLines}
+                  style={mapStyle}
+                  bbox={regionGeo?.bbox ?? null}
+                  districtGeojson={regionGeo?.geojson}
+                  dimmedRegionsGeojson={dimmedRegionsGeojson}
+                  capturedPoints={capturedPoints}
+                  roadRuns={activePlanRuns}
+                  catalogLayers={catalogLayers}
+                  systemStyles={systemStyles}
+                  focusBbox={focusBbox}
+                  selectedFeature={selectedTableFeature}
+                />
+
+                {/* Panotrack Operational Status Legend */}
+                {capturedPoints.length > 0 && (
                   <div
                     style={{
                       backgroundColor: 'var(--bg-card)',
@@ -1416,33 +1632,80 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                       boxShadow: 'var(--card-shadow)',
                       color: 'var(--text-primary)'
                     }}
-                    className="px-4 py-2.5 rounded-xl border flex items-center gap-2.5 backdrop-blur-md shadow-xl animate-in fade-in duration-200"
+                    className="absolute bottom-6 right-6 z-[1000] flex items-center gap-3 px-3 py-1.5 rounded-xl border backdrop-blur-md shadow-lg text-[11px] font-medium animate-in fade-in duration-200"
                   >
-                    <RefreshCw size={14} className="text-sky-400 animate-spin shrink-0" />
-                    <span className="text-xs font-semibold">
-                      Extracting road network…
-                    </span>
+                    <span className="text-[10px] uppercase font-bold tracking-wider text-text-muted mr-0.5">Panotrack:</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-sm" />
+                      <span className="text-text-muted">Published ({panotrackCounts.published})</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-amber-500 shadow-sm" />
+                      <span className="text-text-muted">Staging ({panotrackCounts.staging})</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-rose-500 shadow-sm" />
+                      <span className={panotrackCounts.defect > 0 ? "text-rose-400 font-bold" : "text-text-muted"}>
+                        Defect ({panotrackCounts.defect})
+                      </span>
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
 
-              {selectedDistricts.length === 0 && capturedPoints.length === 0 && (
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                  <div
-                    style={{
-                      backgroundColor: 'var(--bg-card)',
-                      borderColor: 'var(--border-subtle)',
-                      boxShadow: 'var(--card-shadow)',
-                      color: 'var(--text-primary)'
-                    }}
-                    className="px-4 py-2.5 rounded-xl border flex items-center gap-2.5 backdrop-blur-md shadow-xl animate-in fade-in duration-200"
-                  >
-                    <Map size={14} className="text-sky-400 shrink-0" />
-                    <span className="text-xs font-medium text-text-muted">
-                      Select state districts to focus the map.
-                    </span>
+                {extracting && (
+                  <div className="absolute inset-0 z-[1000] flex items-center justify-center pointer-events-none">
+                    <div
+                      style={{
+                        backgroundColor: 'var(--bg-card)',
+                        borderColor: 'var(--border-subtle)',
+                        boxShadow: 'var(--card-shadow)',
+                        color: 'var(--text-primary)'
+                      }}
+                      className="px-4 py-2.5 rounded-xl border flex items-center gap-2.5 backdrop-blur-md shadow-xl animate-in fade-in duration-200"
+                    >
+                      <RefreshCw size={14} className="text-sky-400 animate-spin shrink-0" />
+                      <span className="text-xs font-semibold">
+                        Extracting road network…
+                      </span>
+                    </div>
                   </div>
-                </div>
+                )}
+
+                {selectedDistricts.length === 0 && capturedPoints.length === 0 && (
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <div
+                      style={{
+                        backgroundColor: 'var(--bg-card)',
+                        borderColor: 'var(--border-subtle)',
+                        boxShadow: 'var(--card-shadow)',
+                        color: 'var(--text-primary)'
+                      }}
+                      className="px-4 py-2.5 rounded-xl border flex items-center gap-2.5 backdrop-blur-md shadow-xl animate-in fade-in duration-200"
+                    >
+                      <Map size={14} className="text-sky-400 shrink-0" />
+                      <span className="text-xs font-medium text-text-muted">
+                        Select state districts to focus the map.
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Bottom Docked Attribute Table Drawer */}
+              {activeTableLayer && (
+                <RoadAttributeTableDrawer
+                  layer={activeTableLayer}
+                  onClose={() => {
+                    setActiveTableLayer(null);
+                    setSelectedTableFeature(null);
+                  }}
+                  onZoomToFeature={(bbox) => setFocusBbox([...bbox])}
+                  onSelectFeature={(feat, _idx, bbox) => {
+                    setSelectedTableFeature(feat);
+                    if (bbox) setFocusBbox([...bbox]);
+                  }}
+                  selectedFeature={selectedTableFeature}
+                />
               )}
             </div>
           </div>

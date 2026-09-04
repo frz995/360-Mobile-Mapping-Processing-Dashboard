@@ -52,6 +52,22 @@ function bboxToString(b: RoadExtractionBBox): string {
   return `${b.minLat},${b.minLng},${b.maxLat},${b.maxLng}`;
 }
 
+function buildOptimizedOverpassQuery(b: RoadExtractionBBox): string {
+  const bboxStr = bboxToString(b);
+  return [
+    '[out:json][timeout:20];(',
+    `way["highway"="motorway"](${bboxStr});`,
+    `way["highway"="trunk"](${bboxStr});`,
+    `way["highway"="primary"](${bboxStr});`,
+    `way["highway"="secondary"](${bboxStr});`,
+    `way["highway"="tertiary"](${bboxStr});`,
+    `way["highway"="unclassified"](${bboxStr});`,
+    `way["highway"="residential"](${bboxStr});`,
+    `way["highway"="service"](${bboxStr});`,
+    ');out geom qt;'
+  ].join('');
+}
+
 /** Highway values that represent drivable/street roads (exclude paths, etc.). */
 const DRIVABLE_HIGHWAY = new Set([
   'motorway', 'trunk', 'primary', 'secondary', 'tertiary', 'unclassified',
@@ -70,6 +86,11 @@ function isDrivable(tags?: Record<string, string>): boolean {
  * Decode an Overpass JSON payload into drivable road lines.
  */
 function decodeOverpassPayload(payload: any): ExtractedRoadLine[] {
+  // If the server proxy already decoded and compacted the lines, return directly
+  if (payload && Array.isArray(payload.lines)) {
+    return payload.lines;
+  }
+
   const elements: OverpassElement[] =
     payload && Array.isArray(payload.elements) ? payload.elements : [];
 
@@ -82,7 +103,7 @@ function decodeOverpassPayload(payload: any): ExtractedRoadLine[] {
       const lng = Number(g?.lon);
       const lat = Number(g?.lat);
       if (!Number.isFinite(lng) || !Number.isFinite(lat)) continue;
-      coords.push([lng, lat]);
+      coords.push([Math.round(lng * 1e5) / 1e5, Math.round(lat * 1e5) / 1e5]);
     }
     if (coords.length < 2) continue;
     lines.push({
@@ -115,12 +136,7 @@ function decodeOverpassPayload(payload: any): ExtractedRoadLine[] {
 const overpassAdapter: RoadExtractionAdapter = {
   name: 'OSM / Overpass',
   async extract(bbox): Promise<RoadExtractionResult> {
-    const query = [
-      '[out:json][timeout:30];',
-      `(way["highway"](${bboxToString(bbox)}););`,
-      'out geom;'
-    ].join('');
-
+    const query = buildOptimizedOverpassQuery(bbox);
     const directUrl = import.meta.env.VITE_ROAD_EXTRACTION_URL || 'https://overpass-api.de/api/interpreter';
     const proxyEndpoint = import.meta.env.VITE_ROAD_EXTRACTION_PROXY || '/api/road-extraction';
     const forceDirect = import.meta.env.VITE_ROAD_EXTRACTION_DIRECT === '1';
@@ -128,51 +144,91 @@ const overpassAdapter: RoadExtractionAdapter = {
     // 1) Serverless proxy (production path; CORS-safe).
     let payload: any = null;
     if (!forceDirect) {
-      payload = await fetchViaProxy(proxyEndpoint, query);
+      payload = await fetchViaProxy(proxyEndpoint, bbox, query);
     }
 
-    // 2) Direct fallback (local dev without the proxy).
+    // 2) Direct fallback (local dev or when proxy endpoint is 404).
     if (payload === null) {
       payload = await fetchOverpassDirect(directUrl, query);
     }
 
     return {
-      source: this.name,
-      timestamp: new Date().toISOString(),
+      source: payload?.source || this.name,
+      timestamp: payload?.timestamp || new Date().toISOString(),
       lines: decodeOverpassPayload(payload)
     };
   }
 };
 
-async function fetchViaProxy(endpoint: string, query: string): Promise<any | null> {
-  try {
-    const res = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query })
-    });
-    if (!res.ok) return null;
-    return await res.json().catch(() => null);
-  } catch {
-    return null;
-  }
-}
-
-async function fetchOverpassDirect(url: string, query: string): Promise<any> {
+async function fetchViaProxy(endpoint: string, bbox: RoadExtractionBBox, query: string): Promise<any | null> {
   let res: Response;
   try {
-    res = await fetch(url, {
+    res = await fetch(endpoint, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: 'data=' + encodeURIComponent(query)
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bbox, query })
     });
-  } catch (err) {
-    throw new Error(`Road extraction unreachable (${url}): ${String(err)}`);
+  } catch (networkErr: any) {
+    // Complete network failure reaching the proxy itself (e.g. no internet)
+    // Return null so we can try the direct fallback in local dev
+    return null;
   }
+
+  // 404 means the proxy route doesn't exist → local dev without the vite middleware
+  if (res.status === 404) return null;
+
   if (!res.ok) {
-    throw new Error(`Road extraction failed (${res.status} ${res.statusText}).`);
+    // Proxy returned a proper error (5xx, 400, etc.) — surface it directly so
+    // the user gets a meaningful message, not a misleading Overpass URL.
+    const errJson = await res.json().catch(() => null);
+    const mirror_details = Array.isArray(errJson?.details) ? '\n' + errJson.details.join('\n') : '';
+    const msg = errJson?.error
+      ? `Road extraction failed: ${errJson.error}${mirror_details}`
+      : `Road extraction service returned HTTP ${res.status} ${res.statusText}`;
+    throw new Error(msg);
   }
+
   return await res.json().catch(() => null);
+}
+
+const DIRECT_MIRRORS = [
+  'https://overpass-api.de/api/interpreter',
+  'https://lz4.overpass-api.de/api/interpreter',
+  'https://z.overpass-api.de/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter'
+];
+
+async function fetchOverpassDirect(initialUrl: string, query: string): Promise<any> {
+  const mirrors = Array.from(new Set([initialUrl, ...DIRECT_MIRRORS]));
+  let lastError: any = null;
+
+  for (const url of mirrors) {
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 10000);
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'data=' + encodeURIComponent(query),
+        signal: ctrl.signal
+      });
+      clearTimeout(timer);
+      if (res.ok) return await res.json().catch(() => null);
+      lastError = new Error(`HTTP ${res.status} from ${url}`);
+    } catch (err: any) {
+      lastError = err;
+    }
+  }
+
+  // TypeError = CORS block (browser can't reach Overpass cross-origin on production)
+  if (lastError?.name === 'TypeError') {
+    throw new Error(
+      'Road extraction failed: the browser cannot reach Overpass directly (CORS). ' +
+      'Make sure the /api/road-extraction serverless function is deployed correctly on Vercel.'
+    );
+  }
+
+  throw new Error(`Road extraction unreachable: ${String(lastError?.message || lastError)}`);
 }
 
 /** Resolve the active adapter from env; default is Overpass. */

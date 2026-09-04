@@ -27,6 +27,7 @@ import {
   History,
   Calendar,
   HelpCircle,
+  ExternalLink,
   Loader2,
   Play,
   StopCircle
@@ -2755,6 +2756,18 @@ export default function App() {
         {/* Top Right Controls */}
         <div className={`flex items-center gap-1.5 sm:gap-3 text-text-muted relative shrink-0 transition-all duration-300 ${tourStep === 5 ? 'ring-2 ring-sky-400/90 shadow-[0_0_35px_rgba(56,189,248,0.4)] z-30 relative bg-app px-2 py-1 rounded-xl' : tourStep !== null ? 'opacity-30 blur-[1.5px] pointer-events-none' : ''
           }`}>
+          {/* LIVE WEBGIS LINK (Symbol only, points directly to vercel.app) */}
+          <a
+            href="https://mobilemapping-nine.vercel.app"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="p-1.5 hover:text-sky-400 transition-colors cursor-pointer relative flex items-center justify-center text-text-muted hover:text-sky-400"
+            title="Open Live WebGIS (https://mobilemapping-nine.vercel.app)"
+            aria-label="Open Live WebGIS"
+          >
+            <ExternalLink size={18} />
+          </a>
+
           {/* DAILY OPERATIONS BRIEFING ICON */}
           <button
             onClick={() => setIsHandoverModalOpen(true)}
