@@ -591,18 +591,24 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
               <span>Compute Target</span>
               <Zap size={14} className="text-text-muted" />
             </div>
-            <div className="text-base font-bold text-text-base">NVIDIA CUDA GPU</div>
-            <div className="text-[10px] text-text-muted font-sans">PyTorch 2.3 · CUDA 12.4</div>
+            <div className="text-base font-bold text-text-base">
+              {api.mode === 'http' ? 'NAS GPU Worker' : 'Local Mock Daemon'}
+            </div>
+            <div className="text-[10px] text-text-muted font-sans">
+              {api.mode === 'http' ? 'FastAPI · PyTorch / CUDA' : 'Simulated Browser Dispatch'}
+            </div>
           </div>
 
           <div className="bg-inner border border-subtle rounded-xl p-3.5 space-y-1">
             <div className="flex items-center justify-between text-[11px] text-text-muted font-semibold">
-              <span>GPU Memory (VRAM)</span>
+              <span>Active Workload</span>
               <Activity size={14} className="text-text-muted" />
             </div>
-            <div className="text-base font-bold text-text-base">14.2 GB / 24.0 GB</div>
-            <div className="w-full bg-slate-800 rounded-full h-1.5 mt-1 overflow-hidden">
-              <div className="bg-slate-400 h-1.5 rounded-full" style={{ width: '59%' }} />
+            <div className="text-base font-bold text-text-base">
+              {gpuJobs.filter((j) => j.status === 'IN_PROGRESS').length} Active / {gpuJobs.length} Tracked
+            </div>
+            <div className="text-[10px] text-text-muted font-sans">
+              {gpuJobs.filter((j) => j.status === 'QUEUED').length} queued in admission queue
             </div>
           </div>
 
@@ -614,16 +620,20 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
             <div className="text-base font-bold text-text-base">
               {projectSettings?.productionConcurrency || 1} Thread(s)
             </div>
-            <div className="text-[10px] text-text-muted">Max parallel subgrid batches</div>
+            <div className="text-[10px] text-text-muted">Configured batch parallelism</div>
           </div>
 
           <div className="bg-inner border border-subtle rounded-xl p-3.5 space-y-1">
             <div className="flex items-center justify-between text-[11px] text-text-muted font-semibold">
-              <span>Throughput</span>
+              <span>Daemon Status</span>
               <Play size={14} className="text-text-muted" />
             </div>
-            <div className="text-base font-bold text-text-base">~24.8 FPS</div>
-            <div className="text-[10px] text-text-muted">Batch processing speed</div>
+            <div className="text-base font-bold text-text-base">
+              {api.mode === 'http' ? 'Connected' : 'Standalone'}
+            </div>
+            <div className="text-[10px] text-text-muted">
+              {api.mode === 'http' ? 'Live HTTP backend' : 'In-memory queue'}
+            </div>
           </div>
         </div>
 
@@ -660,7 +670,6 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
                   <option value="ENHANCE">AI Tone &amp; Clarity Enhancement</option>
                   <option value="MASK">Nadir Car Hood Generative-Fill Mask</option>
                   <option value="BLUR">YOLO Privacy Blur (Face &amp; License Plate)</option>
-                  <option value="STITCH">Dual-Fisheye Equirectangular Stitching</option>
                 </select>
               </div>
 

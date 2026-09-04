@@ -1382,10 +1382,10 @@ export const DataManagementPage = ({
 
     if (addNotification) {
       addNotification({
-        title: directPublish ? 'CSV Data Published' : 'CSV Data Staged for Preview',
+        title: directPublish ? 'CSV Data Published to WebGIS' : 'CSV Data Staged for Preview',
         message: directPublish
-          ? `Imported & published ${imported.length} subgrids to database.`
-          : `Staged ${imported.length} subgrids. Rendered on Dashboard Map with 50% opacity preview.`,
+          ? `Imported & published ${imported.length} subgrids to the WebGIS database.`
+          : `Staged ${imported.length} subgrids. Rendered on Dashboard Map as a 50% opacity preview (not yet published to WebGIS).`,
         category: 'PUBLISH'
       });
     }
@@ -3637,7 +3637,7 @@ export const DataManagementPage = ({
                                     }}
                                     className="bg-card border border-subtle hover:border-slate-600 rounded-lg px-2.5 py-1 text-xs font-semibold text-text-base focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer"
                                   >
-                                    <option value="in process" className="bg-card text-text-base">In Process</option>
+                                    <option value="in process" className="bg-card text-text-base">Not published</option>
                                     <option value="yes" className="bg-card text-text-base">Yes - Publish</option>
                                     <option value="need to recheck" className="bg-card text-text-base">Need to Recheck</option>
                                     <option value="no" className="bg-card text-text-muted">No</option>
@@ -4612,7 +4612,7 @@ export const DataManagementPage = ({
                               <td className="px-3 py-2 text-text-base">{selectedPic}</td>
                               <td className="px-3 py-2">
                                 <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-950/40 text-amber-300 border border-amber-500/30 opacity-80 inline-flex items-center gap-1">
-                                  <Clock size={10} className="text-amber-400" /> Staged (50%)
+                                  <Clock size={10} className="text-amber-400" /> Preview only (not on WebGIS)
                                 </span>
                               </td>
                             </tr>

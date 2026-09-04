@@ -18,6 +18,8 @@ import {
   districtsToGeoJSON,
   clipLineStringsToDistricts,
   linesLengthKm,
+  ensureDistrictGeometriesLoaded,
+  isDistrictGeometriesLoaded,
   type MalaysiaDistrict
 } from './boundary/malaysiaDistricts';
 import { RoadAnalysisMap } from './roadAnalysis/RoadAnalysisMap';
@@ -306,9 +308,16 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
   });
 
   const [manualError, setManualError] = useState<string>('');
+  const [, setGeometriesLoaded] = useState(() => isDistrictGeometriesLoaded());
   const [refreshTick, setRefreshTick] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    ensureDistrictGeometriesLoaded()
+      .then(() => setGeometriesLoaded(true))
+      .catch((err) => console.warn('[RoadAnalysis] Failed to load district geometries:', err));
+  }, []);
 
   // Maintain operational panotrack datasets from dashboard / Supabase
   const [internalDailyData, setInternalDailyData] = useState<any[]>(() => dailyData || []);

@@ -764,6 +764,12 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                             <p className="text-[11px] sm:text-xs text-[var(--text-muted,#94a3b8)] font-normal leading-relaxed">
                                 <span className="text-[var(--text-primary,#f8fafc)] font-medium">Get started quickly with</span> our high-precision WebGIS coverage map, automated batch ingestion pipelines, frame-by-frame 360° equirectangular defect auditing, and cloud-synchronized PostGIS spatial intelligence.
                             </p>
+                            <p className="text-[11px] sm:text-xs text-[var(--text-muted,#94a3b8)] font-normal leading-relaxed">
+                                The platform runs on <span className="text-[var(--text-primary,#f8fafc)] font-medium">two tracks</span>: the <strong>WebGIS · Published View</strong> (what TNB sees live on the map) and the <strong>Production Pipeline</strong> (the internal processing that builds it, from RAW intake through acceptance QA to the deliverable pack).
+                            </p>
+                            <p className="text-[11px] sm:text-xs text-[var(--text-muted,#94a3b8)] font-normal leading-relaxed">
+                                The previews below are representative screenshots of the live modules. The interactive maps and 360° viewers render inside the workspaces themselves.
+                            </p>
 
                             {/* Minimal System Metadata Footer */}
                             <div className="pt-2 border-t border-[var(--border-subtle,#1e2e4a)] flex flex-wrap items-center gap-x-4 gap-y-1 text-[var(--text-muted,#94a3b8)] text-[10px] sm:text-xs">

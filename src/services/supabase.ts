@@ -92,6 +92,7 @@ export interface SupabasePanoramaRecord {
   defect_count?: number;
   qa_status?: string;
   defect_flags?: any;
+  is_fallback_coord?: boolean;
   geom?: {
     type: string;
     coordinates: [number, number];
@@ -955,18 +956,16 @@ export async function publishToSupabase(record: {
       const sgKey = record.subgrid ? record.subgrid.toUpperCase() : extractSubgrid(filename);
       const cachedCoords = SUBGRID_COORDINATES[sgKey];
 
-      const rawLon = p.longitude !== undefined && !isNaN(Number(p.longitude))
-        ? Number(p.longitude)
-        : p.lon !== undefined && !isNaN(Number(p.lon))
-          ? Number(p.lon)
-          : (cachedCoords ? cachedCoords[0] : null);
+      const hasRealLon = p.longitude !== undefined && !isNaN(Number(p.longitude))
+        ? true
+        : p.lon !== undefined && !isNaN(Number(p.lon));
+      const hasRealLat = p.latitude !== undefined && !isNaN(Number(p.latitude))
+        ? true
+        : p.lat !== undefined && !isNaN(Number(p.lat));
 
-      const rawLat = p.latitude !== undefined && !isNaN(Number(p.latitude))
-        ? Number(p.latitude)
-        : p.lat !== undefined && !isNaN(Number(p.lat))
-          ? Number(p.lat)
-          : (cachedCoords ? cachedCoords[1] : null);
-
+      const isFallback = (!hasRealLon || !hasRealLat) && Boolean(cachedCoords);
+      const rawLon = hasRealLon ? Number(p.longitude ?? p.lon) : (cachedCoords ? cachedCoords[0] : null);
+      const rawLat = hasRealLat ? Number(p.latitude ?? p.lat) : (cachedCoords ? cachedCoords[1] : null);
       const hasCoords = rawLon !== null && rawLat !== null && !isNaN(rawLon) && !isNaN(rawLat);
 
       return {
@@ -980,6 +979,7 @@ export async function publishToSupabase(record: {
         defect_count: (p.is_defect || (p.defect_flags && typeof p.defect_flags === 'object' && Object.values(p.defect_flags).some(Boolean))) ? 1 : 0,
         qa_status: p.is_defect ? 'flagged' : 'published',
         defect_flags: p.defect_flags || {},
+        is_fallback_coord: isFallback,
         geom: hasCoords ? {
           type: 'Point',
           coordinates: [rawLon, rawLat]
@@ -987,18 +987,21 @@ export async function publishToSupabase(record: {
       };
     });
 
-    const cleanFilenames: string[] = itemsToInsert.map(i => i.filename).filter((fn): fn is string => Boolean(fn));
-    if (cleanFilenames.length > 0) {
-      await supabase.from('panoramas').delete().in('filename', cleanFilenames);
-    }
-
-    // Chunked PostgREST / Supabase JS inserts
+    // 3H: Atomic publish using upsert on unique filename constraint.
+    // Avoids hazardous delete-then-insert where network failure results in permanent data loss.
     const chunkSize = 50;
     for (let i = 0; i < itemsToInsert.length; i += chunkSize) {
       const chunk = itemsToInsert.slice(i, i + chunkSize);
-      const { error: insErr } = await supabase.from('panoramas').insert(chunk);
-      if (insErr) {
-        console.warn('publishToSupabase direct insert batch error:', insErr);
+      const { error: upsertErr } = await supabase
+        .from('panoramas')
+        .upsert(chunk, { onConflict: 'filename' });
+
+      if (upsertErr) {
+        console.warn('publishToSupabase upsert batch error, attempting fallback insert:', upsertErr);
+        const { error: insErr } = await supabase.from('panoramas').insert(chunk);
+        if (insErr) {
+          throw new Error(`Failed to publish batch to panoramas: ${insErr.message || upsertErr.message}`);
+        }
       }
     }
 
@@ -1050,18 +1053,16 @@ export async function saveToStagingSupabase(record: {
       const sgKey = record.subgrid ? record.subgrid.toUpperCase() : extractSubgrid(filename);
       const cachedCoords = SUBGRID_COORDINATES[sgKey];
 
-      const rawLon = p.longitude !== undefined && !isNaN(Number(p.longitude))
-        ? Number(p.longitude)
-        : p.lon !== undefined && !isNaN(Number(p.lon))
-          ? Number(p.lon)
-          : (cachedCoords ? cachedCoords[0] : null);
+      const hasRealLon = p.longitude !== undefined && !isNaN(Number(p.longitude))
+        ? true
+        : p.lon !== undefined && !isNaN(Number(p.lon));
+      const hasRealLat = p.latitude !== undefined && !isNaN(Number(p.latitude))
+        ? true
+        : p.lat !== undefined && !isNaN(Number(p.lat));
 
-      const rawLat = p.latitude !== undefined && !isNaN(Number(p.latitude))
-        ? Number(p.latitude)
-        : p.lat !== undefined && !isNaN(Number(p.lat))
-          ? Number(p.lat)
-          : (cachedCoords ? cachedCoords[1] : null);
-
+      const isFallback = (!hasRealLon || !hasRealLat) && Boolean(cachedCoords);
+      const rawLon = hasRealLon ? Number(p.longitude ?? p.lon) : (cachedCoords ? cachedCoords[0] : null);
+      const rawLat = hasRealLat ? Number(p.latitude ?? p.lat) : (cachedCoords ? cachedCoords[1] : null);
       const hasCoords = rawLon !== null && rawLat !== null && !isNaN(rawLon) && !isNaN(rawLat);
 
       const itemDate = p.date || record.date;
@@ -1085,36 +1086,34 @@ export async function saveToStagingSupabase(record: {
         defect_count: typeof record.defects === 'number' ? record.defects : 0,
         capture_equipment: record.captureEquipment || p.captureEquipment || 'MMS',
         status: record.publishToWebGIS || 'In Process',
+        is_fallback_coord: isFallback,
         geom: hasCoords ? { type: 'Point', coordinates: [rawLon, rawLat] } : null
       };
     });
 
-    // Delete existing staging rows with these filenames first to prevent duplication
-    const cleanFilenames: string[] = itemsToInsert.map(i => i.filename).filter((fn): fn is string => Boolean(fn));
-    if (cleanFilenames.length > 0) {
-      await supabase.from('staging_panoramas').delete().in('filename', cleanFilenames);
-    }
-
-    // Insert chunked rows into staging_panoramas
+    // Atomic / safe upsert into staging_panoramas table
     const chunkSize = 50;
     for (let i = 0; i < itemsToInsert.length; i += chunkSize) {
       const chunk = itemsToInsert.slice(i, i + chunkSize);
-      const { error } = await supabase.from('staging_panoramas').insert(chunk);
+      const { error } = await supabase
+        .from('staging_panoramas')
+        .upsert(chunk, { onConflict: 'filename' });
+
       if (error) {
-        console.warn('Supabase staging_panoramas JS insert warning, trying REST API:', error.message);
+        console.warn('Supabase staging_panoramas upsert notice, trying REST API:', error.message);
         const response = await fetch(`${supabaseUrl}/rest/v1/staging_panoramas`, {
           method: 'POST',
           headers: {
             'apikey': supabaseKey,
             'Authorization': `Bearer ${supabaseKey}`,
             'Content-Type': 'application/json',
-            'Prefer': 'return=minimal'
+            'Prefer': 'resolution=merge-duplicates,return=minimal'
           },
           body: JSON.stringify(chunk)
         });
         if (!response.ok) {
           const errBody = await response.json().catch(() => ({ message: response.statusText }));
-          console.error('REST staging insert failed:', errBody);
+          console.error('REST staging upsert failed:', errBody);
           return { success: false, message: errBody.message || error.message };
         }
       }

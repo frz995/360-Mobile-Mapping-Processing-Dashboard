@@ -1558,7 +1558,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                   <Activity size={14} className="text-sky-400" />
                   C. 360° StreetView Player & Preload Streaming Engine
                 </h4>
-                <span className="text-[10px] text-emerald-400 font-sans">Three.js / WebGL 60FPS</span>
+                <span className="text-[10px] text-emerald-400 font-sans">PhotoSphereViewer v5 · WebGL</span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">

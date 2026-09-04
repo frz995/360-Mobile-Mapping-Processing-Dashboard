@@ -9,7 +9,6 @@ import {
   Activity,
   Clock,
   Camera,
-  Navigation,
   Edit2,
   X,
   Folder,
@@ -28,13 +27,11 @@ import {
   History,
   Calendar,
   HelpCircle,
-  ExternalLink,
   Loader2,
-  Info,
   Play,
   StopCircle
 } from 'lucide-react';
-import { supabase, fetchSupabaseData, updateDefectStatusInSupabase, saveQaAuditRunToSupabase, saveAuditLogToSupabase, saveNotificationToSupabase, saveProjectSettingsToSupabase, resolvePanoramaUrl, resolvePanoramaConfigUrl, getDatabaseTableMapping, SUBGRID_COORDINATES, formatPIC, saveProcessingJobToSupabase } from './services/supabase';
+import { supabase, fetchSupabaseData, updateDefectStatusInSupabase, saveQaAuditRunToSupabase, saveAuditLogToSupabase, saveNotificationToSupabase, saveProjectSettingsToSupabase, resolvePanoramaUrl, resolvePanoramaConfigUrl, getDatabaseTableMapping, SUBGRID_COORDINATES, saveProcessingJobToSupabase } from './services/supabase';
 import type { QAQCAuditRunRecord } from './types/admin';
 import { MapComponent } from './components/MapComponent';
 export { MapComponent };
@@ -45,7 +42,6 @@ export { DataManagementPage };
 import { DefectsGalleryModal } from './components/DefectsGalleryModal';
 import { ContentLoading } from './components/common/ContentLoading';
 import { Toaster } from './components/common/Toaster';
-import { Skeleton } from './components/common/Skeleton';
 import { WorkspaceErrorBoundary } from './components/common/WorkspaceErrorBoundary';
 import { translate } from './lib/i18n';
 
@@ -68,6 +64,9 @@ import { DailyHandoverModal } from './components/DailyHandoverModal';
 import { SubgridImagesListModal } from './components/SubgridImagesListModal';
 import { NotificationPopover } from './components/NotificationPopover';
 import { WorkspaceSidebarNav } from './components/WorkspaceSidebarNav';
+import { AboutPlatformModal } from './components/modals/AboutPlatformModal';
+import { DashboardKpiSummary } from './components/dashboard/DashboardKpiSummary';
+import { DashboardBatchTable } from './components/dashboard/DashboardBatchTable';
 import { WorkspacePlaceholder, getWorkspaceDefinition } from './workspaces';
 import { parseHashWorkspace, setHashWorkspace, subscribeHashWorkspace } from './utils/hashRouter';
 import type { WorkspaceKey } from './utils/hashRouter';
@@ -775,16 +774,11 @@ export default function App() {
     return list;
   }, [qaqcWorkerState.defectsList, qaqcAuditRuns, qaSubgridRecords, dailyData]);
 
-  const totalFramesForHealth = useMemo(() => {
-    const dailyTotal = dailyData.reduce((sum, d) => sum + (d.imagesProcessed || d.panoramas?.length || d.poiCount || 0), 0);
-    if (dailyTotal > 0) return dailyTotal;
-    const batchTotal = batchLogs.reduce((sum, b) => sum + (b.images || b.panoramas?.length || 0), 0);
-    return batchTotal;
-  }, [dailyData, batchLogs]);
+  const totalFramesForHealth = totalImages;
 
   const pipelineHealthPercent = totalFramesForHealth > 0
     ? (totalDefects === 0 ? '100.0' : Math.max(0, ((totalFramesForHealth - totalDefects) / totalFramesForHealth) * 100).toFixed(1))
-    : '100.0';
+    : null;
   const targetKm = Number(projectSettings?.targetKm) || (totalKm > 0 ? totalKm : 0);
   const progressPercent = targetKm > 0 ? Math.min(100, Math.round((totalKm / targetKm) * 100)) : 0;
   const ongoingMasterlistCount = batchLogs.filter(b => b.status === 'Ongoing').length;
@@ -1549,7 +1543,7 @@ export default function App() {
                     <td class="text-right font-sans">${km} km</td>
                     <td class="text-center">
                       <span class="badge ${isSynced ? 'badge-complete' : 'badge-neutral'}">
-                        ${isSynced ? 'VERIFIED & PUBLISHED' : 'STAGED IN PROCESS'}
+                        ${isSynced ? 'VERIFIED & PUBLISHED' : 'NOT PUBLISHED'}
                       </span>
                     </td>
                     <td class="text-center">
@@ -2989,99 +2983,26 @@ export default function App() {
             aria-hidden={currentPage !== 'dashboard'}
           >
             <div key="dashboard-canvas" className="flex-1 flex flex-col gap-3 min-h-0 overflow-y-auto md:overflow-hidden animate-workspace-focus">
-              {/* TOP ROW: EXECUTIVE KPI SUMMARY (4 Cards) */}
-              <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 shrink-0 transition-all duration-300 ${tourStep === 1 ? 'ring-2 ring-sky-400/90 shadow-[0_0_35px_rgba(56,189,248,0.4)] z-30 relative rounded-xl p-1 bg-sky-950/20' : tourStep !== null ? 'opacity-30 blur-[1.5px] pointer-events-none' : ''
-                }`}>
-                {/* Card 1: Total Distance Mapped */}
-                <div className="bg-card border border-subtle backdrop-blur-md rounded-xl p-3.5 flex flex-col justify-between shadow-sm animate-waterfall stagger-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-text-base uppercase tracking-tight">{t('totalDistance')}</span>
-                    <Navigation size={15} className="text-sky-400 shrink-0" />
-                  </div>
-                  <div className="my-1 flex items-baseline gap-2">
-                    {isDataLoading ? (
-                      <Skeleton className="h-6 w-32 my-0.5" />
-                    ) : (
-                      <span className="text-2xl font-extrabold text-text-base tracking-tight">{totalKm.toFixed(1)} km</span>
-                    )}
-                    <span className="text-[10px] text-text-base bg-inner border border-subtle px-1.5 py-0.5 rounded font-medium">
-                      {progressPercent}% of {targetKm} km Target
-                    </span>
-                  </div>
-                  <div className="text-[10px] text-text-muted font-medium truncate">
-                    Cumulative Trajectory Distance &bull; Updated {lastUpdateDate}
-                  </div>
-                </div>
-
-                {/* Card 2: Processed Panoramas */}
-                <div className="bg-card border border-subtle backdrop-blur-md rounded-xl p-3.5 flex flex-col justify-between shadow-sm animate-waterfall stagger-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-text-base uppercase tracking-tight">{t('processedPanoramas')}</span>
-                    <Camera size={15} className="text-sky-400 shrink-0" />
-                  </div>
-                  <div className="my-1">
-                    {isDataLoading ? (
-                      <Skeleton className="h-6 w-32 my-0.5" />
-                    ) : (
-                      <span className="text-2xl font-extrabold text-text-base tracking-tight">{totalImages.toLocaleString()} Frames</span>
-                    )}
-                  </div>
-                  <div className="text-[10px] text-text-muted font-medium truncate">
-                    Total 360° Image Frames Ingested &bull; Updated {lastUpdateDate}
-                  </div>
-                </div>
-
-                {/* Card 3: Active Processing Jobs */}
-                <div className="bg-card border border-subtle backdrop-blur-md rounded-xl p-3.5 flex flex-col justify-between shadow-sm animate-waterfall stagger-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-text-base uppercase tracking-tight">{t('activeJobs')}</span>
-                    <Database size={15} className="text-sky-400 shrink-0" />
-                  </div>
-                  <div className="my-1 flex items-baseline gap-2 flex-wrap">
-                    {isDataLoading ? (
-                      <Skeleton className="h-6 w-32 my-0.5" />
-                    ) : (
-                      <>
-                        <span className="text-2xl font-extrabold text-text-base tracking-tight">
-                          {ongoingMasterlistCount} Ongoing {ongoingMasterlistCount === 1 ? 'Subgrid' : 'Subgrids'}
-                        </span>
-                        {stagedDailyBatchesCount > 0 && (
-                          <span className="text-xs font-medium text-text-muted">
-                            ({stagedDailyBatchesCount} Staged)
-                          </span>
-                        )}
-                      </>
-                    )}
-                  </div>
-                  <div className="text-[10px] text-text-muted font-medium truncate">
-                    {ongoingMasterlistCount} Masterlist {ongoingMasterlistCount === 1 ? 'sector' : 'sectors'} in progress &bull; {stagedDailyBatchesCount} daily {stagedDailyBatchesCount === 1 ? 'pass' : 'passes'} pending
-                  </div>
-                </div>
-
-                {/* Card 4: Pipeline Health */}
-                <div className="bg-card border border-subtle backdrop-blur-md rounded-xl p-3.5 flex flex-col justify-between shadow-sm animate-waterfall stagger-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-text-base uppercase tracking-tight">{t('pipelineHealth')}</span>
-                    <div className="w-14 h-5">
-                      <svg className="w-full h-full text-emerald-400 stroke-current fill-none stroke-2" viewBox="0 0 50 20">
-                        <path d="M0,15 L10,12 L20,18 L30,5 L40,10 L50,2" />
-                      </svg>
-                    </div>
-                  </div>
-                  <div className="my-1">
-                    {isDataLoading ? (
-                      <Skeleton className="h-6 w-32 my-0.5" />
-                    ) : (
-                      <span className="text-2xl font-extrabold text-emerald-400 tracking-tight">
-                        {pipelineHealthPercent}% Normal
-                      </span>
-                    )}
-                  </div>
-                  <div className="text-[10px] text-text-muted font-medium truncate">
-                    <span className={totalDefects > 0 ? 'text-amber-400 font-semibold' : 'text-text-muted'}>{totalDefects} Defect {totalDefects === 1 ? 'Frame' : 'Frames'} Flagged</span> &bull; Updated {lastUpdateDate}
-                  </div>
-                </div>
+              <div className="px-1 shrink-0">
+                <p className="text-[11px] font-semibold text-text-muted tracking-wide">
+                  {t('webgisPublishedTag')}
+                </p>
               </div>
+              {/* TOP ROW: EXECUTIVE KPI SUMMARY (4 Cards) */}
+              <DashboardKpiSummary
+                tourStep={tourStep}
+                t={t}
+                isDataLoading={isDataLoading}
+                totalKm={totalKm}
+                progressPercent={progressPercent}
+                targetKm={targetKm}
+                lastUpdateDate={lastUpdateDate}
+                totalImages={totalImages}
+                ongoingMasterlistCount={ongoingMasterlistCount}
+                stagedDailyBatchesCount={stagedDailyBatchesCount}
+                pipelineHealthPercent={pipelineHealthPercent}
+                totalDefects={totalDefects}
+              />
 
               {/* OPERATIONAL COMMAND & ACTION CENTER */}
               <OperationalActionCenter
@@ -3252,7 +3173,7 @@ export default function App() {
                             <label className="flex items-center justify-between px-2 py-1 rounded-md hover:bg-inner text-text-base hover:text-text-base cursor-pointer select-none transition-colors">
                               <div className="flex items-center gap-2">
                                 <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
-                                <span className="text-[11px]">In Progress / Stitching</span>
+                                <span className="text-[11px]">Not yet on WebGIS</span>
                               </div>
                               <input
                                 type="checkbox"
@@ -3333,8 +3254,8 @@ export default function App() {
                       const activeStatusText = isDailySelected && activeDailyLog
                         ? (activeDailyLog.publishToWebGIS === 'yes'
                           ? 'Published to WebGIS'
-                          : (activeDailyLog.qaqcStatus || (activeDefects > 0 ? `QAQC Flagged (${activeDefects} Defects)` : 'In Progress (Staging)')))
-                        : (activeBatchLog?.status === 'Complete' ? 'Published to WebGIS' : 'In Progress (Staging)');
+                          : (activeDailyLog.qaqcStatus || (activeDefects > 0 ? `QAQC Flagged (${activeDefects} Defects)` : 'Not yet on WebGIS')))
+                        : (activeBatchLog?.status === 'Complete' ? 'Published to WebGIS' : 'Not yet on WebGIS');
 
                       return selectedSubgridFilter ? (
                         <div className="absolute top-3 right-3 z-20 bg-card backdrop-blur-md border border-subtle rounded-xl p-3 text-xs text-text-base shadow-2xl max-w-xs space-y-1.5 animate-in fade-in zoom-in-95 duration-200">
@@ -3556,428 +3477,27 @@ export default function App() {
                     )}
 
                     {/* Table */}
-                    <div className="flex-1 overflow-auto">
-                      {activeTab === 'batches' ? (
-                        <table className="w-full text-left text-[11px]">
-                          <thead className="bg-card text-text-muted sticky top-0 z-10 border-b border-subtle">
-                            <tr>
-                              <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-text-muted whitespace-nowrap">Batch ID</th>
-                              <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-text-muted whitespace-nowrap">Grid</th>
-                              <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-text-muted whitespace-nowrap">Subgrid</th>
-                              <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-text-muted whitespace-nowrap">Frames</th>
-                              <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-text-muted whitespace-nowrap">Distance</th>
-                              <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-text-muted whitespace-nowrap">Images</th>
-                              <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-text-muted whitespace-nowrap">Defects</th>
-                              <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-text-muted whitespace-nowrap">PIC</th>
-                              <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-text-muted whitespace-nowrap">Status</th>
-                              <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-text-muted text-right whitespace-nowrap">Actions</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-[rgba(255,255,255,0.06)]">
-                            {isDataLoading ? (
-                              <tr>
-                                <td colSpan={10} className="py-12 text-center text-text-muted">
-                                  <div className="flex flex-col items-center justify-center gap-2">
-                                    <Loader2 size={22} className="animate-spin text-sky-400" />
-                                    <span className="text-xs font-semibold text-text-base">Loading batch logs...</span>
-                                  </div>
-                                </td>
-                              </tr>
-                            ) : activeBatchLogs.length === 0 ? (
-                              <tr>
-                                <td colSpan={10} className="py-10 text-center text-text-muted">
-                                  <div className="flex flex-col items-center justify-center gap-2">
-                                    <Database size={28} className="text-text-muted" />
-                                    <span className="text-xs font-semibold text-text-base">No batch logs found</span>
-                                    <span className="text-[11px] text-text-muted">Import a CSV file to ingest processing logs.</span>
-                                  </div>
-                                </td>
-                              </tr>
-                            ) : (
-                              activeBatchLogs.map((log: BatchLog, i: number) => {
-                                const batchSubgrid = (extractSubgridName(log.subgrid || log.imageFilename) || '').toUpperCase().trim();
-                                const isSelected = selectedSubgridFilter === batchSubgrid;
-                                const formattedBatchId = formatBatchIdDisplay(log, i);
-                                return (
-                                  <tr
-                                    key={log.id || i}
-                                    onClick={() => toggleSubgridFilter(batchSubgrid)}
-                                    className={`cursor-pointer transition-all ${isSelected ? 'bg-sky-950/70 text-text-base font-medium' : 'hover:bg-inner text-text-base'}`}
-                                  >
-                                    <td className="px-3.5 py-3.5 font-sans text-[11px] text-text-base font-semibold whitespace-nowrap">{formattedBatchId}</td>
-                                    <td className="px-3.5 py-3.5 font-medium text-text-base whitespace-nowrap">{log.grid || '1'}</td>
-                                    <td className="px-3.5 py-3.5 font-semibold text-text-base whitespace-nowrap">{batchSubgrid}</td>
-                                    <td className="px-3.5 py-3.5 font-sans text-xs text-text-base font-semibold whitespace-nowrap">{getPOICount(log).toLocaleString()}</td>
-                                    <td className="px-3.5 py-3.5 font-semibold text-text-base whitespace-nowrap">{(log.kmProcessed || 0).toFixed(1)} km</td>
-                                    <td className="px-3.5 py-3.5 whitespace-nowrap">
-                                      <button
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          const subFilter = (extractSubgridName(batchSubgrid) || batchSubgrid).toUpperCase().trim();
-                                          const matchingDaily = dailyDataBySubgrid.get(subFilter) || [];
-                                          const dailyAvailFiles = matchingDaily.flatMap(d => d.availableFilenames || []);
-                                          const customFn = log.availableFilenames && log.availableFilenames.length > 0
-                                            ? log.availableFilenames
-                                            : (dailyAvailFiles.length > 0
-                                              ? Array.from(new Set(dailyAvailFiles))
-                                              : (log.panoramas && log.panoramas.length > 0
-                                                ? log.panoramas.filter((p) => p.isAvailable !== false).map((p) => p.filename).filter((f): f is string => Boolean(f) && (extractSubgridName(f) || '').toUpperCase().trim() === subFilter)
-                                                : undefined));
-                                          setImagesListModal({
-                                            isOpen: true,
-                                            subgrid: batchSubgrid,
-                                            count: customFn && customFn.length > 0 ? customFn.length : getImagesProcessedCount(log),
-                                            poiCount: getPOICount(log),
-                                            baseFilename: log.imageFilename,
-                                            customFilenames: customFn && customFn.length > 0 ? customFn : undefined
-                                          });
-                                        }}
-                                        className="inline-flex items-center gap-1.5 text-text-base hover:text-text-base hover:underline font-semibold text-[11px] cursor-pointer whitespace-nowrap"
-                                        title="Click to view list of image filenames"
-                                      >
-                                        <span>{getImagesProcessedCount(log).toLocaleString()} frames</span>
-                                        <ExternalLink size={10} className="shrink-0 text-text-muted" />
-                                      </button>
-                                    </td>
-                                    <td className="px-3.5 py-3.5 font-semibold whitespace-nowrap">
-                                      {(() => {
-                                        const isThisMasterlistActive = (qaqcWorkerState.isRunning || qaqcWorkerState.isCompleted) && qaqcWorkerState.subgrid === batchSubgrid;
-                                        const isSpecificRunActive = isThisMasterlistActive && Boolean(qaqcWorkerState.runId);
-                                        const isWholeSubgridActive = isThisMasterlistActive && !qaqcWorkerState.runId;
-
-                                        const batchFrames = getImagesProcessedCount(log);
-                                        const cached = qaqcAuditRuns[`${batchSubgrid}_default`];
-                                        const cachedDefects = (cached && typeof cached.defectCount === 'number') ? cached.defectCount : undefined;
-
-                                        let parsedDefects: number | undefined;
-                                        if (log.qaqcStatus) {
-                                          const m = log.qaqcStatus.match(/(\d+)\s+Defect/i);
-                                          if (m) parsedDefects = parseInt(m[1], 10);
-                                        }
-
-                                        let dCount = 0;
-                                        if (isWholeSubgridActive) {
-                                          dCount = qaqcWorkerState.defectsList.length;
-                                        } else {
-                                          const subgridDailyRuns = dailyDataBySubgrid.get(batchSubgrid) || [];
-                                          if (subgridDailyRuns.length > 0) {
-                                            let sumDefects = 0;
-                                            let anyDailyInspected = false;
-                                            subgridDailyRuns.forEach(d => {
-                                              const fCount = getImagesProcessedCount(d);
-                                              if (fCount === 0) return;
-
-                                              const runId = getItemId(d);
-                                              const isThisDailyActive = isSpecificRunActive && qaqcWorkerState.runId === runId;
-                                              const dailyCached = runId ? qaqcAuditRuns[`${batchSubgrid}_${runId}`] : undefined;
-                                              const dailyCachedCount = (dailyCached && typeof dailyCached.defectCount === 'number') ? dailyCached.defectCount : 0;
-
-                                              let runDefects = 0;
-                                              if (isThisDailyActive) {
-                                                runDefects = qaqcWorkerState.defectsList.length;
-                                                anyDailyInspected = true;
-                                              } else if (dailyCachedCount > 0) {
-                                                runDefects = dailyCachedCount;
-                                                anyDailyInspected = true;
-                                              } else if (typeof d.imagesDefected === 'number' && d.imagesDefected > 0) {
-                                                runDefects = d.imagesDefected;
-                                                anyDailyInspected = true;
-                                              } else if (typeof d.defectCount === 'number' && d.defectCount > 0) {
-                                                runDefects = d.defectCount;
-                                                anyDailyInspected = true;
-                                              }
-                                              sumDefects += Math.min(runDefects, fCount);
-                                            });
-
-                                            if (anyDailyInspected) {
-                                              dCount = sumDefects;
-                                            } else if (typeof log.defects === 'number' && log.defects > 0) {
-                                              dCount = log.defects;
-                                            } else if (cachedDefects !== undefined && cachedDefects > 0) {
-                                              dCount = cachedDefects;
-                                            } else if (parsedDefects !== undefined && parsedDefects > 0) {
-                                              dCount = parsedDefects;
-                                            }
-                                          } else {
-                                            dCount = (typeof log.defects === 'number' && log.defects > 0)
-                                              ? log.defects
-                                              : (cachedDefects !== undefined && cachedDefects > 0)
-                                                ? cachedDefects
-                                                : (parsedDefects !== undefined && parsedDefects > 0)
-                                                  ? parsedDefects
-                                                  : 0;
-                                          }
-                                        }
-
-                                        if (batchFrames > 0) {
-                                          dCount = Math.min(dCount, batchFrames);
-                                        } else {
-                                          dCount = 0;
-                                        }
-
-                                        return dCount > 0 ? (
-                                          <button
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              setSelectedDefectSubgrid(batchSubgrid);
-                                              setDefectGalleryContext({
-                                                mode: 'master',
-                                                subgrid: batchSubgrid,
-                                                totalPoi: (typeof log.poiCount === 'number' && log.poiCount > 0) ? log.poiCount : (log.images || 0)
-                                              });
-                                              setIsDefectsGalleryOpen(true);
-                                            }}
-                                            className="text-amber-400 hover:text-amber-300 font-semibold hover:underline cursor-pointer text-[11px] tabular-nums transition-colors"
-                                            title="Click to open Masterlist QA/QC Defect Review Gallery"
-                                          >
-                                            {dCount}
-                                          </button>
-                                        ) : (
-                                          <span className="text-text-muted text-[11px] font-medium tabular-nums">0</span>
-                                        );
-                                      })()}
-                                    </td>
-                                    <td className="px-3.5 py-3.5 text-text-base font-medium whitespace-nowrap">Admin</td>
-                                    <td className="px-3.5 py-3.5 whitespace-nowrap">
-                                      {qaqcWorkerState.isRunning && !qaqcWorkerState.runId && qaqcWorkerState.subgrid === batchSubgrid ? (
-                                        <button
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            setIsQAQCRunnerModalOpen(true);
-                                          }}
-                                          className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-sky-500/15 text-sky-400 border border-sky-500/30 inline-flex items-center gap-1.5 whitespace-nowrap animate-pulse shadow-sm hover:scale-105 transition-transform cursor-pointer"
-                                          title="Click to open QA/QC Live HUD"
-                                        >
-                                          <Activity size={10} className="text-sky-400 animate-spin" />
-                                          QAQC In Progress ({qaqcWorkerState.currentIndex + 1}/{qaqcWorkerState.totalStations})
-                                        </button>
-                                      ) : log.qaqcStatus || (qaqcWorkerState.isCompleted && !qaqcWorkerState.runId && qaqcWorkerState.subgrid === batchSubgrid) ? (
-                                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 inline-flex items-center gap-1 whitespace-nowrap shadow-sm">
-                                          <CheckCircle size={10} className="text-emerald-400" />
-                                          {log.qaqcStatus || `QAQC Completed (${qaqcWorkerState.defectsList.length} Defects Found)`}
-                                        </span>
-                                      ) : (
-                                        <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap ${log.status === 'Complete' || (log.status as string) === 'Published'
-                                          ? 'bg-inner text-text-base border border-subtle'
-                                          : 'bg-app text-text-muted border border-subtle'
-                                          }`}>
-                                          {log.status === 'Complete' || (log.status as string) === 'Published' ? <CheckCircle size={10} className="text-emerald-400" /> : <Clock size={10} className="text-amber-400" />}
-                                          {log.status || 'Complete'}
-                                        </span>
-                                      )}
-                                    </td>
-                                    <td className="px-3.5 py-3.5 text-right whitespace-nowrap">
-                                      <button onClick={(e) => { e.stopPropagation(); toggleSubgridFilter(batchSubgrid); }} className="px-2.5 py-1 bg-inner hover:bg-inner text-text-base hover:text-text-base border border-subtle rounded-md text-[10px] font-medium cursor-pointer transition-colors whitespace-nowrap" aria-label={`View logs for subgrid ${batchSubgrid}`}>
-                                        View Logs
-                                      </button>
-                                    </td>
-                                  </tr>
-                                );
-                              })
-                            )}
-                          </tbody>
-                        </table>
-                      ) : (
-                        <table className="w-full text-left text-[11px]">
-                          <thead className="bg-card text-text-muted sticky top-0 z-10 border-b border-subtle">
-                            <tr>
-                              <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-text-muted whitespace-nowrap">Date</th>
-                              <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-text-muted whitespace-nowrap">Grid</th>
-                              <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-text-muted whitespace-nowrap">Subgrid</th>
-                              <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-text-muted whitespace-nowrap">Distance</th>
-                              <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-text-muted whitespace-nowrap">Images</th>
-                              <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-text-muted whitespace-nowrap">Defects</th>
-                              <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-text-muted whitespace-nowrap">PIC</th>
-                              <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-text-muted whitespace-nowrap">Status</th>
-                              <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-text-muted text-right whitespace-nowrap">Equipment</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-[rgba(255,255,255,0.06)]">
-                            {isDataLoading ? (
-                              <tr>
-                                <td colSpan={9} className="py-12 text-center text-text-muted">
-                                  <div className="flex flex-col items-center justify-center gap-2">
-                                    <Loader2 size={22} className="animate-spin text-sky-400" />
-                                    <span className="text-xs font-semibold text-text-base">Loading daily progress...</span>
-                                  </div>
-                                </td>
-                              </tr>
-                            ) : dailyData.length === 0 ? (
-                              <tr>
-                                <td colSpan={9} className="py-10 text-center text-text-muted">
-                                  <div className="flex flex-col items-center justify-center gap-2">
-                                    <Calendar size={28} className="text-text-muted" />
-                                    <span className="text-xs font-semibold text-text-base">No daily records yet</span>
-                                    <span className="text-[11px] text-text-muted">Daily processing progress logs will appear here.</span>
-                                  </div>
-                                </td>
-                              </tr>
-                            ) : (
-                              filteredDailyData.map((log, i) => {
-                                  const dailySubgrid = (log.subgrid || '').toUpperCase().trim();
-                                  const runId = getItemId(log);
-                                  const frameCount = getImagesProcessedCount(log);
-                                  const isRowSelected = selectedDailyRunId === runId;
-                                  const isThisRowUnderInspection = qaqcWorkerState.isRunning && (
-                                    qaqcWorkerState.runId ? qaqcWorkerState.runId === runId : false
-                                  );
-                                  const isThisRowCompleted = qaqcWorkerState.isCompleted && (
-                                    qaqcWorkerState.runId ? qaqcWorkerState.runId === runId : false
-                                  );
-
-                                  let cachedDefects: number | undefined;
-                                  const cachedAuditObj = runId ? qaqcAuditRuns[`${dailySubgrid}_${runId}`] : undefined;
-                                  if (cachedAuditObj && typeof cachedAuditObj.defectCount === 'number') {
-                                    cachedDefects = cachedAuditObj.defectCount;
-                                  }
-
-                                  let parsedStatusDefects: number | undefined;
-                                  if (log.qaqcStatus) {
-                                    const m = log.qaqcStatus.match(/(\d+)\s+Defect/i);
-                                    if (m) parsedStatusDefects = parseInt(m[1], 10);
-                                  }
-
-                                  const defectCount = frameCount === 0
-                                    ? 0
-                                    : (isThisRowUnderInspection || isThisRowCompleted)
-                                      ? qaqcWorkerState.defectsList.length
-                                      : (log.imagesDefected && log.imagesDefected > 0)
-                                        ? log.imagesDefected
-                                        : (log.defectCount && log.defectCount > 0)
-                                          ? log.defectCount
-                                          : (cachedDefects !== undefined && cachedDefects > 0)
-                                            ? cachedDefects
-                                            : (parsedStatusDefects !== undefined && parsedStatusDefects > 0)
-                                              ? parsedStatusDefects
-                                              : 0;
-
-                                  const isPublished = log.publishToWebGIS === 'yes';
-                                  return (
-                                    <tr
-                                      key={log.id || `dash-d-${log.date}-${log.subgrid}-${i}`}
-                                      onClick={() => handleSelectDailyRun(log)}
-                                      className={`cursor-pointer transition-all duration-150 ${isRowSelected
-                                        ? '!bg-sky-900/60 border-l-4 border-sky-400 !text-white font-semibold shadow-inner'
-                                        : 'hover:bg-inner text-text-base'
-                                        }`}
-                                    >
-                                      <td className="px-3.5 py-3.5 font-sans text-[10px] text-text-muted whitespace-nowrap">
-                                        <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
-                                          <span>{formatDisplayDate(log.date)}</span>
-                                          {isRowSelected && <span className="w-1.5 h-1.5 rounded-full bg-sky-400" />}
-                                        </div>
-                                      </td>
-                                      <td className="px-3.5 py-3.5 font-medium text-text-base whitespace-nowrap">{log.grid}</td>
-                                      <td className="px-3.5 py-3.5 font-semibold text-text-base whitespace-nowrap">{dailySubgrid}</td>
-                                      <td className="px-3.5 py-3.5 text-text-base whitespace-nowrap">{log.kmProcessed.toFixed(1)} km</td>
-                                      <td className="px-3.5 py-3.5 whitespace-nowrap">
-                                        <button
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            const subFilter = (extractSubgridName(dailySubgrid) || dailySubgrid).toUpperCase().trim();
-                                            const customFn = log.availableFilenames && log.availableFilenames.length > 0
-                                              ? log.availableFilenames
-                                              : (log.panoramas && log.panoramas.length > 0
-                                                ? log.panoramas.filter((p) => p.isAvailable !== false).map((p) => p.filename).filter((f): f is string => Boolean(f) && (extractSubgridName(f) || '').toUpperCase().trim() === subFilter)
-                                                : undefined);
-                                            const rowFrameCount = getImagesProcessedCount(log);
-                                            setImagesListModal({
-                                              isOpen: true,
-                                              subgrid: dailySubgrid,
-                                              count: customFn && customFn.length > 0 ? customFn.length : rowFrameCount,
-                                              poiCount: getPOICount(log),
-                                              baseFilename: (log.panoramas?.[0]?.filename) || `${dailySubgrid}-0001.jpg`,
-                                              customFilenames: customFn && customFn.length > 0 ? customFn : undefined
-                                            });
-                                          }}
-                                          className="inline-flex items-center gap-1.5 text-text-base hover:text-text-base hover:underline font-semibold text-[11px] cursor-pointer whitespace-nowrap"
-                                          title="Click to view list of image filenames"
-                                        >
-                                          <span>{getImagesProcessedCount(log).toLocaleString()} frames</span>
-                                          <ExternalLink size={10} className="shrink-0 text-text-muted" />
-                                        </button>
-                                      </td>
-                                      <td className="px-3.5 py-3.5 font-semibold whitespace-nowrap">
-                                        {defectCount > 0 ? (
-                                          <button
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              setSelectedDefectSubgrid(dailySubgrid);
-                                              const dailyPanos = log.panoramas || [];
-                                              setDefectGalleryContext({
-                                                mode: 'daily',
-                                                subgrid: dailySubgrid,
-                                                surveyDate: log.date || ((log as any).created_at ? new Date((log as any).created_at).toLocaleDateString() : undefined),
-                                                totalPoi: log.poiCount || dailyPanos.length || getImagesProcessedCount(log),
-                                                batchFilenames: dailyPanos.map((p) => p.filename || p.id).filter((f): f is string => Boolean(f))
-                                              });
-                                              setIsDefectsGalleryOpen(true);
-                                            }}
-                                            className="text-amber-400 hover:text-amber-300 font-semibold hover:underline cursor-pointer text-[11px] tabular-nums transition-colors"
-                                            title="Click to open Daily QA/QC Defect Review Gallery"
-                                          >
-                                            {defectCount}
-                                          </button>
-                                        ) : (
-                                          <span className="text-text-muted text-[11px] font-medium tabular-nums">0</span>
-                                        )}
-                                      </td>
-                                      <td className="px-3.5 py-3.5 text-text-base font-medium whitespace-nowrap">{formatPIC(log.pic, activeAuthUserName || "Fariz.farhan95")}</td>
-                                      <td className="px-3.5 py-3.5 whitespace-nowrap">
-                                        {(() => {
-                                          if (isThisRowUnderInspection) {
-                                            return (
-                                              <button
-                                                onClick={(e) => {
-                                                  e.stopPropagation();
-                                                  setIsQAQCRunnerModalOpen(true);
-                                                }}
-                                                className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-sky-500/15 text-sky-400 border border-sky-500/30 inline-flex items-center gap-1.5 whitespace-nowrap animate-pulse shadow-sm hover:scale-105 transition-transform cursor-pointer"
-                                                title="Click to view live QA/QC inspection HUD"
-                                              >
-                                                <Activity size={10} className="text-sky-400 animate-spin" />
-                                                QAQC In Progress ({qaqcWorkerState.currentIndex + 1}/{qaqcWorkerState.totalStations})
-                                              </button>
-                                            );
-                                          }
-
-                                          const effectiveQaqcStatus = frameCount === 0
-                                            ? undefined
-                                            : (log.qaqcStatus || (isThisRowCompleted ? `QAQC Completed (${qaqcWorkerState.defectsList.length} Defects Found)` : (cachedAuditObj ? `QAQC Completed (${cachedAuditObj.defectCount} Defect${cachedAuditObj.defectCount === 1 ? '' : 's'} Found)` : undefined)));
-
-                                          if (effectiveQaqcStatus) {
-                                            return (
-                                              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-inner text-text-base border border-subtle inline-flex items-center gap-1 whitespace-nowrap shadow-sm">
-                                                <CheckCircle size={10} className="text-emerald-400" />
-                                                {effectiveQaqcStatus}
-                                              </span>
-                                            );
-                                          }
-
-                                          if (isPublished) {
-                                            return (
-                                              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-inner text-text-base border border-subtle inline-flex items-center gap-1 whitespace-nowrap">
-                                                <CheckCircle size={10} className="text-emerald-400" /> Published
-                                              </span>
-                                            );
-                                          }
-
-                                          return (
-                                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-app text-text-muted border border-subtle inline-flex items-center gap-1 whitespace-nowrap">
-                                              <Clock size={10} className="text-amber-400" /> In Progress
-                                            </span>
-                                          );
-                                        })()}
-                                      </td>
-                                      <td className="px-3.5 py-3.5 text-right font-medium text-text-base whitespace-nowrap">{log.captureEquipment || 'MMS'}</td>
-                                    </tr>
-                                  );
-                                })
-                            )}
-                          </tbody>
-                        </table>
-                      )}
-                    </div>
+                    <DashboardBatchTable
+                      activeTab={activeTab}
+                      isDataLoading={isDataLoading}
+                      activeBatchLogs={activeBatchLogs}
+                      dailyData={dailyData}
+                      filteredDailyData={filteredDailyData}
+                      selectedSubgridFilter={selectedSubgridFilter}
+                      toggleSubgridFilter={toggleSubgridFilter}
+                      dailyDataBySubgrid={dailyDataBySubgrid}
+                      setImagesListModal={setImagesListModal}
+                      qaqcWorkerState={qaqcWorkerState}
+                      qaqcAuditRuns={qaqcAuditRuns}
+                      setSelectedDefectSubgrid={setSelectedDefectSubgrid}
+                      setDefectGalleryContext={setDefectGalleryContext}
+                      setIsDefectsGalleryOpen={setIsDefectsGalleryOpen}
+                      setIsQAQCRunnerModalOpen={setIsQAQCRunnerModalOpen}
+                      selectedDailyRunId={selectedDailyRunId}
+                      handleSelectDailyRun={handleSelectDailyRun}
+                      activeAuthUserName={activeAuthUserName}
+                      t={t}
+                    />
                   </div>
 
                   {/* 360 INSPECTOR VIEWER & QAQC CARD */}
@@ -5014,128 +4534,11 @@ export default function App() {
         {/* ========================================================= */}
         {/* ABOUT DASHBOARD MODAL (Monochromatic Executive System Breakdown) */}
         {/* ========================================================= */}
-        {
-          isAboutModalOpen && (
-            <div className="fixed inset-0 top-0 left-0 right-0 bottom-0 w-full h-full bg-app backdrop-blur-md z-[99999] flex items-center justify-center p-4 animate-in fade-in duration-150">
-              <div className="bg-card border border-subtle rounded-2xl w-full max-w-3xl shadow-2xl flex flex-col overflow-hidden text-text-base">
-
-                {/* Modal Header */}
-                <div className="p-5 bg-card border-b border-subtle flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2.5 rounded-xl bg-inner border border-subtle text-text-base shadow-sm">
-                      <Info size={20} />
-                    </div>
-                    <div>
-                      <h2 className="text-base font-bold text-text-base tracking-wide">
-                        Mobile Mapping Data Management System
-                      </h2>
-                      <p className="text-xs text-sky-400 font-medium">
-                        Spatial Trajectory Processing &amp; Quality Assurance Pipeline
-                      </p>
-                      <p className="text-[11px] text-text-muted font-sans mt-0.5">
-                        Version 2.4.0 (Executive Enterprise Build)
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => setIsAboutModalOpen(false)}
-                    className="text-text-muted hover:text-text-base p-1.5 rounded-lg hover:bg-inner transition-colors cursor-pointer"
-                  >
-                    <X size={18} />
-                  </button>
-                </div>
-
-                {/* Modal Body Content */}
-                <div className="p-6 space-y-5 text-xs text-text-base leading-relaxed overflow-y-auto max-h-[75vh]">
-
-                  {/* 1. System Purpose & Domain Overview */}
-                  <div className="p-4 rounded-xl bg-card border border-subtle space-y-2">
-                    <h3 className="font-bold text-text-base text-xs uppercase tracking-wider flex items-center gap-2">
-                      <span>System Purpose &amp; Domain Architecture</span>
-                    </h3>
-                    <p className="text-text-base text-[11.5px] leading-relaxed">
-                      Engineered specifically for <strong>TNB 360° Mobile Mapping Operations</strong>, this WebGIS processing platform provides unified spatial trajectory analytics, automated subgrid deduplication, live Supabase PostGIS synchronization, and interactive 360° StreetView quality control inspection.
-                    </p>
-                  </div>
-
-                  {/* 2. Technical Specifications & GIS Core */}
-                  <div className="space-y-2">
-                    <h4 className="font-bold text-text-base text-xs uppercase tracking-wider">
-                      Technical Specifications &amp; GIS Core
-                    </h4>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 font-sans text-[11px]">
-                      <div className="p-3 rounded-xl bg-card border border-subtle space-y-1">
-                        <span className="text-text-muted block text-[10px] uppercase">GIS Mapping Engine</span>
-                        <span className="text-text-base font-bold">PostGIS 3.4 + Leaflet 1.9 + WebGL</span>
-                      </div>
-                      <div className="p-3 rounded-xl bg-card border border-subtle space-y-1">
-                        <span className="text-text-muted block text-[10px] uppercase">Database Architecture</span>
-                        <span className="text-text-base font-bold">Supabase PostgreSQL (Realtime Listener)</span>
-                      </div>
-                      <div className="p-3 rounded-xl bg-card border border-subtle space-y-1">
-                        <span className="text-text-muted block text-[10px] uppercase">Coordinate Reference Systems</span>
-                        <span className="text-text-base font-bold">EPSG:4326, 3857, 3375 (Kertau RSO)</span>
-                      </div>
-                      <div className="p-3 rounded-xl bg-card border border-subtle space-y-1">
-                        <span className="text-text-muted block text-[10px] uppercase">360° Inspection Engine</span>
-                        <span className="text-text-base font-bold">
-                          {projectSettings?.useMultiRes
-                            ? 'PhotoSphereViewer (Multi-Res Tile Engine)'
-                            : 'PhotoSphereViewer (Equirectangular)'}
-                        </span>
-                        <span className="text-text-muted text-[9px] font-sans">
-                          {projectSettings?.storageProvider?.toUpperCase() || 'DYNAMIC'} · {projectSettings?.imageStorageStrategy || 'single_equirectangular'}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* 4. Core Workflow Capabilities */}
-                  <div className="space-y-2.5">
-                    <h4 className="font-bold text-text-base text-xs uppercase tracking-wider">
-                      Core Workflow Capabilities &amp; Features
-                    </h4>
-                    <div className="space-y-2 text-text-base text-[11.5px] leading-relaxed">
-                      <div className="p-3 rounded-xl bg-card border border-subtle space-y-1">
-                        <div className="font-bold text-text-base">1. Subgrid Trajectory Deduplication Strategy</div>
-                        <p className="text-text-muted text-[11px]">
-                          Auto-normalizes subgrid keys (<code className="bg-inner px-1 py-0.5 rounded text-text-base font-sans text-[10px]">XX-YY &rarr; XXYY</code>). Offers choice between Masterlist clean merge or preserved daily survey runs.
-                        </p>
-                      </div>
-
-                      <div className="p-3 rounded-xl bg-card border border-subtle space-y-1">
-                        <div className="font-bold text-text-base">2. Interactive 360° QA Inspector &amp; SLA Benchmarks</div>
-                        <p className="text-text-muted text-[11px]">
-                          Supports AI defect threshold benchmarks (<code className="bg-inner px-1 py-0.5 rounded text-text-base font-sans text-[10px]">95%, 85%, 75%, 60%</code>) with custom flag labels (<code className="bg-inner px-1 py-0.5 rounded text-text-base font-sans text-[10px]">Blurry Frame, Lens Obstruction, Bad GPS</code>).
-                        </p>
-                      </div>
-
-                      <div className="p-3 rounded-xl bg-card border border-subtle space-y-1">
-                        <div className="font-bold text-text-base">3. Executive PDF Summary Report Generator</div>
-                        <p className="text-text-muted text-[11px]">
-                          Generates client-ready QA PDF deliverables with automated pass/fail calculations and survey metrics.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                </div>
-
-                {/* Modal Footer */}
-                <div className="p-4 bg-card border-t border-subtle flex justify-between items-center text-[11px] text-text-muted shrink-0 font-sans">
-                  <span>© 2026 Mobile Mapping Data Management System</span>
-                  <button
-                    onClick={() => setIsAboutModalOpen(false)}
-                    className="px-4 py-1.5 bg-inner hover:bg-inner text-text-base font-medium rounded-lg border border-subtle transition-all cursor-pointer shadow-sm"
-                  >
-                    Close System Info
-                  </button>
-                </div>
-
-              </div>
-            </div>
-          )
-        }
+        <AboutPlatformModal
+          isOpen={isAboutModalOpen}
+          onClose={() => setIsAboutModalOpen(false)}
+          projectSettings={projectSettings}
+        />
 
         {/* ========================================================= */}
         {/* AUTOMATED QA/QC FULL CANVAS WORKBENCH */}

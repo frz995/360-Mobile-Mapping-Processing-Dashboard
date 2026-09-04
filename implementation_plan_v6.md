@@ -1,95 +1,94 @@
-# Implementation Plan v6 — Road Extraction (Option A: Client + Cropper)
+# Implementation Plan v6 — Two-Track Model, Display Integrity & Data Hardening
 
-## ✅ v6 STATUS — IMPLEMENTED (E1–E5 complete)
+> Replaces the previous v6 (Road Extraction E1–E5, which is complete and recorded in git history). Owner-confirmed scope: production workflow, display content architecture, and data — anchored on the central finding below.
 
-| Phase | Status |
-|---|---|
-| **E1** Road service adapter (Overpass default) + env wiring (`src/services/roadExtraction.ts`, `VITE_ROAD_EXTRACTION_*`) | ✅ **Implemented** |
-| **E2** Local Leaflet render surface (`src/components/roadAnalysis/RoadAnalysisMap.tsx`) | ✅ **Implemented** |
-| **E3** "Extract roads" action per region; dependency-free clip to district | ✅ **Implemented** (`clipLineStringsToDistricts`) |
-| **E4** Extracted network as a plan source joined to Captured vs Plan | ✅ **Implemented** |
-| **E5** Gates + regression (tsc 0 / build ok / vitest pass / lint 0 errors) + dashboard untouched | ✅ **Green** |
+## Central finding (drives this plan)
+The system does **not** currently communicate its own two-sided model:
+- **WebGIS / Published view** — what TNB sees live on the map.
+- **Production Pipeline** — the internal processing that builds it.
 
-Notes: Leaflet is a real imported dependency; no `@turf/turf` was added — clipping is a
-lightweight, dependency-free helper on the district geometry (keeping the bundle unchanged).
-Avoided the alias/turf dependency by keeping the clip minimal and honest.
+It is functionally complete but conceptually unclear to both operators and management. Evidence:
+- Shared vocabulary points in **opposite directions** (see 1B glossary).
+- No label, category, About, README, landing, or nav copy states a two-track model (`App.tsx:5057` calls it one "unified WebGIS processing platform"; `SystemShowcase.tsx` is a flat 6-module tour; README lists modules without the split).
+- The "Dashboard" nav category bundles the published view with production-flavored `data`.
 
-**Map surface decision (owner-confirmed):** the local Leaflet map is the **default** Road
-Analysis surface (road lines render natively + extraction/comparison work). The WebGIS
-iframe remains only as an optional toggle for panorama/360 context — it cannot render road
-lines (no line message type), so it is no longer the primary view.
+**Guiding rule (unchanged, binding):** no visual redesign, no logic/behavior change, no feature removal. Every change is copy/naming/i18n/Docs/DDL gated by `tsc -b`, `npm run build`, `vitest run`, `npm run lint`.
 
-### Strict Design Preservation Rule (binding)
+---
 
-Same as v4 / v5. **No visual redesign.** Dashboard visually & behaviorally untouched.
-Reuse existing components and the house env/config patterns (`VITE_*` + safe defaults).
-No fake telemetry / no fabricated geometry. No commit unless the user asks.
+## PHASE 1 — Two-Track Model (communication; the core deliverable)
 
-### Constraint discovered in v5 (context)
+### 1A. Restructure nav categories to express the two tracks
+`src/workspaces.tsx:69-86`, rendered by `WorkspaceSidebarNav.tsx:100-122` via `translate(category.labelKey)` — no structural change needed, only the array + label keys.
 
-The external WebGIS map (`VITE_MAP_URL`) has **no line/vector message type** — it only
-renders point layers (`SET_STAGED_DATA`) and boundary polygons (`SET_PROJECT_BOUNDARY`).
-So extracted road lines **cannot be drawn on that map**. Option A therefore renders the
-extracted road lines on a **local Leaflet surface** inside the Road Analysis workspace.
-**`leaflet ^1.9.4` (+ `esri-leaflet`) is already a repo dependency — no new package
-required.** This is the one scope addition vs. the earlier "no local map engine" note, and
-the owner has accepted it as necessary for Option A. The external WebGIS iframe remains as
-the primary context/panorama surface, unchanged.
+| New category label (i18n key) | Members | Meaning |
+|---|---|---|
+| `workspaceCategoryWebGIS` → **"WebGIS · Published View"** | `dashboard`, `data`, `analytics`, `reports`, `roadAnalysis` | What the WebGIS shows / what's captured & published |
+| `workspaceCategoryProduction` → **"Production Pipeline"** | `production`, `processing`, `lineage`, `storage` | Internal processing (private) |
+| `workspaceCategoryGovernance` (unchanged) | `administration` | Control |
 
-### Adapter design (swappable provider)
+- Keys/routing untouched; only `labelKey` + `members` order change.
+- `roadAnalysis` moves from Insights → WebGIS track (owner-confirmed).
+- Update `i18n.ts` category labels in en/ms/zh parity.
 
-Road extraction is wrapped in an **adapter interface** so the provider is a one-file swap:
+### 1B. Disambiguate all terminology collisions (i18n-first, no logic change)
 
-```
-src/services/roadExtraction.ts
-export interface RoadExtractionResult { lines: LineString[]; source: string; route: string }
-export interface RoadExtractionAdapter {
-  name: string;
-  extract(bbox: [minLng,minLat,maxLng,maxLat]): Promise<GeoJSON.FeatureCollection>;
-}
-```
+| Term | WebGIS/published sense | Production sense | Fix |
+|---|---|---|---|
+| **Publish** | "Publish to WebGIS" = live on map | Production "Publish" *stage* = `DELIVERABLE` dataset exists | Production stage label → **"Deliverable pack"** (`pipelineStages.ts` label; `i18n.ts:174-182`). Keep "Publish to WebGIS" only on dashboard/WebGIS action |
+| **Staging / STAGED** | Survey runs not yet on WebGIS | Production "Data staging" stage + PostGIS "Staging Gate & Production Sync" | Dashboard non-published → **"Not yet on WebGIS"**; production stage keeps "Data staging" with copy noting it flows `staging_panoramas` → QA → WebGIS |
+| **Production** | *Public* live PostGIS tables | *Private* operator pipeline | Category → "Production Pipeline"; internal = "internal production pipeline"; PostGIS table = "live WebGIS tables" |
+| **Deliverable** | Final report/PDF | `DELIVERABLE` dataset (processed images) | Qualify: **"Deliverable dataset"** (pipeline) vs **"deliverable report"** (reports) |
+| **In process** | Default non-published status | Pipeline job state | Dashboard default status → **"Not published"** |
 
-**Default provider = OSM / Overpass API** (free, no credentials, real Malaysia road
-network). District bbox → `[out:json][timeout:30](...); way[highway](bbox); out geom;`
-→ decode `LineString` geometries. Configurable via env:
+Targets: `App.tsx:1552` (PDF "VERIFIED & PUBLISHED / STAGED IN PROCESS"), `DataManagementPage.tsx:1065`, `OperationActionCenter.tsx:99`, `pipelineStages.ts`, `i18n.ts` (en/ms/zh).
 
-- `VITE_ROAD_EXTRACTION_ROUTE` — `overpass` (default) | future: `hotosm` | `custom`
-- `VITE_ROAD_EXTRACTION_URL` — Overpass endpoint (default `https://overpass-api.de/api/interpreter`)
-- `VITE_ROAD_EXTRACTION_KEY` — optional API key for non-default providers (blank = none)
+### 1C. Orientation copy: About, landing, dashboard + production subtitle, Docs/README
+- **About modal** (`App.tsx:~5051-5057`): replace "unified WebGIS processing platform" with a two-track orientation paragraph explaining WebGIS (published view) vs Production Pipeline (RAW → … → Deliverable → Publish to WebGIS), plus a "how the two tracks fit" note.
+- **Dashboard subtitle**: one-line tag "Shows what is published to the WebGIS."
+- **Production workspace entry**: one-line tag "Internal processing pipeline (not the public WebGIS view)."
+- **SystemShowcase.tsx**: reframe intro as a two-track model rather than a flat module tour.
+- **README.md + docs/**: add a "Two Tracks" section (mental model diagram + shared-term glossary).
 
-Swapping to a hosted ML service later = new adapter + one env change; the workspace UI is
-unchanged.
+---
 
-### Scope (phased)
+## PHASE 2 — Display Integrity & Dedup (honesty)
 
-| Phase | Status |
-|---|---|
-| **E1** Road service adapter (Overpass default) + env wiring | 🔲 |
-| **E2** Local Leaflet render surface in Road Analysis (extracted lines + district + captured points) | 🔲 |
-| **E3** "Extract roads" action per region; clip to district (simplify via turf) | 🔲 |
-| **E4** Extracted network as a 3rd plan source (`system-volunteered` OSM) joined to Captured vs Plan | 🔲 |
-| **E5** Gates + regression (tsc / build / vitest / lint) + dashboard untouched | 🔲 |
+- **2A.** `App.tsx:~3075` Pipeline Health: show `—` / "No data" when `totalFramesForHealth === 0` (no more "100% Normal" on empty DB).
+- **2B.** Unify `totalImages` (Card 2) and `totalFramesForHealth` (Card 4) onto one `totalFrames` definition computed once.
+- **2C.** Replace regex `/（\d+）\s+Defect/` defect parsing with real `qa_defects` row totals; string-parse only as a labeled fallback.
+- **2D.** Remove dead `DashboardWorkspace.tsx` (duplicate dashboard) + `WebGISViewerIframe.tsx` (never imported); correct `SystemShowcase` "live MapLibre map" claim if it renders screenshots.
+- **2E.** Correct false dual-engine (Three.js/WebGL) claims in README + AdminSettings About → describe PhotoSphereViewer v5 accurately.
+- **2F.** Move most-visible hardcoded EN strings (KPI labels, `App.tsx:3564-3792` panel/table headers, QA questionnaire) into i18n (best-effort, no visual churn).
 
-Notes / hazards:
-- Overpass needs a **bbox**, not arbitrary polygon — query the district bbox, then clip the
-  returned ways to the actual district polygon (turf `@turf/boolean-clip` on the multi-select
-  union). `turf` is **not yet a dependency** — v6 adds `@turf/turf` (or the few needed
-  sub-packages) — a dev-dependency-only addition, no bundle change to the main dashboard route
-  if lazy-loaded.
-- Network topology: OSM may return many small ways; keep each `LineString` separate and sum
-  lengths for the comparison, or optionally merge (turf `lineMerge`).
-- Offline/no-credential fallback: if the Overpass call fails or is unreachable, the workspace
-  shows a clear error and keeps the existing v5 sources (system-derived + manual) intact.
-- i18n: add `roadExtract*` label keys ×4 locales.
+## PHASE 3 — Worker / Data Integrity & RLS
 
-### Deliverables
+- **3A. Global queue + admission control** (`worker/`): process-wide `MAX_ACTIVE_JOBS` semaphore; extra jobs `QUEUED`; expose `active_jobs`/`max_active_jobs` in `/metrics`; reject full queue (409/429) instead of unbounded executors (prevents GPU OOM).
+- **3B. Stop silent no-ops:** remove `STITCH`/`AI_DETECT`/`QAQC` from worker accepted list (return 400 instead of read→write COMPLETED); remove STITCH from HandoffPanel worker dispatch; add worker unit test asserting unsupported types are rejected.
+- **3C. Durable job state by default:** default `WORKER_JOB_DB` to a path so the SQLite journal isn't opt-in.
+- **3D. Supabase sync retry** (`worker/sync.py`): backoff + dead-letter + structured warn instead of fire-and-forget.
+- **3E. Real GPU telemetry** in `/metrics` (nvidia-smi/pynvml) or remove hardcoded fake HandoffPanel values.
+- **3F. Missing DDL:** add migrations creating `panoramas`, `staging_panoramas`, `panoramas_view` (currently RLS-only, no CREATE — fresh DB broken).
+- **3G. `is_fallback_coord` flag:** mark sanitized centroids so fabricated/approximate GPS is visible, not silent.
+- **3H. Atomic publish:** transactional insert-then-delete with safe error path (no delete-then-insert data loss).
+- **3I. RLS on core tables** (`panoramas`, `qa_defects`, `qaqc_audit_runs`, `audit_logs`, `notifications`, `staging_panoramas`) — role-guarded like secondary tables; add RLS test row.
+- **3J. Migration-order cleanup:** document canonical apply order; drop orphaned `recycle_bin`; add idempotent seeds.
 
-- `src/services/roadExtraction.ts` — adapter interface + Overpass implementation.
-- `src/components/roadAnalysis/RoadAnalysisMap.tsx` — local Leaflet surface (tiles via the
-  map basemap config; draws district boundary, captured points, extracted road lines).
-- `RoadAnalysisWorkspace.tsx` — add "Extract roads" control + source toggle; wire E4.
-- `src/lib/i18n.ts`, `src/components/boundary/*` — labels, clipping helpers, tests.
-- `implementation_plan_v6.md`.
+## PHASE 4 — Maintainability (strict refactor, non-visual)
+- **4A.** Remove dead `DashboardWorkspace.tsx` (with 2D).
+- **4B.** Unbundle district GeoJSON — fetch `malaysia.district.geojson` at runtime, removing 854KB from the ~1MB RoadAnalysis chunk (`malaysiaDistricts.ts` / `RoadAnalysisWorkspace.tsx`).
+- **4C.** Begin splitting `App.tsx` (4,944 lines) into extracted sub-components with zero visual/behavior change.
 
-No changes to `workspaces.tsx` categories, `App.tsx` dashboard JSX, or the P2 production
-reorder. Road Analysis remains under the `insights` category; `tag: 'live'` unchanged.
+---
+
+## Sequencing & Gates
+**P1 (two-track copy) → P2 (display honesty) → P3 (data/RLS/worker) → P4 (refactor).**
+P1–P2 are low-risk i18n/copy (no logic); P3 is SQL/worker (isolated, gated); P4 is strict refactor. Each phase keeps all gates green: `tsc -b`, `npm run build`, `vitest run` (incl. CI no-`.env` parity), `npm run lint`, and `pytest` for worker changes.
+
+## Deliverables
+- This plan (`implementation_plan_v6.md`, replacing prior v6).
+- Supabase migrations `0012`–`0013` + cleanup SQL.
+- Worker changes (queue, job-type rejection, durable default, sync retry, metrics/telemetry).
+- Copy/naming changes in `src/workspaces.tsx`, `src/lib/i18n.ts`, `src/App.tsx`, `SystemShowcase.tsx`, `DataManagementPage.tsx`, `OperationActionCenter.tsx`, `pipelineStages.ts`, `HandoffPanel.tsx`.
+- README + docs "Two Tracks" section.
+- Updated tests (frontend vitest + worker pytest + RLS).
