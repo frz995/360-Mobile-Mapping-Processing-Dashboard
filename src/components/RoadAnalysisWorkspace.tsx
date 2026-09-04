@@ -1554,28 +1554,6 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                   }}
                   className="absolute top-3 left-3 z-[1000] flex items-center gap-1.5 p-1.5 rounded-xl border backdrop-blur-md shadow-lg transition-colors"
                 >
-                  <button
-                    type="button"
-                    onClick={() => setShowRoadLines((v) => !v)}
-                    style={{
-                      backgroundColor: showRoadLines ? 'var(--bg-inner)' : 'transparent',
-                      borderColor: showRoadLines ? 'var(--border-subtle)' : 'transparent'
-                    }}
-                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-all cursor-pointer ${
-                      showRoadLines
-                        ? 'text-sky-400 shadow-sm'
-                        : 'text-text-muted hover:text-text-base hover:bg-inner/50'
-                    }`}
-                    title={showRoadLines ? 'Hide road lines overlay' : 'Show road lines overlay'}
-                  >
-                    <ScanLine size={13} className={showRoadLines ? 'text-sky-400' : 'text-text-muted'} />
-                    <span>{showRoadLines ? 'Hide road lines' : 'Show road lines'}</span>
-                  </button>
-
-                  <div
-                    style={{ backgroundColor: 'var(--divider)' }}
-                    className="w-[1px] h-4 mx-0.5 shrink-0"
-                  />
 
                   <div className="flex items-center gap-1.5 px-1">
                     <Layers size={13} style={{ color: 'var(--text-muted)' }} className="shrink-0" />

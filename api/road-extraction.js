@@ -9,24 +9,28 @@
 //
 // Mirror fallback order: each upstream gets at most TIMEOUT_MS to respond.
 // All mirrors together must finish within Vercel Hobby maxDuration (15 s).
-//   4 mirrors × 5 s timeout = 20 s worst-case → stop after first 3 so we
-//   comfortably stay under 15 s even with two cold timeouts.
 // =====================================================================
 
-const TIMEOUT_MS = 4500; // per-mirror hard timeout
+const TIMEOUT_MS = 8000; // increased per-mirror timeout
 
 const UPSTREAMS = [
   // Prefer the user-supplied env override if set
   process.env.VITE_ROAD_EXTRACTION_URL,
-  // Fast, globally-cached mirror (Cloudflare-backed)
-  'https://overpass.kumi.systems/api/interpreter',
-  // Official primary
+  // Official primary (most reliable)
   'https://overpass-api.de/api/interpreter',
   // Official LZ4 replica
   'https://lz4.overpass-api.de/api/interpreter',
   // Official Z replica
   'https://z.overpass-api.de/api/interpreter',
+  // Fast, globally-cached mirror (Cloudflare-backed) - moved to last due to rate limits
+  'https://overpass.kumi.systems/api/interpreter',
 ].filter(Boolean);
+
+const OVERPASS_HEADERS = {
+  'Content-Type': 'application/x-www-form-urlencoded',
+  'Accept': 'application/json',
+  'User-Agent': 'RoadExtractionDashboard/1.0 (https://github.com/your-repo; contact@your-domain.com)'
+};
 
 const DRIVABLE_HIGHWAY = new Set([
   'motorway', 'trunk', 'primary', 'secondary', 'tertiary', 'unclassified',
@@ -112,26 +116,45 @@ function writeJson(res, status, body, headers = {}) {
   res.end(json);
 }
 
-/** Try a single Overpass mirror with a hard per-request timeout. */
+/** Try a single Overpass mirror with a hard per-request timeout and retries. */
 async function tryUpstream(upstream, query) {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
-  try {
-    const r = await fetch(upstream, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: 'data=' + encodeURIComponent(query),
-      signal: ctrl.signal
-    });
-    clearTimeout(timer);
-    if (!r.ok) {
-      throw new Error(`HTTP ${r.status} ${r.statusText} from ${upstream}`);
+  const maxRetries = 2;
+  let lastError;
+  
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+    try {
+      const r = await fetch(upstream, {
+        method: 'POST',
+        headers: OVERPASS_HEADERS,
+        body: 'data=' + encodeURIComponent(query),
+        signal: ctrl.signal
+      });
+      clearTimeout(timer);
+      
+      if (!r.ok) {
+        // Don't retry on 406, 429, 5xx - try next mirror instead
+        if (r.status === 406 || r.status === 429 || r.status >= 500) {
+          throw new Error(`HTTP ${r.status} ${r.statusText} from ${upstream}`);
+        }
+        throw new Error(`HTTP ${r.status} ${r.statusText} from ${upstream}`);
+      }
+      return await r.json();
+    } catch (err) {
+      clearTimeout(timer);
+      lastError = err;
+      
+      // On last attempt, throw to trigger next mirror
+      if (attempt === maxRetries) {
+        throw err;
+      }
+      
+      // Exponential backoff before retry (100ms, 200ms)
+      await new Promise(resolve => setTimeout(resolve, 100 * (attempt + 1)));
     }
-    return await r.json();
-  } catch (err) {
-    clearTimeout(timer);
-    throw err;
   }
+  throw lastError;
 }
 
 export default async function handler(req, res) {

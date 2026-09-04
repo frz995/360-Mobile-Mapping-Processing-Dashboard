@@ -2996,11 +2996,6 @@ export default function App() {
             aria-hidden={currentPage !== 'dashboard'}
           >
             <div key="dashboard-canvas" className="flex-1 flex flex-col gap-3 min-h-0 overflow-y-auto md:overflow-hidden animate-workspace-focus">
-              <div className="px-1 shrink-0">
-                <p className="text-[11px] font-semibold text-text-muted tracking-wide">
-                  {t('webgisPublishedTag')}
-                </p>
-              </div>
               {/* TOP ROW: EXECUTIVE KPI SUMMARY (4 Cards) */}
               <DashboardKpiSummary
                 tourStep={tourStep}
