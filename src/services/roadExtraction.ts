@@ -198,25 +198,40 @@ const DIRECT_MIRRORS = [
   'https://overpass.kumi.systems/api/interpreter'
 ];
 
+const OVERPASS_HEADERS = {
+  'Content-Type': 'application/x-www-form-urlencoded',
+  'Accept': 'application/json',
+  'User-Agent': 'RoadExtractionDashboard/1.0'
+};
+
 async function fetchOverpassDirect(initialUrl: string, query: string): Promise<any> {
   const mirrors = Array.from(new Set([initialUrl, ...DIRECT_MIRRORS]));
   let lastError: any = null;
 
   for (const url of mirrors) {
-    try {
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 10000);
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: 'data=' + encodeURIComponent(query),
-        signal: ctrl.signal
-      });
-      clearTimeout(timer);
-      if (res.ok) return await res.json().catch(() => null);
-      lastError = new Error(`HTTP ${res.status} from ${url}`);
-    } catch (err: any) {
-      lastError = err;
+    for (let attempt = 0; attempt <= 1; attempt++) {
+      try {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 10000);
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: OVERPASS_HEADERS,
+          body: 'data=' + encodeURIComponent(query),
+          signal: ctrl.signal
+        });
+        clearTimeout(timer);
+        if (res.ok) return await res.json().catch(() => null);
+        lastError = new Error(`HTTP ${res.status} from ${url}`);
+        
+        // Don't retry on 406, 429 - try next mirror
+        if (res.status === 406 || res.status === 429) break;
+      } catch (err: any) {
+        lastError = err;
+      }
+      
+      if (attempt < 1) {
+        await new Promise(resolve => setTimeout(resolve, 100 * (attempt + 1)));
+      }
     }
   }
 

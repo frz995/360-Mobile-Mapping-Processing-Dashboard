@@ -828,11 +828,11 @@ function areStylesEqual(a?: string | StyleSpecification, b?: string | StyleSpeci
   }, [style, initMap]);
 
   // Continuously observe container resizing (sidebar toggle, layout reflow, window resize)
-  // Throttled via requestAnimationFrame to avoid rapid canvas redraws / white flashes
+  // Debounced to avoid rapid canvas redraws / white flashes during CSS transitions
   useEffect(() => {
     const container = containerRef.current;
     if (!container || typeof ResizeObserver === 'undefined') return;
-    let rafId: number | null = null;
+    let resizeTimer: ReturnType<typeof setTimeout> | null = null;
     let lastW = container.clientWidth;
     let lastH = container.clientHeight;
 
@@ -840,20 +840,23 @@ function areStylesEqual(a?: string | StyleSpecification, b?: string | StyleSpeci
       const entry = entries[0];
       if (!entry) return;
       const { width, height } = entry.contentRect;
-      if (Math.abs(width - lastW) < 2 && Math.abs(height - lastH) < 2) return;
+      // Ignore small changes (< 10px) to filter out CSS transition noise
+      if (Math.abs(width - lastW) < 10 && Math.abs(height - lastH) < 10) return;
       lastW = width;
       lastH = height;
 
-      if (rafId !== null) cancelAnimationFrame(rafId);
-      rafId = requestAnimationFrame(() => {
+      if (resizeTimer !== null) clearTimeout(resizeTimer);
+      // Debounce: wait 150ms after last resize event before calling map.resize()
+      resizeTimer = setTimeout(() => {
         if (mapRef.current) {
           mapRef.current.resize();
         }
-      });
+        resizeTimer = null;
+      }, 150);
     });
     ro.observe(container);
     return () => {
-      if (rafId !== null) cancelAnimationFrame(rafId);
+      if (resizeTimer !== null) clearTimeout(resizeTimer);
       ro.disconnect();
     };
   }, []);
