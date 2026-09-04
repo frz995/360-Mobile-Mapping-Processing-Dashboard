@@ -172,11 +172,11 @@ export const DashboardBatchTable: React.FC<DashboardBatchTableProps> = ({
                             let anyDailyInspected = false;
                             subgridDailyRuns.forEach(d => {
                               const fCount = getImagesProcessedCount(d);
-                              if (fCount === 0) return;
+                              const maxDailyCap = (typeof d.poiCount === 'number' && d.poiCount > 0) ? d.poiCount : (fCount > 0 ? fCount : undefined);
 
                               const runId = getItemId(d);
                               const isThisDailyActive = isSpecificRunActive && qaqcWorkerState.runId === runId;
-                              const dailyCached = runId ? qaqcAuditRuns[`${batchSubgrid}_${runId}`] : undefined;
+                              const dailyCached = (runId ? qaqcAuditRuns[`${batchSubgrid}_${runId}`] : undefined) || qaqcAuditRuns[`${batchSubgrid}_default`];
                               const dailyCachedCount = (dailyCached && typeof dailyCached.defectCount === 'number') ? dailyCached.defectCount : 0;
 
                               let runDefects = 0;
@@ -193,7 +193,7 @@ export const DashboardBatchTable: React.FC<DashboardBatchTableProps> = ({
                                 runDefects = d.defectCount;
                                 anyDailyInspected = true;
                               }
-                              sumDefects += Math.min(runDefects, fCount);
+                              sumDefects += maxDailyCap !== undefined ? Math.min(runDefects, maxDailyCap) : runDefects;
                             });
 
                             if (anyDailyInspected) {
@@ -216,10 +216,9 @@ export const DashboardBatchTable: React.FC<DashboardBatchTableProps> = ({
                           }
                         }
 
-                        if (batchFrames > 0) {
-                          dCount = Math.min(dCount, batchFrames);
-                        } else {
-                          dCount = 0;
+                        const maxBatchCap = (typeof log.poiCount === 'number' && log.poiCount > 0) ? log.poiCount : (batchFrames > 0 ? batchFrames : undefined);
+                        if (maxBatchCap !== undefined) {
+                          dCount = Math.min(dCount, maxBatchCap);
                         }
 
                         return dCount > 0 ? (
@@ -333,7 +332,9 @@ export const DashboardBatchTable: React.FC<DashboardBatchTableProps> = ({
                 );
 
                 let cachedDefects: number | undefined;
-                const cachedAuditObj = runId ? qaqcAuditRuns[`${dailySubgrid}_${runId}`] : undefined;
+                const cachedAuditObj = (runId ? qaqcAuditRuns[`${dailySubgrid}_${runId}`] : undefined) ||
+                  qaqcAuditRuns[`${dailySubgrid}_default`] ||
+                  Object.entries(qaqcAuditRuns).find(([k]) => k.startsWith(`${dailySubgrid}_`))?.[1];
                 if (cachedAuditObj && typeof cachedAuditObj.defectCount === 'number') {
                   cachedDefects = cachedAuditObj.defectCount;
                 }
@@ -344,19 +345,20 @@ export const DashboardBatchTable: React.FC<DashboardBatchTableProps> = ({
                   if (m) parsedStatusDefects = parseInt(m[1], 10);
                 }
 
-                const defectCount = frameCount === 0
-                  ? 0
-                  : (isThisRowUnderInspection || isThisRowCompleted)
-                    ? qaqcWorkerState.defectsList.length
-                    : (log.imagesDefected && log.imagesDefected > 0)
-                      ? log.imagesDefected
-                      : (log.defectCount && log.defectCount > 0)
-                        ? log.defectCount
-                        : (cachedDefects !== undefined && cachedDefects > 0)
-                          ? cachedDefects
-                          : (parsedStatusDefects !== undefined && parsedStatusDefects > 0)
-                            ? parsedStatusDefects
-                            : 0;
+                const rawDailyDefects = (isThisRowUnderInspection || isThisRowCompleted)
+                  ? qaqcWorkerState.defectsList.length
+                  : (log.imagesDefected && log.imagesDefected > 0)
+                    ? log.imagesDefected
+                    : (log.defectCount && log.defectCount > 0)
+                      ? log.defectCount
+                      : (cachedDefects !== undefined && cachedDefects > 0)
+                        ? cachedDefects
+                        : (parsedStatusDefects !== undefined && parsedStatusDefects > 0)
+                          ? parsedStatusDefects
+                          : 0;
+
+                const maxDailyCap = (typeof log.poiCount === 'number' && log.poiCount > 0) ? log.poiCount : (frameCount > 0 ? frameCount : undefined);
+                const defectCount = maxDailyCap !== undefined ? Math.min(rawDailyDefects, maxDailyCap) : rawDailyDefects;
 
                 const isPublished = log.publishToWebGIS === 'yes';
                 return (

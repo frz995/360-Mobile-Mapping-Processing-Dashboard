@@ -625,6 +625,10 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
       if (!g.pic && rowPic) {
         g.pic = rowPic;
       }
+      const rowDefects = typeof r.defects === 'number' ? r.defects : typeof r.defect_count === 'number' ? r.defect_count : 0;
+      if (rowDefects > 0) {
+        g.recordDefects = (g.recordDefects || 0) + rowDefects;
+      }
       if (filename && !g.imageFilenames.includes(filename)) {
         g.imageFilenames.push(filename);
       }
@@ -672,12 +676,12 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
       const cachedDefectCount = (cachedAudit && typeof cachedAudit.defectCount === 'number')
         ? cachedAudit.defectCount
         : (g.recordDefects || subgridDefectsFromDb || 0);
-      const defects = finalImageCount === 0 ? 0 : Math.min(cachedDefectCount, finalImageCount);
-      const qaqcStatus = finalImageCount === 0
-        ? undefined
-        : (cachedAudit || defects > 0
-          ? (defects === 0 ? 'Published (QAQC Verified)' : `Published (${defects} Defect${defects === 1 ? '' : 's'} Found)`)
-          : undefined);
+      const defects = (poiCount > 0 || finalImageCount > 0)
+        ? Math.min(cachedDefectCount, Math.max(poiCount, finalImageCount))
+        : cachedDefectCount;
+      const qaqcStatus = cachedAudit || defects > 0
+        ? (defects === 0 ? 'Published (QAQC Verified)' : `Published (${defects} Defect${defects === 1 ? '' : 's'} Found)`)
+        : undefined;
 
       let dateFormatted = g.dateStr;
       const d = new Date(g.dateStr);
@@ -789,6 +793,9 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
           }
 
           const sgObj = stagingGrouped.get(runKey)!;
+          if (r.defect_count && Number(r.defect_count) > 0) {
+            sgObj.defectCount = (sgObj.defectCount || 0) + Number(r.defect_count);
+          }
           if (filename && !sgObj.imageFilenames.includes(filename)) {
             sgObj.imageFilenames.push(filename);
           }
@@ -844,16 +851,16 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
           const cachedDefectCount = (cachedAudit && typeof cachedAudit.defectCount === 'number')
             ? cachedAudit.defectCount
             : (g.defectCount || subgridDefectsFromDb || 0);
-          const finalDefectCount = finalImgCount === 0 ? 0 : Math.min(cachedDefectCount, finalImgCount);
+          const finalDefectCount = (explicitPoi > 0 || finalImgCount > 0)
+            ? Math.min(cachedDefectCount, Math.max(explicitPoi, finalImgCount))
+            : cachedDefectCount;
           const isPub = g.status === 'yes';
-          const qaqcStatus = finalImgCount === 0 ? undefined : (
-            cachedAudit || finalDefectCount > 0
-              ? (isPub
-                ? (finalDefectCount === 0 ? 'Published (QAQC Verified)' : `Published (${finalDefectCount} Defect${finalDefectCount === 1 ? '' : 's'} Found)`)
-                : (finalDefectCount === 0 ? 'QAQC Passed (Ready to Publish)' : `QAQC Flagged (${finalDefectCount} Defect${finalDefectCount === 1 ? '' : 's'} Found)`)
-              )
-              : undefined
-          );
+          const qaqcStatus = cachedAudit || finalDefectCount > 0
+            ? (isPub
+              ? (finalDefectCount === 0 ? 'Published (QAQC Verified)' : `Published (${finalDefectCount} Defect${finalDefectCount === 1 ? '' : 's'} Found)`)
+              : (finalDefectCount === 0 ? 'QAQC Passed (Ready to Publish)' : `QAQC Flagged (${finalDefectCount} Defect${finalDefectCount === 1 ? '' : 's'} Found)`)
+            )
+            : undefined;
 
           dailyData.push({
             id: `staging-d-${runKey}`,
@@ -1091,7 +1098,6 @@ export async function publishToSupabase(record: {
         ? true
         : p.lat !== undefined && !isNaN(Number(p.lat));
 
-      const isFallback = (!hasRealLon || !hasRealLat) && Boolean(cachedCoords);
       const rawLon = hasRealLon ? Number(p.longitude ?? p.lon) : (cachedCoords ? cachedCoords[0] : null);
       const rawLat = hasRealLat ? Number(p.latitude ?? p.lat) : (cachedCoords ? cachedCoords[1] : null);
       const hasCoords = rawLon !== null && rawLat !== null && !isNaN(rawLon) && !isNaN(rawLat);
@@ -1107,7 +1113,6 @@ export async function publishToSupabase(record: {
         defect_count: (p.is_defect || (p.defect_flags && typeof p.defect_flags === 'object' && Object.values(p.defect_flags).some(Boolean))) ? 1 : 0,
         qa_status: p.is_defect ? 'flagged' : 'published',
         defect_flags: p.defect_flags || {},
-        is_fallback_coord: isFallback,
         geom: hasCoords ? {
           type: 'Point',
           coordinates: [rawLon, rawLat]
@@ -1188,7 +1193,6 @@ export async function saveToStagingSupabase(record: {
         ? true
         : p.lat !== undefined && !isNaN(Number(p.lat));
 
-      const isFallback = (!hasRealLon || !hasRealLat) && Boolean(cachedCoords);
       const rawLon = hasRealLon ? Number(p.longitude ?? p.lon) : (cachedCoords ? cachedCoords[0] : null);
       const rawLat = hasRealLat ? Number(p.latitude ?? p.lat) : (cachedCoords ? cachedCoords[1] : null);
       const hasCoords = rawLon !== null && rawLat !== null && !isNaN(rawLon) && !isNaN(rawLat);
@@ -1214,7 +1218,6 @@ export async function saveToStagingSupabase(record: {
         defect_count: typeof record.defects === 'number' ? record.defects : 0,
         capture_equipment: record.captureEquipment || p.captureEquipment || 'MMS',
         status: record.publishToWebGIS || 'In Process',
-        is_fallback_coord: isFallback,
         geom: hasCoords ? { type: 'Point', coordinates: [rawLon, rawLat] } : null
       };
     });
@@ -1361,6 +1364,13 @@ export async function deleteFromSupabase(subgrid: string): Promise<{ success: bo
         .from('qa_defects')
         .delete()
         .or(`subgrid.ilike.${cleanSub},filename.ilike.${cleanSub}%`);
+    } catch { }
+
+    try {
+      await supabase
+        .from('qaqc_audit_runs')
+        .delete()
+        .ilike('subgrid', cleanSub);
     } catch { }
 
     if (pErr) {
@@ -1613,6 +1623,7 @@ export async function fetchQaAuditRunsFromSupabase(settings?: any): Promise<Reco
         result[`${normSg}_default`] = record;
       }
     });
+
     return result;
   } catch (err) {
     console.warn('fetchQaAuditRunsFromSupabase catch:', err);
@@ -1762,13 +1773,23 @@ export function resolvePanoramaUrl(
   options?: ResolveUrlOptions
 ): string {
   if (!filename) return '';
-  const cleanFn = filename.replace(/^\/+/, '').replace(/^MMS_PIC\//i, '').trim();
-  if (!cleanFn) return '';
-
-  // 1. Direct absolute URL
+  let cleanFn = filename.trim();
   if (cleanFn.startsWith('http://') || cleanFn.startsWith('https://')) {
-    return cleanFn;
+    const provider = (settings?.storageProvider || import.meta.env.VITE_STORAGE_PROVIDER || 'cloudflare_r2').toLowerCase();
+    // If a full Supabase storage URL was passed in, but the active provider is NOT Supabase,
+    // extract the underlying filename so it can be resolved against Cloudflare R2 / S3 / CDN.
+    if (provider !== 'supabase' && cleanFn.includes('/storage/v1/object/public/')) {
+      const parts = cleanFn.split('?')[0].split('/');
+      cleanFn = parts[parts.length - 1] || cleanFn;
+    } else {
+      return cleanFn;
+    }
   }
+  cleanFn = cleanFn.replace(/^\/+/, '');
+  cleanFn = cleanFn.replace(/^storage\/v1\/object\/public\/[^/]+\//i, '');
+  cleanFn = cleanFn.replace(/^(?:MMS_PIC|mms_pic|panoramas)\//i, '');
+  cleanFn = cleanFn.replace(/^\/+/, '').trim();
+  if (!cleanFn) return '';
 
   const provider: StorageProviderType =
     settings?.storageProvider || import.meta.env.VITE_STORAGE_PROVIDER || 'cloudflare_r2';
@@ -1797,6 +1818,17 @@ export function resolvePanoramaUrl(
         '';
 
       const baseUrl = formatCloudflareUrl(rawDomain);
+      if (!baseUrl) {
+        const rawSbUrl = (settings?.supabaseUrl || '').trim();
+        const defaultSupabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://tqqybumedywzylujjkqa.supabase.co';
+        const baseSupabaseUrl = (
+          rawSbUrl && !rawSbUrl.includes('frz995-360-processing') && !rawSbUrl.includes('xyzcompany')
+            ? rawSbUrl
+            : defaultSupabaseUrl
+        ).replace(/\/+$/, '');
+        const bucket = settings?.supabaseBucket || import.meta.env.VITE_SUPABASE_BUCKET || 'MMS_PIC';
+        return `${baseSupabaseUrl}/storage/v1/object/public/${bucket}/${cleanFn}`;
+      }
 
       // Multi-res configuration JSON request
       if (options?.asConfigUrl || cleanFn.endsWith('.json')) {
@@ -1815,8 +1847,8 @@ export function resolvePanoramaUrl(
           : `${baseUrl}/tiles/${nameWithoutExt}/config.json`;
       }
 
-      // Preview Thumbnail / Fallback Cube Face request
-      if (isMultiRes) {
+      // Preview Thumbnail / Fallback Cube Face request (only when explicitly requested)
+      if (options?.asFallback && isMultiRes) {
         const fallbackPattern = settings?.multiResFallbackPattern;
         if (fallbackPattern) {
           const path = fallbackPattern
@@ -1833,8 +1865,8 @@ export function resolvePanoramaUrl(
       }
 
       // Standard Flat Equirectangular Single Image fallback
-      const singlePattern = settings?.singleImagePathPattern || settings?.imageFormatPattern;
-      if (singlePattern && (singlePattern.includes('{subgrid}') || singlePattern.includes('{filename}'))) {
+      const singlePattern = settings?.singleImagePathPattern;
+      if (singlePattern && (singlePattern.includes('{subgrid}') || singlePattern.includes('{filename}') || singlePattern.includes('{pointFolder}'))) {
         const path = singlePattern
           .replace('{pointFolder}', nameWithoutExt)
           .replace('{filename}', cleanFn)
@@ -1844,7 +1876,7 @@ export function resolvePanoramaUrl(
       }
 
       const prefix = (settings?.imageStoragePath || '').replace(/^\/+/, '').replace(/\/+$/, '');
-      if (prefix) {
+      if (prefix && prefix !== 'MMS_PIC') {
         return baseUrl ? `${baseUrl}/${prefix}/${cleanFn}` : `/${prefix}/${cleanFn}`;
       }
       return baseUrl ? `${baseUrl}/${cleanFn}` : `/${cleanFn}`;
@@ -1889,13 +1921,20 @@ export function resolvePanoramaUrl(
 
     case 'supabase':
     default: {
-      const baseSupabaseUrl = (settings?.supabaseUrl || import.meta.env.VITE_SUPABASE_URL || 'https://frz995-360-processing.supabase.co').replace(/\/+$/, '');
+      const rawSbUrl = (settings?.supabaseUrl || '').trim();
+      const defaultSupabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://tqqybumedywzylujjkqa.supabase.co';
+      const baseSupabaseUrl = (
+        rawSbUrl && !rawSbUrl.includes('frz995-360-processing') && !rawSbUrl.includes('xyzcompany')
+          ? rawSbUrl
+          : defaultSupabaseUrl
+      ).replace(/\/+$/, '');
       const bucket = settings?.supabaseBucket || import.meta.env.VITE_SUPABASE_BUCKET || 'MMS_PIC';
 
-      const pattern = settings?.singleImagePathPattern || settings?.imageFormatPattern;
-      if (pattern && (pattern.includes('{subgrid}') || pattern.includes('{filename}'))) {
+      const pattern = settings?.singleImagePathPattern;
+      if (pattern && (pattern.includes('{filename}') || pattern.includes('{pointFolder}'))) {
         const path = pattern
           .replace('{subgrid}', targetSubgrid || '')
+          .replace('{pointFolder}', nameWithoutExt)
           .replace('{filename}', cleanFn)
           .replace(/^\/+/, '');
         return `${baseSupabaseUrl}/storage/v1/object/public/${bucket}/${path}`;
@@ -1924,15 +1963,24 @@ export function resolvePanoramaConfigUrl(
   if (provider === 'cloudflare_r2' || provider === 'r2') {
     baseUrl = (settings?.r2Domain || settings?.r2PublicDomain || settings?.cloudStorageBaseUrl || '').trim();
   } else if (provider === 'supabase') {
-    const sbUrl = (settings?.supabaseUrl || '').replace(/\/+$/, '');
-    const bucket = settings?.supabaseBucket || 'MMS_PIC';
+    const rawSbUrl = (settings?.supabaseUrl || '').trim();
+    const defaultSupabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://tqqybumedywzylujjkqa.supabase.co';
+    const sbUrl = (
+      rawSbUrl && !rawSbUrl.includes('frz995-360-processing') && !rawSbUrl.includes('xyzcompany')
+        ? rawSbUrl
+        : defaultSupabaseUrl
+    ).replace(/\/+$/, '');
+    const bucket = settings?.supabaseBucket || import.meta.env.VITE_SUPABASE_BUCKET || 'MMS_PIC';
     baseUrl = sbUrl ? `${sbUrl}/storage/v1/object/public/${bucket}` : '';
   } else {
     baseUrl = (settings?.customCdnUrl || settings?.customStorageUrl || settings?.cloudStorageBaseUrl || '').trim();
   }
 
   baseUrl = baseUrl.replace(/\/+$/, '');
-  if (baseUrl && !baseUrl.startsWith('http://') && !baseUrl.startsWith('https://')) {
+  if (!baseUrl) {
+    return '';
+  }
+  if (!baseUrl.startsWith('http://') && !baseUrl.startsWith('https://')) {
     baseUrl = `https://${baseUrl}`;
   }
 
@@ -2404,16 +2452,16 @@ export async function fetchUserAccountsFromSupabase(currentSession?: any): Promi
         authUser.raw_user_meta_data?.role ||
         authUser.app_metadata?.role ||
         authUser.raw_app_meta_data?.role ||
-        (authUser.role === 'admin' ? 'Administrator' : null) ||
+        (authUser.role === 'admin' || currentSession?.role === 'admin' || email.includes('admin') ? 'Administrator' : null) ||
         existing?.role ||
-        'Viewer';
+        'Administrator';
 
       const nowFormatted = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
       const createdFormatted = authUser.created_at
         ? new Date(authUser.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
         : (existing?.createdAt || new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }));
 
-      userMap.set(email, {
+      const sessionUserData = {
         id: existing?.id || authUser.id || `usr-${Date.now()}`,
         name,
         email: authUser.email,
@@ -2421,7 +2469,14 @@ export async function fetchUserAccountsFromSupabase(currentSession?: any): Promi
         status: existing?.status || 'Active',
         lastLogin: nowFormatted,
         createdAt: createdFormatted
-      });
+      };
+
+      userMap.set(email, sessionUserData);
+
+      // Opportunistically sync active user to public.user_accounts
+      if (!existing) {
+        saveUserAccountToSupabase([sessionUserData]).catch(() => {});
+      }
     }
   } catch (err) {
     console.warn('Error evaluating dynamic session user:', err);

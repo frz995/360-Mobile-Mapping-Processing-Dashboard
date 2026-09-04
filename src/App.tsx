@@ -668,14 +668,17 @@ export default function App() {
         const dailySubgrid = (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim();
         const runId = getItemId(d);
         const frameCount = getImagesProcessedCount(d);
-        if (frameCount === 0) return sum;
+        const poiCount = getPOICount(d) || frameCount;
+        if (poiCount === 0 && frameCount === 0) return sum;
 
         const isThisRowActive = (qaqcWorkerState.isRunning || qaqcWorkerState.isCompleted) && (
           qaqcWorkerState.runId ? qaqcWorkerState.runId === runId : false
         );
 
         let cachedDefects: number | undefined;
-        const cached = runId ? qaqcAuditRuns[`${dailySubgrid}_${runId}`] : undefined;
+        const cached = (runId ? qaqcAuditRuns[`${dailySubgrid}_${runId}`] : undefined) ||
+          qaqcAuditRuns[`${dailySubgrid}_default`] ||
+          Object.entries(qaqcAuditRuns).find(([k]) => k.startsWith(`${dailySubgrid}_`))?.[1];
         if (cached && typeof cached.defectCount === 'number') {
           cachedDefects = cached.defectCount;
         }
@@ -698,14 +701,16 @@ export default function App() {
                   ? parsedStatusDefects
                   : 0;
 
-        return sum + Math.min(count, frameCount);
+        const maxCap = poiCount > 0 ? poiCount : frameCount;
+        return sum + Math.min(count, maxCap);
       }, 0);
     }
 
     return batchLogs.reduce((sum, b) => {
       const sg = (extractSubgridName(b.subgrid || b.imageFilename) || b.subgrid || '').toUpperCase().trim();
       const bFrames = getImagesProcessedCount(b);
-      if (bFrames === 0) return sum;
+      const bPoi = (typeof b.poiCount === 'number' && b.poiCount > 0) ? b.poiCount : (b.images || 0);
+      if (bPoi === 0 && bFrames === 0) return sum;
 
       let cachedDefects: number | undefined;
       const cached = qaqcAuditRuns[`${sg}_default`] || Object.entries(qaqcAuditRuns).find(([k]) => k.startsWith(`${sg}_`))?.[1];
@@ -725,7 +730,8 @@ export default function App() {
             ? b.defects
             : 0;
 
-      return sum + Math.min(count, bFrames);
+      const maxCap = bPoi > 0 ? bPoi : bFrames;
+      return sum + Math.min(count, maxCap);
     }, 0);
   }, [dailyData, batchLogs, qaqcWorkerState.isRunning, qaqcWorkerState.isCompleted, qaqcWorkerState.defectsList.length, qaqcWorkerState.runId, qaqcWorkerState.subgrid, qaqcAuditVersion, qaqcAuditRuns]);
 
@@ -778,10 +784,20 @@ export default function App() {
     return list;
   }, [qaqcWorkerState.defectsList, qaqcAuditRuns, qaSubgridRecords, dailyData]);
 
-  const totalFramesForHealth = totalImages;
+  const totalPoiForHealth = useMemo(() => {
+    if (dailyData.length > 0) {
+      const sumDaily = dailyData.reduce((sum, d) => sum + getPOICount(d), 0);
+      if (sumDaily > 0) return sumDaily;
+    }
+    if (batchLogs.length > 0) {
+      const sumBatch = batchLogs.reduce((sum, b) => sum + (typeof b.poiCount === 'number' && b.poiCount > 0 ? b.poiCount : (b.images || 0)), 0);
+      if (sumBatch > 0) return sumBatch;
+    }
+    return totalImages > 0 ? totalImages : 1;
+  }, [dailyData, batchLogs, totalImages]);
 
-  const pipelineHealthPercent = totalFramesForHealth > 0
-    ? (totalDefects === 0 ? '100.0' : Math.max(0, ((totalFramesForHealth - totalDefects) / totalFramesForHealth) * 100).toFixed(1))
+  const pipelineHealthPercent = totalPoiForHealth > 0
+    ? (totalDefects === 0 ? '100.0' : Math.max(0, ((totalPoiForHealth - totalDefects) / totalPoiForHealth) * 100).toFixed(1))
     : null;
   const targetKm = Number(projectSettings?.targetKm) || (totalKm > 0 ? totalKm : 0);
   const progressPercent = targetKm > 0 ? Math.min(100, Math.round((totalKm / targetKm) * 100)) : 0;
@@ -810,13 +826,14 @@ export default function App() {
           const sg = (extractSubgridName(sd.subgrid) || sd.subgrid || '').toUpperCase().trim();
           const runId = getItemId(sd);
           const frameCount = getImagesProcessedCount(sd);
+          const poiCount = getPOICount(sd) || frameCount;
           const cachedAudit = (runId && qaqcAuditRuns[`${sg}_${runId}`]) || qaqcAuditRuns[`${sg}_default`];
           const cachedCount = cachedAudit && typeof cachedAudit.defectCount === 'number' ? cachedAudit.defectCount : 0;
           const prevCount = (matchedPrev && typeof matchedPrev.defectCount === 'number') ? matchedPrev.defectCount : 0;
-          const finalCount = frameCount === 0 ? 0 : Math.min(frameCount, Math.max(sd.defectCount || 0, prevCount, cachedCount));
-          const qaqcStatus = frameCount === 0
-            ? (sd.publishToWebGIS === 'yes' ? 'Published' : undefined)
-            : (sd.qaqcStatus || matchedPrev?.qaqcStatus || (cachedAudit ? `QAQC Completed (${cachedCount} Defect${cachedCount === 1 ? '' : 's'} Found)` : undefined));
+          const maxDefects = Math.max(sd.defectCount || 0, prevCount, cachedCount);
+          const finalCount = (poiCount > 0 || frameCount > 0) ? Math.min(maxDefects, Math.max(poiCount, frameCount)) : maxDefects;
+          const isPub = sd.publishToWebGIS === 'yes';
+          const qaqcStatus = sd.qaqcStatus || matchedPrev?.qaqcStatus || (cachedAudit ? `QAQC Completed (${cachedCount} Defect${cachedCount === 1 ? '' : 's'} Found)` : (isPub ? 'Published' : undefined));
 
           return {
             ...sd,
@@ -838,7 +855,7 @@ export default function App() {
           let hasDailyInspection = false;
           matchingDaily.forEach((d: any) => {
             const fCount = getImagesProcessedCount(d);
-            if (fCount === 0) return;
+            const dPoi = getPOICount(d) || fCount;
             const runId = getItemId(d);
             const runCache = (runId && qaqcAuditRuns[`${sg}_${runId}`]) || qaqcAuditRuns[`${sg}_default`];
             const def = (runCache && typeof runCache.defectCount === 'number')
@@ -850,7 +867,8 @@ export default function App() {
                   : 0;
             if (def > 0 || runCache || d.qaqcStatus) {
               hasDailyInspection = true;
-              dailyDefectsSum += Math.min(def, fCount);
+              const cap = dPoi > 0 ? dPoi : (fCount > 0 ? fCount : undefined);
+              dailyDefectsSum += cap !== undefined ? Math.min(def, cap) : def;
             }
           });
 
@@ -858,19 +876,18 @@ export default function App() {
           const cachedCount = cachedAudit && typeof cachedAudit.defectCount === 'number' ? cachedAudit.defectCount : 0;
           const prevCount = (matchedPrev && typeof matchedPrev.defects === 'number') ? matchedPrev.defects : 0;
 
-          let finalCount = totalSubFrames === 0 ? 0 : (
-            hasDailyInspection
-              ? dailyDefectsSum
-              : Math.max(sb.defects || 0, prevCount, cachedCount)
-          );
+          const batchPoi = (typeof sb.poiCount === 'number' && sb.poiCount > 0) ? sb.poiCount : (sb.images || 0);
+          const maxBatchCap = batchPoi > 0 ? batchPoi : (totalSubFrames > 0 ? totalSubFrames : undefined);
 
-          if (totalSubFrames > 0) {
-            finalCount = Math.min(finalCount, totalSubFrames);
+          let finalCount = hasDailyInspection
+            ? dailyDefectsSum
+            : Math.max(sb.defects || 0, prevCount, cachedCount);
+
+          if (maxBatchCap !== undefined) {
+            finalCount = Math.min(finalCount, maxBatchCap);
           }
 
-          const qaqcStatus = totalSubFrames === 0 ? undefined : (
-            sb.qaqcStatus || matchedPrev?.qaqcStatus || (cachedAudit ? `QAQC Completed (${cachedCount} Defect${cachedCount === 1 ? '' : 's'} Found)` : undefined)
-          );
+          const qaqcStatus = sb.qaqcStatus || matchedPrev?.qaqcStatus || (cachedAudit ? `QAQC Completed (${cachedCount} Defect${cachedCount === 1 ? '' : 's'} Found)` : undefined);
 
           return {
             ...sb,
@@ -1810,8 +1827,9 @@ export default function App() {
               longitude: lng,
               lat: lat,
               lng: lng,
-              bearing: Number(p.bearing ?? p.heading ?? ((idx * 15) % 360)),
-              image_url: p.image_url || resolvePanoramaUrl(cleanFn, projectSettings, { subgrid: cleanSg }),
+              image_url: (p.image_url && (p.image_url.startsWith('http://') || p.image_url.startsWith('https://')))
+                ? p.image_url
+                : resolvePanoramaUrl(p.image_url || cleanFn, projectSettings, { subgrid: cleanSg }),
               config_url: resolvePanoramaConfigUrl(cleanFn, projectSettings, cleanSg)
             };
           });
@@ -1861,7 +1879,9 @@ export default function App() {
               lat: lat,
               lng: lng,
               bearing: Number(p.bearing ?? p.heading ?? ((collectedStations.length * 15) % 360)),
-              image_url: p.image_url || resolvePanoramaUrl(cleanFn, projectSettings, { subgrid: cleanSg })
+              image_url: (p.image_url && (p.image_url.startsWith('http://') || p.image_url.startsWith('https://')))
+                ? p.image_url
+                : resolvePanoramaUrl(p.image_url || cleanFn, projectSettings, { subgrid: cleanSg })
             });
           }
         }
@@ -2085,7 +2105,7 @@ export default function App() {
           }));
           window.dispatchEvent(new CustomEvent('qaqc_audit_updated', { detail: { subgrid: normSg, record: cacheRecord } }));
 
-          // Asynchronously persist audit run and staging update to Supabase
+          // Asynchronously persist audit run and staging update to Supabase (Single Source of Truth)
           saveQaAuditRunToSupabase(cacheRecord, {
             id: authSession?.user?.id,
             email: authSession?.user?.email,
@@ -2136,13 +2156,22 @@ export default function App() {
         const pt = e.data.point || e.data.payload;
         if (pt) {
           setHasSelectedPoint(true);
-          const fn = (pt.filename || '').replace(/^\/+/, '').replace(/^MMS_PIC\//i, '');
+          const rawFn = (pt.filename || '').replace(/^\/+/, '').replace(/^MMS_PIC\//i, '')
+            || (typeof pt.image_url === 'string' ? pt.image_url.split('?')[0].split('/').pop()?.replace(/^MMS_PIC\//i, '') : '')
+            || '';
+          const fn = rawFn.trim();
           if (fn) {
             setActivePanoramaFilename(fn);
           }
-          const imageUrl = (pt.image_url && typeof pt.image_url === 'string' && pt.image_url.trim().length > 0)
-            ? (pt.image_url.startsWith('http') || pt.image_url.startsWith('/') ? pt.image_url : resolvePanoramaUrl(pt.image_url, projectSettings))
-            : (fn ? resolvePanoramaUrl(fn, projectSettings) : '');
+
+          const ptSubgrid = (pt.subgrid ? (extractSubgridName(pt.subgrid) || pt.subgrid) : inspectorSubgrid || selectedSubgridFilter || '').toString().toUpperCase().trim();
+
+          // Authoritative resolution using the Dashboard's active projectSettings (Cloudflare R2 / Supabase)
+          const imageUrl = fn
+            ? resolvePanoramaUrl(fn, projectSettings, { subgrid: ptSubgrid })
+            : (pt.image_url && typeof pt.image_url === 'string' && pt.image_url.trim().length > 0
+              ? resolvePanoramaUrl(pt.image_url, projectSettings, { subgrid: ptSubgrid })
+              : '');
 
           if (imageUrl) {
             setActivePanoramaUrl(imageUrl);
@@ -2489,7 +2518,9 @@ export default function App() {
           id: p.id || `pt-${rowId}-${pIdx}`,
           runId: rowId,
           filename: actualFn,
-          image_url: p.image_url || resolvePanoramaUrl(actualFn, projectSettings, { subgrid: normSg }),
+          image_url: (p.image_url && (p.image_url.startsWith('http://') || p.image_url.startsWith('https://')))
+            ? p.image_url
+            : resolvePanoramaUrl(actualFn, projectSettings, { subgrid: normSg }),
           lat: p.lat ?? p.latitude ?? p.y,
           lon: p.lon ?? p.longitude ?? p.lng ?? p.x,
           latitude: p.latitude ?? p.lat ?? p.y,
@@ -3603,10 +3634,15 @@ export default function App() {
                               const targetSubgrid = inspectorSubgrid || selectedSubgridFilter || '';
                               const targetFilename = activePanoramaFilename || '';
 
-                              const provider = projectSettings?.storageProvider || import.meta.env.VITE_STORAGE_PROVIDER || 'cloudflare_r2';
-                              const isMultiResStrategy = projectSettings?.imageStorageStrategy !== 'single_equirectangular';
+                              const provider = projectSettings?.storageProvider || import.meta.env.VITE_STORAGE_PROVIDER || 'supabase';
+                              const isMultiResStrategy = projectSettings?.imageStorageStrategy === 'multires_tiles' ||
+                                projectSettings?.imageStorageStrategy === 'multi_resolution' ||
+                                projectSettings?.panoramaMode === 'multi_res';
+                              const hasCdnDomain = Boolean(
+                                projectSettings?.r2Domain || import.meta.env.VITE_R2_DOMAIN || projectSettings?.customCdnUrl
+                              );
 
-                              const shouldUseMultiRes = isMultiResStrategy && (
+                              const shouldUseMultiRes = isMultiResStrategy && hasCdnDomain && (
                                 provider === 'cloudflare_r2' ||
                                 provider === 'custom_cdn' ||
                                 provider === 'aws_s3' ||
@@ -3619,16 +3655,16 @@ export default function App() {
                               const dynamicConfigUrl = shouldUseMultiRes && targetFilename
                                 ? resolvePanoramaConfigUrl(targetFilename, projectSettings, targetSubgrid)
                                 : '';
-                              const dynamicPanoUrl = activePanoramaUrl || (targetFilename
+                              const dynamicPanoUrl = targetFilename
                                 ? resolvePanoramaUrl(targetFilename, projectSettings, { subgrid: targetSubgrid })
-                                : '');
+                                : activePanoramaUrl;
 
                               return (
                                 <PhotoSphereViewerComponent
                                   ref={dashboardPsvRef}
                                   key={`pano-psv-${provider}`}
                                   configUrl={shouldUseMultiRes && dynamicConfigUrl ? dynamicConfigUrl : undefined}
-                                  panoramaUrl={!shouldUseMultiRes ? dynamicPanoUrl : undefined}
+                                  panoramaUrl={dynamicPanoUrl || undefined}
                                   initialYaw={panoramaTelemetry.yaw}
                                   initialFov={projectSettings?.defaultFov}
                                   onPositionChange={(pos) => {
@@ -3704,9 +3740,8 @@ export default function App() {
                                 const targetIdx = Math.max(0, Math.min(newIdx, total - 1));
                                 const targetStation = stations[targetIdx];
 
-                                // Exact filename from station object without manual addition
                                 const nextFn = targetStation?.filename || `${cleanSg}-${String(targetIdx + 1).padStart(4, '0')}.jpg`;
-                                const nextUrl = targetStation?.image_url || resolvePanoramaUrl(nextFn, projectSettings, { subgrid: cleanSg });
+                                const nextUrl = nextFn ? resolvePanoramaUrl(nextFn, projectSettings, { subgrid: cleanSg }) : (targetStation?.image_url || '');
                                 const nextLat = Number(targetStation?.latitude ?? (targetStation as any)?.lat ?? inspectorCoords.lat);
                                 const nextLng = Number(targetStation?.longitude ?? (targetStation as any)?.lng ?? (targetStation as any)?.lon ?? inspectorCoords.lng);
                                 const nextBearing = targetStation?.bearing ?? (targetStation as any)?.heading ?? ((targetIdx * 12) % 360);
@@ -3714,12 +3749,14 @@ export default function App() {
                                 // Preload adjacent stations into browser cache for instant 0ms stepping
                                 const aheadStation = stations[targetIdx + 1];
                                 if (aheadStation) {
-                                  const url = aheadStation.image_url || resolvePanoramaUrl(aheadStation.filename, projectSettings, { subgrid: cleanSg });
+                                  const aheadFn = aheadStation.filename || (aheadStation.image_url ? aheadStation.image_url.split('?')[0].split('/').pop() : '');
+                                  const url = aheadFn ? resolvePanoramaUrl(aheadFn, projectSettings, { subgrid: cleanSg }) : aheadStation.image_url;
                                   if (url) { const img = new Image(); img.src = url; }
                                 }
                                 const behindStation = stations[targetIdx - 1];
                                 if (behindStation) {
-                                  const url = behindStation.image_url || resolvePanoramaUrl(behindStation.filename, projectSettings, { subgrid: cleanSg });
+                                  const behindFn = behindStation.filename || (behindStation.image_url ? behindStation.image_url.split('?')[0].split('/').pop() : '');
+                                  const url = behindFn ? resolvePanoramaUrl(behindFn, projectSettings, { subgrid: cleanSg }) : behindStation.image_url;
                                   if (url) { const img = new Image(); img.src = url; }
                                 }
 
