@@ -445,15 +445,24 @@ export const MapComponent = ({
         src={`${import.meta.env.VITE_MAP_URL || 'https://mobilemapping-nine.vercel.app'}/?embed=true&dashboard=true${dataManagement ? '&noSonar=1' : ''}`}
         onLoad={() => {
           if (iframeRef.current && iframeRef.current.contentWindow) {
-            iframeRef.current.contentWindow.postMessage({
-              type: 'SET_SUBGRID_FILTER',
-              subgrid: selectedSubgridFilter || '',
-              isSingleRun: Boolean(selectedDailyRunId),
-              runId: selectedDailyRunId || null,
-              date: selectedDateFilter || ''
-            }, '*');
-            syncMapSettings();
-            sendStagedData();
+            const dispatch = () => {
+              if (!iframeRef.current || !iframeRef.current.contentWindow) return;
+              try {
+                iframeRef.current.contentWindow.postMessage({
+                  type: 'SET_SUBGRID_FILTER',
+                  subgrid: selectedSubgridFilter || '',
+                  isSingleRun: Boolean(selectedDailyRunId),
+                  runId: selectedDailyRunId || null,
+                  date: selectedDateFilter || ''
+                }, '*');
+                syncMapSettings();
+                sendStagedData();
+              } catch (e) { }
+            };
+
+            dispatch();
+            setTimeout(dispatch, 350);
+            setTimeout(dispatch, 1000);
           }
         }}
         className="w-full h-full border-0"

@@ -13,7 +13,8 @@ const db = vi.hoisted(() => {
   return {
     qaRows,
     daily: [] as any[],
-    batches: [] as any[]
+    batches: [] as any[],
+    auditRuns: {} as Record<string, any>
   }
 })
 
@@ -37,7 +38,7 @@ vi.mock('../../services/supabase', () => {
       error: undefined
     })),
     fetchQaRecordsFromSupabase: vi.fn(async () => ({})),
-    fetchQaAuditRunsFromSupabase: vi.fn(async () => ({})),
+    fetchQaAuditRunsFromSupabase: vi.fn(async () => db.auditRuns || {}),
     fetchAuditLogsFromSupabase: vi.fn(async () => []),
     fetchNotificationsFromSupabase: vi.fn(async () => []),
     fetchProjectSettingsFromSupabase: vi.fn(async () => null)
@@ -152,9 +153,60 @@ describe('useAppData derived-state hydration', () => {
     expect(batch.defects).toBe(2)
   })
 
+  it('preserves defectCount when imagesProcessed is 0 but poiCount is positive', async () => {
+    db.daily = [
+      {
+        id: 'd-0frames',
+        subgrid: 'SURVEY_A',
+        date: '2026-01-01',
+        imagesProcessed: 0,
+        poiCount: 100,
+        defectCount: 4,
+        imagesDefected: 4
+      }
+    ]
+    const { result } = await renderHookResult()
+
+    const daily = result()?.dailyData[0]!
+    expect(daily).toBeTruthy()
+    // Should NOT be wiped to 0; capped at poiCount (100)
+    expect(daily.defectCount).toBe(4)
+    expect(daily.imagesDefected).toBe(4)
+  })
+
+  it('hydrates QAQC audit runs directly from Supabase cloud database', async () => {
+    db.auditRuns = {
+      SURVEY_A_default: {
+        subgrid: 'SURVEY_A',
+        runId: 'default',
+        totalStations: 50,
+        defectCount: 3,
+        passRate: 94
+      }
+    }
+
+    db.daily = [
+      {
+        id: 'd-cloud-qaqc',
+        subgrid: 'SURVEY_A',
+        date: '2026-01-01',
+        imagesProcessed: 50,
+        poiCount: 50
+      }
+    ]
+
+    const { result } = await renderHookResult()
+    const daily = result()?.dailyData[0]!
+    expect(daily.defectCount).toBe(3)
+    expect(daily.qaqcStatus).toContain('3 Defects Found')
+
+    db.auditRuns = {}
+  })
+
   it('keeps isDataLoading true until settlement completes, then false', async () => {
     const { result } = await renderHookResult()
     expect(result()?.isDataLoading).toBe(false)
     expect(result()?.supabaseError).toBeNull()
   })
 })
+

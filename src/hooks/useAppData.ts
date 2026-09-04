@@ -10,7 +10,7 @@ import {
 } from '../services/supabase';
 import { extractSubgridName } from '../utils/subgrid';
 import { getItemId } from '../utils/items';
-import { getImagesProcessedCount } from '../utils/dashboardData';
+import { getImagesProcessedCount, getPOICount } from '../utils/dashboardData';
 import type { QAQCAuditRunRecord } from '../types/admin';
 import type { DailyTimeSeries, BatchLog, NotificationItem, AuditLogItem } from '../types/dashboard';
 
@@ -34,11 +34,14 @@ const DEFAULT_PROJECT_SETTINGS = {
   regionZone: 'Central Operations Region',
   clientName: 'Spatial Asset Operations',
   // Database & Image Fetching Settings
-  supabaseUrl: 'https://frz995-360-processing.supabase.co',
+  storageProvider: 'supabase',
+  imageStorageStrategy: 'single_equirectangular',
+  supabaseBucket: 'MMS_PIC',
+  supabaseUrl: import.meta.env.VITE_SUPABASE_URL || 'https://tqqybumedywzylujjkqa.supabase.co',
   supabaseKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
   dbAutoSyncSec: 60,
   dbTableName: 'batch_logs',
-  imageFetchSource: 'local',
+  imageFetchSource: 'supabase',
   imageStoragePath: '/MMS_PIC/',
   imageFormatPattern: '{subgrid}-{index:04d}.jpg',
   imagePreloadCount: 3,
@@ -105,12 +108,20 @@ export function useAppData() {
           setProjectSettings((prev: any) => ({ ...prev, ...dbSettingsRes.value }));
         }
 
-        // Process Cloud QAQC Audit Runs
+        // Purge legacy ghost caches to ensure Supabase is 100% Single Source of Truth
+        try {
+          if (typeof localStorage !== 'undefined') {
+            localStorage.removeItem('app_qaqc_audit_cache_v2');
+            localStorage.removeItem('geosphere_staged_daily_cache_v1');
+          }
+        } catch (_) { }
+
+        // Process Cloud QAQC Audit Runs directly from Supabase (Single Source of Truth)
         let cloudAuditMap: Record<string, QAQCAuditRunRecord> = {};
         if (fetchedAuditRuns.status === 'fulfilled' && fetchedAuditRuns.value) {
-          cloudAuditMap = fetchedAuditRuns.value;
-          setQaqcAuditRuns(fetchedAuditRuns.value);
+          cloudAuditMap = { ...fetchedAuditRuns.value };
         }
+        setQaqcAuditRuns(cloudAuditMap);
 
         // Process QA Defects map first from qaRes
         const defectsPerSubgrid = new Map<string, number>();
@@ -133,7 +144,7 @@ export function useAppData() {
           setLiveDefectCount(totalFlaggedCount);
         }
 
-        // Process Core Daily & Batch Data directly from Supabase with defect & status hydration
+        // Process Core Daily & Batch Data directly from Supabase (Single Source of Truth)
         if (supabaseDataRes.status === 'fulfilled') {
           const { dailyData: sDaily, batchLogs: sBatches } = supabaseDataRes.value;
 
@@ -141,23 +152,23 @@ export function useAppData() {
             const sg = (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim();
             const runId = getItemId(d);
             const frameCount = getImagesProcessedCount(d);
+            const poiCount = getPOICount(d) || frameCount;
             const subgridDefectsFromDb = defectsPerSubgrid.get(sg) || 0;
             const cachedAudit = (runId ? cloudAuditMap[`${sg}_${runId}`] : undefined) || cloudAuditMap[`${sg}_default`] || Object.entries(cloudAuditMap).find(([k]) => k.startsWith(`${sg}_`))?.[1];
             const cachedDefects = (cachedAudit && typeof cachedAudit.defectCount === 'number')
               ? cachedAudit.defectCount
               : (d.defectCount || d.imagesDefected || subgridDefectsFromDb || 0);
-            const finalDefects = frameCount === 0 ? 0 : Math.min(cachedDefects, frameCount);
+            const finalDefects = (poiCount > 0 || frameCount > 0)
+              ? Math.min(cachedDefects, Math.max(poiCount, frameCount))
+              : cachedDefects;
             const isPub = d.publishToWebGIS === 'yes' || d.isSyncedWithSupabase === true;
 
-            const qaqcStatus = frameCount === 0
-              ? (isPub ? 'Published' : undefined)
-              : (cachedAudit
-                ? (isPub
-                  ? (cachedDefects === 0 ? 'Published (QAQC Verified)' : `Published (${cachedDefects} Defect${cachedDefects === 1 ? '' : 's'} Found)`)
-                  : (cachedDefects === 0 ? 'QAQC Passed (Ready to Publish)' : `QAQC Flagged (${cachedDefects} Defect${cachedDefects === 1 ? '' : 's'} Found)`)
-                )
-                : (isPub ? 'Published' : undefined)
-              );
+            const qaqcStatus = cachedAudit
+              ? (isPub
+                ? (finalDefects === 0 ? 'Published (QAQC Verified)' : `Published (${finalDefects} Defect${finalDefects === 1 ? '' : 's'} Found)`)
+                : (finalDefects === 0 ? 'QAQC Passed (Ready to Publish)' : `QAQC Flagged (${finalDefects} Defect${finalDefects === 1 ? '' : 's'} Found)`)
+              )
+              : (d.qaqcStatus ? d.qaqcStatus : (isPub ? 'Published' : undefined));
 
             return {
               ...d,
@@ -171,9 +182,13 @@ export function useAppData() {
             const sg = (extractSubgridName(b.subgrid || b.imageFilename) || b.subgrid || '').toUpperCase().trim();
             const matchingDaily = hydratedDaily.filter((d: any) => (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim() === sg);
             const dailyDefectsSum = matchingDaily.reduce((acc: number, d: any) => acc + (d.defectCount || 0), 0);
-            const finalDefects = dailyDefectsSum > 0 ? dailyDefectsSum : (typeof b.defects === 'number' ? b.defects : 0);
+            const cachedAudit = cloudAuditMap[`${sg}_default`] || Object.entries(cloudAuditMap).find(([k]) => k.startsWith(`${sg}_`))?.[1];
+            const cachedDefects = (cachedAudit && typeof cachedAudit.defectCount === 'number') ? cachedAudit.defectCount : 0;
+            const finalDefects = dailyDefectsSum > 0 ? dailyDefectsSum : (cachedDefects > 0 ? cachedDefects : (typeof b.defects === 'number' ? b.defects : 0));
 
-            const qaqcStatus = b.qaqcStatus || (finalDefects > 0 ? `QAQC Completed (${finalDefects} Defects Found)` : undefined);
+            const qaqcStatus = b.qaqcStatus || (cachedAudit
+              ? (cachedDefects === 0 ? 'QAQC Passed (Ready to Publish)' : `QAQC Flagged (${cachedDefects} Defect${cachedDefects === 1 ? '' : 's'} Found)`)
+              : (finalDefects > 0 ? `QAQC Completed (${finalDefects} Defects Found)` : undefined));
 
             return {
               ...b,

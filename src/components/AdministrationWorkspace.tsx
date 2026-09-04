@@ -110,11 +110,11 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
     setRefreshing(true);
     try {
       const [fetchedUsers, fetchedRequests] = await Promise.all([
-        fetchUserAccountsFromSupabase(),
+        fetchUserAccountsFromSupabase(authSession),
         fetchDeletionRequestsFromSupabase(),
         onRefreshData?.()
       ]);
-      if (fetchedUsers && fetchedUsers.length > 0) {
+      if (fetchedUsers) {
         setUsers(fetchedUsers);
       }
       if (fetchedRequests) {
@@ -129,7 +129,7 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [authSession]);
 
   // System Health Tester
   const handleRunHealthDiagnostics = async () => {

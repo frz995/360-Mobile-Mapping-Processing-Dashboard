@@ -898,7 +898,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                   <label className="block text-text-muted font-medium mb-1">Supabase REST Endpoint URL</label>
                   <input
                     type="text"
-                    value={projectSettings.supabaseUrl || import.meta.env.VITE_SUPABASE_URL || 'https://xyzcompany.supabase.co'}
+                    value={projectSettings.supabaseUrl || import.meta.env.VITE_SUPABASE_URL || 'https://tqqybumedywzylujjkqa.supabase.co'}
                     onChange={e => setProjectSettings(prev => ({ ...prev, supabaseUrl: e.target.value }))}
                     placeholder="https://your-project.supabase.co"
                     className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}

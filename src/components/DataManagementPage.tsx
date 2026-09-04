@@ -1311,24 +1311,15 @@ export const DataManagementPage = ({
       }
     });
 
-    const updatedBatchLogs = reconcileBatchLogs(updatedDraft, batchLogs);
-
-    // 2. INSTANT UI UPDATE (0ms latency)
+    const updatedBatchLogs = reconcileBatchLogs(updatedDraft, batchLogs);    // 2. INSTANT UI UPDATE & Local Cache
     setDraftDailyData(updatedDraft);
     setDailyData(updatedDraft);
     setBatchLogs(updatedBatchLogs);
     setIsDailyDirty(true);
-    setIsImportingCsv(false);
-    setIsCsvImportOpen(false);
 
-    setPublishMessage({
-      text: `Successfully imported ${imported.length} record(s) into Daily Data Staging!`,
-      type: 'success'
-    });
     addAuditLog?.('CREATE', 'CSV Import Executed', `Imported ${imported.length} separate record(s) into Daily Data staging list.`, 'success');
 
-    // 8.5 — Durable import trace to audit_logs (operator, date, source files,
-    // generated subgrid set) so a corrupted import can be traced back.
+    // 8.5 — Durable import trace to audit_logs
     const importOperator = authSession?.user?.email?.split('@')[0] || authSession?.user?.user_metadata?.full_name || 'Operator';
     const importedFileNames = filesToProcess.map(f => f.fileName);
     const generatedSubgrids = Array.from(new Set(imported.map(i => i.subgrid).filter(Boolean)));
@@ -1355,10 +1346,40 @@ export const DataManagementPage = ({
       status: 'success'
     });
 
-    // 3. Persist imported items to staging_panoramas in Supabase asynchronously
-    imported.forEach(imp => {
-      saveToStagingSupabase(imp).catch(err => console.warn('Background staging insert notice:', err));
-    });
+    // 3. Persist imported items to staging_panoramas in Supabase
+    let saveFailed = false;
+    let saveErrMsg = '';
+    try {
+      const results = await Promise.allSettled(imported.map(imp => saveToStagingSupabase(imp)));
+      results.forEach(res => {
+        if (res.status === 'rejected') {
+          saveFailed = true;
+          saveErrMsg = res.reason?.message || 'Failed to save to staging database';
+        } else if (!res.value.success) {
+          saveFailed = true;
+          saveErrMsg = res.value.message;
+        }
+      });
+    } catch (saveErr) {
+      saveFailed = true;
+      saveErrMsg = (saveErr as Error).message;
+    }
+
+    if (saveFailed) {
+      console.warn('Staging Supabase save notice:', saveErrMsg);
+      setPublishMessage({
+        text: `Data loaded in dashboard, but cloud staging notice: ${saveErrMsg}`,
+        type: 'error'
+      });
+    } else {
+      setPublishMessage({
+        text: `Successfully imported and saved ${imported.length} record(s) to Supabase staging!`,
+        type: 'success'
+      });
+    }
+
+    setIsImportingCsv(false);
+    setIsCsvImportOpen(false);
 
     // Broadcast staged data update (with 50% opacity & matching trajectory colors) to WebGIS map iframes
     const iframes = document.querySelectorAll('iframe');
@@ -4465,58 +4486,59 @@ export const DataManagementPage = ({
                       </span>
                     </div>
                     {(() => {
-                      const getMappedOrAliasVal = (row: string[], fieldKey: string, aliases: string[]) => {
-                        const mappedHeader = Object.keys(csvFieldMap).find(k => csvFieldMap[k] === fieldKey);
-                        if (mappedHeader !== undefined) {
-                          const idx = csvHeaders.indexOf(mappedHeader);
-                          if (idx >= 0 && row[idx] !== undefined && row[idx].trim() !== '') {
-                            return row[idx].trim();
-                          }
-                        }
-                        for (const alias of aliases) {
-                          const idx = csvHeaders.findIndex(h => h.trim().toLowerCase() === alias.toLowerCase());
-                          if (idx >= 0 && row[idx] !== undefined && row[idx].trim() !== '') {
-                            return row[idx].trim();
-                          }
-                        }
-                        return '';
-                      };
+                      const filesToProcess = csvFileList.length > 0
+                        ? csvFileList
+                        : [{ fileName: 'imported.csv', headers: csvHeaders, rows: csvRows }];
 
-                      const subgridCol = Object.keys(csvFieldMap).find(k => csvFieldMap[k] === 'imageFilename' || csvFieldMap[k] === 'subgrid');
-                      const subgridIdx = subgridCol !== undefined ? csvHeaders.indexOf(subgridCol) : -1;
-                      const rawSubgridVal = (csvRows.length > 0 && subgridIdx >= 0) ? csvRows[0][subgridIdx] : '';
-                      const parsedSubgrid = extractSubgridName(rawSubgridVal) || rawSubgridVal || '';
+                      const previewColors = ['#f59e0b', '#38bdf8', '#10b981', '#a855f7', '#ec4899', '#f97316', '#06b6d4'];
+                      const subgridGroups = new Map<string, { subgrid: string; grid: string; panoramas: any[] }>();
 
-                      const modalStagedItems = [{
-                        subgrid: parsedSubgrid,
-                        grid: selectedGrid || '1',
-                        status: 'in process',
-                        publishToUSVPRO: 'in process',
-                        isSyncedWithSupabase: false,
-                        isStagingPreview: true,
-                        isPublished: false,
-                        published: false,
-                        opacity: 0.5,
-                        fillOpacity: 0.5,
-                        strokeOpacity: 0.5,
-                        color: '#f59e0b',
-                        statusColor: '#f59e0b',
-                        strokeColor: '#f59e0b',
-                        fillColor: '#f59e0b',
-                        panoramas: csvRows.map((r, rIdx) => {
-                          const fn = subgridIdx >= 0 ? r[subgridIdx] : `${parsedSubgrid}-${String(rIdx + 1).padStart(4, '0')}.jpg`;
-                          const latStr = getMappedOrAliasVal(r, 'latitude', ['latitude', 'lat', 'y']);
-                          const lonStr = getMappedOrAliasVal(r, 'longitude', ['longitude', 'lon', 'lng', 'x']);
-                          const dateVal = getMappedOrAliasVal(r, 'date', ['date', 'time', 'captured_at']);
+                      filesToProcess.forEach((fileItem) => {
+                        const fHeaders = fileItem.headers;
+                        const fRows = fileItem.rows;
+                        const fileSpecificGrid = fileGridMap[fileItem.fileName] || selectedGrid || '1';
+                        const fileSubgrid = extractSubgridName(fileItem.fileName);
+
+                        const getVal = (row: string[], fieldKey: string) => {
+                          const mappedHeader = Object.keys(csvFieldMap).find(k => csvFieldMap[k] === fieldKey);
+                          const idx = mappedHeader !== undefined ? fHeaders.indexOf(mappedHeader) : -1;
+                          return idx >= 0 ? row[idx] ?? '' : '';
+                        };
+
+                        const getRawColVal = (row: string[], aliases: string[]) => {
+                          for (const alias of aliases) {
+                            const idx = fHeaders.findIndex(h => h.trim().toLowerCase() === alias.toLowerCase());
+                            if (idx >= 0 && row[idx] !== undefined && row[idx].trim() !== '') {
+                              return row[idx].trim();
+                            }
+                          }
+                          return '';
+                        };
+
+                        fRows.forEach((r, rIdx) => {
+                          const rawSubgrid = getVal(r, 'subgrid');
+                          const rawFilename = getRawColVal(r, ['filename', 'imagefilename', 'image_url', 'file', 'image', 'img', 'poi']) || getVal(r, 'imageFilename');
+                          const isValidFilename = rawFilename && (rawFilename.includes('.') || /[-_]\d{3,}/.test(rawFilename));
+                          const filename = isValidFilename ? rawFilename : '';
+                          const rowSubgrid = extractSubgridName(rawSubgrid) || (rawFilename ? extractSubgridName(rawFilename) : '');
+                          const subgrid = (fileSubgrid || rowSubgrid || rawSubgrid || fileItem.fileName.replace(/\.[^/.]+$/, '') || 'SUBGRID').toUpperCase().trim();
+
+                          const latStr = getVal(r, 'latitude') || getRawColVal(r, ['latitude', 'lat', 'y']);
+                          const lonStr = getVal(r, 'longitude') || getRawColVal(r, ['longitude', 'lon', 'lng', 'x']);
+                          const headingStr = getVal(r, 'heading') || getRawColVal(r, ['heading', 'bearing', 'dir', 'orientation']);
+                          const dateVal = getVal(r, 'date') || getRawColVal(r, ['date', 'time', 'captured_at', 'timestamp']);
 
                           const lat = parseFloat(latStr);
                           const lon = parseFloat(lonStr);
+                          const headingVal = parseFloat(headingStr);
 
-                          return {
+                          const fn = filename || `${subgrid}-${String(rIdx + 1).padStart(4, '0')}.jpg`;
+
+                          const pItem = {
                             filename: fn,
                             image_url: fn,
-                            subgrid: parsedSubgrid,
-                            grid: selectedGrid || '1',
+                            subgrid: subgrid,
+                            grid: fileSpecificGrid,
                             latitude: !isNaN(lat) ? lat : undefined,
                             longitude: !isNaN(lon) ? lon : undefined,
                             lat: !isNaN(lat) ? lat : undefined,
@@ -4524,27 +4546,77 @@ export const DataManagementPage = ({
                             lng: !isNaN(lon) ? lon : undefined,
                             y: !isNaN(lat) ? lat : undefined,
                             x: !isNaN(lon) ? lon : undefined,
+                            bearing: !isNaN(headingVal) ? headingVal : undefined,
+                            heading: !isNaN(headingVal) ? headingVal : undefined,
                             date: dateVal || undefined,
                             captured_at: dateVal || undefined,
                             status: 'in process',
                             qa_status: 'in process',
                             publishToUSVPRO: 'in process',
+                            publishToWebGIS: 'in process',
                             isPublished: false,
                             published: false,
-                            opacity: 0.5,
-                            fillOpacity: 0.5,
-                            strokeOpacity: 0.5,
-                            color: '#f59e0b',
-                            statusColor: '#f59e0b',
-                            strokeColor: '#f59e0b',
-                            fillColor: '#f59e0b'
+                            opacity: 0.85,
+                            fillOpacity: 0.85,
+                            strokeOpacity: 0.85
                           };
-                        })
-                      }];
+
+                          const existing = subgridGroups.get(subgrid);
+                          if (existing) {
+                            existing.panoramas.push(pItem);
+                          } else {
+                            subgridGroups.set(subgrid, {
+                              subgrid: subgrid,
+                              grid: fileSpecificGrid,
+                              panoramas: [pItem]
+                            });
+                          }
+                        });
+                      });
+
+                      const modalStagedItems = Array.from(subgridGroups.values()).map((grp, gIdx) => {
+                        const colorHex = previewColors[gIdx % previewColors.length];
+                        return {
+                          id: `preview-${grp.subgrid}-${gIdx}`,
+                          runId: `preview-${grp.subgrid}`,
+                          subgrid: grp.subgrid,
+                          grid: grp.grid,
+                          status: 'in process',
+                          qa_status: 'in process',
+                          publishToWebGIS: 'in process',
+                          publishToUSVPRO: 'in process',
+                          isSyncedWithSupabase: false,
+                          isStagingPreview: true,
+                          isPublished: false,
+                          published: false,
+                          opacity: 0.85,
+                          fillOpacity: 0.85,
+                          strokeOpacity: 0.85,
+                          color: colorHex,
+                          statusColor: colorHex,
+                          strokeColor: colorHex,
+                          fillColor: colorHex,
+                          trackColor: colorHex,
+                          lineColor: colorHex,
+                          panoramas: grp.panoramas.map(p => ({
+                            ...p,
+                            color: colorHex,
+                            statusColor: colorHex,
+                            strokeColor: colorHex
+                          }))
+                        };
+                      });
+
+                      const previewRefreshKey = (csvRows.length || 0) + (csvFileList.length || 0);
 
                       return (
                         <div className="h-[480px] relative">
-                          <MapComponent dataManagement refreshKey={0} stagedItems={modalStagedItems} />
+                          <MapComponent
+                            dataManagement
+                            refreshKey={previewRefreshKey}
+                            stagedItems={modalStagedItems}
+                            projectSettings={projectSettings}
+                          />
                         </div>
                       );
                     })()}
