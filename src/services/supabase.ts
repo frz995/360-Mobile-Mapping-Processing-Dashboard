@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { QADefectRecord, QAQCAuditRunRecord, ExtendedProjectSettings } from '../types/admin';
 import type { DatasetRecord, ExternalJobStatus, ProcessingJobRecord, ProcessingJobStatus } from '../types/production';
 import { calculatePathDistanceKm } from '../utils/geo';
@@ -8,12 +8,38 @@ import { withRetry } from '../lib/retry';
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_KEY || '';
 
-function createSafeSupabaseClient() {
+type SupabaseClientInstance = SupabaseClient;
+
+/**
+ * Return a no-op client so importing this module never throws when Supabase
+ * isn't configured (e.g. CI has no .env). Every property resolves to
+ * `undefined`, so any method call (supabase.from(...), supabase.auth...)
+ * throws a TypeError that the consumer call-sites already wrap in try/catch
+ * and convert to safe defaults (null / { success: false }).
+ */
+function createNoopSupabaseClient(): SupabaseClientInstance {
+  return new Proxy(function () {}, {
+    get() {
+      return undefined;
+    },
+    apply() {
+      return undefined;
+    }
+  }) as unknown as SupabaseClientInstance;
+}
+
+function createSafeSupabaseClient(): SupabaseClientInstance {
   const url = supabaseUrl || '';
   const key = supabaseKey || '';
 
   if (!url || !key) {
-    console.error('[Supabase] VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY is not configured. Check your .env file.');
+    console.error(
+      '[Supabase] VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY is not configured. Check your .env file.'
+    );
+    // Can't build a real client (createClient('') throws). Return a no-op so
+    // module load never throws (important for CI/test environments without a
+    // .env); all Supabase call sites already fall back to safe defaults.
+    return createNoopSupabaseClient();
   }
 
   try {
@@ -25,10 +51,15 @@ function createSafeSupabaseClient() {
       }
     });
   } catch (err) {
-    console.warn('Supabase client creation fallback:', err);
-    return createClient(url, key, {
-      auth: { persistSession: false, autoRefreshToken: false }
-    });
+    console.warn('[Supabase] client creation fallback:', err);
+    try {
+      return createClient(url, key, {
+        auth: { persistSession: false, autoRefreshToken: false }
+      });
+    } catch (err2) {
+      console.error('[Supabase] client creation failed:', err2);
+      return createNoopSupabaseClient();
+    }
   }
 }
 
