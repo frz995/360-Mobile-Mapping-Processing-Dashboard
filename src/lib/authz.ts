@@ -46,13 +46,24 @@ export function normalizeRole(role?: string | null): UserRole {
   return ROLE_VIEWER;
 }
 
+let dynamicPermissionsOverride: Record<string, Record<string, boolean>> | null = null;
+
+export function setDynamicPermissionsOverride(matrix: Record<string, Record<string, boolean>> | null) {
+  dynamicPermissionsOverride = matrix;
+}
+
 export function getRoleCapabilities(role?: string | null): AuthzCapability[] {
   const key = normalizeRole(role);
   return ROLE_CAPABILITIES[key] || ROLE_CAPABILITIES.Viewer;
 }
 
-export function can(role: string | null | undefined, capability: AuthzCapability): boolean {
-  return getRoleCapabilities(role as any).includes(capability);
+export function can(role: string | null | undefined, capability: AuthzCapability | string): boolean {
+  const normRole = normalizeRole(role);
+  if (dynamicPermissionsOverride && dynamicPermissionsOverride[normRole]) {
+    const val = dynamicPermissionsOverride[normRole][capability];
+    if (typeof val === 'boolean') return val;
+  }
+  return getRoleCapabilities(normRole).includes(capability as AuthzCapability);
 }
 
 /** Convenience accessors used by the current UI toggles. */

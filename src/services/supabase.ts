@@ -2459,9 +2459,9 @@ export async function fetchUserAccountsFromSupabase(currentSession?: any): Promi
         authUser.raw_user_meta_data?.role ||
         authUser.app_metadata?.role ||
         authUser.raw_app_meta_data?.role ||
-        (authUser.role === 'admin' || currentSession?.role === 'admin' || email.includes('admin') ? 'Administrator' : null) ||
+        (authUser.role === 'admin' || currentSession?.role === 'admin' || email.includes('admin') || email === 'fariz.farhan95@gmail.com' ? 'Administrator' : null) ||
         existing?.role ||
-        'Administrator';
+        'Viewer';
 
       const nowFormatted = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
       const createdFormatted = authUser.created_at
