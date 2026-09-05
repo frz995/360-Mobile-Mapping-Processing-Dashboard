@@ -718,14 +718,13 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
       authSession?.user?.raw_user_meta_data?.role ||
       authSession?.user?.app_metadata?.role ||
       authSession?.user?.raw_app_meta_data?.role ||
-      (authSession?.user?.role === 'admin' || currentAuthEmail.includes('admin') ? 'Administrator' : 'Survey Operator')
+      (authSession?.user?.role === 'admin' ? 'Administrator' : 'Viewer')
     );
 
   const isAdmin = !isGuest && (
     isAdminRole(userEffectiveRole) ||
     isAdminRole(authSession?.user?.role) ||
-    isAdminRole(authSession?.user?.app_metadata?.role) ||
-    currentAuthEmail.includes('admin')
+    isAdminRole(authSession?.user?.app_metadata?.role)
   );
 
   const cardBg = themeMode === 'light' ? 'bg-white border-slate-200 text-slate-900' : 'bg-card border-subtle text-text-base';

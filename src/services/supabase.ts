@@ -2453,14 +2453,14 @@ export async function fetchUserAccountsFromSupabase(currentSession?: any): Promi
         existing?.name ||
         email.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
 
-      // Live Supabase Metadata takes strict priority over fallback
+      // Live database role from user_accounts or Supabase Auth metadata takes strict priority
       const liveRole =
+        existing?.role ||
         authUser.user_metadata?.role ||
         authUser.raw_user_meta_data?.role ||
         authUser.app_metadata?.role ||
         authUser.raw_app_meta_data?.role ||
-        (authUser.role === 'admin' || currentSession?.role === 'admin' || email.includes('admin') || email === 'fariz.farhan95@gmail.com' ? 'Administrator' : null) ||
-        existing?.role ||
+        (authUser.role === 'admin' || currentSession?.role === 'admin' ? 'Administrator' : null) ||
         'Viewer';
 
       const nowFormatted = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
