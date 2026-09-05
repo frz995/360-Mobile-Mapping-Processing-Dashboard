@@ -804,12 +804,50 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
     [capturedPoints]
   );
 
-  const capturedDistanceKm = useMemo(() => {
+  // Geometric line distance fallback
+  const geometricDistanceKm = useMemo(() => {
     if (capturedTracks.length > 0) {
       return capturedTracks.reduce((sum, trk) => sum + pathLengthLngLatKm(trk), 0);
     }
     return pathLengthLngLatKm(capturedCoords);
   }, [capturedTracks, capturedCoords]);
+
+  // Actual captured length is based on Masterlist total KM per project specification
+  const masterlistTotalKm = useMemo(() => {
+    if (!Array.isArray(internalBatchLogs) || internalBatchLogs.length === 0) {
+      return geometricDistanceKm;
+    }
+
+    if (activeRegionDistricts.length > 0) {
+      const regionSubgrids = new Set(
+        capturedPoints
+          .map((p) => (p.subgrid || '').toUpperCase().trim())
+          .filter(Boolean)
+      );
+
+      const matchingBatches = internalBatchLogs.filter((b) => {
+        const sg = (b.subgrid || '').toUpperCase().trim();
+        return regionSubgrids.has(sg);
+      });
+
+      const sum = matchingBatches.reduce((acc, b) => {
+        const km = Number(b.kmProcessed ?? (b as any).km_processed ?? (b as any).km ?? 0);
+        return acc + (Number.isFinite(km) ? km : 0);
+      }, 0);
+
+      if (sum > 0) return sum;
+    } else {
+      const sum = internalBatchLogs.reduce((acc, b) => {
+        const km = Number(b.kmProcessed ?? (b as any).km_processed ?? (b as any).km ?? 0);
+        return acc + (Number.isFinite(km) ? km : 0);
+      }, 0);
+      if (sum > 0) return sum;
+    }
+
+    return geometricDistanceKm;
+  }, [internalBatchLogs, activeRegionDistricts, capturedPoints, geometricDistanceKm]);
+
+  const capturedDistanceKm = masterlistTotalKm;
 
   const extractedRuns = useMemo(
     () => clipLineStringsToDistricts(extractedLines, selectedDistricts),
@@ -1517,7 +1555,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                       <div className="flex items-center justify-between text-[11px]">
                         <span className="text-text-muted">Actual captured tracks</span>
                         <span className="font-semibold text-text-base">
-                          {capturedTracks.length > 0 ? capturedTracks.length.toLocaleString() : (capturedPoints.length > 0 ? '1' : '0')}
+                          {capturedTracks.length.toLocaleString()}
                         </span>
                       </div>
                       <div className="flex items-center justify-between text-[11px]">
