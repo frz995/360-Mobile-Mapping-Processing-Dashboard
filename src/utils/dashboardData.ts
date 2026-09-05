@@ -203,14 +203,17 @@ export function reconcileBatchLogs(dailyItems: DailyTimeSeries[], baseBatches?: 
     return [];
   }
 
-  // Lookup existing Masterlist Admin PICs
+  // Lookup existing Masterlist records keyed by normalised subgrid.
+  // These carry user-defined status, publishToWebGIS, and pic — all of
+  // which must NOT be overwritten by auto-computed values.
+  const baseBatchMap = new Map<string, BatchLog>();
   const baseBatchPicMap = new Map<string, string>();
   if (baseBatches && Array.isArray(baseBatches)) {
     baseBatches.forEach(b => {
       const sg = (extractSubgridName(b.subgrid || b.imageFilename) || b.subgrid || '').toUpperCase().trim();
-      if (sg && b.pic) {
-        baseBatchPicMap.set(sg, b.pic);
-      }
+      if (!sg) return;
+      baseBatchMap.set(sg, b);
+      if (b.pic) baseBatchPicMap.set(sg, b.pic);
     });
   }
 
@@ -314,12 +317,32 @@ export function reconcileBatchLogs(dailyItems: DailyTimeSeries[], baseBatches?: 
     }
   }
 
-  // Convert map to BatchLog array
+  // Convert map to BatchLog array.
+  // User-defined fields (status, publishToWebGIS, isSyncedWithSupabase, pic) are
+  // preserved from the existing baseBatch record when one exists.  Auto-compute
+  // only fills gaps for brand-new subgrids that have no prior masterlist entry.
   const result: BatchLog[] = [];
   for (const [normSub, entry] of batchMap.entries()) {
     const finalImages = typeof entry.totalImages === 'number' ? entry.totalImages : (typeof entry.publishedImages === 'number' ? entry.publishedImages : 0);
-    const isComplete = entry.publishedRunsCount > 0 && entry.publishedRunsCount === entry.runsCount && finalImages >= entry.totalPoi && entry.totalPoi > 0;
-    const finalStatus: 'Complete' | 'Ongoing' = isComplete ? 'Complete' : 'Ongoing';
+    const existing = baseBatchMap.get(normSub);
+
+    // Preserve user-set status; fall back to auto-derive only when there is no
+    // prior masterlist record for this subgrid.
+    const userStatus = existing?.status;
+    const autoStatus: 'Complete' | 'Ongoing' =
+      entry.publishedRunsCount > 0 &&
+      entry.publishedRunsCount === entry.runsCount &&
+      finalImages >= entry.totalPoi &&
+      entry.totalPoi > 0
+        ? 'Complete'
+        : 'Ongoing';
+    const finalStatus: 'Complete' | 'Ongoing' = userStatus ?? autoStatus;
+
+    // Preserve user-set publish flags; auto-fill only for new subgrids.
+    const userPub = existing?.publishToWebGIS;
+    const userSync = existing?.isSyncedWithSupabase;
+    const autoPub = autoStatus === 'Complete' ? 'yes' : 'in process';
+    const autoSync = autoStatus === 'Complete';
 
     result.push({
       id: 'BATCH-' + normSub,
@@ -337,8 +360,8 @@ export function reconcileBatchLogs(dailyItems: DailyTimeSeries[], baseBatches?: 
       status: finalStatus,
       captureEquipment: entry.captureEquipment,
       panoramas: entry.panoramas,
-      publishToWebGIS: isComplete ? 'yes' : 'in process',
-      isSyncedWithSupabase: isComplete,
+      publishToWebGIS: userPub ?? autoPub,
+      isSyncedWithSupabase: userSync ?? autoSync,
       runsCount: entry.runsCount,
       publishedRunsCount: entry.publishedRunsCount
     });

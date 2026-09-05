@@ -43,44 +43,96 @@ export function OverviewPanel({ analytics, translate }: OverviewPanelProps) {
 
   return (
     <div className="flex flex-col gap-4">
+      {/* Executive Progress Telemetry Summary */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+        <div className="p-3 rounded-xl bg-inner border border-subtle">
+          <div className="text-[9px] uppercase tracking-wider text-text-muted font-mono font-semibold">
+            Contract Road Coverage
+          </div>
+          <div className="text-base font-bold text-text-base font-mono mt-1">
+            {formatNumber(t.km, 2)} km
+          </div>
+          <div className="text-[10px] text-text-muted font-mono mt-0.5">
+            {t.effectiveTargetKm > 0
+              ? `of ${formatNumber(t.effectiveTargetKm, 2)} km (${formatNumber(t.targetProgressKmPct, 1)}%)`
+              : 'Active capture'}
+          </div>
+        </div>
+        <div className="p-3 rounded-xl bg-inner border border-subtle">
+          <div className="text-[9px] uppercase tracking-wider text-text-muted font-mono font-semibold">
+            Subgrids Surveyed
+          </div>
+          <div className="text-base font-bold text-text-base font-mono mt-1">
+            {formatNumber(t.subgrids)}
+          </div>
+          <div className="text-[10px] text-text-muted font-mono mt-0.5">
+            {t.totalProjectSubgrids > t.subgrids
+              ? `of ${formatNumber(t.totalProjectSubgrids)} total project cells`
+              : 'Active 5×5 km cells'}
+          </div>
+        </div>
+        <div className="p-3 rounded-xl bg-inner border border-subtle">
+          <div className="text-[9px] uppercase tracking-wider text-text-muted font-mono font-semibold">
+            Quality Pass Rate
+          </div>
+          <div className="text-base font-bold text-text-base font-mono mt-1">
+            {formatNumber(t.passRate, 1)}%
+          </div>
+          <div className="text-[10px] text-text-muted font-mono mt-0.5">
+            {t.defects === 0 ? '0 defects detected' : `${formatNumber(t.defects)} defect(s)`}
+          </div>
+        </div>
+        <div className="p-3 rounded-xl bg-inner border border-subtle">
+          <div className="text-[9px] uppercase tracking-wider text-text-muted font-mono font-semibold">
+            Publish Pipeline
+          </div>
+          <div className="text-base font-bold text-text-base font-mono mt-1">
+            {t.published > 0 ? `${formatNumber(t.published)} Published` : `${formatNumber(t.staged)} Staged`}
+          </div>
+          <div className="text-[10px] text-text-muted font-mono mt-0.5">
+            {t.partial > 0 ? `${formatNumber(t.partial)} partial subgrid(s)` : 'Live / Verified'}
+          </div>
+        </div>
+      </div>
+
       {/* KPI Telemetry Strip */}
       <div className="bg-card border border-subtle rounded-xl px-4 py-2.5 shadow-sm text-xs flex flex-wrap items-center gap-x-4 gap-y-2">
         <span className="text-[11px] font-bold text-text-muted shrink-0 uppercase tracking-wider">
           Operations Overview:
         </span>
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-mono">
           <span>
-            <span className="text-text-muted">{translate('analyticsKpiSubgrids')}: </span>
+            <span className="text-text-muted font-sans">{translate('analyticsKpiSubgrids')}: </span>
             <strong className="font-semibold text-text-base">{formatNumber(t.subgrids)}</strong>
           </span>
           <span className="text-text-muted">&bull;</span>
           <span>
-            <span className="text-text-muted">{translate('analyticsStatePublished')}: </span>
+            <span className="text-text-muted font-sans">{translate('analyticsStatePublished')}: </span>
             <strong className="font-semibold text-text-base">{formatNumber(t.published)}</strong>
           </span>
           <span className="text-text-muted">&bull;</span>
           <span>
-            <span className="text-text-muted">{translate('analyticsStateStaged')}: </span>
+            <span className="text-text-muted font-sans">{translate('analyticsStateStaged')}: </span>
             <strong className="font-semibold text-text-base">{formatNumber(t.staged)}</strong>
           </span>
           <span className="text-text-muted">&bull;</span>
           <span>
-            <span className="text-text-muted">{translate('analyticsKpiDistance')}: </span>
+            <span className="text-text-muted font-sans">{translate('analyticsKpiDistance')}: </span>
             <strong className="font-semibold text-text-base">{formatNumber(t.km, 2)} km</strong>
           </span>
           <span className="text-text-muted">&bull;</span>
           <span>
-            <span className="text-text-muted">{translate('analyticsKpiPoi')}: </span>
+            <span className="text-text-muted font-sans">{translate('analyticsKpiPoi')}: </span>
             <strong className="font-semibold text-text-base">{formatNumber(t.poi)}</strong>
           </span>
           <span className="text-text-muted">&bull;</span>
           <span>
-            <span className="text-text-muted">{translate('analyticsKpiDefects')}: </span>
+            <span className="text-text-muted font-sans">{translate('analyticsKpiDefects')}: </span>
             <strong className="font-semibold text-text-base">{formatNumber(t.defects)}</strong>
           </span>
           <span className="text-text-muted">&bull;</span>
           <span>
-            <span className="text-text-muted">{translate('analyticsKpiQuality')}: </span>
+            <span className="text-text-muted font-sans">{translate('analyticsKpiQuality')}: </span>
             <strong className="font-semibold text-text-base">{formatNumber(t.passRate, 1)}%</strong>
           </span>
         </div>
@@ -95,7 +147,11 @@ export function OverviewPanel({ analytics, translate }: OverviewPanelProps) {
           <div>
             <div className="flex items-center justify-between text-[11px] mb-1">
               <span className="text-text-muted">{translate('analyticsKpiDistance')}</span>
-              <span className="font-bold">{formatNumber(t.targetProgressKmPct, 1)}%</span>
+              <span className="font-bold font-mono">
+                {t.effectiveTargetKm > 0
+                  ? `${formatNumber(t.km, 2)} km / ${formatNumber(t.effectiveTargetKm, 2)} km (${formatNumber(t.targetProgressKmPct, 1)}%)`
+                  : `${formatNumber(t.km, 2)} km`}
+              </span>
             </div>
             <div className="h-2 rounded-full bg-inner border border-subtle overflow-hidden">
               <div className="h-full rounded-full bg-sky-400 transition-all" style={{ width: `${Math.min(100, t.targetProgressKmPct)}%` }} />
@@ -104,7 +160,11 @@ export function OverviewPanel({ analytics, translate }: OverviewPanelProps) {
           <div>
             <div className="flex items-center justify-between text-[11px] mb-1">
               <span className="text-text-muted">{translate('analyticsKpiFrames')}</span>
-              <span className="font-bold">{formatNumber(t.targetProgressImagesPct, 1)}%</span>
+              <span className="font-bold font-mono">
+                {t.targetImages > 0
+                  ? `${formatNumber(t.frames)} / ${formatNumber(t.targetImages)} (${formatNumber(t.targetProgressImagesPct, 1)}%)`
+                  : `${formatNumber(t.frames)} frames`}
+              </span>
             </div>
             <div className="h-2 rounded-full bg-inner border border-subtle overflow-hidden">
               <div className="h-full rounded-full bg-emerald-400 transition-all" style={{ width: `${Math.min(100, t.targetProgressImagesPct)}%` }} />
@@ -112,16 +172,16 @@ export function OverviewPanel({ analytics, translate }: OverviewPanelProps) {
           </div>
           <div className="grid grid-cols-2 gap-2 mt-1">
             <div className="text-[11px] text-text-muted">
-              {translate('analyticsQaApproved')}: <span className="font-bold text-emerald-300">{formatNumber(t.qaApproved)}</span>
+              {translate('analyticsQaApproved')}: <span className="font-bold text-emerald-300 font-mono">{formatNumber(t.qaApproved)}</span>
             </div>
             <div className="text-[11px] text-text-muted">
-              {translate('analyticsQaRejected')}: <span className="font-bold text-rose-300">{formatNumber(t.qaRejected)}</span>
+              {translate('analyticsQaRejected')}: <span className="font-bold text-rose-300 font-mono">{formatNumber(t.qaRejected)}</span>
             </div>
             <div className="text-[11px] text-text-muted">
-              RAW frames: <span className="font-bold text-amber-300">{formatNumber(t.captureFrames)}</span>
+              RAW Ingested: <span className="font-bold text-amber-300 font-mono">{formatNumber(t.captureFrames)}</span>
             </div>
             <div className="text-[11px] text-text-muted">
-              {translate('analyticsKpiFramesSub')}: <span className="font-bold">{formatNumber(t.frames - t.captureFrames)}</span>
+              Masterlist Reconciled: <span className="font-bold text-sky-300 font-mono">{formatNumber(t.masterlistFrames)}</span>
             </div>
           </div>
         </div>
@@ -129,7 +189,7 @@ export function OverviewPanel({ analytics, translate }: OverviewPanelProps) {
         {/* Publish distribution */}
         <div className="bg-card border border-subtle rounded-xl p-4 flex flex-col">
           <h3 className="text-[11px] font-bold uppercase tracking-wider text-text-muted mb-2">
-            {translate('analyticsPublishDistribution')}
+            Subgrid Publishing Distribution ({formatNumber(t.subgrids)} Subgrids)
           </h3>
           {pieData.length === 0 ? (
             <p className="text-[11px] text-text-muted py-8 text-center">{translate('analyticsEmpty')}</p>
@@ -149,7 +209,7 @@ export function OverviewPanel({ analytics, translate }: OverviewPanelProps) {
                 {pieData.map((p) => (
                   <span key={p.state} className="flex items-center gap-1.5">
                     <span className="w-2.5 h-2.5 rounded-sm" style={{ background: PIE_COLORS[p.state] }} />
-                    {p.name}: {p.value}
+                    {p.name}: <span className="font-mono font-semibold text-text-base">{p.value}</span> {p.value === 1 ? 'Subgrid' : 'Subgrids'}
                   </span>
                 ))}
               </div>

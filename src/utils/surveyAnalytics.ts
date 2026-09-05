@@ -93,12 +93,15 @@ export interface SurveyAnalytics {
     partial: number;
     passRate: number;
     targetKm: number;
+    effectiveTargetKm: number;
     targetImages: number;
+    totalProjectSubgrids: number;
     targetProgressKmPct: number;
     targetProgressImagesPct: number;
     qaApproved: number;
     qaRejected: number;
     captureFrames: number;
+    masterlistFrames: number;
   };
   perSubgrid: SubgridAnalytics[];
   dailySeries: DailySeriesPoint[];
@@ -117,13 +120,28 @@ function poiOf(b: BatchLike): number {
 }
 
 function framesOf(b: BatchLike): number {
-  if (typeof b.availableImagesCount === 'number' && b.availableImagesCount > 0) {
-    return b.availableImagesCount;
+  const rawPoi = Number((b as any).poiCount ?? (b as any).poi ?? (Array.isArray(b.panoramas) ? b.panoramas.length : 0));
+
+  // 1. Explicit verified count from storage verification — gold standard
+  if (typeof b.availableImagesCount === 'number' && b.availableImagesCount >= 0) {
+    return rawPoi > 0 ? Math.min(b.availableImagesCount, rawPoi) : b.availableImagesCount;
   }
+  // 2. Verified filenames list
   const fns = b.availableFilenames?.length;
   if (fns) return fns;
-  return poiOf(b);
+  // 3. Panoramas flagged as available (matches dashboard getImagesProcessedCount logic)
+  if (Array.isArray(b.panoramas) && b.panoramas.length > 0) {
+    const availablePans = (b.panoramas as any[]).filter((p) => p.isAvailable === true);
+    // Only return if at least one is explicitly flagged; otherwise fall through
+    if (availablePans.length > 0) return availablePans.length;
+  }
+  // 4. imagesProcessed / images capped at POI (never over-report)
+  const processed = typeof (b as any).imagesProcessed === 'number' ? (b as any).imagesProcessed : (typeof b.images === 'number' ? b.images : 0);
+  if (processed > 0) return rawPoi > 0 ? Math.min(processed, rawPoi) : processed;
+  // 5. No verified count — return 0 (do NOT fall back to full POI target)
+  return 0;
 }
+
 
 export interface SurveyAnalyticsInput {
   batches?: BatchLike[];
@@ -132,6 +150,8 @@ export interface SurveyAnalyticsInput {
   qaBySubgrid?: Record<string, { approved: number; rejected: number }>;
   targetKm?: number;
   targetImages?: number;
+  roadPlanKm?: number;
+  totalProjectSubgrids?: number;
   /** Optional subgrid allow-list (from the project geographic boundary). */
   boundarySubgrids?: Set<string>;
 }
@@ -157,7 +177,8 @@ export function computeSurveyAnalytics(input: SurveyAnalyticsInput): SurveyAnaly
   const daily = (input.daily || []).filter(Boolean);
   const aggregates = input.aggregates || [];
   const qaBySubgrid = input.qaBySubgrid || {};
-  const targetKm = Number(input.targetKm) || 0;
+  const effectiveTargetKm = Number(input.roadPlanKm) > 0 ? Number(input.roadPlanKm) : (Number(input.targetKm) || 0);
+  const targetKm = effectiveTargetKm;
   const targetImages = Number(input.targetImages) || 0;
 
   // Merge batch + daily rows per subgrid (batch values take precedence).
@@ -330,21 +351,28 @@ export function computeSurveyAnalytics(input: SurveyAnalyticsInput): SurveyAnaly
   const totalQaRejected = perSubgrid.reduce((a, s) => a + s.qaRejected, 0);
   const totalCaptureFrames = aggregates.reduce((a, g) => a + g.frames, 0);
   const passRate = totalPoi > 0 ? Math.round(((totalPoi - totalDefects) / totalPoi) * 100) : 100;
+  const totalProjectSubgrids = Number(input.totalProjectSubgrids) > 0 ? Number(input.totalProjectSubgrids) : perSubgrid.length;
 
   return {
     totals: {
       km: Math.round(totalKm * 100) / 100,
       poi: totalPoi,
+      // frames = per-subgrid deduplicated masterlist count (Masterlist Reconciled)
       frames: totalFrames,
+      masterlistFrames: totalFrames,
       defects: totalDefects,
       subgrids: perSubgrid.length,
+      totalProjectSubgrids,
       published,
       staged,
       partial,
       passRate,
       targetKm,
+      effectiveTargetKm,
       targetImages,
-      targetProgressKmPct: targetKm > 0 ? Math.min(100, (totalKm / targetKm) * 100) : 0,
+      targetProgressKmPct: effectiveTargetKm > 0 ? Math.min(100, (totalKm / effectiveTargetKm) * 100) : 0,
+      // Processed Frames bar uses totalFrames (verified available — matches dashboard KPI).
+      // captureFrames (staging panoramas) is kept as an informational sub-label only.
       targetProgressImagesPct: targetImages > 0 ? Math.min(100, (totalFrames / targetImages) * 100) : 0,
       qaApproved: totalQaApproved,
       qaRejected: totalQaRejected,

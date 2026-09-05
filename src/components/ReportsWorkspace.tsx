@@ -92,9 +92,10 @@ export const ReportsWorkspace: React.FC<ReportsWorkspaceProps> = ({
         aggregates: aggregateStagingBySubgrid(stagingRows),
         targetKm: Number(projectSettings?.targetKm) || 0,
         targetImages: Number(projectSettings?.targetImages) || 0,
+        roadPlanKm: Number(projectSettings?.roadAnalysisState?.planDistanceKm) || undefined,
         boundarySubgrids
       }),
-    [batchLogs, dailyData, stagingRows, projectSettings?.targetKm, projectSettings?.targetImages, boundarySubgrids]
+    [batchLogs, dailyData, stagingRows, projectSettings?.targetKm, projectSettings?.targetImages, projectSettings?.roadAnalysisState?.planDistanceKm, boundarySubgrids]
   );
 
   const generate = (builder: () => string) => {
