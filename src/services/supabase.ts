@@ -1,5 +1,6 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { QADefectRecord, QAQCAuditRunRecord, ExtendedProjectSettings } from '../types/admin';
+import type { BatchLog } from '../types/dashboard';
 import type { DatasetRecord, ExternalJobStatus, ProcessingJobRecord, ProcessingJobStatus } from '../types/production';
 import { calculatePathDistanceKm } from '../utils/geo';
 import type { ExtractedRoadLine } from './roadExtraction';
@@ -20,6 +21,7 @@ export {
 };
 export type { StorageProviderType, ResolveUrlOptions };
 import { formatPIC } from '../utils/picFormat';
+import { batchLogToDbRow } from '../utils/dashboardData';
 import { getDatabaseTableMapping, type DatabaseTableMapping } from './supabaseConfig';
 
 export { formatPIC, getDatabaseTableMapping };
@@ -2305,6 +2307,83 @@ export async function saveProjectSettingsToSupabase(settings: any): Promise<bool
     console.warn('Exception saving project settings:', err);
     return true;
   }
+}
+
+/**
+ * Persistable user-edited masterlist batch fields.
+ * Only these user-defined values are read back from / written to the
+ * configured `batch_logs` table; derived metrics (defects, km, POI) are
+ * always recomputed live from the daily/panoramas data.
+ */
+export interface BatchLogOverride {
+  status?: 'Complete' | 'Ongoing' | string;
+  pic?: string;
+  publishToWebGIS?: string;
+  isSyncedWithSupabase?: boolean;
+}
+
+/**
+ * Load user-defined masterlist batch overrides from the configured `batch_logs`
+ * table, keyed by normalized UPPER subgrid. Fail-open: any error resolves to an
+ * empty map so data loading is never blocked by a missing table or RLS config.
+ */
+export async function fetchBatchLogOverridesFromSupabase(settings?: any): Promise<Record<string, BatchLogOverride>> {
+  const overrides: Record<string, BatchLogOverride> = {};
+  try {
+    const batchLogsTableName = getDatabaseTableMapping(settings).batchLogsTable;
+    const { data, error } = await supabase
+      .from(batchLogsTableName)
+      .select('subgrid, status, pic, publish_to_webgis, is_synced_with_supabase');
+
+    if (error) {
+      console.warn('fetchBatchLogOverridesFromSupabase notice:', error.message);
+      return overrides;
+    }
+
+    (data || []).forEach((row) => {
+      const rawSg = row?.subgrid;
+      if (!rawSg) return;
+      const sg = String(rawSg).toUpperCase().trim();
+      if (!sg) return;
+      overrides[sg] = {
+        ...(row.status && String(row.status).trim() ? { status: row.status as string } : {}),
+        ...(row.pic && String(row.pic).trim() ? { pic: row.pic as string } : {}),
+        ...(row.publish_to_webgis && String(row.publish_to_webgis).trim() ? { publishToWebGIS: row.publish_to_webgis as string } : {}),
+        ...(row.is_synced_with_supabase !== undefined && row.is_synced_with_supabase !== null
+          ? isTrueish(row.is_synced_with_supabase) ? { isSyncedWithSupabase: true } : { isSyncedWithSupabase: false }
+          : {})
+      };
+    });
+  } catch (err) {
+    console.warn('fetchBatchLogOverridesFromSupabase exception:', err);
+  }
+  return overrides;
+}
+
+const isTrueish = (v: unknown): boolean => v === true || v === 'true' || v === 'yes' || v === 1 || Number(v) === 1;
+
+/**
+ * Persist a user-defined batch (status / PIC / publish flags) to the configured
+ * `batch_logs` table. Fire-and-forget friendly: returns false on any failure and
+ * never throws, mirroring saveProjectSettingsToSupabase's graceful fail-open.
+ */
+export async function persistBatchLogToSupabase(batch: BatchLog, settings?: any): Promise<boolean> {
+  try {
+    const batchLogsTableName = getDatabaseTableMapping(settings).batchLogsTable;
+    const row = batchLogToDbRow(batch);
+    if (!row.subgrid) return true;
+
+    const { error } = await supabase
+      .from(batchLogsTableName)
+      .upsert([row], { onConflict: 'subgrid' });
+
+    if (error) {
+      console.warn('persistBatchLogToSupabase upsert notice:', error.message);
+    }
+  } catch (err) {
+    console.warn('persistBatchLogToSupabase exception:', err);
+  }
+  return true;
 }
 
 export interface RoadAnalysisProductionState {

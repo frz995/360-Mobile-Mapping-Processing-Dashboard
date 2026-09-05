@@ -7,7 +7,9 @@ import {
   formatDisplayDate,
   toISODateString,
   createBatchLogFromSupabaseOrDummy,
-  reconcileBatchLogs
+  reconcileBatchLogs,
+  applyBatchLogOverrides,
+  batchLogToDbRow
 } from '../dashboardData'
 
 afterEach(() => {
@@ -328,5 +330,80 @@ describe('reconcileBatchLogs', () => {
     )
     expect(logs[0].status).toBe('Complete')
     expect(logs[0].publishToWebGIS).toBe('yes')
+  })
+})
+
+describe('applyBatchLogOverrides', () => {
+  const base = {
+    id: 'BATCH-N93E70',
+    date: '2026-08-19',
+    grid: '1',
+    subgrid: 'N93E70',
+    imageFilename: 'N93E70-0001.jpg',
+    images: 3,
+    defects: 0,
+    kmProcessed: 5,
+    status: 'Ongoing' as const,
+    pic: 'Admin',
+    publishToWebGIS: 'no'
+  }
+
+  it('applies user-defined status override keyed by normalized subgrid', () => {
+    const next = applyBatchLogOverrides(base, { N93E70: { status: 'Complete' } })
+    expect(next.status).toBe('Complete')
+    expect(next.defects).toBe(0)
+    expect(next.pic).toBe('Admin')
+  })
+
+  it('matches image-filename based subgrids and applies pic override', () => {
+    const next = applyBatchLogOverrides(base, { N93E70: { pic: 'Farah' } })
+    expect(next.pic).toBe('Farah')
+    expect(next.status).toBe('Ongoing')
+  })
+
+  it('never clobbers derived metrics (defects/km) from overrides', () => {
+    const next = applyBatchLogOverrides(base, { N93E70: { status: 'Complete', isSyncedWithSupabase: true } })
+    expect(next.defects).toBe(0)
+    expect(next.kmProcessed).toBe(5)
+    expect(next.isSyncedWithSupabase).toBe(true)
+  })
+
+  it('applies no overrides when the subgrid is missing from the map', () => {
+    const next = applyBatchLogOverrides(base, { N94E71: { status: 'Complete' } })
+    expect(next.status).toBe('Ongoing')
+  })
+
+  it('ignores override maps without a matching normalized subgrid', () => {
+    const next = applyBatchLogOverrides(base, { n93e70x: { status: 'Complete' } })
+    expect(next.status).toBe('Ongoing')
+  })
+})
+
+describe('batchLogToDbRow', () => {
+  it('maps user fields with snake_case column names and normalized subgrid', () => {
+    const row = batchLogToDbRow({
+      id: 'BATCH-N93E70',
+      date: '2026-08-19',
+      grid: '1',
+      subgrid: 'n93e70-0002',
+      imageFilename: 'N93E70-0001.jpg',
+      images: 3,
+      defects: 4,
+      kmProcessed: 5,
+      status: 'Ongoing',
+      pic: 'Farah',
+      publishToWebGIS: 'in process',
+      isSyncedWithSupabase: true
+    })
+    expect(row.subgrid).toBe('N93E70')
+    expect(row.status).toBe('Ongoing')
+    expect(row.pic).toBe('Farah')
+    expect(row.publish_to_webgis).toBe('in process')
+    expect(row.is_synced_with_supabase).toBe(true)
+    expect(row.updated_at).toBeTruthy()
+  })
+
+  it('derives publish_to_webgis from isSyncedWithSupabase when unset', () => {
+    expect(batchLogToDbRow({ date: '2026-01-01', grid: '1', subgrid: 'N92E71', imageFilename: 'N92E71-0001.jpg', images: 1, defects: 0, kmProcessed: 1, status: 'Complete', isSyncedWithSupabase: true }).publish_to_webgis).toBe('yes')
   })
 })

@@ -369,3 +369,46 @@ export function reconcileBatchLogs(dailyItems: DailyTimeSeries[], baseBatches?: 
 
   return result;
 }
+
+// Helper: Apply persisted user-defined batch overrides (status / PIC / publish flags)
+// for a single batch. Only the user-editable fields are overridden; derived metrics
+// (defects, km, POI) are never touched.
+export function applyBatchLogOverrides(
+  batch: BatchLog,
+  overrides: Record<string, Partial<Pick<BatchLog, 'pic' | 'publishToWebGIS' | 'isSyncedWithSupabase'> & { status?: BatchLog['status'] | string }>>
+): BatchLog {
+  const sg = (extractSubgridName(batch.subgrid || batch.imageFilename || '') || '').toUpperCase().trim();
+  const override = sg ? overrides?.[sg] : undefined;
+  if (!override) return batch;
+  return {
+    ...batch,
+    ...(override.status !== undefined ? { status: override.status as BatchLog['status'] } : {}),
+    ...(override.pic !== undefined ? { pic: override.pic } : {}),
+    ...(override.publishToWebGIS !== undefined ? { publishToWebGIS: override.publishToWebGIS } : {}),
+    ...(override.isSyncedWithSupabase !== undefined ? { isSyncedWithSupabase: override.isSyncedWithSupabase } : {})
+  };
+}
+
+/**
+ * Pure mapping of a BatchLog into a `batch_logs` table row (user fields only).
+ * Only the user-editable fields are persisted; derived metrics (defects, km,
+ * POI) are always recomputed live and never read back from this table.
+ */
+export function batchLogToDbRow(batch: BatchLog): {
+  subgrid: string;
+  status: string;
+  pic: string;
+  publish_to_webgis: string;
+  is_synced_with_supabase: boolean;
+  updated_at: string;
+} {
+  const rawSg = batch.subgrid || batch.imageFilename || '';
+  return {
+    subgrid: (extractSubgridName(rawSg) || rawSg).toUpperCase().trim(),
+    status: batch.status || 'Ongoing',
+    pic: batch.pic || '',
+    publish_to_webgis: batch.publishToWebGIS || (batch.isSyncedWithSupabase ? 'yes' : 'no'),
+    is_synced_with_supabase: Boolean(batch.isSyncedWithSupabase),
+    updated_at: new Date().toISOString()
+  };
+}

@@ -60,6 +60,7 @@ import {
   fetchRecycleBinFromSupabase,
   formatPIC,
   saveAuditLogToSupabase,
+  persistBatchLogToSupabase,
   type RecycleBinItem
 } from '../services/supabase';
 import type { DatasetRecord, ProcessingJobRecord } from '../types/production';
@@ -1824,6 +1825,8 @@ export const DataManagementPage = ({
     } else {
       const updatedBatches = batchLogs.map(b => getItemId(b) === id ? { ...b, status: 'Complete' as const, isSyncedWithSupabase: true } : b);
       setBatchLogs(updatedBatches);
+      const publishedBatch = updatedBatches.find(b => getItemId(b) === id);
+      if (publishedBatch) persistBatchLogToSupabase(publishedBatch as BatchLog, projectSettings);
     }
 
     // 2. Async Background Publish & Storage Verification
@@ -1940,8 +1943,15 @@ export const DataManagementPage = ({
           return b;
         });
         setBatchLogs(updatedBatches);
+        const mergedTarget = updatedBatches.find(b => {
+          const bNorm = (extractSubgridName(b.subgrid || b.imageFilename) || b.subgrid || '').toUpperCase().trim();
+          return b.id === editingItem.id || (bNorm && bNorm === normSg);
+        });
+        if (mergedTarget) persistBatchLogToSupabase(mergedTarget as BatchLog, projectSettings);
       } else {
-        setBatchLogs([...batchLogs, { ...batchItem, id: Date.now().toString() }]);
+        const newBatch = { ...batchItem, id: Date.now().toString() };
+        setBatchLogs([...batchLogs, newBatch]);
+        persistBatchLogToSupabase(newBatch as BatchLog, projectSettings);
       }
     } else {
       const dailyItem = item as DailyTimeSeries;
