@@ -214,7 +214,6 @@ export function extractPanotrackPoints(
   if (Array.isArray(batchLogs) && batchLogs.length > 0) {
     batchLogs.forEach((b, bIdx) => {
       const sg = (b.subgrid || '').toUpperCase().trim();
-      const bRunPoints: Array<[number, number]> = [];
       const bPub = (b.publishToWebGIS || '').toLowerCase().trim();
 
       if (Array.isArray(b.panoramas) && b.panoramas.length > 0) {
@@ -270,7 +269,6 @@ export function extractPanotrackPoints(
               color
             });
           }
-          bRunPoints.push([lng, lat]);
         });
       } else if (Array.isArray(b.points) && b.points.length > 0) {
         b.points.forEach((pt: any, ptIdx: number) => {
@@ -300,13 +298,10 @@ export function extractPanotrackPoints(
               color
             });
           }
-          bRunPoints.push([lng, lat]);
         });
       }
-
-      if (bRunPoints.length >= 2) {
-        tracks.push(bRunPoints);
-      }
+      // Note: Tracks are extracted strictly from dailyData (dailylist only) per operational protocol,
+      // excluding masterlist batchLogs from trajectory track counts.
     });
   }
 
