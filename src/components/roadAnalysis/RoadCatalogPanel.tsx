@@ -23,6 +23,7 @@ import {
   GripHorizontal
 } from 'lucide-react';
 import type { CatalogVectorLayer } from '../../utils/gisImportParser';
+import { CommitSlider } from './CommitSlider';
 
 export interface SystemLayerStyles {
   districtBoundary: {
@@ -48,7 +49,17 @@ export interface RoadCatalogPanelProps {
   catalogLayers: CatalogVectorLayer[];
   systemStyles: SystemLayerStyles;
   onUpdateSystemStyles: (updater: (prev: SystemLayerStyles) => SystemLayerStyles) => void;
+  /**
+   * Live-only system style preview during slider drags. Cheap state-only update
+   * that must NOT persist or mark the workspace dirty.
+   */
+  onPreviewSystemStyles?: (updater: (prev: SystemLayerStyles) => SystemLayerStyles) => void;
   onUpdateCatalogLayer: (layerId: string, updates: Partial<CatalogVectorLayer>) => void;
+  /**
+   * Live-only catalog layer style preview during slider drags. State-only, must
+   * NOT persist or mark the workspace dirty.
+   */
+  onLiveUpdateCatalogLayer?: (layerId: string, updates: Partial<CatalogVectorLayer>) => void;
   onRemoveCatalogLayer: (layerId: string) => void;
   onZoomToLayer: (bbox: [number, number, number, number]) => void;
   onSetAsActivePlan?: (layer: CatalogVectorLayer) => void;
@@ -434,7 +445,9 @@ export const RoadCatalogPanel: React.FC<RoadCatalogPanelProps> = ({
   catalogLayers,
   systemStyles,
   onUpdateSystemStyles,
+  onPreviewSystemStyles,
   onUpdateCatalogLayer,
+  onLiveUpdateCatalogLayer,
   onRemoveCatalogLayer,
   onZoomToLayer,
   onSetAsActivePlan,
@@ -616,18 +629,26 @@ export const RoadCatalogPanel: React.FC<RoadCatalogPanelProps> = ({
                         {Math.round(systemStyles.districtBoundary.opacity * 100)}%
                       </span>
                     </div>
-                    <input
-                      type="range"
-                      min="0"
-                      max="1"
-                      step="0.05"
+                    <CommitSlider
                       value={systemStyles.districtBoundary.opacity}
-                      onChange={(e) =>
+                      min={0}
+                      max={1}
+                      step={0.05}
+                      onPreview={(v) =>
+                        onPreviewSystemStyles?.((prev) => ({
+                          ...prev,
+                          districtBoundary: {
+                            ...prev.districtBoundary,
+                            opacity: v
+                          }
+                        }))
+                      }
+                      onCommit={(v) =>
                         onUpdateSystemStyles((prev) => ({
                           ...prev,
                           districtBoundary: {
                             ...prev.districtBoundary,
-                            opacity: parseFloat(e.target.value)
+                            opacity: v
                           }
                         }))
                       }
@@ -643,18 +664,26 @@ export const RoadCatalogPanel: React.FC<RoadCatalogPanelProps> = ({
                         {systemStyles.districtBoundary.strokeWidth} px
                       </span>
                     </div>
-                    <input
-                      type="range"
-                      min="1"
-                      max="6"
-                      step="0.5"
+                    <CommitSlider
                       value={systemStyles.districtBoundary.strokeWidth}
-                      onChange={(e) =>
+                      min={1}
+                      max={6}
+                      step={0.5}
+                      onPreview={(v) =>
+                        onPreviewSystemStyles?.((prev) => ({
+                          ...prev,
+                          districtBoundary: {
+                            ...prev.districtBoundary,
+                            strokeWidth: v
+                          }
+                        }))
+                      }
+                      onCommit={(v) =>
                         onUpdateSystemStyles((prev) => ({
                           ...prev,
                           districtBoundary: {
                             ...prev.districtBoundary,
-                            strokeWidth: parseFloat(e.target.value)
+                            strokeWidth: v
                           }
                         }))
                       }
@@ -705,18 +734,26 @@ export const RoadCatalogPanel: React.FC<RoadCatalogPanelProps> = ({
                         {Math.round(systemStyles.capturedPoints.opacity * 100)}%
                       </span>
                     </div>
-                    <input
-                      type="range"
-                      min="0.1"
-                      max="1"
-                      step="0.05"
+                    <CommitSlider
                       value={systemStyles.capturedPoints.opacity}
-                      onChange={(e) =>
+                      min={0.1}
+                      max={1}
+                      step={0.05}
+                      onPreview={(v) =>
+                        onPreviewSystemStyles?.((prev) => ({
+                          ...prev,
+                          capturedPoints: {
+                            ...prev.capturedPoints,
+                            opacity: v
+                          }
+                        }))
+                      }
+                      onCommit={(v) =>
                         onUpdateSystemStyles((prev) => ({
                           ...prev,
                           capturedPoints: {
                             ...prev.capturedPoints,
-                            opacity: parseFloat(e.target.value)
+                            opacity: v
                           }
                         }))
                       }
@@ -732,18 +769,26 @@ export const RoadCatalogPanel: React.FC<RoadCatalogPanelProps> = ({
                         {systemStyles.capturedPoints.pointRadius} px
                       </span>
                     </div>
-                    <input
-                      type="range"
-                      min="2"
-                      max="8"
-                      step="0.5"
+                    <CommitSlider
                       value={systemStyles.capturedPoints.pointRadius}
-                      onChange={(e) =>
+                      min={2}
+                      max={8}
+                      step={0.5}
+                      onPreview={(v) =>
+                        onPreviewSystemStyles?.((prev) => ({
+                          ...prev,
+                          capturedPoints: {
+                            ...prev.capturedPoints,
+                            pointRadius: v
+                          }
+                        }))
+                      }
+                      onCommit={(v) =>
                         onUpdateSystemStyles((prev) => ({
                           ...prev,
                           capturedPoints: {
                             ...prev.capturedPoints,
-                            pointRadius: parseFloat(e.target.value)
+                            pointRadius: v
                           }
                         }))
                       }
@@ -813,18 +858,26 @@ export const RoadCatalogPanel: React.FC<RoadCatalogPanelProps> = ({
                         {Math.round(systemStyles.roadPlan.opacity * 100)}%
                       </span>
                     </div>
-                    <input
-                      type="range"
-                      min="0"
-                      max="1"
-                      step="0.05"
+                    <CommitSlider
                       value={systemStyles.roadPlan.opacity}
-                      onChange={(e) =>
+                      min={0}
+                      max={1}
+                      step={0.05}
+                      onPreview={(v) =>
+                        onPreviewSystemStyles?.((prev) => ({
+                          ...prev,
+                          roadPlan: {
+                            ...prev.roadPlan,
+                            opacity: v
+                          }
+                        }))
+                      }
+                      onCommit={(v) =>
                         onUpdateSystemStyles((prev) => ({
                           ...prev,
                           roadPlan: {
                             ...prev.roadPlan,
-                            opacity: parseFloat(e.target.value)
+                            opacity: v
                           }
                         }))
                       }
@@ -840,18 +893,26 @@ export const RoadCatalogPanel: React.FC<RoadCatalogPanelProps> = ({
                         {systemStyles.roadPlan.strokeWidth} px
                       </span>
                     </div>
-                    <input
-                      type="range"
-                      min="1"
-                      max="8"
-                      step="0.5"
+                    <CommitSlider
                       value={systemStyles.roadPlan.strokeWidth}
-                      onChange={(e) =>
+                      min={1}
+                      max={8}
+                      step={0.5}
+                      onPreview={(v) =>
+                        onPreviewSystemStyles?.((prev) => ({
+                          ...prev,
+                          roadPlan: {
+                            ...prev.roadPlan,
+                            strokeWidth: v
+                          }
+                        }))
+                      }
+                      onCommit={(v) =>
                         onUpdateSystemStyles((prev) => ({
                           ...prev,
                           roadPlan: {
                             ...prev.roadPlan,
-                            strokeWidth: parseFloat(e.target.value)
+                            strokeWidth: v
                           }
                         }))
                       }
@@ -1147,17 +1208,13 @@ export const RoadCatalogPanel: React.FC<RoadCatalogPanelProps> = ({
                               {Math.round((layer.opacity ?? 0.85) * 100)}%
                             </span>
                           </div>
-                          <input
-                            type="range"
-                            min="0.05"
-                            max="1"
-                            step="0.05"
+                          <CommitSlider
                             value={layer.opacity ?? 0.85}
-                            onChange={(e) =>
-                              onUpdateCatalogLayer(layer.id, {
-                                opacity: parseFloat(e.target.value)
-                              })
-                            }
+                            min={0.05}
+                            max={1}
+                            step={0.05}
+                            onPreview={(v) => onLiveUpdateCatalogLayer?.(layer.id, { opacity: v })}
+                            onCommit={(v) => onUpdateCatalogLayer(layer.id, { opacity: v })}
                             style={getSliderStyle(layer.color)}
                             className="slider-sm"
                           />
@@ -1171,17 +1228,13 @@ export const RoadCatalogPanel: React.FC<RoadCatalogPanelProps> = ({
                               {layer.strokeWidth ?? 3} px
                             </span>
                           </div>
-                          <input
-                            type="range"
-                            min="0.5"
-                            max="10"
-                            step="0.5"
+                          <CommitSlider
                             value={layer.strokeWidth ?? 3}
-                            onChange={(e) =>
-                              onUpdateCatalogLayer(layer.id, {
-                                strokeWidth: parseFloat(e.target.value)
-                              })
-                            }
+                            min={0.5}
+                            max={10}
+                            step={0.5}
+                            onPreview={(v) => onLiveUpdateCatalogLayer?.(layer.id, { strokeWidth: v })}
+                            onCommit={(v) => onUpdateCatalogLayer(layer.id, { strokeWidth: v })}
                             style={getSliderStyle(layer.color)}
                             className="slider-sm"
                           />
@@ -1324,17 +1377,13 @@ export const RoadCatalogPanel: React.FC<RoadCatalogPanelProps> = ({
                                     {Math.round((layer.fillOpacity ?? 0.35) * 100)}%
                                   </span>
                                 </div>
-                                <input
-                                  type="range"
-                                  min="0.05"
-                                  max="1"
-                                  step="0.05"
+                                <CommitSlider
                                   value={layer.fillOpacity ?? 0.35}
-                                  onChange={(e) =>
-                                    onUpdateCatalogLayer(layer.id, {
-                                      fillOpacity: parseFloat(e.target.value)
-                                    })
-                                  }
+                                  min={0.05}
+                                  max={1}
+                                  step={0.05}
+                                  onPreview={(v) => onLiveUpdateCatalogLayer?.(layer.id, { fillOpacity: v })}
+                                  onCommit={(v) => onUpdateCatalogLayer(layer.id, { fillOpacity: v })}
                                   style={getSliderStyle(layer.fillColor || layer.color)}
                                   className="slider-sm"
                                 />
@@ -1359,17 +1408,13 @@ export const RoadCatalogPanel: React.FC<RoadCatalogPanelProps> = ({
                                 {layer.pointRadius ?? 6} px
                               </span>
                             </div>
-                            <input
-                              type="range"
-                              min="2"
-                              max="16"
-                              step="0.5"
+                            <CommitSlider
                               value={layer.pointRadius ?? 6}
-                              onChange={(e) =>
-                                onUpdateCatalogLayer(layer.id, {
-                                  pointRadius: parseFloat(e.target.value)
-                                })
-                              }
+                              min={2}
+                              max={16}
+                              step={0.5}
+                              onPreview={(v) => onLiveUpdateCatalogLayer?.(layer.id, { pointRadius: v })}
+                              onCommit={(v) => onUpdateCatalogLayer(layer.id, { pointRadius: v })}
                               style={getSliderStyle(layer.color)}
                               className="slider-sm"
                             />
@@ -1465,13 +1510,13 @@ export const RoadCatalogPanel: React.FC<RoadCatalogPanelProps> = ({
                                 <span className="text-text-muted font-medium">Font Size</span>
                                 <span className="font-mono text-text-base font-semibold">{layer.labelSize ?? 11} px</span>
                               </div>
-                              <input
-                                type="range"
-                                min="8" max="22" step="1"
+                              <CommitSlider
                                 value={layer.labelSize ?? 11}
-                                onChange={(e) =>
-                                  onUpdateCatalogLayer(layer.id, { labelSize: parseInt(e.target.value, 10) })
-                                }
+                                min={8}
+                                max={22}
+                                step={1}
+                                onPreview={(v) => onLiveUpdateCatalogLayer?.(layer.id, { labelSize: v })}
+                                onCommit={(v) => onUpdateCatalogLayer(layer.id, { labelSize: v })}
                                 style={getSliderStyle(layer.labelColor || layer.color)}
                                 className="slider-sm"
                               />
@@ -1535,13 +1580,13 @@ export const RoadCatalogPanel: React.FC<RoadCatalogPanelProps> = ({
                                 <span className="text-text-muted font-medium">Halo Width</span>
                                 <span className="font-mono text-text-base font-semibold">{layer.labelHaloWidth ?? 2} px</span>
                               </div>
-                              <input
-                                type="range"
-                                min="0" max="5" step="0.5"
+                              <CommitSlider
                                 value={layer.labelHaloWidth ?? 2}
-                                onChange={(e) =>
-                                  onUpdateCatalogLayer(layer.id, { labelHaloWidth: parseFloat(e.target.value) })
-                                }
+                                min={0}
+                                max={5}
+                                step={0.5}
+                                onPreview={(v) => onLiveUpdateCatalogLayer?.(layer.id, { labelHaloWidth: v })}
+                                onCommit={(v) => onUpdateCatalogLayer(layer.id, { labelHaloWidth: v })}
                                 style={getSliderStyle(layer.labelHaloColor || '#090d16')}
                                 className="slider-sm"
                               />

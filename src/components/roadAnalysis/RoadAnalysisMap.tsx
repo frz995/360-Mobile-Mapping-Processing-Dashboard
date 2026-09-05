@@ -59,6 +59,12 @@ export interface RoadAnalysisMapProps {
   selectedFeature?: any;
   /** Callback fired when a survey point is clicked, passing its subgrid code. */
   onSelectSubgrid?: (subgrid: string) => void;
+  /**
+   * Optional ref filled with the live MapLibre map instance so parent
+   * workspace panels (e.g. Print) can read the current camera/extent or
+   * capture the canvas.
+   */
+  mapInstanceRef?: React.MutableRefObject<MaplibreMap | null>;
 }
 
 const DEFAULT_CENTER: [number, number] = [101.9758, 4.2105];
@@ -274,7 +280,8 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
   systemStyles,
   focusBbox,
   selectedFeature,
-  onSelectSubgrid
+  onSelectSubgrid,
+  mapInstanceRef
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MaplibreMap | null>(null);
@@ -848,6 +855,7 @@ function areStylesEqual(a?: string | StyleSpecification, b?: string | StyleSpeci
       attributionControl: false
     });
     mapRef.current = map;
+    if (mapInstanceRef) mapInstanceRef.current = map;
     map.on('load', () => {
       styleLoadedRef.current = true;
       buildOverlayRef.current?.();
@@ -857,7 +865,7 @@ function areStylesEqual(a?: string | StyleSpecification, b?: string | StyleSpeci
       console.warn('[RoadAnalysisMap] MapLibre warning/error:', e);
     });
     return map;
-  }, []);
+  }, [mapInstanceRef]);
 
   // Create the map once on mount with the initial style.
   useEffect(() => {
@@ -873,6 +881,7 @@ function areStylesEqual(a?: string | StyleSpecification, b?: string | StyleSpeci
       if (current) {
         current.remove();
         mapRef.current = null;
+        if (mapInstanceRef) mapInstanceRef.current = null;
       }
       styleLoadedRef.current = false;
     };

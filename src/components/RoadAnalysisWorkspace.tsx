@@ -12,8 +12,10 @@ import {
   Upload,
   GitCompare,
   ArrowRightLeft,
+  Printer,
   Search
 } from 'lucide-react';
+import type { Map as MaplibreMap } from 'maplibre-gl';
 import { UnderlineTabStrip, StatusDot, type ChromeTab } from './production/chrome';
 import {
   MALAYSIA_DISTRICTS,
@@ -27,6 +29,7 @@ import {
 } from './boundary/malaysiaDistricts';
 import { RoadAnalysisMap } from './roadAnalysis/RoadAnalysisMap';
 import { RoadImportPanel } from './roadAnalysis/RoadImportPanel';
+import { RoadAnalysisPrintPanel } from './roadAnalysis/RoadAnalysisPrintPanel';
 import { RoadCatalogPanel, RoadAttributeTableDrawer, type SystemLayerStyles } from './roadAnalysis/RoadCatalogPanel';
 import type { CatalogVectorLayer } from '../utils/gisImportParser';
 import { getRoadExtractionAdapter, type ExtractedRoadLine } from '../services/roadExtraction';
@@ -57,7 +60,7 @@ export interface RoadAnalysisWorkspaceProps {
   addAuditLog?: (type: AuditLogItem['type'], title: string, details: string, status?: AuditLogItem['status']) => void;
 }
 
-type RoadTab = 'region' | 'plan' | 'import' | 'catalog' | 'compare' | 'allocation';
+type RoadTab = 'region' | 'plan' | 'import' | 'catalog' | 'compare' | 'allocation' | 'print';
 type PlanSource = 'system' | 'manual' | 'extracted';
 
 export function getAuthStorageUserKey(authSession?: any, isGuestUser?: boolean): string {
@@ -219,7 +222,8 @@ const TABS: ChromeTab<RoadTab>[] = [
   { key: 'import', icon: <Upload size={14} /> },
   { key: 'catalog', icon: <Layers size={14} /> },
   { key: 'compare', icon: <GitCompare size={14} /> },
-  { key: 'allocation', icon: <ArrowRightLeft size={14} /> }
+  { key: 'allocation', icon: <ArrowRightLeft size={14} /> },
+  { key: 'print', icon: <Printer size={14} /> }
 ];
 
 const TAB_LABEL: Record<RoadTab, string> = {
@@ -228,7 +232,8 @@ const TAB_LABEL: Record<RoadTab, string> = {
   import: 'Import Data',
   catalog: 'Data Catalog',
   compare: 'Compare',
-  allocation: 'Allocation'
+  allocation: 'Allocation',
+  print: 'Print'
 };
 
 function rasterStyle(tilesUrl: string) {
@@ -370,6 +375,10 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
   const [showRulesModal, setShowRulesModal] = useState<boolean>(false);
   const [rulesModalTab, setRulesModalTab] = useState<'rules' | 'scenarios'>('rules');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  // Live main-map instance (for the Print panel's "Current map extent" mode).
+  const liveMapRef = useRef<MaplibreMap | null>(null);
+  // Print-preview map instance (owned by RoadAnalysisPrintPanel).
+  const printMapRef = useRef<MaplibreMap | null>(null);
 
   useEffect(() => {
     ensureDistrictGeometriesLoaded()
@@ -466,7 +475,10 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
     const dirty = cache.savedToCloud === false ||
       (Number.isFinite(localEditAt) && Number.isFinite(cloudEditAt) && localEditAt > cloudEditAt);
     setHasUnsavedEdits(!!dirty);
-  }, [userKey, refreshTick, extractedLines, planSource, manualGeoJson, catalogLayers, systemStyles]);
+    // Region, districts, basemap, road-line visibility and active tab all touch
+    // the saved fingerprint, so the banner must re-evaluate when they change.
+  }, [userKey, refreshTick, extractedLines, planSource, manualGeoJson, catalogLayers, systemStyles,
+    selectedStateCode, selectedDistrictIds, mapBasemap, showRoadLines, activeTab]);
 
   const [lastSavedFingerprint, setLastSavedFingerprint] = useState<string | null>(() => {
     const saved = loadRoadAnalysisState(userKey);
@@ -683,16 +695,97 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
     return { type: 'FeatureCollection', features };
   }, [selectedDistricts, selectedDistrictIds]);
 
+  const persistSnapshot = useCallback(
+    (partial: RoadAnalysisSavedState) => {
+      persistRoadAnalysisCache(userKey, {
+        activeTab,
+        selectedStateCode,
+        selectedDistrictIds,
+        planSource,
+        mapBasemap,
+        showRoadLines,
+        manualGeoJson,
+        extractedLines,
+        catalogLayers,
+        systemStyles,
+        ...partial
+      });
+    },
+    [
+      userKey,
+      activeTab,
+      selectedStateCode,
+      selectedDistrictIds,
+      planSource,
+      mapBasemap,
+      showRoadLines,
+      manualGeoJson,
+      extractedLines,
+      catalogLayers,
+      systemStyles
+    ]
+  );
+
   const onStateChange = (code: string) => {
     setSelectedStateCode(code);
     setSelectedDistrictIds([]);
+    persistSnapshot({ selectedStateCode: code, selectedDistrictIds: [] });
+    setHasUnsavedEdits(true);
   };
 
   const toggleDistrict = (id: string) => {
-    setSelectedDistrictIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-    );
+    setSelectedDistrictIds((prev) => {
+      const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
+      persistSnapshot({ selectedDistrictIds: next });
+      setHasUnsavedEdits(true);
+      return next;
+    });
   };
+
+  const handleBasemapChange = (value: string) => {
+    setMapBasemap(value);
+    persistSnapshot({ mapBasemap: value });
+    setHasUnsavedEdits(true);
+  };
+
+  const handleSelectPlan = (source: PlanSource) => {
+    setPlanSource(source);
+    setShowRoadLines(true);
+    persistSnapshot({ planSource: source, showRoadLines: true });
+    setHasUnsavedEdits(true);
+  };
+
+  // Live-only system-style preview during slider drags: cheap state update,
+  // no persistence, no dirty marking. The one-shot commit is done by
+  // handleUpdateSystemStyles (invoked on slider release).
+  const handlePreviewSystemStyles = useCallback(
+    (updater: (prev: SystemLayerStyles) => SystemLayerStyles) => setSystemStyles(updater),
+    []
+  );
+
+  // Commit a system-style change: applies it, persists the snapshot to the
+  // local cache (marks it unsaved + bumps lastLocalEditAt) and flags the
+  // workspace as dirty so the banner + Save button react exactly once.
+  const handleUpdateSystemStyles = useCallback(
+    (updater: (prev: SystemLayerStyles) => SystemLayerStyles) => {
+      setSystemStyles((prev) => {
+        const next = updater(prev);
+        persistSnapshot({ systemStyles: next });
+        return next;
+      });
+      setHasUnsavedEdits(true);
+    },
+    [persistSnapshot]
+  );
+
+  // Live-only catalog layer style preview during slider drags.
+  const handlePreviewCatalogLayer = useCallback(
+    (layerId: string, updates: Partial<CatalogVectorLayer>) => {
+      setActiveTableLayer((prev) => (prev?.id === layerId ? { ...prev, ...updates } : prev));
+      setCatalogLayers((prev) => prev.map((l) => (l.id === layerId ? { ...l, ...updates } : l)));
+    },
+    []
+  );
 
   // Extract all panotrack survey points and tracks from operational dashboard data
   const rawPanotrack = useMemo(() => {
@@ -1330,6 +1423,12 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
 
   const selectedDistrictsList = selectedDistricts.length > 0 ? selectedDistricts : [];
 
+  const selectedStateName = useMemo(() => {
+    if (!selectedStateCode) return 'All Malaysia';
+    const s = DISTRICT_STATES.find((st) => st.code === selectedStateCode);
+    return s?.name || selectedStateCode;
+  }, [selectedStateCode]);
+
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden animate-in fade-in duration-500">
       <div className="flex-1 flex flex-col gap-3 min-h-0 overflow-y-auto md:overflow-hidden p-4">
@@ -1368,6 +1467,15 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                 <Save size={13} />
               )}
               <span>{isSaving ? 'Saving…' : isSaved ? 'Saved' : 'Save State'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('print')}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-inner border border-subtle text-[11px] font-semibold text-text-base hover:text-sky-400 transition-colors cursor-pointer shrink-0"
+              title="Generate a printable Road Analysis map from the current extent or a drawn bbox"
+            >
+              <Printer size={13} />
+              <span>Print</span>
             </button>
             <button
               type="button"
@@ -1537,7 +1645,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                             {planSource !== 'extracted' && (
                               <button
                                 type="button"
-                                onClick={() => { setPlanSource('extracted'); setShowRoadLines(true); }}
+                                onClick={() => handleSelectPlan('extracted')}
                                 className="text-[10px] text-sky-400 hover:underline cursor-pointer shrink-0"
                               >
                                 Select as plan
@@ -1615,7 +1723,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                             {planSource !== 'manual' && (
                               <button
                                 type="button"
-                                onClick={() => { setPlanSource('manual'); setShowRoadLines(true); }}
+                                onClick={() => handleSelectPlan('manual')}
                                 className="text-[10px] text-sky-400 hover:underline cursor-pointer"
                               >
                                 Select as plan
@@ -1665,8 +1773,10 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                 <RoadCatalogPanel
                   catalogLayers={catalogLayers}
                   systemStyles={systemStyles}
-                  onUpdateSystemStyles={setSystemStyles}
+                  onUpdateSystemStyles={handleUpdateSystemStyles}
+                  onPreviewSystemStyles={handlePreviewSystemStyles}
                   onUpdateCatalogLayer={handleUpdateCatalogLayer}
+                  onLiveUpdateCatalogLayer={handlePreviewCatalogLayer}
                   onRemoveCatalogLayer={handleRemoveCatalogLayer}
                   onZoomToLayer={handleZoomToLayer}
                   onSetAsActivePlan={handleSetAsActivePlan}
@@ -2104,10 +2214,119 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                   </div>
                 </div>
               )}
+
+              {activeTab === 'print' && (
+                <div className="flex flex-col gap-3">
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <h3 className="text-[10px] uppercase tracking-wider text-text-muted font-bold font-mono">
+                        Printable Map Export
+                      </h3>
+                      <Printer size={13} className="text-sky-400" />
+                    </div>
+                    <p className="text-[11px] text-text-muted leading-relaxed">
+                      Generate a print / save-as-PDF road analysis map from the current map extent or a drawn
+                      bounding box on the preview surface.
+                    </p>
+                  </div>
+
+                  {/* Print Region Summary */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="p-2 rounded-lg bg-inner border border-subtle col-span-2">
+                      <div className="text-[9px] uppercase tracking-wider text-text-muted font-mono">State</div>
+                      <div className="text-sm font-bold text-text-base mt-0.5 truncate">{selectedStateName}</div>
+                    </div>
+                    <div className="p-2 rounded-lg bg-inner border border-subtle col-span-2">
+                      <div className="text-[9px] uppercase tracking-wider text-text-muted font-mono">Districts</div>
+                      <div className="text-[11px] font-semibold text-text-base mt-0.5 leading-snug">
+                        {selectedDistrictsList.length > 0
+                          ? selectedDistrictsList.map((d) => d.name).join(', ')
+                          : 'All Malaysia / none selected'}
+                      </div>
+                    </div>
+                    <div className="p-2 rounded-lg bg-inner border border-subtle">
+                      <div className="text-[9px] uppercase tracking-wider text-text-muted font-mono">Plan Km</div>
+                      <div className="text-sm font-bold text-text-base font-mono mt-0.5">
+                        {planDistanceKm.toFixed(2)}
+                      </div>
+                    </div>
+                    <div className="p-2 rounded-lg bg-inner border border-subtle">
+                      <div className="text-[9px] uppercase tracking-wider text-text-muted font-mono">Captured Km</div>
+                      <div className="text-sm font-bold text-text-base font-mono mt-0.5">
+                        {capturedDistanceKm.toFixed(2)}
+                      </div>
+                    </div>
+                    <div className="p-2 rounded-lg bg-inner border border-subtle">
+                      <div className="text-[9px] uppercase tracking-wider text-text-muted font-mono">Coverage</div>
+                      <div className="text-sm font-bold text-sky-400 font-mono mt-0.5">{ratio ?? '—'}</div>
+                    </div>
+                    <div className="p-2 rounded-lg bg-inner border border-subtle">
+                      <div className="text-[9px] uppercase tracking-wider text-text-muted font-mono">Points</div>
+                      <div className="text-sm font-bold text-text-base font-mono mt-0.5">
+                        {capturedPoints.length.toLocaleString()}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Legend hint */}
+                  <div className="p-2.5 rounded-lg bg-inner/40 border border-subtle flex flex-col gap-1.5 text-[10px] text-text-muted">
+                    <div className="text-[9px] uppercase tracking-widest text-text-muted font-bold">
+                      Map Legend
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-4 h-0.5 rounded" style={{ background: systemStyles.districtBoundary.color }} />
+                      <span>District boundary</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-4 h-0.5 rounded" style={{ background: systemStyles.roadPlan.color }} />
+                      <span>Road plan lines</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                      <span>Panotrack published</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-amber-500" />
+                      <span>Panotrack staging</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-rose-500" />
+                      <span>Panotrack defect</span>
+                    </div>
+                    {catalogLayers.filter((l) => l.visible).map((l) => (
+                      <div key={l.id} className="flex items-center gap-2">
+                        <span className="w-4 h-0.5 rounded" style={{ background: l.color }} />
+                        <span className="truncate">{l.name}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </aside>
 
             <div className="flex-1 min-w-0 bg-app overflow-hidden relative flex flex-col">
-              {/* Main Map View Area */}
+              {activeTab === 'print' ? (
+                <RoadAnalysisPrintPanel
+                  style={mapStyle}
+                  districtGeojson={regionGeo?.geojson}
+                  dimmedRegionsGeojson={dimmedRegionsGeojson}
+                  capturedPoints={capturedPoints}
+                  roadRuns={activePlanRuns}
+                  catalogLayers={catalogLayers}
+                  systemStyles={systemStyles}
+                  showRoadLines={showRoadLines}
+                  liveMapRef={liveMapRef}
+                  mapInstanceRef={printMapRef}
+                  pointsSummary={panotrackCounts}
+                  planDistanceKm={planDistanceKm}
+                  capturedDistanceKm={capturedDistanceKm}
+                  coverageRatio={ratio}
+                  selectedStateName={selectedStateName}
+                  districtNames={selectedDistrictsList.map((d) => d.name)}
+                  basemapName={mapBasemap}
+                  onNotify={addNotification}
+                />
+              ) : (
               <div className="flex-1 min-h-0 relative overflow-hidden">
                 {/* Top-Left Floating Map Controls Box Card */}
                 <div
@@ -2123,7 +2342,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                     <Layers size={13} style={{ color: 'var(--text-muted)' }} className="shrink-0" />
                     <select
                       value={mapBasemap}
-                      onChange={(e) => setMapBasemap(e.target.value)}
+                      onChange={(e) => handleBasemapChange(e.target.value)}
                       style={{
                         backgroundColor: 'var(--bg-inner)',
                         borderColor: 'var(--border-subtle)',
@@ -2164,6 +2383,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                   focusBbox={focusBbox}
                   selectedFeature={selectedTableFeature}
                   onSelectSubgrid={handleSelectSubgrid}
+                  mapInstanceRef={liveMapRef}
                 />
 
                 {/* Panotrack Operational Status Legend */}
@@ -2232,7 +2452,8 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                     </div>
                   </div>
                 )}
-              </div>
+                </div>
+              )}
 
               {/* Bottom Docked Attribute Table Drawer */}
               {activeTableLayer && (
