@@ -739,6 +739,9 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
   const cardBg = themeMode === 'light' ? 'bg-white border-slate-200 text-slate-900' : 'bg-card border-subtle text-text-base';
   const innerCardBg = themeMode === 'light' ? 'bg-slate-50 border-slate-200' : 'bg-card border-subtle';
   const inputBg = themeMode === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-card border-subtle text-text-base';
+  const inputClass = `w-full px-3 py-2 rounded-lg font-medium focus:outline-none border ${inputBg}`;
+  const labelClass = 'block text-text-muted font-medium mb-1';
+  const helperClass = 'text-[10px] text-text-muted mt-1';
 
   return (
     <div className={`flex-1 flex flex-col min-h-0 overflow-y-auto animate-in fade-in duration-500 ${themeMode === 'light' ? 'text-slate-900' : 'text-text-base'}`}>
@@ -757,14 +760,14 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
         {/* RBAC READ-ONLY NOTICE FOR NON-ADMINISTRATORS / GUESTS */}
         {!isAdmin && (
           <div className={`p-3.5 rounded-xl border flex flex-wrap items-center justify-between gap-3 shrink-0 shadow-sm animate-in fade-in duration-200 ${isGuest
-            ? 'bg-gradient-to-r from-amber-950/40 via-card to-card border-amber-500/30 text-amber-200'
+            ? 'bg-app border-subtle text-text-muted'
             : themeMode === 'light'
               ? 'bg-slate-100 border-slate-300 text-slate-700'
               : 'bg-app border-subtle text-text-base'
             }`}>
             <div className="flex items-center gap-3">
               {isGuest ? (
-                <div className="p-2 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/30 shrink-0">
+                <div className="p-2 rounded-lg bg-inner text-text-muted border border-subtle shrink-0">
                   <Eye size={18} />
                 </div>
               ) : (
@@ -786,7 +789,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
               </div>
             </div>
             <span className={`px-2.5 py-1 rounded-md text-[10px] font-sans font-semibold border ${isGuest
-              ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+              ? 'bg-inner text-text-muted border-subtle'
               : themeMode === 'light'
                 ? 'bg-slate-200 text-slate-700 border-slate-300'
                 : 'bg-inner text-text-muted border-subtle'
@@ -798,8 +801,8 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
 
         {/* TOAST STATUS NOTIFICATION */}
         {toastMessage && (
-          <div className={`fixed top-4 right-4 z-50 px-4 py-2.5 rounded-xl border text-xs font-semibold shadow-2xl flex items-center gap-2 animate-in fade-in slide-in-from-top-3 ${toastMessage.type === 'success' ? 'bg-emerald-950/90 text-emerald-300 border-emerald-700/80' : 'bg-rose-950/90 text-rose-300 border-rose-700/80'}`}>
-            {toastMessage.type === 'success' ? <CheckCircle size={15} className="text-emerald-400" /> : <AlertTriangle size={15} className="text-rose-400" />}
+          <div className={`fixed top-4 right-4 z-50 px-4 py-2.5 rounded-xl border text-xs font-semibold shadow-2xl flex items-center gap-2 animate-in fade-in slide-in-from-top-3 ${toastMessage.type === 'success' ? 'bg-sky-950/90 text-sky-300 border-sky-700/80' : 'bg-slate-900/90 text-text-muted border-subtle'}`}>
+            {toastMessage.type === 'success' ? <CheckCircle size={15} className="text-sky-400" /> : <AlertTriangle size={15} className="text-text-muted" />}
             <span>{toastMessage.text}</span>
           </div>
         )}
@@ -835,33 +838,33 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
               <div>
-                <label className="block text-text-muted font-medium mb-1">Global Interface Language</label>
+                <label className={labelClass}>Global Interface Language</label>
                 <select
                   value={projectSettings.language || 'en'}
                   onChange={e => setProjectSettings(prev => ({ ...prev, language: e.target.value as any }))}
-                  className={`w-full px-3 py-2 rounded-lg font-medium focus:outline-none border ${inputBg}`}
+                  className={`${inputClass}`}
                 >
                   <option value="en">English (EN)</option>
                   <option value="ms">Bahasa Melayu (MS)</option>
                   <option value="zh">中文 / Simplified Chinese (ZH)</option>
                   <option value="ja">日本語 / Japanese (JA)</option>
                 </select>
-                <p className="text-[10px] text-text-muted mt-1">Reads from project settings; persisted on save and applied app-wide.</p>
+                <p className={helperClass}>Reads from project settings; persisted on save and applied app-wide.</p>
               </div>
 
               <div>
-                <label className="block text-text-muted font-medium mb-1">Project Name</label>
+                <label className={labelClass}>Project Name</label>
                 <input
                   type="text"
                   value={projectSettings.projectName || ''}
                   onChange={e => setProjectSettings(prev => ({ ...prev, projectName: e.target.value }))}
                   placeholder="e.g. TNB Cable Route 360 Capture"
-                  className={`w-full px-3 py-2 rounded-lg font-medium focus:outline-none border ${inputBg}`}
+                  className={`${inputClass}`}
                 />
               </div>
 
               <div>
-                <label className="block text-text-muted font-medium mb-1">Contract Code</label>
+                <label className={labelClass}>Contract Code</label>
                 <input
                   type="text"
                   value={projectSettings.contractCode || ''}
@@ -884,8 +887,8 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <span className="px-2.5 py-1 rounded-full text-[10px] font-sans bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="px-2.5 py-1 rounded-full text-[10px] font-sans bg-inner text-text-muted border border-subtle font-bold flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
                   PostGIS 3.3 &bull; Connected
                 </span>
               </div>
@@ -903,7 +906,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
                 <div>
-                  <label className="block text-text-muted font-medium mb-1">Supabase REST Endpoint URL</label>
+                  <label className={labelClass}>Supabase REST Endpoint URL</label>
                   <input
                     type="text"
                     value={projectSettings.supabaseUrl || import.meta.env.VITE_SUPABASE_URL || ''}
@@ -914,14 +917,14 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-text-muted font-medium mb-1">Public Anon API Key</label>
+                  <label className={labelClass}>Public Anon API Key</label>
                   <div className="flex items-center gap-1.5">
                     <input
                       type={showApiKey ? 'text' : 'password'}
                       value={import.meta.env.VITE_SUPABASE_ANON_KEY || ''}
                       readOnly
                       placeholder="Configure via VITE_SUPABASE_ANON_KEY"
-                      className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg} opacity-80 cursor-not-allowed`}
+                      className={`${inputClass} opacity-80 cursor-not-allowed`}
                     />
                     <button
                       type="button"
@@ -935,7 +938,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-text-muted font-medium mb-1">Direct PostgreSQL Host / IP</label>
+                  <label className={labelClass}>Direct PostgreSQL Host / IP</label>
                   <input
                     type="text"
                     value={projectSettings.databaseHost || DATABASE_HOST_DEFAULT}
@@ -946,7 +949,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-text-muted font-medium mb-1">Database Port & Pooler</label>
+                  <label className={labelClass}>Database Port & Pooler</label>
                   <input
                     type="number"
                     value={projectSettings.databasePort || 5432}
@@ -957,7 +960,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-text-muted font-medium mb-1">Database Name & Schema</label>
+                  <label className={labelClass}>Database Name & Schema</label>
                   <div className="grid grid-cols-2 gap-2">
                     <input
                       type="text"
@@ -977,7 +980,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-text-muted font-medium mb-1">Connection Protocol & SSL</label>
+                  <label className={labelClass}>Connection Protocol & SSL</label>
                   <div className="grid grid-cols-2 gap-2">
                     <select
                       value={projectSettings.connectionMode || 'postgrest'}
@@ -1009,12 +1012,12 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                   <Globe size={14} className="text-sky-400" />
                   B. PostGIS Spatial Reference (SRID) & Geometry Engine
                 </h4>
-                <span className="text-[10px] text-emerald-400 font-sans">ST_GeomFromText Active</span>
+                <span className="text-[10px] text-text-muted font-sans">ST_GeomFromText Active</span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
                 <div>
-                  <label className="block text-text-muted font-medium mb-1">Spatial Projection (SRID)</label>
+                  <label className={labelClass}>Spatial Projection (SRID)</label>
                   <select
                     value={projectSettings.spatialSrid || 'EPSG:4326'}
                     onChange={e => setProjectSettings(prev => ({ ...prev, spatialSrid: e.target.value }))}
@@ -1030,7 +1033,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-text-muted font-medium mb-1">Spatial Geometry Column</label>
+                  <label className={labelClass}>Spatial Geometry Column</label>
                   <input
                     type="text"
                     value={projectSettings.geomColumnName || 'geom'}
@@ -1041,7 +1044,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-text-muted font-medium mb-1">Geometry Data Type</label>
+                  <label className={labelClass}>Geometry Data Type</label>
                   <select
                     value={projectSettings.geomType || 'ST_Point'}
                     onChange={e => setProjectSettings(prev => ({ ...prev, geomType: e.target.value }))}
@@ -1054,7 +1057,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-text-muted font-medium mb-1">Auto Spatial Indexing</label>
+                  <label className={labelClass}>Auto Spatial Indexing</label>
                   <div className={`flex items-center justify-between p-2 rounded-lg border ${inputBg}`}>
                     <span className="text-[11px] text-text-base font-medium">GIST (geom) Index</span>
                     <input
@@ -1100,7 +1103,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
                 <div>
-                  <label className="block text-text-muted font-medium mb-1">Production Panoramas Table</label>
+                  <label className={labelClass}>Production Panoramas Table</label>
                   <input
                     type="text"
                     value={projectSettings.panoramasTable || DATABASE_TABLE_DEFAULTS.panoramasTable}
@@ -1110,7 +1113,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-text-muted font-medium mb-1">Staging Panoramas Table</label>
+                  <label className={labelClass}>Staging Panoramas Table</label>
                   <input
                     type="text"
                     value={projectSettings.stagingTable || 'staging_panoramas'}
@@ -1120,7 +1123,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-text-muted font-medium mb-1">Subgrids Masterlist Table</label>
+                  <label className={labelClass}>Subgrids Masterlist Table</label>
                   <input
                     type="text"
                     value={projectSettings.subgridTable || 'subgrids'}
@@ -1130,7 +1133,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-text-muted font-medium mb-1">QC Defects Table</label>
+                  <label className={labelClass}>QC Defects Table</label>
                   <input
                     type="text"
                     value={projectSettings.qaDefectsTable || DATABASE_TABLE_DEFAULTS.qaDefectsTable}
@@ -1140,7 +1143,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-text-muted font-medium mb-1">Audit Trail Logs Table</label>
+                  <label className={labelClass}>Audit Trail Logs Table</label>
                   <input
                     type="text"
                     value={projectSettings.auditLogsTable || 'audit_logs'}
@@ -1150,7 +1153,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-text-muted font-medium mb-1">Deletion Requests Table</label>
+                  <label className={labelClass}>Deletion Requests Table</label>
                   <input
                     type="text"
                     value={projectSettings.deletionRequestsTable || 'deletion_requests'}
@@ -1257,7 +1260,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                 </div>
 
                 <div className="text-[11px] text-text-muted font-sans">
-                  Latency: <strong className="text-emerald-400 font-bold">{postgisLatencyMs} ms</strong> &bull; Query Chunk: <strong className="text-text-base">{projectSettings.queryChunkSize || 50} rows</strong>
+                  Latency: <strong className="text-text-muted font-bold">{postgisLatencyMs} ms</strong> &bull; Query Chunk: <strong className="text-text-base">{projectSettings.queryChunkSize || 50} rows</strong>
                 </div>
               </div>
             </div>
@@ -1290,11 +1293,11 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
                 <div>
-                  <label className="block text-text-muted font-medium mb-1">GIS Industry Storage Provider</label>
+                  <label className={labelClass}>GIS Industry Storage Provider</label>
                   <select
                     value={projectSettings.storageProvider || 'supabase'}
                     onChange={e => setProjectSettings(prev => ({ ...prev, storageProvider: e.target.value as any }))}
-                    className={`w-full px-3 py-2 rounded-lg font-medium focus:outline-none border ${inputBg}`}
+                    className={`${inputClass}`}
                   >
                     <option value="cloudflare_r2">Cloudflare R2 (Zero Egress Cost &bull; Multi-Res Ready)</option>
                     <option value="supabase">Supabase Cloud Storage (PostGIS Native)</option>
@@ -1310,7 +1313,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                 {projectSettings.storageProvider === 'cloudflare_r2' ? (
                   <>
                     <div>
-                      <label className="block text-text-muted font-medium mb-1">Cloudflare Public Domain / Custom URL</label>
+                      <label className={labelClass}>Cloudflare Public Domain / Custom URL</label>
                       <input
                         type="text"
                         value={projectSettings.r2Domain || ''}
@@ -1318,15 +1321,15 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                         placeholder="pub-xxxxxxxxxxxx.r2.dev or media.yourdomain.com"
                         className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
                       />
-                      <p className="text-[10px] text-text-muted mt-1">e.g. `pub-xxx.r2.dev` or `https://media.example.com`</p>
+                      <p className={helperClass}>e.g. `pub-xxx.r2.dev` or `https://media.example.com`</p>
                     </div>
 
                     <div>
-                      <label className="block text-text-muted font-medium mb-1">360° Storage & Slicing Strategy</label>
+                      <label className={labelClass}>360° Storage & Slicing Strategy</label>
                       <select
                         value={projectSettings.imageStorageStrategy || 'multires_tiles'}
                         onChange={e => setProjectSettings(prev => ({ ...prev, imageStorageStrategy: e.target.value as any }))}
-                        className={`w-full px-3 py-2 rounded-lg font-medium focus:outline-none border ${inputBg}`}
+                        className={`${inputClass}`}
                       >
                         <option value="multires_tiles">Multi-Resolution Tile Pyramid (Deep Zoom 60FPS / Zero Blur)</option>
                         <option value="single_equirectangular">Single Equirectangular Full Image (Standard)</option>
@@ -1336,7 +1339,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                     {projectSettings.imageStorageStrategy === 'multires_tiles' && (
                       <>
                         <div>
-                          <label className="block text-text-muted font-medium mb-1">Multi-Res Config Pattern</label>
+                          <label className={labelClass}>Multi-Res Config Pattern</label>
                           <input
                             type="text"
                             value={projectSettings.multiResTilePattern || 'tiles/{subgrid}/{filename}/config.json'}
@@ -1344,10 +1347,10 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                             placeholder="tiles/{subgrid}/{filename}/config.json"
                             className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
                           />
-                          <p className="text-[10px] text-text-muted mt-1">Default: `tiles/&#123;subgrid&#125;/&#123;filename&#125;/config.json`</p>
+                          <p className={helperClass}>Default: `tiles/&#123;subgrid&#125;/&#123;filename&#125;/config.json`</p>
                         </div>
                         <div>
-                          <label className="block text-text-muted font-medium mb-1">Fallback Preview Pattern</label>
+                          <label className={labelClass}>Fallback Preview Pattern</label>
                           <input
                             type="text"
                             value={projectSettings.multiResFallbackPattern || 'tiles/{subgrid}/{filename}/fallback/f.jpg'}
@@ -1355,7 +1358,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                             placeholder="tiles/{subgrid}/{filename}/fallback/f.jpg"
                             className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
                           />
-                          <p className="text-[10px] text-text-muted mt-1">Default: `tiles/&#123;subgrid&#125;/&#123;filename&#125;/fallback/f.jpg`</p>
+                          <p className={helperClass}>Default: `tiles/&#123;subgrid&#125;/&#123;filename&#125;/fallback/f.jpg`</p>
                         </div>
                       </>
                     )}
@@ -1363,7 +1366,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                 ) : projectSettings.storageProvider === 'aws_s3' ? (
                   <>
                     <div>
-                      <label className="block text-text-muted font-medium mb-1">AWS S3 Bucket Name</label>
+                      <label className={labelClass}>AWS S3 Bucket Name</label>
                       <input
                         type="text"
                         value={projectSettings.s3Bucket || S3_BUCKET_DEFAULT}
@@ -1373,7 +1376,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                       />
                     </div>
                     <div>
-                      <label className="block text-text-muted font-medium mb-1">AWS S3 Region</label>
+                      <label className={labelClass}>AWS S3 Region</label>
                       <input
                         type="text"
                         value={projectSettings.s3Region || 'ap-southeast-1'}
@@ -1385,7 +1388,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                   </>
                 ) : projectSettings.storageProvider === 'gcs' ? (
                   <div>
-                    <label className="block text-text-muted font-medium mb-1">Google Cloud Storage (GCS) Bucket</label>
+                    <label className={labelClass}>Google Cloud Storage (GCS) Bucket</label>
                     <input
                       type="text"
                       value={projectSettings.gcsBucket || 'tnb-gis-360-panoramas'}
@@ -1397,7 +1400,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                 ) : projectSettings.storageProvider === 'azure_blob' ? (
                   <>
                     <div>
-                      <label className="block text-text-muted font-medium mb-1">Azure Storage Account</label>
+                      <label className={labelClass}>Azure Storage Account</label>
                       <input
                         type="text"
                         value={projectSettings.azureAccount || 'tnbgisstorage'}
@@ -1407,7 +1410,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                       />
                     </div>
                     <div>
-                      <label className="block text-text-muted font-medium mb-1">Azure Blob Container Name</label>
+                      <label className={labelClass}>Azure Blob Container Name</label>
                       <input
                         type="text"
                         value={projectSettings.azureContainer || AZURE_CONTAINER_DEFAULT}
@@ -1420,7 +1423,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                 ) : projectSettings.storageProvider === 'wasabi' ? (
                   <>
                     <div>
-                      <label className="block text-text-muted font-medium mb-1">Wasabi Bucket Name</label>
+                      <label className={labelClass}>Wasabi Bucket Name</label>
                       <input
                         type="text"
                         value={projectSettings.wasabiBucket || 'tnb-wasabi-panoramas'}
@@ -1430,7 +1433,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                       />
                     </div>
                     <div>
-                      <label className="block text-text-muted font-medium mb-1">Wasabi Region</label>
+                      <label className={labelClass}>Wasabi Region</label>
                       <input
                         type="text"
                         value={projectSettings.wasabiRegion || REGION_DEFAULTS.wasabiRegion}
@@ -1442,7 +1445,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                   </>
                 ) : projectSettings.storageProvider === 'nas_local' ? (
                   <div className="sm:col-span-2">
-                    <label className="block text-text-muted font-medium mb-1">Local NAS Server IP / HTTP Intranet Share</label>
+                    <label className={labelClass}>Local NAS Server IP / HTTP Intranet Share</label>
                     <input
                       type="text"
                       value={projectSettings.nasServerUrl || 'http://192.168.1.100/360_images'}
@@ -1454,7 +1457,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                 ) : projectSettings.storageProvider === 'custom_cdn' ? (
                   <>
                     <div className="sm:col-span-2">
-                      <label className="block text-text-muted font-medium mb-1">Custom CDN Base URL Prefix</label>
+                      <label className={labelClass}>Custom CDN Base URL Prefix</label>
                       <input
                         type="text"
                         value={projectSettings.customCdnUrl || ''}
@@ -1464,11 +1467,11 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                       />
                     </div>
                     <div>
-                      <label className="block text-text-muted font-medium mb-1">360° Storage & Slicing Strategy</label>
+                      <label className={labelClass}>360° Storage & Slicing Strategy</label>
                       <select
                         value={projectSettings.imageStorageStrategy || 'single_equirectangular'}
                         onChange={e => setProjectSettings(prev => ({ ...prev, imageStorageStrategy: e.target.value as any }))}
-                        className={`w-full px-3 py-2 rounded-lg font-medium focus:outline-none border ${inputBg}`}
+                        className={`${inputClass}`}
                       >
                         <option value="single_equirectangular">Single Equirectangular Full Image (Standard)</option>
                         <option value="multires_tiles">Multi-Resolution Tile Pyramid (Deep Zoom 60FPS)</option>
@@ -1477,7 +1480,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                   </>
                 ) : (
                   <div>
-                    <label className="block text-text-muted font-medium mb-1">Storage Bucket Name</label>
+                    <label className={labelClass}>Storage Bucket Name</label>
                     <input
                       type="text"
                       value={projectSettings.supabaseBucket || STORAGE_BUCKET_DEFAULT}
@@ -1489,11 +1492,11 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                 )}
 
                 <div>
-                  <label className="block text-text-muted font-medium mb-1">Storage Access & CORS Policy</label>
+                  <label className={labelClass}>Storage Access & CORS Policy</label>
                   <select
                     value={projectSettings.storageAccessPermission || 'public_read'}
                     onChange={e => setProjectSettings(prev => ({ ...prev, storageAccessPermission: e.target.value as any }))}
-                    className={`w-full px-3 py-2 rounded-lg font-medium focus:outline-none border ${inputBg}`}
+                    className={`${inputClass}`}
                   >
                     <option value="public_read">Public CDN Read (Direct Browser 360 Viewer)</option>
                     <option value="signed_url">Signed URL Tokenized Read (24h Expiry)</option>
@@ -1515,7 +1518,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
                 <div>
-                  <label className="block text-text-muted font-medium mb-1">Panorama Filename Template</label>
+                  <label className={labelClass}>Panorama Filename Template</label>
                   <input
                     type="text"
                     value={projectSettings.imageFormatPattern || '{subgrid}-{index:04d}.jpg'}
@@ -1523,7 +1526,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                     placeholder="{subgrid}-{index:04d}.jpg"
                     className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
                   />
-                  <p className="text-[10px] text-text-muted mt-1">e.g. {`{subgrid}-{index:04d}.jpg`} &bull; {`{subgrid}_{index}.jpg`}</p>
+                  <p className={helperClass}>e.g. {`{subgrid}-{index:04d}.jpg`} &bull; {`{subgrid}_{index}.jpg`}</p>
                 </div>
 
                 <div>
@@ -1541,11 +1544,11 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                     <option value="flat">Flat Root: tiles/{`{filename}`}/</option>
                     <option value="daily_folder">Daily Date Folder: /{`{date}`}/{`{filename}`}/</option>
                   </select>
-                  <p className="text-[10px] text-text-muted mt-1">Automatically detected and managed by active storage provider.</p>
+                  <p className={helperClass}>Automatically detected and managed by active storage provider.</p>
                 </div>
 
                 <div>
-                  <label className="block text-text-muted font-medium mb-1">Missing Image Grace Policy</label>
+                  <label className={labelClass}>Missing Image Grace Policy</label>
                   <div className={`flex items-center justify-between p-2 rounded-lg border ${inputBg}`}>
                     <span className="text-[11px] text-text-base font-medium">Render Staging Fallback</span>
                     <input
@@ -1566,16 +1569,16 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                   <Activity size={14} className="text-sky-400" />
                   C. 360° StreetView Player & Preload Streaming Engine
                 </h4>
-                <span className="text-[10px] text-emerald-400 font-sans">PhotoSphereViewer v5 · WebGL</span>
+                <span className="text-[10px] text-text-muted font-sans">PhotoSphereViewer v5 · WebGL</span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
                 <div>
-                  <label className="block text-text-muted font-medium mb-1">Lookahead Frame Preload Cache</label>
+                  <label className={labelClass}>Lookahead Frame Preload Cache</label>
                   <select
                     value={projectSettings.imagePreloadCount || 3}
                     onChange={e => setProjectSettings(prev => ({ ...prev, imagePreloadCount: Number(e.target.value) }))}
-                    className={`w-full px-3 py-2 rounded-lg font-medium focus:outline-none border ${inputBg}`}
+                    className={`${inputClass}`}
                   >
                     <option value="1">1 Frame Ahead (Low bandwidth / 4G)</option>
                     <option value="3">3 Frames Ahead (Balanced &bull; Recommended)</option>
@@ -1585,11 +1588,11 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                 </div>
 
                 <div>
-                  <label className="block text-text-muted font-medium mb-1">Default Field of View (FOV)</label>
+                  <label className={labelClass}>Default Field of View (FOV)</label>
                   <select
                     value={projectSettings.defaultFov || 75}
                     onChange={e => setProjectSettings(prev => ({ ...prev, defaultFov: parseInt(e.target.value) || 75 }))}
-                    className={`w-full px-3 py-2 rounded-lg font-medium focus:outline-none border ${inputBg}`}
+                    className={`${inputClass}`}
                   >
                     <option value="60">60&deg; &mdash; Narrow / Telephoto Inspection</option>
                     <option value="75">75&deg; &mdash; Natural Human Eye (Recommended)</option>
@@ -1599,11 +1602,11 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                 </div>
 
                 <div>
-                  <label className="block text-text-muted font-medium mb-1">StreetView Navigation Arrow Color</label>
+                  <label className={labelClass}>StreetView Navigation Arrow Color</label>
                   <select
                     value={projectSettings.arrowColor || 'sky'}
                     onChange={e => setProjectSettings(prev => ({ ...prev, arrowColor: e.target.value as any }))}
-                    className={`w-full px-3 py-2 rounded-lg font-medium focus:outline-none border ${inputBg}`}
+                    className={`${inputClass}`}
                   >
                     <option value="sky">Sky Blue &bull; High Contrast (Default)</option>
                     <option value="emerald">Emerald Green &bull; High Visibility</option>
@@ -1613,7 +1616,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                 </div>
 
                 <div>
-                  <label className="block text-text-muted font-medium mb-1">Live Heading Yaw Sync</label>
+                  <label className={labelClass}>Live Heading Yaw Sync</label>
                   <div className={`flex items-center justify-between p-2 rounded-lg border ${inputBg}`}>
                     <span className="text-[11px] text-text-base font-medium">Vehicle Azimuth Alignment</span>
                     <input
@@ -1647,7 +1650,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
               {/* TEST SAMPLE FILENAME & QUICK PICK */}
               <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end text-xs">
                 <div className="sm:col-span-6">
-                  <label className="block text-text-muted font-medium mb-1">Test Panorama Filename / Station Key</label>
+                  <label className={labelClass}>Test Panorama Filename / Station Key</label>
                   <input
                     type="text"
                     value={testFilename}
@@ -1669,7 +1672,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                     }}
                     className="px-3 py-2 bg-inner hover:bg-inner border border-subtle text-text-base rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors shadow-sm"
                   >
-                    <FileText size={12} className="text-amber-400" />
+                    <FileText size={12} className="text-text-muted" />
                     <span>Use Staged Station</span>
                   </button>
 
@@ -1753,8 +1756,8 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                 {(projectSettings.storageProvider === 'cloudflare_r2' || projectSettings.imageStorageStrategy === 'multires_tiles') && (
                   <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-subtle">
                     <div className="flex items-center gap-2 overflow-hidden">
-                      <span className="text-amber-400/90 shrink-0 text-[11px] font-sans font-medium">Multi-Res config.json:</span>
-                      <span className="text-amber-300 truncate text-[11px] select-all">
+                      <span className="text-text-muted shrink-0 text-[11px] font-sans font-medium">Multi-Res config.json:</span>
+                      <span className="text-text-muted truncate text-[11px] select-all">
                         {resolvePanoramaConfigUrl(testFilename, projectSettings)}
                       </span>
                     </div>
@@ -1765,7 +1768,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                         navigator.clipboard.writeText(url);
                         showToast('Copied Multi-Res config.json URL to clipboard!');
                       }}
-                      className="px-2 py-1 bg-inner hover:bg-inner text-amber-400 border border-subtle rounded text-[11px] font-sans font-semibold flex items-center gap-1 cursor-pointer transition-colors shrink-0"
+                      className="px-2 py-1 bg-inner hover:bg-inner text-text-muted border border-subtle rounded text-[11px] font-sans font-semibold flex items-center gap-1 cursor-pointer transition-colors shrink-0"
                     >
                       <Copy size={11} />
                       <span>Copy Config URL</span>
@@ -1786,11 +1789,11 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                     <div className="space-y-1.5 flex-1 min-w-[240px]">
                       <div className="flex items-center gap-2">
                         {cfTestResult.ok ? (
-                          <CheckCircle size={16} className="text-emerald-400 shrink-0" />
+                          <CheckCircle size={16} className="text-text-muted shrink-0" />
                         ) : cfTestResult.status === 404 ? (
-                          <AlertTriangle size={16} className="text-amber-400 shrink-0" />
+                          <AlertTriangle size={16} className="text-text-muted shrink-0" />
                         ) : (
-                          <XCircle size={16} className="text-rose-400 shrink-0" />
+                          <XCircle size={16} className="text-text-muted shrink-0" />
                         )}
                         <span className="font-bold text-xs">
                           {cfTestResult.ok
@@ -1803,20 +1806,20 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                           {cfTestResult.latencyMs}ms Latency
                         </span>
                         {cfTestResult.corsOk && (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-inner text-text-muted border border-subtle">
                             CORS OK
                           </span>
                         )}
                       </div>
 
                       {cfTestResult.error && (
-                        <p className="text-[11px] text-rose-300/90 leading-relaxed font-sans">
+                        <p className="text-[11px] text-text-muted leading-relaxed font-sans">
                           {cfTestResult.error}
                         </p>
                       )}
 
                       {cfTestResult.status === 404 && (
-                        <p className="text-[11px] text-amber-300/90 leading-relaxed font-sans">
+                        <p className="text-[11px] text-text-muted leading-relaxed font-sans">
                           Tip: The Cloudflare domain is active and CORS is valid, but `{testFilename}` does not exist in the bucket. Check your folder path or verify filename spelling.
                         </p>
                       )}
@@ -1891,7 +1894,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
 
                   <div className="space-y-3 text-xs">
                     <div>
-                      <label className="block text-text-muted font-medium mb-1">Default GIS Basemap Provider</label>
+                      <label className={labelClass}>Default GIS Basemap Provider</label>
                       <select
                         value={projectSettings.defaultBasemap || DEFAULT_BASEMAP}
                         onChange={e => {
@@ -1899,7 +1902,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                           setProjectSettings(prev => ({ ...prev, defaultBasemap: val }));
                           previewBasemapChange(val);
                         }}
-                        className={`w-full px-3 py-2 rounded-lg font-medium focus:outline-none border ${inputBg}`}
+                        className={`${inputClass}`}
                       >
                         <option value="ofm-positron">Positron (OpenFreeMap Vector) • Recommended</option>
                         <option value="ofm-dark">Dark (OpenFreeMap Vector)</option>
@@ -1945,7 +1948,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
 
                     {projectSettings.defaultBasemap === 'custom_tile' && (
                       <div>
-                        <label className="block text-text-muted font-medium mb-1">Custom XYZ Tile URL Template</label>
+                        <label className={labelClass}>Custom XYZ Tile URL Template</label>
                         <input
                           type="text"
                           value={projectSettings.customBasemapUrl || 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'}
@@ -2047,7 +2050,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                           });
                           showToast('Loaded Eco Soft Palette to preview map (click Apply to save)');
                         }}
-                        className={`px-2 py-0.5 rounded text-[10px] font-semibold border cursor-pointer ${themeMode === 'light' ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-300' : 'bg-inner hover:bg-inner text-emerald-300 border-subtle'}`}
+                        className={`px-2 py-0.5 rounded text-[10px] font-semibold border cursor-pointer ${themeMode === 'light' ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-300' : 'bg-inner hover:bg-inner text-text-muted border-subtle'}`}
                       >
                         Eco Soft
                       </button>
@@ -2057,7 +2060,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
                     {/* PUBLISHED COLOR */}
                     <div>
-                      <label className="block text-text-muted font-medium mb-1">Published Track Color</label>
+                      <label className={labelClass}>Published Track Color</label>
                       <div className="flex items-center gap-2">
                         <input
                           type="color"
@@ -2090,7 +2093,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
 
                     {/* STAGING COLOR */}
                     <div>
-                      <label className="block text-text-muted font-medium mb-1">Staging / In-Process Color</label>
+                      <label className={labelClass}>Staging / In-Process Color</label>
                       <div className="flex items-center gap-2">
                         <input
                           type="color"
@@ -2123,7 +2126,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
 
                     {/* DEFECT COLOR */}
                     <div>
-                      <label className="block text-text-muted font-medium mb-1">QA Defect Flagged Color</label>
+                      <label className={labelClass}>QA Defect Flagged Color</label>
                       <div className="flex items-center gap-2">
                         <input
                           type="color"
@@ -2156,7 +2159,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
 
                     {/* SELECTED SUBGRID COLOR */}
                     <div>
-                      <label className="block text-text-muted font-medium mb-1">Active Selected Subgrid</label>
+                      <label className={labelClass}>Active Selected Subgrid</label>
                       <div className="flex items-center gap-2">
                         <input
                           type="color"
@@ -2189,7 +2192,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
 
                     {/* GRID BOUNDARY COLOR */}
                     <div>
-                      <label className="block text-text-muted font-medium mb-1">Grid Boundary Border</label>
+                      <label className={labelClass}>Grid Boundary Border</label>
                       <div className="flex items-center gap-2">
                         <input
                           type="color"
@@ -2222,7 +2225,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
 
                     {/* LINE WIDTH & GLOW */}
                     <div>
-                      <label className="block text-text-muted font-medium mb-1">Track Width & Glow</label>
+                      <label className={labelClass}>Track Width & Glow</label>
                       <div className="flex items-center gap-2">
                         <select
                           value={projectSettings.poiTrackLineWidth || 3}
@@ -2262,7 +2265,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                     <div className={`sm:col-span-2 pt-2 border-t ${themeMode === 'light' ? 'border-slate-200' : 'border-subtle'}`}>
                       <div className="flex justify-between items-center mb-1">
                         <label className="text-text-muted font-medium">Layer & Trajectory Color Opacity</label>
-                        <span className="font-sans text-[11px] text-emerald-400 font-bold">{projectSettings.layerOpacity ?? 100}%</span>
+                        <span className="font-sans text-[11px] text-text-muted font-bold">{projectSettings.layerOpacity ?? 100}%</span>
                       </div>
                       <input
                         type="range"
@@ -2277,7 +2280,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                             return updated;
                           });
                         }}
-                        className="w-full h-2 bg-inner rounded-lg appearance-none cursor-pointer accent-emerald-500 mt-1"
+                        className="w-full h-2 bg-inner rounded-lg appearance-none cursor-pointer accent-sky-500 mt-1"
                       />
                     </div>
                   </div>
@@ -2291,7 +2294,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                         onSaveAllSettings?.();
                         showToast('Survey Trajectory Layer theme applied to Dashboard!');
                       }}
-                      className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-text-base rounded-lg text-xs font-semibold shadow transition-all cursor-pointer flex items-center gap-1.5 active:scale-95"
+                      className="px-3.5 py-1.5 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-xs font-semibold shadow transition-all cursor-pointer flex items-center gap-1.5 active:scale-95"
                     >
                       <CheckCircle size={13} />
                       <span>Apply Layer Theme</span>
@@ -2303,11 +2306,11 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                 <div className={`p-4 rounded-xl border space-y-3 ${innerCardBg}`}>
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <h4 className={`text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 ${themeMode === 'light' ? 'text-slate-800' : 'text-text-base'}`}>
-                      <Map size={14} className="text-emerald-400" />
+                      <Map size={14} className="text-text-muted" />
                       C. Project Geographic Boundary
                     </h4>
                     <span className={`px-2.5 py-1 rounded-full text-[10px] font-sans font-bold flex items-center gap-1.5 ${(projectSettings as any)?.projectBoundary?.geojson
-                      ? (themeMode === 'light' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20')
+                      ? (themeMode === 'light' ? 'bg-sky-50 text-sky-700 border border-sky-200' : 'bg-sky-500/10 text-text-muted border border-sky-500/20')
                       : 'bg-inner text-text-muted border border-subtle'
                       }`}>
                       <Map size={12} />
@@ -2317,11 +2320,11 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
 
                   <div className="space-y-2 text-xs">
                     <div>
-                      <label className="block text-text-muted font-medium mb-1">Malaysia Region</label>
+                      <label className={labelClass}>Malaysia Region</label>
                       <select
                         value={selectedRegionId || (projectSettings as any)?.projectBoundary?.regionId || ''}
                         onChange={(e) => handlePreviewRegion(e.target.value || null)}
-                        className={`w-full px-3 py-2 rounded-lg font-medium focus:outline-none border ${inputBg}`}
+                        className={`${inputClass}`}
                       >
                         <option value="">— Select a region to preview —</option>
                         {MALAYSIA_REGIONS
@@ -2330,8 +2333,8 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                             <option key={r.id} value={r.id}>{r.name}</option>
                           ))}
                       </select>
-                      <p className="text-[10px] text-text-muted mt-1">
-                        Selecting a region previews it live on the map to the right. Click <strong className="text-emerald-300">Apply</strong> to commit it as the project boundary.
+                      <p className={helperClass}>
+                        Selecting a region previews it live on the map to the right. Click <strong className="text-text-muted">Apply</strong> to commit it as the project boundary.
                       </p>
                     </div>
 
@@ -2417,7 +2420,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                           isAdmin && selectedRegionId && selectedRegionId !== CUSTOM_REGION_ID
                             ? themeMode === 'light'
                               ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-300 cursor-pointer active:scale-95'
-                              : 'bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border-emerald-500/30 hover:border-emerald-500/50 cursor-pointer active:scale-95'
+                              : 'bg-emerald-500/15 hover:bg-emerald-500/25 text-text-muted border-emerald-500/30 hover:border-emerald-500/50 cursor-pointer active:scale-95'
                             : 'bg-inner/40 text-text-muted border-subtle/60 cursor-not-allowed opacity-60'
                         }`}
                       >
@@ -2503,12 +2506,12 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                             {selectedDistrictsList.length} {selectedDistrictsList.length === 1 ? 'district' : 'districts'} selected
                           </span>
                         ) : currentRegion ? (
-                          <span className="text-[10px] font-sans font-medium text-emerald-400">
+                          <span className="text-[10px] font-sans font-medium text-text-muted">
                             {currentRegion.name} (Whole state)
                           </span>
                         ) : null}
                       </div>
-                      <div className="text-[11px] font-sans text-emerald-300 font-semibold tracking-wide">
+                      <div className="text-[11px] font-sans text-text-muted font-semibold tracking-wide">
                         {activeBbox.map((n: number) => Number(n).toFixed(6)).join(' · ')}
                       </div>
                       {selectedDistrictsList.length > 0 && (
@@ -2531,7 +2534,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                 <div className={`p-4 rounded-xl border flex-1 flex flex-col space-y-3 ${innerCardBg}`}>
                   <div className="flex items-center justify-between">
                     <h4 className={`text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 ${themeMode === 'light' ? 'text-slate-800' : 'text-text-base'}`}>
-                      <Navigation size={14} className="text-emerald-400" />
+                      <Navigation size={14} className="text-text-muted" />
                       Live Map Dashboard Preview
                     </h4>
                   </div>
@@ -2541,7 +2544,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                     {/* Top-Left GeoSphere 360 Operations Hub Floating Badge */}
                     <div className="absolute top-3 left-3 z-20 pointer-events-none">
                       <div className={`backdrop-blur-xl border rounded-2xl px-3 py-1.5 shadow-2xl flex items-center gap-2.5 shrink-0 ${themeMode === 'light' ? 'bg-white/95 border-slate-200 text-slate-800' : 'bg-card border-subtle text-text-base'}`}>
-                        <div className="p-1.5 bg-gradient-to-tr from-sky-600 to-emerald-500 rounded-xl shadow-md shadow-emerald-950/40 shrink-0">
+                        <div className="p-1.5 bg-sky-500/90 rounded-xl shadow-md shrink-0">
                           <Layers size={14} className="text-text-base" />
                         </div>
                         <div>
@@ -2701,7 +2704,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                   <select
                     value={projectSettings.sessionTimeoutMinutes || 30}
                     onChange={e => setProjectSettings(prev => ({ ...prev, sessionTimeoutMinutes: Number(e.target.value) }))}
-                    className={`w-full px-3 py-2 rounded-lg font-medium focus:outline-none border ${inputBg}`}
+                    className={`${inputClass}`}
                   >
                     <option value="15">15 Minutes</option>
                     <option value="30">30 Minutes (Recommended)</option>
@@ -2724,7 +2727,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                     onChange={e => setProjectSettings(prev => ({ ...prev, corporateDomain: e.target.value }))}
                     className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
                   />
-                  <p className="text-[10px] text-text-muted mt-1">Specify authorized email addresses or domain suffixes (e.g. <code>user@example.com</code> or <code>@company.com</code>).</p>
+                  <p className={helperClass}>Specify authorized email addresses or domain suffixes (e.g. <code>user@example.com</code> or <code>@company.com</code>).</p>
                 </div>
               </div>
 
@@ -2816,7 +2819,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
               <div>
-                <label className="block text-text-muted font-medium mb-1">Contract Target Distance (km)</label>
+                <label className={labelClass}>Contract Target Distance (km)</label>
                 <input
                   type="number"
                   step="0.1"
@@ -2828,7 +2831,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
               </div>
 
               <div>
-                <label className="block text-text-muted font-medium mb-1">Max Allowed Defect SLA Rate (%)</label>
+                <label className={labelClass}>Max Allowed Defect SLA Rate (%)</label>
                 <input
                   type="number"
                   step="0.1"
@@ -2839,11 +2842,11 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
               </div>
 
               <div>
-                <label className="block text-text-muted font-medium mb-1">Deliverable Image Processing Model</label>
+                <label className={labelClass}>Deliverable Image Processing Model</label>
                 <select
                   value={projectSettings.deliverableModel || 'masked_car'}
                   onChange={e => setProjectSettings(prev => ({ ...prev, deliverableModel: e.target.value as any }))}
-                  className={`w-full px-3 py-2 rounded-lg font-medium focus:outline-none border ${inputBg}`}
+                  className={`${inputClass}`}
                 >
                   <option value="masked_car">Masked Vehicle (Top 52% ROI - Excludes Nadir Mask)</option>
                   <option value="generative_fill">Generative Clean Fill (Full 80% ROI - Full Scene & Road)</option>
@@ -2851,11 +2854,11 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
               </div>
 
               <div>
-                <label className="block text-text-muted font-medium mb-1">Batch Log Deduplication Strategy</label>
+                <label className={labelClass}>Batch Log Deduplication Strategy</label>
                 <select
                   value={projectSettings.deduplicationStrategy || 'clean_merge'}
                   onChange={e => setProjectSettings(prev => ({ ...prev, deduplicationStrategy: e.target.value as any }))}
-                  className={`w-full px-3 py-2 rounded-lg font-medium focus:outline-none border ${inputBg}`}
+                  className={`${inputClass}`}
                 >
                   <option value="clean_merge">Clean Merge Masterlist (BATCH-ID)</option>
                   <option value="preserve_runs">Preserve Individual Daily Survey Runs</option>
@@ -2863,32 +2866,32 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
               </div>
 
               <div>
-                <label className="block text-text-muted font-medium mb-1">QA Flag Category 1</label>
+                <label className={labelClass}>QA Flag Category 1</label>
                 <input
                   type="text"
                   value={projectSettings.qaFlag1 || 'Blurry Frame'}
                   onChange={e => setProjectSettings(prev => ({ ...prev, qaFlag1: e.target.value }))}
-                  className={`w-full px-3 py-2 rounded-lg font-medium focus:outline-none border ${inputBg}`}
+                  className={`${inputClass}`}
                 />
               </div>
 
               <div>
-                <label className="block text-text-muted font-medium mb-1">QA Flag Category 2</label>
+                <label className={labelClass}>QA Flag Category 2</label>
                 <input
                   type="text"
                   value={projectSettings.qaFlag2 || 'Lens Obstruction'}
                   onChange={e => setProjectSettings(prev => ({ ...prev, qaFlag2: e.target.value }))}
-                  className={`w-full px-3 py-2 rounded-lg font-medium focus:outline-none border ${inputBg}`}
+                  className={`${inputClass}`}
                 />
               </div>
 
               <div>
-                <label className="block text-text-muted font-medium mb-1">QA Flag Category 3</label>
+                <label className={labelClass}>QA Flag Category 3</label>
                 <input
                   type="text"
                   value={projectSettings.qaFlag3 || 'Bad GPS Signal'}
                   onChange={e => setProjectSettings(prev => ({ ...prev, qaFlag3: e.target.value }))}
-                  className={`w-full px-3 py-2 rounded-lg font-medium focus:outline-none border ${inputBg}`}
+                  className={`${inputClass}`}
                 />
               </div>
 
@@ -2908,7 +2911,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
             {/* Save Button */}
             <div className={`pt-3 border-t flex flex-wrap justify-end items-center gap-3 ${themeMode === 'light' ? 'border-slate-200' : 'border-subtle'}`}>
               {!isAdmin && (
-                <span className="text-xs text-amber-400 font-sans flex items-center gap-1.5">
+                <span className="text-xs text-text-muted font-sans flex items-center gap-1.5">
                   <Lock size={13} /> Only administrators can save configuration changes.
                 </span>
               )}
