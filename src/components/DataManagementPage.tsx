@@ -407,11 +407,11 @@ export const DataManagementPage = ({
   }, [refreshRecycleBinCount, dataTab]);
 
   const activeAuthUserName = React.useMemo(() => {
-    if (!authSession || !authSession.user) return 'Fariz.farhan95';
+    if (!authSession || !authSession.user) return 'Operator';
     const u = authSession.user;
     const raw = u.user_metadata?.username || u.user_metadata?.full_name || u.user_metadata?.name || (u.email ? u.email.split('@')[0] : '');
-    if (!raw) return 'Fariz.farhan95';
-    return formatPIC(raw, 'Fariz.farhan95');
+    if (!raw) return 'Operator';
+    return formatPIC(raw);
   }, [authSession]);
 
   const [editingItem, setEditingItem] = useState<BatchLog | DailyTimeSeries | Layer | Folder | null>(null);

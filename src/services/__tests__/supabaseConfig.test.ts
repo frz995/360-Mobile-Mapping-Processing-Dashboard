@@ -1,10 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { getDatabaseTableMapping } from '../supabaseConfig';
 
+type MutableEnv = { [k: string]: unknown };
+
 describe('getDatabaseTableMapping', () => {
   it('applies smart defaults when no settings or env vars are present', () => {
-    delete import.meta.env.VITE_DB_PANORAMAS_TABLE;
-    delete import.meta.env.VITE_DB_SUMMARY_VIEW;
+    delete (import.meta.env as MutableEnv).VITE_DB_PANORAMAS_TABLE;
+    delete (import.meta.env as MutableEnv).VITE_DB_SUMMARY_VIEW;
     const mapping = getDatabaseTableMapping();
     expect(mapping.panoramasTable).toBe('panoramas');
     expect(mapping.panoramasSummaryView).toBe('panoramas_subgrid_summary');

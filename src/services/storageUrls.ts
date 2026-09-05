@@ -12,6 +12,7 @@
  * './services/supabase' (re-export) or './services/storageUrls' directly.
  */
 import { extractSubgridName } from '../utils/subgrid';
+import { STORAGE_BUCKET_DEFAULT, REGION_DEFAULTS } from '../config/defaults';
 
 /** Supported object-storage providers for 360 imagery resolution. */
 export type StorageProviderType =
@@ -125,13 +126,13 @@ export function resolvePanoramaUrl(
       const baseUrl = formatCloudflareUrl(rawDomain);
       if (!baseUrl) {
         const rawSbUrl = (settings?.supabaseUrl || '').trim();
-        const defaultSupabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://tqqybumedywzylujjkqa.supabase.co';
+        const defaultSupabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
         const baseSupabaseUrl = (
           rawSbUrl && !rawSbUrl.includes('frz995-360-processing') && !rawSbUrl.includes('xyzcompany')
             ? rawSbUrl
             : defaultSupabaseUrl
         ).replace(/\/+$/, '');
-        const bucket = settings?.supabaseBucket || import.meta.env.VITE_SUPABASE_BUCKET || 'MMS_PIC';
+        const bucket = settings?.supabaseBucket || import.meta.env.VITE_SUPABASE_BUCKET || STORAGE_BUCKET_DEFAULT;
         return `${baseSupabaseUrl}/storage/v1/object/public/${bucket}/${cleanFn}`;
       }
 
@@ -181,7 +182,7 @@ export function resolvePanoramaUrl(
       }
 
       const prefix = (settings?.imageStoragePath || '').replace(/^\/+/, '').replace(/\/+$/, '');
-      if (prefix && prefix !== 'MMS_PIC') {
+      if (prefix && prefix !== STORAGE_BUCKET_DEFAULT) {
         return baseUrl ? `${baseUrl}/${prefix}/${cleanFn}` : `/${prefix}/${cleanFn}`;
       }
       return baseUrl ? `${baseUrl}/${cleanFn}` : `/${cleanFn}`;
@@ -189,7 +190,7 @@ export function resolvePanoramaUrl(
 
     case 'aws_s3': {
       const bucket = settings?.s3Bucket || import.meta.env.VITE_S3_BUCKET || '';
-      const region = settings?.s3Region || import.meta.env.VITE_S3_REGION || 'ap-southeast-1';
+      const region = settings?.s3Region || import.meta.env.VITE_S3_REGION || REGION_DEFAULTS.s3Region;
       const baseUrl = `https://${bucket}.s3.${region}.amazonaws.com`;
       if (options?.asConfigUrl) return `${baseUrl}/tiles/${targetSubgrid}/${nameWithoutExt}/config.json`;
       return `${baseUrl}/${cleanFn}`;
@@ -212,7 +213,7 @@ export function resolvePanoramaUrl(
 
     case 'wasabi': {
       const bucket = settings?.wasabiBucket || import.meta.env.VITE_WASABI_BUCKET || '';
-      const region = settings?.wasabiRegion || import.meta.env.VITE_WASABI_REGION || 'us-east-1';
+      const region = settings?.wasabiRegion || import.meta.env.VITE_WASABI_REGION || REGION_DEFAULTS.wasabiRegion;
       const baseUrl = `https://s3.${region}.wasabisys.com/${bucket}`;
       if (options?.asConfigUrl) return `${baseUrl}/tiles/${targetSubgrid}/${nameWithoutExt}/config.json`;
       return `${baseUrl}/${cleanFn}`;
@@ -227,13 +228,13 @@ export function resolvePanoramaUrl(
     case 'supabase':
     default: {
       const rawSbUrl = (settings?.supabaseUrl || '').trim();
-      const defaultSupabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://tqqybumedywzylujjkqa.supabase.co';
+      const defaultSupabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
       const baseSupabaseUrl = (
         rawSbUrl && !rawSbUrl.includes('frz995-360-processing') && !rawSbUrl.includes('xyzcompany')
           ? rawSbUrl
           : defaultSupabaseUrl
       ).replace(/\/+$/, '');
-      const bucket = settings?.supabaseBucket || import.meta.env.VITE_SUPABASE_BUCKET || 'MMS_PIC';
+      const bucket = settings?.supabaseBucket || import.meta.env.VITE_SUPABASE_BUCKET || STORAGE_BUCKET_DEFAULT;
 
       const pattern = settings?.singleImagePathPattern;
       if (pattern && (pattern.includes('{filename}') || pattern.includes('{pointFolder}'))) {
@@ -266,13 +267,13 @@ export function resolvePanoramaConfigUrl(
     baseUrl = (settings?.r2Domain || settings?.r2PublicDomain || settings?.cloudStorageBaseUrl || '').trim();
   } else if (provider === 'supabase') {
     const rawSbUrl = (settings?.supabaseUrl || '').trim();
-    const defaultSupabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://tqqybumedywzylujjkqa.supabase.co';
+    const defaultSupabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
     const sbUrl = (
       rawSbUrl && !rawSbUrl.includes('frz995-360-processing') && !rawSbUrl.includes('xyzcompany')
         ? rawSbUrl
         : defaultSupabaseUrl
     ).replace(/\/+$/, '');
-    const bucket = settings?.supabaseBucket || import.meta.env.VITE_SUPABASE_BUCKET || 'MMS_PIC';
+    const bucket = settings?.supabaseBucket || import.meta.env.VITE_SUPABASE_BUCKET || STORAGE_BUCKET_DEFAULT;
     baseUrl = sbUrl ? `${sbUrl}/storage/v1/object/public/${bucket}` : '';
   } else {
     baseUrl = (settings?.customCdnUrl || settings?.customStorageUrl || settings?.cloudStorageBaseUrl || '').trim();

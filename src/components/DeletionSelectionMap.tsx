@@ -149,11 +149,11 @@ export const DeletionSelectionMap: React.FC<DeletionSelectionMapProps> = ({
   const [validationToast, setValidationToast] = useState<string | null>(null);
 
   const staticSrc = useRef(
-    `${import.meta.env.VITE_MAP_URL || 'https://mobilemapping-nine.vercel.app'}/?embed=true&dashboard=true&basemap=ofm-positron`
+    `${import.meta.env.VITE_MAP_URL || ''}/?embed=true&dashboard=true&basemap=ofm-positron`
   ).current;
 
   const afterDeleteSrc = useRef(
-    `${import.meta.env.VITE_MAP_URL || 'https://mobilemapping-nine.vercel.app'}/?embed=true&dashboard=true&basemap=ofm-positron`
+    `${import.meta.env.VITE_MAP_URL || ''}/?embed=true&dashboard=true&basemap=ofm-positron`
   ).current;
 
   const mousePosRef = useRef<ScreenPoint | null>(null);

@@ -12,17 +12,22 @@ const readline = require('readline');
 const fs = require('fs');
 const path = require('path');
 
-// 1. Resolve Supabase credentials from .env or defaults
-let supabaseUrl = 'https://tqqybumedywzylujjkqa.supabase.co';
-let supabaseKey = 'sb_publishable_Nf52vHR8rCpvoj-w77ZehQ_QniT4-EV';
+// 1. Resolve Supabase credentials from .env / environment (no hardcoded fallbacks)
+let supabaseUrl = process.env.VITE_SUPABASE_URL || '';
+let supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || '';
 
 const envPath = path.resolve(__dirname, '..', '.env');
 if (fs.existsSync(envPath)) {
   const envContent = fs.readFileSync(envPath, 'utf8');
-  const urlMatch = envContent.match(/VITE_SUPABASE_URL\s*=\s*(.+)/);
-  const keyMatch = envContent.match(/VITE_SUPABASE_ANON_KEY\s*=\s*(.+)/);
-  if (urlMatch) supabaseUrl = urlMatch[1].trim();
-  if (keyMatch) supabaseKey = keyMatch[1].trim();
+  const urlMatch = envContent.match(/^VITE_SUPABASE_URL\s*=\s*(.+)$/m);
+  const keyMatch = envContent.match(/^VITE_SUPABASE_ANON_KEY\s*=\s*(.+)$/m);
+  if (!supabaseUrl && urlMatch) supabaseUrl = urlMatch[1].trim();
+  if (!supabaseKey && keyMatch) supabaseKey = keyMatch[1].trim();
+}
+
+if (!supabaseUrl || !supabaseKey) {
+  console.error('\nMissing Supabase credentials. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env or the environment before running this destructive script.\n');
+  process.exit(1);
 }
 
 const parsedUrl = new URL(supabaseUrl);

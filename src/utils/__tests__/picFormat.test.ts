@@ -7,15 +7,15 @@ describe('formatPIC', () => {
   });
 
   it('returns the fallback for empty/whitespace input', () => {
-    expect(formatPIC('')).toBe('Fariz.farhan95');
+    expect(formatPIC('')).toBe('Operator');
     expect(formatPIC('   ', 'Default')).toBe('Default');
     expect(formatPIC(null, 'X')).toBe('X');
-    expect(formatPIC(undefined)).toBe('Fariz.farhan95');
+    expect(formatPIC(undefined)).toBe('Operator');
   });
 
   it('returns the fallback for placeholder names', () => {
-    expect(formatPIC('Unassigned')).toBe('Fariz.farhan95');
-    expect(formatPIC('OPERATOR')).toBe('Fariz.farhan95');
+    expect(formatPIC('Unassigned')).toBe('Operator');
+    expect(formatPIC('OPERATOR')).toBe('Operator');
   });
 
   it('keeps names unchanged when non-empty and not a placeholder', () => {

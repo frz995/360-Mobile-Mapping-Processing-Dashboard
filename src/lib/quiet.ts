@@ -10,7 +10,7 @@
 const STORAGE_KEY = 'geosphere_quiet';
 
 function readQuiet(): boolean {
-  if (typeof import.meta !== 'undefined' && (import.meta.env?.VITE_DATA_QUIET === '1' || import.meta.env?.VITE_DATA_QUIET === true)) {
+  if (typeof import.meta !== 'undefined' && import.meta.env?.VITE_DATA_QUIET === '1') {
     return true;
   }
   try {

@@ -35,6 +35,15 @@ import {
   resolvePanoramaConfigUrl,
   testCloudflareStorageHealth
 } from '../services/supabase';
+import {
+  STORAGE_BUCKET_DEFAULT,
+  REGION_DEFAULTS,
+  S3_BUCKET_DEFAULT,
+  AZURE_CONTAINER_DEFAULT,
+  DATABASE_HOST_DEFAULT,
+  DATABASE_TABLE_DEFAULTS,
+  DEFAULT_BASEMAP
+} from '../config/defaults';
 import { ThemeManagementCanvas } from './ThemeSelector';
 import { DiagnosticsPanel } from './DiagnosticsPanel';
 import { MALAYSIA_REGIONS, regionToGeoJSON, CUSTOM_REGION_ID } from './boundary/malaysiaRegions';
@@ -163,7 +172,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
         // 2. Send Basemap Selection
         previewIframeRef.current.contentWindow.postMessage({
           type: 'SET_BASEMAP',
-          basemap: projectSettings.defaultBasemap || 'ofm-positron',
+          basemap: projectSettings.defaultBasemap || DEFAULT_BASEMAP,
           customUrl: projectSettings.customBasemapUrl || '',
           opacity: (projectSettings.basemapOpacity ?? 100) / 100
         }, '*');
@@ -234,7 +243,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
 
   // Broadcast basemap settings to all iframes (Dashboard map + Preview map)
   const broadcastBasemap = React.useCallback((bm?: string, customUrl?: string, op?: number) => {
-    const basemapVal = bm || projectSettings.defaultBasemap || 'ofm-positron';
+    const basemapVal = bm || projectSettings.defaultBasemap || DEFAULT_BASEMAP;
     const customUrlVal = customUrl !== undefined ? customUrl : (projectSettings.customBasemapUrl || '');
     const opacityVal = typeof op === 'number' ? op : ((projectSettings.basemapOpacity ?? 100) / 100);
 
@@ -292,7 +301,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
         panoramaMode: s.panoramaMode || '',
         multiResEnabled: s.imageStorageStrategy !== 'single_equirectangular',
         supabaseUrl: s.supabaseUrl || import.meta.env.VITE_SUPABASE_URL || '',
-        supabaseBucket: s.supabaseBucket || 'MMS_PIC',
+        supabaseBucket: s.supabaseBucket || STORAGE_BUCKET_DEFAULT,
         r2Domain: s.r2Domain || '',
         r2PublicDomain: s.r2PublicDomain || '',
         r2PublicUrl: s.r2PublicUrl || '',
@@ -305,12 +314,12 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
         tilePathPattern: s.tilePathPattern || '',
         multiResFallbackPattern: s.multiResFallbackPattern || '',
         s3Bucket: s.s3Bucket || '',
-        s3Region: s.s3Region || 'ap-southeast-1',
+        s3Region: s.s3Region || REGION_DEFAULTS.s3Region,
         gcsBucket: s.gcsBucket || '',
         azureAccount: s.azureAccount || '',
         azureContainer: s.azureContainer || '',
         wasabiBucket: s.wasabiBucket || '',
-        wasabiRegion: s.wasabiRegion || 'us-east-1',
+        wasabiRegion: s.wasabiRegion || REGION_DEFAULTS.wasabiRegion,
         nasServerUrl: s.nasServerUrl || ''
       }
     };
@@ -584,7 +593,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
 
   // Preview basemap changes ONLY on the preview iframe before user applies
   const previewBasemapChange = React.useCallback((bm?: string, customUrl?: string, op?: number) => {
-    const basemapVal = bm || projectSettings.defaultBasemap || 'ofm-positron';
+    const basemapVal = bm || projectSettings.defaultBasemap || DEFAULT_BASEMAP;
     const customUrlVal = customUrl !== undefined ? customUrl : (projectSettings.customBasemapUrl || '');
     const opacityVal = typeof op === 'number' ? op : ((projectSettings.basemapOpacity ?? 100) / 100);
 
@@ -897,7 +906,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                   <label className="block text-text-muted font-medium mb-1">Supabase REST Endpoint URL</label>
                   <input
                     type="text"
-                    value={projectSettings.supabaseUrl || import.meta.env.VITE_SUPABASE_URL || 'https://tqqybumedywzylujjkqa.supabase.co'}
+                    value={projectSettings.supabaseUrl || import.meta.env.VITE_SUPABASE_URL || ''}
                     onChange={e => setProjectSettings(prev => ({ ...prev, supabaseUrl: e.target.value }))}
                     placeholder="https://your-project.supabase.co"
                     className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
@@ -909,10 +918,10 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                   <div className="flex items-center gap-1.5">
                     <input
                       type={showApiKey ? 'text' : 'password'}
-                      value={projectSettings.supabaseKey || import.meta.env.VITE_SUPABASE_ANON_KEY || ''}
-                      onChange={e => setProjectSettings(prev => ({ ...prev, supabaseKey: e.target.value }))}
-                      placeholder="eyJhbGciOiJIUzI1NiIsInR5c..."
-                      className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
+                      value={import.meta.env.VITE_SUPABASE_ANON_KEY || ''}
+                      readOnly
+                      placeholder="Configure via VITE_SUPABASE_ANON_KEY"
+                      className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg} opacity-80 cursor-not-allowed`}
                     />
                     <button
                       type="button"
@@ -929,7 +938,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                   <label className="block text-text-muted font-medium mb-1">Direct PostgreSQL Host / IP</label>
                   <input
                     type="text"
-                    value={projectSettings.databaseHost || 'db.aws-0-ap-southeast-1.supabase.co'}
+                    value={projectSettings.databaseHost || DATABASE_HOST_DEFAULT}
                     onChange={e => setProjectSettings(prev => ({ ...prev, databaseHost: e.target.value }))}
                     placeholder="db.your-project.supabase.co"
                     className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
@@ -1071,10 +1080,10 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                   onClick={() => {
                     setProjectSettings(prev => ({
                       ...prev,
-                      panoramasTable: 'panoramas',
+                      panoramasTable: DATABASE_TABLE_DEFAULTS.panoramasTable,
                       stagingTable: 'staging_panoramas',
                       subgridTable: 'subgrids',
-                      qaDefectsTable: 'qa_defects',
+                      qaDefectsTable: DATABASE_TABLE_DEFAULTS.qaDefectsTable,
                       auditLogsTable: 'audit_logs',
                       deletionRequestsTable: 'deletion_requests',
                       notificationsTable: 'notifications',
@@ -1094,7 +1103,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                   <label className="block text-text-muted font-medium mb-1">Production Panoramas Table</label>
                   <input
                     type="text"
-                    value={projectSettings.panoramasTable || 'panoramas'}
+                    value={projectSettings.panoramasTable || DATABASE_TABLE_DEFAULTS.panoramasTable}
                     onChange={e => setProjectSettings(prev => ({ ...prev, panoramasTable: e.target.value }))}
                     className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
                   />
@@ -1124,7 +1133,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                   <label className="block text-text-muted font-medium mb-1">QC Defects Table</label>
                   <input
                     type="text"
-                    value={projectSettings.qaDefectsTable || 'qa_defects'}
+                    value={projectSettings.qaDefectsTable || DATABASE_TABLE_DEFAULTS.qaDefectsTable}
                     onChange={e => setProjectSettings(prev => ({ ...prev, qaDefectsTable: e.target.value }))}
                     className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
                   />
@@ -1171,7 +1180,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
 CREATE EXTENSION IF NOT EXISTS postgis;
 
 -- 1. Production Panoramas Table
-CREATE TABLE IF NOT EXISTS ${projectSettings.panoramasTable || 'panoramas'} (
+CREATE TABLE IF NOT EXISTS ${projectSettings.panoramasTable || DATABASE_TABLE_DEFAULTS.panoramasTable} (
   id BIGSERIAL PRIMARY KEY,
   subgrid VARCHAR(50) NOT NULL,
   filename VARCHAR(255) NOT NULL,
@@ -1185,8 +1194,8 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.panoramasTable || 'panoramas'} (
   status VARCHAR(20) DEFAULT 'yes',
   qa_status VARCHAR(50) DEFAULT 'published'
 );
-CREATE INDEX IF NOT EXISTS idx_panoramas_geom ON ${projectSettings.panoramasTable || 'panoramas'} USING GIST (geom);
-CREATE INDEX IF NOT EXISTS idx_panoramas_subgrid ON ${projectSettings.panoramasTable || 'panoramas'} (subgrid);
+CREATE INDEX IF NOT EXISTS idx_panoramas_geom ON ${projectSettings.panoramasTable || DATABASE_TABLE_DEFAULTS.panoramasTable} USING GIST (geom);
+CREATE INDEX IF NOT EXISTS idx_panoramas_subgrid ON ${projectSettings.panoramasTable || DATABASE_TABLE_DEFAULTS.panoramasTable} (subgrid);
 
 -- 2. Staging Panoramas Table
 CREATE TABLE IF NOT EXISTS ${projectSettings.stagingTable || 'staging_panoramas'} (
@@ -1201,7 +1210,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.stagingTable || 'staging_panoramas'
 );
 
 -- 3. QC Defects Table
-CREATE TABLE IF NOT EXISTS ${projectSettings.qaDefectsTable || 'qa_defects'} (
+CREATE TABLE IF NOT EXISTS ${projectSettings.qaDefectsTable || DATABASE_TABLE_DEFAULTS.qaDefectsTable} (
   id BIGSERIAL PRIMARY KEY,
   subgrid VARCHAR(50) NOT NULL,
   filename VARCHAR(255) NOT NULL,
@@ -1357,7 +1366,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                       <label className="block text-text-muted font-medium mb-1">AWS S3 Bucket Name</label>
                       <input
                         type="text"
-                        value={projectSettings.s3Bucket || 'tnb-mobilemapping-panoramas'}
+                        value={projectSettings.s3Bucket || S3_BUCKET_DEFAULT}
                         onChange={e => setProjectSettings(prev => ({ ...prev, s3Bucket: e.target.value }))}
                         placeholder="tnb-mobilemapping-panoramas"
                         className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
@@ -1401,7 +1410,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                       <label className="block text-text-muted font-medium mb-1">Azure Blob Container Name</label>
                       <input
                         type="text"
-                        value={projectSettings.azureContainer || 'panoramas'}
+                        value={projectSettings.azureContainer || AZURE_CONTAINER_DEFAULT}
                         onChange={e => setProjectSettings(prev => ({ ...prev, azureContainer: e.target.value }))}
                         placeholder="panoramas"
                         className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
@@ -1424,7 +1433,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                       <label className="block text-text-muted font-medium mb-1">Wasabi Region</label>
                       <input
                         type="text"
-                        value={projectSettings.wasabiRegion || 'us-east-1'}
+                        value={projectSettings.wasabiRegion || REGION_DEFAULTS.wasabiRegion}
                         onChange={e => setProjectSettings(prev => ({ ...prev, wasabiRegion: e.target.value }))}
                         placeholder="us-east-1"
                         className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
@@ -1471,7 +1480,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                     <label className="block text-text-muted font-medium mb-1">Storage Bucket Name</label>
                     <input
                       type="text"
-                      value={projectSettings.supabaseBucket || 'MMS_PIC'}
+                      value={projectSettings.supabaseBucket || STORAGE_BUCKET_DEFAULT}
                       onChange={e => setProjectSettings(prev => ({ ...prev, supabaseBucket: e.target.value, imageStoragePath: `/storage/v1/object/public/${e.target.value}/` }))}
                       placeholder="MMS_PIC"
                       className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
@@ -1693,7 +1702,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                             corsOk: true,
                             contentType: 'image/jpeg'
                           });
-                          showToast(`Storage probe OK &bull; Bucket: ${projectSettings.supabaseBucket || 'MMS_PIC'} (${res.storageTotalFiles}+ files)`);
+                          showToast(`Storage probe OK &bull; Bucket: ${projectSettings.supabaseBucket || STORAGE_BUCKET_DEFAULT} (${res.storageTotalFiles}+ files)`);
                         }
                       } catch (err: any) {
                         setCfTestResult({
@@ -1884,7 +1893,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                     <div>
                       <label className="block text-text-muted font-medium mb-1">Default GIS Basemap Provider</label>
                       <select
-                        value={projectSettings.defaultBasemap || 'ofm-positron'}
+                        value={projectSettings.defaultBasemap || DEFAULT_BASEMAP}
                         onChange={e => {
                           const val = e.target.value as any;
                           setProjectSettings(prev => ({ ...prev, defaultBasemap: val }));
@@ -2551,8 +2560,8 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                     {/* Embedded WebGIS Map Iframe */}
                     <iframe
                       ref={previewIframeRef}
-                      key={`${previewRefreshKey}-${themeMode}-${projectSettings.defaultBasemap || 'ofm-positron'}`}
-                      src={`${import.meta.env.VITE_MAP_URL || 'https://mobilemapping-nine.vercel.app'}/?embed=true&preview=true&theme=${themeMode}&basemap=${projectSettings.defaultBasemap || 'ofm-positron'}&t=${previewRefreshKey}`}
+                      key={`${previewRefreshKey}-${themeMode}-${projectSettings.defaultBasemap || DEFAULT_BASEMAP}`}
+                      src={`${import.meta.env.VITE_MAP_URL || ''}/?embed=true&preview=true&theme=${themeMode}&basemap=${projectSettings.defaultBasemap || DEFAULT_BASEMAP}&t=${previewRefreshKey}`}
                       onLoad={() => {
                         sendPreviewData();
                         setTimeout(sendPreviewData, 400);
@@ -2595,7 +2604,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                           <span>Refresh</span>
                         </button>
                         <a
-                          href={import.meta.env.VITE_MAP_URL || 'https://mobilemapping-nine.vercel.app'}
+                          href={import.meta.env.VITE_MAP_URL || ''}
                           target="_blank"
                           rel="noreferrer"
                           title="Open WebGIS in new tab"
@@ -2772,7 +2781,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                   <input
                     type={showApiKey ? 'text' : 'password'}
                     readOnly
-                    value={import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'}
+                    value={import.meta.env.VITE_SUPABASE_ANON_KEY || ''}
                     className={`flex-1 px-2.5 py-1.5 rounded font-sans text-[11px] border ${inputBg}`}
                   />
                   <button
