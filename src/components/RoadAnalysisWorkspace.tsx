@@ -380,6 +380,29 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
   // Print-preview map instance (owned by RoadAnalysisPrintPanel).
   const printMapRef = useRef<MaplibreMap | null>(null);
 
+  // The print-preview map is lazily mounted on the first visit to the Print tab and
+  // then KEPT alive. The live map stays permanently mounted. Switching Allocation <-> Print
+  // toggles visibility (never unmount/remount), which eliminates the map flash / tile
+  // reload / camera reset the old ternary remount caused.
+  const [printPanelMounted, setPrintPanelMounted] = useState(false);
+
+  useEffect(() => {
+    if (activeTab === 'print') {
+      setPrintPanelMounted(true);
+      const id = requestAnimationFrame(() => {
+        printMapRef.current?.resize();
+      });
+      return () => cancelAnimationFrame(id);
+    }
+    if (printPanelMounted) {
+      const id = requestAnimationFrame(() => {
+        liveMapRef.current?.resize();
+      });
+      return () => cancelAnimationFrame(id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, printPanelMounted]);
+
   useEffect(() => {
     ensureDistrictGeometriesLoaded()
       .then(() => setGeometriesLoaded(true))
@@ -2305,29 +2328,15 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
             </aside>
 
             <div className="flex-1 min-w-0 bg-app overflow-hidden relative flex flex-col">
-              {activeTab === 'print' ? (
-                <RoadAnalysisPrintPanel
-                  style={mapStyle}
-                  districtGeojson={regionGeo?.geojson}
-                  dimmedRegionsGeojson={dimmedRegionsGeojson}
-                  capturedPoints={capturedPoints}
-                  roadRuns={activePlanRuns}
-                  catalogLayers={catalogLayers}
-                  systemStyles={systemStyles}
-                  showRoadLines={showRoadLines}
-                  liveMapRef={liveMapRef}
-                  mapInstanceRef={printMapRef}
-                  pointsSummary={panotrackCounts}
-                  planDistanceKm={planDistanceKm}
-                  capturedDistanceKm={capturedDistanceKm}
-                  coverageRatio={ratio}
-                  selectedStateName={selectedStateName}
-                  districtNames={selectedDistrictsList.map((d) => d.name)}
-                  basemapName={mapBasemap}
-                  onNotify={addNotification}
-                />
-              ) : (
-              <div className="flex-1 min-h-0 relative overflow-hidden">
+              {/* Live map — always mounted; hidden (not unmounted) while on the Print tab */}
+              <div
+                className="flex-1 min-h-0 relative"
+                style={{
+                  visibility: activeTab === 'print' ? 'hidden' : 'visible',
+                  pointerEvents: activeTab === 'print' ? 'none' : 'auto'
+                }}
+              >
+              <div className="absolute inset-0 overflow-hidden">
                 {/* Top-Left Floating Map Controls Box Card */}
                 <div
                   style={{
@@ -2453,7 +2462,40 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                   </div>
                 )}
                 </div>
-              )}
+                </div>
+
+                {/* Print preview — lazily mounted on first Print visit, then kept alive so
+                    Allocation <-> Print switching never remounts (and flashes) a map. */}
+                {printPanelMounted && (
+                  <div
+                    className="absolute inset-0 flex flex-col"
+                    style={{
+                      visibility: activeTab === 'print' ? 'visible' : 'hidden',
+                      pointerEvents: activeTab === 'print' ? 'auto' : 'none'
+                    }}
+                  >
+                    <RoadAnalysisPrintPanel
+                      style={mapStyle}
+                      districtGeojson={regionGeo?.geojson}
+                      dimmedRegionsGeojson={dimmedRegionsGeojson}
+                      capturedPoints={capturedPoints}
+                      roadRuns={activePlanRuns}
+                      catalogLayers={catalogLayers}
+                      systemStyles={systemStyles}
+                      showRoadLines={showRoadLines}
+                      liveMapRef={liveMapRef}
+                      mapInstanceRef={printMapRef}
+                      pointsSummary={panotrackCounts}
+                      planDistanceKm={planDistanceKm}
+                      capturedDistanceKm={capturedDistanceKm}
+                      coverageRatio={ratio}
+                      selectedStateName={selectedStateName}
+                      districtNames={selectedDistrictsList.map((d) => d.name)}
+                      basemapName={mapBasemap}
+                      onNotify={addNotification}
+                    />
+                  </div>
+                )}
 
               {/* Bottom Docked Attribute Table Drawer */}
               {activeTableLayer && (
