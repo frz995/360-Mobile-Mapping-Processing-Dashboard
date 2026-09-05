@@ -177,14 +177,14 @@ describe('RoadAnalysisWorkspace state persistence', () => {
     it('detects changes in System Baseline styles (opacity / stroke width)', () => {
       const base = computeRoadAnalysisFingerprint('JHR', ['JHR-007'], 'system', 'ofm-dark', true, null, []);
       const styled = computeRoadAnalysisFingerprint('JHR', ['JHR-007'], 'system', 'ofm-dark', true, null, [], undefined, {
-        districtBoundary: { color: '#e2e8f0', opacity: 0.8, strokeWidth: 2.5 },
-        pointColorOK: '#10b981',
-        roadPlan: { color: '#10b981', opacity: 1, strokeWidth: 3 }
+        districtBoundary: { visible: true, color: '#e2e8f0', opacity: 0.8, strokeWidth: 2.5 },
+        capturedPoints: { visible: true, opacity: 0.9, pointRadius: 6 },
+        roadPlan: { visible: true, color: '#10b981', opacity: 1, strokeWidth: 3 }
       });
       const tweaked = computeRoadAnalysisFingerprint('JHR', ['JHR-007'], 'system', 'ofm-dark', true, null, [], undefined, {
-        districtBoundary: { color: '#e2e8f0', opacity: 0.55, strokeWidth: 2.5 },
-        pointColorOK: '#10b981',
-        roadPlan: { color: '#10b981', opacity: 1, strokeWidth: 3 }
+        districtBoundary: { visible: true, color: '#e2e8f0', opacity: 0.55, strokeWidth: 2.5 },
+        capturedPoints: { visible: true, opacity: 0.9, pointRadius: 6 },
+        roadPlan: { visible: true, color: '#10b981', opacity: 1, strokeWidth: 3 }
       });
 
       expect(base).not.toBe(styled);
@@ -267,9 +267,9 @@ describe('RoadAnalysisWorkspace state persistence', () => {
 
     it('persists System Baseline style tweaks and restores them with the unsaved marker', () => {
       const systemStyles = {
-        districtBoundary: { color: '#e2e8f0', opacity: 0.65, strokeWidth: 1.8 },
-        pointColorOK: '#10b981',
-        roadPlan: { color: '#10b981', opacity: 1, strokeWidth: 4 }
+        districtBoundary: { visible: true, color: '#e2e8f0', opacity: 0.65, strokeWidth: 1.8 },
+        capturedPoints: { visible: true, opacity: 0.9, pointRadius: 6 },
+        roadPlan: { visible: true, color: '#10b981', opacity: 1, strokeWidth: 4 }
       };
       persistRoadAnalysisCache('user-cache-5', { systemStyles });
 
@@ -291,7 +291,11 @@ describe('RoadAnalysisWorkspace state persistence', () => {
 
     it('a partial edit does not clobber previously cached style state', () => {
       persistRoadAnalysisCache('user-cache-7', {
-        systemStyles: { districtBoundary: { color: '#e2e8f0', opacity: 0.7, strokeWidth: 2 } },
+        systemStyles: {
+          districtBoundary: { visible: true, color: '#e2e8f0', opacity: 0.7, strokeWidth: 2 },
+          capturedPoints: { visible: true, opacity: 0.9, pointRadius: 6 },
+          roadPlan: { visible: true, color: '#10b981', opacity: 1, strokeWidth: 3 }
+        },
         selectedDistrictIds: ['JHR-007']
       });
       persistRoadAnalysisCache('user-cache-7', { mapBasemap: 'google-satellite' });
