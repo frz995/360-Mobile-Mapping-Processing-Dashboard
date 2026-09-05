@@ -64,8 +64,10 @@ function safeSupabaseFetch(input: RequestInfo | URL, init?: RequestInit): Promis
   const isBloatedToken = authHeader.length > MAX_SAFE_HEADER_LENGTH;
 
   // If the user token is bloated (> 1500 chars), proactively swap it for the anon key
-  // on all data queries and logout calls so Kong/Cloudflare never rejects with HTTP 431.
-  if (isBloatedToken && (!urlStr.includes('/auth/v1/') || urlStr.includes('/auth/v1/logout'))) {
+  // on ALL endpoints (including /auth/v1/token refresh) so Kong/Cloudflare never rejects
+  // with HTTP 431 and the persisted session is NOT dropped. The refresh token is carried
+  // in the POST body, so gotrue still validates it independently of the Authorization header.
+  if (isBloatedToken) {
     headers.set('Authorization', `Bearer ${supabaseKey}`);
   }
 
@@ -102,8 +104,15 @@ function safeSupabaseFetch(input: RequestInfo | URL, init?: RequestInit): Promis
 }
 
 /**
- * Clean legacy bloated roadAnalysisState or oversized tokens directly from browser localStorage session
+ * Clean legacy bloated roadAnalysisState sessions directly from browser localStorage
  * so supabase-js does not load an oversized JWT token into memory and cause HTTP 431.
+ *
+ * IMPORTANT: only the ONE known bloat source is pruned — a session whose stored JSON
+ * references `roadAnalysisState` (legacy spatial state embedded in auth.user_metadata).
+ * Ordinary sessions must NEVER be deleted here: wiping any token whose access token
+ * exceeds the size guard is what previously sent every refresh straight back to the
+ * Login page. Oversized-but-valid tokens are instead kept and their Authorization
+ * header neutralized by `safeSupabaseFetch`.
  */
 export function pruneLocalStorageSession(): void {
   try {
@@ -113,17 +122,17 @@ export function pruneLocalStorageSession(): void {
       if (key && (key.startsWith('sb-') || key.includes('supabase.auth.token'))) {
         const raw = localStorage.getItem(key);
         if (!raw) continue;
-        if (raw.includes('roadAnalysisState') || raw.length > 2000) {
-          try {
-            const parsed = JSON.parse(raw);
-            const tokenLen = (parsed?.access_token || '').length;
-            if (tokenLen > MAX_SAFE_HEADER_LENGTH || raw.includes('roadAnalysisState')) {
-              console.warn('[Supabase] Removing bloated session from localStorage key to cure HTTP 431:', key);
-              localStorage.removeItem(key);
-            }
-          } catch {
+        if (!raw.includes('roadAnalysisState')) continue;
+        try {
+          const parsed = JSON.parse(raw);
+          const tokenLen = (parsed?.access_token || '').length;
+          if (tokenLen > MAX_SAFE_HEADER_LENGTH) {
+            console.warn('[Supabase] Removing legacy bloated (roadAnalysisState) session to cure HTTP 431:', key);
             localStorage.removeItem(key);
           }
+        } catch {
+          // Unparseable storage: keep it — removing valid sessions spuriously
+          // would log the user out on every refresh.
         }
       }
     }
@@ -2619,45 +2628,74 @@ export async function saveRoadAnalysisStateToSupabase(
       // ignore
     }
 
-    // 2. Persist to project_settings table in Supabase (authoritative store)
+    // 2. Persist via the narrow SECURITY DEFINER RPC (migration 0014). It updates
+    //    ONLY the settings.roadAnalysisState key, so the shared project_settings row
+    //    stays protected by the admin-only RLS policies from migration 0010, and any
+    //    signed-in role can save their Road Analysis workspace.
+    const rpcPayload: RoadAnalysisProductionState = {
+      ...state,
+      updatedAt: timestamp,
+      updatedBy: userEmail
+    };
+    let cloudUpdatedAt: string | null = null;
     try {
-      const { data } = await supabase
-        .from('project_settings')
-        .select('id, settings')
-        .eq('id', 'default')
-        .maybeSingle();
-
-      const existingSettings = data?.settings || {};
-      const updatedSettings = {
-        ...existingSettings,
-        roadAnalysisState: {
-          ...state,
-          updatedAt: timestamp,
-          updatedBy: userEmail
-        }
-      };
-
-      const { error: dbError } = await supabase.from('project_settings').upsert(
-        [
-          {
-            id: 'default',
-            settings: updatedSettings,
-            updated_at: timestamp
-          }
-        ],
-        { onConflict: 'id' }
-      );
-
-      if (dbError) {
-        console.error('[Supabase] project_settings upsert failed:', dbError);
-        return { success: false, error: dbError.message || 'Failed to save to database' };
+      const { data: rpcData, error: rpcError } = await supabase.rpc('save_road_analysis_state', {
+        p_state: rpcPayload,
+        p_updated_by: userEmail
+      });
+      const rpcOk = (rpcData as any)?.ok === true;
+      if (!rpcError && rpcOk) {
+        cloudUpdatedAt = (rpcData as any)?.updated_at || timestamp;
+      } else if (rpcError && rpcError.code !== '42883' && rpcError.code !== 'PGRST202') {
+        // Real RPC failure (e.g. permission denied): surface it.
+        console.error('[Supabase] save_road_analysis_state RPC failed:', rpcError);
+        return { success: false, error: rpcError.message || 'Failed to save to database' };
       }
-    } catch (dbErr: any) {
-      console.error('[Supabase] project_settings upsert exception:', dbErr);
-      return {
-        success: false,
-        error: dbErr?.message || 'Failed to save to database (project_settings write error).'
-      };
+      // Missing function (migration not deployed) / no-op client: fall through to the
+      // legacy direct upsert so the path still works where the RPC does not exist.
+    } catch {
+      // fall through to the legacy upsert below
+    }
+
+    if (!cloudUpdatedAt) {
+      // 2b. Legacy fallback: direct upsert of the whole row. This will be
+      //     RLS-rejected for non-Administrator until migration 0014 is deployed.
+      try {
+        const { data } = await supabase
+          .from('project_settings')
+          .select('id, settings')
+          .eq('id', 'default')
+          .maybeSingle();
+
+        const existingSettings = data?.settings || {};
+        const updatedSettings = {
+          ...existingSettings,
+          roadAnalysisState: rpcPayload
+        };
+
+        const { error: dbError } = await supabase.from('project_settings').upsert(
+          [
+            {
+              id: 'default',
+              settings: updatedSettings,
+              updated_at: timestamp
+            }
+          ],
+          { onConflict: 'id' }
+        );
+
+        if (dbError) {
+          console.error('[Supabase] project_settings upsert failed:', dbError);
+          return { success: false, error: dbError.message || 'Failed to save to database' };
+        }
+        cloudUpdatedAt = timestamp;
+      } catch (dbErr: any) {
+        console.error('[Supabase] project_settings upsert exception:', dbErr);
+        return {
+          success: false,
+          error: dbErr?.message || 'Failed to save to database (project_settings write error).'
+        };
+      }
     }
 
     // 3. Log to audit trail
@@ -2674,7 +2712,7 @@ export async function saveRoadAnalysisStateToSupabase(
       // ignore
     }
 
-    return { success: true, updatedAt: timestamp };
+    return { success: true, updatedAt: cloudUpdatedAt || timestamp };
   } catch (err: any) {
     console.error('[Supabase] saveRoadAnalysisStateToSupabase exception:', err);
     return { success: false, error: err?.message || 'Failed to save to database' };
