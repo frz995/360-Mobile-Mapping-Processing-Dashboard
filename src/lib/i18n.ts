@@ -1,4 +1,4 @@
-﻿/**
+/**
  * i18n translation dictionary (extracted from App.tsx as a pure move).
  * See implementation_plan_v4.md P1 spike. The dictionary is unchanged; only the
  * location moved. Preserves exact keys/values and en/ms/zh behaviour.
@@ -94,7 +94,7 @@ export const TRANSLATIONS: Record<string, Record<string, string>> = {
       analyticsKpiPoi: 'POIs Registered',
       analyticsKpiDefects: 'Defects Detected',
       analyticsKpiQuality: 'Quality Pass Rate',
-      analyticsKpiFramesSub: 'processed frames',
+      analyticsKpiFramesSub: 'Masterlist Reconciled',
       analyticsKpiQualitySub: 'per registered POI',
       analyticsDefectRate: 'defect rate',
       analyticsTargetProgress: 'Progress vs. Project Targets',

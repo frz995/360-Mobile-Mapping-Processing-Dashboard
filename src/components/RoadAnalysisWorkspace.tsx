@@ -10,7 +10,9 @@ import {
   Check,
   Loader2,
   Upload,
-  GitCompare
+  GitCompare,
+  ArrowRightLeft,
+  Search
 } from 'lucide-react';
 import { UnderlineTabStrip, StatusDot, type ChromeTab } from './production/chrome';
 import {
@@ -31,6 +33,8 @@ import { getRoadExtractionAdapter, type ExtractedRoadLine } from '../services/ro
 import { parseRoadPlanFile, extractLineRuns } from '../utils/roadPlanParser';
 import { extractPanotrackPoints, filterPanotrackByDistricts } from '../utils/panotrackExtractor';
 import { pathLengthLngLatKm } from '../utils/geo';
+import { computeSubgridMetrics, type SubgridMetric, type SubgridRelationNotice } from '../utils/subgridComparison';
+import { extractSubgridName } from '../utils/subgrid';
 import {
   saveRoadAnalysisStateToSupabase,
   fetchRoadAnalysisStateFromSupabase,
@@ -53,7 +57,7 @@ export interface RoadAnalysisWorkspaceProps {
   addAuditLog?: (type: AuditLogItem['type'], title: string, details: string, status?: AuditLogItem['status']) => void;
 }
 
-type RoadTab = 'region' | 'plan' | 'import' | 'catalog' | 'compare';
+type RoadTab = 'region' | 'plan' | 'import' | 'catalog' | 'compare' | 'allocation';
 type PlanSource = 'system' | 'manual' | 'extracted';
 
 export function getAuthStorageUserKey(authSession?: any, isGuestUser?: boolean): string {
@@ -91,6 +95,8 @@ export interface RoadAnalysisSavedState {
   extractedLines?: ExtractedRoadLine[];
   catalogLayers?: CatalogVectorLayer[];
   systemStyles?: SystemLayerStyles;
+  planDistanceKm?: number;
+  totalSubgrids?: number;
   /** Cache schema version, bumped whenever the stored shape changes. */
   schemaVersion?: number;
   /** True once this snapshot has been pushed to Supabase. */
@@ -212,7 +218,8 @@ const TABS: ChromeTab<RoadTab>[] = [
   { key: 'plan', icon: <Route size={14} /> },
   { key: 'import', icon: <Upload size={14} /> },
   { key: 'catalog', icon: <Layers size={14} /> },
-  { key: 'compare', icon: <GitCompare size={14} /> }
+  { key: 'compare', icon: <GitCompare size={14} /> },
+  { key: 'allocation', icon: <ArrowRightLeft size={14} /> }
 ];
 
 const TAB_LABEL: Record<RoadTab, string> = {
@@ -220,7 +227,8 @@ const TAB_LABEL: Record<RoadTab, string> = {
   plan: 'Plan',
   import: 'Import Data',
   catalog: 'Data Catalog',
-  compare: 'Compare'
+  compare: 'Compare',
+  allocation: 'Allocation'
 };
 
 function rasterStyle(tilesUrl: string) {
@@ -345,6 +353,8 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
   const [activeTableLayer, setActiveTableLayer] = useState<CatalogVectorLayer | null>(null);
   const [selectedTableFeature, setSelectedTableFeature] = useState<any | null>(null);
   const [, setGeometriesLoaded] = useState(() => isDistrictGeometriesLoaded());
+  const [selectedSubgridId, setSelectedSubgridId] = useState<string | null>(null);
+  const [subgridSearch, setSubgridSearch] = useState<string>('');
   const [refreshTick, setRefreshTick] = useState(0);
 
   useEffect(() => {
@@ -354,6 +364,11 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
     }
   }, [catalogLayers, activeTableLayer]);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [activeDetailNotice, setActiveDetailNotice] = useState<SubgridRelationNotice | null>(null);
+  const [allocationSearch, setAllocationSearch] = useState('');
+  const [showActiveOnly, setShowActiveOnly] = useState<boolean>(false);
+  const [showRulesModal, setShowRulesModal] = useState<boolean>(false);
+  const [rulesModalTab, setRulesModalTab] = useState<'rules' | 'scenarios'>('rules');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -642,88 +657,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
     }
   }, [projectSettings?.defaultBasemap]);
 
-  // Explicit Save button action: persists to Supabase production database
-  const handleSaveState = useCallback(async () => {
-    if (isSaving) return;
-    setIsSaving(true);
 
-    const userEmail = authSession?.user?.email || (isGuestUser ? 'guest@example.com' : 'authenticated-user');
-    const statePayload: RoadAnalysisProductionState = {
-      activeTab,
-      selectedStateCode,
-      selectedDistrictIds,
-      planSource,
-      mapBasemap,
-      showRoadLines,
-      manualGeoJson,
-      extractedLines,
-      catalogLayers,
-      systemStyles,
-      updatedAt: new Date().toISOString(),
-      updatedBy: userEmail
-    };
-
-    // 1. Primary: Save to Supabase Cloud Database (Auth Metadata & project_settings)
-    const result = await saveRoadAnalysisStateToSupabase(statePayload, {
-      id: authSession?.user?.id,
-      email: authSession?.user?.email
-    });
-
-    setIsSaving(false);
-
-    if (result.success) {
-      // 2. Mirror the successfully-saved snapshot back into the local cache,
-      //    marked as synced so the cache is a faithful mirror of the DB.
-      const savedAt = result.updatedAt || statePayload.updatedAt || new Date().toISOString();
-      mirrorRoadAnalysisToCache(userKey, { ...statePayload, updatedAt: savedAt });
-
-      setHasUnsavedEdits(false);
-      setLastSavedFingerprint(currentFingerprint);
-      const timeStr = new Date(savedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      setLastSavedAt(timeStr);
-
-      addNotification?.({
-        id: `road-saved-${Date.now()}`,
-        title: 'Road Analysis Saved to Database',
-        message: `Configuration saved to Supabase (State: ${selectedStateCode || 'All'}, Districts: ${selectedDistrictIds.length}, Basemap: ${mapBasemap}, Plan: ${planSource}).`,
-        category: 'SUCCESS',
-        read: false
-      });
-
-      addAuditLog?.(
-        'EDIT',
-        'Road Analysis State Saved',
-        `Region ${selectedStateCode || 'N/A'} (${selectedDistrictIds.length} districts), basemap ${mapBasemap}, plan ${planSource} saved by ${userEmail}`,
-        'success'
-      );
-    } else {
-      addNotification?.({
-        id: `road-error-${Date.now()}`,
-        title: 'Database Notice',
-        message: result.error || 'Failed to save configuration to Supabase database.',
-        category: 'WARNING',
-        read: false
-      });
-    }
-  }, [
-    isSaving,
-    authSession,
-    isGuestUser,
-    activeTab,
-    selectedStateCode,
-    selectedDistrictIds,
-    planSource,
-    mapBasemap,
-    showRoadLines,
-    manualGeoJson,
-    extractedLines,
-    catalogLayers,
-    systemStyles,
-    userKey,
-    currentFingerprint,
-    addNotification,
-    addAuditLog
-  ]);
 
   const stateOptions = useMemo(() => DISTRICT_STATES.filter((s) => s.name !== 'Unknown'), []);
 
@@ -886,6 +820,216 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
     if (pct < 10) return `${pct.toFixed(2)}%`;
     return `${pct.toFixed(1)}%`;
   }, [capturedDistanceKm, planDistanceKm]);
+
+  const subgridMetrics = useMemo(() => {
+    return computeSubgridMetrics(
+      capturedPoints,
+      internalDailyData,
+      internalBatchLogs,
+      activePlanRuns,
+      capturedTracks.length,
+      catalogLayers
+    );
+  }, [capturedPoints, internalDailyData, internalBatchLogs, activePlanRuns, capturedTracks.length, catalogLayers]);
+
+  const activeSubgridsCount = useMemo(() => {
+    return subgridMetrics.filter(
+      (s) =>
+        s.pointsCount > 0 ||
+        s.masterlistKm > 0 ||
+        s.tracksCount > 0 ||
+        (s.mismatches && s.mismatches.length > 0) ||
+        (s.outboundTransits && s.outboundTransits.length > 0)
+    ).length;
+  }, [subgridMetrics]);
+
+  const filteredSubgridMetrics = useMemo(() => {
+    let list = subgridMetrics;
+    if (showActiveOnly) {
+      list = list.filter(
+        (s) =>
+          s.pointsCount > 0 ||
+          s.masterlistKm > 0 ||
+          s.tracksCount > 0 ||
+          (s.mismatches && s.mismatches.length > 0) ||
+          (s.outboundTransits && s.outboundTransits.length > 0)
+      );
+    }
+    if (!subgridSearch.trim()) return list;
+    const q = subgridSearch.trim().toUpperCase();
+    return list.filter((s) => s.subgrid.toUpperCase().includes(q));
+  }, [subgridMetrics, subgridSearch, showActiveOnly]);
+
+  // Explicit Save button action: persists to Supabase production database
+  const handleSaveState = useCallback(async () => {
+    if (isSaving) return;
+    setIsSaving(true);
+
+    const userEmail = authSession?.user?.email || (isGuestUser ? 'guest@example.com' : 'authenticated-user');
+    const statePayload: RoadAnalysisProductionState = {
+      activeTab,
+      selectedStateCode,
+      selectedDistrictIds,
+      planSource,
+      mapBasemap,
+      showRoadLines,
+      manualGeoJson,
+      extractedLines,
+      catalogLayers,
+      systemStyles,
+      planDistanceKm: Number(planDistanceKm) || 0,
+      totalSubgrids: subgridMetrics.length || 0,
+      updatedAt: new Date().toISOString(),
+      updatedBy: userEmail
+    };
+
+    // 1. Primary: Save to Supabase Cloud Database (Auth Metadata & project_settings)
+    const result = await saveRoadAnalysisStateToSupabase(statePayload, {
+      id: authSession?.user?.id,
+      email: authSession?.user?.email
+    });
+
+    setIsSaving(false);
+
+    if (result.success) {
+      // 2. Mirror the successfully-saved snapshot back into the local cache,
+      //    marked as synced so the cache is a faithful mirror of the DB.
+      const savedAt = result.updatedAt || statePayload.updatedAt || new Date().toISOString();
+      mirrorRoadAnalysisToCache(userKey, { ...statePayload, updatedAt: savedAt });
+
+      setHasUnsavedEdits(false);
+      setLastSavedFingerprint(currentFingerprint);
+      const timeStr = new Date(savedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      setLastSavedAt(timeStr);
+
+      addNotification?.({
+        id: `road-saved-${Date.now()}`,
+        title: 'Road Analysis Saved to Database',
+        message: `Configuration saved to Supabase (State: ${selectedStateCode || 'All'}, Districts: ${selectedDistrictIds.length}, Basemap: ${mapBasemap}, Plan: ${planSource}, Plan Km: ${planDistanceKm.toFixed(2)} km).`,
+        category: 'SUCCESS',
+        read: false
+      });
+
+      addAuditLog?.(
+        'EDIT',
+        'Road Analysis State Saved',
+        `Region ${selectedStateCode || 'N/A'} (${selectedDistrictIds.length} districts, ${planDistanceKm.toFixed(2)} km plan), basemap ${mapBasemap}, plan ${planSource} saved by ${userEmail}`,
+        'success'
+      );
+    } else {
+      addNotification?.({
+        id: `road-error-${Date.now()}`,
+        title: 'Database Notice',
+        message: result.error || 'Failed to save configuration to Supabase database.',
+        category: 'WARNING',
+        read: false
+      });
+    }
+  }, [
+    isSaving,
+    authSession,
+    isGuestUser,
+    activeTab,
+    selectedStateCode,
+    selectedDistrictIds,
+    planSource,
+    mapBasemap,
+    showRoadLines,
+    manualGeoJson,
+    extractedLines,
+    catalogLayers,
+    systemStyles,
+    planDistanceKm,
+    subgridMetrics.length,
+    userKey,
+    currentFingerprint,
+    addNotification,
+    addAuditLog
+  ]);
+
+  const handleZoomToSubgrid = useCallback((sg: SubgridMetric) => {
+    setSelectedSubgridId(sg.subgrid);
+    if (sg.bbox && (sg.bbox[0] !== 0 || sg.bbox[1] !== 0)) {
+      setFocusBbox([...sg.bbox]);
+    }
+  }, []);
+
+  const handleReassignBatch = useCallback((fromSubgrid: string, toSubgrid: string) => {
+    setInternalBatchLogs((prev) =>
+      prev.map((b) => {
+        if (extractSubgridName(b.subgrid) === fromSubgrid) {
+          return { ...b, subgrid: toSubgrid };
+        }
+        return b;
+      })
+    );
+    setInternalDailyData((prev) =>
+      prev.map((d) => {
+        if (extractSubgridName(d.subgrid) === fromSubgrid) {
+          return {
+            ...d,
+            subgrid: toSubgrid,
+            panoramas: Array.isArray(d.panoramas)
+              ? d.panoramas.map((p: any) => ({ ...p, subgrid: toSubgrid }))
+              : d.panoramas,
+            points: Array.isArray(d.points)
+              ? d.points.map((p: any) => ({ ...p, subgrid: toSubgrid }))
+              : d.points
+          };
+        }
+        return d;
+      })
+    );
+    addNotification?.({
+      id: `reassign-${Date.now()}`,
+      title: 'Batch Reassigned',
+      message: `Reassigned ${fromSubgrid} to ${toSubgrid}`,
+      type: 'info'
+    });
+  }, [addNotification]);
+
+  const allMismatches = useMemo(() => {
+    return subgridMetrics.flatMap((s) => s.mismatches || []);
+  }, [subgridMetrics]);
+
+  const allTransits = useMemo(() => {
+    return subgridMetrics.flatMap((s) => s.outboundTransits || []);
+  }, [subgridMetrics]);
+
+  const handleReassignAllMismatches = useCallback(() => {
+    if (allMismatches.length === 0) return;
+    allMismatches.forEach((m) => {
+      handleReassignBatch(m.originSubgrid, m.spatialSubgrid);
+    });
+    addNotification?.({
+      id: `reassign-all-${Date.now()}`,
+      title: 'Bulk Reassignment Completed',
+      message: `Successfully reassigned ${allMismatches.length} batch mismatch${allMismatches.length > 1 ? 'es' : ''}.`,
+      type: 'info'
+    });
+  }, [allMismatches, handleReassignBatch, addNotification]);
+
+  const filteredAllocationNotices = useMemo(() => {
+    const list = [...allMismatches, ...allTransits];
+    if (!allocationSearch.trim()) return list;
+    const q = allocationSearch.trim().toUpperCase();
+    return list.filter(
+      (item) =>
+        item.originSubgrid.toUpperCase().includes(q) ||
+        item.spatialSubgrid.toUpperCase().includes(q) ||
+        item.text.toUpperCase().includes(q)
+    );
+  }, [allMismatches, allTransits, allocationSearch]);
+
+  const handleSelectSubgrid = useCallback((sgId: string) => {
+    setSelectedSubgridId(sgId);
+    setTimeout(() => {
+      const el = document.getElementById(`subgrid-card-${sgId}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }, 50);
+  }, []);
 
   const handleExtract = useCallback(async () => {
     setExtractError('');
@@ -1547,7 +1691,10 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                     </p>
                   ) : (
                     <>
-                      {/* Actual — system-derived baseline */}
+                      {/* Overall Progress — system-derived baseline */}
+                      <div className="text-[9px] uppercase tracking-widest text-text-muted font-bold mb-1.5">
+                        Overall Progress
+                      </div>
                       <div className="flex items-center justify-between text-[11px]">
                         <span className="text-text-muted">Actual captured points</span>
                         <span className="font-semibold text-text-base">{capturedPoints.length.toLocaleString()}</span>
@@ -1607,9 +1754,355 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                             : 'Plan is a manual GeoJSON override (Option B).'}
                         </div>
                       </div>
+
+                      {/* By Subgrid Comparison (5x5 km) */}
+                      <div className="border-t border-divider pt-2 mt-2">
+                        <div className="flex items-center justify-between mb-1.5">
+                          <div className="text-[9px] uppercase tracking-widest text-text-muted font-bold">
+                            By Subgrid Comparison (5×5 km)
+                          </div>
+                          <span className="text-[10px] text-text-muted font-mono font-medium">
+                            {filteredSubgridMetrics.length}
+                            {filteredSubgridMetrics.length !== subgridMetrics.length ? ` of ${subgridMetrics.length}` : ''}{' '}
+                            subgrid{subgridMetrics.length === 1 ? '' : 's'}
+                          </span>
+                        </div>
+
+                        {/* Filter pills: All vs Active in Data Management */}
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setShowActiveOnly(false)}
+                            className={`px-2 py-0.5 rounded text-[10px] font-mono cursor-pointer transition-colors border ${
+                              !showActiveOnly
+                                ? 'bg-inner border-subtle text-text-base font-bold shadow-sm'
+                                : 'bg-transparent border-transparent text-text-muted hover:text-text-base'
+                            }`}
+                          >
+                            All ({subgridMetrics.length})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setShowActiveOnly(true)}
+                            className={`px-2 py-0.5 rounded text-[10px] font-mono cursor-pointer transition-colors border flex items-center gap-1.5 ${
+                              showActiveOnly
+                                ? 'bg-inner border-subtle text-text-base font-bold shadow-sm ring-1 ring-subtle/50'
+                                : 'bg-transparent border-transparent text-text-muted hover:text-text-base'
+                            }`}
+                            title="Show only subgrids with active data available in Data Management"
+                          >
+                            <span
+                              className={`w-1.5 h-1.5 rounded-full ${
+                                showActiveOnly ? 'bg-sky-400' : 'bg-text-muted/60'
+                              }`}
+                            />
+                            Active Dataset ({activeSubgridsCount})
+                          </button>
+                        </div>
+
+                        {subgridMetrics.length > 2 && (
+                          <input
+                            type="text"
+                            placeholder="Filter subgrid NxxExx..."
+                            value={subgridSearch}
+                            onChange={(e) => setSubgridSearch(e.target.value)}
+                            className="w-full px-2 py-1 rounded bg-inner border border-subtle text-[11px] text-text-base mb-2 font-mono placeholder:text-text-muted focus:outline-none"
+                          />
+                        )}
+
+                        <div className="space-y-2 max-h-[380px] overflow-y-auto pr-0.5">
+                          {filteredSubgridMetrics.length === 0 ? (
+                            <p className="text-[10px] text-text-muted py-1.5">
+                              No subgrids found in this area.
+                            </p>
+                          ) : (
+                            filteredSubgridMetrics.map((sg) => {
+                              const isSelected = selectedSubgridId === sg.subgrid;
+                              return (
+                                <div
+                                  key={sg.subgrid}
+                                  id={`subgrid-card-${sg.subgrid}`}
+                                  className={`p-2.5 rounded-lg border transition-all ${
+                                    isSelected
+                                      ? 'bg-inner border-subtle/80 ring-1 ring-subtle'
+                                      : 'bg-inner/40 border-subtle hover:bg-inner/70'
+                                  }`}
+                                >
+                                  <div className="flex items-center justify-between mb-1.5 pb-1 border-b border-subtle/40">
+                                    <span className="font-mono font-bold text-xs text-text-base tracking-wide">
+                                      {sg.subgrid}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleZoomToSubgrid(sg)}
+                                      className="text-[10px] text-text-muted hover:text-text-base cursor-pointer underline decoration-dotted"
+                                      title={`Focus map to 5×5 km extent of ${sg.subgrid}`}
+                                    >
+                                      Focus 5×5 km
+                                    </button>
+                                  </div>
+
+                                  <div className="space-y-1 text-[11px]">
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-text-muted">Captured points</span>
+                                      <span className="font-semibold text-text-base">{sg.pointsCount.toLocaleString()}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-text-muted">Captured tracks</span>
+                                      <span className="font-semibold text-text-base">{sg.tracksCount.toLocaleString()}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-text-muted">Captured length (Masterlist)</span>
+                                      <span className="font-semibold text-text-base">{sg.masterlistKm.toFixed(2)} km</span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-text-muted">Plan length (5×5 km)</span>
+                                      <span className="font-semibold text-text-base">{sg.planKm.toFixed(2)} km</span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-text-muted">Captured / plan</span>
+                                      <span className="font-semibold text-text-base">{sg.completionRatio ?? '—'}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-text-muted">Difference length</span>
+                                      <span className="font-semibold text-text-base">{sg.differenceKm.toFixed(2)} km</span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-text-muted">Remaining to capture</span>
+                                      <span className="font-semibold text-text-base">{sg.remainingKm.toFixed(2)} km</span>
+                                    </div>
+                                  </div>
+
+                                  {/* Outbound Continuous Road Transits & Mismatches */}
+                                  {((sg.outboundTransits && sg.outboundTransits.length > 0) ||
+                                    (sg.inboundTransits && sg.inboundTransits.length > 0) ||
+                                    (sg.mismatches && sg.mismatches.length > 0)) && (
+                                    <div className="mt-2 pt-2 border-t border-subtle/50 space-y-1.5 text-[10px]">
+                                      {sg.outboundTransits?.map((tr, idx) => (
+                                        <div key={`out-${idx}`} className="p-1.5 rounded bg-inner border border-subtle text-text-muted">
+                                          <div className="flex items-center justify-between">
+                                            <div className="text-[9px] uppercase tracking-wider text-text-muted font-mono font-semibold">Transit Outbound</div>
+                                            <button
+                                              type="button"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                setActiveDetailNotice(tr);
+                                              }}
+                                              className="w-3.5 h-3.5 rounded-full border border-subtle flex items-center justify-center font-mono text-[9px] leading-none font-bold text-text-muted hover:text-text-base hover:border-text-muted transition-colors cursor-pointer"
+                                              title="Open detail explanation"
+                                              aria-label="Open transit detail"
+                                            >
+                                              !
+                                            </button>
+                                          </div>
+                                          <div className="text-text-base font-mono leading-tight mt-0.5">{tr.text} ({tr.pointsCount} pts)</div>
+                                        </div>
+                                      ))}
+                                      {sg.inboundTransits?.map((inTr, idx) => (
+                                        <div key={`in-${idx}`} className="p-1.5 rounded bg-inner border border-subtle text-text-muted">
+                                          <div className="flex items-center justify-between">
+                                            <div className="text-[9px] uppercase tracking-wider text-text-muted font-mono font-semibold">Transit Inbound</div>
+                                            <button
+                                              type="button"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                setActiveDetailNotice(inTr);
+                                              }}
+                                              className="w-3.5 h-3.5 rounded-full border border-subtle flex items-center justify-center font-mono text-[9px] leading-none font-bold text-text-muted hover:text-text-base hover:border-text-muted transition-colors cursor-pointer"
+                                              title="Open detail explanation"
+                                              aria-label="Open inbound transit detail"
+                                            >
+                                              !
+                                            </button>
+                                          </div>
+                                          <div className="text-text-base font-mono leading-tight mt-0.5">{inTr.text} ({inTr.pointsCount} pts)</div>
+                                        </div>
+                                      ))}
+                                      {sg.mismatches?.map((m, idx) => (
+                                        <div key={`mis-${idx}`} className="p-1.5 rounded bg-inner border border-subtle text-text-muted">
+                                          <div className="flex items-center justify-between">
+                                            <div className="text-[9px] uppercase tracking-wider text-text-muted font-mono font-semibold">Data Mismatch</div>
+                                            <button
+                                              type="button"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                setActiveDetailNotice(m);
+                                              }}
+                                              className="w-3.5 h-3.5 rounded-full border border-subtle flex items-center justify-center font-mono text-[9px] leading-none font-bold text-text-muted hover:text-text-base hover:border-text-muted transition-colors cursor-pointer"
+                                              title="Open detail explanation"
+                                              aria-label="Open mismatch detail"
+                                            >
+                                              !
+                                            </button>
+                                          </div>
+                                          <div className="text-text-base font-mono leading-tight mt-0.5">{m.text}</div>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleReassignBatch(m.originSubgrid, m.spatialSubgrid)}
+                                            className="mt-1 px-2 py-0.5 rounded border border-subtle bg-inner hover:bg-inner/80 text-[10px] text-text-base font-mono cursor-pointer"
+                                          >
+                                            Reassign {m.originSubgrid} to {m.spatialSubgrid}
+                                          </button>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
+                      </div>
                     </>
                   )}
                 </>
+              )}
+
+              {activeTab === 'allocation' && (
+                <div className="flex flex-col gap-3">
+                  {/* Allocation Header */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <h3 className="text-[10px] uppercase tracking-wider text-text-muted font-bold font-mono">
+                        Subgrid Allocation & Diagnostics
+                      </h3>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRulesModalTab('rules');
+                          setShowRulesModal(true);
+                        }}
+                        className="flex items-center gap-1.5 px-2 py-0.5 rounded border border-subtle bg-inner hover:bg-inner/80 text-[10px] font-mono text-text-base cursor-pointer transition-colors shrink-0 shadow-sm group"
+                        title="View allocation rules & operational scenarios"
+                      >
+                        <span className="font-semibold text-text-muted group-hover:text-text-base transition-colors">Rule</span>
+                        <span className="w-3.5 h-3.5 rounded-full border border-subtle flex items-center justify-center font-mono text-[9px] leading-none font-bold text-text-muted group-hover:text-text-base group-hover:border-text-muted transition-colors">!</span>
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-text-muted leading-relaxed">
+                      Cross-boundary transits and batch allocation mismatches across active subgrid polygons.
+                    </p>
+                  </div>
+
+                  {/* Summary Metric Chips */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="p-2 rounded-lg bg-inner border border-subtle">
+                      <div className="text-[9px] uppercase tracking-wider text-text-muted font-mono">Mismatches</div>
+                      <div className="text-sm font-bold text-text-base font-mono mt-0.5">
+                        {allMismatches.length}
+                      </div>
+                    </div>
+                    <div className="p-2 rounded-lg bg-inner border border-subtle">
+                      <div className="text-[9px] uppercase tracking-wider text-text-muted font-mono">Transits Outbound</div>
+                      <div className="text-sm font-bold text-text-base font-mono mt-0.5">
+                        {allTransits.length}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Bulk Reassign Action */}
+                  {allMismatches.length > 0 ? (
+                    <button
+                      type="button"
+                      onClick={handleReassignAllMismatches}
+                      className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-inner hover:bg-inner/80 text-text-base border border-subtle text-xs font-mono font-semibold cursor-pointer transition-colors shadow-sm"
+                    >
+                      <ArrowRightLeft size={13} className="text-sky-400" />
+                      Reassign All Mismatches ({allMismatches.length})
+                    </button>
+                  ) : (
+                    <div className="p-2 rounded-lg bg-inner border border-subtle text-center text-[11px] text-text-muted font-mono">
+                      ✓ No pending data mismatches detected
+                    </div>
+                  )}
+
+                  {/* Filter / Search input */}
+                  <div className="relative">
+                    <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted" />
+                    <input
+                      type="text"
+                      placeholder="Filter by subgrid..."
+                      value={allocationSearch}
+                      onChange={(e) => setAllocationSearch(e.target.value)}
+                      className="w-full pl-7 pr-2.5 py-1.5 rounded-lg bg-inner border border-subtle text-xs text-text-base font-mono placeholder:text-text-muted/60 outline-none focus:border-subtle/80"
+                    />
+                  </div>
+
+                  {/* Diagnostic List */}
+                  <div className="space-y-2 mt-1">
+                    {filteredAllocationNotices.length === 0 ? (
+                      <div className="p-3 rounded-lg bg-inner/40 border border-subtle text-center text-[11px] text-text-muted">
+                        No allocation issues found.
+                      </div>
+                    ) : (
+                      filteredAllocationNotices.map((item, idx) => {
+                        const isMismatch = item.type === 'MISMATCH';
+                        return (
+                          <div
+                            key={`alloc-${idx}`}
+                            className="p-2.5 rounded-lg bg-inner border border-subtle space-y-1.5 text-[11px]"
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="text-[9px] uppercase tracking-wider text-text-muted font-mono font-semibold">
+                                {isMismatch ? 'Data Mismatch' : 'Transit Outbound'}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setActiveDetailNotice(item)}
+                                className="w-3.5 h-3.5 rounded-full border border-subtle flex items-center justify-center font-mono text-[9px] leading-none font-bold text-text-muted hover:text-text-base hover:border-text-muted transition-colors cursor-pointer"
+                                title="Open detail explanation"
+                                aria-label="Open diagnostic detail"
+                              >
+                                !
+                              </button>
+                            </div>
+
+                            <div className="space-y-0.5 font-mono text-[10.5px]">
+                              <div className="flex items-center justify-between">
+                                <span className="text-text-muted">Assigned:</span>
+                                <span className="font-semibold text-text-base">{item.originSubgrid}</span>
+                              </div>
+                              <div className="flex items-center justify-between">
+                                <span className="text-text-muted">Physical GPS:</span>
+                                <span className="font-semibold text-text-base">{item.spatialSubgrid}</span>
+                              </div>
+                              <div className="flex items-center justify-between">
+                                <span className="text-text-muted">Affected:</span>
+                                <span className="font-semibold text-text-base">{item.pointsCount} pts</span>
+                              </div>
+                            </div>
+
+                            <div className="text-text-muted text-[10px] font-mono leading-tight pt-1 border-t border-subtle/40">
+                              {item.text}
+                            </div>
+
+                            <div className="flex items-center gap-1.5 pt-1.5">
+                              {isMismatch && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleReassignBatch(item.originSubgrid, item.spatialSubgrid)}
+                                  className="flex-1 px-2 py-1 rounded border border-subtle bg-inner hover:bg-inner/80 text-[10px] text-text-base font-mono cursor-pointer transition-colors text-center"
+                                >
+                                  Reassign {item.originSubgrid} to {item.spatialSubgrid}
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const sgMetric = subgridMetrics.find((s) => s.subgrid === item.originSubgrid || s.subgrid === item.spatialSubgrid);
+                                  if (sgMetric) handleZoomToSubgrid(sgMetric);
+                                }}
+                                className="px-2 py-1 rounded border border-subtle bg-inner hover:bg-inner/80 text-[10px] text-text-muted hover:text-text-base font-mono cursor-pointer transition-colors"
+                              >
+                                Focus 5×5 km
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
               )}
             </aside>
 
@@ -1670,6 +2163,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                   systemStyles={systemStyles}
                   focusBbox={focusBbox}
                   selectedFeature={selectedTableFeature}
+                  onSelectSubgrid={handleSelectSubgrid}
                 />
 
                 {/* Panotrack Operational Status Legend */}
@@ -1755,6 +2249,331 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                   }}
                   selectedFeature={selectedTableFeature}
                 />
+              )}
+
+              {/* Technical Diagnostic Detail Modal Dialog */}
+              {activeDetailNotice && (
+                <div
+                  role="dialog"
+                  aria-modal="true"
+                  aria-label="Diagnostic Detail"
+                  className="fixed inset-0 bg-[var(--modal-overlay)] flex items-center justify-center z-[1000] p-4 backdrop-blur-sm animate-in fade-in duration-150"
+                  onClick={() => setActiveDetailNotice(null)}
+                >
+                  <div
+                    className="bg-card border border-subtle rounded-xl p-5 max-w-md w-full flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {/* Header */}
+                    <div className="flex justify-between items-center pb-3 mb-3 border-b border-subtle shrink-0">
+                      <div>
+                        <div className="text-[9px] uppercase tracking-wider text-text-muted font-mono font-semibold">
+                          {activeDetailNotice.type === 'MISMATCH' ? 'Allocation Diagnostic' : 'Transit Diagnostic'}
+                        </div>
+                        <h2 className="text-sm font-bold text-text-base tracking-wide font-mono mt-0.5">
+                          {activeDetailNotice.type === 'MISMATCH' ? 'Data Mismatch Detail' : 'Transit Diagnostic Detail'}
+                        </h2>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setActiveDetailNotice(null)}
+                        className="w-6 h-6 rounded border border-subtle flex items-center justify-center text-text-muted hover:text-text-base hover:bg-inner cursor-pointer transition-colors font-mono text-xs"
+                        aria-label="Close detail dialog"
+                      >
+                        ✕
+                      </button>
+                    </div>
+
+                    {/* Metadata Table */}
+                    <div className="bg-inner border border-subtle rounded-lg p-3 space-y-1.5 font-mono text-[11px] mb-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-text-muted">Assigned Subgrid</span>
+                        <span className="font-semibold text-text-base">{activeDetailNotice.originSubgrid}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-text-muted">Physical Subgrid (GPS)</span>
+                        <span className="font-semibold text-text-base">{activeDetailNotice.spatialSubgrid}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-text-muted">Affected Survey Frames</span>
+                        <span className="font-semibold text-text-base">{activeDetailNotice.pointsCount.toLocaleString()} pts</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-text-muted">Diagnostic Reason</span>
+                        <span className="font-semibold text-text-base">{activeDetailNotice.reason || (activeDetailNotice.type === 'MISMATCH' ? 'data missmatch with subgrid assign' : 'cross-boundary continuous transit')}</span>
+                      </div>
+                    </div>
+
+                    {/* Technical Detail Explanation */}
+                    <div className="space-y-2.5 text-xs text-text-muted">
+                      <div>
+                        <div className="text-[10px] uppercase font-mono tracking-wider font-semibold text-text-base mb-1">
+                          Why this occurred
+                        </div>
+                        <p className="leading-relaxed font-sans text-[11.5px]">
+                          {activeDetailNotice.type === 'MISMATCH'
+                            ? `All ${activeDetailNotice.pointsCount} survey frames in this batch are labeled as ${activeDetailNotice.originSubgrid} in the manifest/filename, but ray-casting against catalog subgrid boundary polygons places them physically inside ${activeDetailNotice.spatialSubgrid}. This typically occurs when a collection survey was organized under the wrong folder or subgrid label before upload.`
+                            : `The survey vehicle recorded a continuous road run that originated in ${activeDetailNotice.originSubgrid} and continued across the boundary into adjacent ${activeDetailNotice.spatialSubgrid}. ${activeDetailNotice.pointsCount} captured frames are located across the subgrid boundary polygon.`}
+                        </p>
+                      </div>
+
+                      <div>
+                        <div className="text-[10px] uppercase font-mono tracking-wider font-semibold text-text-base mb-1">
+                          Operational Rule & Impact
+                        </div>
+                        <p className="leading-relaxed font-sans text-[11.5px]">
+                          {activeDetailNotice.type === 'MISMATCH'
+                            ? `Per system rules, WebGIS sequence originality is strictly preserved: photo filenames (e.g. ${activeDetailNotice.originSubgrid}-XXXX.jpg) are never altered. Reassigning updates the database indexing pointer so mileage and point totals correctly attribute to ${activeDetailNotice.spatialSubgrid} without breaking raw media lineage.`
+                            : `Continuous road surveys naturally span across artificial 5×5 km grid boundaries. Frames remain linked to their original survey track to maintain continuous road geometry without fragmentation. Length within the 5×5 km cell is accounted for in plan completion.`}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Action Footer */}
+                    <div className="pt-3 mt-4 border-t border-subtle flex items-center justify-between shrink-0">
+                      <span className="text-[10px] text-text-muted font-mono">
+                        {activeDetailNotice.type === 'MISMATCH' ? 'Original filenames preserved' : 'Continuous road geometry'}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        {activeDetailNotice.type === 'MISMATCH' && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleReassignBatch(activeDetailNotice.originSubgrid, activeDetailNotice.spatialSubgrid);
+                              setActiveDetailNotice(null);
+                            }}
+                            className="px-3 py-1.5 bg-inner hover:bg-inner/80 text-text-base border border-subtle rounded-lg text-xs font-mono font-medium cursor-pointer transition-colors"
+                          >
+                            Reassign {activeDetailNotice.originSubgrid} to {activeDetailNotice.spatialSubgrid}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setActiveDetailNotice(null)}
+                          className="px-3.5 py-1.5 bg-inner hover:bg-inner/80 text-text-muted hover:text-text-base border border-subtle rounded-lg text-xs font-mono cursor-pointer transition-colors"
+                        >
+                          Close
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Allocation Rules & Scenarios Guide Modal */}
+              {showRulesModal && (
+                <div
+                  role="dialog"
+                  aria-modal="true"
+                  aria-label="Allocation Rules and Scenarios Guide"
+                  className="fixed inset-0 bg-[var(--modal-overlay)] flex items-center justify-center z-[1000] p-4 backdrop-blur-sm animate-in fade-in duration-150"
+                  onClick={() => setShowRulesModal(false)}
+                >
+                  <div
+                    className="bg-card border border-subtle rounded-xl p-5 max-w-xl w-full flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150 max-h-[90vh]"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {/* Header */}
+                    <div className="flex justify-between items-start pb-3 mb-3 border-b border-subtle shrink-0">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[9px] uppercase tracking-wider text-text-muted font-mono font-semibold">
+                            Allocation & Diagnostic Guide
+                          </span>
+                          <span className="px-1.5 py-0.5 rounded border border-subtle bg-inner text-[9px] font-mono text-text-muted">
+                            Rule Reference
+                          </span>
+                        </div>
+                        <h2 className="text-sm font-bold text-text-base tracking-wide font-mono mt-1">
+                          Subgrid Allocation Rules & Scenarios
+                        </h2>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowRulesModal(false)}
+                        className="w-6 h-6 rounded border border-subtle flex items-center justify-center text-text-muted hover:text-text-base hover:bg-inner cursor-pointer transition-colors font-mono text-xs"
+                        aria-label="Close rules dialog"
+                      >
+                        ✕
+                      </button>
+                    </div>
+
+                    {/* Segmented Tab Switch */}
+                    <div className="flex items-center gap-1 p-0.5 rounded-lg bg-inner border border-subtle mb-3 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setRulesModalTab('rules')}
+                        className={`flex-1 py-1.5 px-3 rounded text-xs font-mono font-medium transition-colors cursor-pointer text-center ${
+                          rulesModalTab === 'rules'
+                            ? 'bg-card text-text-base shadow-sm border border-subtle'
+                            : 'text-text-muted hover:text-text-base'
+                        }`}
+                      >
+                        Operational Rules (4)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setRulesModalTab('scenarios')}
+                        className={`flex-1 py-1.5 px-3 rounded text-xs font-mono font-medium transition-colors cursor-pointer text-center ${
+                          rulesModalTab === 'scenarios'
+                            ? 'bg-card text-text-base shadow-sm border border-subtle'
+                            : 'text-text-muted hover:text-text-base'
+                        }`}
+                      >
+                        Survey Scenarios (3)
+                      </button>
+                    </div>
+
+                    {/* Scrollable Content Body */}
+                    <div className="overflow-y-auto pr-1 space-y-3 text-xs flex-1">
+                      {rulesModalTab === 'rules' ? (
+                        <div className="space-y-2.5">
+                          {/* Rule 1 */}
+                          <div className="p-3 rounded-lg bg-inner border border-subtle">
+                            <div className="flex items-center justify-between mb-1.5">
+                              <span className="text-[10px] uppercase font-mono font-bold text-text-base">
+                                Rule 1: GNSS Ground Truth (Spatial Attribution)
+                              </span>
+                              <span className="px-1.5 py-0.5 rounded border border-subtle text-[9px] font-mono text-text-muted">
+                                GPS Coordinates
+                              </span>
+                            </div>
+                            <p className="text-[11.5px] text-text-muted leading-relaxed font-sans">
+                              Physical coordinates recorded by the vehicle's GNSS receiver determine true geographic positioning. When frame coordinates fall inside a 5×5 km subgrid boundary polygon, the frame is spatially attributed to that cell regardless of the folder name or initial upload batch label.
+                            </p>
+                          </div>
+
+                          {/* Rule 2 */}
+                          <div className="p-3 rounded-lg bg-inner border border-subtle">
+                            <div className="flex items-center justify-between mb-1.5">
+                              <span className="text-[10px] uppercase font-mono font-bold text-text-base">
+                                Rule 2: Filename & Raw Storage Immutability
+                              </span>
+                              <span className="px-1.5 py-0.5 rounded border border-subtle text-[9px] font-mono text-text-muted">
+                                Lineage Intact
+                              </span>
+                            </div>
+                            <p className="text-[11.5px] text-text-muted leading-relaxed font-sans">
+                              Original camera frame filenames (e.g. <span className="font-mono text-text-base">N94E70-0066.jpg</span>) and cloud storage bucket keys are <strong className="text-text-base font-medium">never renamed or moved</strong>. WebGIS sequence integrity, frame timestamps, and raw media provenance are strictly preserved. Reassignment only updates the database indexing pointers and spatial attribution records.
+                            </p>
+                          </div>
+
+                          {/* Rule 3 */}
+                          <div className="p-3 rounded-lg bg-inner border border-subtle">
+                            <div className="flex items-center justify-between mb-1.5">
+                              <span className="text-[10px] uppercase font-mono font-bold text-text-base">
+                                Rule 3: Non-Destructive Additive Merging
+                              </span>
+                              <span className="px-1.5 py-0.5 rounded border border-subtle text-[9px] font-mono text-text-muted">
+                                Additive
+                              </span>
+                            </div>
+                            <p className="text-[11.5px] text-text-muted leading-relaxed font-sans">
+                              When a batch is reassigned to its physical destination subgrid, points and mileage are seamlessly merged into the destination's active dataset. Existing survey runs in the destination subgrid are never overwritten or displaced, correctly accumulating towards total plan completion.
+                            </p>
+                          </div>
+
+                          {/* Rule 4 */}
+                          <div className="p-3 rounded-lg bg-inner border border-subtle">
+                            <div className="flex items-center justify-between mb-1.5">
+                              <span className="text-[10px] uppercase font-mono font-bold text-text-base">
+                                Rule 4: Workspace Analytical Scope
+                              </span>
+                              <span className="px-1.5 py-0.5 rounded border border-subtle text-[9px] font-mono text-text-muted">
+                                Real-Time Session
+                              </span>
+                            </div>
+                            <p className="text-[11.5px] text-text-muted leading-relaxed font-sans">
+                              Reassignments performed in this workspace update the analytical working session in real time. Road completion rates, captured distance, and diagnostic counters recalculate instantly across all tabs without altering production database tables until permanently committed by an administrator.
+                            </p>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="space-y-2.5">
+                          {/* Scenario 1 */}
+                          <div className="p-3 rounded-lg bg-inner border border-subtle">
+                            <div className="flex items-center justify-between mb-1.5">
+                              <span className="text-[10px] uppercase font-mono font-bold text-text-base">
+                                Scenario 1: Normal In-Grid Survey (Matched)
+                              </span>
+                              <span className="px-1.5 py-0.5 rounded border border-subtle text-[9px] font-mono text-text-muted">
+                                100% In Polygon
+                              </span>
+                            </div>
+                            <div className="space-y-1 text-[11.5px] text-text-muted leading-relaxed font-sans">
+                              <p>
+                                <strong className="text-text-base font-mono text-[10.5px]">Condition:</strong> The survey vehicle operated strictly within the designated subgrid. 100% of recorded GPS points fall inside the cell polygon.
+                              </p>
+                              <p>
+                                <strong className="text-text-base font-mono text-[10.5px]">Action:</strong> No adjustment needed. Captured road distance is 100% credited against the subgrid plan length.
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Scenario 2 */}
+                          <div className="p-3 rounded-lg bg-inner border border-subtle">
+                            <div className="flex items-center justify-between mb-1.5">
+                              <span className="text-[10px] uppercase font-mono font-bold text-text-base">
+                                Scenario 2: Cross-Boundary Transit (Transit Outbound)
+                              </span>
+                              <span className="px-1.5 py-0.5 rounded border border-subtle text-[9px] font-mono text-text-muted">
+                                Continuous Corridor
+                              </span>
+                            </div>
+                            <div className="space-y-1 text-[11.5px] text-text-muted leading-relaxed font-sans">
+                              <p>
+                                <strong className="text-text-base font-mono text-[10.5px]">Condition:</strong> The vehicle surveyed a continuous highway or arterial corridor that crosses the 5×5 km boundary into an adjacent subgrid.
+                              </p>
+                              <p>
+                                <strong className="text-text-base font-mono text-[10.5px]">Behavior:</strong> Points across the boundary line are recorded as <span className="font-mono text-text-base">Transit Outbound</span> in origin and <span className="font-mono text-text-base">Transit Inbound</span> in destination. Track sequence is preserved to avoid line fragmentation.
+                              </p>
+                              <p>
+                                <strong className="text-text-base font-mono text-[10.5px]">Action:</strong> Do not reassign. Points inside each subgrid polygon automatically contribute to that respective cell's plan completion.
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Scenario 3 */}
+                          <div className="p-3 rounded-lg bg-inner border border-subtle">
+                            <div className="flex items-center justify-between mb-1.5">
+                              <span className="text-[10px] uppercase font-mono font-bold text-text-base">
+                                Scenario 3: Batch Allocation Mismatch (Data Mismatch)
+                              </span>
+                              <span className="px-1.5 py-0.5 rounded border border-subtle text-[9px] font-mono text-text-muted">
+                                100% Out of Polygon
+                              </span>
+                            </div>
+                            <div className="space-y-1 text-[11.5px] text-text-muted leading-relaxed font-sans">
+                              <p>
+                                <strong className="text-text-base font-mono text-[10.5px]">Condition:</strong> An entire survey batch labeled under Subgrid A (e.g. <span className="font-mono text-text-base">N94E70</span>) is physically located 100% inside Subgrid B (e.g. <span className="font-mono text-text-base">N93E70</span>) due to pre-survey folder misnaming or vehicle task configuration.
+                              </p>
+                              <p>
+                                <strong className="text-text-base font-mono text-[10.5px]">Impact:</strong> Origin subgrid displays unearned frames while the physical destination subgrid shows missing progress.
+                              </p>
+                              <p>
+                                <strong className="text-text-base font-mono text-[10.5px]">Action:</strong> Click <strong className="text-text-base font-mono text-[10.5px]">[Reassign]</strong> (or <strong className="text-text-base font-mono text-[10.5px]">[Reassign All Mismatches]</strong>). The batch is re-indexed to its true physical subgrid without renaming photo files.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Footer */}
+                    <div className="pt-3 mt-3 border-t border-subtle flex items-center justify-between shrink-0">
+                      <span className="text-[10px] text-text-muted font-mono">
+                        360° WebGIS Mobile Mapping Specification
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setShowRulesModal(false)}
+                        className="px-3.5 py-1.5 bg-inner hover:bg-inner/80 text-text-base border border-subtle rounded-lg text-xs font-mono cursor-pointer transition-colors"
+                      >
+                        Close Guide
+                      </button>
+                    </div>
+                  </div>
+                </div>
               )}
             </div>
           </div>

@@ -28,19 +28,23 @@ export const LedgerPanel: React.FC<LedgerPanelProps> = ({
     : (analytics.totals.km || 0);
 
   const totalReportFrames = dailyData.length > 0
-    ? dailyData.reduce(
-        (sum, r) =>
-          sum +
-          Number(
-            r.availableImagesCount ??
-              r.panoramas?.length ??
-              r.imagesProcessed ??
-              r.poiCount ??
-              r.images ??
-              0
-          ),
-        0
-      )
+    ? dailyData.reduce((sum, r) => {
+        const rawPoi = Number(r.poiCount ?? r.poi ?? 0);
+        // Mirror getImagesProcessedCount priority order exactly
+        if (typeof r.availableImagesCount === 'number') {
+          return sum + (rawPoi > 0 ? Math.min(r.availableImagesCount, rawPoi) : r.availableImagesCount);
+        }
+        if (Array.isArray(r.availableFilenames) && r.availableFilenames.length > 0) {
+          return sum + r.availableFilenames.length;
+        }
+        if (Array.isArray(r.panoramas) && r.panoramas.length > 0) {
+          const avail = r.panoramas.filter((p: any) => p.isAvailable === true);
+          if (avail.length > 0) return sum + avail.length;
+        }
+        const processed = typeof r.imagesProcessed === 'number' ? r.imagesProcessed : (typeof r.images === 'number' ? r.images : 0);
+        if (processed > 0) return sum + (rawPoi > 0 ? Math.min(processed, rawPoi) : processed);
+        return sum;
+      }, 0)
     : (analytics.totals.frames || 0);
 
   const totalReportDefects = dailyData.length > 0

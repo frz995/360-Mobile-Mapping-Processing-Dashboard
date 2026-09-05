@@ -97,6 +97,34 @@ export const AnalyticsWorkspace: React.FC<AnalyticsWorkspaceProps> = ({
     return set.size > 0 ? set : undefined;
   }, [batchLogs, dailyData, stagingRows, projectSettings]);
 
+  const roadPlanKm = useMemo(() => {
+    // 1. Direct plan distance from roadAnalysisState in projectSettings
+    const fromSettings = Number(projectSettings?.roadAnalysisState?.planDistanceKm);
+    if (fromSettings > 0) return fromSettings;
+
+    // 2. From cached road analysis state in localStorage
+    try {
+      const keys = Object.keys(localStorage).filter((k) => k.startsWith('geosphere_road_analysis_state_'));
+      for (const k of keys) {
+        const raw = localStorage.getItem(k);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          const cachedPlanKm = Number(parsed?.planDistanceKm);
+          if (cachedPlanKm > 0) return cachedPlanKm;
+        }
+      }
+    } catch { }
+
+    return Number(projectSettings?.targetKm) || 0;
+  }, [projectSettings]);
+
+  const totalProjectSubgrids = useMemo(() => {
+    const fromState = Number(projectSettings?.roadAnalysisState?.totalSubgrids);
+    if (fromState > 0) return fromState;
+    if (boundarySubgrids && boundarySubgrids.size > 0) return boundarySubgrids.size;
+    return undefined;
+  }, [projectSettings, boundarySubgrids]);
+
   const analytics: SurveyAnalytics = useMemo(
     () =>
       computeSurveyAnalytics({
@@ -106,9 +134,21 @@ export const AnalyticsWorkspace: React.FC<AnalyticsWorkspaceProps> = ({
         qaBySubgrid,
         targetKm: Number(projectSettings?.targetKm) || 0,
         targetImages: Number(projectSettings?.targetImages) || 0,
+        roadPlanKm,
+        totalProjectSubgrids,
         boundarySubgrids
       }),
-    [batchLogs, dailyData, aggregates, qaBySubgrid, projectSettings?.targetKm, projectSettings?.targetImages, boundarySubgrids]
+    [
+      batchLogs,
+      dailyData,
+      aggregates,
+      qaBySubgrid,
+      projectSettings?.targetKm,
+      projectSettings?.targetImages,
+      roadPlanKm,
+      totalProjectSubgrids,
+      boundarySubgrids
+    ]
   );
 
   return (

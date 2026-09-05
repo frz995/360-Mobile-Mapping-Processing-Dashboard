@@ -18,6 +18,8 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import type { CatalogVectorLayer } from '../../utils/gisImportParser';
 import { type SystemLayerStyles } from './RoadCatalogPanel';
+import { resolveSpatialSubgrid } from '../../utils/subgridComparison';
+import { extractSubgridName } from '../../utils/subgrid';
 
 const effectiveWorkerUrl = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_MAPLIBRE_WORKER_URL) || workerUrl;
 maplibregl.setWorkerUrl(effectiveWorkerUrl);
@@ -55,6 +57,8 @@ export interface RoadAnalysisMapProps {
   focusBbox?: [number, number, number, number] | null;
   /** Selected feature from Attribute Table to highlight on map in yellow. */
   selectedFeature?: any;
+  /** Callback fired when a survey point is clicked, passing its subgrid code. */
+  onSelectSubgrid?: (subgrid: string) => void;
 }
 
 const DEFAULT_CENTER: [number, number] = [101.9758, 4.2105];
@@ -86,7 +90,25 @@ function extractLineStringRuns(runs: Array<Array<[number, number]>>): GeoJSON.Fe
   };
 }
 
-function extractPointCollection(points: Array<[number, number] | any>): GeoJSON.FeatureCollection {
+function extractPointCollection(
+  points: Array<[number, number] | any>,
+  catalogLayers: CatalogVectorLayer[] = []
+): GeoJSON.FeatureCollection {
+  // 1. Group points by assigned subgrid to know batch distribution
+  const countByAssigned = new Map<string, { total: number; inOrigin: number }>();
+  points.forEach((p) => {
+    if (Array.isArray(p)) return;
+    const assigned = extractSubgridName(p.subgrid);
+    if (!assigned) return;
+    const lng = Number(p.lng ?? p.lon ?? p.longitude);
+    const lat = Number(p.lat ?? p.latitude);
+    const spatial = resolveSpatialSubgrid([lng, lat], catalogLayers) || assigned;
+    const current = countByAssigned.get(assigned) || { total: 0, inOrigin: 0 };
+    current.total += 1;
+    if (spatial === assigned) current.inOrigin += 1;
+    countByAssigned.set(assigned, current);
+  });
+
   // Sort points so defect frames are drawn on top of normal points
   const sorted = [...points].sort((a, b) => {
     const aDef = (!Array.isArray(a) && (a.color === '#ef4444' || a.status === 'defect')) ? 1 : 0;
@@ -101,6 +123,26 @@ function extractPointCollection(points: Array<[number, number] | any>): GeoJSON.
       const lat = Array.isArray(p) ? Number(p[1]) : Number(p.lat ?? p.latitude);
       const isDefect = !Array.isArray(p) && (p.color === '#ef4444' || p.status === 'defect');
       const color = isDefect ? '#ef4444' : (!Array.isArray(p) && p.color ? p.color : '#10b981');
+
+      const assigned = !Array.isArray(p) ? extractSubgridName(p.subgrid) : '';
+      const spatial = resolveSpatialSubgrid([lng, lat], catalogLayers) || assigned;
+
+      let relationType = 'MATCHED';
+      let transitNote = '';
+      let reason = '';
+
+      if (assigned && spatial && assigned !== spatial) {
+        const stats = countByAssigned.get(assigned);
+        if (stats && stats.inOrigin > 0) {
+          relationType = 'INTERSECT';
+          transitNote = `Intersect with ${assigned} — Track starts in ${assigned}, ends in ${spatial}`;
+        } else {
+          relationType = 'MISMATCH';
+          reason = 'data missmatch with subgrid assign';
+          transitNote = `data missmatch with subgrid assign (Assigned ${assigned}, physically in ${spatial})`;
+        }
+      }
+
       return {
         type: 'Feature' as const,
         properties: {
@@ -108,7 +150,11 @@ function extractPointCollection(points: Array<[number, number] | any>): GeoJSON.
           subgrid: !Array.isArray(p) ? (p.subgrid || '') : '',
           filename: !Array.isArray(p) ? (p.filename || '') : '',
           status: !Array.isArray(p) ? (isDefect ? 'defect' : (p.status || (p.isPublished ? 'published' : 'staging'))) : 'published',
-          color
+          color,
+          spatialSubgrid: spatial,
+          relationType,
+          transitNote,
+          reason
         },
         geometry: { type: 'Point' as const, coordinates: [lng, lat] }
       };
@@ -227,7 +273,8 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
   catalogLayers = [],
   systemStyles,
   focusBbox,
-  selectedFeature
+  selectedFeature,
+  onSelectSubgrid
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MaplibreMap | null>(null);
@@ -458,6 +505,11 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
           map.getCanvas().style.cursor = '';
         });
         map.on('click', layerId, (e) => {
+          // If a point on ra-captured was clicked at this same location, suppress polygon popup
+          if (map.getLayer('ra-captured')) {
+            const renderedPoints = map.queryRenderedFeatures(e.point, { layers: ['ra-captured'] });
+            if (renderedPoints && renderedPoints.length > 0) return;
+          }
           const feat = e.features?.[0];
           if (!feat) return;
           const props = feat.properties || {};
@@ -524,7 +576,10 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
       const ptOpacity = ptVisible ? (systemStyles?.capturedPoints?.opacity ?? 0.95) : 0;
       const ptRadius = systemStyles?.capturedPoints?.pointRadius;
 
-      map.addSource('ra-captured', { type: 'geojson', data: extractPointCollection(capturedPoints) });
+      map.addSource('ra-captured', {
+        type: 'geojson',
+        data: extractPointCollection(capturedPoints, catalogLayersRef.current)
+      });
       map.addLayer({
         id: 'ra-captured',
         type: 'circle',
@@ -561,22 +616,50 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
         if (!feat) return;
         const coords = (feat.geometry as any).coordinates.slice();
         const p = feat.properties || {};
+        if (p.subgrid || p.spatialSubgrid) {
+          onSelectSubgrid?.(p.subgrid || p.spatialSubgrid);
+        }
         const color = p.color || '#10b981';
         const isDef = color === '#ef4444' || p.status === 'defect';
+        const isTransit = p.relationType === 'INTERSECT';
+        const isMismatch = p.relationType === 'MISMATCH';
+
+        const statusLabel = isDef
+          ? 'DEFECT'
+          : isMismatch
+          ? 'DATA MISMATCH'
+          : isTransit
+          ? 'TRANSIT'
+          : (p.status || 'ACTIVE');
+
         new maplibregl.Popup({ className: 'custom-panotrack-popup', offset: 8 })
           .setLngLat(coords)
           .setHTML(`
-            <div style="font-family: system-ui, sans-serif; font-size: 11px; line-height: 1.4; color: #f1f5f9; background: #0f172a; padding: 6px 10px; border-radius: 8px; border: 1px solid ${isDef ? '#ef444480' : 'rgba(255,255,255,0.12)'}; box-shadow: 0 4px 12px rgba(0,0,0,0.5);">
+            <div style="font-family: system-ui, -apple-system, sans-serif; font-size: 11px; line-height: 1.4; color: #f1f5f9; background: #0f172a; padding: 7px 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.15); box-shadow: 0 4px 14px rgba(0,0,0,0.6); min-width: 190px;">
               <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 3px;">
-                <span style="font-weight: 700; color: ${isDef ? '#f87171' : '#38bdf8'}; font-size: 12px;">
+                <span style="font-weight: 700; color: #f1f5f9; font-size: 12px; font-family: monospace;">
                   ${p.subgrid || 'Panotrack Point'}
                 </span>
-                <span style="font-size: 9px; font-weight: 700; text-transform: uppercase; padding: 1.5px 6px; border-radius: 4px; background: ${color}25; color: ${color}; border: 1px solid ${color}60;">
-                  ${isDef ? 'DEFECT / FLAGGED' : (p.status || 'ACTIVE')}
+                <span style="font-size: 9px; font-weight: 700; text-transform: uppercase; padding: 1.5px 5px; border-radius: 3px; background: rgba(255,255,255,0.08); color: #cbd5e1; border: 1px solid rgba(255,255,255,0.15);">
+                  ${statusLabel}
                 </span>
               </div>
-              ${p.filename ? `<div style="color: #94a3b8; word-break: break-all; margin-bottom: 3px;">${p.filename}</div>` : ''}
-              <div style="color: #cbd5e1; font-size: 10px;">
+              ${p.filename ? `<div style="color: #94a3b8; font-family: monospace; font-size: 10px; word-break: break-all; margin-bottom: 3px;">${p.filename}</div>` : ''}
+
+              ${p.transitNote ? `
+                <div style="margin-top: 4px; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.08); font-size: 10px; color: #cbd5e1;">
+                  <div style="color: #94a3b8; font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 1px;">Transit Note</div>
+                  <div style="line-height: 1.35;">${p.transitNote}</div>
+                </div>
+              ` : ''}
+
+              ${p.spatialSubgrid && p.spatialSubgrid !== p.subgrid ? `
+                <div style="margin-top: 3px; font-size: 10px; color: #94a3b8;">
+                  Physical Grid: <span style="color: #f1f5f9; font-family: monospace; font-weight: 600;">${p.spatialSubgrid}</span>
+                </div>
+              ` : ''}
+
+              <div style="color: #64748b; font-size: 9px; margin-top: 4px; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 3px;">
                 ${Number(coords[1]).toFixed(5)}° N, ${Number(coords[0]).toFixed(5)}° E
               </div>
             </div>

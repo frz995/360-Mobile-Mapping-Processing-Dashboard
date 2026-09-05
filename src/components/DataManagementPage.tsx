@@ -3492,12 +3492,12 @@ export const DataManagementPage = ({
                                   {batch.status === 'Complete' ? (
                                     <div className="inline-flex items-center gap-2 text-xs font-medium text-text-base whitespace-nowrap">
                                       <CheckCircle size={14} className="text-emerald-400 shrink-0" />
-                                      <span>Published in database</span>
+                                      <span>Complete</span>
                                     </div>
                                   ) : (
-                                    <div className="inline-flex items-center gap-2 text-xs font-medium text-text-base whitespace-nowrap">
+                                    <div className="inline-flex items-center gap-2 text-xs font-medium text-text-base whitespace-nowrap" title={batch.runsCount ? `${batch.publishedRunsCount || 0} of ${batch.runsCount} runs published` : undefined}>
                                       <Clock size={14} className="text-amber-400 shrink-0" />
-                                      <span>Ready to publish</span>
+                                      <span>Ongoing</span>
                                     </div>
                                   )}
                                 </td>
