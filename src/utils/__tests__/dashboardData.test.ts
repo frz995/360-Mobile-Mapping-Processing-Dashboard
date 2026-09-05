@@ -250,4 +250,83 @@ describe('reconcileBatchLogs', () => {
     expect(logs[0].status).toBe('Ongoing')
     expect(logs[0].publishToWebGIS).toBe('in process')
   })
+
+  it('preserves user-defined Ongoing status even when all runs are published', () => {
+    const logs = reconcileBatchLogs(
+      [
+        {
+          date: '2026-08-19',
+          grid: '1',
+          subgrid: 'N93E70',
+          kmProcessed: 5,
+          imagesProcessed: 3,
+          poiCount: 3,
+          defectCount: 0,
+          captureEquipment: 'MMS',
+          imagesDefected: 0,
+          publishToWebGIS: 'yes',
+          action: ''
+        }
+      ],
+      [
+        {
+          id: 'BATCH-N93E70',
+          date: '2026-08-19 00:42',
+          grid: '1',
+          subgrid: 'N93E70',
+          imageFilename: 'N93E70-0001.jpg',
+          images: 3,
+          poiCount: 3,
+          defects: 0,
+          kmProcessed: 5,
+          status: 'Ongoing',
+          pic: 'Operator',
+          publishToWebGIS: 'in process',
+          isSyncedWithSupabase: false
+        }
+      ]
+    )
+    expect(logs).toHaveLength(1)
+    expect(logs[0].status).toBe('Ongoing')
+    expect(logs[0].publishToWebGIS).toBe('in process')
+  })
+
+  it('preserves user-defined Complete status when nothing is published yet', () => {
+    const logs = reconcileBatchLogs(
+      [
+        {
+          date: '2026-08-19',
+          grid: '1',
+          subgrid: 'N93E70',
+          kmProcessed: 5,
+          imagesProcessed: 3,
+          poiCount: 3,
+          defectCount: 0,
+          captureEquipment: 'MMS',
+          imagesDefected: 0,
+          publishToWebGIS: 'no',
+          action: ''
+        }
+      ],
+      [
+        {
+          id: 'BATCH-N93E70',
+          date: '2026-08-19 00:42',
+          grid: '1',
+          subgrid: 'N93E70',
+          imageFilename: 'N93E70-0001.jpg',
+          images: 3,
+          poiCount: 3,
+          defects: 0,
+          kmProcessed: 5,
+          status: 'Complete',
+          pic: 'Operator',
+          publishToWebGIS: 'yes',
+          isSyncedWithSupabase: true
+        }
+      ]
+    )
+    expect(logs[0].status).toBe('Complete')
+    expect(logs[0].publishToWebGIS).toBe('yes')
+  })
 })

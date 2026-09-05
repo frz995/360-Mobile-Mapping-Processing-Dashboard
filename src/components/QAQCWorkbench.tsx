@@ -116,6 +116,7 @@ interface TargetDatasetItem {
   qaqcStatus: string;
   isPublished: boolean;
   publishStatus: 'published' | 'staging' | 'recheck';
+  status?: 'Complete' | 'Ongoing';
 }
 
 export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
@@ -487,19 +488,23 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
         defectCount,
         qaqcStatus: b.qaqcStatus || (cachedAuditRecord || defectCount > 0 ? `QAQC Completed (${defectCount} Defect${defectCount === 1 ? '' : 's'} Found)` : isPublished ? 'QA/QC Approved' : ''),
         isPublished,
-        publishStatus
+        publishStatus,
+        status: b.status === 'Complete' || b.status === 'Ongoing' ? b.status : (isPublished ? 'Complete' : 'Ongoing')
       };
     });
   }, [dailyData, batchLogs, auditCache, activeUserName]);
 
+  const isListedPublished = (item: TargetDatasetItem) =>
+    targetTab === 'masterlist' ? item.status === 'Complete' : item.isPublished;
+
   const stagingCount = useMemo(() => {
     const list = targetTab === 'daily' ? processedDailyRuns : processedBatchLogs;
-    return list.filter(i => !i.isPublished).length;
+    return list.filter(i => !isListedPublished(i)).length;
   }, [targetTab, processedDailyRuns, processedBatchLogs]);
 
   const publishedCount = useMemo(() => {
     const list = targetTab === 'daily' ? processedDailyRuns : processedBatchLogs;
-    return list.filter(i => i.isPublished).length;
+    return list.filter(i => isListedPublished(i)).length;
   }, [targetTab, processedDailyRuns, processedBatchLogs]);
 
   useEffect(() => {
@@ -518,9 +523,9 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
   const filteredTargetList: TargetDatasetItem[] = useMemo(() => {
     let list = targetTab === 'daily' ? processedDailyRuns : processedBatchLogs;
     if (categoryFilter === 'staging') {
-      list = list.filter(item => !item.isPublished);
+      list = list.filter(item => !isListedPublished(item));
     } else if (categoryFilter === 'published') {
-      list = list.filter(item => item.isPublished);
+      list = list.filter(item => isListedPublished(item));
     }
     if (showOnlyWithFrames) {
       list = list.filter(item => item.frameCount > 0);
@@ -1754,10 +1759,22 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                         </div>
 
                         <div className="flex items-center gap-2 flex-wrap text-[11px] text-text-muted">
-                          {item.isPublished ? (
+                          {targetTab === 'masterlist' ? (
+                            item.status === 'Complete' ? (
+                              <span className="text-text-muted font-medium flex items-center gap-1">
+                                <CheckCircle2 size={11} className="text-emerald-400 shrink-0" />
+                                <span>Complete</span>
+                              </span>
+                            ) : (
+                              <span className="text-text-muted font-medium flex items-center gap-1">
+                                <Clock size={11} className="text-amber-400 shrink-0" />
+                                <span>Ongoing</span>
+                              </span>
+                            )
+                          ) : item.isPublished ? (
                             <span className="text-text-muted font-medium flex items-center gap-1">
                               <CheckCircle2 size={11} className="text-emerald-400 shrink-0" />
-                              <span>{targetTab === 'masterlist' ? 'Complete' : 'Published'}</span>
+                              <span>Published</span>
                             </span>
                           ) : item.publishStatus === 'recheck' ? (
                             <span className="text-text-muted font-medium flex items-center gap-1">
@@ -1767,7 +1784,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                           ) : (
                             <span className="text-text-muted font-medium flex items-center gap-1">
                               <Clock size={11} className="text-amber-400 shrink-0" />
-                              <span>{targetTab === 'masterlist' ? 'Ongoing' : 'Staging'}</span>
+                              <span>Staging</span>
                             </span>
                           )}
 
