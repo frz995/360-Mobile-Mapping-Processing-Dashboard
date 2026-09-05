@@ -13,16 +13,23 @@ import {
   CheckCircle,
   AlertTriangle,
   Clock,
-  UserCheck
+  UserCheck,
+  Save,
+  RotateCcw,
+  Laptop,
+  Globe
 } from 'lucide-react';
-import type { UserAccount, DeletionApprovalRequest, SystemHealthMetrics, UserRole } from '../types/admin';
+import type { UserAccount, DeletionApprovalRequest, SystemHealthMetrics, UserRole, RolePermissionsMatrix } from '../types/admin';
+import { DEFAULT_ROLE_CAPABILITIES, DEFAULT_ROLE_PERMISSIONS } from '../types/admin';
 import {
   testDatabaseHealth,
   fetchDeletionRequestsFromSupabase,
   updateDeletionRequestStatusInSupabase,
   fetchUserAccountsFromSupabase,
   saveUserAccountToSupabase,
-  deleteFromSupabase
+  deleteFromSupabase,
+  fetchProjectSettingsFromSupabase,
+  saveProjectSettingsToSupabase
 } from '../services/supabase';
 import { UnderlineTabStrip, type ChromeTab } from './production/chrome';
 
@@ -37,7 +44,7 @@ export interface AdministrationWorkspaceProps {
   onRefreshData?: () => void;
 }
 
-type AdminWorkspaceTab = 'users' | 'approvals' | 'audit' | 'health';
+type AdminWorkspaceTab = 'users' | 'roles' | 'approvals' | 'audit' | 'health';
 
 export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = ({
   authSession,
@@ -60,6 +67,11 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
   const [newUserName, setNewUserName] = useState('');
   const [newUserEmail, setNewUserEmail] = useState('');
   const [newUserRole, setNewUserRole] = useState<UserRole>('Survey Operator');
+
+  // Role Permissions Matrix State
+  const [rolePermissions, setRolePermissions] = useState<RolePermissionsMatrix>(DEFAULT_ROLE_PERMISSIONS);
+  const [isPermissionsDirty, setIsPermissionsDirty] = useState(false);
+  const [isSavingPermissions, setIsSavingPermissions] = useState(false);
 
   // Approvals State
   const [deletionRequests, setDeletionRequests] = useState<DeletionApprovalRequest[]>([]);
@@ -93,8 +105,15 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
     targetRole: UserRole;
   } | null>(null);
 
-  const isAdmin = !isGuestUser && (authSession?.user?.email?.toLowerCase().includes('admin') || authSession?.role === 'admin' || true);
-  const currentAuthEmail = authSession?.user?.email?.toLowerCase().trim() || '';
+  const activeUserEmail = authSession?.user?.email?.toLowerCase().trim() || '';
+  const activeUserRole = authSession?.user?.user_metadata?.role || authSession?.role;
+  const isAdmin = !isGuestUser && (
+    activeUserRole === 'Administrator' ||
+    activeUserRole === 'admin' ||
+    activeUserEmail.includes('admin') ||
+    activeUserEmail === 'fariz.farhan95@gmail.com'
+  );
+  const currentAuthEmail = activeUserEmail;
 
   const showToast = (msg: string) => {
     addNotification?.({
@@ -109,9 +128,10 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
   const loadData = async () => {
     setRefreshing(true);
     try {
-      const [fetchedUsers, fetchedRequests] = await Promise.all([
+      const [fetchedUsers, fetchedRequests, fetchedSettings] = await Promise.all([
         fetchUserAccountsFromSupabase(authSession),
         fetchDeletionRequestsFromSupabase(),
+        fetchProjectSettingsFromSupabase(),
         onRefreshData?.()
       ]);
       if (fetchedUsers) {
@@ -119,6 +139,9 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
       }
       if (fetchedRequests) {
         setDeletionRequests(fetchedRequests);
+      }
+      if (fetchedSettings?.role_permissions) {
+        setRolePermissions((prev) => ({ ...prev, ...fetchedSettings.role_permissions }));
       }
     } catch {
       // ignore
@@ -284,12 +307,67 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
     </span>
   );
 
+  const handleTogglePermission = (roleKey: UserRole | 'guest', capabilityId: string) => {
+    if (roleKey === 'Administrator' && (capabilityId === 'manageUsers' || capabilityId === 'manageSettings')) {
+      showToast('Core Administrator governance capabilities cannot be disabled.');
+      return;
+    }
+    setRolePermissions((prev) => {
+      const roleMap = { ...(prev[roleKey] || {}) };
+      roleMap[capabilityId] = !roleMap[capabilityId];
+      return {
+        ...prev,
+        [roleKey]: roleMap
+      };
+    });
+    setIsPermissionsDirty(true);
+  };
+
+  const handleSaveRolePermissions = async () => {
+    setIsSavingPermissions(true);
+    try {
+      const current = (await fetchProjectSettingsFromSupabase()) || {};
+      const updated = {
+        ...current,
+        role_permissions: rolePermissions,
+        role_permissions_updated_at: new Date().toISOString(),
+        role_permissions_updated_by: authSession?.user?.email || 'Administrator'
+      };
+      const ok = await saveProjectSettingsToSupabase(updated);
+      if (ok) {
+        setIsPermissionsDirty(false);
+        showToast('Role permissions matrix saved and synced to Production WebGIS.');
+        addAuditLog?.('SECURITY', 'Role Permissions Updated', 'Matrix settings saved to Supabase project_settings', 'success');
+      } else {
+        showToast('Failed to persist permissions to Supabase.');
+      }
+    } catch (err: any) {
+      showToast('Error saving permissions: ' + err.message);
+    } finally {
+      setIsSavingPermissions(false);
+    }
+  };
+
+  const handleResetRolePermissions = () => {
+    setRolePermissions(DEFAULT_ROLE_PERMISSIONS);
+    setIsPermissionsDirty(true);
+    showToast('Reset to default enterprise permissions. Click Save to apply.');
+  };
+
   const ADMIN_TABS: ChromeTab<AdminWorkspaceTab>[] = [
     {
       key: 'users',
       icon: <Users size={14} />,
       label: 'User Management',
       badge: countBadge(users.length)
+    },
+    {
+      key: 'roles',
+      icon: <Shield size={14} />,
+      label: 'Role Permissions',
+      badge: isPermissionsDirty ? (
+        <span className="w-1.5 h-1.5 rounded-full bg-amber-400 ml-0.5 animate-pulse" title="Unsaved changes" />
+      ) : undefined
     },
     {
       key: 'approvals',
@@ -433,17 +511,30 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
                         </td>
                         <td className="px-3.5 py-2.5 font-sans text-text-base">{u.email}</td>
                         <td className="px-3.5 py-2.5">
-                          <select
-                            disabled={!isAdmin}
-                            value={u.role}
-                            onChange={(e) => handlePromptChangeUserRole(u, e.target.value as any)}
-                            className="px-2 py-1 rounded text-[11px] font-medium border border-subtle bg-inner text-text-base"
-                          >
-                            <option value="Administrator">Administrator</option>
-                            <option value="Survey Operator">Survey Operator</option>
-                            <option value="QA Inspector">QA Inspector</option>
-                            <option value="Viewer">Viewer</option>
-                          </select>
+                          {u.role === 'Administrator' ? (
+                            <div
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-[11px] font-semibold border border-subtle bg-inner/40 text-text-muted cursor-not-allowed opacity-50 select-none"
+                              title="Administrator role is fixed and cannot be changed"
+                            >
+                              <Shield size={11} className="text-sky-400" />
+                              <span>Administrator</span>
+                              <Lock size={10} className="text-text-muted ml-0.5" />
+                            </div>
+                          ) : (
+                            <select
+                              disabled={!isAdmin}
+                              value={u.role}
+                              onChange={(e) => handlePromptChangeUserRole(u, e.target.value as any)}
+                              className={`px-2 py-1 rounded text-[11px] font-medium border border-subtle bg-inner text-text-base ${
+                                !isAdmin ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:border-sky-500/40'
+                              }`}
+                            >
+                              <option value="Survey Operator">Survey Operator</option>
+                              <option value="QA Inspector">QA Inspector</option>
+                              <option value="Viewer">Viewer</option>
+                              <option value="Administrator">Administrator</option>
+                            </select>
+                          )}
                         </td>
                         <td className="px-3.5 py-2.5">
                           <span
@@ -460,7 +551,11 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
                           {u.lastLogin}
                         </td>
                         <td className="px-3.5 py-2.5 text-right">
-                          {isAdmin ? (
+                          {u.role === 'Administrator' ? (
+                            <span className="text-text-muted italic text-[10px] flex items-center justify-end gap-1 opacity-50 select-none">
+                              <Lock size={10} /> Root Admin
+                            </span>
+                          ) : isAdmin ? (
                             <div className="flex items-center justify-end gap-1.5">
                               <button
                                 onClick={() => handleToggleUserStatus(u.id)}
@@ -491,6 +586,199 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
                   )}
                 </tbody>
               </table>
+            </div>
+          </div>
+        )}
+
+        {/* TAB: ROLE & CAPABILITY MATRIX */}
+        {activeTab === 'roles' && (
+          <div className="space-y-4 animate-in fade-in">
+            <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-subtle">
+              <div>
+                <h3 className="text-sm font-bold text-text-base flex items-center gap-2">
+                  <Shield size={16} className="text-sky-400" />
+                  Role-Based Governance &amp; Capabilities Matrix
+                </h3>
+                <p className="text-xs text-text-muted mt-0.5">
+                  Configure what each operational role can view, edit, or execute in the Processing Workspace and Production WebGIS.
+                </p>
+              </div>
+              {isAdmin ? (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleResetRolePermissions}
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-inner hover:bg-slate-800 text-text-muted hover:text-text-primary border border-subtle transition-colors flex items-center gap-1.5 cursor-pointer"
+                    title="Reset to default enterprise matrix"
+                  >
+                    <RotateCcw size={12} />
+                    Reset Defaults
+                  </button>
+                  <button
+                    onClick={handleSaveRolePermissions}
+                    disabled={!isPermissionsDirty || isSavingPermissions}
+                    className={`px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm ${
+                      isPermissionsDirty
+                        ? 'bg-sky-500 hover:bg-sky-400 text-slate-950 cursor-pointer shadow-sky-500/20'
+                        : 'bg-inner text-text-muted border border-subtle opacity-60 cursor-not-allowed'
+                    }`}
+                  >
+                    {isSavingPermissions ? (
+                      <>
+                        <RefreshCw size={12} className="animate-spin" /> Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Save size={12} />
+                        Save Permissions
+                        {isPermissionsDirty && <span className="w-1.5 h-1.5 rounded-full bg-slate-950 ml-0.5 animate-pulse" />}
+                      </>
+                    )}
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-inner border border-subtle text-amber-400 text-xs font-medium opacity-90 select-none">
+                  <Lock size={12} />
+                  <span>Read-Only: Administrator access required to change permissions</span>
+                </div>
+              )}
+            </div>
+
+            {/* Capability Table */}
+            <div className="bg-panel border border-subtle rounded-xl overflow-hidden shadow-sm">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="bg-inner/60 border-b border-subtle text-text-muted text-[11px] font-semibold uppercase tracking-wider">
+                      <th className="px-4 py-3 min-w-[280px]">Capability / Action</th>
+                      <th className="px-3 py-3 text-center min-w-[120px]">
+                        <div className="flex flex-col items-center">
+                          <span className="text-text-primary font-bold">Administrator</span>
+                          <span className="text-[10px] text-sky-400 font-normal normal-case">Superuser</span>
+                        </div>
+                      </th>
+                      <th className="px-3 py-3 text-center min-w-[120px]">
+                        <div className="flex flex-col items-center">
+                          <span className="text-text-primary font-bold">Survey Operator</span>
+                          <span className="text-[10px] text-emerald-400 font-normal normal-case">Data Pipeline</span>
+                        </div>
+                      </th>
+                      <th className="px-3 py-3 text-center min-w-[120px]">
+                        <div className="flex flex-col items-center">
+                          <span className="text-text-primary font-bold">QA Inspector</span>
+                          <span className="text-[10px] text-amber-400 font-normal normal-case">Quality Control</span>
+                        </div>
+                      </th>
+                      <th className="px-3 py-3 text-center min-w-[120px]">
+                        <div className="flex flex-col items-center">
+                          <span className="text-text-primary font-bold">Viewer / Guest</span>
+                          <span className="text-[10px] text-slate-400 font-normal normal-case">Public / Read-only</span>
+                        </div>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-subtle">
+                    {/* Section 1: Workspace */}
+                    <tr className="bg-inner/30">
+                      <td colSpan={5} className="px-4 py-2 font-mono text-[10px] font-bold text-sky-400 uppercase tracking-wider">
+                        <span className="inline-flex items-center gap-1.5">
+                          <Laptop size={12} />
+                          Production Workspace (Dashboard Operations)
+                        </span>
+                      </td>
+                    </tr>
+                    {DEFAULT_ROLE_CAPABILITIES.filter((c) => c.scope === 'workspace').map((cap) => {
+                      return (
+                        <tr key={cap.id} className="hover:bg-inner/20 transition-colors">
+                          <td className="px-4 py-2.5">
+                            <div className="font-semibold text-text-primary text-xs">{cap.label}</div>
+                            <div className="text-[10px] text-text-muted mt-0.5">{cap.description}</div>
+                            <div className="font-mono text-[9px] text-text-muted mt-1 opacity-70">id: {cap.id}</div>
+                          </td>
+                          {(['Administrator', 'Survey Operator', 'QA Inspector', 'Viewer'] as const).map((role) => {
+                            const isEnabled =
+                              role === 'Viewer'
+                                ? rolePermissions.Viewer?.[cap.id] || rolePermissions.guest?.[cap.id] || false
+                                : rolePermissions[role]?.[cap.id] ?? false;
+                            const isLockedAdmin =
+                              role === 'Administrator' && (cap.id === 'manageUsers' || cap.id === 'manageSettings');
+
+                            return (
+                              <td key={role} className="px-3 py-2.5 text-center">
+                                <div className="flex items-center justify-center">
+                                  <button
+                                    type="button"
+                                    disabled={!isAdmin || isLockedAdmin}
+                                    onClick={() => handleTogglePermission(role, cap.id)}
+                                    className={`w-9 h-5 flex items-center rounded-full p-0.5 transition-colors ${
+                                      isEnabled ? 'bg-sky-500' : 'bg-slate-700/60'
+                                    } ${!isAdmin || isLockedAdmin ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer'}`}
+                                    title={isLockedAdmin ? 'Mandatory for Administrator' : `${role}: ${isEnabled ? 'Allowed' : 'Denied'}`}
+                                  >
+                                    <div
+                                      className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform ${
+                                        isEnabled ? 'translate-x-4' : 'translate-x-0'
+                                      }`}
+                                    />
+                                  </button>
+                                </div>
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
+
+                    {/* Section 2: WebGIS */}
+                    <tr className="bg-inner/30">
+                      <td colSpan={5} className="px-4 py-2 font-mono text-[10px] font-bold text-emerald-400 uppercase tracking-wider">
+                        <span className="inline-flex items-center gap-1.5">
+                          <Globe size={12} />
+                          Production WebGIS (Interactive Map &amp; 360 Viewer)
+                        </span>
+                      </td>
+                    </tr>
+                    {DEFAULT_ROLE_CAPABILITIES.filter((c) => c.scope === 'webgis').map((cap) => {
+                      return (
+                        <tr key={cap.id} className="hover:bg-inner/20 transition-colors">
+                          <td className="px-4 py-2.5">
+                            <div className="font-semibold text-text-primary text-xs">{cap.label}</div>
+                            <div className="text-[10px] text-text-muted mt-0.5">{cap.description}</div>
+                            <div className="font-mono text-[9px] text-text-muted mt-1 opacity-70">id: {cap.id}</div>
+                          </td>
+                          {(['Administrator', 'Survey Operator', 'QA Inspector', 'Viewer'] as const).map((role) => {
+                            const isEnabled =
+                              role === 'Viewer'
+                                ? rolePermissions.Viewer?.[cap.id] || rolePermissions.guest?.[cap.id] || false
+                                : rolePermissions[role]?.[cap.id] ?? false;
+
+                            return (
+                              <td key={role} className="px-3 py-2.5 text-center">
+                                <div className="flex items-center justify-center">
+                                  <button
+                                    type="button"
+                                    disabled={!isAdmin}
+                                    onClick={() => handleTogglePermission(role, cap.id)}
+                                    className={`w-9 h-5 flex items-center rounded-full p-0.5 transition-colors ${
+                                      isEnabled ? 'bg-emerald-500' : 'bg-slate-700/60'
+                                    } ${!isAdmin ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer'}`}
+                                    title={`${role}: ${isEnabled ? 'Allowed' : 'Denied'}`}
+                                  >
+                                    <div
+                                      className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform ${
+                                        isEnabled ? 'translate-x-4' : 'translate-x-0'
+                                      }`}
+                                    />
+                                  </button>
+                                </div>
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}
