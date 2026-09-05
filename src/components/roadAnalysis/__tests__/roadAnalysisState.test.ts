@@ -173,6 +173,36 @@ describe('RoadAnalysisWorkspace state persistence', () => {
 
       expect(fpEmpty).not.toBe(fpExtracted);
     });
+
+    it('detects changes in System Baseline styles (opacity / stroke width)', () => {
+      const base = computeRoadAnalysisFingerprint('JHR', ['JHR-007'], 'system', 'ofm-dark', true, null, []);
+      const styled = computeRoadAnalysisFingerprint('JHR', ['JHR-007'], 'system', 'ofm-dark', true, null, [], undefined, {
+        districtBoundary: { color: '#e2e8f0', opacity: 0.8, strokeWidth: 2.5 },
+        pointColorOK: '#10b981',
+        roadPlan: { color: '#10b981', opacity: 1, strokeWidth: 3 }
+      });
+      const tweaked = computeRoadAnalysisFingerprint('JHR', ['JHR-007'], 'system', 'ofm-dark', true, null, [], undefined, {
+        districtBoundary: { color: '#e2e8f0', opacity: 0.55, strokeWidth: 2.5 },
+        pointColorOK: '#10b981',
+        roadPlan: { color: '#10b981', opacity: 1, strokeWidth: 3 }
+      });
+
+      expect(base).not.toBe(styled);
+      expect(styled).not.toBe(tweaked);
+    });
+
+    it('detects changes in catalog layer style (stroke width / fill opacity / radius)', () => {
+      const layerA = { id: 'L1', name: 'Road A', visible: true, color: '#38bdf8', opacity: 0.9, strokeWidth: 2, geojson: { type: 'FeatureCollection', features: [] } } as any;
+      const layerB = { ...layerA, strokeWidth: 4 };
+      const layerC = { ...layerA, fillOpacity: 0.3, pointRadius: 6 };
+
+      const fpA = computeRoadAnalysisFingerprint('JHR', ['JHR-007'], 'system', 'ofm-dark', true, null, [], [layerA]);
+      const fpB = computeRoadAnalysisFingerprint('JHR', ['JHR-007'], 'system', 'ofm-dark', true, null, [], [layerB]);
+      const fpC = computeRoadAnalysisFingerprint('JHR', ['JHR-007'], 'system', 'ofm-dark', true, null, [], [layerC]);
+
+      expect(fpA).not.toBe(fpB);
+      expect(fpA).not.toBe(fpC);
+    });
   });
 
   describe('local cache metadata (single source of truth / sync markers)', () => {
@@ -233,6 +263,43 @@ describe('RoadAnalysisWorkspace state persistence', () => {
         updatedAt: '2026-09-04T09:00:00.000Z'
       });
       expect(loadRoadAnalysisState('user-cache-4')!.savedToCloud).toBe(true);
+    });
+
+    it('persists System Baseline style tweaks and restores them with the unsaved marker', () => {
+      const systemStyles = {
+        districtBoundary: { color: '#e2e8f0', opacity: 0.65, strokeWidth: 1.8 },
+        pointColorOK: '#10b981',
+        roadPlan: { color: '#10b981', opacity: 1, strokeWidth: 4 }
+      };
+      persistRoadAnalysisCache('user-cache-5', { systemStyles });
+
+      const cache = loadRoadAnalysisState('user-cache-5')!;
+      expect(cache.savedToCloud).toBe(false);
+      expect(cache.systemStyles?.districtBoundary?.opacity).toBe(0.65);
+      expect(cache.systemStyles?.roadPlan?.strokeWidth).toBe(4);
+    });
+
+    it('persists catalog layer edits with the full layer payload', () => {
+      const layer = { id: 'L1', name: 'Road A', visible: true, color: '#38bdf8', opacity: 0.9, strokeWidth: 3.5, geojson: { type: 'FeatureCollection', features: [] } } as any;
+      persistRoadAnalysisCache('user-cache-6', { catalogLayers: [layer] });
+
+      const cache = loadRoadAnalysisState('user-cache-6');
+      expect(cache?.catalogLayers?.[0]?.strokeWidth).toBe(3.5);
+      expect(cache?.catalogLayers?.[0]?.name).toBe('Road A');
+      expect(cache?.savedToCloud).toBe(false);
+    });
+
+    it('a partial edit does not clobber previously cached style state', () => {
+      persistRoadAnalysisCache('user-cache-7', {
+        systemStyles: { districtBoundary: { color: '#e2e8f0', opacity: 0.7, strokeWidth: 2 } },
+        selectedDistrictIds: ['JHR-007']
+      });
+      persistRoadAnalysisCache('user-cache-7', { mapBasemap: 'google-satellite' });
+
+      const cache = loadRoadAnalysisState('user-cache-7')!;
+      expect(cache.mapBasemap).toBe('google-satellite');
+      expect(cache.selectedDistrictIds).toEqual(['JHR-007']);
+      expect(cache.systemStyles?.districtBoundary?.opacity).toBe(0.7);
     });
   });
 });
