@@ -842,7 +842,11 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
 
   const ratio = useMemo(() => {
     if (planDistanceKm <= 0) return null;
-    return Math.min(100, Math.round((capturedDistanceKm / planDistanceKm) * 100));
+    const pct = (capturedDistanceKm / planDistanceKm) * 100;
+    if (pct === 0) return '0%';
+    if (pct < 0.01) return '< 0.01%';
+    if (pct < 10) return `${pct.toFixed(2)}%`;
+    return `${pct.toFixed(1)}%`;
   }, [capturedDistanceKm, planDistanceKm]);
 
   const handleExtract = useCallback(async () => {
@@ -1508,7 +1512,13 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                       {/* Actual — system-derived baseline */}
                       <div className="flex items-center justify-between text-[11px]">
                         <span className="text-text-muted">Actual captured points</span>
-                        <span className="font-semibold text-text-base">{capturedPoints.length}</span>
+                        <span className="font-semibold text-text-base">{capturedPoints.length.toLocaleString()}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="text-text-muted">Actual captured tracks</span>
+                        <span className="font-semibold text-text-base">
+                          {capturedTracks.length > 0 ? capturedTracks.length.toLocaleString() : (capturedPoints.length > 0 ? '1' : '0')}
+                        </span>
                       </div>
                       <div className="flex items-center justify-between text-[11px]">
                         <span className="text-text-muted">Actual captured length</span>
@@ -1521,13 +1531,36 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                           Plan ({planSource === 'extracted' ? 'Option A' : 'Option B'})
                         </div>
                         <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-text-muted">Plan road segments</span>
+                          <span className="font-semibold text-text-base">{activePlanRuns.length.toLocaleString()}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-[11px]">
                           <span className="text-text-muted">Plan length</span>
                           <span className="font-semibold text-text-base">{planDistanceKm.toFixed(2)} km</span>
                         </div>
+                      </div>
+
+                      {/* Actual vs Plan Calculation Details */}
+                      <div className="border-t border-divider pt-2 mt-2">
+                        <div className="text-[9px] uppercase tracking-widest text-text-muted font-bold mb-1.5">
+                          Actual vs Plan Calculation
+                        </div>
                         <div className="flex items-center justify-between text-[11px]">
                           <span className="text-text-muted">Actual captured / plan</span>
-                          <span className="font-semibold text-sky-400">
-                            {ratio === null ? '—' : `${ratio}%`}
+                          <span className="font-semibold text-text-base">
+                            {ratio === null ? '—' : ratio}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-text-muted">Difference length</span>
+                          <span className="font-semibold text-text-base">
+                            {(capturedDistanceKm - planDistanceKm).toFixed(2)} km
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-text-muted">Remaining to capture</span>
+                          <span className="font-semibold text-text-base">
+                            {Math.max(0, planDistanceKm - capturedDistanceKm).toFixed(2)} km
                           </span>
                         </div>
                         <div className="border-t border-divider pt-2 mt-2 text-[10px] text-text-muted leading-relaxed">
