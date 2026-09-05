@@ -42,6 +42,7 @@ import { usePanoramaViewer } from '../hooks/usePanoramaViewer';
 import { isGpuAccelerationSupported, getGpuHardwareName } from '../utils/qaqcAnalyzer';
 import { QAQCThresholdStudioView } from './QAQCThresholdStudioModal';
 import { extractSubgridName } from '../utils/subgrid';
+import { DEFAULT_BASEMAP } from '../config/defaults';
 import {
   getImagesProcessedCount,
   formatDisplayDate,
@@ -2259,7 +2260,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                     {(activeRunningSubgrid || selectedSubgrid) ? (
                       <iframe
                         ref={mapIframeRef}
-                        src={`${import.meta.env.VITE_MAP_URL || 'https://mobilemapping-nine.vercel.app'}/?embed=true&dashboard=true&qaqcWorkbench=true&basemap=${encodeURIComponent(projectSettings?.defaultBasemap || 'ofm-positron')}&subgrid=${encodeURIComponent(activeRunningSubgrid || selectedSubgrid)}${selectedRunId ? `&runId=${encodeURIComponent(selectedRunId)}&isSingleRun=true` : ''}`}
+                        src={`${import.meta.env.VITE_MAP_URL || ''}/?embed=true&dashboard=true&qaqcWorkbench=true&basemap=${encodeURIComponent(projectSettings?.defaultBasemap || DEFAULT_BASEMAP)}&subgrid=${encodeURIComponent(activeRunningSubgrid || selectedSubgrid)}${selectedRunId ? `&runId=${encodeURIComponent(selectedRunId)}&isSingleRun=true` : ''}`}
                         className="w-full h-full border-0"
                         title="QAQC Synchronized Trajectory Map"
                         onLoad={() => {
@@ -2315,7 +2316,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                     <div className="flex-1 w-full h-full relative">
                       <iframe
                         ref={mapIframeRef}
-                        src={`${import.meta.env.VITE_MAP_URL || 'https://mobilemapping-nine.vercel.app'}/?embed=true&dashboard=true&qaqcWorkbench=true&basemap=${encodeURIComponent(projectSettings?.defaultBasemap || 'ofm-positron')}&subgrid=${encodeURIComponent(activeRunningSubgrid || selectedSubgrid)}`}
+                        src={`${import.meta.env.VITE_MAP_URL || ''}/?embed=true&dashboard=true&qaqcWorkbench=true&basemap=${encodeURIComponent(projectSettings?.defaultBasemap || DEFAULT_BASEMAP)}&subgrid=${encodeURIComponent(activeRunningSubgrid || selectedSubgrid)}`}
                         className="w-full h-full border-0"
                         title="QAQC Minimap PiP"
                         onLoad={() => {

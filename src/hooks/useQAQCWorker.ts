@@ -4,6 +4,7 @@ import { analyzeImageSharpness, detectBlurAndObstruction } from '../utils/qaqcAn
 import { resolvePanoramaUrl, supabase } from '../services/supabase';
 import { withRetry } from '../lib/retry';
 import { reportWarn } from '../lib/report';
+import { DATABASE_TABLE_DEFAULTS } from '../config/defaults';
 import type {
   QaqcWorkerRequest,
   QaqcWorkerResponse,
@@ -572,7 +573,7 @@ export function useQAQCWorker() {
 
         // Batch-result persist (single batched upsert at end of run, not per-frame)
         if (msg.defects.length > 0) {
-          const qaDefectsTable = projectSettings?.qaDefectsTable || import.meta.env.VITE_DB_QA_DEFECTS_TABLE || 'qa_defects';
+          const qaDefectsTable = projectSettings?.qaDefectsTable || import.meta.env.VITE_DB_QA_DEFECTS_TABLE || DATABASE_TABLE_DEFAULTS.qaDefectsTable;
           void persistDefectBatch(msg.defects, qaDefectsTable, authUser).then(synced => {
             setWorkerState(prev => ({ ...prev, syncedCount: synced }));
           });

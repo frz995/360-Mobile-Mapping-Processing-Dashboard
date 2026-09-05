@@ -431,7 +431,7 @@ export const DashboardBatchTable: React.FC<DashboardBatchTableProps> = ({
                         <span className="text-text-muted text-[11px] font-medium tabular-nums">0</span>
                       )}
                     </td>
-                    <td className="px-3.5 py-3.5 text-text-base font-medium whitespace-nowrap">{formatPIC(log.pic, activeAuthUserName || "Fariz.farhan95")}</td>
+                    <td className="px-3.5 py-3.5 text-text-base font-medium whitespace-nowrap">{formatPIC(log.pic, activeAuthUserName || "Operator")}</td>
                     <td className="px-3.5 py-3.5 whitespace-nowrap">
                       {(() => {
                         if (isThisRowUnderInspection) {

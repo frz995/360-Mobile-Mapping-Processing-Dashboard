@@ -11,6 +11,7 @@ import {
   StorageProviderType,
   ResolveUrlOptions
 } from './storageUrls';
+import { STORAGE_BUCKET_DEFAULT, DATABASE_TABLE_DEFAULTS } from '../config/defaults';
 
 export {
   formatCloudflareUrl,
@@ -466,7 +467,7 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
 
     // Count actual available images in storage bucket if accessible
     // (prefers server-side file_inventory table, falls back to bucket listing)
-    const primaryBucket = settings?.supabaseBucket || (settings as any)?.storageBucket || import.meta.env.VITE_SUPABASE_BUCKET || import.meta.env.VITE_STORAGE_BUCKET || 'MMS_PIC';
+    const primaryBucket = settings?.supabaseBucket || (settings as any)?.storageBucket || import.meta.env.VITE_SUPABASE_BUCKET || import.meta.env.VITE_STORAGE_BUCKET || STORAGE_BUCKET_DEFAULT;
     const candidateLocations: Array<{ bucket: string; path: string }> = [
       { bucket: primaryBucket, path: '' },
       { bucket: primaryBucket.toLowerCase(), path: '' },
@@ -535,7 +536,7 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
     } catch (_) { }
 
     // Query cloud qaqc_audit_runs table for persisted QAQC audit metrics
-    const qaqcRunsTable = settings?.qaqcRunsTable || import.meta.env.VITE_DB_QAQC_RUNS_TABLE || 'qaqc_audit_runs';
+    const qaqcRunsTable = settings?.qaqcRunsTable || import.meta.env.VITE_DB_QAQC_RUNS_TABLE || DATABASE_TABLE_DEFAULTS.qaqcRunsTable;
     let cloudAuditCache: Record<string, any> = {};
     try {
       const { data: auditRows } = await supabase.from(qaqcRunsTable).select('subgrid, run_id, total_stations, defect_count, pass_rate, mean_tenengrad_score, defects_list, history, pic, user_id, user_email, completed_at, created_at');
@@ -1531,8 +1532,8 @@ export async function updateDefectStatusInSupabase(
     if (!cleanKey) return { success: false, message: 'No subgrid or image key provided' };
     const isFilename = cleanKey.includes('-') || cleanKey.toLowerCase().endsWith('.jpg');
 
-    const panoramasTable = settings?.panoramasTable || import.meta.env.VITE_DB_PANORAMAS_TABLE || 'panoramas';
-    const qaDefectsTable = settings?.qaDefectsTable || import.meta.env.VITE_DB_QA_DEFECTS_TABLE || 'qa_defects';
+    const panoramasTable = settings?.panoramasTable || import.meta.env.VITE_DB_PANORAMAS_TABLE || DATABASE_TABLE_DEFAULTS.panoramasTable;
+    const qaDefectsTable = settings?.qaDefectsTable || import.meta.env.VITE_DB_QA_DEFECTS_TABLE || DATABASE_TABLE_DEFAULTS.qaDefectsTable;
 
     // 1. Update panoramas table (by exact/matched filename or subgrid prefix)
     try {
@@ -1591,7 +1592,7 @@ export async function updateDefectStatusInSupabase(
  */
 export async function fetchQaRecordsFromSupabase(settings?: any): Promise<Record<string, { flags: any; answer: any; isLocked: boolean }>> {
   try {
-    const qaDefectsTable = settings?.qaDefectsTable || import.meta.env.VITE_DB_QA_DEFECTS_TABLE || 'qa_defects';
+    const qaDefectsTable = settings?.qaDefectsTable || import.meta.env.VITE_DB_QA_DEFECTS_TABLE || DATABASE_TABLE_DEFAULTS.qaDefectsTable;
     const records: Record<string, any> = {};
     const { data, error } = await supabase.from(qaDefectsTable).select('*');
     if (!error && data && data.length > 0) {
@@ -1618,7 +1619,7 @@ export async function fetchQaRecordsFromSupabase(settings?: any): Promise<Record
  */
 export async function fetchQaAuditRunsFromSupabase(settings?: any): Promise<Record<string, QAQCAuditRunRecord>> {
   try {
-    const qaqcRunsTable = settings?.qaqcRunsTable || import.meta.env.VITE_DB_QAQC_RUNS_TABLE || 'qaqc_audit_runs';
+    const qaqcRunsTable = settings?.qaqcRunsTable || import.meta.env.VITE_DB_QAQC_RUNS_TABLE || DATABASE_TABLE_DEFAULTS.qaqcRunsTable;
     const { data, error } = await supabase.from(qaqcRunsTable).select('subgrid, run_id, id, total_stations, defect_count, pass_rate, mean_tenengrad_score, defects_list, history, pic, user_id, user_email, completed_at, created_at, updated_at').order('completed_at', { ascending: false });
     if (error) {
       console.warn('fetchQaAuditRunsFromSupabase notice:', error.message);
@@ -1667,7 +1668,7 @@ export async function saveQaAuditRunToSupabase(
   settings?: any
 ): Promise<boolean> {
   try {
-    const qaqcRunsTable = settings?.qaqcRunsTable || import.meta.env.VITE_DB_QAQC_RUNS_TABLE || 'qaqc_audit_runs';
+    const qaqcRunsTable = settings?.qaqcRunsTable || import.meta.env.VITE_DB_QAQC_RUNS_TABLE || DATABASE_TABLE_DEFAULTS.qaqcRunsTable;
     const normSg = (extractSubgrid(record.subgrid) || record.subgrid || '').toUpperCase().trim();
     const runId = record.runId || 'default';
 
@@ -1707,7 +1708,7 @@ export async function saveQaAuditRunToSupabase(
 export async function verifyCsvImageFilenamesInStorage(filenames: string[], settings?: any): Promise<{ availableCount: number; verifiedFilenames: string[] }> {
   if (!filenames || filenames.length === 0) return { availableCount: 0, verifiedFilenames: [] };
 
-  const primaryBucket = settings?.supabaseBucket || (settings as any)?.storageBucket || import.meta.env.VITE_SUPABASE_BUCKET || import.meta.env.VITE_STORAGE_BUCKET || 'MMS_PIC';
+  const primaryBucket = settings?.supabaseBucket || (settings as any)?.storageBucket || import.meta.env.VITE_SUPABASE_BUCKET || import.meta.env.VITE_STORAGE_BUCKET || STORAGE_BUCKET_DEFAULT;
   const candidateLocations: Array<{ bucket: string; path: string }> = [
     { bucket: primaryBucket, path: '' },
     { bucket: primaryBucket, path: 'MMS_PIC' },
@@ -1841,7 +1842,7 @@ export async function getStorageImageCountsFromSupabase(forceRefresh: boolean = 
     return storageCountsCache.data;
   }
 
-  const bucketName = settings?.supabaseBucket || import.meta.env.VITE_SUPABASE_BUCKET || 'MMS_PIC';
+  const bucketName = settings?.supabaseBucket || import.meta.env.VITE_SUPABASE_BUCKET || STORAGE_BUCKET_DEFAULT;
   const storageCounts: Record<string, number> = {};
 
   try {
@@ -2018,7 +2019,7 @@ export async function testDatabaseHealth(): Promise<{
   const postgisLatencyMs = Math.round(performance.now() - startTime);
 
   try {
-    const bucket = import.meta.env.VITE_SUPABASE_BUCKET || 'MMS_PIC';
+    const bucket = import.meta.env.VITE_SUPABASE_BUCKET || STORAGE_BUCKET_DEFAULT;
     const storageResolved = await resolveStorageFiles([
       { bucket, path: '' },
       { bucket: bucket.toLowerCase(), path: '' },

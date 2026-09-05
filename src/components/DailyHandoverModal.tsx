@@ -18,7 +18,7 @@ export interface DailyHandoverModalProps {
     onOpenBatchProcessing?: () => void;
 }
 
-// Clean helper to format username (e.g. "fariz.farhan95" -> "Fariz Farhan")
+// Clean helper to format a username (e.g. "ali.bin" -> "Ali Bin")
 function formatDisplayName(rawName?: string): string {
     if (!rawName) return 'Operations Engineer';
     const base = rawName.split('@')[0];
@@ -32,7 +32,7 @@ export const DailyHandoverModal: React.FC<DailyHandoverModalProps> = ({
     onClose,
     dailyData = [],
     batchLogs = [],
-    currentUser = 'Fariz Farhan',
+    currentUser = 'Operator',
     onSelectSubgrid,
     onOpenQAQCWorkbench,
     onOpenDefectsGallery,

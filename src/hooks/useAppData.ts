@@ -10,6 +10,7 @@ import {
 } from '../services/supabase';
 import { extractSubgridName } from '../utils/subgrid';
 import { getItemId } from '../utils/items';
+import { STORAGE_BUCKET_DEFAULT, STORAGE_PATH_PREFIX_DEFAULT, DATABASE_TABLE_DEFAULTS } from '../config/defaults';
 import { getImagesProcessedCount, getPOICount } from '../utils/dashboardData';
 import type { QAQCAuditRunRecord } from '../types/admin';
 import type { DailyTimeSeries, BatchLog, NotificationItem, AuditLogItem } from '../types/dashboard';
@@ -36,13 +37,12 @@ const DEFAULT_PROJECT_SETTINGS = {
   // Database & Image Fetching Settings
   storageProvider: 'supabase',
   imageStorageStrategy: 'single_equirectangular',
-  supabaseBucket: 'MMS_PIC',
-  supabaseUrl: import.meta.env.VITE_SUPABASE_URL || 'https://tqqybumedywzylujjkqa.supabase.co',
-  supabaseKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+  supabaseBucket: STORAGE_BUCKET_DEFAULT,
+  supabaseUrl: import.meta.env.VITE_SUPABASE_URL || '',
   dbAutoSyncSec: 60,
-  dbTableName: 'batch_logs',
+  dbTableName: DATABASE_TABLE_DEFAULTS.batchLogsTable,
   imageFetchSource: 'supabase',
-  imageStoragePath: '/MMS_PIC/',
+  imageStoragePath: STORAGE_PATH_PREFIX_DEFAULT,
   imageFormatPattern: '{subgrid}-{index:04d}.jpg',
   imagePreloadCount: 3,
   enableImageRetryFallback: true,

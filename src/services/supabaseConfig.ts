@@ -4,6 +4,8 @@
  * split — see implementation_plan_v12.md). Stateless and side-effect free:
  * derives table names from settings and `import.meta.env` only.
  */
+import { DATABASE_TABLE_DEFAULTS } from '../config/defaults';
+
 export interface DatabaseTableMapping {
   panoramasTable: string;
   panoramasSummaryView: string;
@@ -20,12 +22,12 @@ export interface DatabaseTableMapping {
  */
 export function getDatabaseTableMapping(settings?: any): DatabaseTableMapping {
   return {
-    panoramasTable: settings?.dbPanoramasTable || import.meta.env.VITE_DB_PANORAMAS_TABLE || 'panoramas',
-    panoramasSummaryView: settings?.dbSummaryView || import.meta.env.VITE_DB_SUMMARY_VIEW || 'panoramas_subgrid_summary',
-    batchLogsTable: settings?.dbTableName || import.meta.env.VITE_DB_BATCH_LOGS_TABLE || 'batch_logs',
-    qaDefectsTable: settings?.dbQaDefectsTable || import.meta.env.VITE_DB_QA_DEFECTS_TABLE || 'qa_defects',
-    auditLogsTable: settings?.dbAuditLogsTable || import.meta.env.VITE_DB_AUDIT_LOGS_TABLE || 'audit_logs',
-    stagingPanoramasTable: settings?.dbStagingTable || import.meta.env.VITE_DB_STAGING_TABLE || 'staging_panoramas',
-    notificationsTable: settings?.dbNotificationsTable || import.meta.env.VITE_DB_NOTIFICATIONS_TABLE || 'notifications'
+    panoramasTable: settings?.dbPanoramasTable || import.meta.env.VITE_DB_PANORAMAS_TABLE || DATABASE_TABLE_DEFAULTS.panoramasTable,
+    panoramasSummaryView: settings?.dbSummaryView || import.meta.env.VITE_DB_SUMMARY_VIEW || DATABASE_TABLE_DEFAULTS.panoramasSummaryView,
+    batchLogsTable: settings?.dbTableName || import.meta.env.VITE_DB_BATCH_LOGS_TABLE || DATABASE_TABLE_DEFAULTS.batchLogsTable,
+    qaDefectsTable: settings?.dbQaDefectsTable || import.meta.env.VITE_DB_QA_DEFECTS_TABLE || DATABASE_TABLE_DEFAULTS.qaDefectsTable,
+    auditLogsTable: settings?.dbAuditLogsTable || import.meta.env.VITE_DB_AUDIT_LOGS_TABLE || DATABASE_TABLE_DEFAULTS.auditLogsTable,
+    stagingPanoramasTable: settings?.dbStagingTable || import.meta.env.VITE_DB_STAGING_TABLE || DATABASE_TABLE_DEFAULTS.stagingPanoramasTable,
+    notificationsTable: settings?.dbNotificationsTable || import.meta.env.VITE_DB_NOTIFICATIONS_TABLE || DATABASE_TABLE_DEFAULTS.notificationsTable
   };
 }

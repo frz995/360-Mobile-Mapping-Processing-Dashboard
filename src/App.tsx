@@ -204,6 +204,17 @@ export default function App() {
     setProjectSettings
   } = useAppData();
 
+  // Explicit startup warning when required env configuration is missing.
+  // Never silently fall back to a hardcoded project/map URL (see implementation_plan_v13.md).
+  useEffect(() => {
+    if (!import.meta.env.VITE_SUPABASE_URL) {
+      console.warn('[config] Missing VITE_SUPABASE_URL — Supabase data & storage features will not work. Set it in your .env / deployment environment.');
+    }
+    if (!import.meta.env.VITE_MAP_URL) {
+      console.warn('[config] Missing VITE_MAP_URL — embedded WebGIS map links will be blank. Set it in your .env / deployment environment.');
+    }
+  }, []);
+
   // Pop up daily briefing modal once initial dashboard data loading completes (unless suppressed for today)
   useEffect(() => {
     if (!isDataLoading && !hasAutoOpenedBriefingRef.current) {
@@ -2790,13 +2801,13 @@ export default function App() {
         {/* Top Right Controls */}
         <div className={`flex items-center gap-1.5 sm:gap-3 text-text-muted relative shrink-0 transition-all duration-300 ${tourStep === 5 ? 'ring-2 ring-sky-400/90 shadow-[0_0_35px_rgba(56,189,248,0.4)] z-30 relative bg-app px-2 py-1 rounded-xl' : tourStep !== null ? 'opacity-30 blur-[1.5px] pointer-events-none' : ''
           }`}>
-          {/* LIVE WEBGIS LINK (Symbol only, points directly to vercel.app) */}
+          {/* LIVE WEBGIS LINK (Symbol only, points to VITE_MAP_URL) */}
           <a
-            href="https://mobilemapping-nine.vercel.app"
+            href={import.meta.env.VITE_MAP_URL || ''}
             target="_blank"
             rel="noopener noreferrer"
             className="p-1.5 hover:text-sky-400 transition-colors cursor-pointer relative flex items-center justify-center text-text-muted hover:text-sky-400"
-            title="Open Live WebGIS (https://mobilemapping-nine.vercel.app)"
+            title="Open Live WebGIS"
             aria-label="Open Live WebGIS"
           >
             <ExternalLink size={18} />
@@ -4718,7 +4729,7 @@ export default function App() {
           onClose={() => setIsHandoverModalOpen(false)}
           dailyData={dailyData}
           batchLogs={batchLogs}
-          currentUser={authSession?.user?.user_metadata?.full_name || authSession?.user?.email?.split('@')[0] || 'Fariz Farhan'}
+          currentUser={authSession?.user?.user_metadata?.full_name || authSession?.user?.email?.split('@')[0] || 'Operator'}
           onSelectSubgrid={(subgridKey) => {
             setSelectedSubgridFilter(subgridKey);
             setInspectorSubgrid(subgridKey);

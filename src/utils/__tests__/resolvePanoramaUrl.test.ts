@@ -6,6 +6,7 @@ import { renderHook } from '@testing-library/react';
 describe('resolvePanoramaUrl with Supabase Bucket Provider', () => {
   const baseSettings = {
     storageProvider: 'supabase' as const,
+    supabaseUrl: 'https://tqqybumedywzylujjkqa.supabase.co',
     supabaseBucket: 'MMS_PIC',
     imageFormatPattern: '{subgrid}-{index:04d}.jpg'
   };
@@ -35,13 +36,19 @@ describe('resolvePanoramaUrl with Supabase Bucket Provider', () => {
     expect(url).toBe('https://tqqybumedywzylujjkqa.supabase.co/storage/v1/object/public/MMS_PIC/N93E70-0010.jpg');
   });
 
-  it('falls back safely to active VITE_SUPABASE_URL when stale placeholder URL is present', () => {
-    const url = resolvePanoramaUrl('N93E70-0001.jpg', {
-      ...baseSettings,
-      supabaseUrl: 'https://frz995-360-processing.supabase.co'
-    });
-    expect(url).toContain('https://tqqybumedywzylujjkqa.supabase.co');
-    expect(url).not.toContain('frz995-360-processing');
+  it('ignores stale placeholder URLs (no prod fallback; active env host wins)', () => {
+    (import.meta.env as { [k: string]: unknown }).VITE_SUPABASE_URL = 'https://staging-project.supabase.co';
+    try {
+      const url = resolvePanoramaUrl('N93E70-0001.jpg', {
+        ...baseSettings,
+        supabaseUrl: 'https://frz995-360-processing.supabase.co'
+      });
+      expect(url).toContain('https://staging-project.supabase.co');
+      expect(url).not.toContain('frz995-360-processing');
+      expect(url).not.toContain('tqqybumedywzylujjkqa');
+    } finally {
+      delete (import.meta.env as { [k: string]: unknown }).VITE_SUPABASE_URL;
+    }
   });
 
   it('passes through full absolute http/https URLs untouched', () => {

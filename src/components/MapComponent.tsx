@@ -2,6 +2,7 @@ import { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import { Layers } from 'lucide-react';
 import { extractSubgridName } from '../utils/subgrid';
 import { getItemId } from '../utils/items';
+import { STORAGE_BUCKET_DEFAULT, REGION_DEFAULTS, DEFAULT_BASEMAP } from '../config/defaults';
 import type { Layer, Folder } from '../types/catalog';
 
 export const MapComponent = ({
@@ -283,7 +284,7 @@ export const MapComponent = ({
       // 1. Send Basemap
       iframeRef.current.contentWindow.postMessage({
         type: 'SET_BASEMAP',
-        basemap: s.defaultBasemap || 'ofm-positron',
+        basemap: s.defaultBasemap || DEFAULT_BASEMAP,
         customUrl: s.customBasemapUrl || '',
         opacity: (s.basemapOpacity ?? 100) / 100
       }, '*');
@@ -336,7 +337,7 @@ export const MapComponent = ({
           panoramaMode: s.panoramaMode || '',
           multiResEnabled: s.imageStorageStrategy !== 'single_equirectangular',
           supabaseUrl: s.supabaseUrl || import.meta.env.VITE_SUPABASE_URL || '',
-          supabaseBucket: s.supabaseBucket || 'MMS_PIC',
+          supabaseBucket: s.supabaseBucket || STORAGE_BUCKET_DEFAULT,
           r2Domain: s.r2Domain || '',
           r2PublicDomain: s.r2PublicDomain || '',
           r2PublicUrl: s.r2PublicUrl || '',
@@ -349,12 +350,12 @@ export const MapComponent = ({
           tilePathPattern: s.tilePathPattern || '',
           multiResFallbackPattern: s.multiResFallbackPattern || '',
           s3Bucket: s.s3Bucket || '',
-          s3Region: s.s3Region || 'ap-southeast-1',
+          s3Region: s.s3Region || REGION_DEFAULTS.s3Region,
           gcsBucket: s.gcsBucket || '',
           azureAccount: s.azureAccount || '',
           azureContainer: s.azureContainer || '',
           wasabiBucket: s.wasabiBucket || '',
-          wasabiRegion: s.wasabiRegion || 'us-east-1',
+          wasabiRegion: s.wasabiRegion || REGION_DEFAULTS.wasabiRegion,
           nasServerUrl: s.nasServerUrl || ''
         }
       }, '*');
@@ -442,7 +443,7 @@ export const MapComponent = ({
           if (iframeRefCb) iframeRefCb(el);
         }}
         key="webgis-map"
-        src={`${import.meta.env.VITE_MAP_URL || 'https://mobilemapping-nine.vercel.app'}/?embed=true&dashboard=true${dataManagement ? '&noSonar=1' : ''}`}
+        src={`${import.meta.env.VITE_MAP_URL || ''}/?embed=true&dashboard=true${dataManagement ? '&noSonar=1' : ''}`}
         onLoad={() => {
           if (iframeRef.current && iframeRef.current.contentWindow) {
             const dispatch = () => {
