@@ -106,12 +106,16 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
   } | null>(null);
 
   const activeUserEmail = authSession?.user?.email?.toLowerCase().trim() || '';
-  const activeUserRole = authSession?.user?.user_metadata?.role || authSession?.role;
+  const currentDbUser = users.find((u) => u.email?.toLowerCase().trim() === activeUserEmail);
+  const activeUserRole =
+    currentDbUser?.role ||
+    authSession?.user?.user_metadata?.role ||
+    authSession?.user?.app_metadata?.role ||
+    authSession?.role;
+
   const isAdmin = !isGuestUser && (
     activeUserRole === 'Administrator' ||
-    activeUserRole === 'admin' ||
-    activeUserEmail.includes('admin') ||
-    activeUserEmail === 'fariz.farhan95@gmail.com'
+    activeUserRole === 'admin'
   );
   const currentAuthEmail = activeUserEmail;
 
