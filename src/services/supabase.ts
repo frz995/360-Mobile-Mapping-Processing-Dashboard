@@ -28,7 +28,7 @@ function createNoopSupabaseClient(): SupabaseClientInstance {
   }) as unknown as SupabaseClientInstance;
 }
 
-const MAX_SAFE_HEADER_LENGTH = 2500;
+const MAX_SAFE_HEADER_LENGTH = 1500;
 
 /**
  * Safe fetch wrapper that guards against oversized Authorization headers.
@@ -37,9 +37,9 @@ const MAX_SAFE_HEADER_LENGTH = 2500;
  * HTTP 431 (Request Header Fields Too Large) / CORS network failures on API gateways.
  *
  * This wrapper:
- * 1. Suppresses bloated Authorization headers (> 2500 bytes) on REST data requests,
- *    substituting the safe anon key (which carries public/authenticated viewAll capability).
- * 2. Reactively retries with the anon key if any REST request encounters HTTP 431 or NetworkError.
+ * 1. Suppresses bloated Authorization headers (> 1500 bytes) on all requests,
+ *    substituting the safe anon key so Kong/Cloudflare never rejects with HTTP 431.
+ * 2. Reactively retries with the anon key if any request encounters HTTP 431 or NetworkError.
  */
 function safeSupabaseFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const urlStr =
@@ -63,10 +63,14 @@ function safeSupabaseFetch(input: RequestInfo | URL, init?: RequestInit): Promis
   const authHeader = headers.get('Authorization') || headers.get('authorization') || '';
   const isBloatedToken = authHeader.length > MAX_SAFE_HEADER_LENGTH;
 
-  // If the user token is bloated (> 2500 chars), proactively swap it for the anon key
-  // on ALL Supabase API queries (REST tables, Storage list/download, Realtime) so Kong/Cloudflare
-  // never rejects the request with HTTP 431 / CORS NetworkError.
-  if (isBloatedToken && !urlStr.includes('/auth/v1/')) {
+  // If the user token is bloated (> 1500 chars), proactively swap it for the anon key
+  // on all data queries and logout calls so Kong/Cloudflare never rejects with HTTP 431.
+  if (isBloatedToken && (!urlStr.includes('/auth/v1/') || urlStr.includes('/auth/v1/logout'))) {
+    headers.set('Authorization', `Bearer ${supabaseKey}`);
+  }
+
+  // Ensure Authorization header exists for Supabase requests
+  if (urlStr.includes(supabaseUrl) && !headers.has('Authorization')) {
     headers.set('Authorization', `Bearer ${supabaseKey}`);
   }
 
@@ -98,25 +102,28 @@ function safeSupabaseFetch(input: RequestInfo | URL, init?: RequestInit): Promis
 }
 
 /**
- * Clean legacy bloated roadAnalysisState directly from browser localStorage session
- * so supabase-js does not load an oversized JWT token into memory.
+ * Clean legacy bloated roadAnalysisState or oversized tokens directly from browser localStorage session
+ * so supabase-js does not load an oversized JWT token into memory and cause HTTP 431.
  */
 export function pruneLocalStorageSession(): void {
   try {
     if (typeof window === 'undefined' || !window.localStorage) return;
-    for (let i = 0; i < localStorage.length; i++) {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
       const key = localStorage.key(i);
       if (key && (key.startsWith('sb-') || key.includes('supabase.auth.token'))) {
         const raw = localStorage.getItem(key);
-        if (raw && raw.includes('roadAnalysisState')) {
+        if (!raw) continue;
+        if (raw.includes('roadAnalysisState') || raw.length > 2000) {
           try {
             const parsed = JSON.parse(raw);
-            if (parsed?.user?.user_metadata?.roadAnalysisState) {
-              console.warn('[Supabase] Clearing bloated roadAnalysisState from localStorage key:', key);
-              delete parsed.user.user_metadata.roadAnalysisState;
-              localStorage.setItem(key, JSON.stringify(parsed));
+            const tokenLen = (parsed?.access_token || '').length;
+            if (tokenLen > MAX_SAFE_HEADER_LENGTH || raw.includes('roadAnalysisState')) {
+              console.warn('[Supabase] Removing bloated session from localStorage key to cure HTTP 431:', key);
+              localStorage.removeItem(key);
             }
-          } catch { }
+          } catch {
+            localStorage.removeItem(key);
+          }
         }
       }
     }
