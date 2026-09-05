@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   supabase,
   fetchSupabaseData,
+  fetchBatchLogOverridesFromSupabase,
   fetchQaRecordsFromSupabase,
   fetchQaAuditRunsFromSupabase,
   fetchAuditLogsFromSupabase,
@@ -11,7 +12,7 @@ import {
 import { extractSubgridName } from '../utils/subgrid';
 import { getItemId } from '../utils/items';
 import { STORAGE_BUCKET_DEFAULT, STORAGE_PATH_PREFIX_DEFAULT, DATABASE_TABLE_DEFAULTS } from '../config/defaults';
-import { getImagesProcessedCount, getPOICount } from '../utils/dashboardData';
+import { getImagesProcessedCount, getPOICount, applyBatchLogOverrides } from '../utils/dashboardData';
 import type { QAQCAuditRunRecord } from '../types/admin';
 import type { DailyTimeSeries, BatchLog, NotificationItem, AuditLogItem } from '../types/dashboard';
 
@@ -93,14 +94,15 @@ export function useAppData() {
 
       try {
         // Fetch all data sources concurrently in parallel
-        const [supabaseDataRes, qaRes, fetchedQa, fetchedAuditRuns, dbAuditLogs, dbNotifications, dbSettingsRes] = await Promise.allSettled([
+        const [supabaseDataRes, qaRes, fetchedQa, fetchedAuditRuns, dbAuditLogs, dbNotifications, dbSettingsRes, batchOverridesRes] = await Promise.allSettled([
           fetchSupabaseData(projectSettings),
           supabase.from(projectSettings?.qaDefectsTable || 'qa_defects').select('qa_status, defect_flags, defect_count, subgrid'),
           fetchQaRecordsFromSupabase(projectSettings),
           fetchQaAuditRunsFromSupabase(projectSettings),
           fetchAuditLogsFromSupabase(projectSettings),
           fetchNotificationsFromSupabase(projectSettings),
-          fetchProjectSettingsFromSupabase()
+          fetchProjectSettingsFromSupabase(),
+          fetchBatchLogOverridesFromSupabase(projectSettings)
         ]);
 
         // Process Project Settings
@@ -178,8 +180,11 @@ export function useAppData() {
             };
           });
 
+          const batchOverrides = batchOverridesRes.status === 'fulfilled' ? (batchOverridesRes.value || {}) : {};
+
           const hydratedBatches = (sBatches || []).map((b: any) => {
             const sg = (extractSubgridName(b.subgrid || b.imageFilename) || b.subgrid || '').toUpperCase().trim();
+            const bWithOverrides = applyBatchLogOverrides(b, batchOverrides);
             const matchingDaily = hydratedDaily.filter((d: any) => (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim() === sg);
             const dailyDefectsSum = matchingDaily.reduce((acc: number, d: any) => acc + (d.defectCount || 0), 0);
             const cachedAudit = cloudAuditMap[`${sg}_default`] || Object.entries(cloudAuditMap).find(([k]) => k.startsWith(`${sg}_`))?.[1];
@@ -191,7 +196,7 @@ export function useAppData() {
               : (finalDefects > 0 ? `QAQC Completed (${finalDefects} Defects Found)` : undefined));
 
             return {
-              ...b,
+              ...bWithOverrides,
               defects: finalDefects,
               ...(qaqcStatus ? { qaqcStatus } : {})
             };

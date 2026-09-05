@@ -41,7 +41,8 @@ vi.mock('../../services/supabase', () => {
     fetchQaAuditRunsFromSupabase: vi.fn(async () => db.auditRuns || {}),
     fetchAuditLogsFromSupabase: vi.fn(async () => []),
     fetchNotificationsFromSupabase: vi.fn(async () => []),
-    fetchProjectSettingsFromSupabase: vi.fn(async () => null)
+    fetchProjectSettingsFromSupabase: vi.fn(async () => null),
+    fetchBatchLogOverridesFromSupabase: vi.fn(async () => ({}))
   }
 })
 
