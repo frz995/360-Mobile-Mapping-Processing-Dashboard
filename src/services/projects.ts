@@ -41,6 +41,7 @@ export interface ProjectScope {
   basemap?: string;
   equipment?: string;
   targetKm?: number;
+  actualKm?: number;
   targetImages?: number;
   targetDeadline?: string;
   enableBBoxFilter?: boolean;
@@ -292,17 +293,20 @@ export async function updateProject(
   patch: Partial<ProjectDraft>
 ): Promise<ProjectResult<UserProject>> {
   try {
+    const updatePayload: Record<string, unknown> = {
+      updated_at: new Date().toISOString()
+    };
+    if (patch.name !== undefined) updatePayload.name = patch.name;
+    if (patch.description !== undefined) updatePayload.description = patch.description;
+    if (patch.contractCode !== undefined) updatePayload.contract_code = patch.contractCode;
+    if (patch.clientName !== undefined) updatePayload.client_name = patch.clientName;
+    if (patch.region !== undefined) updatePayload.region = patch.region;
+    if (patch.status !== undefined) updatePayload.status = patch.status;
+    if (patch.scope !== undefined) updatePayload.scope = patch.scope;
+
     const { data, error } = await supabase
       .from('projects')
-      .update({
-        name: patch.name,
-        description: patch.description,
-        contract_code: patch.contractCode,
-        client_name: patch.clientName,
-        region: patch.region,
-        scope: patch.scope,
-        updated_at: new Date().toISOString()
-      })
+      .update(updatePayload)
       .eq('id', id)
       .select('*')
       .single();

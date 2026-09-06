@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, fireEvent } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, act } from '@testing-library/react'
 import type { UserProject } from '../../services/projects'
 
 vi.mock('../../services/supabase', () => ({
@@ -35,8 +35,11 @@ function renderPage(props: Partial<Parameters<typeof ProjectWorkspace>[0]> = {})
       activeProject={props.activeProject}
       projectList={props.projectList ?? []}
       projectsLoaded={props.projectsLoaded ?? true}
+      totalKm={props.totalKm}
+      projectSettings={props.projectSettings}
       onLoadProject={props.onLoadProject ?? vi.fn()}
       onCreateProject={props.onCreateProject ?? vi.fn()}
+      onUpdateProject={props.onUpdateProject}
       onRefreshProjects={props.onRefreshProjects ?? vi.fn()}
       onBackToDashboard={props.onBackToDashboard ?? vi.fn()}
     />
@@ -84,5 +87,64 @@ describe('ProjectWorkspace smoke', () => {
     renderPage({ projectList: [projectFixture()], onLoadProject })
     fireEvent.click(screen.getByText('projectLoad'))
     expect(onLoadProject).toHaveBeenCalledWith(expect.objectContaining({ id: 'proj-1' }))
+  })
+
+  it('displays contract code, client name, and allows editing the project', async () => {
+    const onUpdateProject = vi.fn().mockResolvedValue({ success: true, value: projectFixture({ name: 'Selangor Updated' }) })
+    renderPage({
+      projectList: [projectFixture({
+        contractCode: 'MMS-2026-GEO-01',
+        clientName: 'Spatial Asset Operations',
+        description: 'Road analysis mapping project'
+      })],
+      onUpdateProject
+    })
+
+    expect(screen.getByText('MMS-2026-GEO-01')).toBeInTheDocument()
+    expect(screen.getByText('Spatial Asset Operations')).toBeInTheDocument()
+    expect(screen.getByText('Road analysis mapping project')).toBeInTheDocument()
+
+    // Click edit button
+    const editBtn = screen.getByTitle('Edit Project')
+    expect(editBtn).toBeInTheDocument()
+    await act(async () => {
+      fireEvent.click(editBtn)
+    })
+
+    // Edit modal should be visible
+    expect(screen.getByText('Edit Project')).toBeInTheDocument()
+    const nameInput = screen.getByDisplayValue('Selangor Phase 3')
+    await act(async () => {
+      fireEvent.change(nameInput, { target: { value: 'Selangor Updated' } })
+    })
+
+    // Save changes
+    const saveBtn = screen.getByText('Save Changes')
+    await act(async () => {
+      fireEvent.click(saveBtn)
+    })
+
+    expect(onUpdateProject).toHaveBeenCalledWith(
+      'proj-1',
+      expect.objectContaining({ name: 'Selangor Updated' })
+    )
+  })
+
+  it('computes and displays actual KM, target KM, and percentage synced with projectSettings', () => {
+    const proj = projectFixture({
+      id: 'proj-1',
+      scope: { crs: 'EPSG:4326', region: 'peninsular_malaysia', bbox: [99.6, 1.2, 104.6, 6.8], targetKm: 100 }
+    })
+    renderPage({
+      activeProject: proj,
+      projectList: [proj],
+      totalKm: 42.5,
+      projectSettings: { targetKm: 100 }
+    })
+
+    // Should display 42.5% progress
+    expect(screen.getByText('42.5%')).toBeInTheDocument()
+    // Should display actual and target distance
+    expect(screen.getByText('42.5 / 100.0 km')).toBeInTheDocument()
   })
 })

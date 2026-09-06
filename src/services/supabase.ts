@@ -2467,8 +2467,10 @@ export async function saveRoadAnalysisStateToSupabase(
     //    ONLY the settings.roadAnalysisState key, so the shared project_settings row
     //    stays protected by the admin-only RLS policies from migration 0010, and any
     //    signed-in role can save their Road Analysis workspace.
+    const currentPid = state.projectId || getServiceProjectId();
     const rpcPayload: RoadAnalysisProductionState = {
       ...state,
+      projectId: currentPid || undefined,
       updatedAt: timestamp,
       updatedBy: userEmail
     };

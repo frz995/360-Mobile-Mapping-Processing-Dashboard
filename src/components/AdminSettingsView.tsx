@@ -2865,8 +2865,14 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                   type="number"
                   step="0.1"
                   min="0"
-                  value={projectSettings.targetKm ?? 0}
-                  onChange={e => setProjectSettings(prev => ({ ...prev, targetKm: e.target.value === '' ? 0 : parseFloat(e.target.value) }))}
+                  value={projectSettings.targetKm !== undefined && projectSettings.targetKm !== null ? projectSettings.targetKm : ''}
+                  onChange={e => {
+                    const val = e.target.value;
+                    setProjectSettings(prev => ({
+                      ...prev,
+                      targetKm: val === '' ? ('' as any) : parseFloat(val)
+                    }));
+                  }}
                   placeholder="0.0"
                   className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
                 />
@@ -2877,8 +2883,16 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                 <input
                   type="number"
                   step="0.1"
-                  value={projectSettings.maxDefectThresholdPercent || 5.0}
-                  onChange={e => setProjectSettings(prev => ({ ...prev, maxDefectThresholdPercent: parseFloat(e.target.value) || 5.0 }))}
+                  min="0"
+                  value={projectSettings.maxDefectThresholdPercent !== undefined && projectSettings.maxDefectThresholdPercent !== null ? projectSettings.maxDefectThresholdPercent : ''}
+                  onChange={e => {
+                    const val = e.target.value;
+                    setProjectSettings(prev => ({
+                      ...prev,
+                      maxDefectThresholdPercent: val === '' ? ('' as any) : parseFloat(val)
+                    }));
+                  }}
+                  placeholder="5.0"
                   className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
                 />
               </div>

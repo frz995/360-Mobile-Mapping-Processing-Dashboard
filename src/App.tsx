@@ -61,6 +61,7 @@ import {
   markProjectSeeded,
   hasSeededProject,
   deleteProject as deleteProjectService,
+  updateProject as updateProjectService,
   persistProjectScopeSettings,
   type UserProject,
   type ProjectDraft
@@ -659,7 +660,13 @@ export default function App() {
     }
     const userKey = resolveUserStorageKey(session, false);
     const showWelcome = shouldShowWelcome(userKey);
-    setWelcomeUserName(session?.user?.user_metadata?.full_name || session?.user?.email || '');
+    const authUserName =
+      session?.user?.user_metadata?.full_name ||
+      session?.user?.user_metadata?.name ||
+      session?.user?.user_metadata?.username ||
+      session?.user?.email ||
+      '';
+    setWelcomeUserName(authUserName);
     setProjectGate(showWelcome ? 'welcome' : 'pick');
   }, [shouldShowWelcome]);
 
@@ -836,6 +843,21 @@ export default function App() {
     addNotification({ category: 'SYSTEM', title: 'Project Created', message: res.value.name });
     return { success: true as const, value: res.value };
   }, [addNotification]);
+
+  const handleUpdateProject = useCallback(async (id: string, patch: Partial<ProjectDraft>) => {
+    const res = await updateProjectService(id, patch);
+    if (!res.success) {
+      addNotification({ category: 'ERROR', title: 'Update Failed', message: res.message });
+      return { success: false as const, message: res.message };
+    }
+    setProjectList((prev) => prev.map((p) => (p.id === id ? res.value : p)));
+    if (activeProject?.id === id) {
+      setActiveProject(res.value);
+      setProjectSettings((prev: any) => applyProjectScope(prev, res.value));
+    }
+    addNotification({ category: 'SYSTEM', title: 'Project Updated', message: res.value.name });
+    return { success: true as const, value: res.value };
+  }, [activeProject, addNotification, setProjectSettings]);
 
   const handleDeleteProject = useCallback(async (project: UserProject) => {
     const res = await deleteProjectService(project.id);
@@ -3166,7 +3188,14 @@ export default function App() {
       {projectGate !== 'idle' && (
         <ProjectOnboarding
           stage={projectGate}
-          userName={welcomeUserName}
+          userName={
+            welcomeUserName ||
+            authSession?.user?.user_metadata?.full_name ||
+            authSession?.user?.user_metadata?.name ||
+            authSession?.user?.user_metadata?.username ||
+            authSession?.user?.email ||
+            ''
+          }
           projects={projectList}
           projectsLoaded={projectsLoaded}
           activeProject={activeProject}
@@ -4498,8 +4527,11 @@ export default function App() {
               activeProject={activeProject}
               projectList={projectList}
               projectsLoaded={projectsLoaded}
+              totalKm={totalKm}
+              projectSettings={projectSettings}
               onLoadProject={handleLoadProject}
               onCreateProject={handleCreateProject}
+              onUpdateProject={handleUpdateProject}
               onRefreshProjects={refreshProjects}
               onDeleteProject={handleDeleteProject}
               onBackToDashboard={() => goToWorkspace('dashboard')}

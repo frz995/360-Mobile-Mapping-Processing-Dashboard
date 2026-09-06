@@ -1,10 +1,10 @@
 import type { ElementType } from 'react';
 import {
   BarChart3,
-  Briefcase,
   Cpu,
   Database,
   FileText,
+  FolderPlus,
   GitBranch,
   HardDrive,
   Workflow,
@@ -35,7 +35,7 @@ export interface WorkspaceDefinition {
 }
 
 export const WORKSPACES: WorkspaceDefinition[] = [
-  { key: 'project', labelKey: 'workspaceProject', descriptionKey: 'workspaceProjectDesc', icon: Briefcase, tag: 'live' },
+  { key: 'project', labelKey: 'workspaceProject', descriptionKey: 'workspaceProjectDesc', icon: FolderPlus, tag: 'live' },
   { key: 'dashboard', labelKey: 'dashboard', descriptionKey: 'workspaceDashboardDesc', icon: LayoutDashboard, tag: 'live' },
   { key: 'data', labelKey: 'data', descriptionKey: 'workspaceDataDesc', icon: Database, tag: 'live' },
   { key: 'settings', labelKey: 'settings', descriptionKey: 'workspaceSettingsDesc', icon: Settings, tag: 'live', guard: ['manageSettings'] },

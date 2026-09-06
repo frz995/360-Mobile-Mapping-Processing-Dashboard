@@ -112,7 +112,7 @@ export const LIFECYCLE_STAGES: Record<LifecycleStageKey, LifecycleStageMeta> = {
   PUBLISHED: {
     key: 'PUBLISHED',
     label: '6. Live on WebGIS Map',
-    shortLabel: 'LIVE / PUBLISHED',
+    shortLabel: 'Published in database',
     description: 'Live in PostGIS database. Active on interactive Map, Road Analysis, and Reports.',
     storageLocation: 'PostGIS panoramas + Cloud CDN Bucket',
     color: {
