@@ -33,6 +33,7 @@ vi.mock('../../services/supabase', () => {
       rpc: () => Promise.resolve(),
       scoped: (query: any) => query
     },
+    scoped: (query: any) => query,
     fetchSupabaseData: vi.fn(async () => ({
       dailyData: db.daily,
       batchLogs: db.batches,
