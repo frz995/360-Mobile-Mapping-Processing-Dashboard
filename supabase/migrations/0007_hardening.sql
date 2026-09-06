@@ -87,9 +87,20 @@ CREATE INDEX IF NOT EXISTS idx_survey_recycle_bin_deleted_at ON public.survey_re
 
 -- ─────────────────────────────────────────────────────────────────────
 -- 7. file_inventory — client queries by (bucket, filename) + subgrid.
+--    These two indexes are duplicated by migration 0006 (file_inventory
+--    ships its own). Guarded here so running this script before 0006 on a
+--    legacy/partial instance never aborts: when the table is missing the
+--    index pair is simply created later by 0006. PREREQUISITE for full
+--    v15 isolation: apply 0006 BEFORE 0016 so file_inventory receives its
+--    project_id column.
 -- ─────────────────────────────────────────────────────────────────────
-CREATE INDEX IF NOT EXISTS file_inventory_bucket_idx ON public.file_inventory (bucket, filename);
-CREATE INDEX IF NOT EXISTS file_inventory_subgrid_idx ON public.file_inventory (subgrid);
+DO $$
+BEGIN
+  IF to_regclass('public.file_inventory') IS NOT NULL THEN
+    CREATE INDEX IF NOT EXISTS file_inventory_bucket_idx ON public.file_inventory (bucket, filename);
+    CREATE INDEX IF NOT EXISTS file_inventory_subgrid_idx ON public.file_inventory (subgrid);
+  END IF;
+END $$;
 
 -- ─────────────────────────────────────────────────────────────────────
 -- ROLLBACK / supported-version notes

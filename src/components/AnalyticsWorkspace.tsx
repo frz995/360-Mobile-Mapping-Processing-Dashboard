@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { restoreWorkspaceTab, persistWorkspaceTab } from '../utils/workspaceLocation';
 import {
   BarChart3,
   Route,
@@ -55,7 +56,13 @@ export const AnalyticsWorkspace: React.FC<AnalyticsWorkspaceProps> = ({
   dailyData = [],
   onRefreshData: _onRefreshData
 }) => {
-  const [activeTab, setActiveTab] = useState<AnalyticsTab>('overview');
+  const [activeTab, setActiveTab] = useState<AnalyticsTab>(() => {
+    const analyticsTabs = ['overview', 'ledger', 'distance', 'coverage', 'density', 'quality'] as const;
+    return restoreWorkspaceTab<typeof analyticsTabs[number]>('analytics', analyticsTabs) ?? 'overview';
+  });
+  useEffect(() => {
+    persistWorkspaceTab('analytics', activeTab);
+  }, [activeTab]);
   const [stagingRows, setStagingRows] = useState<any[]>([]);
   const [jobs, setJobs] = useState<ProcessingJobRecord[]>([]);
 

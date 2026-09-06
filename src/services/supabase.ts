@@ -26,6 +26,7 @@ import { getDatabaseTableMapping, type DatabaseTableMapping } from './supabaseCo
 
 export { formatPIC, getDatabaseTableMapping };
 export type { DatabaseTableMapping };
+import { getActiveProjectId } from './projectContext';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_KEY || '';
@@ -48,6 +49,22 @@ function createNoopSupabaseClient(): SupabaseClientInstance {
       return undefined;
     }
   }) as unknown as SupabaseClientInstance;
+}
+
+/** Active project id for service-layer (v15) per-project scoping.
+ * Returns null when no project is active (guest mode or the brief boot window
+ * before the persisted project restores) — queries then run unscoped, i.e.
+ * today's RLS-visible global view.
+ */
+export function getServiceProjectId(): string | null {
+  const id = getActiveProjectId();
+  return id && id.trim() ? id : null;
+}
+
+/** Append a `project_id = <active>` equality filter when a project is active. */
+export function scoped(query: any): any {
+  const id = getServiceProjectId();
+  return id ? query.eq('project_id', id) : query;
 }
 
 const MAX_SAFE_HEADER_LENGTH = 1500;
@@ -2401,6 +2418,7 @@ export interface RoadAnalysisProductionState {
   totalSubgrids?: number;
   updatedAt?: string;
   updatedBy?: string;
+  projectId?: string;
 }
 
 /**

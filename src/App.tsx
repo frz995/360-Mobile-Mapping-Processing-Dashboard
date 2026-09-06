@@ -45,6 +45,25 @@ import { ContentLoading } from './components/common/ContentLoading';
 import { Toaster } from './components/common/Toaster';
 import { WorkspaceErrorBoundary } from './components/common/WorkspaceErrorBoundary';
 import { translate } from './lib/i18n';
+import { APP_VERSION } from './config/defaults';
+import { ProjectOnboarding, type GateStage } from './components/ProjectOnboarding';
+import {
+  fetchProjects,
+  createProject as createProjectService,
+  applyProjectScope,
+  resolveUserStorageKey,
+  saveActiveProjectId,
+  loadActiveProjectId,
+  clearActiveProjectId,
+  setActiveProjectId,
+  touchProjectOpened,
+  buildSeedProjectFromSettings,
+  markProjectSeeded,
+  hasSeededProject,
+  deleteProject as deleteProjectService,
+  type UserProject,
+  type ProjectDraft
+} from './services/projects';
 
 const AdminSettingsView = React.lazy(() => import('./components/AdminSettingsView').then(m => ({ default: m.AdminSettingsView })));
 const OperationalActionCenter = React.lazy(() => import('./components/OperationalActionCenter').then(m => ({ default: m.OperationalActionCenter })));
@@ -56,6 +75,7 @@ const AnalyticsWorkspace = React.lazy(() => import('./components/AnalyticsWorksp
 const ReportsWorkspace = React.lazy(() => import('./components/ReportsWorkspace').then(m => ({ default: m.ReportsWorkspace })));
 const AdministrationWorkspace = React.lazy(() => import('./components/AdministrationWorkspace').then(m => ({ default: m.AdministrationWorkspace })));
 const RoadAnalysisWorkspace = React.lazy(() => import('./components/RoadAnalysisWorkspace'));
+const ProjectWorkspace = React.lazy(() => import('./components/ProjectWorkspace').then(m => ({ default: m.ProjectWorkspace })));
 const QAQCWorkbench = React.lazy(() => import('./components/QAQCWorkbench').then(m => ({ default: m.QAQCWorkbench })));
 import { useQAQCWorker, type StationNode } from './hooks/useQAQCWorker';
 import { useAppData } from './hooks/useAppData';
@@ -71,6 +91,17 @@ import { DashboardBatchTable } from './components/dashboard/DashboardBatchTable'
 import { WorkspacePlaceholder, getWorkspaceDefinition } from './workspaces';
 import { parseHashWorkspace, setHashWorkspace, subscribeHashWorkspace } from './utils/hashRouter';
 import type { WorkspaceKey } from './utils/hashRouter';
+import {
+  getStoredWorkspaceKey,
+  setStoredWorkspaceKey,
+  restoreWorkspaceTab,
+  persistWorkspaceTab,
+  clearWorkspaceLocation,
+  getLastActivityAgeMs,
+  hasLastActivity,
+  touchLastActivity,
+  clearLastActivity
+} from './utils/workspaceLocation';
 // ==============================================
 // Data Interfaces & Types
 // ==============================================
@@ -171,7 +202,11 @@ const TOUR_STEPS = [
 // ==============================================
 
 export default function App() {
-  const [currentPage, setCurrentPage] = useState<WorkspaceKey>(() => parseHashWorkspace());
+  const [currentPage, setCurrentPage] = useState<WorkspaceKey>(() => {
+    const fromHash = parseHashWorkspace();
+    if (window.location.hash && fromHash !== 'dashboard') return fromHash;
+    return getStoredWorkspaceKey() || fromHash;
+  });
   const dashboardPsvRef = useRef<PhotoSphereViewerHandle | null>(null);
   const inspectionMapIframeRef = useRef<HTMLIFrameElement | null>(null);
   const [showLanding, setShowLanding] = useState<boolean>(true);
@@ -227,8 +262,15 @@ export default function App() {
     }
   }, [isDataLoading]);
 
-  const [dataManagementTab, setDataManagementTab] = useState<'batches' | 'daily' | 'vector' | 'datasets' | 'recovery'>('batches');
+  const [dataManagementTab, setDataManagementTab] = useState<'batches' | 'daily' | 'vector' | 'datasets' | 'recovery'>(() => {
+    const dataTabs = ['batches', 'daily', 'vector', 'datasets', 'recovery'] as const;
+    return restoreWorkspaceTab<typeof dataTabs[number]>('data', dataTabs) ?? 'batches';
+  });
   const [dataManagementSearch, setDataManagementSearch] = useState<string>('');
+
+  useEffect(() => {
+    persistWorkspaceTab('data', dataManagementTab);
+  }, [dataManagementTab]);
 
   // 2. Logging & Notification Callbacks
   const addNotification = useCallback((item: Omit<NotificationItem, 'id' | 'timestamp' | 'read'>) => {
@@ -340,6 +382,7 @@ export default function App() {
     setCurrentPage(key);
     setFocusedSection(null);
     setHashWorkspace(key);
+    setStoredWorkspaceKey(key);
   }, []);
 
   useEffect(() => {
@@ -489,14 +532,26 @@ export default function App() {
     addAuditLog('CREATE', 'Guest Login', 'User logged in under Guest Read-Only mode', 'info');
   };
 
+  // ---- v14 Hybrid sign-in gate (welcome → pick → loading); guests stay idle ----
+  const [projectGate, setProjectGate] = useState<GateStage>('idle');
+  const [welcomeUserName, setWelcomeUserName] = useState<string>('');
+
   // 3. Sign Out Handler
-  const handleSignOut = async () => {
+  const handleSignOut = useCallback(async () => {
+    try {
+      const userKey = resolveUserStorageKey(authSession, authSession?.isGuest);
+      clearActiveProjectId(userKey);
+    } catch { /* ignore */ }
     try {
       await supabase.auth.signOut();
     } catch (e) { }
     setAuthSession(null);
     setShowLanding(true);
-  };
+    setProjectGate('idle');
+    clearWorkspaceLocation();
+    clearLastActivity();
+    setHashWorkspace('dashboard');
+  }, [authSession]);
 
   const [authLoading, setAuthLoading] = useState(true);
   const [authEmail, setAuthEmail] = useState('');
@@ -536,11 +591,15 @@ export default function App() {
       } else {
         setAuthSession(null);
         setShowLanding(true);  // Guest / unauthenticated user returns to Landing
+        clearWorkspaceLocation();
+        clearLastActivity();
       }
       setAuthLoading(false);
     }).catch(() => {
       setAuthLoading(false);
       setShowLanding(true);
+      clearWorkspaceLocation();
+      clearLastActivity();
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -548,6 +607,11 @@ export default function App() {
         setAuthSession(session);
         setShowLanding(false);
         pruneBloatedUserMetadata();
+      } else {
+        setAuthSession(null);
+        setShowLanding(true);
+        clearWorkspaceLocation();
+        clearLastActivity();
       }
       setAuthLoading(false);
     });
@@ -556,6 +620,238 @@ export default function App() {
   }, []);
 
   const isGuestUser = Boolean(authSession?.isGuest || authSession?.user?.role === 'guest' || authSession?.user?.email?.toLowerCase().includes('guest'));
+
+  // ---- v14 Project registry state ----
+  const [projectList, setProjectList] = useState<UserProject[]>([]);
+  const [activeProject, setActiveProject] = useState<UserProject | null>(null);
+  const [projectsLoaded, setProjectsLoaded] = useState(false);
+
+  // Decide welcome vs straight-to-picker: full welcome on first-ever login per
+  // user, or whenever the app version changed. Sign-out never resets flags.
+  const shouldShowWelcome = useCallback((userKey: string): boolean => {
+    try {
+      const seenKey = `geosphere360_welcome_seen_${userKey}`;
+      const seenVersion = localStorage.getItem('geosphere360_welcome_version');
+      const appNewer = seenVersion !== APP_VERSION;
+      if (appNewer) {
+        localStorage.setItem('geosphere360_welcome_seen_' + userKey, '1');
+        localStorage.setItem('geosphere360_welcome_version', APP_VERSION);
+        return true;
+      }
+      const seen = localStorage.getItem(seenKey);
+      if (!seen) {
+        localStorage.setItem(seenKey, '1');
+        localStorage.setItem('geosphere360_welcome_version', APP_VERSION);
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  }, []);
+
+  // Trigger the gate on authenticated login (non-guest).
+  const triggerGate = useCallback((session: any, isGuest: boolean) => {
+    if (isGuest) {
+      setProjectGate('idle');
+      return;
+    }
+    const userKey = resolveUserStorageKey(session, false);
+    const showWelcome = shouldShowWelcome(userKey);
+    setWelcomeUserName(session?.user?.user_metadata?.full_name || session?.user?.email || '');
+    setProjectGate(showWelcome ? 'welcome' : 'pick');
+  }, [shouldShowWelcome]);
+
+  const handleGateSkip = useCallback(() => {
+    setProjectGate('idle');
+  }, []);
+
+  const handleGateContinue = useCallback((project: UserProject) => {
+    setProjectGate('loading');
+    setActiveProject(project);
+    const userKey = resolveUserStorageKey(authSession, isGuestUser);
+    saveActiveProjectId(userKey, project.id);
+    setProjectSettings((prev: any) => applyProjectScope(prev, project));
+    touchProjectOpened(project.id);
+    // Short delay so the loading screen reads before the dashboard settles.
+    window.setTimeout(() => {
+      setProjectGate('idle');
+      goToWorkspace('dashboard');
+    }, 2600);
+  }, [authSession, isGuestUser, goToWorkspace, setProjectSettings]);
+
+  const handleGateCreateProject = useCallback(async (draft: ProjectDraft) => {
+    const res = await createProjectService(draft);
+    if (!res.success) return { success: false as const, message: res.message };
+    setProjectList((prev) => [res.value, ...prev.filter((p) => p.id !== res.value.id)]);
+    return { success: true as const, value: res.value };
+  }, []);
+
+  // Show the picker/welcome gate after auth resolves (covers page refresh with
+  // a persisted session, and the explicit sign-in path — both funnel here).
+  const gateTriggeredRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (authLoading) return;
+    const sessionUid = authSession?.user?.id || (authSession?.isGuest ? 'guest' : null);
+    if (!sessionUid) {
+      setProjectGate('idle');
+      gateTriggeredRef.current = null;
+      return;
+    }
+    const isGuest = Boolean(authSession?.isGuest || authSession?.user?.role === 'guest' || authSession?.user?.email?.toLowerCase().includes('guest'));
+    // Only trigger once per session uid so repeated auth pulses don't re-show.
+    if (gateTriggeredRef.current === sessionUid) return;
+    gateTriggeredRef.current = sessionUid;
+    triggerGate(authSession, isGuest);
+  }, [authLoading, authSession, triggerGate]);
+
+  // Auto-advance the welcome animation to the project picker after ~2.2s.
+  useEffect(() => {
+    if (projectGate !== 'welcome') return;
+    const t = window.setTimeout(() => setProjectGate('pick'), 2200);
+    return () => window.clearTimeout(t);
+  }, [projectGate]);
+
+  const refreshProjects = useCallback(async () => {
+    const projects = await fetchProjects();
+    setProjectList(projects);
+    setProjectsLoaded(true);
+    return projects;
+  }, []);
+
+  // v14 carry-forward — register the pre-v14 "current production project"
+  // (from projectSettings) into the registry once per user + no active project.
+  const ensureSeedProject = useCallback(
+    async (settings: Record<string, unknown> | undefined) => {
+      const userKey = resolveUserStorageKey(authSession, isGuestUser);
+      const draft = buildSeedProjectFromSettings(settings);
+      if (!draft) return null;
+      const res = await createProjectService(draft);
+      if (!res.success) {
+        // Do NOT pin a local-only stub as active: a `local-*` id matches zero
+        // rows in every scoped query (everything goes blank). A failed DB
+        // insert just leaves the picker empty so the user can create a real
+        // project, and the seed flag stays reusable on retry.
+        clearActiveProjectId(userKey);
+        return null;
+      }
+      const project = res.value;
+      markProjectSeeded(userKey);
+      saveActiveProjectId(userKey, project.id);
+      setActiveProject(project);
+      setProjectList((prev) => [project, ...prev.filter((p) => p.id !== project.id)]);
+      // v15: adoption moves every legacy (project_id IS NULL) row onto this
+      // carried-forward production project so nothing already in the database
+      // is lost or hidden. Fresh projects never run this RPC.
+      try {
+        await supabase.rpc('projects_adopt_legacy_rows', { p_project_id: project.id });
+      } catch {
+        // Non-fatal: rows simply stay unscoped until the RPC succeeds.
+      }
+      return project;
+    },
+    [authSession, isGuestUser]
+  );
+
+  // Run the seed once after the project list has loaded (so an existing
+  // registry/active project short-circuits it) and settings are present.
+  const seedProjectRef = useRef(false);
+  useEffect(() => {
+    if (authLoading || !authSession || isGuestUser) return;
+    if (seedProjectRef.current) return;
+    if (!projectsLoaded) return;
+    const userKey = resolveUserStorageKey(authSession, isGuestUser);
+    const savedId = loadActiveProjectId(userKey);
+    if (savedId && !savedId.startsWith('local-')) {
+      seedProjectRef.current = true;
+      return;
+    }
+    // A deleted/no-longer-active project must NOT resurrect: the seed flag is
+    // set only after a successful DB insert, so once the user has intentionally
+    // deleted their seeded project the app falls through to an empty picker.
+    if (hasSeededProject(userKey)) {
+      seedProjectRef.current = true;
+      return;
+    }
+    // A `local-*` stub (left by a failed v14 seed) is not a real project —
+    // clear it and re-seed so the carried-forward production project actually
+    // gets a real DB row (otherwise every scoped query returns 0 rows).
+    if (savedId) clearActiveProjectId(userKey);
+    if (projectList.length > 0) {
+      seedProjectRef.current = true;
+      return;
+    }
+    seedProjectRef.current = true;
+    ensureSeedProject(projectSettings as Record<string, unknown> | undefined);
+  }, [authLoading, authSession, isGuestUser, projectsLoaded, projectList, projectSettings, ensureSeedProject]);
+
+  // Restore the persisted active project for the current user once logged in.
+  useEffect(() => {
+    if (authLoading) return;
+    if (!authSession || isGuestUser) {
+      setActiveProject(null);
+      setProjectList([]);
+      setProjectsLoaded(false);
+      setActiveProjectId(null);
+      return;
+    }
+    const userKey = resolveUserStorageKey(authSession, isGuestUser);
+    const savedId = loadActiveProjectId(userKey);
+    (async () => {
+      const projects = await refreshProjects();
+      if (savedId && projects.length > 0) {
+        const found = projects.find((p) => p.id === savedId && p.status !== 'archived');
+        if (found) {
+          setActiveProject(found);
+          setActiveProjectId(found.id);
+        }
+      }
+    })();
+  }, [authSession, authLoading, isGuestUser, refreshProjects]);
+
+  // Apply the active project's GIS scope into projectSettings whenever it changes.
+  useEffect(() => {
+    if (!activeProject) return;
+    setProjectSettings((prev: any) => applyProjectScope(prev, activeProject));
+  }, [activeProject, setProjectSettings]);
+
+  const handleLoadProject = useCallback(async (project: UserProject) => {
+    setActiveProject(project);
+    const userKey = resolveUserStorageKey(authSession, isGuestUser);
+    saveActiveProjectId(userKey, project.id);
+    setProjectSettings((prev: any) => applyProjectScope(prev, project));
+    touchProjectOpened(project.id);
+    goToWorkspace('dashboard');
+    addNotification({ category: 'SYSTEM', title: 'Project Loaded', message: `Now working under ${project.name}` });
+  }, [authSession, isGuestUser, addNotification, goToWorkspace, setProjectSettings]);
+
+  const handleCreateProject = useCallback(async (draft: ProjectDraft) => {
+    const res = await createProjectService(draft);
+    if (!res.success) {
+      addNotification({ category: 'ERROR', title: 'Project Error', message: res.message });
+      return { success: false as const, message: res.message };
+    }
+    setProjectList((prev) => [res.value, ...prev.filter((p) => p.id !== res.value.id)]);
+    addNotification({ category: 'SYSTEM', title: 'Project Created', message: res.value.name });
+    return { success: true as const, value: res.value };
+  }, [addNotification]);
+
+  const handleDeleteProject = useCallback(async (project: UserProject) => {
+    const res = await deleteProjectService(project.id);
+    if (!res.success) {
+      addNotification({ category: 'ERROR', title: 'Delete Failed', message: res.message });
+      return;
+    }
+    setProjectList((prev) => prev.filter((p) => p.id !== project.id));
+    if (activeProject?.id === project.id) {
+      const userKey = resolveUserStorageKey(authSession, isGuestUser);
+      clearActiveProjectId(userKey);
+      setActiveProjectId(null);
+      setActiveProject(null);
+    }
+    addNotification({ category: 'SYSTEM', title: 'Project Deleted', message: project.name });
+    goToWorkspace('project');
+  }, [activeProject, authSession, isGuestUser, addNotification, goToWorkspace]);
 
   useEffect(() => {
     if (!authSession || authLoading || isGuestUser) return;
@@ -567,6 +863,75 @@ export default function App() {
       // localStorage unavailable — skip the auto-suggest
     }
   }, [authSession, authLoading, isGuestUser]);
+
+  // Session inactivity lock — signs out authenticated users who go idle
+  // beyond projectSettings.sessionTimeoutMinutes (0 == never, undefined defaults 30).
+  // Activity inside embedded maps/360 iframes is not observable from the parent
+  // window, so sustained work inside those panes may still count as idle.
+  const sessionTimeoutMinutes = projectSettings?.sessionTimeoutMinutes ?? 30;
+
+  useEffect(() => {
+    if (!authSession || authLoading || isGuestUser || isDataLoading) return;
+    if (!sessionTimeoutMinutes || sessionTimeoutMinutes <= 0) return;
+
+    const timeoutMs = sessionTimeoutMinutes * 60 * 1000;
+    let lastActiveAt = Date.now();
+    let writeDebounce: ReturnType<typeof setTimeout> | null = null;
+
+    const markActive = () => {
+      lastActiveAt = Date.now();
+      if (writeDebounce) return;
+      writeDebounce = setTimeout(() => {
+        touchLastActivity();
+        writeDebounce = null;
+      }, 5000);
+    };
+
+    // On same-session refresh while idle past the limit, sign out immediately
+    // ("refresh out from session inactivity lock") instead of restoring the page.
+    // Only meaningful when a previous session actually recorded activity — a
+    // first-ever visit (no marker) must never be treated as "idle".
+    if (hasLastActivity() && getLastActivityAgeMs() >= timeoutMs) {
+      void handleSignOut();
+      return;
+    }
+
+    const ACTIVITY_EVENTS: (keyof WindowEventMap)[] = ['pointerdown', 'mousemove', 'keydown', 'wheel', 'touchstart', 'scroll'];
+    ACTIVITY_EVENTS.forEach((ev) => window.addEventListener(ev, markActive, { passive: true }));
+
+    const notifyActivityFromIframe = () => markActive();
+
+    const interval = window.setInterval(() => {
+      if (Date.now() - lastActiveAt >= timeoutMs) {
+        void handleSignOut();
+      }
+    }, 30000);
+
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        if (Date.now() - lastActiveAt >= timeoutMs) {
+          void handleSignOut();
+        }
+      }
+    };
+    document.removeEventListener('visibilitychange', onVisibility);
+    document.addEventListener('visibilitychange', onVisibility);
+
+    // Map/QA panels render inside iframes, which swallow pointer/keyboard events
+    // from the parent window. Listen for focus/entry crossing so sustained work
+    // inside those panes is not mistaken for idle.
+    window.addEventListener('focus', notifyActivityFromIframe);
+    document.addEventListener('mouseenter', notifyActivityFromIframe);
+
+    return () => {
+      ACTIVITY_EVENTS.forEach((ev) => window.removeEventListener(ev, markActive));
+      window.removeEventListener('focus', notifyActivityFromIframe);
+      document.removeEventListener('mouseenter', notifyActivityFromIframe);
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.clearInterval(interval);
+      if (writeDebounce) clearTimeout(writeDebounce);
+    };
+  }, [authSession, authLoading, isGuestUser, isDataLoading, sessionTimeoutMinutes, handleSignOut]);
 
   const activeAuthUserName = React.useMemo(() => {
     if (!authSession || !authSession.user) return '';
@@ -594,6 +959,7 @@ export default function App() {
       setAuthSession(data.session);
       setShowLanding(false);
       pruneBloatedUserMetadata();
+      touchLastActivity();
 
       // Direct navigation for authenticated user
       navigateToModule(pendingModule);
@@ -2784,6 +3150,22 @@ export default function App() {
         </div>
       )}
 
+      {/* v14 HYBRID SIGN-IN GATE — sits above the mounted app so data preloads underneath */}
+      {projectGate !== 'idle' && (
+        <ProjectOnboarding
+          stage={projectGate}
+          userName={welcomeUserName}
+          projects={projectList}
+          projectsLoaded={projectsLoaded}
+          activeProject={activeProject}
+          translate={t}
+          onContinue={handleGateContinue}
+          onCreateProject={handleGateCreateProject}
+          onSkip={handleGateSkip}
+          onRefreshProjects={refreshProjects}
+        />
+      )}
+
       {/* TOP GLOBAL NAVBAR */}
       <header className="min-h-14 py-2 sm:py-0 px-3 sm:px-4 bg-card border-b border-subtle flex items-center justify-between shrink-0 z-20 gap-2">
         <div className="flex flex-col select-none min-w-0">
@@ -4096,7 +4478,21 @@ export default function App() {
               </div>
             </div>
           </div>
-          {currentPage === 'data' ? (
+          {currentPage === 'project' ? (
+            <ProjectWorkspace
+              key="workspace-project"
+              isGuestUser={isGuestUser}
+              translate={t}
+              activeProject={activeProject}
+              projectList={projectList}
+              projectsLoaded={projectsLoaded}
+              onLoadProject={handleLoadProject}
+              onCreateProject={handleCreateProject}
+              onRefreshProjects={refreshProjects}
+              onDeleteProject={handleDeleteProject}
+              onBackToDashboard={() => goToWorkspace('dashboard')}
+            />
+          ) : currentPage === 'data' ? (
             <div className="flex-1 flex flex-col min-h-0 overflow-hidden animate-in fade-in duration-500">
               <DataManagementPage
                 dailyData={dailyData}

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { restoreWorkspaceTab, persistWorkspaceTab } from '../utils/workspaceLocation';
 import {
   Shield,
   Users,
@@ -56,7 +57,13 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
   auditLogs = [],
   onRefreshData
 }) => {
-  const [activeTab, setActiveTab] = useState<AdminWorkspaceTab>('users');
+  const [activeTab, setActiveTab] = useState<AdminWorkspaceTab>(() => {
+    const adminTabs = ['users', 'roles', 'approvals', 'audit', 'health'] as const;
+    return restoreWorkspaceTab<typeof adminTabs[number]>('administration', adminTabs) ?? 'users';
+  });
+  useEffect(() => {
+    persistWorkspaceTab('administration', activeTab);
+  }, [activeTab]);
   const [_refreshing, setRefreshing] = useState(false);
 
   // User Management State

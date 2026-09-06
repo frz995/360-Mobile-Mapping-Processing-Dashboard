@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { restoreWorkspaceTab, persistWorkspaceTab } from '../utils/workspaceLocation';
 import { Radar, Route, Table2, Network } from 'lucide-react';
 import { fetchDatasetsFromSupabase, fetchProcessingJobsFromSupabase, fetchStagingPanoramasFromSupabase } from '../services/supabase';
 import type { DatasetRecord, ProcessingJobRecord } from '../types/production';
@@ -40,7 +41,13 @@ export const LineageWorkspace: React.FC<LineageWorkspaceProps> = ({
   onBackToDashboard: _onBackToDashboard,
   translate = (k) => k
 }) => {
-  const [activeTab, setActiveTab] = useState<LineageTab>('graph');
+  const [activeTab, setActiveTab] = useState<LineageTab>(() => {
+    const lineageTabs = ['graph', 'trace', 'survey', 'registry'] as const;
+    return restoreWorkspaceTab<typeof lineageTabs[number]>('lineage', lineageTabs) ?? 'graph';
+  });
+  useEffect(() => {
+    persistWorkspaceTab('lineage', activeTab);
+  }, [activeTab]);
   const [datasets, setDatasets] = useState<DatasetRecord[]>([]);
   const [jobs, setJobs] = useState<ProcessingJobRecord[]>([]);
   const [stagingRows, setStagingRows] = useState<Array<{ subgrid?: string; status?: string; created_at?: string }>>([]);

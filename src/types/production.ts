@@ -39,6 +39,7 @@ export type ProcessingJobStatus =
 
 export interface DatasetRecord {
   id?: string;
+  project_id?: string;
   dataset_type: DatasetType;
   pipeline_stage: PipelineStage;
   name: string;
@@ -65,6 +66,7 @@ export interface DatasetRecord {
 
 export interface ProcessingJobRecord {
   id?: string;
+  project_id?: string;
   job_type: ProcessingJobType;
   name?: string;
   source_dataset_id?: string | null;
