@@ -64,7 +64,11 @@ export function getServiceProjectId(): string | null {
 /** Append a `project_id = <active>` equality filter when a project is active. */
 export function scoped(query: any): any {
   const id = getServiceProjectId();
-  return id ? query.eq('project_id', id) : query;
+  if (!id || !query) return query;
+  if (typeof query.eq === 'function') {
+    return query.eq('project_id', id);
+  }
+  return query;
 }
 
 const MAX_SAFE_HEADER_LENGTH = 1500;
