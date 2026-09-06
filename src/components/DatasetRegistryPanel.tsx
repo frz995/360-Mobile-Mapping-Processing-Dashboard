@@ -15,7 +15,8 @@ import {
   Plus,
   X,
   Folder,
-  CheckCircle2
+  CheckCircle2,
+  Globe
 } from 'lucide-react';
 import { ContentLoading } from './common/ContentLoading';
 import {
@@ -30,6 +31,8 @@ import { computeDatasetVersionState } from '../utils/datasetVersioning';
 import { formatBytes, formatDateTime } from './production/common';
 import type { TranslateFn } from './production/common';
 import { qaBadge, statusTone } from './production/lineage/lineageCommon';
+import { resolveSubgridLifecycle } from '../utils/dataLifecycle';
+import { WebGISHandoffCard } from './production/WebGISHandoffCard';
 
 type TypeFilter = 'all' | 'RAW' | 'PROCESSED' | 'DELIVERABLE';
 
@@ -83,6 +86,7 @@ export const DatasetRegistryPanel: React.FC<DatasetRegistryPanelProps> = ({
     storageProvider: 'nas_local'
   });
   const [duplicateWarnings, setDuplicateWarnings] = useState<DatasetRecord[]>([]);
+  const [handoffSubgrid, setHandoffSubgrid] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -502,7 +506,17 @@ export const DatasetRegistryPanel: React.FC<DatasetRegistryPanelProps> = ({
                     <td className="px-3 py-2 text-right text-text-muted">{processCount}</td>
                     <td className="px-3 py-2 text-text-muted max-w-[160px] truncate" title={sourceName}>{sourceName || '—'}</td>
                     <td className="px-3 py-2 text-text-muted whitespace-nowrap">{formatDateTime(d.created_at)}</td>
-                    <td className="px-3 py-2">
+                    <td className="px-3 py-2 flex items-center gap-1.5 justify-end">
+                      {d.subgrid && d.dataset_type === 'DELIVERABLE' && (
+                        <button
+                          onClick={() => setHandoffSubgrid(d.subgrid!)}
+                          title="Open WebGIS Handoff Guide"
+                          className="px-2 py-1 rounded-md text-[10px] font-bold text-emerald-300 border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 transition-colors cursor-pointer flex items-center gap-1 shrink-0"
+                        >
+                          <Globe size={11} />
+                          <span>Handoff</span>
+                        </button>
+                      )}
                       {d.subgrid && (
                         <button
                           onClick={() => onOpenInMap(d.subgrid!)}
@@ -524,6 +538,29 @@ export const DatasetRegistryPanel: React.FC<DatasetRegistryPanelProps> = ({
                 )}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* WebGIS Handoff Assistant Modal */}
+      {handoffSubgrid && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-card border border-subtle rounded-2xl w-full max-w-3xl shadow-2xl overflow-hidden animate-panel-enter">
+            <div className="p-3 bg-inner border-b border-subtle flex items-center justify-between">
+              <span className="text-xs font-bold text-text-base">WebGIS Handoff Assistant • {handoffSubgrid}</span>
+              <button onClick={() => setHandoffSubgrid(null)} className="text-text-muted hover:text-text-base cursor-pointer p-1">
+                <X size={15} />
+              </button>
+            </div>
+            <div className="p-4">
+              <WebGISHandoffCard
+                lifecycle={resolveSubgridLifecycle({ subgrid: handoffSubgrid, datasets, jobs })}
+                onNavigateToDataManagement={(sg) => {
+                  setHandoffSubgrid(null);
+                  window.location.hash = `#data?subgrid=${encodeURIComponent(sg)}`;
+                }}
+              />
+            </div>
           </div>
         </div>
       )}
