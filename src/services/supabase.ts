@@ -41,14 +41,50 @@ type SupabaseClientInstance = SupabaseClient;
  * and convert to safe defaults (null / { success: false }).
  */
 function createNoopSupabaseClient(): SupabaseClientInstance {
-  return new Proxy(function () { }, {
-    get() {
-      return undefined;
+  const dummyQuery = () => {
+    const chain: any = {
+      select: () => chain,
+      insert: () => chain,
+      update: () => chain,
+      delete: () => chain,
+      upsert: () => chain,
+      eq: () => chain,
+      neq: () => chain,
+      in: () => chain,
+      is: () => chain,
+      order: () => chain,
+      limit: () => chain,
+      range: () => chain,
+      single: () => Promise.resolve({ data: null, error: null }),
+      maybeSingle: () => Promise.resolve({ data: null, error: null }),
+      then: (resolve: any, reject?: any) => Promise.resolve({ data: null, error: null }).then(resolve, reject)
+    };
+    return chain;
+  };
+
+  const client: any = {
+    from: dummyQuery,
+    rpc: () => Promise.resolve({ data: null, error: null }),
+    auth: {
+      getSession: () => Promise.resolve({ data: { session: null }, error: null }),
+      getUser: () => Promise.resolve({ data: { user: null }, error: null }),
+      onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => { } } } }),
+      signInWithPassword: () => Promise.resolve({ data: { user: null, session: null }, error: null }),
+      signOut: () => Promise.resolve({ error: null }),
+      updateUser: () => Promise.resolve({ data: { user: null }, error: null }),
+      refreshSession: () => Promise.resolve({ data: { session: null }, error: null })
     },
-    apply() {
-      return undefined;
+    storage: {
+      from: () => ({
+        upload: () => Promise.resolve({ data: null, error: null }),
+        getPublicUrl: () => ({ data: { publicUrl: '' } }),
+        list: () => Promise.resolve({ data: [], error: null }),
+        remove: () => Promise.resolve({ data: null, error: null })
+      })
     }
-  }) as unknown as SupabaseClientInstance;
+  };
+
+  return client as SupabaseClientInstance;
 }
 
 /** Active project id for service-layer (v15) per-project scoping.

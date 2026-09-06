@@ -15,6 +15,14 @@ describe('Project Data Isolation', () => {
     localStorage.clear();
     setActiveProjectId(null);
     vi.restoreAllMocks();
+    if (typeof (supabase as any)?.from !== 'function') {
+      (supabase as any).from = () => ({
+        select: vi.fn(),
+        insert: vi.fn(),
+        update: vi.fn(),
+        delete: vi.fn()
+      });
+    }
   });
 
   it('attaches project_id to saved audit logs when active project is set', async () => {
