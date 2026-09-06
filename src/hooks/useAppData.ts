@@ -111,7 +111,23 @@ export function useAppData() {
 
         // Process Project Settings
         if (dbSettingsRes.status === 'fulfilled' && dbSettingsRes.value) {
-          setProjectSettings((prev: any) => ({ ...prev, ...dbSettingsRes.value }));
+          setProjectSettings((prev: any) => {
+            const incoming = { ...dbSettingsRes.value };
+            const pid = getActiveProjectId();
+            // Per-project boundary isolation: if a project is active, its boundary
+            // is governed by that project's scope, NOT the legacy global project_settings row.
+            if (pid) {
+              delete incoming.projectBoundary;
+              const next = { ...prev, ...incoming };
+              if (prev?.projectBoundary !== undefined) {
+                next.projectBoundary = prev.projectBoundary;
+              } else {
+                delete next.projectBoundary;
+              }
+              return next;
+            }
+            return { ...prev, ...incoming };
+          });
         }
 
         // Purge legacy ghost caches to ensure Supabase is 100% Single Source of Truth

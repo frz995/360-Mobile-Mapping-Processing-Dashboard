@@ -323,6 +323,11 @@ export const MapComponent = ({
           iframeRef.current.contentWindow.postMessage({ type: 'DIM_OUTSIDE_BOUNDARY', enabled: false }, '*');
         }
       } else {
+        iframeRef.current.contentWindow.postMessage({
+          type: 'SET_PROJECT_BOUNDARY',
+          geojson: null,
+          bbox: null
+        }, '*');
         iframeRef.current.contentWindow.postMessage({ type: 'DIM_OUTSIDE_BOUNDARY', enabled: false }, '*');
         iframeRef.current.contentWindow.postMessage({ type: 'CLEAR_BOUNDARY_FOCUS' }, '*');
       }

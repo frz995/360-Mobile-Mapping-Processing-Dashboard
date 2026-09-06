@@ -470,8 +470,21 @@ export function applyProjectScope(
 
   // Restore projectBoundary from the project's own scope when present.
   // This ensures each project carries its own boundary and switching projects
-  // does not inherit another project's boundary.
-  patch.projectBoundary = s.projectBoundary !== undefined ? s.projectBoundary : undefined;
+  // or opening a fresh project does not inherit another project's boundary.
+  if (s.projectBoundary !== undefined) {
+    patch.projectBoundary = s.projectBoundary;
+  } else {
+    delete (base as any).projectBoundary;
+    patch.projectBoundary = undefined;
+  }
 
-  return { ...base, ...patch } as ExtendedProjectSettings;
+  const result: Record<string, unknown> = {
+    ...base,
+    ...patch
+  };
+  if (result.projectBoundary === undefined) {
+    delete result.projectBoundary;
+  }
+
+  return result as ExtendedProjectSettings;
 }

@@ -117,7 +117,7 @@ export const EnhancementPanel: React.FC<EnhancementPanelProps> = ({
       const target = canvasRef.current;
       if (!target) return;
       const blob = await canvasToJpegBlob(target, 0.92);
-      const fname = sampleName || `${selected?.subgrid || 'N93E70'}-00001-enhanced.jpg`;
+      const fname = sampleName || (selected?.subgrid ? `${selected.subgrid}-00001-enhanced.jpg` : 'sample-enhanced.jpg');
       downloadBlob(blob, fname);
       onAddNotification?.({
         title: 'Output Exported',
