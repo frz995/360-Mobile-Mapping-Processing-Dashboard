@@ -65,7 +65,7 @@ export const LedgerPanel: React.FC<LedgerPanelProps> = ({
       ).size
     : (batchLogs.length || analytics.totals.subgrids || 1);
 
-  const targetKm = Number(projectSettings?.targetKm) || analytics.totals.targetKm || 300.0;
+  const targetKm = Number(projectSettings?.targetKm) || analytics.totals.targetKm || 0;
   const overallProgressPercent = targetKm > 0 ? (totalReportDistance / targetKm) * 100 : 0;
   const compliantPercent =
     totalReportFrames > 0

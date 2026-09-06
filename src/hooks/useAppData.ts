@@ -27,8 +27,8 @@ export interface QAFlagState {
 const DEFAULT_PROJECT_SETTINGS = {
   projectName: '360 Mobile Mapping — Spatial Operations Division',
   contractCode: 'MMS-2026-GEO-01',
-  targetKm: 315.2,
-  targetImages: 50000,
+  targetKm: 0,
+  targetImages: 0,
   targetDeadline: '2026-12-31',
   maxDefectRatePercent: 1.5,
   minGpsAccuracyM: 1.0,

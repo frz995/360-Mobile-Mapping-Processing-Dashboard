@@ -61,6 +61,7 @@ import {
   markProjectSeeded,
   hasSeededProject,
   deleteProject as deleteProjectService,
+  persistProjectScopeSettings,
   type UserProject,
   type ProjectDraft
 } from './services/projects';
@@ -1310,6 +1311,17 @@ export default function App() {
     try {
       setProjectSettings({ ...projectSettings });
       saveProjectSettingsToSupabase(projectSettings).catch(err => console.warn('Supabase settings save notice:', err));
+      if (activeProject?.id) {
+        persistProjectScopeSettings({
+          targetKm: typeof (projectSettings as any)?.targetKm === 'number' ? (projectSettings as any).targetKm : 0,
+          targetImages: typeof (projectSettings as any)?.targetImages === 'number' ? (projectSettings as any).targetImages : 0,
+          targetDeadline: (projectSettings as any)?.targetDeadline,
+          crs: (projectSettings as any)?.selectedCrs,
+          region: (projectSettings as any)?.selectedRegionBBox,
+          basemap: (projectSettings as any)?.defaultBasemapStyle,
+          equipment: (projectSettings as any)?.defaultEquipment
+        }).catch(err => console.warn('Project scope update notice:', err));
+      }
       const sampleUrl = getPanoramaUrl('sample.jpg');
       const tables = getDatabaseTableMapping(projectSettings);
       addAuditLog(
