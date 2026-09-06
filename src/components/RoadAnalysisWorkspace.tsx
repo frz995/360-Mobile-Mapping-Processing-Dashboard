@@ -576,16 +576,11 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
 
       // Per-project isolation (v15): the cloud blob `roadAnalysisState` is a
       // shared project_settings row, so only apply it when it belongs to the
-      // currently active project. Untagged legacy snapshots (created before
-      // project tagging) never apply to a scoped project — a fresh project
-      // must start clean.
+      // currently active project.
       const activePid = getActiveProjectId();
-      if (activePid) {
-        if (remoteState.projectId !== activePid) {
-          // Remote state belongs to a different project, or is untagged —
-          // ignore it so the new project gets a clean start.
-          return;
-        }
+      if (activePid && remoteState.projectId && remoteState.projectId !== activePid) {
+        // Only reject if it explicitly belongs to a different project
+        return;
       }
 
       // Only apply when the incoming remote state is strictly newer than the
@@ -1014,7 +1009,8 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
       planDistanceKm: Number(planDistanceKm) || 0,
       totalSubgrids: subgridMetrics.length || 0,
       updatedAt: new Date().toISOString(),
-      updatedBy: userEmail
+      updatedBy: userEmail,
+      projectId: getActiveProjectId() || undefined
     };
 
     // 1. Primary: Save to Supabase Cloud Database (Auth Metadata & project_settings)

@@ -13,7 +13,7 @@ describe('Data Lifecycle & WebGIS Handoff Engine', () => {
     expect(LIFECYCLE_STAGES.PROCESSED.shortLabel).toBe('PROCESSED');
     expect(LIFECYCLE_STAGES.DELIVERABLE.shortLabel).toBe('DELIVERABLE');
     expect(LIFECYCLE_STAGES.STAGED.shortLabel).toBe('STAGED');
-    expect(LIFECYCLE_STAGES.PUBLISHED.shortLabel).toBe('LIVE / PUBLISHED');
+    expect(LIFECYCLE_STAGES.PUBLISHED.shortLabel).toBe('Published in database');
   });
 
   it('resolves RAW stage when only raw dataset exists', () => {

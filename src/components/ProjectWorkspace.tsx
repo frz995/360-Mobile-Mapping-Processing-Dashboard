@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Briefcase, FolderOpen, Plus, Archive, Trash2, AlertTriangle, X } from 'lucide-react';
+import { Briefcase, FolderPlus, FolderOpen, Plus, Archive, Trash2, AlertTriangle, X, Edit2 } from 'lucide-react';
 import { restoreWorkspaceTab, persistWorkspaceTab } from '../utils/workspaceLocation';
 import { Masthead, UnderlineTabStrip, type ChromeTab, StatusDot } from './production/chrome';
 import { EmptyState } from './common/EmptyState';
@@ -14,8 +14,11 @@ interface ProjectWorkspaceProps {
   activeProject?: UserProject | null;
   projectList?: UserProject[];
   projectsLoaded?: boolean;
+  totalKm?: number;
+  projectSettings?: Record<string, unknown> | null;
   onLoadProject?: (project: UserProject) => void;
   onCreateProject?: (draft: ProjectDraft) => Promise<{ success: boolean; value?: UserProject; message?: string }>;
+  onUpdateProject?: (id: string, patch: Partial<ProjectDraft>) => Promise<{ success: boolean; value?: UserProject; message?: string }>;
   onRefreshProjects?: () => Promise<UserProject[]>;
   onDeleteProject?: (project: UserProject) => void;
   onBackToDashboard?: () => void;
@@ -71,8 +74,11 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({
   activeProject,
   projectList = [],
   projectsLoaded = false,
+  totalKm = 0,
+  projectSettings,
   onLoadProject,
   onCreateProject,
+  onUpdateProject,
   onRefreshProjects,
   onDeleteProject,
   onBackToDashboard
@@ -92,9 +98,23 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({
   const [contractCode, setContractCode] = useState('');
   const [clientName, setClientName] = useState('');
   const [region, setRegion] = useState('peninsular_malaysia');
+  const [targetKmInput, setTargetKmInput] = useState('');
   const [description, setDescription] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+
+  // Edit project state
+  const [editingProject, setEditingProject] = useState<UserProject | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editContractCode, setEditContractCode] = useState('');
+  const [editClientName, setEditClientName] = useState('');
+  const [editRegion, setEditRegion] = useState('peninsular_malaysia');
+  const [editTargetKm, setEditTargetKm] = useState('');
+  const [editActualKm, setEditActualKm] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [editStatus, setEditStatus] = useState<ProjectStatus>('active');
+  const [editSubmitting, setEditSubmitting] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!projectsLoaded && onRefreshProjects) {
@@ -123,9 +143,10 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({
     setCreateError(null);
     try {
       const preset = REGION_PRESETS[region];
+      const parsedTargetKm = parseFloat(targetKmInput) || 0;
       const scope = preset
-        ? { crs: preset.crs, region: preset.region, bbox: preset.bbox, basemap: 'dark', equipment: 'MMS', targetKm: 0, targetImages: 0 }
-        : { crs: 'EPSG:4326', region, basemap: 'dark', equipment: 'MMS', targetKm: 0, targetImages: 0 };
+        ? { crs: preset.crs, region: preset.region, bbox: preset.bbox, basemap: 'dark', equipment: 'MMS', targetKm: parsedTargetKm, actualKm: 0, targetImages: 0 }
+        : { crs: 'EPSG:4326', region, basemap: 'dark', equipment: 'MMS', targetKm: parsedTargetKm, actualKm: 0, targetImages: 0 };
       const res = await onCreateProject({
         name: name.trim(),
         contractCode: contractCode.trim(),
@@ -142,11 +163,12 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({
       setName('');
       setContractCode('');
       setClientName('');
+      setTargetKmInput('');
       setDescription('');
     } finally {
       setSubmitting(false);
     }
-  }, [name, contractCode, clientName, region, description, onCreateProject, translate]);
+  }, [name, contractCode, clientName, region, targetKmInput, description, onCreateProject, translate]);
 
   const handleConfirmDelete = useCallback(() => {
     if (!confirmDelete || !onDeleteProject) return;
@@ -159,12 +181,67 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({
     }
   }, [confirmDelete, onDeleteProject]);
 
+  const handleOpenEdit = useCallback((p: UserProject) => {
+    setEditingProject(p);
+    setEditName(p.name || '');
+    setEditContractCode(p.contractCode || '');
+    setEditClientName(p.clientName || '');
+    setEditRegion(p.region || 'peninsular_malaysia');
+    const isAct = p.id === activeProject?.id;
+    const currentTarget = isAct && typeof (projectSettings as any)?.targetKm === 'number' && (projectSettings as any).targetKm > 0
+      ? (projectSettings as any).targetKm
+      : (p.scope?.targetKm || 0);
+    const currentActual = isAct && typeof totalKm === 'number'
+      ? totalKm
+      : (p.scope?.actualKm || 0);
+    setEditTargetKm(currentTarget ? String(currentTarget) : '');
+    setEditActualKm(currentActual ? String(currentActual) : '');
+    setEditDescription(p.description || '');
+    setEditStatus(p.status || 'active');
+    setEditError(null);
+  }, [activeProject, projectSettings, totalKm]);
+
+  const handleSaveEdit = useCallback(async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingProject || !onUpdateProject || !editName.trim()) return;
+    setEditSubmitting(true);
+    setEditError(null);
+    try {
+      const preset = REGION_PRESETS[editRegion];
+      const parsedTargetKm = parseFloat(editTargetKm);
+      const parsedActualKm = parseFloat(editActualKm);
+      const updatedScope = {
+        ...(editingProject.scope || {}),
+        region: editRegion,
+        targetKm: !isNaN(parsedTargetKm) ? parsedTargetKm : (editingProject.scope?.targetKm || 0),
+        actualKm: !isNaN(parsedActualKm) ? parsedActualKm : (editingProject.scope?.actualKm || 0),
+        ...(preset ? { crs: preset.crs, bbox: preset.bbox } : {})
+      };
+      const res = await onUpdateProject(editingProject.id, {
+        name: editName.trim(),
+        contractCode: editContractCode.trim(),
+        clientName: editClientName.trim(),
+        region: editRegion,
+        description: editDescription.trim(),
+        status: editStatus,
+        scope: updatedScope
+      });
+      if (!res.success) {
+        setEditError(res.message || 'Failed to update project');
+        return;
+      }
+      setEditingProject(null);
+    } catch (err) {
+      setEditError((err as Error).message || 'Failed to update project');
+    } finally {
+      setEditSubmitting(false);
+    }
+  }, [editingProject, onUpdateProject, editName, editContractCode, editClientName, editRegion, editTargetKm, editActualKm, editDescription, editStatus]);
+
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden animate-in fade-in duration-500">
       <div className="flex-1 flex flex-col gap-3 min-h-0 overflow-y-auto p-4">
         <Masthead
-          icon={<Briefcase size={20} />}
-          context={translate('workspaceProject')}
           title={translate('projectPanelTitle')}
           subtitle={translate('projectPanelSubtitle')}
           readouts={[
@@ -193,7 +270,7 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({
             ) : filtered.length === 0 ? (
               <div className="bg-card border border-subtle rounded-xl">
                 <EmptyState
-                  icon={Briefcase}
+                  icon={FolderPlus}
                   title={activeTab === 'all' && projectList.length === 0 ? translate('projectNoProjects') : translate('projectEmptyFiltered')}
                   hint={activeTab === 'all' && projectList.length === 0 ? translate('projectNoProjectsDesc') : undefined}
                   action={canWrite ? (
@@ -208,72 +285,148 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({
               </div>
             ) : (
               <div className="flex flex-col gap-2 bg-card border border-subtle rounded-xl p-2">
-                {filtered.map((p) => (
-                  <div
-                    key={p.id}
-                    className="p-3 rounded-xl bg-inner border border-subtle hover:border-sky-400/40 transition-colors"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-bold text-text-base truncate">{p.name}</span>
-                          {activeProject?.id === p.id && (
-                            <span className="text-[9px] font-bold uppercase tracking-wider text-sky-400 bg-sky-500/15 border border-sky-500/30 rounded px-1.5 py-0.5 shrink-0">
-                              {translate('projectCurrent')}
-                            </span>
+                {filtered.map((p) => {
+                  const isCardActive = activeProject?.id === p.id;
+                  const actualKm = isCardActive
+                    ? (typeof totalKm === 'number' ? totalKm : (Number(p.scope?.actualKm) || 0))
+                    : (Number(p.scope?.actualKm) || 0);
+
+                  const targetKm = isCardActive
+                    ? (typeof (projectSettings as any)?.targetKm === 'number' && (projectSettings as any).targetKm > 0
+                        ? (projectSettings as any).targetKm
+                        : (Number(p.scope?.targetKm) || 0))
+                    : (Number(p.scope?.targetKm) || 0);
+
+                  const progressPct = targetKm > 0
+                    ? Math.min(100, Math.round(((actualKm / targetKm) * 100) * 10) / 10)
+                    : (actualKm > 0 ? 100 : 0);
+
+                  return (
+                    <div
+                      key={p.id}
+                      className={`p-3.5 rounded-xl bg-inner border transition-all ${
+                        isCardActive
+                          ? 'border-emerald-500/40 shadow-sm'
+                          : 'border-subtle hover:border-sky-400/40'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          {/* Title & Active Indicator */}
+                          <div className="flex items-center gap-2.5 flex-wrap">
+                            <span className="text-sm font-bold text-text-base truncate">{p.name}</span>
+                            {isCardActive && (
+                              <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-400">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                {translate('projectCurrent')}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Project Details: Contract Code, Client, Region, Distance */}
+                          <div className="flex items-center gap-x-4 gap-y-1 mt-2 text-xs text-text-muted flex-wrap">
+                            <div>
+                              <span className="text-text-muted/70">Contract: </span>
+                              <span className="font-mono text-text-base font-medium">{p.contractCode || '—'}</span>
+                            </div>
+                            <div>
+                              <span className="text-text-muted/70">Client: </span>
+                              <span className="text-text-base font-medium">{p.clientName || '—'}</span>
+                            </div>
+                            <div>
+                              <span className="text-text-muted/70">Region: </span>
+                              <span className="text-text-base font-medium">{p.region || '—'}</span>
+                            </div>
+                            <div>
+                              <span className="text-text-muted/70">Distance: </span>
+                              <span className="font-mono text-text-base font-medium">
+                                {actualKm.toFixed(1)} km
+                                {targetKm > 0 && (
+                                  <span className="text-text-muted text-[11px] font-normal ml-1">
+                                    / {targetKm.toFixed(1)} km
+                                  </span>
+                                )}
+                              </span>
+                            </div>
+                            {!isCardActive && (
+                              <div className="inline-flex items-center gap-1.5">
+                                <span className="text-text-muted/70">Status: </span>
+                                <span className="text-text-base font-medium capitalize inline-flex items-center gap-1">
+                                  <StatusDot tone={STATUS_TONE[p.status]} pulse={p.status === 'active'} />
+                                  {translate(STATUS_KEY[p.status])}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Description */}
+                          {p.description ? (
+                            <p className="mt-2 text-xs text-text-muted leading-relaxed line-clamp-2">
+                              {p.description}
+                            </p>
+                          ) : (
+                            <p className="mt-1.5 text-xs text-text-muted/40 italic">
+                              No description provided
+                            </p>
                           )}
                         </div>
-                        <div className="flex items-center gap-2 mt-1 flex-wrap">
-                          {p.region && (
-                            <span className="text-[9px] text-text-muted bg-card border border-subtle rounded px-1.5 py-0.5 uppercase tracking-wide">
-                              {p.region}
-                            </span>
-                          )}
-                          <span className="text-[9px] text-text-muted font-mono">{p.contractCode || '—'}</span>
-                          <span className="inline-flex items-center gap-1 text-[9px] font-semibold uppercase tracking-wide">
-                            <StatusDot tone={STATUS_TONE[p.status]} pulse={p.status === 'active'} />
-                            {translate(STATUS_KEY[p.status])}
+
+                        {/* Card Actions */}
+                        {canWrite && (
+                          <div className="flex items-center gap-1.5 shrink-0 self-start mt-0.5">
+                            {onLoadProject && !isCardActive && (
+                              <button
+                                onClick={() => onLoadProject(p)}
+                                className="px-2.5 py-1 text-xs font-semibold text-sky-400 bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/30 rounded-lg transition-all cursor-pointer"
+                              >
+                                {translate('projectLoad')}
+                              </button>
+                            )}
+                            {onUpdateProject && (
+                              <button
+                                onClick={() => handleOpenEdit(p)}
+                                aria-label="Edit project"
+                                title="Edit Project"
+                                className="p-1.5 text-text-muted hover:text-sky-400 hover:bg-sky-500/15 border border-transparent hover:border-sky-500/30 rounded-lg transition-all cursor-pointer"
+                              >
+                                <Edit2 size={13} />
+                              </button>
+                            )}
+                            {onDeleteProject && (
+                              <button
+                                onClick={() => setConfirmDelete(p)}
+                                aria-label="Delete project"
+                                title={translate('projectDelete')}
+                                className="p-1.5 text-rose-400/80 hover:text-rose-300 hover:bg-rose-500/15 border border-transparent hover:border-rose-500/30 rounded-lg transition-all cursor-pointer"
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Footer: Last opened + Real KM Progress Bar & Percentage */}
+                      <div className="mt-3 pt-2.5 border-t border-subtle/40 flex items-center justify-between gap-3 text-[10px] text-text-muted flex-wrap">
+                        <span>{translate('projectLastOpened')}: {formatRelative(p.lastOpenedAt) || translate('projectNoDate')}</span>
+                        <div className="flex items-center gap-2.5">
+                          <span className="font-mono text-xs font-bold text-text-base">
+                            {progressPct}%
+                          </span>
+                          <div className="w-24 sm:w-32 h-1.5 bg-card border border-subtle rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-gradient-to-r from-sky-500 to-emerald-400 rounded-full transition-all duration-300"
+                              style={{ width: `${Math.min(100, Math.max(0, progressPct))}%` }}
+                            />
+                          </div>
+                          <span className="font-mono text-[10px] text-text-muted whitespace-nowrap">
+                            {actualKm.toFixed(1)}{targetKm > 0 ? ` / ${targetKm.toFixed(1)}` : ''} km
                           </span>
                         </div>
                       </div>
-                      {canWrite && onLoadProject && (
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          {activeProject?.id === p.id ? (
-                            <span className="px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 rounded-lg">
-                              {translate('projectActiveButton')}
-                            </span>
-                          ) : (
-                            <button
-                              onClick={() => onLoadProject(p)}
-                              className="px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider text-sky-400 bg-sky-500/15 hover:bg-sky-500/25 border border-sky-500/30 rounded-lg transition-all cursor-pointer"
-                            >
-                              {translate('projectLoad')}
-                            </button>
-                          )}
-                          {canWrite && onDeleteProject && (
-                            <button
-                              onClick={() => setConfirmDelete(p)}
-                              aria-label="Delete project"
-                              title={translate('projectDelete')}
-                              className="p-1.5 text-rose-400/80 hover:text-rose-300 hover:bg-rose-500/15 border border-transparent hover:border-rose-500/30 rounded-lg transition-all cursor-pointer"
-                            >
-                              <Trash2 size={13} />
-                            </button>
-                          )}
-                        </div>
-                      )}
                     </div>
-                    <div className="mt-2 flex items-center justify-between gap-2 text-[9px] text-text-muted">
-                      <span>{translate('projectLastOpened')}: {formatRelative(p.lastOpenedAt) || translate('projectNoDate')}</span>
-                      <div className="flex-1 h-1 bg-card border border-subtle rounded-full overflow-hidden max-w-[90px]">
-                        <div
-                          className="h-full bg-gradient-to-r from-sky-500 to-emerald-400 rounded-full"
-                          style={{ width: p.status === 'completed' ? '100%' : p.status === 'active' ? '65%' : '20%' }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -317,19 +470,34 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({
                   />
                 </label>
               </div>
-              <label className="flex flex-col gap-1">
-                <span className="text-[9px] uppercase tracking-wider text-text-muted font-semibold">{translate('projectRegionField')}</span>
-                <select
-                  value={region}
-                  onChange={(e) => setRegion(e.target.value)}
-                  disabled={!canWrite || submitting}
-                  className="bg-inner border border-subtle rounded-lg px-3 py-2 text-xs text-text-base focus:outline-none focus:border-sky-400/50 disabled:opacity-50"
-                >
-                  <option value="peninsular_malaysia">Peninsular Malaysia</option>
-                  <option value="sabah">Sabah</option>
-                  <option value="sarawak">Sarawak</option>
-                </select>
-              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="flex flex-col gap-1">
+                  <span className="text-[9px] uppercase tracking-wider text-text-muted font-semibold">{translate('projectRegionField')}</span>
+                  <select
+                    value={region}
+                    onChange={(e) => setRegion(e.target.value)}
+                    disabled={!canWrite || submitting}
+                    className="bg-inner border border-subtle rounded-lg px-3 py-2 text-xs text-text-base focus:outline-none focus:border-sky-400/50 disabled:opacity-50"
+                  >
+                    <option value="peninsular_malaysia">Peninsular Malaysia</option>
+                    <option value="sabah">Sabah</option>
+                    <option value="sarawak">Sarawak</option>
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-[9px] uppercase tracking-wider text-text-muted font-semibold">Target Distance (km)</span>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    value={targetKmInput}
+                    onChange={(e) => setTargetKmInput(e.target.value)}
+                    placeholder="0.0"
+                    disabled={!canWrite || submitting}
+                    className="bg-inner border border-subtle rounded-lg px-3 py-2 text-xs text-text-base placeholder:text-text-muted/60 focus:outline-none focus:border-sky-400/50 disabled:opacity-50"
+                  />
+                </label>
+              </div>
               <label className="flex flex-col gap-1">
                 <span className="text-[9px] uppercase tracking-wider text-text-muted font-semibold">{translate('projectDescField')}</span>
                 <textarea
@@ -405,6 +573,181 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({
                 {deleting ? '…' : translate('projectDeleteConfirmBtn')}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit project dialog */}
+      {editingProject && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+          onClick={() => !editSubmitting && setEditingProject(null)}
+        >
+          <div
+            className="bg-card border border-subtle rounded-xl p-5 w-full max-w-md shadow-2xl animate-in fade-in zoom-in-95 flex flex-col gap-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-subtle pb-3">
+              <div className="flex items-center gap-2">
+                <Edit2 size={16} className="text-sky-400" />
+                <h3 className="text-xs font-bold text-text-base uppercase tracking-wider">
+                  Edit Project
+                </h3>
+              </div>
+              <button
+                onClick={() => !editSubmitting && setEditingProject(null)}
+                aria-label="Close"
+                className="p-1 text-text-muted hover:text-text-base rounded transition-colors cursor-pointer"
+              >
+                <X size={15} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEdit} className="flex flex-col gap-3">
+              <label className="flex flex-col gap-1">
+                <span className="text-[9px] uppercase tracking-wider text-text-muted font-semibold">
+                  {translate('projectNameField')}
+                </span>
+                <input
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  placeholder={translate('projectNamePlaceholder')}
+                  disabled={editSubmitting}
+                  className="bg-inner border border-subtle rounded-lg px-3 py-2 text-xs text-text-base placeholder:text-text-muted/60 focus:outline-none focus:border-sky-400/50 disabled:opacity-50"
+                />
+              </label>
+
+              <div className="grid grid-cols-2 gap-2">
+                <label className="flex flex-col gap-1">
+                  <span className="text-[9px] uppercase tracking-wider text-text-muted font-semibold">
+                    {translate('projectContractField')}
+                  </span>
+                  <input
+                    value={editContractCode}
+                    onChange={(e) => setEditContractCode(e.target.value)}
+                    placeholder={translate('projectContractPlaceholder')}
+                    disabled={editSubmitting}
+                    className="bg-inner border border-subtle rounded-lg px-3 py-2 text-xs text-text-base placeholder:text-text-muted/60 focus:outline-none focus:border-sky-400/50 disabled:opacity-50"
+                  />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-[9px] uppercase tracking-wider text-text-muted font-semibold">
+                    {translate('projectClientField')}
+                  </span>
+                  <input
+                    value={editClientName}
+                    onChange={(e) => setEditClientName(e.target.value)}
+                    placeholder={translate('projectClientPlaceholder')}
+                    disabled={editSubmitting}
+                    className="bg-inner border border-subtle rounded-lg px-3 py-2 text-xs text-text-base placeholder:text-text-muted/60 focus:outline-none focus:border-sky-400/50 disabled:opacity-50"
+                  />
+                </label>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <label className="flex flex-col gap-1">
+                  <span className="text-[9px] uppercase tracking-wider text-text-muted font-semibold">
+                    {translate('projectRegionField')}
+                  </span>
+                  <select
+                    value={editRegion}
+                    onChange={(e) => setEditRegion(e.target.value)}
+                    disabled={editSubmitting}
+                    className="bg-inner border border-subtle rounded-lg px-3 py-2 text-xs text-text-base focus:outline-none focus:border-sky-400/50 disabled:opacity-50"
+                  >
+                    <option value="peninsular_malaysia">Peninsular Malaysia</option>
+                    <option value="sabah">Sabah</option>
+                    <option value="sarawak">Sarawak</option>
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-[9px] uppercase tracking-wider text-text-muted font-semibold">
+                    Status
+                  </span>
+                  <select
+                    value={editStatus}
+                    onChange={(e) => setEditStatus(e.target.value as ProjectStatus)}
+                    disabled={editSubmitting}
+                    className="bg-inner border border-subtle rounded-lg px-3 py-2 text-xs text-text-base focus:outline-none focus:border-sky-400/50 disabled:opacity-50"
+                  >
+                    <option value="active">Active</option>
+                    <option value="planning">Planning</option>
+                    <option value="paused">Paused</option>
+                    <option value="completed">Completed</option>
+                    <option value="archived">Archived</option>
+                  </select>
+                </label>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <label className="flex flex-col gap-1">
+                  <span className="text-[9px] uppercase tracking-wider text-text-muted font-semibold">
+                    Target Distance (km)
+                  </span>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    value={editTargetKm}
+                    onChange={(e) => setEditTargetKm(e.target.value)}
+                    placeholder="0.0"
+                    disabled={editSubmitting}
+                    className="bg-inner border border-subtle rounded-lg px-3 py-2 text-xs text-text-base placeholder:text-text-muted/60 focus:outline-none focus:border-sky-400/50 disabled:opacity-50"
+                  />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-[9px] uppercase tracking-wider text-text-muted font-semibold">
+                    Actual Mapped (km)
+                  </span>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    value={editActualKm}
+                    onChange={(e) => setEditActualKm(e.target.value)}
+                    placeholder="0.0"
+                    disabled={editSubmitting}
+                    className="bg-inner border border-subtle rounded-lg px-3 py-2 text-xs text-text-base placeholder:text-text-muted/60 focus:outline-none focus:border-sky-400/50 disabled:opacity-50"
+                  />
+                </label>
+              </div>
+
+              <label className="flex flex-col gap-1">
+                <span className="text-[9px] uppercase tracking-wider text-text-muted font-semibold">
+                  {translate('projectDescField')}
+                </span>
+                <textarea
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  placeholder={translate('projectDescPlaceholder')}
+                  rows={3}
+                  disabled={editSubmitting}
+                  className="bg-inner border border-subtle rounded-lg px-3 py-2 text-xs text-text-base placeholder:text-text-muted/60 focus:outline-none focus:border-sky-400/50 disabled:opacity-50 resize-none"
+                />
+              </label>
+
+              {editError && (
+                <p className="text-[10px] text-rose-400">{editError}</p>
+              )}
+
+              <div className="flex justify-end gap-2 mt-2 pt-2 border-t border-subtle">
+                <button
+                  type="button"
+                  onClick={() => setEditingProject(null)}
+                  disabled={editSubmitting}
+                  className="px-3 py-1.5 text-xs font-semibold text-text-muted hover:text-text-base border border-subtle rounded-lg transition-all cursor-pointer disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={editSubmitting || !editName.trim()}
+                  className="px-4 py-1.5 text-xs font-bold text-sky-400 bg-sky-500/15 hover:bg-sky-500/25 border border-sky-500/30 rounded-lg transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {editSubmitting ? '…' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

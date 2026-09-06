@@ -3517,12 +3517,12 @@ export const DataManagementPage = ({
                                   {batch.status === 'Complete' ? (
                                     <div className="inline-flex items-center gap-1.5 text-xs font-medium text-text-base whitespace-nowrap">
                                       <CheckCircle size={14} className="text-emerald-400 shrink-0" />
-                                      <span>Live / Published</span>
+                                      <span>Complete</span>
                                     </div>
                                   ) : (
                                     <div className="inline-flex items-center gap-1.5 text-xs font-medium text-text-base whitespace-nowrap" title={batch.runsCount ? `${batch.publishedRunsCount || 0} of ${batch.runsCount} runs published` : undefined}>
                                       <Clock size={14} className="text-amber-400 shrink-0" />
-                                      <span>Staged (Ready to Publish)</span>
+                                      <span>Ongoing</span>
                                     </div>
                                   )}
                                 </td>
@@ -3693,12 +3693,12 @@ export const DataManagementPage = ({
                                   {isPublished ? (
                                     <div className="inline-flex items-center gap-1.5 text-xs font-medium text-text-base whitespace-nowrap">
                                       <CheckCircle size={14} className="text-emerald-400 shrink-0" />
-                                      <span>Live / Published</span>
+                                      <span>Published in database</span>
                                     </div>
                                   ) : (
                                     <div className="inline-flex items-center gap-1.5 text-xs font-medium text-text-base whitespace-nowrap">
                                       <Clock size={14} className="text-amber-400 shrink-0" />
-                                      <span>Staged (Ready to Publish)</span>
+                                      <span>Ready to publish</span>
                                     </div>
                                   )}
                                 </td>
