@@ -437,7 +437,7 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
     let error: any = null;
     const viewResult = await withRetry(
       async () => {
-        const res = await supabase.from('panoramas_view').select('*');
+        const res = await scoped(supabase.from('panoramas_view').select('*'));
         if (res.error) throw new Error(res.error.message);
         return res;
       },
@@ -447,9 +447,9 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
     error = viewResult.error;
 
     if (error || !data || data.length === 0) {
-      const res = await supabase
+      const res = await scoped(supabase
         .from('panoramas')
-        .select('*');
+        .select('*'));
       data = res.data;
       error = res.error;
     }
@@ -462,9 +462,9 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
     const knownMetadata: Record<string, { grid: string; pic: string; equipment: string; date: string; defaultKm: number; defaultCount: number }> = {};
 
     try {
-      const { data: subgridRows } = await supabase.from('subgrids').select('*');
+      const { data: subgridRows } = await scoped(supabase.from('subgrids').select('*'));
       if (subgridRows && subgridRows.length > 0) {
-        subgridRows.forEach(row => {
+        subgridRows.forEach((row: any) => {
           if (row.subgrid_code) {
             const sgKey = row.subgrid_code.toUpperCase().trim();
             knownMetadata[sgKey] = {
@@ -539,7 +539,7 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
     const knownDefectFilenames = new Set<string>();
     const knownDefectsList: any[] = [];
     try {
-      const { data: qdRows } = await supabase.from('qa_defects').select('point_id, filename, item_key, subgrid, qa_status, defect_flags, defect_count, defect_type, is_resolved');
+      const { data: qdRows } = await scoped(supabase.from('qa_defects').select('point_id, filename, item_key, subgrid, qa_status, defect_flags, defect_count, defect_type, is_resolved'));
       if (qdRows && qdRows.length > 0) {
         qdRows.forEach((r: any) => {
           const fn = (r.point_id || r.filename || r.item_key || '').split('/').pop()?.toUpperCase().trim();
@@ -562,7 +562,7 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
     const qaqcRunsTable = settings?.qaqcRunsTable || import.meta.env.VITE_DB_QAQC_RUNS_TABLE || DATABASE_TABLE_DEFAULTS.qaqcRunsTable;
     let cloudAuditCache: Record<string, any> = {};
     try {
-      const { data: auditRows } = await supabase.from(qaqcRunsTable).select('subgrid, run_id, total_stations, defect_count, pass_rate, mean_tenengrad_score, defects_list, history, pic, user_id, user_email, completed_at, created_at');
+      const { data: auditRows } = await scoped(supabase.from(qaqcRunsTable).select('subgrid, run_id, total_stations, defect_count, pass_rate, mean_tenengrad_score, defects_list, history, pic, user_id, user_email, completed_at, created_at'));
       if (auditRows && auditRows.length > 0) {
         auditRows.forEach((r: any) => {
           const norm = (extractSubgrid(r.subgrid) || r.subgrid || '').toUpperCase().trim();
@@ -794,10 +794,10 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
 
     // 2. Query staging_panoramas table for persistent staged records
     try {
-      const { data: stagingData, error: stagingErr } = await supabase.from('staging_panoramas').select('*');
+      const { data: stagingData, error: stagingErr } = await scoped(supabase.from('staging_panoramas').select('*'));
       if (!stagingErr && stagingData && stagingData.length > 0) {
         const stagingGrouped = new Map<string, any>();
-        stagingData.forEach(r => {
+        stagingData.forEach((r: any) => {
           const filename = r.filename || r.image_url || '';
           const desc = r.description || '';
           const extractedSubgrid = r.subgrid || (desc.match(/\((.*?)\)/)?.[1]) || extractSubgrid(filename) || extractSubgrid(desc) || 'UNKNOWN';
@@ -1137,6 +1137,7 @@ export async function publishToSupabase(record: {
       return new Date().toISOString();
     };
 
+    const currentPid = getServiceProjectId();
     const itemsToInsert: SupabasePanoramaRecord[] = rawList.map((p: any) => {
       const filename = p.filename || p.imageFilename || record.imageFilename || '';
       const sgKey = record.subgrid ? record.subgrid.toUpperCase() : extractSubgrid(filename);
@@ -1154,6 +1155,7 @@ export async function publishToSupabase(record: {
       const hasCoords = rawLon !== null && rawLat !== null && !isNaN(rawLon) && !isNaN(rawLat);
 
       return {
+        ...(currentPid ? { project_id: currentPid } : {}),
         filename,
         image_url: filename,
         captured_at: parseToIsoTimestamp(p.date || p.captured_at || record.date),
@@ -1232,6 +1234,7 @@ export async function saveToStagingSupabase(record: {
       }];
     }
 
+    const currentPid = getServiceProjectId();
     const itemsToInsert = rawList.map((p: any) => {
       const filename = p.filename || p.imageFilename || record.imageFilename || '';
       const sgKey = record.subgrid ? record.subgrid.toUpperCase() : extractSubgrid(filename);
@@ -1254,6 +1257,7 @@ export async function saveToStagingSupabase(record: {
         : new Date().toISOString();
 
       return {
+        ...(currentPid ? { project_id: currentPid } : {}),
         filename,
         image_url: filename,
         captured_at: capturedAtIso,
@@ -1617,7 +1621,7 @@ export async function fetchQaRecordsFromSupabase(settings?: any): Promise<Record
   try {
     const qaDefectsTable = settings?.qaDefectsTable || import.meta.env.VITE_DB_QA_DEFECTS_TABLE || DATABASE_TABLE_DEFAULTS.qaDefectsTable;
     const records: Record<string, any> = {};
-    const { data, error } = await supabase.from(qaDefectsTable).select('*');
+    const { data, error } = await scoped(supabase.from(qaDefectsTable).select('*'));
     if (!error && data && data.length > 0) {
       data.forEach((item: any) => {
         const key = (item.point_id || item.filename || item.item_key || item.subgrid || '').toUpperCase().trim();
@@ -1643,7 +1647,7 @@ export async function fetchQaRecordsFromSupabase(settings?: any): Promise<Record
 export async function fetchQaAuditRunsFromSupabase(settings?: any): Promise<Record<string, QAQCAuditRunRecord>> {
   try {
     const qaqcRunsTable = settings?.qaqcRunsTable || import.meta.env.VITE_DB_QAQC_RUNS_TABLE || DATABASE_TABLE_DEFAULTS.qaqcRunsTable;
-    const { data, error } = await supabase.from(qaqcRunsTable).select('subgrid, run_id, id, total_stations, defect_count, pass_rate, mean_tenengrad_score, defects_list, history, pic, user_id, user_email, completed_at, created_at, updated_at').order('completed_at', { ascending: false });
+    const { data, error } = await scoped(supabase.from(qaqcRunsTable).select('subgrid, run_id, id, total_stations, defect_count, pass_rate, mean_tenengrad_score, defects_list, history, pic, user_id, user_email, completed_at, created_at, updated_at')).order('completed_at', { ascending: false });
     if (error) {
       console.warn('fetchQaAuditRunsFromSupabase notice:', error.message);
       return {};
@@ -1695,7 +1699,9 @@ export async function saveQaAuditRunToSupabase(
     const normSg = (extractSubgrid(record.subgrid) || record.subgrid || '').toUpperCase().trim();
     const runId = record.runId || 'default';
 
+    const pid = getServiceProjectId();
     const payload = {
+      ...(pid ? { project_id: pid } : {}),
       subgrid: normSg,
       run_id: runId,
       total_stations: record.totalStations || 0,
@@ -1893,15 +1899,14 @@ export async function getStorageImageCountsFromSupabase(forceRefresh: boolean = 
 export async function fetchAuditLogsFromSupabase(settings?: ExtendedProjectSettings): Promise<any[]> {
   try {
     const table = settings?.auditLogsTable || 'audit_logs';
-    const { data, error } = await supabase
-      .from(table)
-      .select('*')
+    const query = scoped(supabase.from(table).select('*'));
+    const { data, error } = await query
       .order('created_at', { ascending: false })
       .limit(100);
 
     if (error || !data || data.length === 0) return [];
 
-    return data.map(item => {
+    return data.map((item: any) => {
       const id = String(item.id || item.created_at || item.timestamp);
       return {
         id: item.id || `audit-${id}`,
@@ -1932,13 +1937,15 @@ export async function saveAuditLogToSupabase(log: {
   status: string;
 }): Promise<boolean> {
   try {
+    const pid = getServiceProjectId();
     const { error } = await supabase.from('audit_logs').insert([{
       timestamp: log.timestamp,
       type: log.type,
       title: log.title,
       details: log.details,
       user_name: log.user,
-      status: log.status
+      status: log.status,
+      ...(pid ? { project_id: pid } : {})
     }]);
     if (error) {
       console.warn('Audit log insert notice:', error.message);
@@ -1957,15 +1964,14 @@ export async function saveAuditLogToSupabase(log: {
 export async function fetchNotificationsFromSupabase(settings?: ExtendedProjectSettings): Promise<any[]> {
   try {
     const table = settings?.notificationsTable || 'notifications';
-    const { data, error } = await supabase
-      .from(table)
-      .select('*')
+    const query = scoped(supabase.from(table).select('*'));
+    const { data, error } = await query
       .order('created_at', { ascending: false })
       .limit(100);
 
     if (error || !data || data.length === 0) return [];
 
-    return data.map(item => {
+    return data.map((item: any) => {
       const id = String(item.id || item.created_at || item.timestamp);
       return {
         id: item.id || `notif-${id}`,
@@ -1995,13 +2001,15 @@ export async function saveNotificationToSupabase(notif: {
   totalItems?: number;
 }): Promise<boolean> {
   try {
+    const pid = getServiceProjectId();
     const { error } = await supabase.from('notifications').insert([{
       timestamp: notif.timestamp,
       title: notif.title,
       message: notif.message,
       category: notif.category,
       read: notif.read || false,
-      total_items: notif.totalItems || 0
+      total_items: notif.totalItems || 0,
+      ...(pid ? { project_id: pid } : {})
     }]);
     if (error) {
       console.warn('Notification insert notice:', error.message);
@@ -2075,9 +2083,9 @@ export async function testDatabaseHealth(): Promise<{
  */
 export async function fetchDeletionRequestsFromSupabase(_currentUser?: any): Promise<any[]> {
   try {
-    const { data, error } = await supabase.from('deletion_requests').select('*').order('date_requested', { ascending: false });
+    const { data, error } = await scoped(supabase.from('deletion_requests').select('*')).order('date_requested', { ascending: false });
     if (!error && data && data.length > 0) {
-      return data.map(r => ({
+      return data.map((r: any) => ({
         id: r.id || r.request_id,
         subgrid: r.subgrid,
         requestedBy: r.requested_by,
@@ -2105,6 +2113,7 @@ export async function fetchDeletionRequestsFromSupabase(_currentUser?: any): Pro
  */
 export async function saveDeletionRequestToSupabase(req: any): Promise<boolean> {
   try {
+    const pid = getServiceProjectId();
     const { error } = await supabase.from('deletion_requests').insert([{
       subgrid: req.subgrid,
       requested_by: req.requestedBy,
@@ -2114,7 +2123,8 @@ export async function saveDeletionRequestToSupabase(req: any): Promise<boolean> 
       km_processed: req.kmProcessed,
       date_requested: req.dateRequested,
       status: 'Pending',
-      filenames: req.filenames || []
+      filenames: req.filenames || [],
+      ...(pid ? { project_id: pid } : {})
     }]);
     if (error) {
       console.warn('Deletion request insert notice:', error.message);
@@ -2578,9 +2588,9 @@ export async function fetchQADefectsForSubgrid(subgrid: string): Promise<QADefec
 
     // 1. Fetch from dedicated qa_defects table
     try {
-      const { data: qaRows, error } = await supabase
+      const { data: qaRows, error } = await scoped(supabase
         .from('qa_defects')
-        .select('point_id, filename, item_key, id, subgrid, frame_index, defect_flags, defect_type, pic, image_url, lat, lng, bearing, is_resolved, resolved_at, created_at')
+        .select('point_id, filename, item_key, id, subgrid, frame_index, defect_flags, defect_type, pic, image_url, lat, lng, bearing, is_resolved, resolved_at, created_at'))
         .eq('subgrid', cleanSub)
         .order('frame_index', { ascending: true });
 
@@ -2610,9 +2620,9 @@ export async function fetchQADefectsForSubgrid(subgrid: string): Promise<QADefec
 
     // 2. Also fetch from qaqc_audit_runs where defects_list JSON is stored
     try {
-      const { data: auditRows, error: auditError } = await supabase
+      const { data: auditRows, error: auditError } = await scoped(supabase
         .from('qaqc_audit_runs')
-        .select('id, defects_list, pic, created_at')
+        .select('id, defects_list, pic, created_at'))
         .ilike('subgrid', `%${cleanSub}%`)
         .order('created_at', { ascending: false });
 
@@ -2716,10 +2726,10 @@ export async function fetchStagingPanoramasFromSupabase(): Promise<StagingPanora
   try {
     const result = await withRetry(
       async () => {
-        const res = await supabase
+        const query = scoped(supabase
           .from(STAGING_PANORAMAS_TABLE)
-          .select('id, subgrid, filename, status, created_at')
-          .order('created_at', { ascending: true });
+          .select('id, subgrid, filename, status, created_at'));
+        const res = await query.order('created_at', { ascending: true });
         if (res.error) throw new Error(res.error.message);
         return res;
       },
@@ -2737,9 +2747,14 @@ export async function fetchStagingPanoramasFromSupabase(): Promise<StagingPanora
   }
 }
 
+function getDatasetStorageKey(): string {
+  const pid = getServiceProjectId();
+  return pid ? `geosphere_datasets_${pid}` : 'geosphere_datasets';
+}
+
 function getLocalDatasets(): DatasetRecord[] {
   try {
-    const raw = localStorage.getItem('geosphere_datasets');
+    const raw = localStorage.getItem(getDatasetStorageKey());
     return raw ? JSON.parse(raw) : [];
   } catch (_) {
     return [];
@@ -2748,13 +2763,18 @@ function getLocalDatasets(): DatasetRecord[] {
 
 function setLocalDatasets(datasets: DatasetRecord[]): void {
   try {
-    localStorage.setItem('geosphere_datasets', JSON.stringify(datasets));
+    localStorage.setItem(getDatasetStorageKey(), JSON.stringify(datasets));
   } catch (_) { }
+}
+
+function getJobStorageKey(): string {
+  const pid = getServiceProjectId();
+  return pid ? `geosphere_processing_jobs_${pid}` : 'geosphere_processing_jobs';
 }
 
 function getLocalJobs(): ProcessingJobRecord[] {
   try {
-    const raw = localStorage.getItem('geosphere_processing_jobs');
+    const raw = localStorage.getItem(getJobStorageKey());
     return raw ? JSON.parse(raw) : [];
   } catch (_) {
     return [];
@@ -2763,17 +2783,38 @@ function getLocalJobs(): ProcessingJobRecord[] {
 
 function setLocalJobs(jobs: ProcessingJobRecord[]): void {
   try {
-    localStorage.setItem('geosphere_processing_jobs', JSON.stringify(jobs));
+    localStorage.setItem(getJobStorageKey(), JSON.stringify(jobs));
+  } catch (_) { }
+}
+
+function getDeletedJobStorageKey(): string {
+  const pid = getServiceProjectId();
+  return pid ? `geosphere_deleted_job_ids_${pid}` : 'geosphere_deleted_job_ids';
+}
+
+function getDeletedJobIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem(getDeletedJobStorageKey());
+    return raw ? new Set(JSON.parse(raw)) : new Set();
+  } catch (_) {
+    return new Set();
+  }
+}
+
+function saveDeletedJobIds(ids: Set<string>): void {
+  try {
+    localStorage.setItem(getDeletedJobStorageKey(), JSON.stringify(Array.from(ids)));
   } catch (_) { }
 }
 
 export async function fetchDatasetsFromSupabase(): Promise<DatasetRecord[]> {
   try {
-    const { data, error } = await supabase
+    const query = scoped(supabase
       .from(DATASETS_TABLE)
-      .select('*')
+      .select('*'));
+    const { data, error } = await query
       .order('created_at', { ascending: false });
-    if (!error && Array.isArray(data) && data.length > 0) {
+    if (!error && Array.isArray(data)) {
       setLocalDatasets(data as DatasetRecord[]);
       return data as DatasetRecord[];
     }
@@ -2785,11 +2826,13 @@ export async function fetchDatasetsFromSupabase(): Promise<DatasetRecord[]> {
 
 export async function saveDatasetToSupabase(dataset: DatasetRecord): Promise<DatasetRecord | null> {
   const now = new Date().toISOString();
+  const pid = getServiceProjectId();
   const target: DatasetRecord = {
     ...dataset,
     id: dataset.id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `ds_${Date.now()}`),
     created_at: dataset.created_at || now,
-    updated_at: now
+    updated_at: now,
+    ...(pid ? { project_id: pid } : {})
   };
 
   // 1. Immediately cache locally
@@ -2802,10 +2845,12 @@ export async function saveDatasetToSupabase(dataset: DatasetRecord): Promise<Dat
   // 2. Try Supabase
   try {
     if (dataset.id) {
-      const { data, error } = await supabase
+      let query = supabase
         .from(DATASETS_TABLE)
         .update({ ...target })
-        .eq('id', target.id)
+        .eq('id', target.id);
+      if (pid) query = query.eq('project_id', pid);
+      const { data, error } = await query
         .select('*')
         .single();
       if (!error && data) return data as DatasetRecord;
@@ -2868,7 +2913,7 @@ export async function checkDatasetDuplicates(subgrid: string, folderPath?: strin
     const sg = (subgrid || '').toUpperCase().trim();
     if (!sg && !folderPath) return [];
 
-    let query = supabase.from(DATASETS_TABLE).select('*');
+    let query = scoped(supabase.from(DATASETS_TABLE).select('*'));
     if (sg) {
       query = query.eq('subgrid', sg);
     }
@@ -2892,7 +2937,10 @@ export async function deleteDatasetFromSupabase(id: string): Promise<boolean> {
   const current = getLocalDatasets().filter((d) => d.id !== id);
   setLocalDatasets(current);
   try {
-    const { error } = await supabase.from(DATASETS_TABLE).delete().eq('id', id);
+    let query = supabase.from(DATASETS_TABLE).delete().eq('id', id);
+    const pid = getServiceProjectId();
+    if (pid) query = query.eq('project_id', pid);
+    const { error } = await query;
     if (error) {
       console.warn('deleteDatasetFromSupabase:', error.message);
       return true;
@@ -2904,28 +2952,14 @@ export async function deleteDatasetFromSupabase(id: string): Promise<boolean> {
   }
 }
 
-function getDeletedJobIds(): Set<string> {
-  try {
-    const raw = localStorage.getItem('geosphere_deleted_job_ids');
-    return raw ? new Set(JSON.parse(raw)) : new Set();
-  } catch (_) {
-    return new Set();
-  }
-}
-
-function saveDeletedJobIds(ids: Set<string>): void {
-  try {
-    localStorage.setItem('geosphere_deleted_job_ids', JSON.stringify(Array.from(ids)));
-  } catch (_) { }
-}
-
 export async function fetchProcessingJobsFromSupabase(): Promise<ProcessingJobRecord[]> {
   const local = getLocalJobs();
   const deleted = getDeletedJobIds();
   try {
-    const { data, error } = await supabase
+    const query = scoped(supabase
       .from(PROCESSING_JOBS_TABLE)
-      .select('*')
+      .select('*'));
+    const { data, error } = await query
       .order('created_at', { ascending: false });
     if (!error && Array.isArray(data)) {
       const map = new Map<string, ProcessingJobRecord>();
@@ -2959,11 +2993,13 @@ export async function fetchProcessingJobsFromSupabase(): Promise<ProcessingJobRe
 
 export async function saveProcessingJobToSupabase(job: ProcessingJobRecord): Promise<ProcessingJobRecord | null> {
   const now = new Date().toISOString();
+  const pid = getServiceProjectId();
   const target: ProcessingJobRecord = {
     ...job,
     id: job.id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `job_${Date.now()}`),
     created_at: job.created_at || now,
-    updated_at: now
+    updated_at: now,
+    ...(pid ? { project_id: pid } : {})
   };
 
   // Remove from deleted tracker if re-saved
@@ -2983,10 +3019,12 @@ export async function saveProcessingJobToSupabase(job: ProcessingJobRecord): Pro
   // 2. Try Supabase
   try {
     if (job.id) {
-      const { data, error } = await supabase
+      let query = supabase
         .from(PROCESSING_JOBS_TABLE)
         .update({ ...target })
-        .eq('id', target.id)
+        .eq('id', target.id);
+      if (pid) query = query.eq('project_id', pid);
+      const { data, error } = await query
         .select('*')
         .single();
       if (!error && data) return data as ProcessingJobRecord;
@@ -3017,10 +3055,13 @@ export async function updateProcessingJobStatusInSupabase(
   }
 
   try {
-    const { error } = await supabase
+    let query = supabase
       .from(PROCESSING_JOBS_TABLE)
       .update({ ...fields, updated_at: new Date().toISOString() })
       .eq('id', id);
+    const pid = getServiceProjectId();
+    if (pid) query = query.eq('project_id', pid);
+    const { error } = await query;
     if (error) {
       console.warn('updateProcessingJobStatusInSupabase:', error.message);
       return true;
@@ -3076,7 +3117,10 @@ export async function deleteProcessingJobFromSupabase(id: string): Promise<boole
   const current = getLocalJobs().filter((j) => j.id !== id);
   setLocalJobs(current);
   try {
-    const { error } = await supabase.from(PROCESSING_JOBS_TABLE).delete().eq('id', id);
+    let query = supabase.from(PROCESSING_JOBS_TABLE).delete().eq('id', id);
+    const pid = getServiceProjectId();
+    if (pid) query = query.eq('project_id', pid);
+    const { error } = await query;
     if (error) {
       console.warn('deleteProcessingJobFromSupabase:', error.message);
       return true;

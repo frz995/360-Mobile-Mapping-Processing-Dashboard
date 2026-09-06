@@ -259,7 +259,7 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
     if (isGuestUser || !job.id) return;
     setBusyId(job.id);
 
-    const subgrid = extractCanonicalSubgrid(job.subgrid || 'N93E70') || 'N93E70';
+    const subgrid = extractCanonicalSubgrid(job.subgrid || '') || job.subgrid || '';
     const currentType = job.job_type;
     const stageMeta = STATION_JOB_TYPE_MAP[currentType];
 

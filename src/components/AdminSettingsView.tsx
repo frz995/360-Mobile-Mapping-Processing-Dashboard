@@ -138,6 +138,12 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
   });
   const [districtSearchQuery, setDistrictSearchQuery] = useState<string>('');
 
+  React.useEffect(() => {
+    const boundary = (projectSettings as any)?.projectBoundary;
+    setSelectedRegionId(boundary?.regionId || null);
+    setSelectedDistrictIds(boundary?.districtIds || []);
+  }, [(projectSettings as any)?.projectBoundary]);
+
   // Sync staged items & theme settings to preview iframe just like Dashboard Map
   const sendPreviewData = React.useCallback(() => {
     if (previewIframeRef.current && previewIframeRef.current.contentWindow) {
@@ -227,6 +233,11 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
             enabled: !!boundary.focusActive
           }, '*');
         } else {
+          previewIframeRef.current.contentWindow.postMessage({
+            type: 'SET_PROJECT_BOUNDARY',
+            geojson: null,
+            bbox: null
+          }, '*');
           previewIframeRef.current.contentWindow.postMessage({ type: 'DIM_OUTSIDE_BOUNDARY', enabled: false }, '*');
           previewIframeRef.current.contentWindow.postMessage({ type: 'CLEAR_BOUNDARY_FOCUS' }, '*');
         }
@@ -239,12 +250,18 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
     projectSettings.defectTrackColor,
     projectSettings.selectedTrackColor,
     projectSettings.gridBoundaryColor,
-    projectSettings.defaultBasemap,
-    projectSettings.customBasemapUrl,
-    projectSettings.basemapOpacity,
     projectSettings.poiTrackLineWidth,
     projectSettings.enableLayerGlow,
     projectSettings.layerOpacity,
+    projectSettings.defaultBasemap,
+    projectSettings.customBasemapUrl,
+    projectSettings.basemapOpacity,
+    projectSettings.storageProvider,
+    projectSettings.imageStorageStrategy,
+    (projectSettings as any)?.panoramaMode,
+    projectSettings.supabaseUrl,
+    projectSettings.supabaseBucket,
+    projectSettings.imageStoragePath,
     (projectSettings as any)?.projectBoundary,
     themeMode
   ]);
@@ -279,6 +296,12 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
             type: 'SET_PROJECT_BOUNDARY',
             geojson: boundary.geojson,
             bbox: boundary.bbox
+          }, '*');
+        } else {
+          f.contentWindow?.postMessage({
+            type: 'SET_PROJECT_BOUNDARY',
+            geojson: null,
+            bbox: null
           }, '*');
         }
         if (action === 'focus' && boundary?.bbox) {

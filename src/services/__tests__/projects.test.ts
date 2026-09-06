@@ -217,6 +217,29 @@ describe('projects service — scope application', () => {
     expect(merged.defaultBasemapStyle).toBe('dark');
   });
 
+  it('strips legacy projectBoundary when active project has no boundary in scope', () => {
+    const settingsWithLegacyBoundary = {
+      projectName: 'base',
+      projectBoundary: { regionId: 'johor', geojson: { type: 'Polygon' } }
+    } as unknown as Parameters<typeof applyProjectScope>[0];
+
+    const merged = applyProjectScope(settingsWithLegacyBoundary, mockProject);
+    expect((merged as any).projectBoundary).toBeUndefined();
+    expect('projectBoundary' in merged).toBe(false);
+  });
+
+  it('restores projectBoundary when explicitly defined in project scope', () => {
+    const projectWithBoundary: UserProject = {
+      ...mockProject,
+      scope: {
+        ...mockProject.scope,
+        projectBoundary: { regionId: 'selangor', geojson: { type: 'Polygon' } }
+      }
+    };
+    const merged = applyProjectScope({ projectName: 'base' } as any, projectWithBoundary);
+    expect((merged as any).projectBoundary).toEqual({ regionId: 'selangor', geojson: { type: 'Polygon' } });
+  });
+
   it('returns settings unchanged when no project is given', () => {
     const settings = { projectName: 'base' };
     const merged = applyProjectScope(settings, null);
