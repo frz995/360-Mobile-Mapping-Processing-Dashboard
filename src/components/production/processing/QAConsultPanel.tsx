@@ -13,6 +13,8 @@ import { formatDateTime, productionNasUrlFor } from '../common';
 import { isWorkerJobType } from './processingCommon';
 import { createNextVersion } from '../../../utils/datasetVersioning';
 import { extractCanonicalSubgrid } from '../../../utils/datasetLineage';
+import { resolveSubgridLifecycle } from '../../../utils/dataLifecycle';
+import { WebGISHandoffCard } from '../WebGISHandoffCard';
 
 export interface QAConsultPanelProps {
   jobs: ProcessingJobRecord[];
@@ -303,11 +305,60 @@ export const QAConsultPanel: React.FC<QAConsultPanelProps> = ({
                 </div>
               </div>
             )}
+
+            {/* If the selected subgrid has an approved deliverable, show the WebGIS Handoff Card */}
+            {selected.subgrid && (() => {
+              const norm = extractCanonicalSubgrid(selected.subgrid);
+              const deliv = datasets.find(d => d.dataset_type === 'DELIVERABLE' && extractCanonicalSubgrid(d.subgrid) === norm && !d.superseded_by);
+              if (deliv) {
+                const lc = resolveSubgridLifecycle({ subgrid: selected.subgrid, datasets, jobs });
+                return (
+                  <WebGISHandoffCard
+                    lifecycle={lc}
+                    bucketName={projectSettings?.storageBucket || projectSettings?.supabaseBucket || 'MMS_PIC'}
+                    onNavigateToDataManagement={(sg) => {
+                      window.location.hash = `#data?subgrid=${encodeURIComponent(sg)}`;
+                    }}
+                  />
+                );
+              }
+              return null;
+            })()}
           </div>
         ) : (
-          <p className="text-[11px] text-text-muted bg-inner border border-subtle rounded-xl p-6 self-start">
-            Select a job from the worklist to review and approve/reject.
-          </p>
+          <div className="flex flex-col gap-3">
+            <p className="text-[11px] text-text-muted bg-inner border border-subtle rounded-xl p-6 self-start w-full">
+              Select a job from the worklist to review and approve/reject.
+            </p>
+
+            {/* Approved Deliverables Ready for WebGIS Handoff */}
+            {(() => {
+              const approvedDelivs = datasets.filter(d => d.dataset_type === 'DELIVERABLE' && !d.superseded_by);
+              if (approvedDelivs.length === 0) return null;
+              return (
+                <div className="flex flex-col gap-2.5 mt-2">
+                  <h4 className="text-xs font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <CheckCircle2 size={13} />
+                    Approved Deliverables Ready for WebGIS Handoff ({approvedDelivs.length})
+                  </h4>
+                  {approvedDelivs.map(deliv => {
+                    const sg = deliv.subgrid || 'DELIVERABLE';
+                    const lc = resolveSubgridLifecycle({ subgrid: sg, datasets, jobs });
+                    return (
+                      <WebGISHandoffCard
+                        key={deliv.id || sg}
+                        lifecycle={lc}
+                        bucketName={projectSettings?.storageBucket || projectSettings?.supabaseBucket || 'MMS_PIC'}
+                        onNavigateToDataManagement={(targetSg) => {
+                          window.location.hash = `#data?subgrid=${encodeURIComponent(targetSg)}`;
+                        }}
+                      />
+                    );
+                  })}
+                </div>
+              );
+            })()}
+          </div>
         )}
       </div>
     </div>
