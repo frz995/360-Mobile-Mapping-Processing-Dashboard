@@ -1,6 +1,7 @@
 import type { ElementType } from 'react';
 import {
   BarChart3,
+  Briefcase,
   Cpu,
   Database,
   FileText,
@@ -34,6 +35,7 @@ export interface WorkspaceDefinition {
 }
 
 export const WORKSPACES: WorkspaceDefinition[] = [
+  { key: 'project', labelKey: 'workspaceProject', descriptionKey: 'workspaceProjectDesc', icon: Briefcase, tag: 'live' },
   { key: 'dashboard', labelKey: 'dashboard', descriptionKey: 'workspaceDashboardDesc', icon: LayoutDashboard, tag: 'live' },
   { key: 'data', labelKey: 'data', descriptionKey: 'workspaceDataDesc', icon: Database, tag: 'live' },
   { key: 'settings', labelKey: 'settings', descriptionKey: 'workspaceSettingsDesc', icon: Settings, tag: 'live', guard: ['manageSettings'] },
@@ -67,6 +69,11 @@ export interface WorkspaceCategory {
 
 /** Content grouping for the workspace navigation bar (separated by dashed dividers). */
 export const WORKSPACE_CATEGORIES: WorkspaceCategory[] = [
+  {
+    key: 'projects',
+    labelKey: 'workspaceCategoryProjects',
+    members: ['project']
+  },
   {
     key: 'webgis',
     labelKey: 'workspaceCategoryWebGIS',

@@ -4,6 +4,7 @@ import { analyzeImageSharpness, detectBlurAndObstruction } from '../utils/qaqcAn
 import { resolvePanoramaUrl, supabase } from '../services/supabase';
 import { withRetry } from '../lib/retry';
 import { reportWarn } from '../lib/report';
+import { getActiveProjectId } from '../services/projectContext';
 import { DATABASE_TABLE_DEFAULTS } from '../config/defaults';
 import type {
   QaqcWorkerRequest,
@@ -187,6 +188,7 @@ async function persistDefectBatch(
   authUser?: { id?: string; email?: string; name?: string }
 ): Promise<number> {
   let synced = 0;
+  const pid = getActiveProjectId();
   for (let i = 0; i < defects.length; i += QA_DEFECTS_BATCH_SIZE) {
     const chunk = defects.slice(i, i + QA_DEFECTS_BATCH_SIZE).map(defectRecord => ({
       subgrid: defectRecord.subgrid,
@@ -202,11 +204,12 @@ async function persistDefectBatch(
       lng: defectRecord.lng,
       bearing: defectRecord.bearing,
       created_at: defectRecord.created_at,
-      updated_at: new Date().toISOString()
+      updated_at: new Date().toISOString(),
+      ...(pid ? { project_id: pid } : {})
     }));
     const { error: upsertErr } = await withRetry(
       async () => {
-        const res = await supabase.from(table).upsert(chunk, { onConflict: 'subgrid,point_id' });
+        const res = await supabase.from(table).upsert(chunk, { onConflict: 'project_id,subgrid,point_id' });
         if (res.error) throw new Error(res.error.message);
         return res;
       },

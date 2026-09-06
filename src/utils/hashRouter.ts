@@ -1,4 +1,5 @@
 export type WorkspaceKey =
+  | 'project'
   | 'dashboard'
   | 'data'
   | 'settings'
@@ -12,6 +13,7 @@ export type WorkspaceKey =
   | 'roadAnalysis';
 
 export const WORKSPACE_KEYS: WorkspaceKey[] = [
+  'project',
   'dashboard',
   'data',
   'settings',

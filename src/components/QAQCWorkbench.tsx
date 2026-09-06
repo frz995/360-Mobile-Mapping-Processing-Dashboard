@@ -991,20 +991,63 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
     } catch (_) { }
   }, [activeRunningSubgrid, selectedSubgrid, selectedRunId, dailyData, effectiveDefectsList, isRunning, liveDefectsList, selectedStations, activeDisplayIndex]);
 
-  useEffect(() => {
+  // Keep track of pending staggered re-sends so we can cancel them on unmount / re-selection.
+  const workbenchMapTimerRef = useRef<number[]>([]);
+
+  const clearWorkbenchMapTimers = useCallback(() => {
+    if (workbenchMapTimerRef.current.length > 0) {
+      workbenchMapTimerRef.current.forEach((t) => window.clearTimeout(t));
+      workbenchMapTimerRef.current = [];
+    }
+  }, []);
+
+  // Re-send the track once now and again on a short stagger. The embedded WebGIS app
+  // needs a beat to register its message listeners after the iframe reports 'load', so a
+  // single immediate postMessage can be dropped. Re-sending at staggered delays (mirroring
+  // MapComponent's onLoad retries) guarantees the panotrack paints reliably.
+  const scheduleWorkbenchMapTrack = useCallback((force = false) => {
+    const activeSg = (activeRunningSubgrid || selectedSubgrid || '').toUpperCase().trim();
+    if (!mapIframeRef.current?.contentWindow || !activeSg) return;
+
+    const cacheKey = `${activeSg}_${selectedRunId || 'default'}`;
+    const alreadyLoaded = !force && _isMapReady && lastLoadedSubgridRef.current === `${cacheKey}_${effectiveDefectsList.length}`;
+    if (alreadyLoaded) {
+      // Same target already painted with the same defect count — no need to re-push.
+      return;
+    }
+
+    clearWorkbenchMapTimers();
     initWorkbenchMapTrack();
-  }, [initWorkbenchMapTrack, selectedSubgrid, selectedRunId, viewportMode]);
+
+    const delays = [400, 1200];
+    workbenchMapTimerRef.current = delays.map((d) =>
+      window.setTimeout(() => {
+        if (mapIframeRef.current?.contentWindow && (activeRunningSubgrid || selectedSubgrid)) {
+          initWorkbenchMapTrack();
+        }
+      }, d)
+    );
+  }, [activeRunningSubgrid, selectedSubgrid, selectedRunId, _isMapReady, effectiveDefectsList.length, initWorkbenchMapTrack, clearWorkbenchMapTimers]);
+
+  // Cancel any pending re-sends when the component unmounts.
+  useEffect(() => {
+    return clearWorkbenchMapTimers;
+  }, [clearWorkbenchMapTimers]);
+
+  useEffect(() => {
+    scheduleWorkbenchMapTrack();
+  }, [scheduleWorkbenchMapTrack]);
 
   useEffect(() => {
     const handleMapMessage = (e: MessageEvent) => {
       if (e.data?.type === 'VIEWER_READY' || e.data?.type === 'MAP_READY' || e.data?.type === 'MAP_LOADED' || e.data?.type === 'REQUEST_STAGED_DATA') {
         lastLoadedSubgridRef.current = '';
-        initWorkbenchMapTrack();
+        scheduleWorkbenchMapTrack();
       }
     };
     window.addEventListener('message', handleMapMessage);
     return () => window.removeEventListener('message', handleMapMessage);
-  }, [initWorkbenchMapTrack]);
+  }, [scheduleWorkbenchMapTrack]);
 
   useEffect(() => {
     if (!mapIframeRef.current?.contentWindow) return;
@@ -2282,7 +2325,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                         title="QAQC Synchronized Trajectory Map"
                         onLoad={() => {
                           setIsMapReady(true);
-                          initWorkbenchMapTrack();
+                          scheduleWorkbenchMapTrack(true);
                         }}
                       />
                     ) : (
@@ -2338,7 +2381,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                         title="QAQC Minimap PiP"
                         onLoad={() => {
                           setIsMapReady(true);
-                          initWorkbenchMapTrack();
+                          scheduleWorkbenchMapTrack(true);
                         }}
                       />
                     </div>

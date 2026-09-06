@@ -44,6 +44,7 @@ import {
   fetchSupabaseData,
   type RoadAnalysisProductionState
 } from '../services/supabase';
+import { getActiveProjectId } from '../services/projectContext';
 import type { AuditLogItem } from '../types/dashboard';
 
 export interface RoadAnalysisWorkspaceProps {
@@ -110,12 +111,15 @@ export interface RoadAnalysisSavedState {
   cloudUpdatedAt?: string;
   /** ISO timestamp of the saved snapshot (cloud authoritative time). */
   updatedAt?: string;
+  /** Project id this state belongs to, scoped per-project. */
+  projectId?: string;
 }
 
 export const ROAD_ANALYSIS_CACHE_VERSION = 3;
 
 export function getRoadAnalysisStorageKey(userKey: string): string {
-  return `geosphere_road_analysis_state_${userKey}`;
+  const pid = getActiveProjectId();
+  return `geosphere_road_analysis_state_${userKey}${pid ? `_${pid}` : ''}`;
 }
 
 export function computeRoadAnalysisFingerprint(
@@ -569,6 +573,20 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
       let remoteState = await fetchRoadAnalysisStateFromSupabase();
       if (!remoteState) remoteState = projectSettings?.roadAnalysisState;
       if (cancelled || !remoteState) return;
+
+      // Per-project isolation (v15): the cloud blob `roadAnalysisState` is a
+      // shared project_settings row, so only apply it when it belongs to the
+      // currently active project. Untagged legacy snapshots (created before
+      // project tagging) never apply to a scoped project — a fresh project
+      // must start clean.
+      const activePid = getActiveProjectId();
+      if (activePid) {
+        if (remoteState.projectId !== activePid) {
+          // Remote state belongs to a different project, or is untagged —
+          // ignore it so the new project gets a clean start.
+          return;
+        }
+      }
 
       // Only apply when the incoming remote state is strictly newer than the
       // baseline already applied. This prevents the async arrival of the last

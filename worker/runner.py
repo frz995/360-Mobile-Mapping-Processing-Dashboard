@@ -214,6 +214,7 @@ class JobRegistry:
         total_items: int,
         settings: dict,
         syncer: "Optional[syncmod.SupabaseSyncer]",
+        project_id: str | None = None,
     ) -> None:
         with self._lock:
             queued_count = sum(1 for j in self.jobs.values() if j.get("status") == "QUEUED")
@@ -249,6 +250,7 @@ class JobRegistry:
                 "message": "queued",
                 "cancel": threading.Event(),
                 "syncer": syncer,
+                "project_id": project_id,
             }
         if self._journal:
             try:
@@ -270,9 +272,13 @@ class JobRegistry:
             job_type, source_dir, output_dir = job["job_type"], job["source_dir"], job["output_dir"]
             settings = job["settings"]
             syncer = job.get("syncer")
+            project_id = job.get("project_id")
             os.makedirs(output_dir, exist_ok=True)
 
-            push = lambda **kw: (self.update(job_id, **kw), syncer and syncer.push(job_id, kw))
+            push = lambda **kw: (self.update(job_id, **kw), syncer and syncer.push(
+                job_id,
+                {"project_id": project_id, **kw} if project_id else kw,
+            ))
 
             try:
                 recursive = bool((settings or {}).get("recurse") or job_type == "BLUR")

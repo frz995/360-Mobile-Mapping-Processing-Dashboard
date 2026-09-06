@@ -46,3 +46,10 @@ export const DATABASE_HOST_DEFAULT = 'db.aws-0-ap-southeast-1.supabase.co';
 
 /** Default basemap id used when no basemap is configured. */
 export const DEFAULT_BASEMAP = 'ofm-positron';
+
+/**
+ * Current application version. The sign-in welcome gate replays when this
+ * value changes (stored in localStorage as `geosphere360_welcome_version`),
+ * so shipping a new version re-engages first-run onboarding for existing users.
+ */
+export const APP_VERSION = 'v14.0.0';

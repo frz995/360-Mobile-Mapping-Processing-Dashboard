@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   supabase,
+  scoped,
   fetchSupabaseData,
   fetchBatchLogOverridesFromSupabase,
   fetchQaRecordsFromSupabase,
@@ -11,6 +12,7 @@ import {
 } from '../services/supabase';
 import { extractSubgridName } from '../utils/subgrid';
 import { getItemId } from '../utils/items';
+import { getActiveProjectId } from '../services/projectContext';
 import { STORAGE_BUCKET_DEFAULT, STORAGE_PATH_PREFIX_DEFAULT, DATABASE_TABLE_DEFAULTS } from '../config/defaults';
 import { getImagesProcessedCount, getPOICount, applyBatchLogOverrides } from '../utils/dashboardData';
 import type { QAQCAuditRunRecord } from '../types/admin';
@@ -68,7 +70,9 @@ const DEFAULT_PROJECT_SETTINGS = {
   csvSubgridAliases: 'subgrid, grid_id, section, tile',
   csvDateAliases: 'date, time, captured_at, timestamp',
   dropZeroGpsRows: true,
-  csvTimestampFormat: 'auto'
+  csvTimestampFormat: 'auto',
+  // Session security setting (minutes of inactivity until forced sign-out; 0 == never)
+  sessionTimeoutMinutes: 30
 };
 
 export function useAppData() {
@@ -96,7 +100,7 @@ export function useAppData() {
         // Fetch all data sources concurrently in parallel
         const [supabaseDataRes, qaRes, fetchedQa, fetchedAuditRuns, dbAuditLogs, dbNotifications, dbSettingsRes, batchOverridesRes] = await Promise.allSettled([
           fetchSupabaseData(projectSettings),
-          supabase.from(projectSettings?.qaDefectsTable || 'qa_defects').select('qa_status, defect_flags, defect_count, subgrid'),
+          scoped(supabase.from(projectSettings?.qaDefectsTable || 'qa_defects')).select('qa_status, defect_flags, defect_count, subgrid'),
           fetchQaRecordsFromSupabase(projectSettings),
           fetchQaAuditRunsFromSupabase(projectSettings),
           fetchAuditLogsFromSupabase(projectSettings),
@@ -284,17 +288,24 @@ export function useAppData() {
 
     initLiveSupabaseData(false);
 
-    // Realtime channel subscriptions
+    // Realtime channel subscriptions (scoped to the active project so a change
+    // in project B never re-pulls project A's view)
     const channelName = `live-dashboard-sync-${Date.now()}`;
+    const chanOpts = (table: string) => {
+      const base: { event: '*'; schema: 'public'; table: string; filter?: string } = { event: '*', schema: 'public', table };
+      const pid = getActiveProjectId();
+      if (pid) base.filter = `project_id=eq.${pid}`;
+      return base;
+    };
     const liveChannel = supabase
       .channel(channelName)
-      .on('postgres_changes', { event: '*', schema: 'public', table: projectSettings?.panoramasTable || 'panoramas' }, () => {
+      .on('postgres_changes', chanOpts(projectSettings?.panoramasTable || 'panoramas'), () => {
         initLiveSupabaseData(true);
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: projectSettings?.qaDefectsTable || 'qa_defects' }, () => {
+      .on('postgres_changes', chanOpts(projectSettings?.qaDefectsTable || 'qa_defects'), () => {
         initLiveSupabaseData(true);
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: projectSettings?.qaqcRunsTable || 'qaqc_audit_runs' }, () => {
+      .on('postgres_changes', chanOpts(projectSettings?.qaqcRunsTable || 'qaqc_audit_runs'), () => {
         initLiveSupabaseData(true);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'project_settings' }, () => {

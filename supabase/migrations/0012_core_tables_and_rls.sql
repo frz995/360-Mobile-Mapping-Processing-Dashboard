@@ -103,32 +103,63 @@ CREATE INDEX IF NOT EXISTS idx_staging_panoramas_filename ON public.staging_pano
 
 -- ---------------------------------------------------------------------
 -- 3. WebGIS Summary View: public.panoramas_view
+--    Built DYNAMICALLY from the columns that actually exist on `panoramas`
+--    (legacy/partial instances may lack e.g. `subgrid`; a static definition
+--    would abort). Every existing column is carried through, `lat`/`lon`
+--    alias the base lat/lon when present, and the published-filter applies
+--    only when status/qa_status columns exist.
+--
+--    NOTE on 42P16: the existing view may be stale — created over an
+--    earlier incarnation of `panoramas` that had MORE columns than the
+--    current table. CREATE OR REPLACE VIEW cannot DROP columns (42P16),
+--    so the view is DROPPED first and recreated from the CURRENT columns.
 -- ---------------------------------------------------------------------
-CREATE OR REPLACE VIEW public.panoramas_view WITH (security_invoker = true) AS
-SELECT 
-    p.id,
-    p.subgrid,
-    p.filename,
-    p.image_url,
-    p.latitude,
-    p.longitude,
-    p.latitude AS lat,
-    p.longitude AS lon,
-    p.heading,
-    p.pitch,
-    p.roll,
-    p.is_fallback_coord,
-    p.geom,
-    p.captured_at,
-    p.status,
-    p.qa_status,
-    p.defect_flags,
-    p.defect_count,
-    p.description,
-    p.created_at,
-    p.updated_at
-FROM public.panoramas p
-WHERE p.status = 'yes' OR p.qa_status = 'published';
+DO $view$
+DECLARE
+    v_cols  text;
+    v_where text;
+BEGIN
+    IF to_regclass('public.panoramas') IS NULL THEN
+        RAISE NOTICE 'panoramas_view skipped: public.panoramas does not exist';
+        RETURN;
+    END IF;
+
+    DROP VIEW IF EXISTS public.panoramas_view;
+
+    SELECT string_agg('p.' || quote_ident(column_name) || ' AS ' || quote_ident(column_name), E',\n' ORDER BY ordinal_position)
+    INTO v_cols
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'panoramas'
+      AND column_name NOT IN ('lat', 'lon');
+
+    IF v_cols IS NULL OR v_cols = '' THEN
+        RAISE NOTICE 'panoramas_view skipped: panoramas has no columns';
+        RETURN;
+    END IF;
+
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_schema = 'public' AND table_name = 'panoramas' AND column_name = 'latitude') THEN
+        v_cols := v_cols || E',\n' || 'p.latitude AS lat';
+    END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_schema = 'public' AND table_name = 'panoramas' AND column_name = 'longitude') THEN
+        v_cols := v_cols || E',\n' || 'p.longitude AS lon';
+    END IF;
+
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_schema = 'public' AND table_name = 'panoramas' AND column_name = 'status')
+       AND EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_schema = 'public' AND table_name = 'panoramas' AND column_name = 'qa_status') THEN
+        v_where := 'p.status = ''yes'' OR p.qa_status = ''published''';
+    ELSE
+        v_where := 'true';
+    END IF;
+
+    EXECUTE 'CREATE VIEW public.panoramas_view WITH (security_invoker = true) AS '
+            || 'SELECT ' || v_cols || ' FROM public.panoramas p WHERE ' || v_where;
+END;
+$view$;
 
 -- ---------------------------------------------------------------------
 -- 4. Cleanup: Drop Orphaned recycle_bin Table

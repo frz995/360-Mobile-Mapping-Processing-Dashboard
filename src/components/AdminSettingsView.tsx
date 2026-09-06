@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { restoreWorkspaceTab, persistWorkspaceTab } from '../utils/workspaceLocation';
 import {
   Users,
   Shield,
@@ -35,6 +36,7 @@ import {
   resolvePanoramaConfigUrl,
   testCloudflareStorageHealth
 } from '../services/supabase';
+import { persistProjectBoundary } from '../services/projects';
 import {
   STORAGE_BUCKET_DEFAULT,
   REGION_DEFAULTS,
@@ -97,7 +99,13 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
   authSession,
   addAuditLog
 }) => {
-  const [activeTab, setActiveTab] = useState<'settings' | 'theme-pack' | 'diagnostics'>('settings');
+  const [activeTab, setActiveTab] = useState<'settings' | 'theme-pack' | 'diagnostics'>(() => {
+    const settingsTabs = ['settings', 'theme-pack', 'diagnostics'] as const;
+    return restoreWorkspaceTab<typeof settingsTabs[number]>('settings', settingsTabs) ?? 'settings';
+  });
+  useEffect(() => {
+    persistWorkspaceTab('settings', activeTab);
+  }, [activeTab]);
 
   // Storage Probe & Multi-Resolution Health State
   const [cfTestLoading, setCfTestLoading] = useState(false);
@@ -528,6 +536,15 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
         districtNames: chosenDistricts.map(d => d.name)
       }
     }));
+    void persistProjectBoundary({
+      geojson,
+      bbox,
+      focusActive: true,
+      regionId: region.id,
+      regionName: region.name,
+      districtIds: chosenDistricts.map(d => d.id),
+      districtNames: chosenDistricts.map(d => d.name)
+    });
     broadcastProjectBoundary('focus');
     showToast(`Project boundary applied: ${boundaryLabel}`);
   }, [setProjectSettings, broadcastProjectBoundary, selectedDistrictIds]);
@@ -2478,6 +2495,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                           setSelectedRegionId(null);
                           setSelectedDistrictIds([]);
                           setProjectSettings(prev => ({ ...prev, projectBoundary: undefined }));
+                          void persistProjectBoundary(undefined);
                           broadcastProjectBoundary('clear');
                           showToast('Project geographic boundary removed.');
                         }}

@@ -14,6 +14,7 @@ import type {
   StorageInfo,
   WorkerHealthInfo
 } from '../types/production';
+import { getActiveProjectId } from './projectContext';
 
 export interface SubmitJobResult {
   ok: boolean;
@@ -79,7 +80,8 @@ function buildHttpClient(settings: ProductionApiSettings): ProductionApiClient {
             output_folder: job.output_folder,
             subgrid: job.subgrid,
             total_items: job.total_items || 0,
-            settings: job.settings || {}
+            settings: job.settings || {},
+            ...(getActiveProjectId() ? { project_id: getActiveProjectId() } : {})
           })
         });
         const body = await res.json().catch(() => ({}));

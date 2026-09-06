@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { restoreWorkspaceTab, persistWorkspaceTab } from '../utils/workspaceLocation';
 import {
   Columns3,
   Inbox,
@@ -6,6 +7,7 @@ import {
   Gauge
 } from 'lucide-react';
 import { fetchDatasetsFromSupabase, fetchProcessingJobsFromSupabase, supabase } from '../services/supabase';
+import { getActiveProjectId } from '../services/projectContext';
 import { createProductionApiClient } from '../services/productionApi';
 import type { ProductionApiClient } from '../services/productionApi';
 import type { DatasetRecord, ProcessingCenterTab, ProcessingJobRecord } from '../types/production';
@@ -46,7 +48,13 @@ export const ProcessingCenterWorkspace: React.FC<ProcessingCenterWorkspaceProps>
   onBackToDashboard: _onBackToDashboard,
   translate = (k) => k
 }) => {
-  const [activeTab, setActiveTab] = useState<ProcessingCenterTab>('board');
+  const [activeTab, setActiveTab] = useState<ProcessingCenterTab>(() => {
+    const processingTabs = ['board', 'handoff', 'qa', 'capacity'] as const;
+    return restoreWorkspaceTab<typeof processingTabs[number]>('processing', processingTabs) ?? 'board';
+  });
+  useEffect(() => {
+    persistWorkspaceTab('processing', activeTab);
+  }, [activeTab]);
   const [datasets, setDatasets] = useState<DatasetRecord[]>([]);
   const [jobs, setJobs] = useState<ProcessingJobRecord[]>([]);
   const [selectedJob, setSelectedJob] = useState<ProcessingJobRecord | null>(null);
@@ -88,9 +96,12 @@ export const ProcessingCenterWorkspace: React.FC<ProcessingCenterWorkspaceProps>
   // Realtime subscription to processing_jobs for live job status updates.
   useEffect(() => {
     const channelName = `processing-jobs-live-${Date.now()}`;
+    const channelOpts: { event: '*'; schema: 'public'; table: 'processing_jobs'; filter?: string } = { event: '*', schema: 'public', table: 'processing_jobs' };
+    const pid = getActiveProjectId();
+    if (pid) channelOpts.filter = `project_id=eq.${pid}`;
     const channel = supabase
       .channel(channelName)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'processing_jobs' }, () => {
+      .on('postgres_changes', channelOpts, () => {
         refreshJobs();
       });
     try {

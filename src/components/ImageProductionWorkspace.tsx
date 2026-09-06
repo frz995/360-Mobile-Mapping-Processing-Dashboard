@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { restoreWorkspaceTab, persistWorkspaceTab } from '../utils/workspaceLocation';
 import {
   ListChecks,
   Database,
@@ -65,7 +66,13 @@ export const ImageProductionWorkspace: React.FC<ImageProductionWorkspaceProps> =
   onBackToDashboard: _onBackToDashboard,
   translate = (k) => k
 }) => {
-  const [activeTab, setActiveTab] = useState<ProductionTab>('pipeline');
+  const [activeTab, setActiveTab] = useState<ProductionTab>(() => {
+    const productionTabs = ['pipeline', 'datasets', 'providers', 'preview', 'enhance', 'masking'] as const;
+    return restoreWorkspaceTab<typeof productionTabs[number]>('production', productionTabs) ?? 'pipeline';
+  });
+  useEffect(() => {
+    persistWorkspaceTab('production', activeTab);
+  }, [activeTab]);
   const [datasets, setDatasets] = useState<DatasetRecord[]>([]);
   const [jobs, setJobs] = useState<ProcessingJobRecord[]>([]);
   const [stagingRows, setStagingRows] = useState<any[]>([]);

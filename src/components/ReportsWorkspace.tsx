@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { restoreWorkspaceTab, persistWorkspaceTab } from '../utils/workspaceLocation';
 import {
   CalendarClock,
   Layers,
@@ -56,7 +57,13 @@ export const ReportsWorkspace: React.FC<ReportsWorkspaceProps> = ({
   dailyData = [],
   onRefreshData: _onRefreshData
 }) => {
-  const [activeTab, setActiveTab] = useState<ReportsTab>('executive');
+  const [activeTab, setActiveTab] = useState<ReportsTab>(() => {
+    const reportsTabs = ['executive', 'daily', 'subgrid', 'qa', 'lineage'] as const;
+    return restoreWorkspaceTab<typeof reportsTabs[number]>('reports', reportsTabs) ?? 'executive';
+  });
+  useEffect(() => {
+    persistWorkspaceTab('reports', activeTab);
+  }, [activeTab]);
   const [stagingRows, setStagingRows] = useState<any[]>([]);
   const [datasets, setDatasets] = useState<DatasetRecord[]>([]);
   const [jobs, setJobs] = useState<ProcessingJobRecord[]>([]);

@@ -107,6 +107,7 @@ class JobSubmit(BaseModel):
     subgrid: Optional[str] = None
     total_items: Optional[int] = 0
     settings: dict = {}
+    project_id: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -154,6 +155,7 @@ def submit_job(body: JobSubmit, authorization: Optional[str] = None) -> dict:
             total_items=body.total_items or 0,
             settings=body.settings or {},
             syncer=syncer,
+            project_id=body.project_id,
         )
     except QueueFullError as qe:
         raise HTTPException(status_code=429, detail=str(qe))

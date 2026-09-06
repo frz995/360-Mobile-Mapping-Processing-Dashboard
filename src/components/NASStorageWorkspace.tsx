@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { restoreWorkspaceTab, persistWorkspaceTab } from '../utils/workspaceLocation';
 import {
   Gauge,
   FolderTree,
@@ -46,7 +47,13 @@ export const NASStorageWorkspace: React.FC<NASStorageWorkspaceProps> = ({
   onBackToDashboard: _onBackToDashboard,
   translate = (k) => k
 }) => {
-  const [activeTab, setActiveTab] = useState<StorageTab>('overview');
+  const [activeTab, setActiveTab] = useState<StorageTab>(() => {
+    const storageTabs = ['overview', 'browser', 'rawregistry', 'validation', 'index'] as const;
+    return restoreWorkspaceTab<typeof storageTabs[number]>('storage', storageTabs) ?? 'overview';
+  });
+  useEffect(() => {
+    persistWorkspaceTab('storage', activeTab);
+  }, [activeTab]);
   const [datasets, setDatasets] = useState<DatasetRecord[]>([]);
 
   const api: ProductionApiClient = useMemo(
