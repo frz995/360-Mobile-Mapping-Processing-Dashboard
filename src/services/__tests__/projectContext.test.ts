@@ -63,4 +63,23 @@ describe('projectContext active-project state', () => {
     saveActiveProjectId('alice', 'proj-a');
     expect(localStorage.getItem(`${ACTIVE_PROJECT_KEY_PREFIX}alice`)).toBe('proj-a');
   });
+
+  it('scoped safely appends project_id when active and handles non-filter builders without throwing', async () => {
+    const { scoped, getServiceProjectId } = await import('../supabase');
+    expect(getServiceProjectId()).toBeNull();
+
+    // Inactive project returns query unchanged
+    const mockQuery = { eq: (col: string, val: string) => ({ col, val }) };
+    expect(scoped(mockQuery)).toBe(mockQuery);
+
+    // Active project calls eq('project_id', id)
+    setActiveProjectId('proj-test-123');
+    expect(getServiceProjectId()).toBe('proj-test-123');
+    const filtered = scoped(mockQuery);
+    expect(filtered).toEqual({ col: 'project_id', val: 'proj-test-123' });
+
+    // Non-filter objects (missing eq method) do not throw
+    const nonFilterQuery = { select: () => {} };
+    expect(scoped(nonFilterQuery)).toBe(nonFilterQuery);
+  });
 });

@@ -100,7 +100,7 @@ export function useAppData() {
         // Fetch all data sources concurrently in parallel
         const [supabaseDataRes, qaRes, fetchedQa, fetchedAuditRuns, dbAuditLogs, dbNotifications, dbSettingsRes, batchOverridesRes] = await Promise.allSettled([
           fetchSupabaseData(projectSettings),
-          scoped(supabase.from(projectSettings?.qaDefectsTable || 'qa_defects')).select('qa_status, defect_flags, defect_count, subgrid'),
+          scoped(supabase.from(projectSettings?.qaDefectsTable || 'qa_defects').select('qa_status, defect_flags, defect_count, subgrid')),
           fetchQaRecordsFromSupabase(projectSettings),
           fetchQaAuditRunsFromSupabase(projectSettings),
           fetchAuditLogsFromSupabase(projectSettings),
