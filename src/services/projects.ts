@@ -393,6 +393,12 @@ export async function deleteProject(id: string): Promise<ProjectResult<void>> {
  * when that project is re-loaded (fully per-project isolation without relying
  * on the global `project_settings` blob).
  */
+/**
+ * Persist a project boundary into the currently active project's scope in the
+ * projects table, so that `applyProjectScope` restores the correct boundary
+ * when that project is re-loaded (fully per-project isolation without relying
+ * on the global `project_settings` blob).
+ */
 export async function persistProjectBoundary(boundary: unknown): Promise<void> {
   const pid = getActiveProjectId();
   if (!pid) return;
@@ -404,6 +410,38 @@ export async function persistProjectBoundary(boundary: unknown): Promise<void> {
   } else {
     scope.projectBoundary = boundary;
   }
+  await updateProject(pid, { scope });
+}
+
+/**
+ * Persist SLA benchmarks and GIS scope settings into the currently active project's scope,
+ * ensuring targetKm and other project parameters are isolated per project and do not leak.
+ */
+export async function persistProjectScopeSettings(patch: {
+  targetKm?: number;
+  targetImages?: number;
+  targetDeadline?: string;
+  crs?: string;
+  region?: string;
+  bbox?: [number, number, number, number];
+  basemap?: string;
+  equipment?: string;
+  boundary?: unknown;
+}): Promise<void> {
+  const pid = getActiveProjectId();
+  if (!pid) return;
+  const current = loadProjectsCache().find((p) => p.id === pid);
+  if (!current) return;
+  const scope = { ...(current.scope || {}) };
+  if (typeof patch.targetKm === 'number') scope.targetKm = patch.targetKm;
+  if (typeof patch.targetImages === 'number') scope.targetImages = patch.targetImages;
+  if (patch.targetDeadline !== undefined) scope.targetDeadline = patch.targetDeadline;
+  if (patch.crs !== undefined) scope.crs = patch.crs;
+  if (patch.region !== undefined) scope.region = patch.region;
+  if (patch.bbox !== undefined) scope.bbox = patch.bbox;
+  if (patch.basemap !== undefined) scope.basemap = patch.basemap;
+  if (patch.equipment !== undefined) scope.equipment = patch.equipment;
+  if (patch.boundary !== undefined) scope.projectBoundary = patch.boundary;
   await updateProject(pid, { scope });
 }
 
@@ -463,8 +501,9 @@ export function applyProjectScope(
   }
   if (s.basemap) patch.defaultBasemapStyle = s.basemap;
   if (s.equipment) patch.defaultEquipment = s.equipment;
-  if (typeof s.targetKm === 'number') patch.targetKm = s.targetKm;
-  if (typeof s.targetImages === 'number') patch.targetImages = s.targetImages;
+  // Target SLA benchmarks: default to 0 for fresh/new projects instead of inheriting previous project's target
+  patch.targetKm = typeof s.targetKm === 'number' ? s.targetKm : 0;
+  patch.targetImages = typeof s.targetImages === 'number' ? s.targetImages : 0;
   if (s.targetDeadline) patch.targetDeadline = s.targetDeadline;
   if (typeof s.enableBBoxFilter === 'boolean') patch.enableBBoxFilter = s.enableBBoxFilter;
 

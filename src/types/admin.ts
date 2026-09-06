@@ -168,6 +168,7 @@ export interface ExtendedProjectSettings {
 
   // SLA & QA Benchmarks
   targetKm?: number;
+  targetImages?: number;
   targetSubgridsCount?: number;
   maxDefectThresholdPercent?: number;
   qaFlag1?: string;

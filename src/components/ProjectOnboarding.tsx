@@ -75,7 +75,7 @@ export const ProjectOnboarding: React.FC<ProjectOnboardingProps> = ({
         name: name.trim(),
         region,
         status: 'active',
-        scope: { crs: 'EPSG:4326', region, bbox: [99.6, 1.2, 104.6, 6.8], basemap: 'dark', equipment: 'MMS' }
+        scope: { crs: 'EPSG:4326', region, bbox: [99.6, 1.2, 104.6, 6.8], basemap: 'dark', equipment: 'MMS', targetKm: 0, targetImages: 0 }
       });
       if (res.success && res.value) onContinue(res.value);
     } finally {

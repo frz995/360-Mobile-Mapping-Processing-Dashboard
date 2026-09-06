@@ -124,8 +124,8 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({
     try {
       const preset = REGION_PRESETS[region];
       const scope = preset
-        ? { crs: preset.crs, region: preset.region, bbox: preset.bbox, basemap: 'dark', equipment: 'MMS' }
-        : { crs: 'EPSG:4326', region, basemap: 'dark', equipment: 'MMS' };
+        ? { crs: preset.crs, region: preset.region, bbox: preset.bbox, basemap: 'dark', equipment: 'MMS', targetKm: 0, targetImages: 0 }
+        : { crs: 'EPSG:4326', region, basemap: 'dark', equipment: 'MMS', targetKm: 0, targetImages: 0 };
       const res = await onCreateProject({
         name: name.trim(),
         contractCode: contractCode.trim(),

@@ -2864,9 +2864,10 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                 <input
                   type="number"
                   step="0.1"
-                  value={projectSettings.targetKm ?? ''}
+                  min="0"
+                  value={projectSettings.targetKm ?? 0}
                   onChange={e => setProjectSettings(prev => ({ ...prev, targetKm: e.target.value === '' ? 0 : parseFloat(e.target.value) }))}
-                  placeholder="e.g. 300.0"
+                  placeholder="0.0"
                   className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
                 />
               </div>

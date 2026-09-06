@@ -240,6 +240,32 @@ describe('projects service — scope application', () => {
     expect((merged as any).projectBoundary).toEqual({ regionId: 'selangor', geojson: { type: 'Polygon' } });
   });
 
+  it('resets targetKm and targetImages to 0 when project scope has no target values', () => {
+    const settingsWithExistingTarget = {
+      projectName: 'base',
+      targetKm: 4886.25,
+      targetImages: 50000
+    } as unknown as Parameters<typeof applyProjectScope>[0];
+
+    const merged = applyProjectScope(settingsWithExistingTarget, mockProject);
+    expect(merged.targetKm).toBe(0);
+    expect(merged.targetImages).toBe(0);
+  });
+
+  it('preserves targetKm and targetImages when explicitly defined in project scope', () => {
+    const projectWithTarget: UserProject = {
+      ...mockProject,
+      scope: {
+        ...mockProject.scope,
+        targetKm: 500.0,
+        targetImages: 25000
+      }
+    };
+    const merged = applyProjectScope({ projectName: 'base', targetKm: 0 } as any, projectWithTarget);
+    expect(merged.targetKm).toBe(500.0);
+    expect(merged.targetImages).toBe(25000);
+  });
+
   it('returns settings unchanged when no project is given', () => {
     const settings = { projectName: 'base' };
     const merged = applyProjectScope(settings, null);
