@@ -3515,14 +3515,14 @@ export const DataManagementPage = ({
                                 </td>
                                 <td className="px-4 py-3.5 whitespace-nowrap">
                                   {batch.status === 'Complete' ? (
-                                    <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-cyan-400 bg-cyan-500/10 border border-cyan-500/20 px-2.5 py-1 rounded-full whitespace-nowrap">
-                                      <Globe size={13} className="text-cyan-400 shrink-0" />
-                                      <span>LIVE / PUBLISHED</span>
+                                    <div className="inline-flex items-center gap-1.5 text-xs font-medium text-text-base whitespace-nowrap">
+                                      <CheckCircle size={14} className="text-emerald-400 shrink-0" />
+                                      <span>Live / Published</span>
                                     </div>
                                   ) : (
-                                    <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-purple-400 bg-purple-500/10 border border-purple-500/20 px-2.5 py-1 rounded-full whitespace-nowrap" title={batch.runsCount ? `${batch.publishedRunsCount || 0} of ${batch.runsCount} runs published` : undefined}>
-                                      <Clock size={13} className="text-purple-400 shrink-0" />
-                                      <span>STAGED (Ready to Publish)</span>
+                                    <div className="inline-flex items-center gap-1.5 text-xs font-medium text-text-base whitespace-nowrap" title={batch.runsCount ? `${batch.publishedRunsCount || 0} of ${batch.runsCount} runs published` : undefined}>
+                                      <Clock size={14} className="text-amber-400 shrink-0" />
+                                      <span>Staged (Ready to Publish)</span>
                                     </div>
                                   )}
                                 </td>
@@ -3691,14 +3691,14 @@ export const DataManagementPage = ({
                                 </td>
                                 <td className="px-4 py-3.5 whitespace-nowrap">
                                   {isPublished ? (
-                                    <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-cyan-400 bg-cyan-500/10 border border-cyan-500/20 px-2.5 py-1 rounded-full whitespace-nowrap">
-                                      <Globe size={13} className="text-cyan-400 shrink-0" />
-                                      <span>LIVE / PUBLISHED</span>
+                                    <div className="inline-flex items-center gap-1.5 text-xs font-medium text-text-base whitespace-nowrap">
+                                      <CheckCircle size={14} className="text-emerald-400 shrink-0" />
+                                      <span>Live / Published</span>
                                     </div>
                                   ) : (
-                                    <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-purple-400 bg-purple-500/10 border border-purple-500/20 px-2.5 py-1 rounded-full whitespace-nowrap">
-                                      <Clock size={13} className="text-purple-400 shrink-0" />
-                                      <span>STAGED (Ready to Publish)</span>
+                                    <div className="inline-flex items-center gap-1.5 text-xs font-medium text-text-base whitespace-nowrap">
+                                      <Clock size={14} className="text-amber-400 shrink-0" />
+                                      <span>Staged (Ready to Publish)</span>
                                     </div>
                                   )}
                                 </td>
