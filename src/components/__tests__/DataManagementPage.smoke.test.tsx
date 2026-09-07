@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
 import type { DailyTimeSeries, BatchLog } from '../../types/dashboard'
+import { deleteFromSupabase, saveDeletionRequestToSupabase } from '../../services/supabase'
 
 // Mock the Supabase service so DataManagementPage never opens a real DB client
 // or makes network calls in jsdom. Every named import used by the page is
@@ -25,6 +26,7 @@ vi.mock('../../services/supabase', () => {
     fetchStagingPanoramasFromSupabase: vi.fn(stub),
     saveToRecycleBinInSupabase: vi.fn(async () => ({})),
     fetchRecycleBinFromSupabase: vi.fn(stub),
+    saveDeletionRequestToSupabase: vi.fn(async () => true),
     formatPIC: (raw: string, fallback: string) => (raw && raw.trim() ? raw.trim() : fallback),
     RecycleBinItem: {}
   }
@@ -72,6 +74,9 @@ function renderPage(props: Partial<Parameters<typeof DataManagementPage>[0]> = {
       onBackToDashboard={props.onBackToDashboard ?? (() => {})}
       initialTab={props.initialTab}
       isGuestUser={props.isGuestUser}
+      projectSettings={props.projectSettings}
+      addNotification={props.addNotification}
+      addAuditLog={props.addAuditLog}
     />
   )
 }
@@ -114,5 +119,62 @@ describe('DataManagementPage smoke', () => {
   it('renders the empty state when batchLogs is empty (default Batches tab)', () => {
     renderPage({ batchLogs: [] })
     expect(screen.getByText('No batch logs available')).toBeInTheDocument()
+  })
+
+  it('routes a whole-subgrid delete to the approval queue when the gate is enabled', async () => {
+    const submitTicket = vi.mocked(saveDeletionRequestToSupabase)
+    const hardDelete = vi.mocked(deleteFromSupabase)
+    submitTicket.mockClear()
+    hardDelete.mockClear()
+    submitTicket.mockResolvedValue(true)
+
+    renderPage({
+      dailyData: [dailyFixture()],
+      initialTab: 'daily',
+      projectSettings: { requireAdminApprovalForDelete: true },
+      addNotification: vi.fn(),
+      addAuditLog: vi.fn()
+    })
+
+    // Open the single-delete modal for the daily record and confirm.
+    fireEvent.click(screen.getAllByTitle(/Delete Record/)[0])
+    fireEvent.change(screen.getByPlaceholderText('SURVEY'), { target: { value: 'SURVEY' } })
+    fireEvent.change(screen.getByPlaceholderText('Enter account password'), { target: { value: 'ADMIN123' } })
+
+    const confirmBtn = screen.getByRole('button', { name: /Authorize & Delete Permanently/ })
+    await waitFor(() => expect(confirmBtn).toBeEnabled())
+    fireEvent.click(confirmBtn)
+
+    await waitFor(() => expect(submitTicket).toHaveBeenCalled())
+    expect(submitTicket).toHaveBeenCalledWith(
+      expect.objectContaining({ subgrid: 'SURVEY', requestedBy: 'Operator', reason: expect.any(String) })
+    )
+    expect(hardDelete).not.toHaveBeenCalled()
+  })
+
+  it('hard-deletes directly when the approval gate is disabled', async () => {
+    const submitTicket = vi.mocked(saveDeletionRequestToSupabase)
+    const hardDelete = vi.mocked(deleteFromSupabase)
+    submitTicket.mockClear()
+    hardDelete.mockClear()
+
+    renderPage({
+      dailyData: [dailyFixture()],
+      initialTab: 'daily',
+      projectSettings: { requireAdminApprovalForDelete: false },
+      addNotification: vi.fn(),
+      addAuditLog: vi.fn()
+    })
+
+    fireEvent.click(screen.getAllByTitle(/Delete Record/)[0])
+    fireEvent.change(screen.getByPlaceholderText('SURVEY'), { target: { value: 'SURVEY' } })
+    fireEvent.change(screen.getByPlaceholderText('Enter account password'), { target: { value: 'ADMIN123' } })
+
+    const confirmBtn = screen.getByRole('button', { name: /Authorize & Delete Permanently/ })
+    await waitFor(() => expect(confirmBtn).toBeEnabled())
+    fireEvent.click(confirmBtn)
+
+    await waitFor(() => expect(hardDelete).toHaveBeenCalled())
+    expect(submitTicket).not.toHaveBeenCalled()
   })
 })

@@ -105,6 +105,7 @@ import {
   touchLastActivity,
   clearLastActivity
 } from './utils/workspaceLocation';
+import { can } from './lib/authz';
 // ==============================================
 // Data Interfaces & Types
 // ==============================================
@@ -659,6 +660,14 @@ export default function App() {
   }, []);
 
   const isGuestUser = Boolean(authSession?.isGuest || authSession?.user?.role === 'guest' || authSession?.user?.email?.toLowerCase().includes('guest'));
+
+  const effectiveUserRole =
+    authSession?.user?.user_metadata?.role ||
+    authSession?.user?.raw_user_meta_data?.role ||
+    authSession?.user?.role ||
+    authSession?.user?.app_metadata?.role ||
+    authSession?.user?.raw_app_meta_data?.role;
+  const canHandleApprovals = !isGuestUser && can(effectiveUserRole, 'approveDeletions');
 
   // ---- v14 Project registry state ----
   const [projectList, setProjectList] = useState<UserProject[]>([]);
@@ -3565,6 +3574,7 @@ export default function App() {
                 dailyData={dailyData}
                 qaDefectsCount={totalDefects}
                 isGuestUser={isGuestUser}
+                canHandleApprovals={canHandleApprovals}
                 onOpenQAQCWorkbench={(subgridKey) => {
                   setQaqcWorkbenchSubgrid(subgridKey || null);
                   setIsQAQCRunnerModalOpen(true);
@@ -3574,9 +3584,12 @@ export default function App() {
                   setIsDefectsGalleryOpen(true);
                 }}
                 onNavigate={(ws, params) => {
+                  if (ws === 'administration' && params && params.tab) {
+                    persistWorkspaceTab('administration', params.tab);
+                  }
                   goToWorkspace(ws);
                   if (ws === 'data' && params) {
-                    if (params.tab) setDataManagementTab(params.tab);
+                    if (params.tab && params.tab !== 'approvals') setDataManagementTab(params.tab);
                     if (params.search !== undefined) setDataManagementSearch(params.search);
                   }
                 }}
