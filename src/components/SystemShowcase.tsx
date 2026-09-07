@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
     Compass,
     Camera,
@@ -8,9 +8,14 @@ import {
     ChevronRight,
     Cpu,
     Shield,
-    FolderKanban
+    FolderKanban,
+    MapPin,
 } from 'lucide-react';
 import { usePanoramaViewer } from '../hooks/usePanoramaViewer';
+import { StarsBackground } from './common/StarsBackground';
+import { EarthGlobe } from './common/EarthGlobe';
+import { ProjectBoundaryMap } from './common/ProjectBoundaryMap';
+import { DISTRICT_METADATA } from './boundary/districtMetadata';
 
 export interface SystemShowcaseProps {
     onEnterDashboard?: (targetView?: string) => void;
@@ -61,6 +66,19 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
     const [activePhotoIdx, setActivePhotoIdx] = useState(0);
     const [activeHotspotId, setActiveHotspotId] = useState<string | null>(null);
     const [isAnimating, setIsAnimating] = useState(false);
+    const [viewMode, setViewMode] = useState<'globe' | 'modules'>('globe');
+    const [autoRotate, setAutoRotate] = useState(true);
+    const [customCenter, setCustomCenter] = useState<{ lat: number; lng: number } | null>(null);
+    const [flyTarget, setFlyTarget] = useState<{
+        latitude: number;
+        longitude: number;
+        zoom?: number;
+        timestamp: number;
+    } | null>(null);
+    const [isZoomedToDistrict, setIsZoomedToDistrict] = useState(false);
+    const [isFlyingIn, setIsFlyingIn] = useState(false);
+    const [globeZoom, setGlobeZoom] = useState(1.0);
+    const [globePan, setGlobePan] = useState({ x: 0, y: 0 });
 
     // Dynamic Viewer Selection
     const { viewerDisplayName } = usePanoramaViewer(projectSettings);
@@ -87,6 +105,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
 
     // Smooth navigation helper
     const handleModuleChange = (newIndex: number) => {
+        setViewMode('modules');
         if (newIndex === activeIndex) return;
         setIsAnimating(true);
         setActiveHotspotId(null);
@@ -605,50 +624,300 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
     const activeImage = current.images[activePhotoIdx] || current.images[0];
     const activeHotspot = current.hotspots.find((h) => h.id === activeHotspotId);
 
+    // Derive overall current project location dynamically
+    const projectLocation = useMemo(() => {
+        let sumLat = 0;
+        let sumLng = 0;
+        let count = 0;
+
+        if (Array.isArray(dailyData) && dailyData.length > 0) {
+            for (const day of dailyData) {
+                if (Array.isArray(day?.points)) {
+                    for (const pt of day.points) {
+                        const lat = Number(pt?.lat ?? pt?.latitude);
+                        const lng = Number(pt?.lon ?? pt?.longitude ?? pt?.lng);
+                        if (Number.isFinite(lat) && Number.isFinite(lng) && lat !== 0 && lng !== 0) {
+                            sumLat += lat;
+                            sumLng += lng;
+                            count++;
+                            if (count >= 100) break;
+                        }
+                    }
+                }
+                if (count >= 100) break;
+            }
+        }
+
+        if (count > 0) {
+            const avgLat = sumLat / count;
+            const avgLng = sumLng / count;
+            return {
+                latitude: avgLat,
+                longitude: avgLng,
+                name: projectSettings?.projectName || 'Active Survey Area',
+                subtext: `${avgLat.toFixed(4)}° N, ${avgLng.toFixed(4)}° E • Peninsular Malaysia`
+            };
+        }
+
+        // Default: Active Survey at Jalan Jabi, Segamat, Johor (EPSG:4326 2.5458° N, 102.0873° E)
+        return {
+            latitude: 2.5458,
+            longitude: 102.0873,
+            name: 'Active Survey • Malaysia',
+            subtext: 'Jalan Jabi • 2.546° N, 102.087° E'
+        };
+    }, [dailyData, projectSettings]);
+    // Available districts/projects for inspection
+    const inspectableDistricts = useMemo(() => {
+        const boundary = projectSettings?.projectBoundary;
+        const list: Array<{ id: string; name: string; state: string; lat: number; lng: number }> = [];
+
+        if (Array.isArray(boundary?.districtNames) && boundary.districtNames.length > 0) {
+            boundary.districtNames.forEach((name: string) => {
+                const meta = DISTRICT_METADATA.find(d => d.name.toLowerCase() === name.toLowerCase());
+                if (meta) {
+                    list.push({
+                        id: meta.id,
+                        name: meta.name,
+                        state: meta.stateName,
+                        lat: meta.center[0],
+                        lng: meta.center[1]
+                    });
+                } else {
+                    list.push({
+                        id: name.toLowerCase().replace(/\s+/g, '-'),
+                        name,
+                        state: boundary.regionName || 'Malaysia',
+                        lat: projectLocation.latitude,
+                        lng: projectLocation.longitude
+                    });
+                }
+            });
+        }
+
+        if (list.length === 0) {
+            list.push({
+                id: 'segamat',
+                name: 'Segamat',
+                state: 'Johor',
+                lat: 2.5458,
+                lng: 102.0873
+            });
+        }
+
+        return list;
+    }, [projectSettings, projectLocation]);
+
+    const [selectedDistrictIdx, setSelectedDistrictIdx] = useState(0);
+    const [showProjectPicker, setShowProjectPicker] = useState(false);
+    const activeDistrict = inspectableDistricts[selectedDistrictIdx] || inspectableDistricts[0];
+
+    const activeLat = customCenter ? customCenter.lat : activeDistrict.lat;
+    const activeLng = customCenter ? customCenter.lng : activeDistrict.lng;
+
+    const globeMarkers = useMemo(() => {
+        return inspectableDistricts.map((d, idx) => ({
+            label: d.name,
+            description: `${d.state} • ${d.lat.toFixed(3)}° N, ${d.lng.toFixed(3)}° E`,
+            latitude: d.lat,
+            longitude: d.lng,
+            color: idx === selectedDistrictIdx ? '#ef4444' : '#94a3b8',
+        }));
+    }, [inspectableDistricts, selectedDistrictIdx]);
+
+    // Focus camera directly onto active project location with smooth flight
+    const handleFocusProject = useCallback((target?: { lat: number; lng: number } | React.MouseEvent | React.KeyboardEvent) => {
+        const isCoord = target && typeof target === 'object' && 'lat' in target && 'lng' in target;
+        const lat = isCoord ? (target as { lat: number; lng: number }).lat : activeDistrict.lat;
+        const lng = isCoord ? (target as { lat: number; lng: number }).lng : activeDistrict.lng;
+        setAutoRotate(false);
+        setGlobePan({ x: 0, y: 0 });
+        setGlobeZoom(1.0);
+        setFlyTarget({
+            latitude: lat,
+            longitude: lng,
+            zoom: 1.05,
+            timestamp: Date.now(),
+        });
+    }, [activeDistrict]);
+
+    // Cinematic planetary camera dive handler
+    const handleInspectDistrict = useCallback((districtNameOverride?: string) => {
+        if (isFlyingIn || isZoomedToDistrict) return;
+        setAutoRotate(false);
+        if (typeof districtNameOverride === 'string') {
+            const idx = inspectableDistricts.findIndex(d => d.name.toLowerCase() === districtNameOverride.toLowerCase());
+            if (idx >= 0) setSelectedDistrictIdx(idx);
+        }
+        setShowProjectPicker(false);
+        // Align globe directly over target survey coordinates
+        setCustomCenter({ lat: activeDistrict.lat, lng: activeDistrict.lng });
+        setIsFlyingIn(true);
+
+        // Planetary camera dive sequence
+        setTimeout(() => {
+            setIsZoomedToDistrict(true);
+            setIsFlyingIn(false);
+        }, 650);
+    }, [isFlyingIn, isZoomedToDistrict, activeDistrict, inspectableDistricts]);
+
+    const handleReturnToGlobe = useCallback(() => {
+        setIsZoomedToDistrict(false);
+        setAutoRotate(true);
+    }, []);
+
     return (
-        <div className="relative w-full h-[100dvh] max-h-[100dvh] text-white font-sans overflow-hidden select-none flex flex-col justify-between" style={{ backgroundColor: 'transparent' }}>
+        <div className="relative w-full h-[100dvh] max-h-[100dvh] text-white font-sans overflow-hidden select-none flex flex-col justify-between bg-black">
 
-            {/* 1. Background Image – onboarding.jpg displayed directly, no video */}
-            <div className="absolute inset-0 pointer-events-none z-0" aria-hidden="true">
-                <img
-                    src="/screenshots/onboarding.jpg"
-                    alt=""
-                    className="absolute inset-0 w-full h-full object-cover"
-                    style={{ opacity: 0.35 }}
-                />
-                {/* Subtle bottom fade so footer text stays readable */}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
-            </div>
+            {/* 1. Animate UI Stars Background, 3D Earth Globe & Clean Ambient Lighting */}
+            <div className={`absolute inset-0 z-0 overflow-hidden ${viewMode === 'globe' ? 'pointer-events-auto' : 'pointer-events-none'}`}>
+                <div className="absolute inset-0 bg-[#05070a]" />
 
-            {/* 2. Top Header Navbar (Clean two-line system title, zero blue tint) */}
-            <header className="relative z-30 px-4 sm:px-8 py-3 flex items-center justify-between border-b border-white/10 bg-black/90 backdrop-blur-md shrink-0">
-                <div className="min-w-0 pr-2">
-                    <span className="text-xs sm:text-sm font-semibold tracking-tight text-white block leading-tight truncate">
-                        Mobile Mapping Data Management System
-                    </span>
-                    <span className="text-[10px] sm:text-xs text-neutral-400 font-medium hidden xs:block truncate">
-                        Spatial Trajectory Processing &amp; Quality Assurance Pipeline
-                    </span>
+                {/* Animate UI Stars Background (multi-depth starfield with warp zoom during flight) */}
+                <div className={`absolute inset-0 pointer-events-none transition-transform duration-700 ease-out ${
+                    isFlyingIn ? 'scale-125' : 'scale-100'
+                }`}>
+                    <StarsBackground
+                        factor={0.035}
+                        speed={55}
+                        starColor="#ffffff"
+                        className="w-full h-full opacity-80"
+                    />
                 </div>
 
-                {/* Module Navigation (Clean text links, no enclosing box or pill background) */}
-                <nav aria-label="System Modules" className="hidden lg:flex items-center gap-6 xl:gap-8 shrink-0">
+                {/* 3D Interactive Pure SVG Earth Globe Centered on Current Project Location with Fly-In Dive */}
+                <div className={`absolute inset-0 flex items-center justify-center z-10 ${
+                    viewMode === 'globe' ? 'pointer-events-auto' : 'pointer-events-none'
+                }`}>
+                    <div className={`w-full h-full flex items-center justify-center transform-gpu transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] will-change-transform ${
+                        isFlyingIn
+                            ? 'scale-[2.5] opacity-0 blur-[2px]'
+                            : viewMode === 'globe'
+                                ? 'translate-x-0 translate-y-0 scale-100 opacity-100'
+                                : 'lg:-translate-x-[36%] lg:translate-y-[22%] scale-[1.95] opacity-85'
+                    }`}>
+                        <EarthGlobe
+                            autoRotate={autoRotate}
+                            autoRotateSpeed={1.8}
+                            centerLatitude={activeLat}
+                            centerLongitude={activeLng}
+                            flyTo={flyTarget || undefined}
+                            enableDrag={true}
+                            enableZoom={true}
+                            enablePan={true}
+                            zoom={globeZoom}
+                            onZoomChange={setGlobeZoom}
+                            panOffset={globePan}
+                            onPanChange={setGlobePan}
+                            oceanColor="#0f1318"
+                            landFill="#262c34"
+                            landStroke="#3b434d"
+                            strokeWidth={0.5}
+                            glowColor="rgba(255, 255, 255, 0.08)"
+                            glowIntensity={0.5}
+                            markers={globeMarkers}
+                            onZoomIn={() => handleInspectDistrict()}
+                            onMarkerClick={(marker) => {
+                                const idx = inspectableDistricts.findIndex(d => d.name.toLowerCase() === marker.label?.toLowerCase());
+                                if (idx >= 0) {
+                                    setSelectedDistrictIdx(idx);
+                                    handleFocusProject({ lat: marker.latitude, lng: marker.longitude });
+                                }
+                            }}
+                        />
+                    </div>
+                </div>
+
+                {/* Atmospheric Entry HUD Badge during planetary camera dive */}
+                {isFlyingIn && (
+                    <div className="absolute inset-0 z-30 pointer-events-none flex items-center justify-center animate-in fade-in duration-200">
+                        <div className="px-5 py-2.5 rounded-2xl bg-black/85 backdrop-blur-xl border border-red-500/50 text-center shadow-2xl space-y-1">
+                            <div className="flex items-center justify-center gap-2">
+                                <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping" />
+                                <span className="text-xs font-bold text-white uppercase tracking-widest">
+                                    Atmospheric Descent Vector
+                                </span>
+                            </div>
+                            <p className="text-[10px] text-neutral-400 font-mono">
+                                Approaching Segamat District • 2.5458° N, 102.0873° E
+                            </p>
+                        </div>
+                    </div>
+                )}
+
+                {/* Subtle vignette only in modules mode to maintain high readability */}
+                {viewMode === 'modules' && (
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent pointer-events-none" />
+                )}
+            </div>
+
+            {/* 2. Top Header Navbar (Module navigation centered, balanced left & right) */}
+            <header className="relative z-30 px-4 sm:px-8 py-3 flex items-center justify-between border-b border-white/10 bg-black/90 backdrop-blur-md shrink-0 gap-4">
+                {/* Left: System Title */}
+                <div className="flex items-center gap-3 min-w-0 shrink-0 z-10">
+                    <div className="max-w-[240px] 2xl:max-w-none min-w-0 pr-2">
+                        <span className="text-xs sm:text-sm font-semibold tracking-tight text-white block leading-tight truncate">
+                            Mobile Mapping Data Management System
+                        </span>
+                        <span className="text-[10px] sm:text-xs text-neutral-400 font-medium hidden xs:block truncate">
+                            Spatial Trajectory Processing &amp; Quality Assurance Pipeline
+                        </span>
+                    </div>
+                </div>
+
+                {/* Center: Module Navigation (Strictly Centered horizontally & vertically) */}
+                <nav
+                    aria-label="System Modules"
+                    className="hidden xl:flex items-center gap-3 2xl:gap-5 absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-auto z-10"
+                >
                     {SYSTEM_MODULES.map((mod, idx) => (
                         <button
                             key={mod.id}
                             onClick={() => handleModuleChange(idx)}
-                            className={`text-xs font-medium transition-colors cursor-pointer py-1 ${activeIndex === idx
-                                ? 'text-white font-semibold'
-                                : 'text-neutral-400 hover:text-white'
-                                }`}
+                            className={`text-[11px] 2xl:text-xs font-medium transition-colors cursor-pointer py-1 whitespace-nowrap ${
+                                activeIndex === idx && viewMode === 'modules'
+                                    ? 'text-white font-semibold'
+                                    : 'text-neutral-400 hover:text-white'
+                            }`}
                         >
                             {mod.title.split('&')[0].trim()}
                         </button>
                     ))}
                 </nav>
 
-                {/* Action Buttons (Clean text, no enclosing box) */}
-                <div className="flex items-center gap-5 sm:gap-6 shrink-0">
+                {/* Right: View Mode Switcher + Action Buttons */}
+                <div className="flex items-center gap-3 sm:gap-4 shrink-0 z-10">
+                    {/* Vertical divider separating module navigation / system links from the 3D Earth view mode switcher */}
+                    <div className="h-4 w-px bg-white/20 hidden xl:block" />
+
+                    {/* View Mode Switcher: Clean monochromatic text tabs with Google font icons, no box button */}
+                    <div className="flex items-center gap-3 sm:gap-4 text-xs">
+                        <button
+                            onClick={() => setViewMode('globe')}
+                            className={`py-1 transition-colors cursor-pointer flex items-center gap-1.5 border-b-2 ${
+                                viewMode === 'globe'
+                                    ? 'text-white font-semibold border-white'
+                                    : 'text-neutral-400 hover:text-white border-transparent'
+                            }`}
+                        >
+                            <span className="material-symbols-outlined text-[15px] leading-none">public</span>
+                            <span>3D Earth</span>
+                        </button>
+                        <button
+                            onClick={() => setViewMode('modules')}
+                            className={`py-1 transition-colors cursor-pointer flex items-center gap-1.5 border-b-2 ${
+                                viewMode === 'modules'
+                                    ? 'text-white font-semibold border-white'
+                                    : 'text-neutral-400 hover:text-white border-transparent'
+                            }`}
+                        >
+                            <span className="material-symbols-outlined text-[15px] leading-none">grid_view</span>
+                            <span>Modules</span>
+                        </button>
+                    </div>
+
+                    <div className="h-4 w-px bg-white/10 hidden sm:block" />
+
                     <button
                         onClick={() => onEnterDashboard && onEnterDashboard('auth')}
                         className="text-xs font-medium text-neutral-400 hover:text-white transition-colors cursor-pointer py-1"
@@ -666,8 +935,180 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             </header>
 
             {/* 3. Main Showcase Section */}
-            <main className="relative z-20 flex-1 w-full px-4 sm:px-8 py-4 sm:py-6 overflow-y-auto lg:overflow-hidden flex items-start lg:items-center justify-start lg:justify-center" style={{ backgroundColor: 'transparent' }}>
-                <div className="w-full max-w-[1600px] mx-auto grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-10 items-center">
+            <main
+                className={`relative z-20 flex-1 w-full px-4 sm:px-8 py-4 sm:py-6 overflow-y-auto lg:overflow-hidden flex items-start lg:items-center justify-start lg:justify-center ${
+                    viewMode === 'globe' ? 'pointer-events-none' : 'pointer-events-auto'
+                }`}
+                style={{ backgroundColor: 'transparent' }}
+            >
+
+                {/* 3D Globe Telemetry HUD & Interactive Controls (Active when viewMode === 'globe') */}
+                {viewMode === 'globe' && (
+                    <div className={`absolute inset-0 pointer-events-none p-4 sm:p-8 flex flex-col justify-between z-20 transition-opacity duration-300 ${
+                        isFlyingIn || isZoomedToDistrict ? 'opacity-0 pointer-events-none' : 'opacity-100'
+                    }`}>
+                        {/* Top Center Minimal Orientation Badge */}
+                        <div className="w-full flex flex-col items-center pt-1 gap-1">
+                            <div className="px-3.5 py-1.5 rounded-full bg-neutral-900/80 backdrop-blur-md border border-white/10 shadow-xl flex items-center gap-2">
+                                <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                                <span className="text-[11px] font-mono uppercase tracking-wider text-neutral-200 font-semibold">
+                                    EXPLORE YOUR PROJECT AREA
+                                </span>
+                            </div>
+                            <span className="text-[10px] text-neutral-400 font-mono tracking-wide hidden sm:block">
+                                Left-drag: Rotate • Right-drag / Shift: Pan • Scroll: Zoom • Double-click: Reset
+                            </span>
+                        </div>
+
+                        {/* Bottom Row: Geodetic HUD (Left) & Controls (Right) */}
+                        <div className="w-full flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4 pb-2">
+                            {/* Geodetic Telemetry Card - Click to focus and display location on 3D globe */}
+                            <div
+                                role="button"
+                                tabIndex={0}
+                                onClick={handleFocusProject}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter' || e.key === ' ') {
+                                        handleFocusProject();
+                                    }
+                                }}
+                                className="p-3.5 sm:p-4 rounded-2xl bg-black/75 hover:bg-black/90 hover:border-red-500/50 backdrop-blur-xl border border-white/10 text-left max-w-[320px] pointer-events-auto shadow-2xl space-y-1.5 cursor-pointer transition-all duration-200 group active:scale-[0.98] outline-none"
+                                title="Click to rotate globe and center on project location"
+                            >
+                                <div className="flex items-center justify-between gap-2">
+                                    <div className="flex items-center gap-2 truncate">
+                                        <span className="w-2 h-2 rounded-full bg-red-500 shrink-0 animate-pulse" />
+                                        <span className="text-xs font-semibold text-white tracking-wide truncate group-hover:text-red-400 transition-colors">
+                                            {projectLocation.name}
+                                        </span>
+                                    </div>
+                                    <span className="material-symbols-outlined text-[15px] leading-none text-neutral-400 group-hover:text-white transition-colors shrink-0" title="Center on 3D Earth">
+                                        location_on
+                                    </span>
+                                </div>
+                                <p className="text-[11px] text-neutral-400 font-mono">
+                                    {projectLocation.subtext}
+                                </p>
+                                <div className="pt-2 border-t border-white/10 flex items-center justify-between text-[11px] text-neutral-400">
+                                    <span>Survey Mileage:</span>
+                                    <span className="text-white font-mono font-semibold">{computedDistance.toFixed(1)} km</span>
+                                </div>
+                                <div className="flex items-center justify-between text-[11px] text-neutral-400">
+                                    <span>Pipeline SLA:</span>
+                                    <span className="text-white font-mono font-semibold">{slaPercent}%</span>
+                                </div>
+                            </div>
+
+                            {/* Quick Action Navigation Buttons */}
+                            <div className="flex flex-wrap items-center gap-2 pointer-events-auto">
+                                {/* Interactive 3D Zoom Controls */}
+                                <div className="flex items-center bg-neutral-900/80 backdrop-blur-md px-1.5 py-1 rounded-xl border border-white/10 shadow-md">
+                                    <button
+                                        onClick={() => setGlobeZoom(z => Math.max(0.5, +(z / 1.25).toFixed(2)))}
+                                        title="Zoom Out (Scroll Down)"
+                                        className="w-6 h-6 rounded-lg hover:bg-neutral-800 text-neutral-300 hover:text-white flex items-center justify-center font-bold text-sm cursor-pointer transition-colors"
+                                    >
+                                        -
+                                    </button>
+                                    <span className="text-[11px] font-mono px-2 text-neutral-300 select-none min-w-[38px] text-center">
+                                        {Math.round(globeZoom * 100)}%
+                                    </span>
+                                    <button
+                                        onClick={() => setGlobeZoom(z => Math.min(4.0, +(z * 1.25).toFixed(2)))}
+                                        title="Zoom In (Scroll Up)"
+                                        className="w-6 h-6 rounded-lg hover:bg-neutral-800 text-neutral-300 hover:text-white flex items-center justify-center font-bold text-sm cursor-pointer transition-colors"
+                                    >
+                                        +
+                                    </button>
+                                    {(Math.abs(globeZoom - 1.0) > 0.05 || globePan.x !== 0 || globePan.y !== 0) && (
+                                        <button
+                                            onClick={() => { setGlobeZoom(1.0); setGlobePan({ x: 0, y: 0 }); }}
+                                            title="Reset View (Double-click)"
+                                            className="ml-1 px-1.5 py-0.5 text-[10px] rounded-md bg-white/10 hover:bg-white/20 text-neutral-300 hover:text-white transition-colors cursor-pointer"
+                                        >
+                                            Reset
+                                        </button>
+                                    )}
+                                </div>
+
+                                <div className="relative">
+                                    <div className="flex items-center rounded-xl bg-red-600/90 hover:bg-red-500 shadow-lg text-white font-medium text-xs transition-all active:scale-95">
+                                        <button
+                                            onClick={() => handleInspectDistrict()}
+                                            className="px-3.5 py-1.5 flex items-center gap-1.5 cursor-pointer"
+                                            title={`Inspect ${activeDistrict.name} District Boundary`}
+                                        >
+                                            <MapPin className="w-3.5 h-3.5" />
+                                            <span>Inspect {inspectableDistricts.length > 1 ? activeDistrict.name : 'District'}</span>
+                                        </button>
+                                        {inspectableDistricts.length > 1 && (
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setShowProjectPicker(prev => !prev);
+                                                }}
+                                                className="pr-2.5 pl-1.5 py-1.5 border-l border-white/20 hover:bg-white/10 rounded-r-xl cursor-pointer flex items-center"
+                                                title="Choose project district to inspect"
+                                            >
+                                                <span className="material-symbols-outlined text-[14px] leading-none">
+                                                    {showProjectPicker ? 'arrow_drop_up' : 'arrow_drop_down'}
+                                                </span>
+                                            </button>
+                                        )}
+                                    </div>
+
+                                    {/* Multi-Project District Popover */}
+                                    {showProjectPicker && inspectableDistricts.length > 1 && (
+                                        <div className="absolute bottom-full mb-2 right-0 w-60 rounded-2xl bg-black/90 backdrop-blur-xl border border-white/15 shadow-2xl p-1.5 z-50 animate-in fade-in slide-in-from-bottom-2 duration-150">
+                                            <div className="px-2.5 py-1 text-[10px] font-mono text-neutral-400 uppercase tracking-wider border-b border-white/10 mb-1 flex items-center justify-between">
+                                                <span>Select Project</span>
+                                                <span className="text-white/60">{inspectableDistricts.length} Districts</span>
+                                            </div>
+                                            {inspectableDistricts.map((d, idx) => (
+                                                <button
+                                                    key={d.id}
+                                                    onClick={() => {
+                                                        setSelectedDistrictIdx(idx);
+                                                        setShowProjectPicker(false);
+                                                        handleFocusProject({ lat: d.lat, lng: d.lng });
+                                                    }}
+                                                    className={`w-full px-2.5 py-2 rounded-xl text-left text-xs flex items-center justify-between transition-colors cursor-pointer ${
+                                                        idx === selectedDistrictIdx
+                                                            ? 'bg-red-500/20 text-white font-semibold'
+                                                            : 'text-neutral-300 hover:bg-white/10 hover:text-white'
+                                                    }`}
+                                                >
+                                                    <div className="flex items-center gap-2 truncate">
+                                                        <MapPin className={`w-3.5 h-3.5 shrink-0 ${idx === selectedDistrictIdx ? 'text-red-400' : 'text-neutral-400'}`} />
+                                                        <span className="truncate">{d.name}</span>
+                                                    </div>
+                                                    <span className="text-[10px] text-neutral-400 font-mono shrink-0">{d.state}</span>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                                <button
+                                    onClick={() => setAutoRotate(!autoRotate)}
+                                    className="px-3 py-1.5 rounded-xl bg-neutral-900/80 hover:bg-neutral-800 text-xs font-medium text-white border border-white/10 transition-colors cursor-pointer shadow-md active:scale-95 flex items-center gap-1.5"
+                                >
+                                    <span className="material-symbols-outlined text-[14px] leading-none">{autoRotate ? 'pause' : 'play_arrow'}</span>
+                                    <span>{autoRotate ? 'Pause' : 'Rotate'}</span>
+                                </button>
+                                <button
+                                    onClick={() => setViewMode('modules')}
+                                    className="px-4 py-1.5 rounded-xl bg-white text-black font-semibold text-xs transition-all hover:bg-neutral-200 cursor-pointer shadow-lg flex items-center gap-1.5 active:scale-95"
+                                >
+                                    <span className="material-symbols-outlined text-[14px] leading-none">grid_view</span>
+                                    <span>Modules</span>
+                                    <ArrowRight className="w-3.5 h-3.5" />
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                <div className={`w-full max-w-[1600px] mx-auto grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-10 items-center ${viewMode === 'globe' ? 'hidden' : 'grid'}`}>
 
                     {/* Left Narrative Panel (Spacious, Typography-Driven, No Card Boxes) */}
                     <div className={`w-full lg:col-span-5 space-y-5 text-left flex flex-col justify-center order-2 lg:order-1 pb-6 lg:pb-0 transition-all duration-200 ease-out ${isAnimating ? 'opacity-0 translate-y-1' : 'opacity-100 translate-y-0'}`}>
@@ -888,8 +1329,8 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                 </div>
             </main>
 
-            {/* 4. Pinned Footer Navigation Controls (Pure solid black, neutral gray dots, no blue) */}
-            <footer className="relative z-30 w-full px-4 sm:px-8 py-3 flex items-center justify-between border-t border-white/10 bg-black shrink-0">
+            {/* 4. Pinned Footer Navigation Controls (Active in modules mode) */}
+            <footer className={`relative z-30 w-full px-4 sm:px-8 py-3 items-center justify-between border-t border-white/10 bg-black shrink-0 ${viewMode === 'modules' ? 'flex' : 'hidden'}`}>
                 <button
                     onClick={() => handleModuleChange((activeIndex - 1 + SYSTEM_MODULES.length) % SYSTEM_MODULES.length)}
                     className="flex items-center gap-2 text-neutral-400 hover:text-white transition-colors cursor-pointer group"
@@ -927,6 +1368,25 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                     <ChevronRight className="w-4 h-4 text-neutral-400 group-hover:text-white transition-colors" />
                 </button>
             </footer>
+
+            {/* 5. MapLibre GL District Boundary View (Active when zoomed into project district) */}
+            {isZoomedToDistrict && (
+                <div className="absolute inset-0 z-50 animate-in fade-in zoom-in-95 duration-500">
+                    <ProjectBoundaryMap
+                        projectLocation={{
+                            latitude: activeDistrict.lat,
+                            longitude: activeDistrict.lng,
+                            name: activeDistrict.name,
+                            subtext: `${activeDistrict.state} • ${activeDistrict.lat.toFixed(4)}° N, ${activeDistrict.lng.toFixed(4)}° E`
+                        }}
+                        districtName={activeDistrict.name}
+                        stateName={activeDistrict.state}
+                        dailyData={dailyData}
+                        onReturnToGlobe={handleReturnToGlobe}
+                        onEnterWorkspace={() => onEnterDashboard && onEnterDashboard(current.id)}
+                    />
+                </div>
+            )}
 
         </div>
     );

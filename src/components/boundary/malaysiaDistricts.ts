@@ -79,6 +79,13 @@ export async function ensureDistrictGeometriesLoaded(): Promise<void> {
   return loadPromise;
 }
 
+// Eagerly prefetch district geometries in browser environments so they are immediately available
+if (typeof window !== 'undefined') {
+  ensureDistrictGeometriesLoaded().catch((err) => {
+    console.warn('[malaysiaDistricts] Background load warning:', err);
+  });
+}
+
 /** Duplicates of a city name across states are disambiguated by state. */
 export function findDistrictByName(name: string, state?: string): MalaysiaDistrict | undefined {
   return MALAYSIA_DISTRICTS.find(
@@ -98,8 +105,11 @@ export function districtsToGeoJSON(districts: MalaysiaDistrict[]): { geojson: an
   let maxLng = -Infinity;
   let maxLat = -Infinity;
   districts.forEach((d) => {
-    if (d.geojson?.features) {
-      d.geojson.features.forEach((f: any) => features.push(f));
+    // If geometry on this instance is missing, attempt lookup from MALAYSIA_DISTRICTS in case attached after reference
+    const districtObj = d.geojson?.features ? d : (MALAYSIA_DISTRICTS.find((m) => m.id === d.id) || d);
+
+    if (districtObj.geojson?.features) {
+      districtObj.geojson.features.forEach((f: any) => features.push(f));
     } else {
       features.push({
         type: 'Feature',
@@ -127,6 +137,27 @@ export function districtsToGeoJSON(districts: MalaysiaDistrict[]): { geojson: an
   return {
     geojson: { type: 'FeatureCollection', features },
     bbox: [minLng, minLat, maxLng, maxLat]
+  };
+}
+
+/**
+ * If a projectBoundary object has districtIds, regenerate its GeoJSON with real
+ * MultiPolygon geometries if they were previously saved as rectangular bounding boxes.
+ */
+export function rehydrateDistrictBoundary(boundary: any): any {
+  if (!boundary || !Array.isArray(boundary.districtIds) || boundary.districtIds.length === 0) {
+    return boundary;
+  }
+  const chosen = MALAYSIA_DISTRICTS.filter((d) => boundary.districtIds.includes(d.id));
+  if (chosen.length === 0) return boundary;
+
+  const result = districtsToGeoJSON(chosen);
+  if (!result || !result.geojson) return boundary;
+
+  return {
+    ...boundary,
+    geojson: result.geojson,
+    bbox: result.bbox || boundary.bbox
   };
 }
 

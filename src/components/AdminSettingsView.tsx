@@ -51,7 +51,9 @@ import { DiagnosticsPanel } from './DiagnosticsPanel';
 import { MALAYSIA_REGIONS, regionToGeoJSON, CUSTOM_REGION_ID } from './boundary/malaysiaRegions';
 import {
   MALAYSIA_DISTRICTS,
-  districtsToGeoJSON
+  districtsToGeoJSON,
+  ensureDistrictGeometriesLoaded,
+  rehydrateDistrictBoundary
 } from './boundary/malaysiaDistricts';
 import { UnderlineTabStrip, type ChromeTab } from './production/chrome';
 import { isAdminRole, isGuestEmail } from '../lib/authz';
@@ -144,6 +146,24 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
     setSelectedDistrictIds(boundary?.districtIds || []);
   }, [(projectSettings as any)?.projectBoundary]);
 
+  // Eagerly prefetch full district MultiPolygons and auto-upgrade any saved boundaries
+  // that were previously stored as square bounding-box polygons
+  React.useEffect(() => {
+    ensureDistrictGeometriesLoaded().then(() => {
+      const boundary = (projectSettings as any)?.projectBoundary;
+      if (boundary?.districtIds && Array.isArray(boundary.districtIds) && boundary.districtIds.length > 0) {
+        const rehydrated = rehydrateDistrictBoundary(boundary);
+        if (rehydrated && JSON.stringify(rehydrated.geojson) !== JSON.stringify(boundary.geojson)) {
+          setProjectSettings((prev: any) => ({
+            ...prev,
+            projectBoundary: rehydrated
+          }));
+          void persistProjectBoundary(rehydrated);
+        }
+      }
+    }).catch(console.warn);
+  }, []);
+
   // Sync staged items & theme settings to preview iframe just like Dashboard Map
   const sendPreviewData = React.useCallback(() => {
     if (previewIframeRef.current && previewIframeRef.current.contentWindow) {
@@ -230,7 +250,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
           }, '*');
           previewIframeRef.current.contentWindow.postMessage({
             type: 'DIM_OUTSIDE_BOUNDARY',
-            enabled: !!boundary.focusActive
+            enabled: false
           }, '*');
         } else {
           previewIframeRef.current.contentWindow.postMessage({
@@ -309,7 +329,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
             type: 'FOCUS_BOUNDARY',
             bbox: boundary.bbox
           }, '*');
-          f.contentWindow?.postMessage({ type: 'DIM_OUTSIDE_BOUNDARY', enabled: true }, '*');
+          f.contentWindow?.postMessage({ type: 'DIM_OUTSIDE_BOUNDARY', enabled: false }, '*');
         } else if (action === 'clear') {
           f.contentWindow?.postMessage({ type: 'DIM_OUTSIDE_BOUNDARY', enabled: false }, '*');
           f.contentWindow?.postMessage({ type: 'CLEAR_BOUNDARY_FOCUS' }, '*');
@@ -444,7 +464,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
   }, [selectedDistrictIds, currentRegion, projectSettings]);
 
   // Preview combined boundary (Region or Selected Districts) on live WebGIS preview iframe
-  const previewBoundary = React.useCallback((region: any, districtIds: string[]) => {
+  const previewBoundary = React.useCallback(async (region: any, districtIds: string[]) => {
     const iframe = previewIframeRef.current;
     if (!iframe || !iframe.contentWindow) return;
     try {
@@ -454,6 +474,8 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
         win.postMessage({ type: 'CLEAR_BOUNDARY_FOCUS' }, '*');
         return;
       }
+
+      await ensureDistrictGeometriesLoaded().catch(console.warn);
 
       const chosenDistricts = districtIds.length > 0
         ? MALAYSIA_DISTRICTS.filter((d) => districtIds.includes(d.id))
@@ -479,7 +501,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
       }
 
       win.postMessage({ type: 'SET_PROJECT_BOUNDARY', geojson, bbox }, '*');
-      win.postMessage({ type: 'DIM_OUTSIDE_BOUNDARY', enabled: true }, '*');
+      win.postMessage({ type: 'DIM_OUTSIDE_BOUNDARY', enabled: false }, '*');
     } catch (e) { }
   }, []);
 
@@ -518,9 +540,11 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
   }, [selectedRegionId, projectSettings, previewBoundary]);
 
   // Apply a selected Malaysia region as the committed Project Boundary.
-  const handleApplyRegion = React.useCallback((regionId: string) => {
+  const handleApplyRegion = React.useCallback(async (regionId: string) => {
     const region = MALAYSIA_REGIONS.find((r) => r.id === regionId);
     if (!region || region.id === CUSTOM_REGION_ID) return;
+
+    await ensureDistrictGeometriesLoaded().catch(console.warn);
 
     const chosenDistricts = selectedDistrictIds.length > 0
       ? MALAYSIA_DISTRICTS.filter((d) => selectedDistrictIds.includes(d.id))
