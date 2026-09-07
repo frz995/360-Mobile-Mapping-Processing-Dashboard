@@ -6,10 +6,8 @@ import {
     ArrowRight,
     ChevronLeft,
     ChevronRight,
-    Workflow,
     Cpu,
     Shield,
-    Lightbulb,
     FolderKanban
 } from 'lucide-react';
 import { usePanoramaViewer } from '../hooks/usePanoramaViewer';
@@ -46,7 +44,6 @@ interface SystemModule {
     metricLabel: string;
     metricValue: string;
     statusBadge: string;
-    accentColor: string;
     images: string[];
     icon: React.ElementType;
     workflow: WorkflowStep[];
@@ -67,6 +64,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
 
     // Dynamic Viewer Selection
     const { viewerDisplayName } = usePanoramaViewer(projectSettings);
+
     // Mobile swipe handlers
     const [touchStartX, setTouchStartX] = useState<number | null>(null);
 
@@ -79,7 +77,6 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
         const touchEndX = e.changedTouches[0].clientX;
         const diff = touchStartX - touchEndX;
 
-        // 50px swipe threshold
         if (diff > 50) {
             handleModuleChange((activeIndex + 1) % SYSTEM_MODULES.length);
         } else if (diff < -50) {
@@ -88,7 +85,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
         setTouchStartX(null);
     };
 
-    // Smooth navigation helper function
+    // Smooth navigation helper
     const handleModuleChange = (newIndex: number) => {
         if (newIndex === activeIndex) return;
         setIsAnimating(true);
@@ -96,10 +93,23 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
         setTimeout(() => {
             setActiveIndex(newIndex);
             setIsAnimating(false);
-        }, 320);
+        }, 220);
     };
 
-    // Dynamic telemetry calculations
+    // Keyboard arrow navigation
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'ArrowRight') {
+                handleModuleChange((activeIndex + 1) % SYSTEM_MODULES.length);
+            } else if (e.key === 'ArrowLeft') {
+                handleModuleChange((activeIndex - 1 + SYSTEM_MODULES.length) % SYSTEM_MODULES.length);
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [activeIndex]);
+
+    // Telemetry calculations
     const computedDistance = dailyData.reduce((acc, item) => acc + (Number(item.distance || item.kmProcessed) || 0), 0);
     const computedFrames = dailyData.reduce((acc, item) => acc + (Number(item.availableImagesCount || item.panoramas?.length || item.images || item.imagesProcessed || item.poiCount) || 0), 0);
     const computedDefects = dailyData.reduce((acc, item) => acc + (Number(item.imagesDefected || item.defectCount) || 0), 0);
@@ -115,13 +125,12 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
         {
             id: 'webgis',
             category: 'Executive Command Center',
-            title: 'Main Executive Dashboard & Spatial Telemetry',
+            title: 'Executive Dashboard & Spatial Telemetry',
             subtitle: 'Geodetic Telemetry, Trajectory Tracking & Live Status Stream',
             description: 'The central operational hub of the platform. Features high-precision MapLibre GL trajectory rendering, executive KPI telemetry meters, live workstation pipeline streams, and direct workspace navigation.',
             metricLabel: 'Total Distance Mapped',
             metricValue: `${computedDistance.toFixed(1)} km (${pctTarget}% · ${activeJobs} Active)`,
             statusBadge: 'Telemetry Active',
-            accentColor: '#38bdf8',
             images: [
                 '/screenshots/Dashboard_UI_1.png',
                 '/screenshots/Dashboard_UI_13.png',
@@ -158,7 +167,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                     title: 'Operational Action Center',
                     tag: 'Live Work Stream',
                     description: 'Live monitoring bar displaying ongoing workstation batches, QA defect flags requiring attention, and pending staging subgrids.',
-                    tip: 'Click the direct action button (e.g. "Review 84 QA issues") to jump straight to the required defect table.'
+                    tip: 'Click the direct action button to jump straight to the required defect table.'
                 },
                 {
                     id: 'm1-map',
@@ -200,7 +209,6 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             metricLabel: 'Surveyed Records',
             metricValue: `${computedFrames.toLocaleString()} Frames`,
             statusBadge: 'Storage Verified',
-            accentColor: '#34d399',
             images: [
                 '/screenshots/Dashboard_UI_17.png',
                 '/screenshots/Dashboard_UI_2.png',
@@ -258,17 +266,16 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             ]
         },
 
-        // MODULE 3: PRODUCTION WORKSPACE & PROCESSING CENTER (NEW)
+        // MODULE 3: PRODUCTION WORKSPACE & PROCESSING CENTER
         {
             id: 'production',
             category: 'Multi-Station & GPU Worker Pipeline',
-            title: 'Production Workspace, NAS Storage & Lineage',
+            title: 'Production Workspace, NAS & Lineage',
             subtitle: '4-Station Desktop Pipeline, GPU Worker & Asset Lineage',
             description: 'End-to-end multi-PC production routing and automated GPU worker dispatch. Coordinates sequential desktop handoffs across Station 1 (Blur), Station 2 (Stitching), Station 3 (Lightroom), and Station 4 (Photoshop), with real-time NAS storage tracking and immutable lineage tracing.',
             metricLabel: 'Pipeline Architecture',
             metricValue: '4-Station + NAS GPU Worker',
             statusBadge: 'Pipeline Connected',
-            accentColor: '#f59e0b',
             images: [
                 '/screenshots/Dashboard_UI_29.png',
                 '/screenshots/Dashboard_UI_30.png',
@@ -303,7 +310,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                     id: 'm3-workstations',
                     x: 40,
                     y: 35,
-                    title: '4-Station Multi-PC & Engine Configuration',
+                    title: '4-Station Multi-PC Configuration',
                     tag: 'Station Routing',
                     description: 'Configures LAN IP addresses, default operators, and NAS input/output directory routes for each physical station.',
                     tip: 'Toggle between 4-Station Multi-PC workflow and automated NAS GPU Workers.'
@@ -357,7 +364,6 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             metricLabel: 'Quality SLA Health',
             metricValue: `${slaPercent}% Compliance`,
             statusBadge: `${slaPercent}% Quality`,
-            accentColor: '#818cf8',
             images: [
                 '/screenshots/Dashboard_UI_26.png',
                 '/screenshots/Dashboard_UI_27.png',
@@ -425,7 +431,6 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             metricLabel: 'Spatial Infrastructure',
             metricValue: 'PostGIS + GIST Index',
             statusBadge: 'PostGIS Connected',
-            accentColor: '#10b981',
             images: [
                 '/screenshots/Dashboard_UI_9.png',
                 '/screenshots/Dashboard_UI_10.png',
@@ -493,7 +498,6 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             metricLabel: 'Governance Status',
             metricValue: `${dailyData.length} Survey Records`,
             statusBadge: 'Audit Trail Locked',
-            accentColor: '#ec4899',
             images: [
                 '/screenshots/Dashboard_UI_39.png',
                 '/screenshots/Dashboard_UI_37.png',
@@ -504,7 +508,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             ],
             icon: Shield,
             workflow: [
-                { step: '01. Record', action: 'Log all user edits, imports & sign-offs' },
+                { step: '01. Record', action: 'Log user edits, imports & sign-offs' },
                 { step: '02. Audit', action: 'Verify SLA defect rates per contractor' },
                 { step: '03. Export', action: 'Generate executive summary reports' }
             ],
@@ -536,10 +540,10 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                     id: 'm6-operations',
                     x: 50,
                     y: 35,
-                    title: 'Survey Operations Analytics & Publication Status',
+                    title: 'Survey Operations Analytics',
                     tag: 'Operations KPI',
                     description: 'Realtime charts of road capture analytics, publication status distribution (Published vs Partial), and daily throughput trends.',
-                    tip: 'Recharts visualizes live database metrics without modifying raw imagery.'
+                    tip: 'Visualizes live database metrics without modifying raw imagery.'
                 },
                 {
                     id: 'm6-coverage',
@@ -557,7 +561,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                     title: 'Immutable Audit Trail Ledger',
                     tag: 'Event Logging',
                     description: 'Cryptographically verified event logs recording every file upload, QA rejection, parameter edit, and user sign-in.',
-                    tip: 'Audit logs cannot be altered or deleted, ensuring full accountability for quality compliance.'
+                    tip: 'Audit logs cannot be altered or deleted, ensuring full accountability.'
                 },
                 {
                     id: 'm6-rbac',
@@ -572,7 +576,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
         }
     ];
 
-    // Preload screenshot assets into memory for instant transitions
+    // Preload screenshot assets into memory
     useEffect(() => {
         SYSTEM_MODULES.forEach((mod) => {
             mod.images.forEach((src) => {
@@ -587,6 +591,14 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
         setActiveHotspotId(null);
     }, [activeIndex]);
 
+    // Toggle html class so themes.css !important rules don't block the background image
+    useEffect(() => {
+        document.documentElement.classList.add('showcase-active');
+        return () => {
+            document.documentElement.classList.remove('showcase-active');
+        };
+    }, []);
+
     const current = SYSTEM_MODULES[activeIndex];
     const prevModule = SYSTEM_MODULES[(activeIndex - 1 + SYSTEM_MODULES.length) % SYSTEM_MODULES.length];
     const nextModule = SYSTEM_MODULES[(activeIndex + 1) % SYSTEM_MODULES.length];
@@ -594,278 +606,239 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
     const activeHotspot = current.hotspots.find((h) => h.id === activeHotspotId);
 
     return (
-        <div className="relative w-full h-[100dvh] max-h-[100dvh] bg-[var(--bg-app,#080e1a)] text-[var(--text-primary,#f8fafc)] font-sans overflow-hidden select-none flex flex-col justify-between transition-colors duration-200">
+        <div className="relative w-full h-[100dvh] max-h-[100dvh] text-white font-sans overflow-hidden select-none flex flex-col justify-between" style={{ backgroundColor: 'transparent' }}>
 
-            {/* 1. Fluid Cross-Fading Ambient Blurred Background */}
-            <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
+            {/* 1. Background Image – onboarding.jpg displayed directly, no video */}
+            <div className="absolute inset-0 pointer-events-none z-0" aria-hidden="true">
                 <img
-                    key={activeImage}
-                    src={activeImage}
-                    alt="Ambient Base Blur"
-                    loading="eager"
-                    decoding="async"
-                    className="w-full h-full object-cover scale-125 blur-[120px] sm:blur-[150px] opacity-25 sm:opacity-35 transition-all duration-1000 ease-in-out"
+                    src="/screenshots/onboarding.jpg"
+                    alt=""
+                    className="absolute inset-0 w-full h-full object-cover"
+                    style={{ opacity: 0.35 }}
                 />
-                <div className="absolute inset-0 bg-[var(--bg-app,#080e1a)]/85 backdrop-blur-xl transition-colors duration-300" />
+                {/* Subtle bottom fade so footer text stays readable */}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
             </div>
 
-            {/* 2. Top Header Navbar */}
-            <header className="relative z-30 px-3 sm:px-8 py-2.5 sm:py-3 flex items-center justify-between border-b border-[var(--border-subtle,#1e2e4a)] bg-[var(--bg-card,#0f172a)]/90 backdrop-blur-md shrink-0 transition-colors duration-200">
+            {/* 2. Top Header Navbar (Clean two-line system title, zero blue tint) */}
+            <header className="relative z-30 px-4 sm:px-8 py-3 flex items-center justify-between border-b border-white/10 bg-black/90 backdrop-blur-md shrink-0">
                 <div className="min-w-0 pr-2">
-                    <span className="text-xs sm:text-sm font-semibold tracking-tight text-[var(--text-primary,#f8fafc)] block leading-tight truncate">
+                    <span className="text-xs sm:text-sm font-semibold tracking-tight text-white block leading-tight truncate">
                         Mobile Mapping Data Management System
                     </span>
-                    <span className="text-[10px] sm:text-xs text-[var(--text-muted,#94a3b8)] font-medium hidden xs:block truncate">
+                    <span className="text-[10px] sm:text-xs text-neutral-400 font-medium hidden xs:block truncate">
                         Spatial Trajectory Processing &amp; Quality Assurance Pipeline
                     </span>
                 </div>
 
-                {/* 6 Desktop Navigation Pills */}
-                <div className="hidden lg:flex items-center gap-1 p-1 rounded-xl bg-[var(--bg-inner,#162138)] border border-[var(--border-subtle,#1e2e4a)] shrink-0">
+                {/* Module Navigation (Clean text links, no enclosing box or pill background) */}
+                <nav aria-label="System Modules" className="hidden lg:flex items-center gap-6 xl:gap-8 shrink-0">
                     {SYSTEM_MODULES.map((mod, idx) => (
                         <button
                             key={mod.id}
                             onClick={() => handleModuleChange(idx)}
-                            className={`px-2.5 xl:px-3 py-1.5 rounded-lg text-[11px] xl:text-xs font-medium transition-all cursor-pointer ${activeIndex === idx
-                                ? 'bg-[var(--bg-card,#0f172a)] text-[var(--text-primary,#f8fafc)] font-semibold shadow-sm border border-[var(--border-subtle,#1e2e4a)]'
-                                : 'text-[var(--text-muted,#94a3b8)] hover:text-[var(--text-primary,#f8fafc)]'
+                            className={`text-xs font-medium transition-colors cursor-pointer py-1 ${activeIndex === idx
+                                ? 'text-white font-semibold'
+                                : 'text-neutral-400 hover:text-white'
                                 }`}
                         >
                             {mod.title.split('&')[0].trim()}
                         </button>
                     ))}
-                </div>
+                </nav>
 
-                {/* Header Action Buttons */}
-                <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
+                {/* Action Buttons (Clean text, no enclosing box) */}
+                <div className="flex items-center gap-5 sm:gap-6 shrink-0">
                     <button
                         onClick={() => onEnterDashboard && onEnterDashboard('auth')}
-                        className="px-2 sm:px-3.5 py-1.5 rounded-lg text-xs font-medium text-[var(--text-muted,#94a3b8)] hover:text-[var(--text-primary,#f8fafc)] transition-colors cursor-pointer"
+                        className="text-xs font-medium text-neutral-400 hover:text-white transition-colors cursor-pointer py-1"
                     >
                         Sign In
                     </button>
                     <button
                         onClick={() => onEnterDashboard && onEnterDashboard(current.id)}
-                        className="px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs font-semibold bg-[var(--accent,#38bdf8)] hover:brightness-110 text-slate-950 transition-all shadow-sm active:scale-95 cursor-pointer flex items-center gap-1.5"
+                        className="text-xs font-medium text-white hover:text-neutral-300 transition-colors cursor-pointer flex items-center gap-1.5 py-1"
                     >
-                        <span>Launch</span>
-                        <ArrowRight className="w-3.5 h-3.5 text-slate-950 hidden sm:inline" />
+                        <span>Launch Workspace</span>
+                        <ArrowRight className="w-3.5 h-3.5 text-neutral-400" />
                     </button>
                 </div>
             </header>
 
             {/* 3. Main Showcase Section */}
-            <main className="relative z-20 flex-1 w-full px-3 sm:px-8 py-3 sm:py-4 overflow-y-auto lg:overflow-hidden flex items-start lg:items-center justify-start lg:justify-center">
-                <div className="w-full max-w-[1700px] mx-auto my-0 lg:my-auto grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-8 lg:gap-10 items-center">
+            <main className="relative z-20 flex-1 w-full px-4 sm:px-8 py-4 sm:py-6 overflow-y-auto lg:overflow-hidden flex items-start lg:items-center justify-start lg:justify-center" style={{ backgroundColor: 'transparent' }}>
+                <div className="w-full max-w-[1600px] mx-auto grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-10 items-center">
 
-                    {/* MOBILE HERO TITLE */}
-                    <div className="block lg:hidden col-span-1 space-y-1 text-center shrink-0 px-1 pt-1">
-                        <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight text-white leading-tight">
-                            GeoSphere 360° Mobile Mapping Platform
-                        </h1>
-                        <p className="text-[11px] sm:text-xs text-slate-400 font-normal leading-relaxed max-w-md mx-auto">
-                            Centralizing spatial data pipelines with high-precision trajectory tracking, PostGIS cloud synchronization, and frame-by-frame spherical QA auditing.
-                        </p>
-                    </div>
+                    {/* Left Narrative Panel (Spacious, Typography-Driven, No Card Boxes) */}
+                    <div className={`w-full lg:col-span-5 space-y-5 text-left flex flex-col justify-center order-2 lg:order-1 pb-6 lg:pb-0 transition-all duration-200 ease-out ${isAnimating ? 'opacity-0 translate-y-1' : 'opacity-100 translate-y-0'}`}>
 
-                    {/* NARRATIVE PANEL & MODULE CONTROLS (Left 5 cols on Desktop) */}
-                    <div className={`w-full lg:col-span-5 space-y-3.5 sm:space-y-5 text-left flex flex-col justify-center order-3 lg:order-1 pb-6 lg:pb-0 transition-all duration-300 ease-out ${isAnimating ? 'opacity-0 translate-y-1.5' : 'opacity-100 translate-y-0'}`}>
-
-                        {/* Desktop Hero Section */}
-                        <div className="hidden lg:block space-y-2 pb-2 border-b border-[var(--border-subtle,#1e2e4a)]">
-                            <h1 className="text-2xl lg:text-3xl xl:text-4xl font-extrabold tracking-tight text-[var(--text-primary,#f8fafc)] leading-[1.1]">
+                        {/* Title & Overview */}
+                        <div className="space-y-1.5 pb-2 border-b border-white/10">
+                            <h1 className="text-2xl sm:text-3xl xl:text-4xl font-extrabold tracking-tight text-white leading-[1.1]">
                                 GeoSphere 360° Mobile Mapping Platform
                             </h1>
-
-                            <p className="text-xs text-[var(--text-muted,#94a3b8)] font-normal leading-relaxed">
+                            <p className="text-xs text-neutral-400 font-normal leading-relaxed">
                                 Centralizing spatial data pipelines with high-precision trajectory tracking, PostGIS cloud synchronization, and frame-by-frame spherical QA auditing.
                             </p>
                         </div>
 
-                        {/* Active Module Details */}
-                        <div className="space-y-2.5 pt-0.5">
+                        {/* Active Module Details (Pure monochromatic text) */}
+                        <div className="space-y-2">
                             <div className="flex items-center justify-between">
-                                <span
-                                    className="text-xs sm:text-sm font-bold uppercase tracking-wider block"
-                                    style={{ color: current.accentColor }}
-                                >
+                                <span className="text-xs font-semibold tracking-wider uppercase text-neutral-400">
                                     {current.category}
                                 </span>
-                                <span className="text-[10px] sm:text-xs font-semibold tracking-wider text-[var(--text-muted,#94a3b8)] bg-[var(--bg-inner,#162138)] px-2 sm:px-2.5 py-0.5 rounded-full border border-[var(--border-subtle,#1e2e4a)] tabular-nums">
-                                    Module 0{activeIndex + 1} / 06
+                                <span className="text-xs font-mono text-neutral-500 tabular-nums">
+                                    0{activeIndex + 1} / 0{SYSTEM_MODULES.length}
                                 </span>
                             </div>
 
-                            <div className="space-y-1">
-                                <h2 className="text-lg sm:text-2xl font-extrabold tracking-tight text-[var(--text-primary,#f8fafc)] leading-tight">
-                                    {current.title}
-                                </h2>
-                                <p className="text-[11px] sm:text-xs text-[var(--text-muted,#94a3b8)] font-normal leading-relaxed line-clamp-3 sm:line-clamp-none">
-                                    {current.description}
-                                </p>
-                            </div>
+                            <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-white leading-tight">
+                                {current.title}
+                            </h2>
 
-                            {/* Technical Workflow Flow (3-Step Pipeline) */}
-                            {current.workflow && current.workflow.length > 0 && (
-                                <div className="space-y-1 pt-0.5">
-                                    <div className="flex items-center gap-1.5 text-[10px] sm:text-[11px] font-semibold text-[var(--text-muted,#94a3b8)]">
-                                        <Workflow className="w-3 h-3 text-[var(--text-muted,#94a3b8)]" />
-                                        <span>Technical Execution Flow</span>
-                                    </div>
-                                    <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
-                                        {current.workflow.map((wf, idx) => (
-                                            <div
-                                                key={idx}
-                                                className="p-1.5 sm:p-2 rounded-xl bg-[var(--bg-inner,#162138)] border border-[var(--border-subtle,#1e2e4a)] text-left min-w-0"
-                                            >
-                                                <span className="text-[9.5px] font-sans font-bold block" style={{ color: current.accentColor }}>
-                                                    {wf.step}
-                                                </span>
-                                                <span className="text-[10px] sm:text-[11px] font-medium text-[var(--text-primary,#f8fafc)] block mt-0.5 line-clamp-2 leading-tight">
-                                                    {wf.action}
-                                                </span>
+                            <p className="text-xs sm:text-sm text-neutral-300 font-normal leading-relaxed">
+                                {current.description}
+                            </p>
+                        </div>
+
+                        {/* Clean Execution Pipeline (No colored text, clean monospace steps) */}
+                        {current.workflow && current.workflow.length > 0 && (
+                            <div className="space-y-2 pt-1">
+                                <span className="text-[11px] font-semibold uppercase tracking-wider text-neutral-400 block">
+                                    Execution Flow
+                                </span>
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-1">
+                                    {current.workflow.map((wf, idx) => (
+                                        <div key={idx} className="space-y-1">
+                                            <div className="text-[11px] font-mono font-medium text-neutral-300 tracking-wide">
+                                                {wf.step}
                                             </div>
-                                        ))}
-                                    </div>
+                                            <div className="text-xs text-neutral-400 font-normal leading-relaxed">
+                                                {wf.action}
+                                            </div>
+                                        </div>
+                                    ))}
                                 </div>
-                            )}
+                            </div>
+                        )}
 
-                            {/* Technical Specifications HUD */}
-                            <div className="grid grid-cols-3 gap-1.5 sm:gap-2 pt-0.5">
+                        {/* Clean Specifications Row (No Boxes, Minimalist Definition Line) */}
+                        <div className="pt-2 border-t border-white/10 space-y-2">
+                            <span className="text-[11px] font-semibold uppercase tracking-wider text-neutral-400 block">
+                                Architecture &amp; System Specs
+                            </span>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-1">
                                 {current.specs.map((spec, i) => (
-                                    <div
-                                        key={i}
-                                        className="p-1.5 sm:p-2 rounded-xl bg-[var(--bg-inner,#162138)] border border-[var(--border-subtle,#1e2e4a)] backdrop-blur-md min-w-0"
-                                    >
-                                        <span className="text-[9px] xs:text-[10px] font-medium text-[var(--text-muted,#94a3b8)] block truncate">
+                                    <div key={i} className="space-y-0.5">
+                                        <span className="text-[11px] text-neutral-500 block">
                                             {spec.label}
                                         </span>
-                                        <span className="text-[10.5px] xs:text-xs font-semibold text-[var(--text-primary,#f8fafc)] block mt-0.5 truncate">
+                                        <span className="text-xs font-medium text-neutral-200 block truncate">
                                             {spec.value}
                                         </span>
                                     </div>
                                 ))}
                             </div>
+                        </div>
 
-                            {/* Launch Action Button */}
-                            <div className="pt-1">
-                                <button
-                                    onClick={() => onEnterDashboard && onEnterDashboard(current.id)}
-                                    className="w-full sm:w-auto px-5 sm:px-6 py-2.5 rounded-xl font-semibold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all transform hover:brightness-110 active:scale-95 cursor-pointer shadow-lg bg-[var(--accent,#38bdf8)] text-slate-950"
-                                >
-                                    <span>Enter System Module</span>
-                                    <ArrowRight className="w-4 h-4" />
-                                </button>
+                        {/* Button with grey outer box without filled color */}
+                        <div className="pt-1 flex flex-wrap items-center gap-4">
+                            <button
+                                onClick={() => onEnterDashboard && onEnterDashboard(current.id)}
+                                className="px-5 py-2.5 rounded-xl font-medium text-xs sm:text-sm flex items-center justify-center gap-2 transition-all border border-neutral-700 hover:border-neutral-500 bg-transparent text-neutral-200 hover:text-white hover:bg-white/5 cursor-pointer shadow-sm active:scale-95"
+                            >
+                                <span>Enter {current.title.split('&')[0].trim()}</span>
+                                <ArrowRight className="w-4 h-4 text-neutral-300" />
+                            </button>
+
+                            <div className="text-xs text-neutral-400 flex items-center gap-1.5">
+                                <span>{current.metricLabel}:</span>
+                                <span className="font-semibold text-white">{current.metricValue}</span>
                             </div>
                         </div>
 
-                        {/* Bottom Professional WebGIS Introduction */}
-                        <div className="pt-1 text-left space-y-1.5">
-                            <p className="text-[11px] sm:text-xs text-[var(--text-muted,#94a3b8)] font-normal leading-relaxed">
-                                <span className="text-[var(--text-primary,#f8fafc)] font-medium">Get started quickly with</span> our high-precision WebGIS coverage map, automated batch ingestion pipelines, frame-by-frame 360° equirectangular defect auditing, and cloud-synchronized PostGIS spatial intelligence.
-                            </p>
-                            <p className="text-[11px] sm:text-xs text-[var(--text-muted,#94a3b8)] font-normal leading-relaxed">
-                                The platform runs on <span className="text-[var(--text-primary,#f8fafc)] font-medium">two tracks</span>: the <strong>WebGIS · Published View</strong> (what TNB sees live on the map) and the <strong>Production Pipeline</strong> (the internal processing that builds it, from RAW intake through acceptance QA to the deliverable pack).
-                            </p>
-                            <p className="text-[11px] sm:text-xs text-[var(--text-muted,#94a3b8)] font-normal leading-relaxed">
-                                The previews below are representative screenshots of the live modules. The interactive maps and 360° viewers render inside the workspaces themselves.
-                            </p>
-
-                            {/* Minimal System Metadata Footer */}
-                            <div className="pt-2 border-t border-[var(--border-subtle,#1e2e4a)] flex flex-wrap items-center gap-x-4 gap-y-1 text-[var(--text-muted,#94a3b8)] text-[10px] sm:text-xs">
-                                <div className="flex items-center gap-1.5">
-                                    <span className="text-[var(--text-muted,#94a3b8)] opacity-70">Platform:</span>
-                                    <span className="font-semibold text-[var(--text-primary,#f8fafc)]">Mobile Mapping System</span>
-                                </div>
-                                <div className="flex items-center gap-1.5">
-                                    <span className="text-[var(--text-muted,#94a3b8)] opacity-70">DB:</span>
-                                    <span className="font-semibold text-[var(--text-primary,#f8fafc)]">PostGIS + Supabase</span>
-                                </div>
-                                <div className="flex items-center gap-1.5">
-                                    <span className="text-[var(--text-muted,#94a3b8)] opacity-70">Renderer:</span>
-                                    <span className="font-semibold text-[var(--text-primary,#f8fafc)]">MapLibre GL + {viewerDisplayName}</span>
-                                </div>
+                        {/* Minimal System Metadata Footer */}
+                        <div className="pt-2 border-t border-white/10 flex flex-wrap items-center gap-x-6 gap-y-1 text-neutral-400 text-xs">
+                            <div>
+                                <span className="text-neutral-500">Database: </span>
+                                <span className="text-neutral-300 font-medium">PostGIS + Supabase</span>
+                            </div>
+                            <div>
+                                <span className="text-neutral-500">Renderer: </span>
+                                <span className="text-neutral-300 font-medium">MapLibre GL + {viewerDisplayName}</span>
+                            </div>
+                            <div>
+                                <span className="text-neutral-500">Mode: </span>
+                                <span className="text-neutral-300 font-medium">Published &amp; Production</span>
                             </div>
                         </div>
 
                     </div>
 
-                    {/* SCREENSHOT DECK & INTERACTIVE SECTION HOTSPOTS (Right 7 cols on Desktop) */}
+                    {/* Right Screenshot Preview Frame */}
                     <div
                         onTouchStart={handleTouchStart}
                         onTouchEnd={handleTouchEnd}
-                        className={`w-full lg:col-span-7 flex flex-col justify-center group relative order-2 lg:order-2 transition-all duration-300 ease-out touch-pan-y ${isAnimating ? 'opacity-0 scale-[0.995]' : 'opacity-100 scale-100'}`}
+                        className={`w-full lg:col-span-7 flex flex-col justify-center order-1 lg:order-2 transition-all duration-200 ease-out touch-pan-y ${isAnimating ? 'opacity-0 scale-[0.99]' : 'opacity-100 scale-100'}`}
                     >
-                        {/* Ambient Underglow */}
-                        <div className="absolute -inset-3 sm:-inset-6 rounded-3xl overflow-hidden pointer-events-none opacity-30 group-hover:opacity-50 blur-xl sm:blur-3xl transition-all duration-500 ease-out -z-10">
-                            <img
-                                src={activeImage}
-                                alt="Underglow"
-                                loading="eager"
-                                decoding="async"
-                                className="w-full h-full object-cover scale-110"
-                            />
-                        </div>
+                        <div className="w-full aspect-[16/10] p-3 sm:p-4 rounded-2xl bg-neutral-900/70 backdrop-blur-xl border border-white/10 shadow-2xl flex flex-col justify-between overflow-hidden">
 
-                        {/* Preview Frame Container */}
-                        <div className="relative w-full aspect-[16/10] p-2.5 sm:p-3.5 rounded-2xl bg-[var(--bg-card,#0f172a)] border border-[var(--border-subtle,#1e2e4a)] shadow-2xl flex flex-col justify-between overflow-hidden transition-colors duration-200">
-
-                            {/* Top Subtitle Bar */}
-                            <div className="flex items-center justify-between px-1 pb-1.5 border-b border-[var(--border-subtle,#1e2e4a)]">
-                                <span className="text-[10px] sm:text-xs font-semibold text-[var(--text-primary,#f8fafc)] truncate pr-2">
+                            {/* Subtitle & Image Counter */}
+                            <div className="flex items-center justify-between px-1 pb-2 border-b border-white/10">
+                                <span className="text-xs font-medium text-neutral-200 truncate pr-2">
                                     {current.subtitle}
                                 </span>
-                                <span className="text-[9px] sm:text-xs font-medium text-[var(--text-muted,#94a3b8)] shrink-0">
+                                <span className="text-xs font-mono text-neutral-400 shrink-0">
                                     {activePhotoIdx + 1} / {current.images.length}
                                 </span>
                             </div>
 
-                            {/* Viewport Image (Clean Unobstructed Screenshot) */}
-                            <div className="relative w-full flex-1 rounded-xl bg-[var(--bg-inner,#162138)] border border-[var(--border-subtle,#1e2e4a)] overflow-hidden flex items-center justify-center my-1.5 sm:my-2">
+                            {/* Viewport Image Frame */}
+                            <div className="relative w-full flex-1 rounded-xl bg-black border border-white/10 overflow-hidden flex items-center justify-center my-2">
                                 <img
                                     key={activeImage}
                                     src={activeImage}
                                     alt={current.title}
                                     loading="eager"
                                     decoding="async"
-                                    fetchPriority="high"
                                     className="w-full h-full object-contain object-center transition-opacity duration-200"
                                 />
                             </div>
 
-                            {/* Active Section Tip Details (Clean Text Only) */}
+                            {/* Active Section Tip Details */}
                             {activeHotspot && (
-                                <div className="mb-1.5 p-2 sm:p-2.5 rounded-xl bg-[var(--bg-inner,#162138)] border border-[var(--border-subtle,#1e2e4a)] text-left animate-in fade-in duration-150">
-                                    <div className="flex items-center justify-between gap-2 pb-1 border-b border-[var(--border-subtle,#1e2e4a)]/50">
-                                        <div className="flex items-center gap-1.5 min-w-0">
-                                            <span className="text-[10.5px] font-bold text-[var(--text-primary,#f8fafc)] truncate">
+                                <div className="mb-2 p-2.5 rounded-xl bg-neutral-900/95 border border-white/10 text-left animate-in fade-in duration-150">
+                                    <div className="flex items-center justify-between gap-2 pb-1 border-b border-white/10">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xs font-semibold text-white">
                                                 {activeHotspot.title}
                                             </span>
-                                            <span className="text-[9.5px] text-[var(--text-muted,#94a3b8)]">
-                                                • {activeHotspot.tag}
+                                            <span className="text-[11px] text-neutral-400">
+                                                &bull; {activeHotspot.tag}
                                             </span>
                                         </div>
                                         <button
                                             onClick={() => setActiveHotspotId(null)}
-                                            className="text-[9px] text-[var(--text-muted,#94a3b8)] hover:text-[var(--text-primary,#f8fafc)] cursor-pointer"
+                                            className="text-[11px] text-neutral-400 hover:text-white cursor-pointer"
                                         >
                                             Dismiss
                                         </button>
                                     </div>
-                                    <p className="text-[10.5px] text-[var(--text-muted,#94a3b8)] mt-1 leading-relaxed">
+                                    <p className="text-xs text-neutral-300 mt-1 leading-relaxed">
                                         {activeHotspot.description}
                                     </p>
-                                    <div className="mt-1 flex items-start gap-1 text-[10px] text-[var(--text-primary,#f8fafc)] font-medium">
-                                        <Lightbulb className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
-                                        <span><strong className="text-amber-300 font-semibold">Tip: </strong>{activeHotspot.tip}</span>
+                                    <div className="mt-1 text-[11px] text-neutral-300 font-normal">
+                                        <span className="font-semibold text-white">Tip: </span>
+                                        {activeHotspot.tip}
                                     </div>
                                 </div>
                             )}
 
-                            {/* Section Explorer Tabs (Clean Text Only, No Numbers) */}
-                            <div className="pt-1 border-t border-[var(--border-subtle,#1e2e4a)]">
-                                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
-                                    <span className="text-[9.5px] font-semibold uppercase tracking-wider text-[var(--text-muted,#94a3b8)] shrink-0 mr-0.5">
+                            {/* Section Highlights Selector */}
+                            <div className="pt-2 border-t border-white/10 flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 no-scrollbar flex-1">
+                                    <span className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500 shrink-0 mr-1">
                                         Sections:
                                     </span>
                                     {current.hotspots.map((spot) => {
@@ -873,11 +846,10 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                                         return (
                                             <button
                                                 key={spot.id}
-                                                onMouseEnter={() => setActiveHotspotId(spot.id)}
                                                 onClick={() => setActiveHotspotId(isSelected ? null : spot.id)}
-                                                className={`px-2.5 py-1 rounded-lg text-[10.5px] font-medium transition-all cursor-pointer shrink-0 border ${isSelected
-                                                    ? 'bg-[var(--accent,#38bdf8)] text-slate-950 font-semibold border-white/20 shadow-sm'
-                                                    : 'bg-[var(--bg-inner,#162138)] text-[var(--text-muted,#94a3b8)] hover:text-[var(--text-primary,#f8fafc)] border-[var(--border-subtle,#1e2e4a)]'
+                                                className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors cursor-pointer shrink-0 ${isSelected
+                                                    ? 'bg-white/20 text-white font-medium shadow-sm'
+                                                    : 'text-neutral-400 hover:text-white hover:bg-white/10'
                                                     }`}
                                             >
                                                 <span>{spot.title.split(':')[0].replace(/Station \d+: /, '')}</span>
@@ -885,31 +857,30 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                                         );
                                     })}
                                 </div>
-                            </div>
 
-                            {/* Thumbnail Selector Bar */}
-                            {current.images.length > 1 && (
-                                <div className="flex items-center gap-1.5 sm:gap-2 pt-1.5 overflow-x-auto pb-0.5 no-scrollbar">
-                                    {current.images.map((imgUrl, idx) => (
-                                        <button
-                                            key={idx}
-                                            onClick={() => setActivePhotoIdx(idx)}
-                                            className={`relative h-7 w-12 sm:h-10 sm:w-16 rounded-lg overflow-hidden border transition-all cursor-pointer shrink-0 ${activePhotoIdx === idx
-                                                ? 'border-[var(--accent,#38bdf8)] ring-2 ring-[var(--accent,#38bdf8)]/30 opacity-100'
-                                                : 'border-[var(--border-subtle,#1e2e4a)] opacity-60 hover:opacity-100'
-                                                }`}
-                                        >
-                                            <img
-                                                src={imgUrl}
-                                                alt={`Preview ${idx + 1}`}
-                                                loading="eager"
-                                                decoding="async"
-                                                className="w-full h-full object-cover object-top"
-                                            />
-                                        </button>
-                                    ))}
-                                </div>
-                            )}
+                                {/* Thumbnail previews */}
+                                {current.images.length > 1 && (
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                        {current.images.map((imgUrl, idx) => (
+                                            <button
+                                                key={idx}
+                                                onClick={() => setActivePhotoIdx(idx)}
+                                                className={`h-6 w-9 rounded-md overflow-hidden border transition-all cursor-pointer ${activePhotoIdx === idx
+                                                    ? 'border-white ring-1 ring-white/40 opacity-100'
+                                                    : 'border-white/10 opacity-50 hover:opacity-90'
+                                                    }`}
+                                            >
+                                                <img
+                                                    src={imgUrl}
+                                                    alt={`Preview ${idx + 1}`}
+                                                    loading="eager"
+                                                    className="w-full h-full object-cover object-top"
+                                                />
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
 
                         </div>
                     </div>
@@ -917,30 +888,28 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                 </div>
             </main>
 
-            {/* 4. Pinned Footer Navigation Controls */}
-            <footer className="relative z-30 w-full px-3 sm:px-8 py-2 sm:py-2.5 flex items-center justify-between border-t border-[var(--border-subtle,#1e2e4a)] bg-[var(--bg-card,#0f172a)]/95 backdrop-blur-md shrink-0 transition-colors duration-200">
+            {/* 4. Pinned Footer Navigation Controls (Pure solid black, neutral gray dots, no blue) */}
+            <footer className="relative z-30 w-full px-4 sm:px-8 py-3 flex items-center justify-between border-t border-white/10 bg-black shrink-0">
                 <button
                     onClick={() => handleModuleChange((activeIndex - 1 + SYSTEM_MODULES.length) % SYSTEM_MODULES.length)}
-                    className="flex items-center gap-1.5 sm:gap-3 opacity-80 hover:opacity-100 transition-all cursor-pointer p-1 -m-1"
+                    className="flex items-center gap-2 text-neutral-400 hover:text-white transition-colors cursor-pointer group"
                 >
-                    <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg border border-[var(--border-subtle,#1e2e4a)] bg-[var(--bg-inner,#162138)] flex items-center justify-center">
-                        <ChevronLeft className="w-4 h-4 text-[var(--text-primary,#f8fafc)]" />
-                    </div>
+                    <ChevronLeft className="w-4 h-4 text-neutral-400 group-hover:text-white transition-colors" />
                     <div className="hidden sm:block text-left">
-                        <span className="text-[10px] text-[var(--text-muted,#94a3b8)] block">Previous</span>
-                        <span className="text-xs font-semibold text-[var(--text-primary,#f8fafc)]">{prevModule.title.split('&')[0]}</span>
+                        <span className="text-[10px] text-neutral-500 block uppercase tracking-wider font-semibold">Previous</span>
+                        <span className="text-xs font-medium text-neutral-300 group-hover:text-white">{prevModule.title.split('&')[0]}</span>
                     </div>
                 </button>
 
-                {/* Step Indicator Dots with Tooltip */}
-                <div className="flex items-center gap-1.5 sm:gap-2">
+                {/* Step Indicator Dots */}
+                <div className="flex items-center gap-2">
                     {SYSTEM_MODULES.map((mod, idx) => (
                         <button
                             key={mod.id}
                             onClick={() => handleModuleChange(idx)}
-                            className={`h-2 rounded-full transition-all cursor-pointer p-1 -my-1 ${activeIndex === idx
-                                ? 'w-5 sm:w-6 bg-[var(--accent,#38bdf8)]'
-                                : 'w-2 bg-[var(--border-subtle,#1e2e4a)] hover:bg-[var(--text-muted,#94a3b8)]'
+                            className={`h-2 rounded-full transition-all cursor-pointer ${activeIndex === idx
+                                ? 'w-6 bg-white'
+                                : 'w-2 bg-neutral-700 hover:bg-neutral-500'
                                 }`}
                             title={`Module 0${idx + 1}: ${mod.title}`}
                         />
@@ -949,15 +918,13 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
 
                 <button
                     onClick={() => handleModuleChange((activeIndex + 1) % SYSTEM_MODULES.length)}
-                    className="flex items-center gap-1.5 sm:gap-3 opacity-80 hover:opacity-100 transition-all cursor-pointer p-1 -m-1"
+                    className="flex items-center gap-2 text-neutral-400 hover:text-white transition-colors cursor-pointer group"
                 >
                     <div className="hidden sm:block text-right">
-                        <span className="text-[10px] text-[var(--text-muted,#94a3b8)] block">Next</span>
-                        <span className="text-xs font-semibold text-[var(--text-primary,#f8fafc)]">{nextModule.title.split('&')[0]}</span>
+                        <span className="text-[10px] text-neutral-500 block uppercase tracking-wider font-semibold">Next</span>
+                        <span className="text-xs font-medium text-neutral-300 group-hover:text-white">{nextModule.title.split('&')[0]}</span>
                     </div>
-                    <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg border border-[var(--border-subtle,#1e2e4a)] bg-[var(--bg-inner,#162138)] flex items-center justify-center">
-                        <ChevronRight className="w-4 h-4 text-[var(--text-primary,#f8fafc)]" />
-                    </div>
+                    <ChevronRight className="w-4 h-4 text-neutral-400 group-hover:text-white transition-colors" />
                 </button>
             </footer>
 

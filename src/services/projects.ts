@@ -46,6 +46,7 @@ export interface ProjectScope {
   targetDeadline?: string;
   enableBBoxFilter?: boolean;
   projectBoundary?: unknown;
+  theme?: string;
 }
 
 export interface UserProject {
@@ -473,6 +474,7 @@ export interface ProjectSettingsPatch {
   targetDeadline?: string;
   enableBBoxFilter?: boolean;
   projectBoundary?: unknown;
+  theme?: string;
 }
 
 export function applyProjectScope(
@@ -504,6 +506,7 @@ export function applyProjectScope(
     patch.maxLat = Number(s.bbox[3]);
   }
   if (s.basemap) patch.defaultBasemapStyle = s.basemap;
+  if (s.theme) patch.theme = s.theme;
   if (s.equipment) patch.defaultEquipment = s.equipment;
   // Target SLA benchmarks: default to 0 for fresh/new projects instead of inheriting previous project's target
   patch.targetKm = typeof s.targetKm === 'number' ? s.targetKm : 0;

@@ -125,8 +125,8 @@ function safeSupabaseFetch(input: RequestInfo | URL, init?: RequestInit): Promis
     typeof input === 'string'
       ? input
       : input instanceof URL
-      ? input.toString()
-      : (input as Request)?.url || '';
+        ? input.toString()
+        : (input as Request)?.url || '';
 
   let headers: Headers;
   if (init?.headers instanceof Headers) {
@@ -2284,7 +2284,7 @@ export async function fetchUserAccountsFromSupabase(currentSession?: any): Promi
 
       // Opportunistically sync active user to public.user_accounts
       if (!existing) {
-        saveUserAccountToSupabase([sessionUserData]).catch(() => {});
+        saveUserAccountToSupabase([sessionUserData]).catch(() => { });
       }
     }
   } catch (err) {

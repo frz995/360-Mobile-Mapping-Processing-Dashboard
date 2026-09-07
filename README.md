@@ -1,113 +1,184 @@
-# TNB 360° Mobile Mapping System (MMS) — Processing Dashboard
+# GeoSphere 360 - Mobile Mapping System (MMS) Processing Dashboard
 
-> Executive WebGIS dashboard for Tenaga Nasional Berhad (TNB) Low Voltage Asset Mapping. Built for 360° StreetView panorama processing, spatial trajectory monitoring, quality control (QA/QC), vector layer management, and database administration.
-
----
-
-## 📌 Project Overview & Technical Context
-
-* **Project Scope**: TNB Low Voltage Asset Subgrid Mapping
-* **Target Trajectory**: 315.2 km (~50,000 Equirectangular Panoramas)
-* **Active Subgrids**: `N93E70`, `N94E70`, `N94E71`, `N90E67`
-* **Equipment Units**: MMS Vehicle Unit / Backpack Mobile Unit
-* **Database & Storage**: PostgreSQL 15 + PostGIS 3.3 (Supabase Cloud) & Supabase Storage (`/MMS_PIC/`, `/vector_layers/`)
+Executive WebGIS and spatial intelligence processing dashboard for Tenaga Nasional Berhad (TNB) Low Voltage Asset Mapping. Built for large-scale 360-degree StreetView panorama ingestion, spatial trajectory monitoring, quality assurance auditing, vector layer catalog management, image processing pipeline automation, and multi-user project campaign governance.
 
 ---
 
-## 🚦 The Two Tracks (mental model)
+## Technical Overview and Context
 
-The platform runs on **two tracks**. Knowing which one you are in is the key to using the system correctly:
+* Organization: Tenaga Nasional Berhad (TNB)
+* System Scope: Low Voltage Asset Mapping and Spatial Intelligence Pipeline
+* Target Trajectory: 315.2 km (~50,000 Equirectangular Panoramas)
+* Operational Subgrids: N93E70, N94E70, N94E71, N90E67
+* Mobile Units: MMS Vehicle Survey Rig and Backpack Mobile Survey Unit
+* Database and Geospatial Engine: PostgreSQL 15 with PostGIS 3.3 hosted on Supabase Cloud
+* Storage Infrastructure: Supabase Storage buckets for MMS photography (/MMS_PIC/) and vector assets (/vector_layers/)
 
-| Track | What it is | Workspaces (nav group) |
+---
+
+## Dual Track System Architecture
+
+The application is architected around two core operational tracks that maintain strict separation between field processing and executive consumption:
+
+| Track | Function | Associated Workspaces |
 | :--- | :--- | :--- |
-| **WebGIS · Published View** | What TNB sees **live on the map** — the published, QA-accepted result. Read-mostly view for management and public WebGIS consumption. | `Main Dashboard`, `Data Management`, `Survey Analytics`, `Reports`, `Road Analysis` |
-| **Production Pipeline** | The **internal processing** that builds the published view — RAW intake → blur → stitch → enhance → mask → acceptance QA → deliverable pack → published to WebGIS. Operator-facing factory. | `Production Workspace`, `Processing Center`, `Data Lineage`, `NAS / Raw Storage Manager` |
-| **Governance** | Cross-cutting control. | `Administration` |
+| WebGIS Published View | Public and executive monitoring track displaying live, QA-accepted survey data on interactive maps. Read-mostly interface for asset inspection and project progress reporting. | Main Dashboard, Data Management, Survey Analytics, Reports, Road Analysis |
+| Production Pipeline | Operator-facing factory track managing RAW data intake, automated privacy masking, image enhancement, QA acceptance, deliverable packing, and staging before publication. | Production Workspace, Processing Center, Data Lineage, NAS and Raw Storage Manager |
+| System Governance | Cross-cutting system administration, regional boundary definitions, storage endpoint controls, and access security. | Administration, Project Onboarding, Theme Selector |
 
-**Terminology note:** *Publish to WebGIS* (making data live on the public map) is **different** from the production *deliverable pack* (producing the final processed image set). *Staging/Staged* in the published view means **"not yet on the WebGIS"**, while the production pipeline's *Data staging* is an internal `staging_panoramas` step. Two tracks, one shared vocabulary — always check which track a term is being used in.
+### Staging versus Publishing Lifecycle
+* Staging Panoramas: Survey data ingested from vendor telemetry or field cameras is initially stored in a staged state (internal staging_panoramas table) where it undergo automated filtering and manual QA review.
+* Publishing to WebGIS: Once audit acceptance criteria are satisfied, panoramas transition to the published state, making them immediately queryable and visible on client WebGIS mapping interfaces.
 
 ---
 
-## 🛠️ Tech Stack & Core Services
+## Core System Modules
 
-| Component | Technologies & Service Modules |
+### 1. System Showcase and Landing Portal
+* Executive landing experience highlighting core system capabilities: WebGIS Trajectory Engine, 360 QA/QC Verification, Vector Asset Management, and Automated Processing Pipeline.
+* Dynamic workspace routing enabling direct module launch, secure authentication navigation, and live telemetry metric previews.
+* Clean, distraction-free visual layout with customizable backdrop styling and responsive navigation.
+
+### 2. Multi-Project Campaign Onboarding
+* Guided project initialization allowing operators to resume existing spatial campaigns or configure new survey initiatives.
+* Geographic boundary scoping supporting 11 regional Malaysian presets (Selangor and Kuala Lumpur, Johor, Perak, Pahang, Penang, Kedah, Perlis, Negeri Sembilan, Melaka, Terengganu, Kelantan, Sabah, Sarawak, Entire Malaysia) as well as custom GeoJSON bounding envelopes.
+* Coordinate Reference System (CRS) management covering WGS84 (EPSG:4326), Kertau 1948 RSO Malaya (EPSG:3168), and Timbalai 1948 (EPSG:29873).
+* Per-project theme persistence and custom branding configuration.
+
+### 3. Interactive WebGIS Trajectory Dashboard
+* Real-time spatial KPIs calculating cumulative surveyed distance using Haversine formulas, total processed frames, active subgrid completion percentages, and pipeline health scores.
+* Embedded WebGIS map integration using a bidirectional postMessage iframe handshake protocol (VIEWER_READY and VIEWER_ACK) with exponential retry backoff to eliminate cold-start drops.
+* Dynamic trajectory point rendering with synchronized heading arrows, active panorama location highlights, and subgrid boundary overlays.
+
+### 4. 360-Degree Panorama Inspector and QA/QC Workbench
+* WebGL-accelerated panorama viewer powered by PhotoSphereViewer v5 supporting standard equirectangular panoramas and multi-resolution cubemap tile pyramids.
+* Per-frame defect classification enabling auditors to flag issues such as Blurry Frame, Lens Obstruction, Camera Tilt, Bad GPS, and Overexposure.
+* Real-time Supabase defect synchronization storing audit run logs, inspector notes, and frame-level resolution states.
+
+### 5. Automated Image Processing Pipeline
+* Dedicated backend worker service (Python) handling automated privacy blurring for faces and vehicle license plates.
+* Photogrammetric contrast adjustment, color balancing, and shadow recovery routines.
+* Batch processing queue with progress telemetry, automated retry policies, and NAS storage synchronization.
+
+### 6. Vector Layer Catalog and Spatial Data Services
+* Ingestion engine for external vector datasets in GeoJSON, Shapefile (.shp/.dbf/.prj packaged in ZIP), KML, and GPX formats.
+* Layer tree persistence saving uploaded files to Supabase Storage and recording metadata in public.vector_layers_meta for cross-session restoration.
+* Bounding Box (BBOX) spatial filtering service generating structured trajectory CSV exports for external GIS tools (QGIS, ArcGIS).
+
+### 7. GPS Sanitization and Quality Gate
+* Coordinate validation routine (sanitizeCoordinates) that catches out-of-bounds, (0,0), null, or NaN coordinates and applies default subgrid centroid coordinates to prevent Null Island map rendering anomalies.
+* Staging validation checks preventing unverified coordinates from being promoted to the published WebGIS layer.
+
+---
+
+## Technology Stack
+
+| Layer | Technologies and Libraries |
 | :--- | :--- |
-| **Frontend Framework** | React 18 · TypeScript · Vite |
-| **UI Theme & Styling** | Tailwind CSS · Executive Dark Slate Theme (`#111827`, `#121824`) · Custom Light Overrides · Lucide React Icons · Recharts |
-| **GIS & Map Engine** | Leaflet WebGIS · Esri Satellite Imagery · MapLibre GL Helpers (`src/services/maplibreHelpers.ts`) |
-| **360° Panorama Viewers** | PhotoSphereViewer (`@photo-sphere-viewer/core` v5) with Equirectangular and Multi-Res/Cubemap Tile adapters (WebGL-backed) |
-| **Backend & Database** | Supabase Cloud (`@supabase/supabase-js` v2) · PostgreSQL 15 + PostGIS 3.3 (`public.panoramas`, `public.batch_logs`, `public.vector_layers_meta`) · Row Level Security (RLS) |
-| **Spatial Data Services** | `@tmcw/togeojson` (KML/GPX) · `shapefile` (`.shp` parser) · Native GeoJSON · `src/services/csvExport.ts` · `src/services/supabase.ts` |
+| Frontend Core | React 18, TypeScript, Vite |
+| Styling and Design | Vanilla CSS, Tailwind CSS, Custom Light and Dark Theme System |
+| 360 Panorama Viewers | PhotoSphereViewer v5 (@photo-sphere-viewer/core, equirectangular and cubemap adapters) |
+| Mapping and GIS | Leaflet, Esri World Imagery, MapLibre GL helpers, Turf.js |
+| Spatial File Parsers | @tmcw/togeojson (KML/GPX), shapefile (.shp parser), GeoJSON |
+| Backend and Database | Supabase Cloud, PostgreSQL 15, PostGIS 3.3, Row Level Security (RLS) |
+| Python Worker Services | Python 3.10+, OpenCV, FastAPI, Torch/YOLO image processing pipelines |
+| Charts and Metrics | Recharts, Lucide Icons |
 
 ---
 
-## 🚀 Implemented Modules & Features
-
-### 1. 📊 Interactive Processing Dashboard & Trajectory Monitoring
-* **Real-time Trajectory KPIs**: Tracks total trajectory distance (km via Haversine calculation), total processed frames, active subgrid counts, and pipeline health %.
-* **WebGIS Map Integration**: Embedded WebGIS viewer with cross-app bidirectional iframe sync protocol.
-
-### 2. 🔍 360° QA Inspector & Defect Auditing
-* **Rendering Engine**: PhotoSphereViewer v5 (equirectangular for single images, multi-res/cubemap tile engine for large imagery), WebGL-backed.
-* **Per-Frame QA Auditing**: Enables flagging defects (`Blurry Frame`, `Lens Obstruction`, `Bad GPS`) and syncs status in real-time to Supabase (`qa_status` & `defect_flags`).
-
-### 3. 🔄 Cold-Start Iframe Handshake Bridge
-* **`MapComponent` / embedded WebGIS iframe**: Implements a robust event handshake (`VIEWER_READY` / `VIEWER_ACK`) and a pending queue (`pendingPanoramaRef`) with exponential retries (100ms–3000ms) to prevent message drops during cold loads.
-
-### 4. 🛰️ Automatic GPS Sanitization & Staging Pipeline
-* **Coordinate Sanitizer (`sanitizeCoordinates` in `supabase.ts`)**: Auto-detects `(0,0)`, `NaN`, `null`, or out-of-bounds coordinates, assigning safe default subgrid centroids (`SUBGRID_COORDINATES`) to eliminate "Null Island" map rendering bugs.
-* **CSV Staging Pipeline**: Ingests vendor telemetry CSVs in preview mode (status `Not published`) until clicking **Publish to WebGIS**.
-
-### 5. 🗂️ Supabase-Persisted Vector Layer Catalog
-* **Storage & Metadata Persistence**: Uploaded GeoJSON, KML, GPX, and Shapefile layers are stored in Supabase Storage (`vector_layers` bucket) and tracked in `vector_layers_meta`, restoring layer catalog trees automatically across sessions.
-
-### 6. 🗺️ MapLibre GL Rendering Helpers
-* **`src/services/maplibreHelpers.ts`**: Provides `style.load` guards, separates GeoJSON sources into distinct `'line'` (trajectory route) and `'circle'` (point markers) layers, and enforces Z-index layer order.
-
-### 7. 📥 Automated BBOX Spatial CSV Exporter
-* **`src/services/csvExport.ts`**: Filters spatial trajectory points within user-defined bounding boxes (`minLon, minLat, maxLon, maxLat`) and triggers instant browser CSV file downloads.
-
-### 8. ⚙️ Advanced Project Settings & Regional BBOX Administration
-* **Malaysia Project Region BBOX Selector**: Configure bounding box bounds dynamically across 11 Malaysian regions (`Selangor/KL`, `Johor`, `Negeri Sembilan & Melaka`, `Perak`, `Penang/Kedah/Perlis`, `Pahang`, `Terengganu/Kelantan`, `Sarawak`, `Sabah`, `Entire Malaysia`, `Custom`).
-* **Dynamic Storage & Persistence Controls**: Configure image fetch sources (`Local WebServer`, `Supabase Storage MMS_PIC Cloud`, `AWS S3 Proxy`) and GIS vector layer catalog persistence buckets.
-
----
-
-## 📁 Key Service Modules
+## Repository Structure
 
 ```
-src/
-├── components/
-│   ├── PhotoSphereViewerComponent.tsx  # PhotoSphereViewer v5 Inspectors (equirect + tile)
-│   ├── QAQCWorkbench.tsx               # 360° QA defect workbench
-│   └── MapComponent.tsx                # Embedded WebGIS iframe + handshake bridge
-├── services/
-│   ├── supabase.ts                     # Supabase Cloud, PostGIS, GPS Sanitizer & Layer Persistence
-│   ├── maplibreHelpers.ts              # MapLibre GL style.load guards & layer separation
-│   └── csvExport.ts                    # BBOX spatial point filtering & CSV download export
-├── App.tsx                             # Monolithic Dashboard application controller
-└── main.tsx                            # React root entrypoint
+.
+├── public/
+│   ├── branding/               # Vector SVG and transparent brand logo assets
+│   └── screenshots/            # System backdrops and media assets
+├── src/
+│   ├── components/
+│   │   ├── boundary/           # Malaysia regional boundaries and district GeoJSON
+│   │   ├── common/             # Shared UI components (Toaster, Loading, Brand Logo)
+│   │   ├── dashboard/          # Summary metrics, charts, and operational widgets
+│   │   ├── production/         # Production pipeline components and staging cards
+│   │   ├── DataManagementPage.tsx   # Subgrid records and dataset management
+│   │   ├── MapComponent.tsx         # Embedded WebGIS viewer and handshake bridge
+│   │   ├── PhotoSphereViewerComponent.tsx # 360 panoramic WebGL inspector
+│   │   ├── ProjectOnboarding.tsx    # Multi-project gate, campaign wizard, and resume
+│   │   ├── QAQCWorkbench.tsx        # Defect auditing and frame-by-frame QA tools
+│   │   ├── SystemShowcase.tsx       # Landing showcase and module overview portal
+│   │   └── ThemeSelector.tsx        # System theme customization controls
+│   ├── lib/
+│   │   └── i18n.ts             # Multilingual dictionary (English and Bahasa Malaysia)
+│   ├── services/
+│   │   ├── csvExport.ts        # BBOX spatial trajectory point exporter
+│   │   ├── maplibreHelpers.ts  # MapLibre GL layer management and source guards
+│   │   ├── projects.ts         # User project persistence and campaign management
+│   │   └── supabase.ts         # Database operations, PostGIS queries, GPS sanitization
+│   ├── utils/
+│   │   └── hashRouter.ts       # Hash-based zero-dependency workspace router
+│   ├── App.tsx                 # Root application controller and workspace coordinator
+│   ├── main.tsx                # Application mounting entry point
+│   ├── index.css               # Base Tailwind CSS rules
+│   └── themes.css              # Dark/light theme color tokens and CSS variables
+├── worker/                     # Python-based automated image processing pipeline
+│   ├── app.py                  # Processing service API
+│   ├── blur.py                 # Privacy blurring implementation
+│   ├── enhancement.py          # Contrast and color correction
+│   └── runner.py               # Job queue runner and task dispatcher
+├── package.json
+├── tsconfig.json
+└── vite.config.ts
 ```
 
 ---
 
-## 🔒 Security & Database RLS
+## Security and Access Governance
 
-Row Level Security (RLS) policies configured on `public.panoramas`, `public.batch_logs`, and `public.vector_layers_meta`:
-* **Public Role**: Read-Only access (`SELECT`) for map rendering and 360 viewing.
-* **Authenticated Role**: Full Write access (`INSERT`, `UPDATE`, `DELETE`) restricted to authenticated administrators.
+Database security is enforced at the database engine level via PostgreSQL Row Level Security (RLS) on all spatial and telemetry tables:
+* Public Role: Read-only access (SELECT) restricted to published panoramas and approved vector metadata for public map consumption.
+* Authenticated Role: Full read-write access (INSERT, UPDATE, DELETE) restricted to authorized survey administrators and production operators.
+* Supabase Access Authentication: Email/password authentication gate with session persistence and guest access exploration mode.
 
 ---
 
-## 🛠️ Quick Start
+## Quick Start and Local Development
+
+### Prerequisites
+* Node.js 18.x or higher
+* npm 9.x or higher
+* Python 3.10+ (for background image processing worker)
+
+### Installation
 
 ```bash
-# Install dependencies
-npm install
+# Clone the repository
+git clone https://github.com/frz995/360-Mobile-Mapping-Processing-Dashboard.git
+cd "360-Mobile-Mapping-Processing-Dashboard"
 
-# Launch Development Server
+# Install frontend dependencies
+npm install
+```
+
+### Environment Configuration
+
+Create a `.env` file in the project root with the following variables:
+
+```env
+VITE_SUPABASE_URL=your_supabase_project_url
+VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+VITE_MAP_URL=https://your-webgis-instance.domain
+```
+
+### Running Locally
+
+```bash
+# Start Vite development server
 npm run dev
 
-# TypeScript Type-Check
+# Run TypeScript type verification
 npx tsc --noEmit
+
+# Create production build
+npm run build
 ```
+
+The application will be accessible at http://localhost:5173.
