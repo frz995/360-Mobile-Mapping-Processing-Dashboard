@@ -298,6 +298,59 @@ function applyBuildingLayer(
   }
 }
 
+// ──────────────────────────────────────────────────────────────────────────────
+// 2D↔3D camera FLIGHT (Google / Tesla style swoop)
+//
+// A plain easeTo only *rotates* the camera; the fly effect comes from coupling
+// pitch with zoom so the camera physically descends toward the surface on the
+// curve. Keeping `zoom + log2(cos(pitch))` constant preserves the ground
+// footprint, so as we tilt to 60° the camera sinks ~1 zoom level closer, and
+// flattening raises it back — which reads as "flying down to / up from" the
+// 3D surface view.
+// ──────────────────────────────────────────────────────────────────────────────
+const clampCosDeg = (deg: number) => Math.cos((Math.min(deg, 72) * Math.PI) / 180);
+
+function easeInOutCubic(t: number): number {
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+
+/** Drives an rAF camera flight. Returns a cancel() that stops the loop. */
+function startCameraFlight(
+  map: MaplibreMap,
+  opts: { targetPitch: number; targetBearing: number; duration: number }
+): () => void {
+  const startPitch = map.getPitch();
+  const startZoom = map.getZoom();
+  const startBearing = map.getBearing();
+  // Baseline altitude constant preserved along the flight path.
+  const baseline = startZoom + Math.log2(clampCosDeg(startPitch));
+  const { targetPitch, targetBearing, duration } = opts;
+  const t0 = performance.now();
+  let raf: number | null = null;
+
+  const stop = () => {
+    if (raf !== null) cancelAnimationFrame(raf);
+    raf = null;
+  };
+
+  const step = (now: number) => {
+    const t = Math.min(1, Math.max(0, (now - t0) / duration));
+    const e = easeInOutCubic(t);
+    const pitchDeg = startPitch + (targetPitch - startPitch) * e;
+    const bearing = startBearing + (targetBearing - startBearing) * e;
+    const zoom = Math.max(2.5, baseline - Math.log2(clampCosDeg(pitchDeg)));
+    map.jumpTo({ pitch: pitchDeg, zoom, bearing });
+    if (t < 1) {
+      raf = requestAnimationFrame(step);
+    } else {
+      raf = null;
+    }
+  };
+
+  raf = requestAnimationFrame(step);
+  return stop;
+}
+
 /** Updates system baseline layer paint properties without triggering a full rebuild. */
 function applySystemStyles(
   map: MaplibreMap,
@@ -1033,25 +1086,26 @@ function areStylesEqual(a?: string | StyleSpecification, b?: string | StyleSpeci
     applyBuildingLayer(map, show3D);
   }, [show3D]);
 
-  // ── 3D Camera Transition: smooth pitch down/up when toggling 3D mode ──
+  // ── 2D↔3D Camera FLIGHT: swoop down to / up from the 3D surface view ──
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
-    if (show3D) {
-      map.easeTo({
-        pitch: 60,
-        duration: 1500,
-        easing: (t) => t * (2 - t) // ease-out quadratic
-      });
-    } else {
-      map.easeTo({
-        pitch: 0,
-        bearing: 0,
-        duration: 1000,
-        easing: (t) => t * t // ease-in
-      });
-    }
+    const stop = startCameraFlight(map, show3D
+      ? { targetPitch: 60, targetBearing: map.getBearing(), duration: 2600 }
+      : { targetPitch: 0, targetBearing: 0, duration: 2200 }
+    );
+
+    // Let the user's own gestures take over if they drag mid-flight.
+    const interrupt = () => stop();
+    map.on('movestart', interrupt);
+    map.on('dragstart', interrupt);
+
+    return () => {
+      map.off('movestart', interrupt);
+      map.off('dragstart', interrupt);
+      stop();
+    };
   }, [show3D]);
 
   return (
