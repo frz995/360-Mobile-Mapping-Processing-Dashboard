@@ -60,6 +60,8 @@ export interface RoadAnalysisMapProps {
   selectedFeature?: any;
   /** Callback fired when a survey point is clicked, passing its subgrid code. */
   onSelectSubgrid?: (subgrid: string) => void;
+  /** Enable 3D building extrusion mode (requires pitch > 0 + vector basemap). */
+  show3D?: boolean;
   /**
    * Optional ref filled with the live MapLibre map instance so parent
    * workspace panels (e.g. Print) can read the current camera/extent or
@@ -83,6 +85,8 @@ const BASE_LAYER_IDS = [
   'ra-captured',
   'ra-roads'
 ] as const;
+
+const BUILDING_LAYER_ID = 'ra-buildings';
 
 function extractLineStringRuns(runs: Array<Array<[number, number]>>): GeoJSON.FeatureCollection {
   return {
@@ -242,6 +246,58 @@ function updateCatalogLayerStyle(
   if (lf) sl(`${srcId}-labels`, 'text-field', ['to-string', ['get', lf]]);
 }
 
+/** Detect whether the loaded style exposes the OpenMapTiles vector source. */
+function styleHasVectorBuildings(map: MaplibreMap): boolean {
+  try {
+    const style = map.getStyle() as StyleSpecification;
+    return !!style?.sources?.openmaptiles;
+  } catch { return false; }
+}
+
+/** Toggle the3D building fill-extrusion layer on/off. */
+function applyBuildingLayer(
+  map: MaplibreMap,
+  show3D: boolean
+): void {
+  const hasSource = styleHasVectorBuildings(map);
+  const layerExists = map.getLayer(BUILDING_LAYER_ID);
+
+  if (show3D && hasSource && !layerExists) {
+    map.addLayer({
+      id: BUILDING_LAYER_ID,
+      type: 'fill-extrusion',
+      source: 'openmaptiles',
+      'source-layer': 'building',
+      minzoom: 14,
+      paint: {
+        'fill-extrusion-color': [
+          'interpolate', ['linear'], ['coalesce', ['get', 'render_height'], 0],
+          0,   '#c8d6e5',
+          10,  '#a0b4c8',
+          30,  '#7f9ab5',
+          60,  '#5d7f9e',
+          100, '#3d6588'
+        ],
+        'fill-extrusion-height': [
+          'coalesce',
+          ['get', 'render_height'],
+          ['get', 'height'],
+          10
+        ],
+        'fill-extrusion-base': [
+          'coalesce',
+          ['get', 'render_min_height'],
+          ['get', 'min_height'],
+          0
+        ],
+        'fill-extrusion-opacity': 0.72
+      }
+    });
+  } else if ((!show3D || !hasSource) && layerExists) {
+    map.removeLayer(BUILDING_LAYER_ID);
+  }
+}
+
 /** Updates system baseline layer paint properties without triggering a full rebuild. */
 function applySystemStyles(
   map: MaplibreMap,
@@ -282,7 +338,8 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
   focusBbox,
   selectedFeature,
   onSelectSubgrid,
-  mapInstanceRef
+  mapInstanceRef,
+  show3D = false
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MaplibreMap | null>(null);
@@ -299,10 +356,12 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
   const systemStylesRef         = useRef<SystemLayerStyles | undefined>(systemStyles);
   const selectedFeatureRef      = useRef<any>(selectedFeature);
   const prevCatalogFingerprintRef = useRef<string>('');
+  const show3DRef = useRef(show3D);
 
   catalogLayersRef.current   = catalogLayers;
   systemStylesRef.current    = systemStyles;
   selectedFeatureRef.current = selectedFeature;
+  show3DRef.current          = show3D;
 
 
   const buildOverlay = useCallback(() => {
@@ -768,6 +827,10 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
       }
     };
     fitBounds();
+
+    // 7. Re-apply the3D building layer whenever the basemap is rebuilt (a style
+    //    swap recreates the Map, so the previous fill-extrusion layer is gone).
+    applyBuildingLayer(map, show3DRef.current);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bbox, districtGeojson, dimmedRegionsGeojson, capturedPoints, roadRuns, showRoadLines]);
   // catalogLayers, systemStyles, selectedFeature intentionally omitted — they are
@@ -962,6 +1025,34 @@ function areStylesEqual(a?: string | StyleSpecification, b?: string | StyleSpeci
       requestAnimationFrame(() => map.resize());
     }
   }, [active]);
+
+  // ── 3D Buildings: add/remove fill-extrusion layer on toggle ──
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !styleLoadedRef.current) return;
+    applyBuildingLayer(map, show3D);
+  }, [show3D]);
+
+  // ── 3D Camera Transition: smooth pitch down/up when toggling 3D mode ──
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    if (show3D) {
+      map.easeTo({
+        pitch: 60,
+        duration: 1500,
+        easing: (t) => t * (2 - t) // ease-out quadratic
+      });
+    } else {
+      map.easeTo({
+        pitch: 0,
+        bearing: 0,
+        duration: 1000,
+        easing: (t) => t * t // ease-in
+      });
+    }
+  }, [show3D]);
 
   return (
     <div

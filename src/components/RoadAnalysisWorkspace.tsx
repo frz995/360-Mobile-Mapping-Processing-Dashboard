@@ -13,7 +13,8 @@ import {
   GitCompare,
   ArrowRightLeft,
   Printer,
-  Search
+  Search,
+  Cuboid
 } from 'lucide-react';
 import type { Map as MaplibreMap } from 'maplibre-gl';
 import { UnderlineTabStrip, StatusDot, type ChromeTab } from './production/chrome';
@@ -486,6 +487,8 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
     return defaultBasemapKey;
   });
 
+  const [show3D, setShow3D] = useState<boolean>(false);
+
   const [isSaving, setIsSaving] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const [hasUnsavedEdits, setHasUnsavedEdits] = useState<boolean>(false);
@@ -780,6 +783,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
 
   const handleBasemapChange = (value: string) => {
     setMapBasemap(value);
+    if (!value.startsWith('ofm-')) setShow3D(false);
     persistSnapshot({ mapBasemap: value });
     setHasUnsavedEdits(true);
   };
@@ -2390,11 +2394,38 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                       <option value="custom_tile" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}>Custom XYZ</option>
                     </select>
                   </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (show3D) {
+                        setShow3D(false);
+                      } else {
+                        if (!mapBasemap.startsWith('ofm-')) {
+                          setMapBasemap('ofm-positron');
+                          persistSnapshot({ mapBasemap: 'ofm-positron' });
+                          setHasUnsavedEdits(true);
+                        }
+                        setShow3D(true);
+                      }
+                    }}
+                    style={{
+                      backgroundColor: show3D ? 'rgba(56, 189, 248, 0.18)' : 'var(--bg-inner)',
+                      borderColor: show3D ? 'rgba(56, 189, 248, 0.45)' : 'var(--border-subtle)',
+                      color: show3D ? 'var(--sky, #38bdf8)' : 'var(--text-muted)'
+                    }}
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-all cursor-pointer hover:border-sky-400/50"
+                    title={show3D ? '3D Buildings: ON (back to 2D)' : '3D Buildings: OFF (smoothly tilt to 3D surface view)'}
+                  >
+                    <Cuboid size={13} className="shrink-0" />
+                    {show3D ? '3D' : '2D'}
+                  </button>
                 </div>
 
                 <RoadAnalysisMap
                   active
                   showRoadLines={showRoadLines}
+                  show3D={show3D}
                   style={mapStyle}
                   bbox={regionGeo?.bbox ?? null}
                   districtGeojson={regionGeo?.geojson}
