@@ -3,14 +3,16 @@ import {
   ArrowRight
 } from 'lucide-react';
 import type { ProcessingJobRecord } from '../types/production';
-import { fetchProcessingJobsFromSupabase } from '../services/supabase';
+import { fetchProcessingJobsFromSupabase, fetchDeletionRequestsFromSupabase } from '../services/supabase';
+import { persistWorkspaceTab } from '../utils/workspaceLocation';
 
 export interface OperationalActionCenterProps {
   batchLogs: any[];
   dailyData: any[];
   qaDefectsCount: number;
   isGuestUser?: boolean;
-  onNavigate: (workspace: any, filterParams?: { tab?: 'batches' | 'daily' | 'vector' | 'datasets' | 'recovery'; search?: string }) => void;
+  canHandleApprovals?: boolean;
+  onNavigate: (workspace: any, filterParams?: { tab?: 'batches' | 'daily' | 'vector' | 'datasets' | 'recovery' | 'approvals'; search?: string }) => void;
   onGeneratePdfReport?: () => void;
   onRetryJob?: (job: ProcessingJobRecord) => void;
   onOpenQAQCWorkbench?: (subgridKey?: string) => void;
@@ -24,30 +26,38 @@ export const OperationalActionCenter: React.FC<OperationalActionCenterProps> = (
   onNavigate,
   onRetryJob,
   onOpenQAQCWorkbench,
-  onOpenDefectsGallery
+  onOpenDefectsGallery,
+  canHandleApprovals = true
 }) => {
   const [jobs, setJobs] = useState<ProcessingJobRecord[]>([]);
+  const [approvalRequests, setApprovalRequests] = useState<any[]>([]);
   const [isLoadingJobs, setIsLoadingJobs] = useState(true);
 
   useEffect(() => {
     let isMounted = true;
-    const loadJobs = async () => {
+    const loadDashboard = async () => {
       try {
-        const fetched = await fetchProcessingJobsFromSupabase();
-        if (isMounted) setJobs(fetched);
+        const [fetchedJobs, fetchedApprovals] = await Promise.all([
+          fetchProcessingJobsFromSupabase(),
+          canHandleApprovals ? fetchDeletionRequestsFromSupabase() : Promise.resolve([] as any[])
+        ]);
+        if (isMounted) {
+          setJobs(fetchedJobs);
+          setApprovalRequests(fetchedApprovals || []);
+        }
       } catch {
         // Fallback silently
       } finally {
         if (isMounted) setIsLoadingJobs(false);
       }
     };
-    loadJobs();
-    const interval = setInterval(loadJobs, 5000);
+    loadDashboard();
+    const interval = setInterval(loadDashboard, 5000);
     return () => {
       isMounted = false;
       clearInterval(interval);
     };
-  }, []);
+  }, [canHandleApprovals]);
 
   const activeJobs = jobs.filter(
     (j) => j.status === 'IN_PROGRESS' || j.status === 'QUEUED' || j.status === 'PENDING'
@@ -146,6 +156,34 @@ export const OperationalActionCenter: React.FC<OperationalActionCenterProps> = (
           onRetryJob(failedJobs[0]);
         }
         onNavigate('production');
+      }
+    });
+  }
+
+  const pendingApprovals = approvalRequests.filter(
+    (r) => String(r.status || '').trim().toUpperCase() === 'PENDING'
+  );
+  if (canHandleApprovals && pendingApprovals.length > 0) {
+    const approvalBreakdown: { subgrid: string; defects: number }[] = [];
+    pendingApprovals.forEach((r) => {
+      const sg = String(r.subgrid || r.requestedBy || 'Unknown').toUpperCase().trim();
+      const existing = approvalBreakdown.find((x) => x.subgrid === sg);
+      if (existing) existing.defects += 1;
+      else approvalBreakdown.push({ subgrid: sg, defects: 1 });
+    });
+    const approvalTooltip = approvalBreakdown.length > 0
+      ? `Pending Deletion Approvals:\n${approvalBreakdown.map((b) => `• ${b.subgrid}: ${b.defects} request(s)`).join('\n')}`
+      : undefined;
+    attentionItems.push({
+      label: `${pendingApprovals.length} deletion approval${pendingApprovals.length === 1 ? '' : 's'}`,
+      actionText: 'Review Approval',
+      tooltip: approvalTooltip,
+      hoverTitle: 'Pending Deletion Approvals',
+      unit: 'request',
+      subgrids: approvalBreakdown,
+      onClick: () => {
+        persistWorkspaceTab('administration', 'approvals');
+        onNavigate('administration');
       }
     });
   }

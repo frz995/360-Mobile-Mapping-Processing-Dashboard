@@ -62,6 +62,7 @@ import {
   formatPIC,
   saveAuditLogToSupabase,
   persistBatchLogToSupabase,
+  saveDeletionRequestToSupabase,
   type RecycleBinItem
 } from '../services/supabase';
 import type { DatasetRecord, ProcessingJobRecord } from '../types/production';
@@ -2011,6 +2012,52 @@ export const DataManagementPage = ({
     const targets = spatialSubgrids.filter(Boolean);
     if (targets.length === 0) return;
 
+    /* Admin-approval gate (mirrors confirmDelete): whole-subgrid purges are
+       routed to the Approvals queue instead of hard-deleting; partial point
+       deletions stay direct. */
+    if (approveGateEnabled) {
+      const matchSub = (raw?: string) => (extractSubgridName(raw || '') || '').toUpperCase().trim();
+      const wholeTargets: Array<{ subgrid: string; poiCount: number; kmProcessed: number }> = [];
+      spatialSubgrids.filter(Boolean).forEach((sgRaw) => {
+        const norm = String(sgRaw || '').toUpperCase().trim();
+        if (!norm) return;
+        const ptsForSg = (spatialSelectedPoints || []).filter((p) => String(p.subgrid || '').toUpperCase().trim() === norm);
+        if (ptsForSg.length === 0) return;
+        const sgRow = subgridPoints.find((r) => String(r.subgrid || '').toUpperCase().trim() === norm);
+        const totalSgPoi = sgRow?.points?.length || 0;
+        if (totalSgPoi > 0 && ptsForSg.length >= totalSgPoi) {
+          const runs = draftDailyData.filter((d) => matchSub(d.subgrid) === norm);
+          wholeTargets.push({ subgrid: norm, poiCount: totalSgPoi, kmProcessed: runs.reduce((sum, r) => sum + (r.kmProcessed || 0), 0) });
+        }
+      });
+
+      if (wholeTargets.length > 0) {
+        const allOk = await submitDeletionTickets(wholeTargets);
+        closeDeleteModal();
+        if (allOk) {
+          setPublishMessage({
+            text: `[Submitted for Approval] ${wholeTargets.length} deletion request(s) queued: ${wholeTargets.map(t => t.subgrid).join(', ')}. An administrator will review them in Administration → Approvals.`,
+            type: 'success'
+          });
+          setTimeout(() => setPublishMessage(null), 6000);
+          if (addNotification) {
+            addNotification({
+              title: 'Deletion Submitted for Approval',
+              message: `${wholeTargets.length} subgrid deletion request(s) awaiting administrator review: ${wholeTargets.map(t => t.subgrid).join(', ')}`,
+              category: 'SYSTEM'
+            });
+          }
+          if (addAuditLog) {
+            wholeTargets.forEach((t) => addAuditLog('DELETE', `Deletion Requested: ${t.subgrid}`, `Requested admin approval to permanently delete ${t.subgrid} (${t.poiCount} points, ${t.kmProcessed} km)`, 'warning'));
+          }
+        } else {
+          setPublishMessage({ text: 'Deletion approval request failed to save. No data was deleted; please retry.', type: 'error' });
+          setTimeout(() => setPublishMessage(null), 6000);
+        }
+        return;
+      }
+    }
+
     const matchSub = (raw?: string) => (extractSubgridName(raw || '') || '').toUpperCase().trim();
     const affected = new Set(targets.map((sg) => sg.toUpperCase().trim()));
 
@@ -2347,6 +2394,40 @@ export const DataManagementPage = ({
     setTimeout(() => setPublishMessage(null), 5000);
   };
 
+  const approveGateEnabled = projectSettings?.requireAdminApprovalForDelete !== false;
+
+  const submitDeletionTickets = async (
+    targets: Array<{ subgrid: string; poiCount: number; kmProcessed: number }>
+  ): Promise<boolean> => {
+    const operatorEmail = authSession?.user?.email || (isGuestUser ? 'guest' : 'Operator');
+    const operatorName = (operatorEmail || '').split('@')[0] || 'Operator';
+    let allOk = true;
+    for (const t of targets) {
+      const ok = await saveDeletionRequestToSupabase({
+        subgrid: t.subgrid,
+        requestedBy: operatorName,
+        userEmail: operatorEmail,
+        reason: 'Permanent deletion requested from Data Management workspace',
+        poiCount: t.poiCount,
+        kmProcessed: t.kmProcessed,
+        dateRequested: new Date().toISOString()
+      });
+      if (!ok) allOk = false;
+    }
+    return allOk;
+  };
+
+  const closeDeleteModal = () => {
+    setIsDeleteModalOpen(false);
+    setDeleteTarget(null);
+    setAdminPasscode('');
+    setDeleteConfirmText('');
+    setDeleteError(null);
+    setSpatialSubgrids([]);
+    setSpatialSelectedPoints([]);
+    setSelectedRowIds(new Set());
+  };
+
   const confirmDelete = async () => {
     if (!deleteTarget) return;
 
@@ -2387,6 +2468,81 @@ export const DataManagementPage = ({
     if (!isValidPassword) {
       setDeleteError('Access Denied: Invalid Auth Password. Only authorized administrators can delete database records.');
       return;
+    }
+
+    /* Admin-approval gate (default ON via requireAdminApprovalForDelete):
+       whole-subgrid deletions are routed to the Approvals queue instead of
+       hard-deleting. Partial point deletions stay direct (no purge intent),
+       so an approval ticket never escalates a few points into a full purge. */
+    if (approveGateEnabled) {
+      const matchSub = (raw?: string) => (extractSubgridName(raw || '') || '').toUpperCase().trim();
+      let wholeTargets: Array<{ subgrid: string; poiCount: number; kmProcessed: number }> = [];
+
+      if (deleteMode === 'spatial') {
+        spatialSubgrids.filter(Boolean).forEach((sgRaw) => {
+          const norm = String(sgRaw || '').toUpperCase().trim();
+          if (!norm) return;
+          const ptsForSg = spatialSelectedPoints.filter((p) => String(p.subgrid || '').toUpperCase().trim() === norm);
+          if (ptsForSg.length === 0) return;
+          const sgRow = subgridPoints.find((r) => String(r.subgrid || '').toUpperCase().trim() === norm);
+          const totalSgPoi = sgRow?.points?.length || 0;
+          if (totalSgPoi > 0 && ptsForSg.length >= totalSgPoi) {
+            const runs = draftDailyData.filter((d) => matchSub(d.subgrid) === norm);
+            wholeTargets.push({ subgrid: norm, poiCount: totalSgPoi, kmProcessed: runs.reduce((sum, r) => sum + (r.kmProcessed || 0), 0) });
+          }
+        });
+      } else if (typeof deleteTarget === 'string') {
+        const seen = new Map<string, { subgrid: string; poiCount: number; kmProcessed: number }>();
+        Array.from(selectedRowIds).forEach((id) => {
+          const d = dailyData.find((item) => getItemId(item) === id);
+          const b = batchLogs.find((item) => getItemId(item) === id);
+          const sgRaw = d?.subgrid || b?.subgrid || b?.imageFilename;
+          if (!sgRaw) return;
+          const norm = (extractSubgridName(sgRaw) || sgRaw).toUpperCase().trim();
+          const cur = seen.get(norm) || { subgrid: norm, poiCount: 0, kmProcessed: 0 };
+          cur.poiCount += Number(d?.poiCount || d?.imagesProcessed || (d as any)?.panoramas?.length || 0);
+          cur.kmProcessed += Number(d?.kmProcessed || 0);
+          seen.set(norm, cur);
+        });
+        wholeTargets = Array.from(seen.values());
+      } else if (deleteTarget && typeof deleteTarget !== 'string') {
+        const rawsg = ('subgrid' in deleteTarget && deleteTarget.subgrid) ? deleteTarget.subgrid : ('imageFilename' in deleteTarget ? (deleteTarget as BatchLog).imageFilename : '');
+        const norm = (extractSubgridName(rawsg) || rawsg).toUpperCase().trim();
+        if (norm) {
+          const row = deleteTarget as any;
+          const poiCount =
+            Number(row?.poiCount || row?.imagesProcessed || 0) ||
+            (Array.isArray(row?.panoramas) ? row.panoramas.length : 0) ||
+            Number(row?.images || 0);
+          wholeTargets.push({ subgrid: norm, poiCount: poiCount || 0, kmProcessed: Number(row?.kmProcessed || 0) });
+        }
+      }
+
+      if (wholeTargets.length > 0) {
+        const allOk = await submitDeletionTickets(wholeTargets);
+        closeDeleteModal();
+        if (allOk) {
+          setPublishMessage({
+            text: `[Submitted for Approval] ${wholeTargets.length} deletion request(s) queued: ${wholeTargets.map(t => t.subgrid).join(', ')}. An administrator will review them in Administration → Approvals.`,
+            type: 'success'
+          });
+          setTimeout(() => setPublishMessage(null), 6000);
+          if (addNotification) {
+            addNotification({
+              title: 'Deletion Submitted for Approval',
+              message: `${wholeTargets.length} subgrid deletion request(s) awaiting administrator review: ${wholeTargets.map(t => t.subgrid).join(', ')}`,
+              category: 'SYSTEM'
+            });
+          }
+          if (addAuditLog) {
+            wholeTargets.forEach((t) => addAuditLog('DELETE', `Deletion Requested: ${t.subgrid}`, `Requested admin approval to permanently delete ${t.subgrid} (${t.poiCount} points, ${t.kmProcessed} km)`, 'warning'));
+          }
+        } else {
+          setPublishMessage({ text: 'Deletion approval request failed to save. No data was deleted; please retry.', type: 'error' });
+          setTimeout(() => setPublishMessage(null), 6000);
+        }
+        return;
+      }
     }
 
     if (deleteMode === 'spatial') {
