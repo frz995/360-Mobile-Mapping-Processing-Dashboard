@@ -77,6 +77,7 @@ function renderPage(props: Partial<Parameters<typeof DataManagementPage>[0]> = {
       projectSettings={props.projectSettings}
       addNotification={props.addNotification}
       addAuditLog={props.addAuditLog}
+      canHandleApprovals={props.canHandleApprovals}
     />
   )
 }
@@ -171,6 +172,35 @@ describe('DataManagementPage smoke', () => {
     fireEvent.change(screen.getByPlaceholderText('Enter account password'), { target: { value: 'ADMIN123' } })
 
     const confirmBtn = screen.getByRole('button', { name: /Authorize & Delete Permanently/ })
+    await waitFor(() => expect(confirmBtn).toBeEnabled())
+    fireEvent.click(confirmBtn)
+
+    await waitFor(() => expect(hardDelete).toHaveBeenCalled())
+    expect(submitTicket).not.toHaveBeenCalled()
+  })
+
+  it('bypasses the approval gate for approvers (admin deletes directly)', async () => {
+    const submitTicket = vi.mocked(saveDeletionRequestToSupabase)
+    const hardDelete = vi.mocked(deleteFromSupabase)
+    submitTicket.mockClear()
+    hardDelete.mockClear()
+
+    renderPage({
+      dailyData: [dailyFixture()],
+      initialTab: 'daily',
+      projectSettings: { requireAdminApprovalForDelete: true },
+      canHandleApprovals: true,
+      addNotification: vi.fn(),
+      addAuditLog: vi.fn()
+    })
+
+    fireEvent.click(screen.getAllByTitle(/Delete Record/)[0])
+    fireEvent.change(screen.getByPlaceholderText('SURVEY'), { target: { value: 'SURVEY' } })
+    fireEvent.change(screen.getByPlaceholderText('Enter account password'), { target: { value: 'ADMIN123' } })
+
+    // Admins see the permanent-delete wording, not the submit-for-approval flow.
+    const confirmBtn = screen.getByRole('button', { name: /Authorize & Delete Permanently/ })
+    expect(screen.queryByRole('button', { name: /Authorize & Submit Deletion/ })).not.toBeInTheDocument()
     await waitFor(() => expect(confirmBtn).toBeEnabled())
     fireEvent.click(confirmBtn)
 

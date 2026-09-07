@@ -50,7 +50,6 @@ interface ProjectOnboardingProps {
   translate?: (key: string) => string;
   onContinue: (project: UserProject) => void;
   onCreateProject: (draft: ProjectDraft) => Promise<{ success: boolean; value?: UserProject; message?: string }>;
-  onSkip: () => void;
   onBackToLanding?: () => void;
   onRefreshProjects?: () => Promise<UserProject[]>;
 }
@@ -341,7 +340,6 @@ export const ProjectOnboarding: React.FC<ProjectOnboardingProps> = ({
   translate = (k) => k,
   onContinue,
   onCreateProject,
-  onSkip,
   onBackToLanding,
   onRefreshProjects
 }) => {
@@ -544,8 +542,7 @@ export const ProjectOnboarding: React.FC<ProjectOnboardingProps> = ({
             </div>
             <button
               onClick={() => {
-                if (recent.length === 0) setMode('wizard');
-                onSkip();
+                setMode('wizard');
               }}
               className="mt-6 text-xs text-text-muted hover:text-text-base transition-colors flex items-center gap-1.5 cursor-pointer"
             >
@@ -627,12 +624,6 @@ export const ProjectOnboarding: React.FC<ProjectOnboardingProps> = ({
               >
                 <ArrowLeft size={13} />
                 <span>Back</span>
-              </button>
-              <button
-                onClick={onSkip}
-                className="text-xs text-text-muted hover:text-text-base transition-colors cursor-pointer py-1"
-              >
-                {translate('onboardingSkip') || 'Skip for now'}
               </button>
             </div>
           </header>
