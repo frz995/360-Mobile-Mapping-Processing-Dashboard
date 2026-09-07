@@ -2417,6 +2417,54 @@ export const DataManagementPage = ({
     return allOk;
   };
 
+  const resolveWholeTargets = useCallback((): Array<{ subgrid: string; poiCount: number; kmProcessed: number }> => {
+    /* Resolves which selected subgrids constitute a whole-subgrid purge
+       (routes to the approval queue) vs a partial point deletion (stays direct). */
+    const matchSub = (raw?: string) => (extractSubgridName(raw || '') || '').toUpperCase().trim();
+    const wholeTargets: Array<{ subgrid: string; poiCount: number; kmProcessed: number }> = [];
+
+    if (deleteMode === 'spatial') {
+      spatialSubgrids.filter(Boolean).forEach((sgRaw) => {
+        const norm = String(sgRaw || '').toUpperCase().trim();
+        if (!norm) return;
+        const ptsForSg = (spatialSelectedPoints || []).filter((p) => String(p.subgrid || '').toUpperCase().trim() === norm);
+        if (ptsForSg.length === 0) return;
+        const sgRow = subgridPoints.find((r) => String(r.subgrid || '').toUpperCase().trim() === norm);
+        const totalSgPoi = sgRow?.points?.length || 0;
+        if (totalSgPoi > 0 && ptsForSg.length >= totalSgPoi) {
+          const runs = draftDailyData.filter((d) => matchSub(d.subgrid) === norm);
+          wholeTargets.push({ subgrid: norm, poiCount: totalSgPoi, kmProcessed: runs.reduce((sum, r) => sum + (r.kmProcessed || 0), 0) });
+        }
+      });
+    } else if (typeof deleteTarget === 'string') {
+      const seen = new Map<string, { subgrid: string; poiCount: number; kmProcessed: number }>();
+      Array.from(selectedRowIds).forEach((id) => {
+        const d = dailyData.find((item) => getItemId(item) === id);
+        const b = batchLogs.find((item) => getItemId(item) === id);
+        const sgRaw = d?.subgrid || b?.subgrid || b?.imageFilename;
+        if (!sgRaw) return;
+        const norm = (extractSubgridName(sgRaw) || sgRaw).toUpperCase().trim();
+        const cur = seen.get(norm) || { subgrid: norm, poiCount: 0, kmProcessed: 0 };
+        cur.poiCount += Number(d?.poiCount || d?.imagesProcessed || (d as any)?.panoramas?.length || 0);
+        cur.kmProcessed += Number(d?.kmProcessed || 0);
+        seen.set(norm, cur);
+      });
+      wholeTargets.push(...Array.from(seen.values()));
+    } else if (deleteTarget && typeof deleteTarget !== 'string') {
+      const rawsg = ('subgrid' in deleteTarget && deleteTarget.subgrid) ? deleteTarget.subgrid : ('imageFilename' in deleteTarget ? (deleteTarget as BatchLog).imageFilename : '');
+      const norm = (extractSubgridName(rawsg) || rawsg).toUpperCase().trim();
+      if (norm) {
+        const row = deleteTarget as any;
+        const poiCount =
+          Number(row?.poiCount || row?.imagesProcessed || 0) ||
+          (Array.isArray(row?.panoramas) ? row.panoramas.length : 0) ||
+          Number(row?.images || 0);
+        wholeTargets.push({ subgrid: norm, poiCount: poiCount || 0, kmProcessed: Number(row?.kmProcessed || 0) });
+      }
+    }
+    return wholeTargets;
+  }, [deleteMode, deleteTarget, spatialSubgrids, spatialSelectedPoints, subgridPoints, draftDailyData, selectedRowIds, dailyData, batchLogs]);
+
   const closeDeleteModal = () => {
     setIsDeleteModalOpen(false);
     setDeleteTarget(null);
@@ -2475,48 +2523,7 @@ export const DataManagementPage = ({
        hard-deleting. Partial point deletions stay direct (no purge intent),
        so an approval ticket never escalates a few points into a full purge. */
     if (approveGateEnabled) {
-      const matchSub = (raw?: string) => (extractSubgridName(raw || '') || '').toUpperCase().trim();
-      let wholeTargets: Array<{ subgrid: string; poiCount: number; kmProcessed: number }> = [];
-
-      if (deleteMode === 'spatial') {
-        spatialSubgrids.filter(Boolean).forEach((sgRaw) => {
-          const norm = String(sgRaw || '').toUpperCase().trim();
-          if (!norm) return;
-          const ptsForSg = spatialSelectedPoints.filter((p) => String(p.subgrid || '').toUpperCase().trim() === norm);
-          if (ptsForSg.length === 0) return;
-          const sgRow = subgridPoints.find((r) => String(r.subgrid || '').toUpperCase().trim() === norm);
-          const totalSgPoi = sgRow?.points?.length || 0;
-          if (totalSgPoi > 0 && ptsForSg.length >= totalSgPoi) {
-            const runs = draftDailyData.filter((d) => matchSub(d.subgrid) === norm);
-            wholeTargets.push({ subgrid: norm, poiCount: totalSgPoi, kmProcessed: runs.reduce((sum, r) => sum + (r.kmProcessed || 0), 0) });
-          }
-        });
-      } else if (typeof deleteTarget === 'string') {
-        const seen = new Map<string, { subgrid: string; poiCount: number; kmProcessed: number }>();
-        Array.from(selectedRowIds).forEach((id) => {
-          const d = dailyData.find((item) => getItemId(item) === id);
-          const b = batchLogs.find((item) => getItemId(item) === id);
-          const sgRaw = d?.subgrid || b?.subgrid || b?.imageFilename;
-          if (!sgRaw) return;
-          const norm = (extractSubgridName(sgRaw) || sgRaw).toUpperCase().trim();
-          const cur = seen.get(norm) || { subgrid: norm, poiCount: 0, kmProcessed: 0 };
-          cur.poiCount += Number(d?.poiCount || d?.imagesProcessed || (d as any)?.panoramas?.length || 0);
-          cur.kmProcessed += Number(d?.kmProcessed || 0);
-          seen.set(norm, cur);
-        });
-        wholeTargets = Array.from(seen.values());
-      } else if (deleteTarget && typeof deleteTarget !== 'string') {
-        const rawsg = ('subgrid' in deleteTarget && deleteTarget.subgrid) ? deleteTarget.subgrid : ('imageFilename' in deleteTarget ? (deleteTarget as BatchLog).imageFilename : '');
-        const norm = (extractSubgridName(rawsg) || rawsg).toUpperCase().trim();
-        if (norm) {
-          const row = deleteTarget as any;
-          const poiCount =
-            Number(row?.poiCount || row?.imagesProcessed || 0) ||
-            (Array.isArray(row?.panoramas) ? row.panoramas.length : 0) ||
-            Number(row?.images || 0);
-          wholeTargets.push({ subgrid: norm, poiCount: poiCount || 0, kmProcessed: Number(row?.kmProcessed || 0) });
-        }
-      }
+      const wholeTargets = resolveWholeTargets();
 
       if (wholeTargets.length > 0) {
         const allOk = await submitDeletionTickets(wholeTargets);
@@ -2791,6 +2798,7 @@ export const DataManagementPage = ({
 
   const impactTotals = impactData?.totals;
   const hasSevereImpact = !!(impactData && (impactData.hasPublished || impactData.hasDeliverables || impactData.hasLinkedJobs || impactData.hasOrphanRisk));
+  const willRequireApproval = approveGateEnabled && resolveWholeTargets().length > 0;
 
   const DATA_TABS: ChromeTab<string>[] = useMemo(() => [
     {
@@ -4923,9 +4931,11 @@ export const DataManagementPage = ({
                 </div>
                 <div>
                   <h3 className="text-base font-semibold text-text-base flex items-center gap-2">
-                    Admin Security Verification
+                    {willRequireApproval ? 'Deletion Request' : 'Admin Security Verification'}
                   </h3>
-                  <p className="text-xs text-text-muted font-medium">Permanent Database Deletion Authorization</p>
+                  <p className="text-xs text-text-muted font-medium">
+                    {willRequireApproval ? 'Admin Authorization Required to Submit Deletion' : 'Permanent Database Deletion Authorization'}
+                  </p>
                 </div>
               </div>
               <button
@@ -4961,16 +4971,11 @@ export const DataManagementPage = ({
                       {[
                         { label: tf('dataImpactSubgrids'), value: String(impactTotals.subgrids), tone: 'text-sky-300' },
                         { label: tf('dataImpactRuns'), value: String(impactTotals.runs), tone: 'text-text-base' },
-                        { label: tf('dataImpactBatch'), value: String(impactTotals.batch), tone: 'text-text-base' },
                         { label: tf('dataImpactPoi'), value: String(impactTotals.poi), tone: 'text-text-base' },
                         { label: tf('dataImpactFrames'), value: String(impactTotals.frames), tone: 'text-text-base' },
                         { label: tf('dataImpactKm'), value: `${impactTotals.km.toLocaleString()} km`, tone: 'text-text-base' },
                         { label: tf('dataImpactDefects'), value: String(impactTotals.defects), tone: impactTotals.defects > 0 ? 'text-amber-300' : 'text-text-base' },
-                        { label: tf('dataImpactQa'), value: String(impactTotals.qa), tone: 'text-text-base' },
-                        { label: tf('dataImpactStaging'), value: String(impactTotals.staging), tone: impactTotals.staging > 0 ? 'text-amber-300' : 'text-text-base' },
                         { label: tf('dataImpactPublished'), value: String(impactTotals.published), tone: impactTotals.published > 0 ? 'text-rose-300' : 'text-text-base' },
-                        { label: tf('dataImpactDatasets'), value: String(impactTotals.datasets), tone: impactTotals.datasets > 0 ? 'text-amber-300' : 'text-text-base' },
-                        { label: tf('dataImpactDeliverables'), value: String(impactTotals.deliverables), tone: impactTotals.deliverables > 0 ? 'text-rose-300' : 'text-text-base' },
                         { label: tf('dataImpactJobs'), value: String(impactTotals.jobs), tone: impactTotals.jobs > 0 ? 'text-amber-300' : 'text-text-base' }
                       ].map((c) => (
                         <div key={c.label} className="bg-inner border border-subtle rounded-lg px-2.5 py-2">
@@ -5049,10 +5054,14 @@ export const DataManagementPage = ({
               {/* Security Warning (unchanged semantics) */}
               <div className="bg-app border border-subtle rounded-xl p-4 text-xs text-text-base leading-relaxed">
                 <div className="font-semibold text-text-base mb-1.5 flex items-center gap-1.5 text-xs uppercase tracking-wide">
-                  <AlertTriangle size={14} className="text-red-400" />
-                  Security Warning: Permanent Deletion
+                  <AlertTriangle size={14} className={willRequireApproval ? 'text-amber-400' : 'text-red-400'} />
+                  {willRequireApproval ? 'Security Warning: Admin Approval Required' : 'Security Warning: Permanent Deletion'}
                 </div>
-                This data will be <strong className="text-red-400 font-medium">permanently removed</strong> from the database. This action cannot be reversed.
+                {willRequireApproval ? (
+                  <>This action will <strong className="text-amber-400 font-medium">submit the deletion for Administrator approval</strong>. No database records are removed until an Administrator reviews and approves it in Administration → Approvals. Partial point selections are not part of this request and still delete immediately.</>
+                ) : (
+                  <>This data will be <strong className="text-red-400 font-medium">permanently removed</strong> from the database. This action cannot be reversed.</>
+                )}
                 {deleteMode === 'bulk' && (
                   <div className="mt-3 p-3 bg-app rounded-lg border border-subtle font-sans text-text-base text-xs space-y-1.5">
                     <div className="flex justify-between items-center"><span className="text-text-muted">Target Selection:</span> <strong className="text-text-base font-sans font-semibold">Bulk Delete</strong></div>
@@ -5089,7 +5098,9 @@ export const DataManagementPage = ({
                   className="w-full bg-app border border-subtle focus:border-rose-500/70 rounded-xl px-4 py-2.5 text-sm font-sans text-text-base placeholder-text-muted focus:outline-none transition-all shadow-inner uppercase"
                 />
                 <p className="text-[10px] text-text-muted mt-1.5">
-                  {tf('dataConfirmInstruction')} <strong className="text-text-base font-sans">{expectedDeletePhrase}</strong>
+                  {willRequireApproval
+                    ? <>Type the exact code below to prove you authorize submitting this deletion request for Administrator review: <strong className="text-text-base font-sans">{expectedDeletePhrase}</strong></>
+                    : <>{tf('dataConfirmInstruction')} <strong className="text-text-base font-sans">{expectedDeletePhrase}</strong></>}
                 </p>
               </div>
 
@@ -5144,7 +5155,7 @@ export const DataManagementPage = ({
                 className="px-5 py-2.5 rounded-xl text-xs font-semibold text-text-base bg-red-600/90 hover:bg-red-600 border border-red-500/30 transition-all shadow-md flex items-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <Trash2 size={14} />
-                Authorize & Delete Permanently
+                {willRequireApproval ? 'Authorize & Submit Deletion' : 'Authorize & Delete Permanently'}
               </button>
             </div>
           </div>

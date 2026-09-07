@@ -141,7 +141,7 @@ describe('DataManagementPage smoke', () => {
     fireEvent.change(screen.getByPlaceholderText('SURVEY'), { target: { value: 'SURVEY' } })
     fireEvent.change(screen.getByPlaceholderText('Enter account password'), { target: { value: 'ADMIN123' } })
 
-    const confirmBtn = screen.getByRole('button', { name: /Authorize & Delete Permanently/ })
+    const confirmBtn = screen.getByRole('button', { name: /Authorize & Submit Deletion/ })
     await waitFor(() => expect(confirmBtn).toBeEnabled())
     fireEvent.click(confirmBtn)
 
