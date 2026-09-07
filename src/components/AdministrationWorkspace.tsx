@@ -312,6 +312,13 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
 
   const pendingApprovalsCount = deletionRequests.filter((r) => r.status === 'Pending').length;
 
+  const formatRequestTimestamp = (raw?: string) => {
+    if (!raw) return '-';
+    const d = new Date(raw);
+    if (Number.isNaN(d.getTime())) return raw;
+    return d.toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  };
+
   const countBadge = (n: number) => (
     <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-inner border border-subtle text-text-muted ml-0.5">
       {n}
@@ -832,6 +839,7 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
                     <th className="px-3.5 py-2.5">Request ID</th>
                     <th className="px-3.5 py-2.5">Subgrid</th>
                     <th className="px-3.5 py-2.5">Requester</th>
+                    <th className="px-3.5 py-2.5">Requested At</th>
                     <th className="px-3.5 py-2.5">Reason</th>
                     <th className="px-3.5 py-2.5">Frames / KM</th>
                     <th className="px-3.5 py-2.5">Status</th>
@@ -841,7 +849,7 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
                 <tbody className="divide-y divide-subtle/80">
                   {filteredApprovals.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="px-4 py-8 text-center text-text-muted">
+                      <td colSpan={8} className="px-4 py-8 text-center text-text-muted">
                         No deletion approval requests in this filter.
                       </td>
                     </tr>
@@ -861,6 +869,12 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
                           <td className="px-3.5 py-2.5">
                             <div className="font-semibold text-text-base">{requesterName}</div>
                             <div className="text-[10px] text-text-muted font-sans">{requesterEmail}</div>
+                          </td>
+                          <td className="px-3.5 py-2.5 whitespace-nowrap">
+                            <div className="font-sans text-text-base">{formatRequestTimestamp(req.dateRequested)}</div>
+                            {req.status !== 'Pending' && req.reviewedAt && (
+                              <div className="text-[10px] text-text-muted font-sans">reviewed {req.reviewedAt}</div>
+                            )}
                           </td>
                           <td className="px-3.5 py-2.5 max-w-xs text-text-base">{req.reason}</td>
                           <td className="px-3.5 py-2.5 font-sans text-text-base">

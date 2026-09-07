@@ -88,4 +88,40 @@ describe('WorkspaceSidebarNav', () => {
     expect(onOpenAbout).toHaveBeenCalledOnce()
     expect(onToggleSidebar).toHaveBeenCalledOnce()
   })
+
+  it('shows the pending approval count badge on the Administration icon', () => {
+    render(
+      <WorkspaceSidebarNav
+        translate={translate}
+        activeWorkspace="dashboard"
+        isSidebarExpanded
+        tourStep={null}
+        onNavigate={vi.fn()}
+        onRefresh={vi.fn()}
+        onOpenAbout={vi.fn()}
+        onToggleSidebar={vi.fn()}
+        approvalBadgeCount={3}
+      />
+    )
+    const adminBtn = screen.getByLabelText('workspaceAdministration')
+    expect(adminBtn).toHaveTextContent('3')
+  })
+
+  it('omits the approval badge when there are no pending requests', () => {
+    render(
+      <WorkspaceSidebarNav
+        translate={translate}
+        activeWorkspace="dashboard"
+        isSidebarExpanded
+        tourStep={null}
+        onNavigate={vi.fn()}
+        onRefresh={vi.fn()}
+        onOpenAbout={vi.fn()}
+        onToggleSidebar={vi.fn()}
+        approvalBadgeCount={0}
+      />
+    )
+    const adminBtn = screen.getByLabelText('workspaceAdministration')
+    expect(adminBtn.querySelector('.bg-amber-500')).toBeNull()
+  })
 })

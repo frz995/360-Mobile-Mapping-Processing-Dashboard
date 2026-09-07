@@ -32,7 +32,7 @@ import {
   StopCircle,
   ArrowLeft
 } from 'lucide-react';
-import { supabase, fetchSupabaseData, updateDefectStatusInSupabase, saveQaAuditRunToSupabase, saveAuditLogToSupabase, saveNotificationToSupabase, saveProjectSettingsToSupabase, resolvePanoramaUrl, resolvePanoramaConfigUrl, getDatabaseTableMapping, SUBGRID_COORDINATES, saveProcessingJobToSupabase, pruneBloatedUserMetadata } from './services/supabase';
+import { supabase, fetchSupabaseData, updateDefectStatusInSupabase, saveQaAuditRunToSupabase, saveAuditLogToSupabase, saveNotificationToSupabase, saveProjectSettingsToSupabase, resolvePanoramaUrl, resolvePanoramaConfigUrl, getDatabaseTableMapping, SUBGRID_COORDINATES, saveProcessingJobToSupabase, pruneBloatedUserMetadata, fetchDeletionRequestsFromSupabase } from './services/supabase';
 import type { QAQCAuditRunRecord } from './types/admin';
 import { MapComponent } from './components/MapComponent';
 export { MapComponent };
@@ -516,6 +516,7 @@ export default function App() {
   };
 
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
+  const [pendingApprovalCount, setPendingApprovalCount] = useState(0);
   const [isAboutModalOpen, setIsAboutModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'batches' | 'daily'>('batches');
 
@@ -669,6 +670,27 @@ export default function App() {
     authSession?.user?.raw_app_meta_data?.role;
   const canHandleApprovals = !isGuestUser && can(effectiveUserRole, 'approveDeletions');
 
+  // Admin-visible pending deletion-request badge on the Administration icon.
+  useEffect(() => {
+    if (!canHandleApprovals) {
+      setPendingApprovalCount(0);
+      return;
+    }
+    let disposed = false;
+    const refresh = async () => {
+      try {
+        const reqs = await fetchDeletionRequestsFromSupabase();
+        if (!disposed) setPendingApprovalCount(reqs.filter((r) => r.status === 'Pending').length);
+      } catch { /* badge refresh is best-effort */ }
+    };
+    refresh();
+    const id = window.setInterval(refresh, 10000);
+    return () => {
+      disposed = true;
+      window.clearInterval(id);
+    };
+  }, [canHandleApprovals]);
+
   // ---- v14 Project registry state ----
   const [projectList, setProjectList] = useState<UserProject[]>([]);
   const [activeProject, setActiveProject] = useState<UserProject | null>(null);
@@ -727,11 +749,6 @@ export default function App() {
       setProjectGate('idle');
     }
   }, [shouldShowWelcome]);
-
-  const handleGateSkip = useCallback(() => {
-    setProjectGate('idle');
-    goToWorkspace('dashboard');
-  }, [goToWorkspace]);
 
   const handleGateContinue = useCallback((project: UserProject) => {
     setProjectGate('loading');
@@ -3286,7 +3303,6 @@ export default function App() {
           translate={t}
           onContinue={handleGateContinue}
           onCreateProject={handleGateCreateProject}
-          onSkip={handleGateSkip}
           onBackToLanding={() => {
             setProjectGate('idle');
             goToWorkspace('landing');
@@ -3519,6 +3535,7 @@ export default function App() {
           onRefresh={handleRefreshMap}
           onOpenAbout={() => setIsAboutModalOpen(true)}
           onToggleSidebar={() => setIsSidebarExpanded(prev => !prev)}
+          approvalBadgeCount={pendingApprovalCount}
         />
 
         {/* MAIN DASHBOARD CONTENT CANVAS */}
@@ -4650,6 +4667,7 @@ export default function App() {
                 translate={t}
                 initialTab={dataManagementTab}
                 initialSearch={dataManagementSearch}
+                canHandleApprovals={canHandleApprovals}
               />
             </div>
           ) : currentPage === 'settings' ? (

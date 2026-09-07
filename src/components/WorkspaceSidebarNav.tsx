@@ -11,6 +11,7 @@ interface WorkspaceSidebarNavProps {
   onRefresh: () => void;
   onOpenAbout: () => void;
   onToggleSidebar: () => void;
+  approvalBadgeCount?: number;
 }
 
 function activeButtonClass(active: boolean, isExpanded: boolean): string {
@@ -35,7 +36,8 @@ function NavItem({
   isSidebarExpanded,
   tourActive,
   onNavigate,
-  translate
+  translate,
+  badge
 }: {
   definition: WorkspaceDefinition;
   active: boolean;
@@ -43,6 +45,7 @@ function NavItem({
   tourActive: boolean;
   onNavigate: (key: WorkspaceKey) => void;
   translate: (key: string) => string;
+  badge?: number;
 }) {
   const Icon = definition.icon;
   return (
@@ -59,6 +62,11 @@ function NavItem({
           <span
             className={`absolute -top-1 -right-1 w-2 h-2 rounded-full bg-sky-400 shadow-[0_0_8px_rgba(56,189,248,0.9)] transition-all duration-300 ease-out ${active ? 'opacity-100 scale-100' : 'opacity-0 scale-0'}`}
           />
+        )}
+        {badge != null && badge > 0 && (
+          <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 rounded-full bg-amber-500 text-white text-[9px] font-bold flex items-center justify-center border border-black/30 shadow-[0_2px_6px_rgba(0,0,0,0.45)]">
+            {badge > 99 ? '99+' : badge}
+          </span>
         )}
       </div>
       <span className={labelClass(isSidebarExpanded)}>
@@ -84,7 +92,8 @@ export function WorkspaceSidebarNav({
   onNavigate,
   onRefresh,
   onOpenAbout,
-  onToggleSidebar
+  onToggleSidebar,
+  approvalBadgeCount
 }: WorkspaceSidebarNavProps) {
   const navContainerClass = `transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] overflow-hidden ${tourStep === 6 ? 'ring-2 ring-slate-400 shadow-[0_0_35px_rgba(255,255,255,0.15)] z-30 relative' : tourStep !== null && tourStep < 7 ? 'opacity-30 blur-[1.5px] pointer-events-none' : ''} ${isSidebarExpanded ? 'w-52 px-2.5 items-stretch' : 'w-14 items-center px-0'}`;
 
@@ -116,6 +125,7 @@ export function WorkspaceSidebarNav({
                 tourActive={tourStep === 7 ? w.key === 'dashboard' : tourStep === 8 ? w.key === 'data' : false}
                 onNavigate={onNavigate}
                 translate={translate}
+                badge={w.key === 'administration' ? approvalBadgeCount : undefined}
               />
             );
           })}

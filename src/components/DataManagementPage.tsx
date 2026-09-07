@@ -366,7 +366,8 @@ export const DataManagementPage = ({
   qaSubgridRecords,
   translate,
   initialTab,
-  initialSearch
+  initialSearch,
+  canHandleApprovals
 }: {
   dailyData: DailyTimeSeries[],
   setDailyData: (data: DailyTimeSeries[]) => void,
@@ -386,7 +387,8 @@ export const DataManagementPage = ({
   qaSubgridRecords?: Record<string, { flags: { blurry: boolean; obstruction: boolean; badGps: boolean }; answer: 'yes' | 'no' | null; isLocked: boolean }>,
   translate?: (key: string) => string,
   initialTab?: 'batches' | 'daily' | 'vector' | 'datasets' | 'recovery',
-  initialSearch?: string
+  initialSearch?: string,
+  canHandleApprovals?: boolean
 }) => {
   const tf = translate || ((key: string) => key);
   type DataTab = 'batches' | 'daily' | 'vector' | 'datasets' | 'recovery';
@@ -2015,7 +2017,7 @@ export const DataManagementPage = ({
     /* Admin-approval gate (mirrors confirmDelete): whole-subgrid purges are
        routed to the Approvals queue instead of hard-deleting; partial point
        deletions stay direct. */
-    if (approveGateEnabled) {
+    if (approvalGateActive) {
       const matchSub = (raw?: string) => (extractSubgridName(raw || '') || '').toUpperCase().trim();
       const wholeTargets: Array<{ subgrid: string; poiCount: number; kmProcessed: number }> = [];
       spatialSubgrids.filter(Boolean).forEach((sgRaw) => {
@@ -2395,6 +2397,8 @@ export const DataManagementPage = ({
   };
 
   const approveGateEnabled = projectSettings?.requireAdminApprovalForDelete !== false;
+  const isApprover = canHandleApprovals === true;
+  const approvalGateActive = approveGateEnabled && !isApprover;
 
   const submitDeletionTickets = async (
     targets: Array<{ subgrid: string; poiCount: number; kmProcessed: number }>
@@ -2522,7 +2526,7 @@ export const DataManagementPage = ({
        whole-subgrid deletions are routed to the Approvals queue instead of
        hard-deleting. Partial point deletions stay direct (no purge intent),
        so an approval ticket never escalates a few points into a full purge. */
-    if (approveGateEnabled) {
+    if (approvalGateActive) {
       const wholeTargets = resolveWholeTargets();
 
       if (wholeTargets.length > 0) {
@@ -2798,7 +2802,7 @@ export const DataManagementPage = ({
 
   const impactTotals = impactData?.totals;
   const hasSevereImpact = !!(impactData && (impactData.hasPublished || impactData.hasDeliverables || impactData.hasLinkedJobs || impactData.hasOrphanRisk));
-  const willRequireApproval = approveGateEnabled && resolveWholeTargets().length > 0;
+  const willRequireApproval = approvalGateActive && resolveWholeTargets().length > 0;
 
   const DATA_TABS: ChromeTab<string>[] = useMemo(() => [
     {

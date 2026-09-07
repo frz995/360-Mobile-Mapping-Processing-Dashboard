@@ -43,7 +43,6 @@ describe('ProjectOnboarding (StartGlobal architecture)', () => {
         translate={translate}
         onContinue={vi.fn()}
         onCreateProject={vi.fn()}
-        onSkip={vi.fn()}
       />
     );
     expect(container.firstChild).toBeNull();
@@ -59,7 +58,6 @@ describe('ProjectOnboarding (StartGlobal architecture)', () => {
         translate={translate}
         onContinue={vi.fn()}
         onCreateProject={vi.fn()}
-        onSkip={vi.fn()}
       />
     );
     expect(screen.getByText(/Ahmad Faiz/i)).toBeInTheDocument();
@@ -78,7 +76,6 @@ describe('ProjectOnboarding (StartGlobal architecture)', () => {
         translate={translate}
         onContinue={onContinue}
         onCreateProject={vi.fn()}
-        onSkip={vi.fn()}
       />
     );
 
@@ -106,7 +103,6 @@ describe('ProjectOnboarding (StartGlobal architecture)', () => {
         translate={translate}
         onContinue={onContinue}
         onCreateProject={onCreateProject}
-        onSkip={vi.fn()}
       />
     );
 
@@ -188,14 +184,13 @@ describe('ProjectOnboarding (StartGlobal architecture)', () => {
         translate={translate}
         onContinue={vi.fn()}
         onCreateProject={vi.fn()}
-        onSkip={vi.fn()}
       />
     );
 
     expect(screen.getByText(/Getting ready for your workspace/i)).toBeInTheDocument();
   });
 
-  it('triggers onBackToLanding when the Back button next to Skip for now is clicked', () => {
+  it('triggers onBackToLanding when the Back button in the picker header is clicked', () => {
     const onBackToLanding = vi.fn();
     render(
       <ProjectOnboarding
@@ -206,7 +201,6 @@ describe('ProjectOnboarding (StartGlobal architecture)', () => {
         translate={translate}
         onContinue={vi.fn()}
         onCreateProject={vi.fn()}
-        onSkip={vi.fn()}
         onBackToLanding={onBackToLanding}
       />
     );
