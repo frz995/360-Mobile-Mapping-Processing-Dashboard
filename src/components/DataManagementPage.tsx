@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { minMaxOf } from '../utils/arrayBounds';
 import {
   AlertTriangle,
   CheckCircle,
@@ -823,10 +824,8 @@ export const DataManagementPage = ({
     if (iframes.length === 0) return;
     const validPts = (points || []).filter((p) => typeof p.lat === 'number' && typeof p.lng === 'number' && Number.isFinite(p.lat) && Number.isFinite(p.lng));
     if (validPts.length > 0) {
-      const minLat = Math.min(...validPts.map((p) => p.lat!));
-      const maxLat = Math.max(...validPts.map((p) => p.lat!));
-      const minLng = Math.min(...validPts.map((p) => p.lng!));
-      const maxLng = Math.max(...validPts.map((p) => p.lng!));
+      const [minLat, maxLat] = minMaxOf(validPts.map((p) => p.lat!));
+      const [minLng, maxLng] = minMaxOf(validPts.map((p) => p.lng!));
       const padLat = Math.max(0.0015, (maxLat - minLat) * 0.15);
       const padLng = Math.max(0.0015, (maxLng - minLng) * 0.15);
       iframes.forEach((ifr) => {
@@ -875,10 +874,8 @@ export const DataManagementPage = ({
       const pts = (targetRow?.points || []).filter((p) => typeof p.lat === 'number' && typeof p.lng === 'number' && Number.isFinite(p.lat) && Number.isFinite(p.lng));
 
       if (pts.length > 0) {
-        const minLat = Math.min(...pts.map((p) => p.lat!));
-        const maxLat = Math.max(...pts.map((p) => p.lat!));
-        const minLng = Math.min(...pts.map((p) => p.lng!));
-        const maxLng = Math.max(...pts.map((p) => p.lng!));
+        const [minLat, maxLat] = minMaxOf(pts.map((p) => p.lat!));
+        const [minLng, maxLng] = minMaxOf(pts.map((p) => p.lng!));
         const padLat = Math.max(0.0015, (maxLat - minLat) * 0.15);
         const padLng = Math.max(0.0015, (maxLng - minLng) * 0.15);
 
@@ -909,10 +906,8 @@ export const DataManagementPage = ({
     } else {
       const allPts = subgridPoints.flatMap((r) => r.points || []).filter((p) => typeof p.lat === 'number' && typeof p.lng === 'number' && Number.isFinite(p.lat) && Number.isFinite(p.lng));
       if (allPts.length > 0) {
-        const minLat = Math.min(...allPts.map((p) => p.lat!));
-        const maxLat = Math.max(...allPts.map((p) => p.lat!));
-        const minLng = Math.min(...allPts.map((p) => p.lng!));
-        const maxLng = Math.max(...allPts.map((p) => p.lng!));
+        const [minLat, maxLat] = minMaxOf(allPts.map((p) => p.lat!));
+        const [minLng, maxLng] = minMaxOf(allPts.map((p) => p.lng!));
 
         iframes.forEach((ifr) => {
           if (!ifr || !ifr.contentWindow) return;

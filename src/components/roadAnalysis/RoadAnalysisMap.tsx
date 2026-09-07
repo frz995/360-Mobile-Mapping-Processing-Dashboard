@@ -20,6 +20,7 @@ import type { CatalogVectorLayer } from '../../utils/gisImportParser';
 import { type SystemLayerStyles } from './RoadCatalogPanel';
 import { resolveSpatialSubgrid } from '../../utils/subgridComparison';
 import { extractSubgridName } from '../../utils/subgrid';
+import { minMaxOf } from '../../utils/arrayBounds';
 
 const effectiveWorkerUrl = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_MAPLIBRE_WORKER_URL) || workerUrl;
 maplibregl.setWorkerUrl(effectiveWorkerUrl);
@@ -756,11 +757,11 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
           }
         });
         if (allCoords.length > 0) {
-          const lngs = allCoords.map((p) => p[0]);
-          const lats = allCoords.map((p) => p[1]);
+          const [minLng, maxLng] = minMaxOf(allCoords.map((p) => p[0]));
+          const [minLat, maxLat] = minMaxOf(allCoords.map((p) => p[1]));
           lastFittedBboxRef.current = 'points-fitted';
           map.fitBounds(
-            [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
+            [[minLng, minLat], [maxLng, maxLat]],
             { padding: 36, maxZoom: 15 }
           );
         }
