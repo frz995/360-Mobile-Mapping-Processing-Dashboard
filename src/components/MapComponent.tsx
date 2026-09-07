@@ -4,6 +4,7 @@ import { extractSubgridName } from '../utils/subgrid';
 import { getItemId } from '../utils/items';
 import { STORAGE_BUCKET_DEFAULT, REGION_DEFAULTS, DEFAULT_BASEMAP } from '../config/defaults';
 import type { Layer, Folder } from '../types/catalog';
+import { ensureDistrictGeometriesLoaded, rehydrateDistrictBoundary } from './boundary/malaysiaDistricts';
 
 export const MapComponent = ({
   dataManagement = false,
@@ -270,6 +271,7 @@ export const MapComponent = ({
   }, [sendStagedDataImmediate]);
 
   useEffect(() => {
+    ensureDistrictGeometriesLoaded().catch(console.warn);
     return () => {
       if (stagedDataRafRef.current != null) {
         cancelAnimationFrame(stagedDataRafRef.current);
@@ -305,23 +307,27 @@ export const MapComponent = ({
         }
       }, '*');
 
-      // 3. Send Project Geographic Boundary (shape + focus/dim outside)
+      // 3. Send Project Geographic Boundary (shape + focus)
       const boundary = s.projectBoundary;
       if (boundary?.geojson || boundary?.bbox) {
+        const rehydrated = (boundary.districtIds && boundary.districtIds.length > 0)
+          ? rehydrateDistrictBoundary(boundary)
+          : null;
+        const resolvedGeojson = rehydrated?.geojson || boundary.geojson;
+        const resolvedBbox = rehydrated?.bbox || boundary.bbox;
+
         iframeRef.current.contentWindow.postMessage({
           type: 'SET_PROJECT_BOUNDARY',
-          geojson: boundary.geojson,
-          bbox: boundary.bbox
+          geojson: resolvedGeojson,
+          bbox: resolvedBbox
         }, '*');
         if (boundary.focusActive) {
           iframeRef.current.contentWindow.postMessage({
             type: 'FOCUS_BOUNDARY',
-            bbox: boundary.bbox
+            bbox: resolvedBbox
           }, '*');
-          iframeRef.current.contentWindow.postMessage({ type: 'DIM_OUTSIDE_BOUNDARY', enabled: true }, '*');
-        } else {
-          iframeRef.current.contentWindow.postMessage({ type: 'DIM_OUTSIDE_BOUNDARY', enabled: false }, '*');
         }
+        iframeRef.current.contentWindow.postMessage({ type: 'DIM_OUTSIDE_BOUNDARY', enabled: false }, '*');
       } else {
         iframeRef.current.contentWindow.postMessage({
           type: 'SET_PROJECT_BOUNDARY',

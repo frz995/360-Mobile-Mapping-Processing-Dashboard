@@ -190,7 +190,7 @@ const EmbeddedMapDashboard: React.FC<{
       }, '*');
       iframeRef.current.contentWindow.postMessage({
         type: 'DIM_OUTSIDE_BOUNDARY',
-        enabled: true
+        enabled: false
       }, '*');
     } catch {}
   }, [geoJson, bbox]);
