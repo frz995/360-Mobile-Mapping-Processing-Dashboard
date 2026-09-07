@@ -22,6 +22,13 @@ describe('hashRouter', () => {
     expect(parseHashWorkspace('#/reports')).toBe('reports');
     expect(parseHashWorkspace('#/analytics')).toBe('analytics');
     expect(parseHashWorkspace('#/administration')).toBe('administration');
+    expect(parseHashWorkspace('#/landing')).toBe('landing');
+    expect(parseHashWorkspace('#/signin')).toBe('signin');
+  });
+
+  it('resolves aliases cleanly', () => {
+    expect(parseHashWorkspace('#/login')).toBe('signin');
+    expect(parseHashWorkspace('#/showcase')).toBe('landing');
   });
 
   it('resolves camelCase roadAnalysis case-insensitively', () => {

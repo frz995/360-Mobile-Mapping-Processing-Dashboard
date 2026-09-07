@@ -10,7 +10,10 @@ export type WorkspaceKey =
   | 'analytics'
   | 'reports'
   | 'administration'
-  | 'roadAnalysis';
+  | 'roadAnalysis'
+  | 'onboarding'
+  | 'landing'
+  | 'signin';
 
 export const WORKSPACE_KEYS: WorkspaceKey[] = [
   'project',
@@ -24,7 +27,10 @@ export const WORKSPACE_KEYS: WorkspaceKey[] = [
   'analytics',
   'reports',
   'administration',
-  'roadAnalysis'
+  'roadAnalysis',
+  'onboarding',
+  'landing',
+  'signin'
 ];
 
 export const DEFAULT_WORKSPACE: WorkspaceKey = 'dashboard';
@@ -33,6 +39,8 @@ export function parseHashWorkspace(hash: string = window.location.hash): Workspa
   const raw = hash.replace(/^#\/?/, '').trim();
   if (!raw) return DEFAULT_WORKSPACE;
   const key = raw.split(/[?#]/)[0].toLowerCase();
+  if (key === 'login') return 'signin';
+  if (key === 'showcase') return 'landing';
   const matched = WORKSPACE_KEYS.find((k) => k.toLowerCase() === key);
   return matched ?? DEFAULT_WORKSPACE;
 }

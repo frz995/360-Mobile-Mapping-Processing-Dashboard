@@ -801,4 +801,43 @@ textarea::placeholder {
 
 .slider-sm.slider-emerald::-webkit-slider-thumb:hover {
   box-shadow: 0 0 0 4px var(--slider-thumb-glow, rgba(16, 185, 129, 0.25));
-}
+}
+
+/* ==========================================================================
+   STARTGLOBAL ONBOARDING ANIMATIONS & DESIGN TOKENS
+   ========================================================================== */
+
+@keyframes stepSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-step-in {
+  animation: stepSlideIn 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.blueprint-matrix-card {
+  background: linear-gradient(135deg, var(--bg-card) 0%, var(--bg-inner) 100%);
+  position: relative;
+}
+
+.blueprint-matrix-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(180deg, rgba(56, 189, 248, 0.25) 0%, rgba(148, 163, 184, 0.08) 50%, rgba(16, 185, 129, 0.15) 100%);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+

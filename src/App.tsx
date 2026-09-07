@@ -22,7 +22,6 @@ import {
   ShieldCheck,
   Maximize2,
   Filter,
-  Globe,
   ClipboardList,
   History,
   Calendar,
@@ -30,7 +29,8 @@ import {
   ExternalLink,
   Loader2,
   Play,
-  StopCircle
+  StopCircle,
+  ArrowLeft
 } from 'lucide-react';
 import { supabase, fetchSupabaseData, updateDefectStatusInSupabase, saveQaAuditRunToSupabase, saveAuditLogToSupabase, saveNotificationToSupabase, saveProjectSettingsToSupabase, resolvePanoramaUrl, resolvePanoramaConfigUrl, getDatabaseTableMapping, SUBGRID_COORDINATES, saveProcessingJobToSupabase, pruneBloatedUserMetadata } from './services/supabase';
 import type { QAQCAuditRunRecord } from './types/admin';
@@ -44,6 +44,7 @@ import { DefectsGalleryModal } from './components/DefectsGalleryModal';
 import { ContentLoading } from './components/common/ContentLoading';
 import { Toaster } from './components/common/Toaster';
 import { WorkspaceErrorBoundary } from './components/common/WorkspaceErrorBoundary';
+import { GeoSphereFullLogo } from './components/common/GeoSphereLogo';
 import { translate } from './lib/i18n';
 import { APP_VERSION } from './config/defaults';
 import { ProjectOnboarding, type GateStage } from './components/ProjectOnboarding';
@@ -206,12 +207,15 @@ const TOUR_STEPS = [
 export default function App() {
   const [currentPage, setCurrentPage] = useState<WorkspaceKey>(() => {
     const fromHash = parseHashWorkspace();
+    if (fromHash === 'onboarding' || fromHash === 'landing' || fromHash === 'signin') {
+      return getStoredWorkspaceKey() || 'dashboard';
+    }
     if (window.location.hash && fromHash !== 'dashboard') return fromHash;
     return getStoredWorkspaceKey() || fromHash;
   });
   const dashboardPsvRef = useRef<PhotoSphereViewerHandle | null>(null);
   const inspectionMapIframeRef = useRef<HTMLIFrameElement | null>(null);
-  const [showLanding, setShowLanding] = useState<boolean>(true);
+  const [showLanding, setShowLanding] = useState<boolean>(() => parseHashWorkspace() !== 'signin');
   const [authSession, setAuthSession] = useState<any>(null);
   const [pendingModule, setPendingModule] = useState<string | null>(null);
   const [selectedDailyRunId, setSelectedDailyRunId] = useState<string | null>(null);
@@ -381,6 +385,26 @@ export default function App() {
 
   // Lightweight hash-based workspace routing (no external dependency)
   const goToWorkspace = useCallback((key: WorkspaceKey) => {
+    if (key === 'landing') {
+      setShowLanding(true);
+      setProjectGate('idle');
+      setHashWorkspace('landing');
+      return;
+    }
+    if (key === 'signin') {
+      setShowLanding(false);
+      setProjectGate('idle');
+      setHashWorkspace('signin');
+      return;
+    }
+    if (key === 'onboarding') {
+      setShowLanding(false);
+      setProjectGate((prev) => (prev === 'idle' ? 'pick' : prev));
+      setHashWorkspace('onboarding');
+      return;
+    }
+    setProjectGate('idle');
+    setShowLanding(false);
     setCurrentPage(key);
     setFocusedSection(null);
     setHashWorkspace(key);
@@ -389,7 +413,20 @@ export default function App() {
 
   useEffect(() => {
     return subscribeHashWorkspace((key) => {
-      setCurrentPage((prev) => (prev === key ? prev : key));
+      if (key === 'landing') {
+        setShowLanding(true);
+        setProjectGate('idle');
+      } else if (key === 'signin') {
+        setShowLanding(false);
+        setProjectGate('idle');
+      } else if (key === 'onboarding') {
+        setShowLanding(false);
+        setProjectGate((prev) => (prev === 'idle' ? 'pick' : prev));
+      } else {
+        setShowLanding(false);
+        setProjectGate('idle');
+        setCurrentPage((prev) => (prev === key ? prev : key));
+      }
     });
   }, []);
 
@@ -552,7 +589,7 @@ export default function App() {
     setProjectGate('idle');
     clearWorkspaceLocation();
     clearLastActivity();
-    setHashWorkspace('dashboard');
+    setHashWorkspace('landing');
   }, [authSession]);
 
   const [authLoading, setAuthLoading] = useState(true);
@@ -658,21 +695,34 @@ export default function App() {
       setProjectGate('idle');
       return;
     }
+    const currentHashKey = parseHashWorkspace(window.location.hash);
     const userKey = resolveUserStorageKey(session, false);
+    const savedId = loadActiveProjectId(userKey);
     const showWelcome = shouldShowWelcome(userKey);
-    const authUserName =
-      session?.user?.user_metadata?.full_name ||
-      session?.user?.user_metadata?.name ||
-      session?.user?.user_metadata?.username ||
-      session?.user?.email ||
-      '';
-    setWelcomeUserName(authUserName);
-    setProjectGate(showWelcome ? 'welcome' : 'pick');
+
+    // If user explicitly navigated to #/onboarding, OR this is their first ever login (showWelcome),
+    // OR they have no active project chosen yet:
+    if (currentHashKey === 'onboarding' || showWelcome || !savedId) {
+      const authUserName =
+        session?.user?.user_metadata?.full_name ||
+        session?.user?.user_metadata?.name ||
+        session?.user?.user_metadata?.username ||
+        session?.user?.email ||
+        '';
+      setWelcomeUserName(authUserName);
+      setProjectGate(showWelcome ? 'welcome' : 'pick');
+      setHashWorkspace('onboarding');
+    } else {
+      // Returning user who refreshed while on #/dashboard, #/data, etc. with a chosen project:
+      // Respect their requested workspace and stay in idle gate!
+      setProjectGate('idle');
+    }
   }, [shouldShowWelcome]);
 
   const handleGateSkip = useCallback(() => {
     setProjectGate('idle');
-  }, []);
+    goToWorkspace('dashboard');
+  }, [goToWorkspace]);
 
   const handleGateContinue = useCallback((project: UserProject) => {
     setProjectGate('loading');
@@ -817,10 +867,17 @@ export default function App() {
     })();
   }, [authSession, authLoading, isGuestUser, refreshProjects]);
 
-  // Apply the active project's GIS scope into projectSettings whenever it changes.
+  // Apply the active project's GIS scope and theme into projectSettings whenever it changes.
   useEffect(() => {
     if (!activeProject) return;
     setProjectSettings((prev: any) => applyProjectScope(prev, activeProject));
+    if (activeProject.scope?.theme) {
+      document.documentElement.setAttribute('data-theme', activeProject.scope.theme);
+      try {
+        localStorage.setItem('app_dashboard_theme', activeProject.scope.theme);
+      } catch {}
+      window.dispatchEvent(new CustomEvent('app-theme-changed', { detail: activeProject.scope.theme }));
+    }
   }, [activeProject, setProjectSettings]);
 
   const handleLoadProject = useCallback(async (project: UserProject) => {
@@ -3023,19 +3080,28 @@ export default function App() {
   }
 
   // 2. Landing showcase render guard
-  if (showLanding && !authSession) {
+  if (showLanding) {
     return (
       <SystemShowcase
         dailyData={dailyData}
         batchLogs={batchLogs}
         projectSettings={projectSettings}
         onEnterDashboard={(targetView?: string) => {
-          if (targetView === 'auth') {
+          if (!authSession) {
+            if (targetView === 'auth') {
+              goToWorkspace('signin');
+              return;
+            }
+            setPendingModule(targetView || 'webgis');
+            goToWorkspace('signin');
+          } else {
             setShowLanding(false);
-            return;
+            if (targetView === 'auth') {
+              goToWorkspace('dashboard');
+              return;
+            }
+            handleEnterModule(targetView || 'webgis');
           }
-          setPendingModule(targetView || 'webgis');
-          handleEnterModule(targetView || 'webgis');
         }}
       />
     );
@@ -3051,13 +3117,13 @@ export default function App() {
           {/* Header Branding */}
           <div className="text-center mb-8">
             <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-card border border-subtle shadow-sm mb-4">
-              <Globe size={22} className="text-text-base" />
+              <GeoSphereFullLogo size={34} className="text-text-base" />
             </div>
             <h1 className="text-xl font-semibold text-text-base tracking-tight">
-              Sign in to Dashboard
+              Sign in to GeoSphere 360
             </h1>
             <p className="text-xs text-text-muted mt-1.5 leading-relaxed">
-              GeoSphere 360 Operations Hub &bull; Mobile Mapping & Spatial Intelligence
+              Operations Hub &bull; Mobile Mapping &amp; Spatial Intelligence
             </p>
           </div>
 
@@ -3146,16 +3212,25 @@ export default function App() {
             <span>Continue as Guest (Read-Only Mode)</span>
           </button>
 
-          {/* Footer Security Note */}
-          <div className="mt-8 text-center">
+          {/* Footer Security Note & Back Navigation */}
+          <div className="mt-8 text-center flex flex-col items-center gap-3">
             <p className="text-[11px] text-text-muted">
               Protected by Supabase Access Authentication
             </p>
+            <button
+              type="button"
+              onClick={() => goToWorkspace('landing')}
+              className="inline-flex items-center justify-center gap-2 text-xs font-medium text-text-muted hover:text-text-base transition-colors cursor-pointer group"
+            >
+              <ArrowLeft size={14} className="transition-transform group-hover:-translate-x-0.5" />
+              <span>Back to System Showcase</span>
+            </button>
           </div>
         </div>
       </div>
     );
   }
+
 
 
 
@@ -3203,6 +3278,10 @@ export default function App() {
           onContinue={handleGateContinue}
           onCreateProject={handleGateCreateProject}
           onSkip={handleGateSkip}
+          onBackToLanding={() => {
+            setProjectGate('idle');
+            goToWorkspace('landing');
+          }}
           onRefreshProjects={refreshProjects}
         />
       )}

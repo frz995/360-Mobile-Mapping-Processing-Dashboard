@@ -179,6 +179,25 @@ body,
     background-color: var(--bg-app) !important;
 }
 
+/* ==========================================================================
+   SHOWCASE / LANDING PAGE EXCEPTION
+   data-theme is on <html>, so we target html.showcase-active.
+   ========================================================================== */
+html.showcase-active,
+html.showcase-active body,
+html.showcase-active #root,
+html.showcase-active[data-theme] {
+    background-color: transparent !important;
+}
+
+html.showcase-active[data-theme] main,
+html.showcase-active[data-theme] section,
+html.showcase-active[data-theme] body,
+html.showcase-active[data-theme] #root,
+html.showcase-active[data-theme] div[class*="min-h-screen"] {
+    background-color: transparent !important;
+}
+
 /* Top Navbar, Header, Sidebar */
 [data-theme] header,
 [data-theme] nav,
