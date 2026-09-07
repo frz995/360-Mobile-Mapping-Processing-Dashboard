@@ -5,6 +5,7 @@
  */
 
 import { quietWarn } from '../lib/quiet';
+import { minMaxOf } from './arrayBounds';
 
 export interface GpuAnalysisResult {
   isGpuAccelerated: boolean;
@@ -321,7 +322,7 @@ class WebGLGpuAnalyzer {
     });
 
     const scoresOnly = sectorScores.map(s => s.score);
-    const minScore = Math.min(...scoresOnly);
+    const minScore = minMaxOf(scoresOnly)[0];
     const meanScore = Math.round((scoresOnly.reduce((a, b) => a + b, 0) / scoresOnly.length) * 10) / 10;
     const worstSectorObj = sectorScores.reduce((worst, cur) => cur.score < worst.score ? cur : worst, sectorScores[0]);
 

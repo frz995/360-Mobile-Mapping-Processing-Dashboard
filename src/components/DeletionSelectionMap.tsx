@@ -21,6 +21,7 @@ import {
   Navigation
 } from 'lucide-react';
 import { extractSubgridName } from '../services/supabase';
+import { minMaxOf } from '../utils/arrayBounds';
 
 export interface SelectedPointInfo {
   subgrid: string;
@@ -328,10 +329,8 @@ export const DeletionSelectionMap: React.FC<DeletionSelectionMapProps> = ({
       let bMinLat = 0, bMaxLat = 0, bMinLng = 0, bMaxLng = 0;
 
       if (validPts.length > 0) {
-        const minLat = Math.min(...validPts.map((p) => p.lat!));
-        const maxLat = Math.max(...validPts.map((p) => p.lat!));
-        const minLng = Math.min(...validPts.map((p) => p.lng!));
-        const maxLng = Math.max(...validPts.map((p) => p.lng!));
+        const [minLat, maxLat] = minMaxOf(validPts.map((p) => p.lat!));
+        const [minLng, maxLng] = minMaxOf(validPts.map((p) => p.lng!));
 
         centerLat = (minLat + maxLat) / 2;
         centerLng = (minLng + maxLng) / 2;
@@ -428,10 +427,8 @@ export const DeletionSelectionMap: React.FC<DeletionSelectionMapProps> = ({
       let bMinLat = 0, bMaxLat = 0, bMinLng = 0, bMaxLng = 0;
 
       if (validAll.length > 0) {
-        const minLat = Math.min(...validAll.map((p) => p.lat!));
-        const maxLat = Math.max(...validAll.map((p) => p.lat!));
-        const minLng = Math.min(...validAll.map((p) => p.lng!));
-        const maxLng = Math.max(...validAll.map((p) => p.lng!));
+        const [minLat, maxLat] = minMaxOf(validAll.map((p) => p.lat!));
+        const [minLng, maxLng] = minMaxOf(validAll.map((p) => p.lng!));
 
         centerLat = (minLat + maxLat) / 2;
         centerLng = (minLng + maxLng) / 2;

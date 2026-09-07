@@ -16,6 +16,7 @@ import { Crosshair, Maximize2, Printer, Loader2, Info, PanelsTopLeft } from 'luc
 import { RoadAnalysisMap } from './RoadAnalysisMap';
 import type { CatalogVectorLayer } from '../../utils/gisImportParser';
 import type { SystemLayerStyles } from './RoadCatalogPanel';
+import { minMaxOf } from '../../utils/arrayBounds';
 
 export interface RoadAnalysisPrintPointsSummary {
   published: number;
@@ -130,7 +131,9 @@ function unionBboxOf(
   }));
 
   if (xs.length === 0 || ys.length === 0) return null;
-  return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+  const [minX, maxX] = minMaxOf(xs);
+  const [minY, maxY] = minMaxOf(ys);
+  return [minX, minY, maxX, maxY];
 }
 
 function makeLegendRows(
