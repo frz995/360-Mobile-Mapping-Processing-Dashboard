@@ -43,6 +43,51 @@ BFF gateway  ── /api/* on NERD, verifies JWT, resolves app role ──►  N
    on the BFF only (never in the client bundle).
 3. Create storage buckets referenced by `VITE_SUPABASE_BUCKET` (+ aliases).
 
+#### Known hardening follow-up (admin-approval delete gate)
+The dashboard's `requireAdminApprovalForDelete` toggle (project_settings) is
+currently **UI-gated only**. The DB still grants hard deletes purely on role:
+
+- `panoramas_delete` → `sec.can('deleteData')`
+  (`0012_core_tables_and_rls.sql`, `panoramas` table)
+- `staging_panoramas_delete` → `sec.can('deleteData') OR sec.can('manageDatasets')`
+- `qa_defects_delete` → `sec.can('deleteData') OR sec.can('reviewQaqc')`
+- `qaqc_audit_runs_delete` → `sec.can('deleteData')`
+
+"deleteData" is granted to **Administrator + Survey Operator** (`0009_security_functions.sql`),
+so a Survey Operator can bypass the approval flow with a direct API call.
+
+Fix (future migration, e.g. `001x_require_approval_for_delete.sql`): make those
+DELETE policies consult the shared project_settings row
+(`id='default'`, JSONB `settings.requireAdminApprovalForDelete`, default ON) and
+reject when non-Administrators delete while approval is mandated, e.g.
+
+```sql
+create or replace function sec.delete_requires_approval()
+returns boolean
+language sql stable security definer
+set search_path = public, sec
+as $$
+  select coalesce(
+    (mv.settings->>'requireAdminApprovalForDelete')::boolean, true
+  )
+  from (select ((select settings::jsonb
+                 from public.project_settings ps
+                 where ps.id = 'default'))) mv(settings);
+$$;
+
+-- panoramas_delete
+drop policy if exists "panoramas_delete" on public.panoramas;
+create policy "panoramas_delete" on public.panoramas
+  for delete using (
+    sec.can('deleteData')
+    and (sec.is_role('Administrator') or not sec.delete_requires_approval())
+  );
+```
+
+Mirror the same guard on `staging_panoramas_delete`,
+`qa_defects_delete`, and `qaqc_audit_runs_delete`.
+Re-run `0011_security_tests.sql` and the smoke checklist after applying.
+
 ### 2.2 NERD worker host
 1. Provision a Python 3.10+ environment, install `worker/requirements.txt`
    (includes the GPU stack: numpy, opencv, etc.).
