@@ -15,6 +15,7 @@ import { createNextVersion } from '../../../utils/datasetVersioning';
 import { extractCanonicalSubgrid } from '../../../utils/datasetLineage';
 import { resolveSubgridLifecycle } from '../../../utils/dataLifecycle';
 import { WebGISHandoffCard } from '../WebGISHandoffCard';
+import { pushWorkspace } from '../../../utils/urlRouter';
 
 export interface QAConsultPanelProps {
   jobs: ProcessingJobRecord[];
@@ -317,7 +318,7 @@ export const QAConsultPanel: React.FC<QAConsultPanelProps> = ({
                     lifecycle={lc}
                     bucketName={projectSettings?.storageBucket || projectSettings?.supabaseBucket || 'MMS_PIC'}
                     onNavigateToDataManagement={(sg) => {
-                      window.location.hash = `#data?subgrid=${encodeURIComponent(sg)}`;
+                      pushWorkspace('data', { subgrid: sg });
                     }}
                   />
                 );
@@ -350,7 +351,7 @@ export const QAConsultPanel: React.FC<QAConsultPanelProps> = ({
                         lifecycle={lc}
                         bucketName={projectSettings?.storageBucket || projectSettings?.supabaseBucket || 'MMS_PIC'}
                         onNavigateToDataManagement={(targetSg) => {
-                          window.location.hash = `#data?subgrid=${encodeURIComponent(targetSg)}`;
+                          pushWorkspace('data', { subgrid: targetSg });
                         }}
                       />
                     );

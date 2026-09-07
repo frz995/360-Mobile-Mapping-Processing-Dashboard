@@ -1719,17 +1719,21 @@ export const DataManagementPage = ({
     if (initialSearch !== undefined) setSearchQuery(initialSearch);
   }, [initialSearch]);
 
-  // Read subgrid filter from URL hash (e.g. #data?subgrid=N93E70) from Production Handoff
+  // Read subgrid filter from URL query (e.g. /data?subgrid=N93E70) from Production Handoff,
+  // with a legacy #data?subgrid= hash fallback for older bookmarks.
   useEffect(() => {
     try {
-      const hash = window.location.hash;
-      if (hash.includes('subgrid=')) {
-        const urlParams = new URLSearchParams(hash.split('?')[1]);
-        const sg = urlParams.get('subgrid');
-        if (sg) {
-          setSearchQuery(sg);
-          setMapSubgridFilter(sg);
+      const params = new URLSearchParams(window.location.search);
+      let sg = params.get('subgrid');
+      if (!sg) {
+        const hash = window.location.hash;
+        if (hash && hash.includes('subgrid=')) {
+          sg = new URLSearchParams(hash.split('?')[1] || '').get('subgrid');
         }
+      }
+      if (sg) {
+        setSearchQuery(sg);
+        setMapSubgridFilter(sg);
       }
     } catch (_) {}
   }, []);

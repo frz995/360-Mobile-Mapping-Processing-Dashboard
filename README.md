@@ -95,7 +95,7 @@ The frontend application is built on React 18, TypeScript, and Vite, packaged wi
 
 ### Client Routing and State
 
-* Hash-based workspace router (`src/utils/hashRouter.ts`) providing zero-dependency navigation between workspaces (`#/dashboard`, `#/data`, `#/qaqc`, `#/production`, `#/landing`, `#/signin`, `#/onboarding`).
+* Path-based workspace router (`src/utils/urlRouter.ts`) providing zero-dependency History-API navigation between clean routes (`/dashboard`, `/data`, `/roadAnalysis`, `/production`, `/landing`, `/signin`, `/onboarding`) with legacy `#/…` deep-link fallback.
 * Bidirectional project scoping (`src/services/projects.ts` and `src/services/projectContext.ts`) ensuring every query and real-time subscription is partitioned by the active campaign context.
 
 ---

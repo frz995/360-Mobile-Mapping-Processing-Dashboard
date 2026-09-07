@@ -92,8 +92,8 @@ import { AboutPlatformModal } from './components/modals/AboutPlatformModal';
 import { DashboardKpiSummary } from './components/dashboard/DashboardKpiSummary';
 import { DashboardBatchTable } from './components/dashboard/DashboardBatchTable';
 import { WorkspacePlaceholder, getWorkspaceDefinition } from './workspaces';
-import { parseHashWorkspace, setHashWorkspace, subscribeHashWorkspace } from './utils/hashRouter';
-import type { WorkspaceKey } from './utils/hashRouter';
+import { parseWorkspace, pushWorkspace, replaceWorkspace, subscribeWorkspace, isExplicitRoute } from './utils/urlRouter';
+import type { WorkspaceKey } from './utils/urlRouter';
 import {
   getStoredWorkspaceKey,
   setStoredWorkspaceKey,
@@ -206,16 +206,16 @@ const TOUR_STEPS = [
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState<WorkspaceKey>(() => {
-    const fromHash = parseHashWorkspace();
-    if (fromHash === 'onboarding' || fromHash === 'landing' || fromHash === 'signin') {
+    const fromRoute = parseWorkspace();
+    if (fromRoute === 'onboarding' || fromRoute === 'landing' || fromRoute === 'signin') {
       return getStoredWorkspaceKey() || 'dashboard';
     }
-    if (window.location.hash && fromHash !== 'dashboard') return fromHash;
-    return getStoredWorkspaceKey() || fromHash;
+    if (isExplicitRoute() && fromRoute !== 'dashboard') return fromRoute;
+    return getStoredWorkspaceKey() || fromRoute;
   });
   const dashboardPsvRef = useRef<PhotoSphereViewerHandle | null>(null);
   const inspectionMapIframeRef = useRef<HTMLIFrameElement | null>(null);
-  const [showLanding, setShowLanding] = useState<boolean>(() => parseHashWorkspace() !== 'signin');
+  const [showLanding, setShowLanding] = useState<boolean>(() => parseWorkspace() !== 'signin');
   const [authSession, setAuthSession] = useState<any>(null);
   const [pendingModule, setPendingModule] = useState<string | null>(null);
   const [selectedDailyRunId, setSelectedDailyRunId] = useState<string | null>(null);
@@ -383,36 +383,36 @@ export default function App() {
     }
   }, [focusedSection]);
 
-  // Lightweight hash-based workspace routing (no external dependency)
+  // Lightweight path-based workspace routing (History API, no external dependency)
   const goToWorkspace = useCallback((key: WorkspaceKey) => {
     if (key === 'landing') {
       setShowLanding(true);
       setProjectGate('idle');
-      setHashWorkspace('landing');
+      pushWorkspace('landing');
       return;
     }
     if (key === 'signin') {
       setShowLanding(false);
       setProjectGate('idle');
-      setHashWorkspace('signin');
+      pushWorkspace('signin');
       return;
     }
     if (key === 'onboarding') {
       setShowLanding(false);
       setProjectGate((prev) => (prev === 'idle' ? 'pick' : prev));
-      setHashWorkspace('onboarding');
+      pushWorkspace('onboarding');
       return;
     }
     setProjectGate('idle');
     setShowLanding(false);
     setCurrentPage(key);
     setFocusedSection(null);
-    setHashWorkspace(key);
+    pushWorkspace(key);
     setStoredWorkspaceKey(key);
   }, []);
 
   useEffect(() => {
-    return subscribeHashWorkspace((key) => {
+    return subscribeWorkspace((key) => {
       if (key === 'landing') {
         setShowLanding(true);
         setProjectGate('idle');
@@ -589,7 +589,7 @@ export default function App() {
     setProjectGate('idle');
     clearWorkspaceLocation();
     clearLastActivity();
-    setHashWorkspace('landing');
+    replaceWorkspace('landing');
   }, [authSession]);
 
   const [authLoading, setAuthLoading] = useState(true);
@@ -695,7 +695,7 @@ export default function App() {
       setProjectGate('idle');
       return;
     }
-    const currentHashKey = parseHashWorkspace(window.location.hash);
+    const currentHashKey = parseWorkspace();
     const userKey = resolveUserStorageKey(session, false);
     const savedId = loadActiveProjectId(userKey);
     const showWelcome = shouldShowWelcome(userKey);
@@ -711,7 +711,7 @@ export default function App() {
         '';
       setWelcomeUserName(authUserName);
       setProjectGate(showWelcome ? 'welcome' : 'pick');
-      setHashWorkspace('onboarding');
+      pushWorkspace('onboarding');
     } else {
       // Returning user who refreshed while on #/dashboard, #/data, etc. with a chosen project:
       // Respect their requested workspace and stay in idle gate!

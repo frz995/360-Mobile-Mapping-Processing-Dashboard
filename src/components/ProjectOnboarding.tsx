@@ -22,6 +22,7 @@ import {
   isDistrictGeometriesLoaded
 } from './boundary/malaysiaDistricts';
 import { THEME_PRESETS, type ThemeKey } from './ThemeSelector';
+import { pushWorkspace } from '../utils/urlRouter';
 
 export type GateStage = 'idle' | 'welcome' | 'pick' | 'loading';
 
@@ -618,7 +619,7 @@ export const ProjectOnboarding: React.FC<ProjectOnboardingProps> = ({
                   if (onBackToLanding) {
                     onBackToLanding();
                   } else {
-                    window.location.hash = '#/landing';
+                    pushWorkspace('landing');
                   }
                 }}
                 className="text-xs text-text-muted hover:text-text-base transition-colors px-2 py-1 rounded hover:bg-inner flex items-center gap-1.5 cursor-pointer"
