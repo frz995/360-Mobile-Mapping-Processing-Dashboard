@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, fireEvent, cleanup } from '@testing-library/react'
 import { WorkspaceSidebarNav } from '../WorkspaceSidebarNav'
-import type { WorkspaceKey } from '../../utils/hashRouter'
+import type { WorkspaceKey } from '../../utils/urlRouter'
 
 const translate = (k: string) => k
 

@@ -1,4 +1,4 @@
-import { WORKSPACE_KEYS, type WorkspaceKey } from './hashRouter';
+import { WORKSPACE_KEYS, type WorkspaceKey } from './urlRouter';
 
 const LOCATION_STORAGE_KEY = 'geosphere360_workspace_location';
 const LAST_ACTIVITY_STORAGE_KEY = 'geosphere360_last_activity';

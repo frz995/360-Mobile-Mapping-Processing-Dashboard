@@ -13,7 +13,7 @@ import {
   Settings,
   Shield
 } from 'lucide-react';
-import type { WorkspaceKey } from './utils/hashRouter';
+import type { WorkspaceKey } from './utils/urlRouter';
 import type { AuthzCapability } from './lib/authz';
 
 export type WorkspaceTag = 'live' | 'planned' | 'reserved';

@@ -1,6 +1,6 @@
 import { ChevronRight, Info, RefreshCw } from 'lucide-react';
 import { WORKSPACES, WORKSPACE_CATEGORIES, type WorkspaceDefinition } from '../workspaces';
-import type { WorkspaceKey } from '../utils/hashRouter';
+import type { WorkspaceKey } from '../utils/urlRouter';
 
 interface WorkspaceSidebarNavProps {
   translate: (key: string) => string;

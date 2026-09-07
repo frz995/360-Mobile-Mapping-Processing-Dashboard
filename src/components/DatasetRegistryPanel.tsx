@@ -33,6 +33,7 @@ import type { TranslateFn } from './production/common';
 import { qaBadge, statusTone } from './production/lineage/lineageCommon';
 import { resolveSubgridLifecycle } from '../utils/dataLifecycle';
 import { WebGISHandoffCard } from './production/WebGISHandoffCard';
+import { pushWorkspace } from '../utils/urlRouter';
 
 type TypeFilter = 'all' | 'RAW' | 'PROCESSED' | 'DELIVERABLE';
 
@@ -557,7 +558,7 @@ export const DatasetRegistryPanel: React.FC<DatasetRegistryPanelProps> = ({
                 lifecycle={resolveSubgridLifecycle({ subgrid: handoffSubgrid, datasets, jobs })}
                 onNavigateToDataManagement={(sg) => {
                   setHandoffSubgrid(null);
-                  window.location.hash = `#data?subgrid=${encodeURIComponent(sg)}`;
+                  pushWorkspace('data', { subgrid: sg });
                 }}
               />
             </div>
