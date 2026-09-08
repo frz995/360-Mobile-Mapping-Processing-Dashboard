@@ -1,7 +1,8 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { ArrowLeft, ArrowRight, Compass } from 'lucide-react';
+import type { PanotrackPoint } from '../../utils/panotrackExtractor';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 
 // Setup MapLibre web worker
@@ -20,6 +21,17 @@ export interface ProjectBoundaryMapProps {
   onReturnToGlobe: () => void;
   onEnterWorkspace?: () => void;
   dailyData?: any[];
+  /** Status-coloured panotrack points available on this project (district-scoped). */
+  panotrackPoints?: PanotrackPoint[];
+  /**
+   * The committed project boundary from project settings (one Feature per selected
+   * district). When provided, EVERY committed district is drawn as the red boundary —
+   * independent of panotrack POI — so the view reflects exactly what the user saved.
+   */
+  projectBoundary?: {
+    geojson?: any;
+    bbox?: [number, number, number, number];
+  };
 }
 
 const OFM_DARK_STYLE = 'https://tiles.openfreemap.org/styles/dark';
@@ -31,6 +43,8 @@ export const ProjectBoundaryMap: React.FC<ProjectBoundaryMapProps> = ({
   onReturnToGlobe,
   onEnterWorkspace,
   dailyData = [],
+  panotrackPoints = [],
+  projectBoundary,
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -45,6 +59,17 @@ export const ProjectBoundaryMap: React.FC<ProjectBoundaryMapProps> = ({
     (sum, d) => sum + (Number(d.availableImagesCount || d.images || d.imagesProcessed || 0)),
     0
   );
+
+  // Names of the committed districts (from project settings) shown in the header
+  const committedDistrictsLabel = useMemo(() => {
+    const feats = projectBoundary?.geojson?.features || [];
+    const names: string[] = [];
+    feats.forEach((f: any) => {
+      const n = String(f?.properties?.name || f?.id || '').trim();
+      if (n && !names.includes(n)) names.push(n);
+    });
+    return names.length > 0 ? names.join(', ') : `${districtName} District`;
+  }, [projectBoundary, districtName]);
 
   // Initialize MapLibre GL instance with OpenFreeMap Dark style
   useEffect(() => {
@@ -176,46 +201,95 @@ export const ProjectBoundaryMap: React.FC<ProjectBoundaryMapProps> = ({
       }
     }
 
-    // 2. Active Target District (Red Fill & Glowing Outline)
+    // 2. Committed project boundary — exactly what the user saved in project settings.
+    //    Drawn regardless of panotrack POI so every committed district is always visible.
+    const committedBoundarySourceId = 'committed-boundary-source';
+    const committedBoundaryLineId = 'committed-boundary-line';
+    const committedFeatures =
+      projectBoundary?.geojson && Array.isArray(projectBoundary.geojson.features) && projectBoundary.geojson.features.length > 0
+        ? projectBoundary.geojson.features
+        : [];
+    if (committedFeatures.length > 0) {
+      const committedData = { type: 'FeatureCollection', features: committedFeatures } as any;
+      if (!map.getSource(committedBoundarySourceId)) {
+        map.addSource(committedBoundarySourceId, { type: 'geojson', data: committedData });
+        map.addLayer({
+          id: committedBoundaryLineId,
+          type: 'line',
+          source: committedBoundarySourceId,
+          paint: {
+            'line-color': '#ef4444',
+            'line-width': showBoundary ? 2.5 : 0,
+            'line-opacity': 0.95,
+          },
+        });
+      } else {
+        (map.getSource(committedBoundarySourceId) as maplibregl.GeoJSONSource).setData(committedData);
+        map.setPaintProperty(committedBoundaryLineId, 'line-width', showBoundary ? 2.5 : 0);
+      }
+    } else if (map.getSource(committedBoundarySourceId)) {
+      map.removeLayer(committedBoundaryLineId);
+      map.removeSource(committedBoundarySourceId);
+    }
+
+    // 3. Active Target District (amber dashed outline — marks the selected chip).
+    //    Add-once + setData (no source/layer teardown) so identity churn or re-renders
+    //    never flash the boundary.
     if (districtFeature) {
       const sourceId = 'district-boundary-source';
       const fillLayerId = 'district-boundary-fill';
       const lineLayerId = 'district-boundary-line';
 
-      if (map.getLayer(lineLayerId)) map.removeLayer(lineLayerId);
-      if (map.getLayer(fillLayerId)) map.removeLayer(fillLayerId);
-      if (map.getSource(sourceId)) map.removeSource(sourceId);
+      if (!map.getSource(sourceId)) {
+        map.addSource(sourceId, { type: 'geojson', data: districtFeature as any });
+      } else {
+        (map.getSource(sourceId) as maplibregl.GeoJSONSource).setData(districtFeature as any);
+      }
 
-      map.addSource(sourceId, {
-        type: 'geojson',
-        data: districtFeature,
-      });
+      if (!map.getLayer(fillLayerId)) {
+        // District polygon (stroke/outline only, no fill color)
+        map.addLayer({
+          id: fillLayerId,
+          type: 'fill',
+          source: sourceId,
+          paint: {
+            'fill-color': 'transparent',
+            'fill-opacity': 0,
+          },
+        });
+      }
 
-      // District polygon (stroke/outline only, no fill color)
-      map.addLayer({
-        id: fillLayerId,
-        type: 'fill',
-        source: sourceId,
-        paint: {
-          'fill-color': 'transparent',
-          'fill-opacity': 0,
-        },
-      });
+      if (!map.getLayer(lineLayerId)) {
+        // Crisp amber dashed active-district outline (distinct from the red committed boundary)
+        map.addLayer({
+          id: lineLayerId,
+          type: 'line',
+          source: sourceId,
+          paint: {
+            'line-color': '#fbbf24',
+            'line-width': 2.4,
+            'line-opacity': 0.95,
+            'line-dasharray': [2.5, 1.5],
+          },
+        });
+      }
+      map.setPaintProperty(lineLayerId, 'line-width', showBoundary ? 2.4 : 0);
+    }
 
-      // Crisp red glowing boundary outline
-      map.addLayer({
-        id: lineLayerId,
-        type: 'line',
-        source: sourceId,
-        paint: {
-          'line-color': '#ef4444',
-          'line-width': showBoundary ? 2.5 : 0,
-          'line-opacity': 0.95,
-        },
-      });
-
-    // Fit bounds gracefully to full district perimeter with maxZoom capped at 9.2 (never too deep)
-    if (districtFeature?.geometry?.coordinates) {
+    // Fit bounds to the committed boundary when present (shows every committed district,
+    // e.g. Segamat + Tangkak together), otherwise the single active district.
+    const committedBbox = committedFeatures.length > 0 ? projectBoundary?.bbox : null;
+    if (committedBbox && committedBbox.length === 4) {
+      map.fitBounds(
+        [[committedBbox[0], committedBbox[1]], [committedBbox[2], committedBbox[3]]],
+        {
+          padding: { top: 80, bottom: 80, left: 80, right: 80 },
+          maxZoom: 9.2,
+          pitch: 18,
+          duration: 1100,
+        }
+      );
+    } else if (districtFeature?.geometry?.coordinates) {
       try {
         const getCoordinates = (coords: any[]): [number, number][] => {
           if (typeof coords[0] === 'number') return [coords as [number, number]];
@@ -242,8 +316,7 @@ export const ProjectBoundaryMap: React.FC<ProjectBoundaryMapProps> = ({
         console.warn('Could not fit bounds for district:', e);
       }
     }
-  }
-}, [allDistrictsGeojson, districtFeature, isMapLoaded, showBoundary]);
+}, [allDistrictsGeojson, districtFeature, isMapLoaded, showBoundary, projectBoundary]);
 
   useEffect(() => {
     applyDistrictLayers();
@@ -284,6 +357,52 @@ export const ProjectBoundaryMap: React.FC<ProjectBoundaryMapProps> = ({
       marker.remove();
     };
   }, [isMapLoaded, projectLocation]);
+
+  // Add Panotrack Points Layer (status-coloured circles for the project's available frames)
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !isMapLoaded) return;
+    if (panotrackPoints.length === 0) return;
+
+    if (!map.getSource('pano-points')) {
+      map.addSource('pano-points', {
+        type: 'geojson',
+        data: {
+          type: 'FeatureCollection',
+          features: panotrackPoints.map((p) => ({
+            type: 'Feature',
+            geometry: { type: 'Point', coordinates: [p.lng, p.lat] },
+            properties: { color: p.color || '#38bdf8', status: p.status || 'available' },
+          })),
+        } as any,
+      });
+    } else {
+      (map.getSource('pano-points') as maplibregl.GeoJSONSource).setData({
+        type: 'FeatureCollection',
+        features: panotrackPoints.map((p) => ({
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [p.lng, p.lat] },
+          properties: { color: p.color || '#38bdf8', status: p.status || 'available' },
+        })),
+      } as any);
+    }
+
+    if (!map.getLayer('pano-points-circle')) {
+      map.addLayer({
+        id: 'pano-points-circle',
+        type: 'circle',
+        source: 'pano-points',
+        paint: {
+          'circle-radius': 3,
+          'circle-color': ['get', 'color'],
+          'circle-opacity': 0.85,
+          'circle-stroke-width': 0.6,
+          'circle-stroke-color': '#0b0f16',
+          'circle-stroke-opacity': 0.9,
+        },
+      });
+    }
+  }, [isMapLoaded, panotrackPoints]);
 
   const handleReturn = () => {
     if (isReturning) return;
@@ -349,17 +468,17 @@ export const ProjectBoundaryMap: React.FC<ProjectBoundaryMapProps> = ({
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" />
             <span className="text-xs font-bold text-white tracking-wide truncate">
-              {districtName} District &bull; {stateName}
+              {committedDistrictsLabel} &bull; {stateName}
             </span>
           </div>
           <p className="text-[11px] text-neutral-400 font-mono">
             {projectLocation.subtext || `${projectLocation.latitude.toFixed(4)}° N, ${projectLocation.longitude.toFixed(4)}° E`}
           </p>
           <div className="pt-2 border-t border-white/10 flex items-center justify-between text-[11px] text-neutral-400">
-            <span>District Boundary:</span>
-            <span className="text-white font-semibold font-mono flex items-center gap-1.5">
+            <span>Committed Districts:</span>
+            <span className="text-white font-semibold font-mono flex items-center gap-1.5 truncate">
               <span className="material-symbols-outlined text-[14px] text-neutral-300 leading-none">location_on</span>
-              <span>{districtFeature?.properties?.name || districtName}</span>
+              <span className="truncate">{committedDistrictsLabel}</span>
             </span>
           </div>
         </div>

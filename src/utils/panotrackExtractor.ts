@@ -10,6 +10,7 @@ export interface PanotrackPoint {
   status?: string;
   qa_status?: string;
   isPublished?: boolean;
+  isAvailable?: boolean;
   color?: string;
 }
 
@@ -21,6 +22,7 @@ export interface ExtractedPanotrackResult {
 /**
  * Derives standardized status color for panotrack frames matching the GeoSphere 360 palette:
  * - Published: #10b981 (Emerald Green)
+ * - Available: #38bdf8 (Sky Blue) — frame imagery available on the project, not yet published
  * - Staging / In Process: #f59e0b (Amber)
  * - Defect / Flagged / Recheck: #ef4444 (Red)
  */
@@ -31,6 +33,7 @@ export function getPanotrackStatusColor(item?: {
   color?: string;
   defectCount?: number;
   isDefect?: boolean;
+  isAvailable?: boolean;
 }): string {
   if (!item) return '#10b981';
 
@@ -63,7 +66,12 @@ export function getPanotrackStatusColor(item?: {
     return '#10b981'; // Emerald Green
   }
 
-  // 3. Staging / In Process / Default
+  // 3. Available on the project (imagery/data present, not yet published)
+  if (item.isAvailable === true || st === 'available') {
+    return '#38bdf8'; // Sky Blue
+  }
+
+  // 4. Staging / In Process / Default
   return '#f59e0b'; // Amber
 }
 
@@ -152,8 +160,9 @@ export function extractPanotrackPoints(
               ? Boolean(p.isPublished)
               : (d.publishToWebGIS === 'yes' || p.status === 'yes' || p.status === 'published');
 
-            const color = isPointDefect ? '#ef4444' : (isPub ? '#10b981' : '#f59e0b');
-            const pointStatus = isPointDefect ? 'defect' : (isPub ? 'published' : 'staging');
+            const isAvail = !isPointDefect && !isPub && (p.isAvailable === true || pStatus === 'available');
+            const color = isPointDefect ? '#ef4444' : (isPub ? '#10b981' : (isAvail ? '#38bdf8' : '#f59e0b'));
+            const pointStatus = isPointDefect ? 'defect' : (isPub ? 'published' : (isAvail ? 'available' : 'staging'));
 
             points.push({
               id: p.id || `${runId}-p-${pIdx}`,
@@ -164,6 +173,7 @@ export function extractPanotrackPoints(
               status: pointStatus,
               qa_status: isPointDefect ? 'defect' : (p.qa_status || d.qaqcStatus),
               isPublished: isPub && !isPointDefect,
+              isAvailable: isAvail,
               color
             });
           }
@@ -187,8 +197,9 @@ export function extractPanotrackPoints(
               dPub === 'no'
             );
             const isPub = d.publishToWebGIS === 'yes';
-            const color = isPointDefect ? '#ef4444' : (isPub ? '#10b981' : '#f59e0b');
-            const pointStatus = isPointDefect ? 'defect' : (isPub ? 'published' : 'staging');
+            const isAvail = !isPointDefect && !isPub && (pt.isAvailable === true || (pt.status || '').toLowerCase().trim() === 'available');
+            const color = isPointDefect ? '#ef4444' : (isPub ? '#10b981' : (isAvail ? '#38bdf8' : '#f59e0b'));
+            const pointStatus = isPointDefect ? 'defect' : (isPub ? 'published' : (isAvail ? 'available' : 'staging'));
 
             points.push({
               id: `${runId}-pt-${ptIdx}`,
@@ -197,6 +208,7 @@ export function extractPanotrackPoints(
               lat,
               status: pointStatus,
               isPublished: isPub && !isPointDefect,
+              isAvailable: isAvail,
               color
             });
           }
@@ -254,8 +266,9 @@ export function extractPanotrackPoints(
               ? Boolean(p.isPublished)
               : (b.publishToWebGIS === 'yes' || p.status === 'yes' || p.status === 'published');
 
-            const color = isPointDefect ? '#ef4444' : (isPub ? '#10b981' : '#f59e0b');
-            const pointStatus = isPointDefect ? 'defect' : (isPub ? 'published' : 'staging');
+            const isAvail = !isPointDefect && !isPub && (p.isAvailable === true || pStatus === 'available');
+            const color = isPointDefect ? '#ef4444' : (isPub ? '#10b981' : (isAvail ? '#38bdf8' : '#f59e0b'));
+            const pointStatus = isPointDefect ? 'defect' : (isPub ? 'published' : (isAvail ? 'available' : 'staging'));
 
             points.push({
               id: p.id || `b-${bIdx}-p-${pIdx}`,
@@ -266,6 +279,7 @@ export function extractPanotrackPoints(
               status: pointStatus,
               qa_status: isPointDefect ? 'defect' : p.qa_status,
               isPublished: isPub && !isPointDefect,
+              isAvailable: isAvail,
               color
             });
           }
@@ -280,10 +294,12 @@ export function extractPanotrackPoints(
           if (!seenPointKeys.has(key)) {
             seenPointKeys.add(key);
             const isPub = b.publishToWebGIS === 'yes';
+            const isAvail = !isPub && ((pt.status || b.status || '').toLowerCase().trim() === 'available' || pt.isAvailable === true);
             const color = getPanotrackStatusColor({
               status: b.status,
               qa_status: b.qaqcStatus,
               isPublished: isPub,
+              isAvailable: isAvail,
               color: pt.color,
               defectCount: b.defectCount
             });
@@ -293,8 +309,9 @@ export function extractPanotrackPoints(
               subgrid: sg,
               lng,
               lat,
-              status: b.status || (isPub ? 'published' : 'staging'),
+              status: b.status || (isPub ? 'published' : (isAvail ? 'available' : 'staging')),
               isPublished: isPub,
+              isAvailable: isAvail,
               color
             });
           }
@@ -348,6 +365,39 @@ export function filterPanotrackByDistricts(
   const filteredTracks: Array<Array<[number, number]>> = [];
   tracks.forEach((trk) => {
     const validCoords = trk.filter((pt) => pointInDistricts(pt, selectedDistricts));
+    if (validCoords.length >= 2) {
+      filteredTracks.push(validCoords);
+    }
+  });
+
+  return { filteredPoints, filteredTracks };
+}
+
+/**
+ * Filter panotrack points and trajectory tracks by bounding boxes (district metadata
+ * bboxes — data-driven, no geometry load required). An empty/absent bbox list returns
+ * everything unchanged.
+ */
+export function filterPanotrackByBBoxes(
+  points: PanotrackPoint[],
+  tracks: Array<Array<[number, number]>>,
+  bboxes: Array<[number, number, number, number]>
+): {
+  filteredPoints: PanotrackPoint[];
+  filteredTracks: Array<Array<[number, number]>>;
+} {
+  if (!bboxes || bboxes.length === 0) {
+    return { filteredPoints: points, filteredTracks: tracks };
+  }
+
+  const inBoxes = (lng: number, lat: number) =>
+    bboxes.some((b) => lng >= b[0] && lng <= b[2] && lat >= b[1] && lat <= b[3]);
+
+  const filteredPoints = points.filter((p) => inBoxes(p.lng, p.lat));
+
+  const filteredTracks: Array<Array<[number, number]>> = [];
+  tracks.forEach((trk) => {
+    const validCoords = trk.filter((pt) => inBoxes(pt[0], pt[1]));
     if (validCoords.length >= 2) {
       filteredTracks.push(validCoords);
     }
