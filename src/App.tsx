@@ -3112,6 +3112,7 @@ export default function App() {
         dailyData={dailyData}
         batchLogs={batchLogs}
         projectSettings={projectSettings}
+        activeProject={activeProject}
         onEnterDashboard={(targetView?: string) => {
           if (!authSession) {
             if (targetView === 'auth') {
