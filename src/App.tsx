@@ -30,7 +30,8 @@ import {
   Loader2,
   Play,
   StopCircle,
-  ArrowLeft
+  ArrowLeft,
+  Menu
 } from 'lucide-react';
 import { supabase, fetchSupabaseData, updateDefectStatusInSupabase, saveQaAuditRunToSupabase, saveAuditLogToSupabase, saveNotificationToSupabase, saveProjectSettingsToSupabase, resolvePanoramaUrl, resolvePanoramaConfigUrl, getDatabaseTableMapping, SUBGRID_COORDINATES, saveProcessingJobToSupabase, pruneBloatedUserMetadata, fetchDeletionRequestsFromSupabase } from './services/supabase';
 import type { QAQCAuditRunRecord } from './types/admin';
@@ -523,6 +524,7 @@ export default function App() {
   };
 
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [pendingApprovalCount, setPendingApprovalCount] = useState(0);
   const [isAboutModalOpen, setIsAboutModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'batches' | 'daily'>('batches');
@@ -3344,7 +3346,7 @@ export default function App() {
     <div
       data-theme={currentTheme}
       style={{ backgroundColor: 'var(--bg-app)', color: 'var(--text-primary)' }}
-      className="min-h-screen md:h-screen w-full max-w-full font-sans flex flex-col overflow-x-hidden overflow-y-auto md:overflow-hidden transition-colors duration-200"
+      className="app-canvas min-h-screen md:h-screen w-full max-w-full font-sans flex flex-col overflow-x-hidden overflow-y-auto md:overflow-hidden transition-colors duration-200"
     >
       {/* GLOBAL TOAST NOTIFICATION VIEWPORT */}
       <Toaster />
@@ -3392,16 +3394,27 @@ export default function App() {
 
       {/* TOP GLOBAL NAVBAR */}
       <header className="min-h-14 py-2 sm:py-0 px-3 sm:px-4 bg-card border-b border-subtle flex items-center justify-between shrink-0 z-20 gap-2">
-        <div className="flex flex-col select-none min-w-0">
-          <h1 className="text-sm sm:text-base md:text-lg font-bold text-text-base tracking-tight font-sans leading-tight truncate">
-            {t('appTitle')}
-          </h1>
-          <span className="text-[10px] sm:text-[11px] text-text-muted font-normal tracking-normal mt-0.5 hidden sm:inline truncate">
-            Spatial Trajectory Processing &amp; Quality Assurance Pipeline
-          </span>
-          <span className="text-[9px] text-text-muted font-normal tracking-normal mt-0.5 sm:hidden truncate">
-            Spatial Pipeline
-          </span>
+        <div className="flex items-center gap-1.5 min-w-0">
+          <button
+            type="button"
+            onClick={() => setMobileNavOpen((prev) => !prev)}
+            aria-label="Open navigation menu"
+            aria-expanded={mobileNavOpen}
+            className="md:hidden p-2 -ml-1 rounded-lg text-text-muted hover:text-text-base hover:bg-inner transition-colors cursor-pointer shrink-0"
+          >
+            <Menu size={20} />
+          </button>
+          <div className="flex flex-col select-none min-w-0">
+            <h1 className="text-sm sm:text-base md:text-lg font-bold text-text-base tracking-tight font-sans leading-tight truncate">
+              {t('appTitle')}
+            </h1>
+            <span className="text-[10px] sm:text-[11px] text-text-muted font-normal tracking-normal mt-0.5 hidden sm:inline truncate">
+              Spatial Trajectory Processing &amp; Quality Assurance Pipeline
+            </span>
+            <span className="text-[9px] text-text-muted font-normal tracking-normal mt-0.5 sm:hidden truncate">
+              Spatial Pipeline
+            </span>
+          </div>
         </div>
 
         {/* Top Right Controls */}
@@ -3612,9 +3625,14 @@ export default function App() {
           tourStep={tourStep}
           onNavigate={goToWorkspace}
           onRefresh={handleRefreshMap}
-          onOpenAbout={() => setIsAboutModalOpen(true)}
+          onOpenAbout={() => {
+            setMobileNavOpen(false);
+            setIsAboutModalOpen(true);
+          }}
           onToggleSidebar={() => setIsSidebarExpanded(prev => !prev)}
           approvalBadgeCount={pendingApprovalCount}
+          mobileNavOpen={mobileNavOpen}
+          onCloseMobileNav={() => setMobileNavOpen(false)}
         />
 
         {/* MAIN DASHBOARD CONTENT CANVAS */}
