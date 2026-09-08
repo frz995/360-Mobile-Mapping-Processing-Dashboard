@@ -1302,12 +1302,6 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
     document.body.removeChild(link);
   };
 
-  const meanSharpnessScore = useMemo(() => {
-    if (effectiveHistory.length === 0) return 0;
-    const sum = effectiveHistory.reduce((acc, h) => acc + (h.blurVariance || 0), 0);
-    return Math.round((sum / effectiveHistory.length) * 10) / 10;
-  }, [effectiveHistory]);
-
   const auditPassRate = useMemo(() => {
     if (effectiveHistory.length === 0) return 100;
     const passed = effectiveHistory.length - effectiveDefectsList.length;
@@ -2570,9 +2564,6 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
         const currentRunId = activeItem?.runId || cachedAuditRecord?.runId || 'RUN-AUDIT-ACTIVE';
         const currentModel = (localThresholds.deliverableModel || projectSettings?.deliverableModel || 'masked_car') === 'generative_fill' ? 'Generative Fill (Full 80% ROI)' : 'Vehicle Nadir Mask (Top 52% ROI)';
 
-        const blurCount = effectiveDefectsList.filter((d: any) => (d.defectType || d.defectCategory || '').toLowerCase().includes('blur') || (Array.isArray(d.reasons) && d.reasons.some((r: string) => r.toLowerCase().includes('blur')))).length;
-        const obstructionCount = effectiveDefectsList.filter((d: any) => (d.defectType || d.defectCategory || '').toLowerCase().includes('obstruction') || (d.defectType || d.defectCategory || '').toLowerCase().includes('glitch') || (Array.isArray(d.reasons) && d.reasons.some((r: string) => r.toLowerCase().includes('dark') || r.toLowerCase().includes('glare') || r.toLowerCase().includes('glitch')))).length;
-        const gpsCount = effectiveDefectsList.filter((d: any) => (d.defectType || d.defectCategory || '').toLowerCase().includes('gps') || (Array.isArray(d.reasons) && d.reasons.some((r: string) => r.toLowerCase().includes('gps')))).length;
         const passedCount = Math.max(0, effectiveHistory.length - effectiveDefectsList.length);
 
         const filteredAuditHistory = effectiveHistory.filter(item => {
@@ -2715,54 +2706,6 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                     <span className="font-sans font-medium text-text-base">{localThresholds.obstructionMinBrightness ?? 15.0} lux</span>
                   </div>
                 </div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2.5">
-              <div className="p-3 bg-card border border-subtle rounded-xl space-y-1 shadow-sm">
-                <span className="text-[11px] text-text-muted font-medium">SLA Pass Rate</span>
-                <p className="text-xl font-bold font-sans text-text-base">
-                  {auditPassRate}%
-                </p>
-                <span className="text-[10px] text-text-muted font-sans">{passedCount} / {effectiveHistory.length} Passed</span>
-              </div>
-              <div className="p-3 bg-card border border-subtle rounded-xl space-y-1 shadow-sm">
-                <span className="text-[11px] text-text-muted font-medium">Nodes Audited</span>
-                <p className="text-xl font-bold text-text-base font-sans">{effectiveHistory.length}</p>
-                <span className="text-[10px] text-text-muted font-sans">100% Surveyed</span>
-              </div>
-              <div className="p-3 bg-card border border-subtle rounded-xl space-y-1 shadow-sm">
-                <span className="text-[11px] text-text-muted font-medium">Total Defects</span>
-                <p className="text-xl font-bold font-sans text-text-base">
-                  {effectiveDefectsList.length}
-                </p>
-                <span className="text-[10px] text-text-muted font-sans">{effectiveHistory.length > 0 ? ((effectiveDefectsList.length / effectiveHistory.length) * 100).toFixed(1) : 0}% Rate</span>
-              </div>
-              <div className="p-3 bg-card border border-subtle rounded-xl space-y-1 shadow-sm">
-                <span className="text-[11px] text-text-muted font-medium">Mean Sharpness</span>
-                <p className="text-xl font-bold text-text-base font-sans">{meanSharpnessScore}</p>
-                <span className="text-[10px] text-text-muted font-sans">Cutoff {localThresholds.blurVarianceThreshold ?? 68.0}</span>
-              </div>
-              <div className="p-3 bg-card border border-subtle rounded-xl space-y-1 shadow-sm">
-                <span className="text-[11px] text-text-muted font-medium">Blur Defects</span>
-                <p className="text-xl font-bold font-sans text-text-base">
-                  {blurCount}
-                </p>
-                <span className="text-[10px] text-text-muted font-sans">Low Focus</span>
-              </div>
-              <div className="p-3 bg-card border border-subtle rounded-xl space-y-1 shadow-sm">
-                <span className="text-[11px] text-text-muted font-medium">Obstructions</span>
-                <p className="text-xl font-bold font-sans text-text-base">
-                  {obstructionCount}
-                </p>
-                <span className="text-[10px] text-text-muted font-sans">Glare / Dark</span>
-              </div>
-              <div className="p-3 bg-card border border-subtle rounded-xl space-y-1 shadow-sm">
-                <span className="text-[11px] text-text-muted font-medium">GPS Drift</span>
-                <p className="text-xl font-bold font-sans text-text-base">
-                  {gpsCount}
-                </p>
-                <span className="text-[10px] text-text-muted font-sans">&gt; {localThresholds.gpsMaxJumpDistanceMeters ?? 50}m</span>
               </div>
             </div>
 

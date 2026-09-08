@@ -51,6 +51,32 @@ textarea::placeholder {
   opacity: 0.8;
 }
 
+/* Continuous sheen sweep on the onboarding telemetry progress bar so the fill
+   stays visibly alive even as its growth approaches ~100%. */
+.loading-bar-shimmer {
+  position: relative;
+}
+.loading-bar-shimmer::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image: linear-gradient(
+    100deg,
+    transparent 20%,
+    rgba(255, 255, 255, 0.45) 50%,
+    transparent 80%
+  );
+  background-size: 200% 100%;
+  animation: loading-bar-sweep 1.4s ease-in-out infinite;
+}
+@keyframes loading-bar-sweep {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
 /* Neutralize the browser's native autofill paint (Chrome/Firefox fill saved
    credentials with a yellow/sand background that ignores Tailwind's bg-*).
    Repaint the field with the active theme's card background instead. */
