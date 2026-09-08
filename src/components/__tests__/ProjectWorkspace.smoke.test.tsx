@@ -77,9 +77,27 @@ describe('ProjectWorkspace smoke', () => {
     expect(screen.getByText('peninsular_malaysia')).toBeInTheDocument()
   })
 
-  it('marks the active project with the current badge', () => {
-    renderPage({ projectList: [projectFixture()], activeProject: projectFixture() })
-    expect(screen.getByText('projectCurrent')).toBeInTheDocument()
+it('marks the active project with the active badge', () => {
+  renderPage({ projectList: [projectFixture()], activeProject: projectFixture() })
+  expect(screen.getByText('projectStatusActive')).toBeInTheDocument()
+  })
+
+  it('does not label non-loaded projects as Active even when their status is active', () => {
+    const projA = projectFixture({ id: 'proj-a', name: 'Alpha' })
+    const projB = projectFixture({ id: 'proj-b', name: 'Beta' })
+    renderPage({ projectList: [projA, projB], activeProject: projA })
+    expect(screen.getAllByText('projectStatusActive')).toHaveLength(1)
+  })
+
+  it('shows 0 km for an empty new project instead of inheriting the previous project target', () => {
+    const proj = projectFixture({
+      id: 'proj-new',
+      name: 'Fresh Area',
+      scope: { crs: 'EPSG:4326', region: 'peninsular_malaysia', bbox: [99.6, 1.2, 104.6, 6.8], basemap: 'dark', equipment: 'MMS', targetKm: 0 }
+    })
+    renderPage({ projectList: [proj], activeProject: proj, projectSettings: { targetKm: 4886.3 }, totalKm: 0 })
+    expect(screen.queryByText(/4886/)).not.toBeInTheDocument()
+    expect(screen.getByText('0.0 km')).toBeInTheDocument()
   })
 
   it('invokes onLoadProject when the Load button is clicked', () => {

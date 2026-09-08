@@ -243,7 +243,8 @@ export default function App() {
     supabaseError,
     setSupabaseError,
     projectSettings,
-    setProjectSettings
+    setProjectSettings,
+    refreshData
   } = useAppData();
 
   // Explicit startup warning when required env configuration is missing.
@@ -695,6 +696,9 @@ export default function App() {
   const [projectList, setProjectList] = useState<UserProject[]>([]);
   const [activeProject, setActiveProject] = useState<UserProject | null>(null);
   const [projectsLoaded, setProjectsLoaded] = useState(false);
+  // Incremented whenever a project is (re)loaded so the dashboard map can show
+  // a "preparing" overlay while the WebGIS applies basemap/boundary/settings.
+  const [mapPrepareKey, setMapPrepareKey] = useState<number>(0);
 
   // Decide welcome vs straight-to-picker: full welcome on first-ever login per
   // user, or whenever the app version changed. Sign-out never resets flags.
@@ -908,13 +912,27 @@ export default function App() {
 
   const handleLoadProject = useCallback(async (project: UserProject) => {
     setActiveProject(project);
+    // Live-project scoping must change immediately, otherwise every subsequent
+    // fetch (and the map's staged data) still targets the previous project until
+    // a full page refresh.
+    setActiveProjectId(project.id);
     const userKey = resolveUserStorageKey(authSession, isGuestUser);
     saveActiveProjectId(userKey, project.id);
     setProjectSettings((prev: any) => applyProjectScope(prev, project));
+    // Drop the previous session project's in-memory data (data of project B must
+    // never bleed into project A's map), then refetch for the freshly active one.
+    setDailyData([]);
+    setBatchLogs([]);
+    setQaqcAuditRuns({});
+    setQaSubgridRecords({});
+    setSelectedSubgridFilter(null);
+    setSelectedDailyRunId(null);
+    setMapPrepareKey((k) => k + 1);
+    refreshData();
     touchProjectOpened(project.id);
     goToWorkspace('dashboard');
     addNotification({ category: 'SYSTEM', title: 'Project Loaded', message: `Now working under ${project.name}` });
-  }, [authSession, isGuestUser, addNotification, goToWorkspace, setProjectSettings]);
+  }, [authSession, isGuestUser, addNotification, goToWorkspace, setProjectSettings, refreshData, setBatchLogs, setDailyData, setQaSubgridRecords, setQaqcAuditRuns]);
 
   const handleCreateProject = useCallback(async (draft: ProjectDraft) => {
     const res = await createProjectService(draft);
@@ -3918,6 +3936,7 @@ export default function App() {
                     <MapComponent
                       layerCatalog={layerCatalog}
                       refreshKey={mapRefreshKey}
+                      prepareKey={mapPrepareKey}
                       onManualRefresh={handleRefreshMap}
                       selectedSubgridFilter={selectedSubgridFilter}
                       selectedDailyRunId={selectedDailyRunId}
