@@ -338,7 +338,7 @@ export const DistrictProjectPopup: React.FC<DistrictProjectPopupProps> = ({
           ? panotrackPoints.map((p) => ({
               type: 'Feature' as const,
               geometry: { type: 'Point' as const, coordinates: [p.lng, p.lat] },
-              properties: { color: p.color || '#38bdf8', status: p.status || 'available' },
+              properties: { color: p.color || '#f59e0b', status: p.status || 'staging' },
             }))
           : trackPoints.map(([lng, lat]) => ({
               type: 'Feature' as const,
@@ -514,7 +514,6 @@ export const DistrictProjectPopup: React.FC<DistrictProjectPopupProps> = ({
             <div className="absolute bottom-2 left-2 z-10 flex flex-wrap items-center gap-x-2.5 gap-y-1 bg-black/75 backdrop-blur-md rounded-md border border-white/15 px-2 py-1 text-[8px] font-mono text-neutral-300 pointer-events-none">
               {[
                 { label: 'Published', color: '#10b981' },
-                { label: 'Available', color: '#38bdf8' },
                 { label: 'Staging', color: '#f59e0b' },
                 { label: 'Defect', color: '#ef4444' }
               ].map((s) => (

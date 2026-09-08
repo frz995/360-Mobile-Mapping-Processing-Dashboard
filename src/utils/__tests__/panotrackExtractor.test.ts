@@ -12,15 +12,16 @@ describe('panotrackExtractor', () => {
     expect(getPanotrackStatusColor({ defectCount: 2 })).toBe('#ef4444');
   });
 
-  it('maps available-on-project frames to sky blue', () => {
-    expect(getPanotrackStatusColor({ status: 'available' })).toBe('#38bdf8');
-    expect(getPanotrackStatusColor({ isAvailable: true })).toBe('#38bdf8');
-    // Published and defect still outrank available
+  it('treats available-on-project frames as staging', () => {
+    // The system tracks only Published, Staging, and Defect.
+    expect(getPanotrackStatusColor({ status: 'available' })).toBe('#f59e0b');
+    expect(getPanotrackStatusColor({ isAvailable: true })).toBe('#f59e0b');
+    // Published and defect still outrank
     expect(getPanotrackStatusColor({ status: 'available', isPublished: true })).toBe('#10b981');
     expect(getPanotrackStatusColor({ status: 'available', isDefect: true })).toBe('#ef4444');
   });
 
-  it('extracts available frames with status available and isAvailable flag', () => {
+  it('extracts available frames as staging with isAvailable flag retained', () => {
     const dailyData = [
       {
         subgrid: 'N93E70',
@@ -34,10 +35,11 @@ describe('panotrackExtractor', () => {
 
     const res = extractPanotrackPoints(dailyData, []);
     const byId = Object.fromEntries(res.points.map((p) => [p.id, p]));
-    expect(byId['p1'].status).toBe('available');
-    expect(byId['p1'].color).toBe('#38bdf8');
+    expect(byId['p1'].status).toBe('staging');
+    expect(byId['p1'].color).toBe('#f59e0b');
     expect(byId['p1'].isAvailable).toBe(true);
-    expect(byId['p2'].status).toBe('available');
+    expect(byId['p2'].status).toBe('staging');
+    expect(byId['p2'].color).toBe('#f59e0b');
     expect(byId['p2'].isAvailable).toBe(true);
     expect(byId['p3'].status).toBe('staging');
     expect(byId['p3'].isAvailable).toBeFalsy();

@@ -372,7 +372,7 @@ export const ProjectBoundaryMap: React.FC<ProjectBoundaryMapProps> = ({
           features: panotrackPoints.map((p) => ({
             type: 'Feature',
             geometry: { type: 'Point', coordinates: [p.lng, p.lat] },
-            properties: { color: p.color || '#38bdf8', status: p.status || 'available' },
+            properties: { color: p.color || '#f59e0b', status: p.status || 'staging' },
           })),
         } as any,
       });
@@ -382,7 +382,7 @@ export const ProjectBoundaryMap: React.FC<ProjectBoundaryMapProps> = ({
         features: panotrackPoints.map((p) => ({
           type: 'Feature',
           geometry: { type: 'Point', coordinates: [p.lng, p.lat] },
-          properties: { color: p.color || '#38bdf8', status: p.status || 'available' },
+          properties: { color: p.color || '#f59e0b', status: p.status || 'staging' },
         })),
       } as any);
     }
