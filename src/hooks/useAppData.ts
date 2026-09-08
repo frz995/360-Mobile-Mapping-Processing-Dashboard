@@ -13,6 +13,7 @@ import {
 import { extractSubgridName } from '../utils/subgrid';
 import { getItemId } from '../utils/items';
 import { getActiveProjectId } from '../services/projectContext';
+import { buildDefaultProjectBoundary } from '../components/boundary/malaysiaDistricts';
 import { STORAGE_BUCKET_DEFAULT, STORAGE_PATH_PREFIX_DEFAULT, DATABASE_TABLE_DEFAULTS } from '../config/defaults';
 import { getImagesProcessedCount, getPOICount, applyBatchLogOverrides } from '../utils/dashboardData';
 import type { QAQCAuditRunRecord } from '../types/admin';
@@ -27,6 +28,9 @@ export interface QAFlagState {
 const DEFAULT_PROJECT_SETTINGS = {
   projectName: '360 Mobile Mapping — Spatial Operations Division',
   contractCode: 'MMS-2026-GEO-01',
+  // First-open / guest footprint: the committed default production boundary
+  // (Johor — Segamat + Tangkak). Real project scopes override it on sign-in.
+  projectBoundary: buildDefaultProjectBoundary(),
   targetKm: 0,
   targetImages: 0,
   targetDeadline: '2026-12-31',
@@ -90,6 +94,10 @@ export function useAppData() {
   // Only flash the loading overlay on the very first load; subsequent refreshes keep cached data visible
   const hasLoadedDataRef = useRef(false);
 
+  // Lets callers (e.g. project switching in App) trigger a scoped-to-current-
+  // project reload from outside the mount-only effect.
+  const refreshDataRef = useRef<() => void>(() => {});
+
   useEffect(() => {
     async function initLiveSupabaseData(isSilent: boolean = false) {
       if (!isSilent && !hasLoadedDataRef.current) {
@@ -124,6 +132,12 @@ export function useAppData() {
               } else {
                 delete next.projectBoundary;
               }
+              // Per-project km isolation: the legacy global project_settings row must
+              // never clobber the active project's scope targetKm/targetImages —
+              // applyProjectScope has already seeded prev with the project's own values.
+              if (typeof prev?.targetKm === 'number') next.targetKm = prev.targetKm;
+              if (typeof prev?.targetImages === 'number') next.targetImages = prev.targetImages;
+              if (prev?.targetDeadline) next.targetDeadline = prev.targetDeadline;
               return next;
             }
             return { ...prev, ...incoming };
@@ -303,6 +317,9 @@ export function useAppData() {
     }
 
     initLiveSupabaseData(false);
+    refreshDataRef.current = () => {
+      initLiveSupabaseData(true);
+    };
 
     // Realtime channel subscriptions (scoped to the active project so a change
     // in project B never re-pulls project A's view)
@@ -365,6 +382,7 @@ export function useAppData() {
     projectSettings,
     setProjectSettings,
     liveDefectCount,
-    setLiveDefectCount
+    setLiveDefectCount,
+    refreshData: () => refreshDataRef.current()
   };
 }

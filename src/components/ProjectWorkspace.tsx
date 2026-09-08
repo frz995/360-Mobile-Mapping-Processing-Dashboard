@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Briefcase, FolderPlus, FolderOpen, Plus, Archive, Trash2, AlertTriangle, X, Edit2 } from 'lucide-react';
+import { Briefcase, FolderPlus, FolderOpen, Plus, Archive, AlertTriangle, X, Edit2 } from 'lucide-react';
 import { restoreWorkspaceTab, persistWorkspaceTab } from '../utils/workspaceLocation';
-import { Masthead, UnderlineTabStrip, type ChromeTab, StatusDot } from './production/chrome';
+import { Masthead, UnderlineTabStrip, type ChromeTab } from './production/chrome';
 import { EmptyState } from './common/EmptyState';
 import { SkeletonLine } from './common/Skeleton';
+import { ProjectGalleryCard, resolveUserBasemapKey } from './common/ProjectGalleryCard';
 import type { UserProject, ProjectDraft, ProjectStatus } from '../services/projects';
 
 type ProjectTab = 'all' | 'active' | 'archived';
@@ -30,43 +31,12 @@ const TABS: ChromeTab<ProjectTab>[] = [
   { key: 'archived', icon: <Archive size={14} /> }
 ];
 
-const STATUS_TONE: Record<ProjectStatus, string> = {
-  planning: 'text-amber-400',
-  active: 'text-emerald-400',
-  paused: 'text-sky-400',
-  completed: 'text-text-base',
-  archived: 'text-text-muted'
-};
-
-const STATUS_KEY: Record<ProjectStatus, string> = {
-  planning: 'projectStatusPlanning',
-  active: 'projectStatusActive',
-  paused: 'projectStatusPaused',
-  completed: 'projectStatusCompleted',
-  archived: 'projectStatusArchived'
-};
-
 /** Region presets → auto-fill GIS scope (crs, bbox, basemap, equipment). */
 const REGION_PRESETS: Record<string, { crs: string; region: string; bbox: [number, number, number, number] }> = {
   peninsular_malaysia: { crs: 'EPSG:4326', region: 'peninsular_malaysia', bbox: [99.6, 1.2, 104.6, 6.8] },
   sabah: { crs: 'EPSG:4326', region: 'sabah', bbox: [115.0, 4.0, 119.4, 7.5] },
   sarawak: { crs: 'EPSG:4326', region: 'sarawak', bbox: [109.0, 0.5, 115.8, 5.5] }
 };
-
-function formatRelative(lastOpened?: string | null): string {
-  if (!lastOpened) return '';
-  const then = new Date(lastOpened).getTime();
-  if (isNaN(then)) return '';
-  const diffMs = Date.now() - then;
-  const mins = Math.floor(diffMs / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  if (days < 30) return `${days}d ago`;
-  return new Date(lastOpened).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-}
 
 export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({
   isGuestUser = false,
@@ -123,6 +93,10 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({
   }, [projectsLoaded, onRefreshProjects]);
 
   const canWrite = !isGuestUser;
+
+  const userBasemapKey =
+    resolveUserBasemapKey((projectSettings as any)?.defaultBasemap) ??
+    resolveUserBasemapKey((projectSettings as any)?.defaultBasemapStyle);
 
   const filtered = useMemo(() => {
     if (activeTab === 'active') return projectList.filter((p) => p.status !== 'archived');
@@ -284,147 +258,34 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({
                 />
               </div>
             ) : (
-              <div className="flex flex-col gap-2 bg-card border border-subtle rounded-xl p-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-3 items-start">
                 {filtered.map((p) => {
                   const isCardActive = activeProject?.id === p.id;
                   const actualKm = isCardActive
                     ? (typeof totalKm === 'number' ? totalKm : (Number(p.scope?.actualKm) || 0))
                     : (Number(p.scope?.actualKm) || 0);
 
-                  const targetKm = isCardActive
-                    ? (typeof (projectSettings as any)?.targetKm === 'number' && (projectSettings as any).targetKm > 0
-                        ? (projectSettings as any).targetKm
-                        : (Number(p.scope?.targetKm) || 0))
-                    : (Number(p.scope?.targetKm) || 0);
+                  const targetKm = Number(p.scope?.targetKm) || 0;
 
                   const progressPct = targetKm > 0
                     ? Math.min(100, Math.round(((actualKm / targetKm) * 100) * 10) / 10)
                     : (actualKm > 0 ? 100 : 0);
 
                   return (
-                    <div
+                    <ProjectGalleryCard
                       key={p.id}
-                      className={`p-3.5 rounded-xl bg-inner border transition-all ${
-                        isCardActive
-                          ? 'border-emerald-500/40 shadow-sm'
-                          : 'border-subtle hover:border-sky-400/40'
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0 flex-1">
-                          {/* Title & Active Indicator */}
-                          <div className="flex items-center gap-2.5 flex-wrap">
-                            <span className="text-sm font-bold text-text-base truncate">{p.name}</span>
-                            {isCardActive && (
-                              <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-400">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                                {translate('projectCurrent')}
-                              </span>
-                            )}
-                          </div>
-
-                          {/* Project Details: Contract Code, Client, Region, Distance */}
-                          <div className="flex items-center gap-x-4 gap-y-1 mt-2 text-xs text-text-muted flex-wrap">
-                            <div>
-                              <span className="text-text-muted/70">Contract: </span>
-                              <span className="font-mono text-text-base font-medium">{p.contractCode || '—'}</span>
-                            </div>
-                            <div>
-                              <span className="text-text-muted/70">Client: </span>
-                              <span className="text-text-base font-medium">{p.clientName || '—'}</span>
-                            </div>
-                            <div>
-                              <span className="text-text-muted/70">Region: </span>
-                              <span className="text-text-base font-medium">{p.region || '—'}</span>
-                            </div>
-                            <div>
-                              <span className="text-text-muted/70">Distance: </span>
-                              <span className="font-mono text-text-base font-medium">
-                                {actualKm.toFixed(1)} km
-                                {targetKm > 0 && (
-                                  <span className="text-text-muted text-[11px] font-normal ml-1">
-                                    / {targetKm.toFixed(1)} km
-                                  </span>
-                                )}
-                              </span>
-                            </div>
-                            {!isCardActive && (
-                              <div className="inline-flex items-center gap-1.5">
-                                <span className="text-text-muted/70">Status: </span>
-                                <span className="text-text-base font-medium capitalize inline-flex items-center gap-1">
-                                  <StatusDot tone={STATUS_TONE[p.status]} pulse={p.status === 'active'} />
-                                  {translate(STATUS_KEY[p.status])}
-                                </span>
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Description */}
-                          {p.description ? (
-                            <p className="mt-2 text-xs text-text-muted leading-relaxed line-clamp-2">
-                              {p.description}
-                            </p>
-                          ) : (
-                            <p className="mt-1.5 text-xs text-text-muted/40 italic">
-                              No description provided
-                            </p>
-                          )}
-                        </div>
-
-                        {/* Card Actions */}
-                        {canWrite && (
-                          <div className="flex items-center gap-1.5 shrink-0 self-start mt-0.5">
-                            {onLoadProject && !isCardActive && (
-                              <button
-                                onClick={() => onLoadProject(p)}
-                                className="px-2.5 py-1 text-xs font-semibold text-sky-400 bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/30 rounded-lg transition-all cursor-pointer"
-                              >
-                                {translate('projectLoad')}
-                              </button>
-                            )}
-                            {onUpdateProject && (
-                              <button
-                                onClick={() => handleOpenEdit(p)}
-                                aria-label="Edit project"
-                                title="Edit Project"
-                                className="p-1.5 text-text-muted hover:text-sky-400 hover:bg-sky-500/15 border border-transparent hover:border-sky-500/30 rounded-lg transition-all cursor-pointer"
-                              >
-                                <Edit2 size={13} />
-                              </button>
-                            )}
-                            {onDeleteProject && (
-                              <button
-                                onClick={() => setConfirmDelete(p)}
-                                aria-label="Delete project"
-                                title={translate('projectDelete')}
-                                className="p-1.5 text-rose-400/80 hover:text-rose-300 hover:bg-rose-500/15 border border-transparent hover:border-rose-500/30 rounded-lg transition-all cursor-pointer"
-                              >
-                                <Trash2 size={13} />
-                              </button>
-                            )}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Footer: Last opened + Real KM Progress Bar & Percentage */}
-                      <div className="mt-3 pt-2.5 border-t border-subtle/40 flex items-center justify-between gap-3 text-[10px] text-text-muted flex-wrap">
-                        <span>{translate('projectLastOpened')}: {formatRelative(p.lastOpenedAt) || translate('projectNoDate')}</span>
-                        <div className="flex items-center gap-2.5">
-                          <span className="font-mono text-xs font-bold text-text-base">
-                            {progressPct}%
-                          </span>
-                          <div className="w-24 sm:w-32 h-1.5 bg-card border border-subtle rounded-full overflow-hidden">
-                            <div
-                              className="h-full bg-gradient-to-r from-sky-500 to-emerald-400 rounded-full transition-all duration-300"
-                              style={{ width: `${Math.min(100, Math.max(0, progressPct))}%` }}
-                            />
-                          </div>
-                          <span className="font-mono text-[10px] text-text-muted whitespace-nowrap">
-                            {actualKm.toFixed(1)}{targetKm > 0 ? ` / ${targetKm.toFixed(1)}` : ''} km
-                          </span>
-                        </div>
-                      </div>
-                    </div>
+                      project={p}
+                      active={isCardActive}
+                      actualKm={actualKm}
+                      targetKm={targetKm}
+                      progressPct={progressPct}
+                      canWrite={canWrite}
+                      basemapKey={userBasemapKey ?? undefined}
+                      translate={translate}
+                      onLoadProject={onLoadProject}
+                      onEdit={onUpdateProject ? handleOpenEdit : undefined}
+                      onDelete={onDeleteProject ? setConfirmDelete : undefined}
+                    />
                   );
                 })}
               </div>

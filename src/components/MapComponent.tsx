@@ -9,6 +9,7 @@ import { ensureDistrictGeometriesLoaded, rehydrateDistrictBoundary } from './bou
 export const MapComponent = ({
   dataManagement = false,
   refreshKey,
+  prepareKey,
   selectedSubgridFilter,
   selectedDailyRunId,
   selectedDateFilter,
@@ -23,6 +24,7 @@ export const MapComponent = ({
   dataManagement?: boolean;
   layerCatalog?: (Layer | Folder)[];
   refreshKey?: number;
+  prepareKey?: number;
   onManualRefresh?: () => void;
   selectedSubgridFilter?: string | null;
   selectedDailyRunId?: string | null;
@@ -39,9 +41,51 @@ export const MapComponent = ({
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const stagedDataRafRef = useRef<number | null>(null);
 
+  // Loading/preparing overlay: shown while the embedded WebGIS applies the
+  // project basemap + boundary + settings on cold boot and on every project
+  // load (prepareKey bump). WebGIS sends no "ready" handshake, so dismissal
+  // is timer-driven with a generous cooldown that outlives the apply window.
+  const COLD_PREPARE_MS = 2200;
+  const SWITCH_PREPARE_MS = 1600;
+  const [preparing, setPreparing] = useState(true);
+  const prepareTimerRef = useRef<number | null>(null);
+
+  const schedulePrepareClear = useCallback((ms: number) => {
+    if (prepareTimerRef.current !== null) window.clearTimeout(prepareTimerRef.current);
+    prepareTimerRef.current = window.setTimeout(() => {
+      prepareTimerRef.current = null;
+      setPreparing(false);
+    }, ms);
+  }, []);
+
+  const finishPreparingNow = useCallback(() => {
+    if (prepareTimerRef.current !== null) {
+      window.clearTimeout(prepareTimerRef.current);
+      prepareTimerRef.current = null;
+    }
+    setPreparing(false);
+  }, []);
+
+  useEffect(() => () => {
+    if (prepareTimerRef.current !== null) window.clearTimeout(prepareTimerRef.current);
+  }, []);
+
+  // Project (re)load via prepareKey -> re-show the preparing overlay briefly.
+  useEffect(() => {
+    if (typeof prepareKey === 'number' && prepareKey > 0) {
+      setPreparing(true);
+      schedulePrepareClear(SWITCH_PREPARE_MS);
+    }
+  }, [prepareKey, schedulePrepareClear]);
+
   const effectiveSettings = useMemo(() => {
     return (passedSettings && typeof passedSettings === 'object') ? passedSettings : {};
   }, [passedSettings, refreshKey]);
+
+  // Fingerprint of the last project-boundary payload pushed to the WebGIS iframe.
+  // Dedupes duplicate pushes so the iframe never tears down/rebuilds the same
+  // project-boundary source repeatedly (which races removeSource → flashing + errors).
+  const boundaryPushRef = useRef<string | null>(null);
 
   const formattedStagedItems = useMemo(() => {
     if (!stagedItems || stagedItems.length === 0) return [];
@@ -307,35 +351,46 @@ export const MapComponent = ({
         }
       }, '*');
 
-      // 3. Send Project Geographic Boundary (shape + focus)
+      // 3. Send Project Geographic Boundary (shape + focus). Deduped by payload
+      //    fingerprint: identical duplicates are skipped so the iframe's WebGL3DView
+      //    does not remove/re-add its own source while layers still reference it.
       const boundary = s.projectBoundary;
-      if (boundary?.geojson || boundary?.bbox) {
-        const rehydrated = (boundary.districtIds && boundary.districtIds.length > 0)
-          ? rehydrateDistrictBoundary(boundary)
-          : null;
-        const resolvedGeojson = rehydrated?.geojson || boundary.geojson;
-        const resolvedBbox = rehydrated?.bbox || boundary.bbox;
+      const rehydrated = (boundary?.districtIds && boundary.districtIds.length > 0)
+        ? rehydrateDistrictBoundary(boundary)
+        : null;
+      const payloadGeojson = rehydrated?.geojson || boundary?.geojson || null;
+      const payloadBbox = rehydrated?.bbox || boundary?.bbox || null;
+      const boundaryFp = JSON.stringify({
+        g: payloadGeojson,
+        b: payloadBbox,
+        focus: boundary?.focusActive === true
+      });
+      const boundaryChanged = boundaryFp !== boundaryPushRef.current;
+      boundaryPushRef.current = boundaryFp;
 
-        iframeRef.current.contentWindow.postMessage({
-          type: 'SET_PROJECT_BOUNDARY',
-          geojson: resolvedGeojson,
-          bbox: resolvedBbox
-        }, '*');
-        if (boundary.focusActive) {
+      if (boundaryChanged) {
+        if (payloadGeojson || payloadBbox) {
           iframeRef.current.contentWindow.postMessage({
-            type: 'FOCUS_BOUNDARY',
-            bbox: resolvedBbox
+            type: 'SET_PROJECT_BOUNDARY',
+            geojson: payloadGeojson,
+            bbox: payloadBbox
           }, '*');
+          if (boundary.focusActive) {
+            iframeRef.current.contentWindow.postMessage({
+              type: 'FOCUS_BOUNDARY',
+              bbox: payloadBbox
+            }, '*');
+          }
+          iframeRef.current.contentWindow.postMessage({ type: 'DIM_OUTSIDE_BOUNDARY', enabled: boundary.focusActive === true }, '*');
+        } else {
+          iframeRef.current.contentWindow.postMessage({
+            type: 'SET_PROJECT_BOUNDARY',
+            geojson: null,
+            bbox: null
+          }, '*');
+          iframeRef.current.contentWindow.postMessage({ type: 'DIM_OUTSIDE_BOUNDARY', enabled: false }, '*');
+          iframeRef.current.contentWindow.postMessage({ type: 'CLEAR_BOUNDARY_FOCUS' }, '*');
         }
-        iframeRef.current.contentWindow.postMessage({ type: 'DIM_OUTSIDE_BOUNDARY', enabled: false }, '*');
-      } else {
-        iframeRef.current.contentWindow.postMessage({
-          type: 'SET_PROJECT_BOUNDARY',
-          geojson: null,
-          bbox: null
-        }, '*');
-        iframeRef.current.contentWindow.postMessage({ type: 'DIM_OUTSIDE_BOUNDARY', enabled: false }, '*');
-        iframeRef.current.contentWindow.postMessage({ type: 'CLEAR_BOUNDARY_FOCUS' }, '*');
       }
 
       // 4. Send Storage / Dynamic Bucket Resolution Config so the WebGIS can resolve its own
@@ -389,11 +444,12 @@ export const MapComponent = ({
       if (e.data?.type === 'MAP_READY' || e.data?.type === 'VIEWER_READY' || e.data?.type === 'WEBGIS_READY' || e.data?.type === 'MAP_LOADED') {
         syncMapSettings();
         sendStagedData();
+        finishPreparingNow();
       }
     };
     window.addEventListener('message', handler);
     return () => window.removeEventListener('message', handler);
-  }, [syncMapSettings, sendStagedData]);
+  }, [syncMapSettings, sendStagedData, finishPreparingNow]);
 
   // Send postMessage subgrid filter and staged data updates to embedded WebGIS map iframe
   useEffect(() => {
@@ -448,6 +504,22 @@ export const MapComponent = ({
         </div>
       </div>
 
+      {/* Preparing overlay — covers the iframe while project config applies */}
+      {preparing && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-app/70 backdrop-blur-[2px] pointer-events-none select-none">
+          <div className="flex flex-col items-center gap-3">
+            <div className="relative h-10 w-10">
+              <div className="absolute inset-0 rounded-full border-2 border-sky-500/20" />
+              <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-sky-400 animate-spin" />
+            </div>
+            <div className="text-center px-6">
+              <div className="text-xs sm:text-sm font-semibold text-text-base">Preparing GeoSphere map…</div>
+              <div className="text-[11px] text-text-muted mt-0.5">Applying project basemap &amp; boundary</div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <iframe
         ref={(el) => {
           iframeRef.current = el;
@@ -457,6 +529,10 @@ export const MapComponent = ({
         src={`${import.meta.env.VITE_MAP_URL || ''}/?embed=true&dashboard=true${dataManagement ? '&noSonar=1' : ''}`}
         onLoad={() => {
           if (iframeRef.current && iframeRef.current.contentWindow) {
+            // Map loaded freshly: keep the preparing overlay well past the
+            // apply window so the user never sees a half-applied map.
+            setPreparing(true);
+            schedulePrepareClear(COLD_PREPARE_MS);
             const dispatch = () => {
               if (!iframeRef.current || !iframeRef.current.contentWindow) return;
               try {
@@ -471,7 +547,11 @@ export const MapComponent = ({
                 sendStagedData();
               } catch (e) { }
             };
-
+            // Fresh iframe session: clear the previous fingerprint so SET_PROJECT_BOUNDARY
+            // is (re)sent now that the WebGIS listener is actually mounted. The mount-effect
+            // push lands before `load` and is dropped — without this reset the dedupe would
+            // silently skip every later push and leave the project boundary missing on cold open.
+            boundaryPushRef.current = null;
             dispatch();
             setTimeout(dispatch, 350);
             setTimeout(dispatch, 1000);
