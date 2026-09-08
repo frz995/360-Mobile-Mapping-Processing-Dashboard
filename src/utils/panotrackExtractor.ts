@@ -20,10 +20,9 @@ export interface ExtractedPanotrackResult {
 }
 
 /**
- * Derives standardized status color for panotrack frames matching the GeoSphere 360 palette:
+* Derives standardized status color for panotrack frames matching the GeoSphere 360 palette:
  * - Published: #10b981 (Emerald Green)
- * - Available: #38bdf8 (Sky Blue) — frame imagery available on the project, not yet published
- * - Staging / In Process: #f59e0b (Amber)
+ * - Staging / In Process (incl. frames present but un-published): #f59e0b (Amber)
  * - Defect / Flagged / Recheck: #ef4444 (Red)
  */
 export function getPanotrackStatusColor(item?: {
@@ -66,12 +65,11 @@ export function getPanotrackStatusColor(item?: {
     return '#10b981'; // Emerald Green
   }
 
-  // 3. Available on the project (imagery/data present, not yet published)
-  if (item.isAvailable === true || st === 'available') {
-    return '#38bdf8'; // Sky Blue
-  }
-
-  // 4. Staging / In Process / Default
+  // This system tracks only three operational statuses — Published,
+  // Staging, and Defect. Frames present but un-published (legacy
+  // "available") are classified as Staging.
+  //
+  // 3. Staging / In Process / Default
   return '#f59e0b'; // Amber
 }
 
@@ -160,9 +158,12 @@ export function extractPanotrackPoints(
               ? Boolean(p.isPublished)
               : (d.publishToWebGIS === 'yes' || p.status === 'yes' || p.status === 'published');
 
+            // This system tracks only three operational statuses — Published,
+            // Staging, and Defect. Frames present but un-published (legacy
+            // "available") are classified as Staging.
             const isAvail = !isPointDefect && !isPub && (p.isAvailable === true || pStatus === 'available');
-            const color = isPointDefect ? '#ef4444' : (isPub ? '#10b981' : (isAvail ? '#38bdf8' : '#f59e0b'));
-            const pointStatus = isPointDefect ? 'defect' : (isPub ? 'published' : (isAvail ? 'available' : 'staging'));
+            const color = isPointDefect ? '#ef4444' : (isPub ? '#10b981' : '#f59e0b');
+            const pointStatus = isPointDefect ? 'defect' : (isPub ? 'published' : 'staging');
 
             points.push({
               id: p.id || `${runId}-p-${pIdx}`,
@@ -198,8 +199,8 @@ export function extractPanotrackPoints(
             );
             const isPub = d.publishToWebGIS === 'yes';
             const isAvail = !isPointDefect && !isPub && (pt.isAvailable === true || (pt.status || '').toLowerCase().trim() === 'available');
-            const color = isPointDefect ? '#ef4444' : (isPub ? '#10b981' : (isAvail ? '#38bdf8' : '#f59e0b'));
-            const pointStatus = isPointDefect ? 'defect' : (isPub ? 'published' : (isAvail ? 'available' : 'staging'));
+            const color = isPointDefect ? '#ef4444' : (isPub ? '#10b981' : '#f59e0b');
+            const pointStatus = isPointDefect ? 'defect' : (isPub ? 'published' : 'staging');
 
             points.push({
               id: `${runId}-pt-${ptIdx}`,
@@ -267,8 +268,8 @@ export function extractPanotrackPoints(
               : (b.publishToWebGIS === 'yes' || p.status === 'yes' || p.status === 'published');
 
             const isAvail = !isPointDefect && !isPub && (p.isAvailable === true || pStatus === 'available');
-            const color = isPointDefect ? '#ef4444' : (isPub ? '#10b981' : (isAvail ? '#38bdf8' : '#f59e0b'));
-            const pointStatus = isPointDefect ? 'defect' : (isPub ? 'published' : (isAvail ? 'available' : 'staging'));
+            const color = isPointDefect ? '#ef4444' : (isPub ? '#10b981' : '#f59e0b');
+            const pointStatus = isPointDefect ? 'defect' : (isPub ? 'published' : 'staging');
 
             points.push({
               id: p.id || `b-${bIdx}-p-${pIdx}`,
@@ -309,7 +310,7 @@ export function extractPanotrackPoints(
               subgrid: sg,
               lng,
               lat,
-              status: b.status || (isPub ? 'published' : (isAvail ? 'available' : 'staging')),
+              status: b.status || (isPub ? 'published' : 'staging'),
               isPublished: isPub,
               isAvailable: isAvail,
               color
