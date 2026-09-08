@@ -9,7 +9,7 @@
 // `showRoadLines` toggle.
 // =====================================================================
 
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import type { StyleSpecification, Map as MaplibreMap } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
@@ -403,6 +403,93 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
   const lastFittedBboxRef = useRef<string>('');
   const selectedPopupRef = useRef<maplibregl.Popup | null>(null);
 
+  // Loading indicator: the overlay stays up until the style has loaded AND the
+  // first overlay build (district geometry + OSM captured points + roads) has
+  // painted. A failsafe guarantees the spinner can never hang forever if the
+  // basemap network request stalls.
+  const [ready, setReady] = useState(false);
+  // Tracks every geojson source this component registers (district, dimmed
+  // regions, captured points, road runs, catalog + selected feature). The map is
+  // only considered ready when ALL of them AND the basemap's own tile sources
+  // report isSourceLoaded() AND the current viewport has no pending tiles —
+  // i.e. the OSM vector tiles + every overlay/catalog layer have actually
+  // painted, not merely been added.
+  const overlayBuiltRef = useRef(false);
+  const addedSourceIdsRef = useRef<Set<string>>(new Set());
+  // Timestamp of the most recent dataloading/sourcedataloading event. The overlay
+  // only dismisses once the map passes a full readiness battery for 3
+  // consecutive polls (~750ms) with no in-flight requests in the last 650ms —
+  // a single idle is NOT trusted because it can fire before the fitted region's
+  // OSM tiles finish streaming.
+  const lastDataLoadAtRef = useRef(0);
+  // Timestamp of the most recent tile/data PROGRESS (anything arriving or being
+  // requested). A slow-but-advancing OSM load must never be interrupted, so the
+  // map is only force-dismissed when loading has made zero progress for a long
+  // while (a real stall), never merely because a huge district takes time.
+  const lastLoadProgressAtRef = useRef(Date.now());
+  const mountStartAtRef = useRef(Date.now());
+  const cleanPollsRef = useRef(0);
+
+  const verifyAndDismiss = useCallback(() => {
+    const map = mapRef.current;
+    const now = Date.now();
+    // Stall failsafe: if the basemap/catalog loading has made NO progress for a
+    // long window (nothing requested AND nothing arrived), the request is hung —
+    // force-dismiss so the UI is never blocked forever. Ongoing tile traffic
+    // keeps this branch inert no matter how long the district takes.
+    if (
+      map &&
+      overlayBuiltRef.current &&
+      now - mountStartAtRef.current > 15000 &&
+      now - lastLoadProgressAtRef.current > 15000
+    ) {
+      setReady(true);
+      return;
+    }
+    if (!map || !overlayBuiltRef.current) { cleanPollsRef.current = 0; return; }
+    if (!map.loaded() || !map.isStyleLoaded()) { cleanPollsRef.current = 0; return; }
+    if (map.isMoving() || map.isZooming() || map.isRotating()) { cleanPollsRef.current = 0; return; }
+    if (!map.areTilesLoaded()) { cleanPollsRef.current = 0; return; }
+    if (now - lastDataLoadAtRef.current < 650) { cleanPollsRef.current = 0; return; }
+
+    let allLoaded = true;
+    try {
+      const style = map.getStyle();
+      const styleSources = style?.sources ? Object.keys(style.sources) : [];
+      for (const id of styleSources) {
+        if (map.getSource(id) && !map.isSourceLoaded(id)) {
+          allLoaded = false;
+          break;
+        }
+      }
+    } catch {
+      allLoaded = false;
+    }
+    if (allLoaded) {
+      addedSourceIdsRef.current.forEach((id) => {
+        if (!allLoaded) return;
+        const src = map.getSource(id);
+        if (src && !map.isSourceLoaded(id)) allLoaded = false;
+      });
+    }
+    if (!allLoaded) { cleanPollsRef.current = 0; return; }
+
+    // Sustained-clean window required so late tile batches reset the counter.
+    cleanPollsRef.current += 1;
+    if (cleanPollsRef.current >= 3) setReady(true);
+  }, []);
+
+  useEffect(() => {
+    const poll = window.setInterval(verifyAndDismiss, 300);
+    // Absolute escape hatch (background tabs / paused renderer): the overlay can
+    // never outlast this, regardless of stalled state.
+    const failsafe = window.setTimeout(() => setReady(true), 120000);
+    return () => {
+      window.clearInterval(poll);
+      window.clearTimeout(failsafe);
+    };
+  }, [verifyAndDismiss]);
+
   // Refs for values that should NOT trigger a full overlay rebuild
   // (style-only changes are applied via setPaintProperty in separate effects)
   const catalogLayersRef        = useRef<CatalogVectorLayer[]>(catalogLayers);
@@ -444,6 +531,7 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
     // 1. Dim the non-selected regions so the selected one stands out.
     if (dimmedRegionsGeojson?.features) {
       map.addSource('ra-dim', { type: 'geojson', data: dimmedRegionsGeojson });
+      addedSourceIdsRef.current.add('ra-dim');
       map.addLayer({
         id: 'ra-dim',
         type: 'fill',
@@ -460,6 +548,7 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
       const boundaryWidth = systemStyles?.districtBoundary?.strokeWidth ?? 2.5;
 
       map.addSource('ra-districts', { type: 'geojson', data: districtGeojson });
+      addedSourceIdsRef.current.add('ra-districts');
       map.addLayer({
         id: 'ra-districts',
         type: 'fill',
@@ -484,6 +573,7 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
 
       const srcId = `ra-cat-${catLayer.id}`;
       map.addSource(srcId, { type: 'geojson', data: catLayer.geojson });
+      addedSourceIdsRef.current.add(srcId);
       dynamicSourcesRef.current.push(srcId);
 
       const color = catLayer.color || '#38bdf8';
@@ -677,6 +767,7 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
       const planWidth = systemStyles?.roadPlan?.strokeWidth ?? 3.5;
 
       map.addSource('ra-roads', { type: 'geojson', data: extractLineStringRuns(roadRuns) });
+      addedSourceIdsRef.current.add('ra-roads');
       map.addLayer({
         id: 'ra-roads',
         type: 'line',
@@ -700,6 +791,7 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
         type: 'geojson',
         data: extractPointCollection(capturedPoints, catalogLayersRef.current)
       });
+      addedSourceIdsRef.current.add('ra-captured');
       map.addLayer({
         id: 'ra-captured',
         type: 'circle',
@@ -795,6 +887,7 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
       type: 'geojson',
       data: { type: 'FeatureCollection', features: [] }
     });
+    addedSourceIdsRef.current.add(selSrcId);
     dynamicSourcesRef.current.push(selSrcId);
 
     map.addLayer({
@@ -884,6 +977,9 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
     // 7. Re-apply the3D building layer whenever the basemap is rebuilt (a style
     //    swap recreates the Map, so the previous fill-extrusion layer is gone).
     applyBuildingLayer(map, show3DRef.current);
+
+    // 8. Everything (style + boundary + points + roads) is now painted.
+    overlayBuiltRef.current = true;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bbox, districtGeojson, dimmedRegionsGeojson, capturedPoints, roadRuns, showRoadLines]);
   // catalogLayers, systemStyles, selectedFeature intentionally omitted — they are
@@ -975,7 +1071,26 @@ function areStylesEqual(a?: string | StyleSpecification, b?: string | StyleSpeci
     if (mapInstanceRef) mapInstanceRef.current = map;
     map.on('load', () => {
       styleLoadedRef.current = true;
+      lastLoadProgressAtRef.current = Date.now();
       buildOverlayRef.current?.();
+    });
+    // Every tile/data request arrival or start is latched — the polling
+    // readiness check (`verifyAndDismiss`) only dismisses the overlay once the
+    // map has been fully clean (no requests) for a sustained window, and the
+    // stall failsafe stays inert while ANY tile traffic is making progress, so
+    // OSM tiles for a large fitted district keep the spinner up until they
+    // actually paint.
+    const markProgress = () => {
+      const now = Date.now();
+      lastDataLoadAtRef.current = now;
+      lastLoadProgressAtRef.current = now;
+    };
+    map.on('dataloading', markProgress);
+    map.on('sourcedataloading', markProgress);
+    map.on('sourcedata', (e) => {
+      if ((e as { isSourceLoaded?: boolean }).isSourceLoaded === false) {
+        markProgress();
+      }
     });
     map.on('error', (e) => {
       // Non-fatal warning for individual missing tiles / network drops
@@ -1030,6 +1145,11 @@ function areStylesEqual(a?: string | StyleSpecification, b?: string | StyleSpeci
     map.remove();
     mapRef.current = null;
     styleLoadedRef.current = false;
+    overlayBuiltRef.current = false;
+    cleanPollsRef.current = 0;
+    lastLoadProgressAtRef.current = Date.now();
+    mountStartAtRef.current = Date.now();
+    setReady(false);
     const next = initMap(container, style);
     next.jumpTo(camera);
     mapRef.current = next;
@@ -1110,10 +1230,29 @@ function areStylesEqual(a?: string | StyleSpecification, b?: string | StyleSpeci
 
   return (
     <div
-      ref={containerRef}
       className="absolute inset-0 w-full h-full z-0 bg-slate-950"
       style={{ backgroundColor: 'var(--bg-app, #0f172a)' }}
-    />
+    >
+      {/* Map container keeps being populated by MapLibre, but the parent renders
+          it inside a 0-sized wrapper while hidden — so the ref'd div is absolute. */}
+      <div ref={containerRef} className="absolute inset-0" />
+
+      {/* Loading overlay: shown while the style + OSM points + geometry render */}
+      {!ready && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-app/70 backdrop-blur-[2px] pointer-events-none select-none">
+          <div className="flex flex-col items-center gap-3">
+            <div className="relative h-10 w-10">
+              <div className="absolute inset-0 rounded-full border-2 border-sky-500/20" />
+              <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-sky-400 animate-spin" />
+            </div>
+            <div className="text-center px-6">
+              <div className="text-xs sm:text-sm font-semibold text-text-base">Preparing road analysis map…</div>
+              <div className="text-[11px] text-text-muted mt-0.5">Loading OSM data &amp; district geometry</div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 };
 
