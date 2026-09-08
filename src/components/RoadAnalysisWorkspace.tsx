@@ -1548,8 +1548,8 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
             <UnderlineTabStrip tabs={TABS} active={activeTab} onChange={setActiveTab} tabLabel={(k) => TAB_LABEL[k]} />
           </div>
 
-          <div className="flex flex-1 min-h-0">
-            <aside className="w-80 shrink-0 border-r border-divider overflow-y-auto p-3 flex flex-col gap-3 bg-app/40">
+          <div className="flex flex-col lg:flex-row flex-1 min-h-0">
+            <aside className="w-full lg:w-80 shrink-0 border-b lg:border-b-0 lg:border-r border-divider overflow-y-auto p-3 flex flex-col gap-3 bg-app/40 max-h-[42vh] lg:max-h-none">
               {activeTab === 'region' && (
                 <>
                   <div>
@@ -2449,7 +2449,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                       boxShadow: 'var(--card-shadow)',
                       color: 'var(--text-primary)'
                     }}
-                    className="absolute bottom-6 right-6 z-[1000] flex items-center gap-3 px-3 py-1.5 rounded-xl border backdrop-blur-md shadow-lg text-[11px] font-medium animate-in fade-in duration-200"
+                    className="absolute bottom-3 right-3 lg:bottom-6 lg:right-6 z-[1000] flex flex-wrap items-center gap-x-3 gap-y-1 max-w-[92%] px-3 py-1.5 rounded-xl border backdrop-blur-md shadow-lg text-[11px] font-medium animate-in fade-in duration-200"
                   >
                     <span className="text-[10px] uppercase font-bold tracking-wider text-text-muted mr-0.5">Panotrack:</span>
                     <div className="flex items-center gap-1.5">

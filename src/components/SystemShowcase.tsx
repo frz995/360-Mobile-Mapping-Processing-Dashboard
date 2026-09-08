@@ -1150,7 +1150,7 @@ return {
     }, [projectLocation]);
 
     return (
-        <div className="relative w-full h-[100dvh] max-h-[100dvh] text-white font-sans overflow-hidden select-none flex flex-col justify-between bg-black">
+        <div className="relative w-full showcase-landing text-white font-sans overflow-hidden select-none flex flex-col justify-between bg-black">
 
             {/* 1. Animate UI Stars Background, 3D Earth Globe & Clean Ambient Lighting */}
             <div className={`absolute inset-0 z-0 overflow-hidden ${viewMode === 'globe' ? 'pointer-events-auto' : 'pointer-events-none'}`}>
@@ -1246,8 +1246,8 @@ return {
             {/* 2. Top Header Navbar (Module navigation centered, balanced left & right) */}
             <header className="relative z-30 px-4 sm:px-8 py-3 flex items-center justify-between border-b border-white/10 bg-black/90 backdrop-blur-md shrink-0 gap-4">
                 {/* Left: System Title */}
-                <div className="flex items-center gap-3 min-w-0 shrink-0 z-10">
-                    <div className="max-w-[240px] 2xl:max-w-none min-w-0 pr-2">
+                <div className="flex items-center gap-3 min-w-0 z-10">
+                    <div className="max-w-[140px] xs:max-w-[190px] sm:max-w-[240px] 2xl:max-w-none min-w-0 pr-1 sm:pr-2">
                         <span className="text-xs sm:text-sm font-semibold tracking-tight text-white block leading-tight truncate">
                             Mobile Mapping Data Management System
                         </span>
@@ -1283,7 +1283,7 @@ return {
                     <div className="h-4 w-px bg-white/20 hidden xl:block" />
 
                     {/* View Mode Switcher: Clean monochromatic text tabs with Google font icons, no box button */}
-                    <div className="flex items-center gap-3 sm:gap-4 text-xs">
+                    <div className="hidden sm:flex items-center gap-3 sm:gap-4 text-xs">
                         <button
                             onClick={() => setViewMode('globe')}
                             className={`py-1 transition-colors cursor-pointer flex items-center gap-1.5 border-b-2 ${

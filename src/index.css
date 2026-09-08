@@ -784,6 +784,11 @@ select:-webkit-autofill:focus {
   will-change: transform, opacity;
 }
 
+.drawer-slide-in-left {
+  animation: slideInLeft 0.34s cubic-bezier(0.22, 1, 0.36, 1) forwards !important;
+  will-change: transform, opacity;
+}
+
 .slide-in-from-left {
   animation: slideInLeft 0.38s cubic-bezier(0.22, 1, 0.36, 1) forwards !important;
   will-change: transform, opacity;
@@ -898,5 +903,42 @@ select:-webkit-autofill:focus {
   -webkit-mask-composite: xor;
   mask-composite: exclude;
   pointer-events: none;
+}
+
+/* ==========================================================================
+   MOBILE STOPGAP: shrink dense desktop layouts on small phones so panels fit
+   without needing user zoom. Pinch-zoom is left enabled for accessibility.
+   Applied ONLY to the app workspace root (never the landing page, which must
+   keep true viewport units to hard-fill the screen).
+   (Responsive layout work replaces this incrementally.)
+   ========================================================================== */
+@media (max-width: 430px) {
+  .app-canvas {
+    zoom: 0.82;
+  }
+}
+
+@media (min-width: 431px) and (max-width: 480px) {
+  .app-canvas {
+    zoom: 0.88;
+  }
+}
+
+/* ==========================================================================
+   FULLSCREEN LANDING ROOT — hard-fill the viewport on every browser.
+   `100vh` is the floor fallback (works everywhere); `100dvh` upgrades to the
+   true visible height only where the unit is supported (mobile URL chrome).
+   Declared AFTER the base rule so the @supports upgrade always wins.
+   ========================================================================== */
+.showcase-landing {
+  height: 100vh;
+  max-height: 100vh;
+}
+
+@supports (height: 100dvh) {
+  .showcase-landing {
+    height: 100dvh;
+    max-height: 100dvh;
+  }
 }
 

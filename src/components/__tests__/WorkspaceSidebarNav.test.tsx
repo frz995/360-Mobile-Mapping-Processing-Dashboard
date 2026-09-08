@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, fireEvent, cleanup } from '@testing-library/react'
+import { render, screen, fireEvent, cleanup, within } from '@testing-library/react'
 import { WorkspaceSidebarNav } from '../WorkspaceSidebarNav'
 import type { WorkspaceKey } from '../../utils/urlRouter'
 
@@ -123,5 +123,74 @@ describe('WorkspaceSidebarNav', () => {
     )
     const adminBtn = screen.getByLabelText('workspaceAdministration')
     expect(adminBtn.querySelector('.bg-amber-500')).toBeNull()
+  })
+
+  it('keeps the mobile drawer out of the accessibility tree while closed', () => {
+    renderNav()
+    expect(screen.queryByRole('navigation', { name: 'Workspace navigation (mobile)' })).not.toBeInTheDocument()
+  })
+
+  it('renders the mobile drawer when opened and closes it via the close button', () => {
+    const onCloseMobileNav = vi.fn()
+    render(
+      <WorkspaceSidebarNav
+        translate={translate}
+        activeWorkspace="dashboard"
+        isSidebarExpanded
+        tourStep={null}
+        onNavigate={vi.fn()}
+        onRefresh={vi.fn()}
+        onOpenAbout={vi.fn()}
+        onToggleSidebar={vi.fn()}
+        mobileNavOpen
+        onCloseMobileNav={onCloseMobileNav}
+      />
+    )
+    expect(screen.getByRole('navigation', { name: 'Workspace navigation (mobile)' })).toBeInTheDocument()
+    fireEvent.click(screen.getByLabelText('Close navigation menu'))
+    expect(onCloseMobileNav).toHaveBeenCalledOnce()
+  })
+
+  it('closes the mobile drawer when Escape is pressed', () => {
+    const onCloseMobileNav = vi.fn()
+    render(
+      <WorkspaceSidebarNav
+        translate={translate}
+        activeWorkspace="dashboard"
+        isSidebarExpanded
+        tourStep={null}
+        onNavigate={vi.fn()}
+        onRefresh={vi.fn()}
+        onOpenAbout={vi.fn()}
+        onToggleSidebar={vi.fn()}
+        mobileNavOpen
+        onCloseMobileNav={onCloseMobileNav}
+      />
+    )
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(onCloseMobileNav).toHaveBeenCalledOnce()
+  })
+
+  it('navigates and closes the drawer when a mobile workspace item is clicked', () => {
+    const onNavigate = vi.fn()
+    const onCloseMobileNav = vi.fn()
+    render(
+      <WorkspaceSidebarNav
+        translate={translate}
+        activeWorkspace="dashboard"
+        isSidebarExpanded
+        tourStep={null}
+        onNavigate={onNavigate}
+        onRefresh={vi.fn()}
+        onOpenAbout={vi.fn()}
+        onToggleSidebar={vi.fn()}
+        mobileNavOpen
+        onCloseMobileNav={onCloseMobileNav}
+      />
+    )
+    const mobileNav = screen.getByRole('navigation', { name: 'Workspace navigation (mobile)' })
+    fireEvent.click(within(mobileNav).getByLabelText('data'))
+    expect(onNavigate).toHaveBeenCalledWith('data')
+    expect(onCloseMobileNav).toHaveBeenCalledOnce()
   })
 })
