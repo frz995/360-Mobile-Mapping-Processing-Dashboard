@@ -696,7 +696,7 @@ export const ProjectOnboarding: React.FC<ProjectOnboardingProps> = ({
                       <span className="text-[11px] font-semibold text-text-muted">
                         Recent Projects
                       </span>
-                      <div className="grid sm:grid-cols-2 gap-2">
+                      <div className="flex flex-col gap-2">
                         {recent
                           .filter((p) => p.id !== lastProject?.id)
                           .slice(0, 4)
@@ -704,7 +704,7 @@ export const ProjectOnboarding: React.FC<ProjectOnboardingProps> = ({
                             <button
                               key={p.id}
                               onClick={() => onContinue(p)}
-                              className="p-3 bg-card/85 backdrop-blur-md border border-subtle/80 hover:border-text-muted/80 shadow-md rounded-lg transition-all cursor-pointer text-left flex items-center justify-between gap-3 group"
+                              className="w-full p-3 bg-card/85 backdrop-blur-md border border-subtle/80 hover:border-text-muted/80 shadow-md rounded-lg transition-all cursor-pointer text-left flex items-center justify-between gap-3 group"
                             >
                               <div className="min-w-0">
                                 <div className="text-xs font-medium text-text-base truncate group-hover:text-text-base">
