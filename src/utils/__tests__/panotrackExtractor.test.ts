@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { extractPanotrackPoints, filterPanotrackByDistricts, getPanotrackStatusColor } from '../panotrackExtractor';
+import { extractPanotrackPoints, filterPanotrackByDistricts, filterPanotrackByBBoxes, getPanotrackStatusColor } from '../panotrackExtractor';
 
 describe('panotrackExtractor', () => {
   it('correctly maps status colors to published, staging, and defect', () => {
@@ -10,6 +10,37 @@ describe('panotrackExtractor', () => {
     expect(getPanotrackStatusColor({ status: 'defect' })).toBe('#ef4444');
     expect(getPanotrackStatusColor({ status: 'need to recheck' })).toBe('#ef4444');
     expect(getPanotrackStatusColor({ defectCount: 2 })).toBe('#ef4444');
+  });
+
+  it('maps available-on-project frames to sky blue', () => {
+    expect(getPanotrackStatusColor({ status: 'available' })).toBe('#38bdf8');
+    expect(getPanotrackStatusColor({ isAvailable: true })).toBe('#38bdf8');
+    // Published and defect still outrank available
+    expect(getPanotrackStatusColor({ status: 'available', isPublished: true })).toBe('#10b981');
+    expect(getPanotrackStatusColor({ status: 'available', isDefect: true })).toBe('#ef4444');
+  });
+
+  it('extracts available frames with status available and isAvailable flag', () => {
+    const dailyData = [
+      {
+        subgrid: 'N93E70',
+        panoramas: [
+          { id: 'p1', filename: 'N93E70-0001.jpg', longitude: 101.5, latitude: 3.1, status: 'available' },
+          { id: 'p2', filename: 'N93E70-0002.jpg', longitude: 101.6, latitude: 3.2, isAvailable: true },
+          { id: 'p3', filename: 'N93E70-0003.jpg', longitude: 101.7, latitude: 3.3, isAvailable: false }
+        ]
+      }
+    ];
+
+    const res = extractPanotrackPoints(dailyData, []);
+    const byId = Object.fromEntries(res.points.map((p) => [p.id, p]));
+    expect(byId['p1'].status).toBe('available');
+    expect(byId['p1'].color).toBe('#38bdf8');
+    expect(byId['p1'].isAvailable).toBe(true);
+    expect(byId['p2'].status).toBe('available');
+    expect(byId['p2'].isAvailable).toBe(true);
+    expect(byId['p3'].status).toBe('staging');
+    expect(byId['p3'].isAvailable).toBeFalsy();
   });
 
   it('extracts points and tracks from dailyData panoramas with status colors', () => {
@@ -99,6 +130,34 @@ describe('panotrackExtractor', () => {
 
     const res = filterPanotrackByDistricts(points, tracks, []);
     expect(res.filteredPoints.length).toBe(2);
+    expect(res.filteredTracks.length).toBe(1);
+  });
+
+  it('filters points and tracks by bounding boxes', () => {
+    const points = [
+      { id: '1', subgrid: 'A', lng: 101.5, lat: 3.1 },
+      { id: '2', subgrid: 'B', lng: 115.0, lat: 4.5 }
+    ];
+    const tracks: Array<Array<[number, number]>> = [
+      [[101.5, 3.1], [101.6, 3.2]],
+      [[115.0, 4.5], [115.1, 4.6]]
+    ];
+
+    const res = filterPanotrackByBBoxes(points, tracks, [[101.0, 3.0, 102.0, 4.0]]);
+    expect(res.filteredPoints.length).toBe(1);
+    expect(res.filteredPoints[0].id).toBe('1');
+    expect(res.filteredTracks.length).toBe(1);
+    expect(res.filteredTracks[0]).toEqual([[101.5, 3.1], [101.6, 3.2]]);
+  });
+
+  it('returns all points when no bboxes are provided', () => {
+    const points = [
+      { id: '1', subgrid: 'A', lng: 101.5, lat: 3.1 }
+    ];
+    const tracks: Array<Array<[number, number]>> = [[[101.5, 3.1], [101.6, 3.2]]];
+
+    const res = filterPanotrackByBBoxes(points, tracks, []);
+    expect(res.filteredPoints.length).toBe(1);
     expect(res.filteredTracks.length).toBe(1);
   });
 

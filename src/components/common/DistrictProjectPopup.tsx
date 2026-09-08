@@ -2,6 +2,7 @@
 import { X } from 'lucide-react';
 import * as maplibregl from 'maplibre-gl';
 import { DISTRICT_METADATA } from '../boundary/districtMetadata';
+import type { PanotrackPoint } from '../../utils/panotrackExtractor';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 
 // Setup MapLibre web worker (same as the standalone boundary dashboard)
@@ -45,6 +46,8 @@ export interface PanotrackPopupData {
   boundaryGeojson?: any;
   /** [minLng, minLat, maxLng, maxLat] of the committed boundary. */
   boundaryBbox?: [number, number, number, number];
+  /** Status-coloured panotrack points available on the project (boundary-scoped). */
+  panotrackPoints?: PanotrackPoint[];
 }
 
 export interface DistrictProjectPopupProps {
@@ -73,6 +76,35 @@ function findFeature(geojson: any, name: string): any | null {
 /** Normalized feature identity used to merge boundary polygons from different sources. */
 function featureNameOf(f: any): string {
   return String(f?.properties?.name || f?.id || '').trim().toLowerCase();
+}
+
+/**
+ * Merge the committed boundary features with district outlines derived from the
+ * master district geojson by the committed district names. Every committed district
+ * that appears in ANY source is kept (deduped by name), so nothing the user saved
+ * in project settings is ever dropped from the HUD card map.
+ */
+export function mergeCommittedBoundaryFeatures(
+  boundaryFeatures: any[],
+  districtNames: string[],
+  allFeatures: any[]
+): any[] {
+  const names = (districtNames || []).map((n) => String(n || '').toLowerCase().trim()).filter(Boolean);
+  const committed = (boundaryFeatures || []).filter((f: any) => f?.geometry);
+  const derived = (allFeatures || []).filter((f: any) => {
+    const n = featureNameOf(f);
+    return n && names.includes(n);
+  });
+  const byName = new Map<string, any>();
+  committed.forEach((f: any) => {
+    const k = featureNameOf(f);
+    if (k) byName.set(k, f);
+  });
+  derived.forEach((f: any) => {
+    const k = featureNameOf(f);
+    if (k && !byName.has(k)) byName.set(k, f);
+  });
+  return Array.from(byName.values());
 }
 
 export const DistrictProjectPopup: React.FC<DistrictProjectPopupProps> = ({
@@ -234,19 +266,11 @@ export const DistrictProjectPopup: React.FC<DistrictProjectPopupProps> = ({
 
           // Merge committed boundary features (with real geometry) + district outlines
           // matched by the committed district names
-          const names = districts.map((d) => d.name.toLowerCase());
-          const committed = boundaryFeatures.filter((f: any) => f?.geometry);
-          const derived = (allFeatures || []).filter((f: any) => {
-            const n = featureNameOf(f);
-            return n && names.includes(n);
-          });
-          const byName = new Map<string, any>();
-          committed.forEach((f: any) => byName.set(featureNameOf(f), f));
-          derived.forEach((f: any) => {
-            const k = featureNameOf(f);
-            if (k && !byName.has(k)) byName.set(k, f);
-          });
-          const projectFeatures = Array.from(byName.values());
+          const projectFeatures = mergeCommittedBoundaryFeatures(
+            boundaryFeatures,
+            districts.map((d) => d.name),
+            allFeatures
+          );
           if (projectFeatures.length === 0) return;
 
           const boundaryData = { type: 'FeatureCollection', features: projectFeatures } as any;
@@ -306,18 +330,25 @@ export const DistrictProjectPopup: React.FC<DistrictProjectPopupProps> = ({
         });
       }
 
-      // 4. Survey panotrack route points
-      if (trackPoints.length > 0 && !map.getSource('survey-points')) {
+      // 4. Survey panotrack points — status-coloured when the project's panotrack
+      //    points are provided, otherwise fall back to the plain route dots
+      const panotrackPoints = data.panotrackPoints || [];
+      const surveyFeatures =
+        panotrackPoints.length > 0
+          ? panotrackPoints.map((p) => ({
+              type: 'Feature' as const,
+              geometry: { type: 'Point' as const, coordinates: [p.lng, p.lat] },
+              properties: { color: p.color || '#38bdf8', status: p.status || 'available' },
+            }))
+          : trackPoints.map(([lng, lat]) => ({
+              type: 'Feature' as const,
+              geometry: { type: 'Point' as const, coordinates: [lng, lat] },
+              properties: { color: basemapStyle === 'dark' ? '#f87171' : '#dc2626', status: 'route' },
+            }));
+      if (surveyFeatures.length > 0 && !map.getSource('survey-points')) {
         map.addSource('survey-points', {
           type: 'geojson',
-          data: {
-            type: 'FeatureCollection',
-            features: trackPoints.map(([lng, lat]) => ({
-              type: 'Feature',
-              geometry: { type: 'Point', coordinates: [lng, lat] },
-              properties: {},
-            })),
-          } as any,
+          data: { type: 'FeatureCollection', features: surveyFeatures } as any,
         });
         map.addLayer({
           id: 'survey-points-circle',
@@ -325,7 +356,7 @@ export const DistrictProjectPopup: React.FC<DistrictProjectPopupProps> = ({
           source: 'survey-points',
           paint: {
             'circle-radius': 2.5,
-            'circle-color': basemapStyle === 'dark' ? '#f87171' : '#dc2626',
+            'circle-color': ['get', 'color'],
             'circle-opacity': 0.85,
           },
         });
@@ -365,6 +396,20 @@ export const DistrictProjectPopup: React.FC<DistrictProjectPopupProps> = ({
       );
     } catch { /* silent */ }
   }, [activeFeature, isMapReady]);
+
+  // Keep the committed project-boundary in sync with the strict per-district boundary
+  // (real geometries may arrive after the popup mounts, e.g. whole-state commits).
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !isMapReady) return;
+    try {
+      const strictFeatures = (data.boundaryGeojson?.features || []).filter((f: any) => f?.geometry);
+      if (strictFeatures.length === 0) return;
+      const source = map.getSource('project-boundary') as maplibregl.GeoJSONSource | undefined;
+      if (!source) return;
+      source.setData({ type: 'FeatureCollection', features: strictFeatures } as any);
+    } catch { /* silent */ }
+  }, [data.boundaryGeojson, isMapReady]);
 
   return (
     <div
@@ -415,9 +460,9 @@ export const DistrictProjectPopup: React.FC<DistrictProjectPopupProps> = ({
         </button>
       </div>
 
-      {/* District chips */}
+      {/* District chips (all districts of the state are listed & selectable) */}
       {districts.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5 max-h-28 overflow-y-auto no-scrollbar">
           {districts.map((d, idx) => {
             const meta = DISTRICT_METADATA.find((m) => m.name.toLowerCase() === d.name.toLowerCase());
             const isActive = idx === activeIdx;
@@ -463,6 +508,23 @@ export const DistrictProjectPopup: React.FC<DistrictProjectPopupProps> = ({
               Dark
             </button>
           </div>
+
+          {/* Panotrack status legend (only when project panotrack points are shown) */}
+          {(data.panotrackPoints || []).length > 0 && (
+            <div className="absolute bottom-2 left-2 z-10 flex flex-wrap items-center gap-x-2.5 gap-y-1 bg-black/75 backdrop-blur-md rounded-md border border-white/15 px-2 py-1 text-[8px] font-mono text-neutral-300 pointer-events-none">
+              {[
+                { label: 'Published', color: '#10b981' },
+                { label: 'Available', color: '#38bdf8' },
+                { label: 'Staging', color: '#f59e0b' },
+                { label: 'Defect', color: '#ef4444' }
+              ].map((s) => (
+                <span key={s.label} className="flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full" style={{ background: s.color }} />
+                  {s.label}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Metrics */}
@@ -492,6 +554,17 @@ export const DistrictProjectPopup: React.FC<DistrictProjectPopupProps> = ({
               <span className="text-neutral-200 font-medium truncate pl-2">{regionName}</span>
             </div>
           )}
+
+          <div className="pt-1.5 mt-0.5 border-t border-white/10 flex items-center justify-between text-[10px] font-mono text-neutral-400">
+            <span>State · District</span>
+            <span className="text-neutral-200 font-medium truncate pl-2">
+              {districts[activeIdx]?.state && districts[activeIdx]?.name
+                ? `${districts[activeIdx].state} — ${districts[activeIdx].name}`
+                : districtLabel === 'Project area'
+                  ? `${regionName} — ${districtLabel}`
+                  : scopeText}
+            </span>
+          </div>
         </div>
       </div>
     </div>

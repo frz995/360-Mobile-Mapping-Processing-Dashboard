@@ -248,9 +248,12 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
             geojson: boundary.geojson,
             bbox: boundary.bbox
           }, '*');
+          if (boundary.focusActive) {
+            previewIframeRef.current.contentWindow.postMessage({ type: 'FOCUS_BOUNDARY', bbox: boundary.bbox }, '*');
+          }
           previewIframeRef.current.contentWindow.postMessage({
             type: 'DIM_OUTSIDE_BOUNDARY',
-            enabled: false
+            enabled: boundary.focusActive === true
           }, '*');
         } else {
           previewIframeRef.current.contentWindow.postMessage({
@@ -317,6 +320,10 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
             geojson: boundary.geojson,
             bbox: boundary.bbox
           }, '*');
+          if (boundary.focusActive) {
+            f.contentWindow?.postMessage({ type: 'FOCUS_BOUNDARY', bbox: boundary.bbox }, '*');
+          }
+          f.contentWindow?.postMessage({ type: 'DIM_OUTSIDE_BOUNDARY', enabled: boundary.focusActive === true }, '*');
         } else {
           f.contentWindow?.postMessage({
             type: 'SET_PROJECT_BOUNDARY',
@@ -324,12 +331,14 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
             bbox: null
           }, '*');
         }
-        if (action === 'focus' && boundary?.bbox) {
-          f.contentWindow?.postMessage({
-            type: 'FOCUS_BOUNDARY',
-            bbox: boundary.bbox
-          }, '*');
-          f.contentWindow?.postMessage({ type: 'DIM_OUTSIDE_BOUNDARY', enabled: false }, '*');
+        if (action === 'focus') {
+          if (boundary?.bbox) {
+            f.contentWindow?.postMessage({
+              type: 'FOCUS_BOUNDARY',
+              bbox: boundary.bbox
+            }, '*');
+          }
+          f.contentWindow?.postMessage({ type: 'DIM_OUTSIDE_BOUNDARY', enabled: true }, '*');
         } else if (action === 'clear') {
           f.contentWindow?.postMessage({ type: 'DIM_OUTSIDE_BOUNDARY', enabled: false }, '*');
           f.contentWindow?.postMessage({ type: 'CLEAR_BOUNDARY_FOCUS' }, '*');
@@ -546,6 +555,8 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
 
     await ensureDistrictGeometriesLoaded().catch(console.warn);
 
+    // The committed boundary is EXACTLY the admin's district selection — nothing is
+    // auto-added. A Johor boundary ticked with Segamat + Tangkak commits those two only.
     const chosenDistricts = selectedDistrictIds.length > 0
       ? MALAYSIA_DISTRICTS.filter((d) => selectedDistrictIds.includes(d.id))
       : [];

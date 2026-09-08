@@ -141,6 +141,38 @@ export function districtsToGeoJSON(districts: MalaysiaDistrict[]): { geojson: an
 }
 
 /**
+ * The shipped default project boundary — the "out of the box" production
+ * footprint shown on the very first web open (pre sign-in / guest), so the
+ * HUD card, globe and inspect map expose the same committed districts as the
+ * signed-in production project (Johor: Segamat + Tangkak). A real project's
+ * scope always overrides this via `applyProjectScope`; nothing here leaks into
+ * per-project isolation.
+ */
+export function buildDefaultProjectBoundary(): {
+  districtIds: string[];
+  districtNames: string[];
+  regionId: string;
+  regionName: string;
+  geojson: any;
+  bbox: [number, number, number, number];
+  focusActive: boolean;
+} | null {
+  const chosen = MALAYSIA_DISTRICTS.filter((d) => d.id === 'segamat' || d.id === 'tangkak');
+  if (chosen.length === 0) return null;
+  const result = districtsToGeoJSON(chosen);
+  if (!result || !result.geojson) return null;
+  return {
+    districtIds: chosen.map((d) => d.id),
+    districtNames: chosen.map((d) => d.name),
+    regionId: 'state:MY01',
+    regionName: 'Johor',
+    geojson: result.geojson,
+    bbox: result.bbox,
+    focusActive: true
+  };
+}
+
+/**
  * If a projectBoundary object has districtIds, regenerate its GeoJSON with real
  * MultiPolygon geometries if they were previously saved as rectangular bounding boxes.
  */

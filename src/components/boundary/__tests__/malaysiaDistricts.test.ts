@@ -8,7 +8,8 @@ import {
   groupMalaysiaDistricts,
   clipLineStringsToDistricts,
   linesLengthKm,
-  ensureDistrictGeometriesLoaded
+  ensureDistrictGeometriesLoaded,
+  buildDefaultProjectBoundary
 } from '../malaysiaDistricts'
 
 // The district dataset (`malaysia.district.geojson`) is the authoritative
@@ -66,6 +67,21 @@ describe('malaysiaDistricts module', () => {
 
   it('returns null when no districts are selected', () => {
     expect(districtsToGeoJSON([])).toBeNull()
+  })
+
+  it('ships a default production boundary (Segamat + Tangkak) for the first-open/guest view', () => {
+    const bound = buildDefaultProjectBoundary()
+    expect(bound).toBeTruthy()
+    expect(bound!.districtIds).toEqual(['segamat', 'tangkak'])
+    expect(bound!.regionId).toBe('state:MY01')
+    expect(bound!.regionName).toBe('Johor')
+    expect(bound!.focusActive).toBe(true)
+    expect(bound!.geojson.features.length).toBe(2)
+    expect(bound!.bbox).toHaveLength(4)
+    const segamat = bound!.geojson.features.find((f: any) => f.properties?.name === 'Segamat')
+    const tangkak = bound!.geojson.features.find((f: any) => f.properties?.name === 'Tangkak')
+    expect(segamat).toBeTruthy()
+    expect(tangkak).toBeTruthy()
   })
 
   it('classifies real points inside/outside districts', () => {

@@ -18,21 +18,34 @@ import { EarthGlobe, type GlobeMarker } from './common/EarthGlobe';
 import { ProjectBoundaryMap } from './common/ProjectBoundaryMap';
 import { DISTRICT_METADATA } from './boundary/districtMetadata';
 import { MALAYSIA_REGIONS } from './boundary/malaysiaRegions';
-import { extractPanotrackPoints } from '../utils/panotrackExtractor';
+import { MALAYSIA_DISTRICTS, districtsToGeoJSON, ensureDistrictGeometriesLoaded } from './boundary/malaysiaDistricts';
+import { extractPanotrackPoints, filterPanotrackByBBoxes } from '../utils/panotrackExtractor';
 import { DistrictProjectPopup, type PanotrackPopupData } from './common/DistrictProjectPopup';
 
-/** Best-effort region (state) name for a survey coordinate, resolved from district metadata bboxes. */
-function resolveRegionName(lat: number, lng: number, fallback: string): string {
-    let best: { d2: number; name: string } | null = null;
+/** Load the district (and its state) that a survey coordinate falls in, so the
+ *  geodetic card & HUD always have a real district to show even without a committed
+ *  boundary. Smallest containing district wins; nearest centre as last resort. */
+function findDistrictAt(lat: number, lng: number): { id: string; name: string; state: string; lat: number; lng: number } | null {
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    let best: { meta: typeof DISTRICT_METADATA[number]; area: number } | null = null;
     for (const m of DISTRICT_METADATA) {
         const b = m.bbox;
         if (lng < b[0] || lng > b[2] || lat < b[1] || lat > b[3]) continue;
+        const area = (b[2] - b[0]) * (b[3] - b[1]);
+        if (!best || area < best.area) best = { meta: m, area };
+    }
+    if (best) {
+        return { id: best.meta.id, name: best.meta.name, state: best.meta.stateName, lat: best.meta.center[0], lng: best.meta.center[1] };
+    }
+    let nearest: { meta: typeof DISTRICT_METADATA[number]; d2: number } | null = null;
+    for (const m of DISTRICT_METADATA) {
         const dx = lng - m.center[1];
         const dy = lat - m.center[0];
         const d2 = dx * dx + dy * dy;
-        if (!best || d2 < best.d2) best = { d2, name: m.stateName };
+        if (!nearest || d2 < nearest.d2) nearest = { meta: m, d2 };
     }
-    return best ? best.name : fallback;
+    if (!nearest) return null;
+    return { id: nearest.meta.id, name: nearest.meta.name, state: nearest.meta.stateName, lat: nearest.meta.center[0], lng: nearest.meta.center[1] };
 }
 
 export interface SystemShowcaseProps {
@@ -695,15 +708,18 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                 subtext: `${cLat.toFixed(4)}° N, ${cLng.toFixed(4)}° E • ${bnd.regionName || 'Malaysia'}`
             };
         }
-        return {
-            latitude: 3.8,
-            longitude: 109.5,
-            name: projectSettings?.projectName || 'Active Survey Area',
-            subtext: 'Peninsular Malaysia'
-        };
+return {
+        latitude: 3.8,
+        longitude: 109.5,
+        name: projectSettings?.projectName || 'Active Survey Area',
+        subtext: 'Peninsular Malaysia'
+    };
     }, [dailyData, projectSettings]);
     // Available districts/projects for inspection — derived entirely from the
-    // user's committed project boundary (never hardcoded).
+    // user's committed project boundary (never hardcoded). All THREE saved signals are
+    // merged (ids, names, geojson features) so nothing the user saved is ever dropped:
+    // e.g. a boundary saved with districtIds:['segamat'] but a geojson that also carries
+    // Tangkak still exposes Tangkak in the HUD card.
     const inspectableDistricts = useMemo(() => {
         const boundary = projectSettings?.projectBoundary as any;
         const list: Array<{ id: string; name: string; state: string; lat: number; lng: number }> = [];
@@ -718,8 +734,8 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             });
         }
 
-        // 2. Fall back to districtNames (AdminSettings writes both, Onboarding may omit districtNames)
-        if (Array.isArray(boundary?.districtNames) && boundary.districtNames.length > 0 && list.length === 0) {
+        // 2. districtNames (AdminSettings writes both, Onboarding may omit districtNames)
+        if (Array.isArray(boundary?.districtNames) && boundary.districtNames.length > 0) {
             boundary.districtNames.forEach((name: string) => {
                 const meta = DISTRICT_METADATA.find(d => d.name.toLowerCase() === String(name).toLowerCase());
                 if (meta) {
@@ -729,7 +745,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
         }
 
         // 3. Derive districts from the committed geojson FeatureCollection itself
-        if (list.length === 0 && boundary?.geojson && Array.isArray(boundary.geojson.features)) {
+        if (boundary?.geojson && Array.isArray(boundary.geojson.features)) {
             boundary.geojson.features.forEach((f: any) => {
                 const name = f?.properties?.name || '';
                 const id = String(f?.id || '');
@@ -754,17 +770,94 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
         return deduped;
     }, [projectSettings]);
 
+    // Districts the globe overview & HUD actually show. Bound to the project boundary:
+    // a boundary committed with specific districts (e.g. Johor with Segamat + Tangkak)
+    // exposes exactly those; a whole-state/region boundary (regionId/regionName set but
+    // no per-district ids) expands to EVERY district in that state, so the overview
+    // reflects the full data footprint committed for the project. Always dynamic per
+    // project — nothing here is hardcoded. With no boundary at all, a single district
+    // loads from the surveyed coords so the State / District rows still show real info.
+    const resolvedDistricts = useMemo(() => {
+        if (inspectableDistricts.length > 0) return inspectableDistricts;
+
+        // Whole-state/region boundary (single region plan): list every district in that state
+        const boundary = projectSettings?.projectBoundary as any;
+        const regionName = boundary?.regionName as string | undefined;
+        if (regionName) {
+            const stateDists = DISTRICT_METADATA.filter(d => d.stateName.toLowerCase() === regionName.toLowerCase());
+            if (stateDists.length > 0) {
+                return stateDists.map(meta => ({ id: meta.id, name: meta.name, state: meta.stateName, lat: meta.center[0], lng: meta.center[1] }));
+            }
+        }
+
+        // Last resort only: load the district under the surveyed location
+        const loaded = findDistrictAt(projectLocation.latitude, projectLocation.longitude);
+        return loaded ? [loaded] : [];
+    }, [inspectableDistricts, projectSettings, projectLocation.latitude, projectLocation.longitude]);
+
+    // Prefer the surveyed district as the default selected chip (when listing a whole state)
+    const defaultDistrictIdx = useMemo(() => {
+        if (resolvedDistricts.length <= 1) return 0;
+        const loaded = findDistrictAt(projectLocation.latitude, projectLocation.longitude);
+        if (!loaded) return 0;
+        const i = resolvedDistricts.findIndex(d => d.id.toLowerCase() === loaded.id.toLowerCase());
+        return i >= 0 ? i : 0;
+    }, [resolvedDistricts, projectLocation.latitude, projectLocation.longitude]);
+
     const [selectedDistrictIdx, setSelectedDistrictIdx] = useState(0);
     const [showProjectPicker, setShowProjectPicker] = useState(false);
     const [showDistrictPopup, setShowDistrictPopup] = useState(false);
+    // Real MultiPolygon district geometries load eagerly in the background; flip this
+    // flag when they arrive so the committed boundary can be rebuilt with true shapes.
+    const [districtGeomReady, setDistrictGeomReady] = useState(false);
+    useEffect(() => {
+        let alive = true;
+        ensureDistrictGeometriesLoaded()
+            .then(() => { if (alive) setDistrictGeomReady(true); })
+            .catch(() => { if (alive) setDistrictGeomReady(true); });
+        return () => { alive = false; };
+    }, []);
+
+    // The strict committed boundary for the HUD card: each committed district drawn as
+    // its own polygon (real geometry once loaded, metadata bbox otherwise). Falls back to
+    // the stored project-settings boundary when nothing is committed. Independent of POI.
+    const committedBoundary = useMemo(() => {
+        const ids = resolvedDistricts.map(d => d.id.toLowerCase());
+        if (districtGeomReady && ids.length > 0) {
+            const chosen = MALAYSIA_DISTRICTS.filter(d => ids.includes(d.id.toLowerCase()));
+            const geo = districtsToGeoJSON(chosen);
+            if (geo) return geo;
+        }
+        const stored = (projectSettings?.projectBoundary as any)?.geojson;
+        const storedBbox = (projectSettings?.projectBoundary as any)?.bbox;
+        if (stored) return { geojson: stored, bbox: storedBbox };
+        return null;
+    }, [resolvedDistricts, projectSettings, districtGeomReady]);
+
+    // Stable identity for the committed boundary handed to ProjectBoundaryMap — the
+    // inspect view must NOT receive a fresh object every render (that re-triggers its
+    // layer rebuilds → boundary flashes while any other state updates).
+    const activeProjectBoundary = useMemo(
+        () => (committedBoundary ? { geojson: committedBoundary.geojson, bbox: committedBoundary.bbox } : undefined),
+        [committedBoundary]
+    );
+
+    // When the district list was loaded from state metadata (no committed boundary),
+    // default the selection to the district the survey actually sits in.
+    useEffect(() => {
+        if (selectedDistrictIdx === 0 && defaultDistrictIdx > 0) {
+            setSelectedDistrictIdx(defaultDistrictIdx);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [defaultDistrictIdx]);
     // Globe targeting marker — when no districts are committed, center on the project area itself.
     // (This fallback is used for globe focusing only; the card gallery stays boundary-driven.)
     const activeDistrict =
-        inspectableDistricts[selectedDistrictIdx] ||
-        inspectableDistricts[0] || {
+        resolvedDistricts[selectedDistrictIdx] ||
+        resolvedDistricts[defaultDistrictIdx] || {
             id: 'project-area',
             name: projectLocation.name,
-            state: (projectSettings?.projectBoundary as any)?.regionName || 'Malaysia',
+            state: (projectSettings?.projectBoundary as any)?.regionName || '—',
             lat: projectLocation.latitude,
             lng: projectLocation.longitude
         };
@@ -773,6 +866,41 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
     const panotrackData = useMemo(() => {
         return extractPanotrackPoints(dailyData, batchLogs);
     }, [dailyData, batchLogs]);
+
+    // Committed district metadata bboxes — the data-driven filter scope for the project's
+    // available panotrack frames (dynamic per project, no hardcoding).
+    const districtBBoxes = useMemo<Array<[number, number, number, number]>>(() => {
+        const seen = new Set<string>();
+        const boxes: Array<[number, number, number, number]> = [];
+        resolvedDistricts.forEach((d) => {
+            const meta = DISTRICT_METADATA.find((m) => m.id.toLowerCase() === d.id.toLowerCase());
+            if (meta?.bbox && !seen.has(meta.id.toLowerCase())) {
+                seen.add(meta.id.toLowerCase());
+                boxes.push(meta.bbox);
+            }
+        });
+        return boxes;
+    }, [resolvedDistricts]);
+
+    // Panotrack points that are actually available within the project's committed area.
+    const panotrackInProject = useMemo(() => {
+        const { filteredPoints } = filterPanotrackByBBoxes(panotrackData.points, panotrackData.tracks, districtBBoxes);
+        return filteredPoints;
+    }, [panotrackData, districtBBoxes]);
+
+    // The single zoomed district's bbox (for the MapLibre inspect view) — defaults to the
+    // whole committed area when the active district has no metadata entry.
+    const activeDistrictBbox = useMemo<[number, number, number, number] | null>(() => {
+        if (!activeDistrict) return null;
+        const meta = DISTRICT_METADATA.find((m) => m.id.toLowerCase() === activeDistrict.id.toLowerCase());
+        return meta?.bbox || null;
+    }, [activeDistrict]);
+
+    const activeDistrictPanotrack = useMemo(() => {
+        if (!activeDistrictBbox) return panotrackInProject;
+        const { filteredPoints } = filterPanotrackByBBoxes(panotrackData.points, panotrackData.tracks, [activeDistrictBbox]);
+        return filteredPoints;
+    }, [panotrackData, activeDistrictBbox, panotrackInProject]);
 
     const activePopupData = useMemo<PanotrackPopupData | null>(() => {
         if (!showDistrictPopup) return null;
@@ -787,13 +915,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                 : (regionMeta?.group === 'Peninsular' ? 'Peninsular Malaysia' : (boundary?.regionName || activeDistrict?.state || 'Malaysia'));
 
         // If no committed boundary (no districts configured), this popup shows simply the project area
-        const districtsForAggregation = inspectableDistricts.length > 0 ? inspectableDistricts : [];
-        const pointsInRegion = panotrackData.points.filter((pt) =>
-            districtsForAggregation.some(
-                (d) => Math.abs(pt.lat - d.lat) < 0.45 && Math.abs(pt.lng - d.lng) < 0.45
-            )
-        );
-        const relevantPoints = pointsInRegion.length > 0 ? pointsInRegion : panotrackData.points;
+        const relevantPoints = panotrackInProject.length > 0 ? panotrackInProject : panotrackData.points;
         const publishedCount = relevantPoints.filter(p => p.isPublished || p.status === 'published' || p.status === 'yes').length;
         const defectCount = relevantPoints.filter(p => p.status === 'defect' || p.color === '#ef4444' || p.qa_status === 'defect').length;
         const stagingCount = Math.max(0, relevantPoints.length - publishedCount - defectCount);
@@ -806,7 +928,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
 
         return {
             regionName,
-            stateName: zoneLabel,
+            stateName: activeDistrict?.state || zoneLabel,
             latitude: activeDistrict?.lat ?? 0,
             longitude: activeDistrict?.lng ?? 0,
             totalFrames: frames,
@@ -818,10 +940,11 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             defectCount: defectCount > 0 ? defectCount : (computedDefects > 0 ? computedDefects : 2),
             subgrids,
             trackPoints: trackPoints.length >= 2 ? trackPoints : undefined,
-            boundaryGeojson: boundary?.geojson,
-            boundaryBbox: boundary?.bbox,
+            boundaryGeojson: committedBoundary?.geojson,
+            boundaryBbox: committedBoundary?.bbox,
+            panotrackPoints: panotrackInProject,
         };
-    }, [showDistrictPopup, activeDistrict, panotrackData, inspectableDistricts, computedFrames, computedDistance, computedDefects, slaPercent, projectSettings]);
+    }, [showDistrictPopup, activeDistrict, panotrackInProject, panotrackData, computedFrames, computedDistance, computedDefects, slaPercent, projectSettings, committedBoundary]);
 
     // Track active marker projected 2D position from EarthGlobe
     const [markerProjectedPos, setMarkerProjectedPos] = useState<{ x: number; y: number; visible: boolean } | null>(null);
@@ -918,50 +1041,40 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
     const activeLat = customCenter ? customCenter.lat : activeDistrict.lat;
     const activeLng = customCenter ? customCenter.lng : activeDistrict.lng;
 
-    const globeMarkers = useMemo(() => {
-        // 1. Project boundary identity markers (committed districts) — shown when configured
-        const districtMarkers: GlobeMarker[] = inspectableDistricts.map((d, idx) => ({
-            kind: 'district',
-            label: d.name,
-            description: `${d.state} • ${d.lat.toFixed(3)}° N, ${d.lng.toFixed(3)}° E`,
-            latitude: d.lat,
-            longitude: d.lng,
-            color: idx === selectedDistrictIdx ? '#ef4444' : '#94a3b8',
-        }));
+    const globeMarkers = useMemo<GlobeMarker[]>(() => {
+        // The globe shows ONLY the committed state — a single region pin. District-level
+        // granularity (Segamat / Tangkak) lives in the HUD card, not on the globe.
+        const stateName = activeDistrict?.state ||
+            (projectSettings?.projectBoundary as any)?.regionName ||
+            'Malaysia';
 
-        // 2. ALL available survey data markers (subgrid-clustered) so the globe always
-        //    displays data on every project — boundary configured or not.
-        const clusterMap = new Map<string, { lat: number; lng: number; color: string; count: number }>();
-        (panotrackData.points || []).forEach((p) => {
-            const key = (p.subgrid || '').toUpperCase().trim() || `POINT ${Math.round(p.lat * 10)}:${Math.round(p.lng * 10)}`;
-            const c = clusterMap.get(key);
-            if (c) {
-                c.count++;
-                // Dominant status colour: defect > staging > published
-                if (p.color === '#ef4444') c.color = '#ef4444';
-                else if (p.color === '#f59e0b' && c.color !== '#ef4444') c.color = '#f59e0b';
+        // Prefer the real region geometry centre (MALAYSIA_REGIONS)…
+        const region = MALAYSIA_REGIONS.find((r) => r.name.toLowerCase() === stateName.toLowerCase());
+        let lat = region?.center ? region.center[0] : NaN;
+        let lng = region?.center ? region.center[1] : NaN;
+
+        // …fall back to the average of the committed districts' centres
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+            if (resolvedDistricts.length > 0) {
+                lat = resolvedDistricts.reduce((acc, d) => acc + d.lat, 0) / resolvedDistricts.length;
+                lng = resolvedDistricts.reduce((acc, d) => acc + d.lng, 0) / resolvedDistricts.length;
             } else {
-                clusterMap.set(key, { lat: p.lat, lng: p.lng, color: p.color || '#10b981', count: 1 });
+                lat = projectLocation.latitude;
+                lng = projectLocation.longitude;
             }
-        });
+        }
 
-        const surveyMarkers: GlobeMarker[] = Array.from(clusterMap.entries())
-            .sort((a, b) => b[1].count - a[1].count)
-            .slice(0, 120)
-            .map(([, c]) => {
-                const region = resolveRegionName(c.lat, c.lng, activeDistrict?.state || 'Malaysia');
-                return {
-                    kind: 'survey',
-                    label: region,
-                    description: `${region} • ${c.lat.toFixed(3)}° N, ${c.lng.toFixed(3)}° E • ${c.count} ${c.count === 1 ? 'frame' : 'frames'}`,
-                    latitude: c.lat,
-                    longitude: c.lng,
-                    color: c.color,
-                };
-            });
-
-        return [...districtMarkers, ...surveyMarkers];
-    }, [inspectableDistricts, selectedDistrictIdx, panotrackData, activeDistrict]);
+        const n = resolvedDistricts.length;
+        const description = `${stateName} • ${n} ${n === 1 ? 'district' : 'districts'} committed`;
+        return [{
+            kind: 'district',
+            label: stateName,
+            description,
+            latitude: Number.isFinite(lat) ? lat : 3.8,
+            longitude: Number.isFinite(lng) ? lng : 109.5,
+            color: '#ef4444',
+        }];
+    }, [activeDistrict, resolvedDistricts, projectSettings, projectLocation.latitude, projectLocation.longitude]);
 
     // Focus camera directly onto active project location with smooth flight
     const handleFocusProject = useCallback((target?: { lat: number; lng: number } | React.MouseEvent | React.KeyboardEvent) => {
@@ -1283,8 +1396,8 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                                     </div>
                                     <div className="flex items-center gap-1.5 shrink-0">
                                         {showDistrictPopup && (
-                                            <span className="text-[9px] font-mono font-semibold text-red-400 uppercase tracking-wider bg-red-500/10 px-1.5 py-0.5 rounded border border-red-500/20">
-                                                HUD Active
+                                            <span className="text-[10px] font-semibold text-emerald-400/90 uppercase tracking-wider shrink-0">
+                                                Active
                                             </span>
                                         )}
                                         <span className={`material-symbols-outlined text-[15px] leading-none transition-colors shrink-0 ${
@@ -1306,15 +1419,13 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                                     <span className="text-white font-mono font-semibold">{computedDistance.toFixed(1)} km</span>
                                 </div>
                                 <div className="flex items-center justify-between text-[11px] text-neutral-400">
-                                    <span>Region</span>
+                                    <span>State</span>
                                     <span className="text-white font-mono font-semibold">{activeDistrict?.state || '—'}</span>
                                 </div>
-                                {inspectableDistricts.length > 1 && (
-                                    <div className="flex items-center justify-between text-[11px] text-neutral-400">
-                                        <span>District</span>
-                                        <span className="text-white font-mono font-semibold">{activeDistrict?.name || '—'}</span>
-                                    </div>
-                                )}
+                                <div className="flex items-center justify-between text-[11px] text-neutral-400">
+                                    <span>District</span>
+                                    <span className="text-white font-mono font-semibold">{activeDistrict?.name || '—'}</span>
+                                </div>
                                 <div className="flex items-center justify-between text-[11px] text-neutral-400">
                                     <span>Project Created</span>
                                     <span className="text-white font-mono font-semibold">{projectCreatedLabel}</span>
@@ -1361,7 +1472,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                                             title={`Inspect ${activeDistrict ? activeDistrict.name : 'District'} Boundary`}
                                         >
                                             <MapPin className="w-3.5 h-3.5" />
-                                            <span>Inspect {activeDistrict && inspectableDistricts.length > 1 ? activeDistrict.name : 'District'}</span>
+                                            <span>Inspect {inspectableDistricts.length > 1 ? activeDistrict.name : (resolvedDistricts.length > 0 ? (activeDistrict?.name || 'District') : 'District')}</span>
                                         </button>
                                         {inspectableDistricts.length > 1 && (
                                             <button
@@ -1430,10 +1541,10 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                     </div>
                 )}
 
-                <div className={`w-full max-w-[1600px] mx-auto grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-10 items-center ${viewMode === 'globe' ? 'hidden' : 'grid'}`}>
+                <div className={`w-full max-w-[1600px] mx-auto grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-10 items-stretch ${viewMode === 'globe' ? 'hidden' : 'grid'}`}>
 
                     {/* Left Narrative Panel (Spacious, Typography-Driven, No Card Boxes) */}
-                    <div className={`w-full lg:col-span-5 space-y-5 text-left flex flex-col justify-center order-2 lg:order-1 pb-6 lg:pb-0 transition-all duration-200 ease-out ${isAnimating ? 'opacity-0 translate-y-1' : 'opacity-100 translate-y-0'}`}>
+                    <div className={`w-full lg:col-span-5 space-y-5 text-left flex flex-col justify-center order-2 lg:order-1 pb-6 lg:pb-0 transition-[opacity,transform,filter] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${isAnimating ? 'opacity-0 -translate-y-2 scale-[0.99] blur-[2px]' : 'opacity-100 translate-y-0 scale-100 blur-none'}`}>
 
                         {/* Title & Overview */}
                         <div className="space-y-1.5 pb-2 border-b border-white/10">
@@ -1543,9 +1654,9 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                     <div
                         onTouchStart={handleTouchStart}
                         onTouchEnd={handleTouchEnd}
-                        className={`w-full lg:col-span-7 flex flex-col justify-center order-1 lg:order-2 transition-all duration-200 ease-out touch-pan-y ${isAnimating ? 'opacity-0 scale-[0.99]' : 'opacity-100 scale-100'}`}
+                        className={`w-full lg:col-span-7 flex flex-col justify-center order-1 lg:order-2 transition-[opacity,transform,filter] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] touch-pan-y ${isAnimating ? 'opacity-0 scale-[0.985] translate-y-1 blur-[2px]' : 'opacity-100 scale-100 translate-y-0 blur-none'}`}
                     >
-                        <div className="w-full aspect-[16/10] p-3 sm:p-4 rounded-2xl bg-neutral-900/70 backdrop-blur-xl border border-white/10 shadow-2xl flex flex-col justify-between overflow-hidden">
+                        <div className="w-full aspect-[16/10] lg:aspect-auto lg:h-full p-3 sm:p-4 rounded-2xl bg-neutral-900/70 backdrop-blur-xl border border-white/10 shadow-2xl flex flex-col justify-between overflow-hidden">
 
                             {/* Subtitle & Image Counter */}
                             <div className="flex items-center justify-between px-1 pb-2 border-b border-white/10">
@@ -1565,7 +1676,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                                     alt={current.title}
                                     loading="eager"
                                     decoding="async"
-                                    className="w-full h-full object-contain object-center transition-opacity duration-200"
+                                    className="w-full h-full object-contain object-center transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]"
                                 />
                             </div>
 
@@ -1646,6 +1757,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                             </div>
 
                         </div>
+
                     </div>
 
                 </div>
@@ -1664,18 +1776,22 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                     </div>
                 </button>
 
-                {/* Step Indicator Dots */}
-                <div className="flex items-center gap-2">
-                    {SYSTEM_MODULES.map((mod, idx) => (
+{/* Step Indicator Dots (module navigation) */}
+                <div className="flex-1 flex items-center justify-center gap-2 min-w-0">
+                    {SYSTEM_MODULES.map((m, i) => (
                         <button
-                            key={mod.id}
-                            onClick={() => handleModuleChange(idx)}
-                            className={`h-2 rounded-full transition-all cursor-pointer ${activeIndex === idx
-                                ? 'w-6 bg-white'
-                                : 'w-2 bg-neutral-700 hover:bg-neutral-500'
-                                }`}
-                            title={`Module 0${idx + 1}: ${mod.title}`}
-                        />
+                            key={m.id}
+                            onClick={() => handleModuleChange(i)}
+                            aria-label={`Go to module ${i + 1}: ${m.title}`}
+                            className={`cursor-pointer p-1 rounded-full transition-all ${i === activeIndex ? '' : 'hover:bg-white/10'}`}
+                        >
+                            <span
+                                className={`block rounded-full transition-all duration-300 ${i === activeIndex
+                                    ? 'w-6 h-1.5 bg-white shadow-[0_0_8px_rgba(255,255,255,0.6)]'
+                                    : 'w-1.5 h-1.5 bg-white/25'
+                                    }`}
+                            />
+                        </button>
                     ))}
                 </div>
 
@@ -1741,7 +1857,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                     >
                         <DistrictProjectPopup
                             data={activePopupData}
-                            districts={inspectableDistricts.map(d => ({
+                            districts={resolvedDistricts.map(d => ({
                                 id: d.id,
                                 name: d.name,
                                 state: d.state,
@@ -1779,6 +1895,8 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                         districtName={activeDistrict.name}
                         stateName={activeDistrict.state}
                         dailyData={dailyData}
+                        panotrackPoints={activeDistrictPanotrack}
+                        projectBoundary={activeProjectBoundary}
                         onReturnToGlobe={handleReturnToGlobe}
                         onEnterWorkspace={() => onEnterDashboard && onEnterDashboard(current.id)}
                     />

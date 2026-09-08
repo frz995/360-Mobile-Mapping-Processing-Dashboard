@@ -1,6 +1,10 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, act, within, waitFor } from '@testing-library/react';
 import { SystemShowcase } from '../SystemShowcase';
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe('SystemShowcase Component', () => {
   it('renders GeoSphere 360 title, branding, and active module', () => {
@@ -102,6 +106,110 @@ describe('SystemShowcase Component', () => {
     await waitFor(() => {
       expect(screen.queryByRole('dialog', { name: /Johor Project Area/i })).not.toBeInTheDocument();
     });
+  });
+
+  it('shows every district of the committed region when no districtIds are saved (boundary-driven overview)', async () => {
+    render(
+      <SystemShowcase
+        onEnterDashboard={vi.fn()}
+        projectSettings={{
+          projectName: 'Johor Region-Wide',
+          projectBoundary: {
+            districtIds: [],
+            regionId: 'johor',
+            regionName: 'Johor',
+            bbox: [102.509, 2.29, 104.0, 2.65]
+          }
+        }}
+      />
+    );
+
+    const earthTab = screen.getByRole('button', { name: /3D Earth/i });
+    fireEvent.click(earthTab);
+
+    const geodeticCard = screen.getByTitle(/Click to rotate globe and center on project location/i);
+    fireEvent.click(geodeticCard);
+
+    const popupDialog = screen.getByRole('dialog', { name: /Johor Project Area/i });
+
+    // The whole state's districts become the data footprint (nothing hardcoded to one)
+    expect(within(popupDialog).getByText('Segamat')).toBeInTheDocument();
+    expect(within(popupDialog).getByText('Tangkak')).toBeInTheDocument();
+    expect(within(popupDialog).getByText('Johor Bahru')).toBeInTheDocument();
+  });
+
+  it('merges all saved boundary signals so Tangkak is never dropped when districtIds are partial', async () => {
+    render(
+      <SystemShowcase
+        onEnterDashboard={vi.fn()}
+        projectSettings={{
+          projectName: 'Johor Mixed-Save',
+          projectBoundary: {
+            // districtIds only carry Segamat, but districtNames + geojson still carry Tangkak.
+            districtIds: ['segamat'],
+            districtNames: ['Segamat', 'Tangkak'],
+            regionId: 'johor',
+            regionName: 'Johor',
+            bbox: [102.509, 2.29, 103.04, 2.65],
+            geojson: {
+              type: 'FeatureCollection',
+              features: [
+                { id: 'segamat', type: 'Feature', properties: { name: 'Segamat' }, geometry: { type: 'MultiPolygon', coordinates: [] } },
+                { id: 'tangkak', type: 'Feature', properties: { name: 'Tangkak' }, geometry: { type: 'MultiPolygon', coordinates: [] } }
+              ]
+            }
+          }
+        }}
+      />
+    );
+
+    const earthTab = screen.getByRole('button', { name: /3D Earth/i });
+    fireEvent.click(earthTab);
+
+    const geodeticCard = screen.getByTitle(/Click to rotate globe and center on project location/i);
+    fireEvent.click(geodeticCard);
+
+    const popupDialog = screen.getByRole('dialog', { name: /Johor Project Area/i });
+
+    expect(within(popupDialog).getByText('Segamat')).toBeInTheDocument();
+    expect(within(popupDialog).getByText('Tangkak')).toBeInTheDocument();
+  });
+
+  it('keeps every district saved in project settings as HUD chips (real saved boundary shape)', async () => {
+    render(
+      <SystemShowcase
+        onEnterDashboard={vi.fn()}
+        projectSettings={{
+          projectName: 'Mobile Mapping - DevTest_v1',
+          projectBoundary: {
+            districtIds: ['segamat', 'tangkak'],
+            districtNames: ['Segamat', 'Tangkak'],
+            regionId: 'state:MY01',
+            regionName: 'Johor',
+            bbox: [102.4678, 2.04562, 103.38118, 2.83246],
+            focusActive: true,
+            geojson: {
+              type: 'FeatureCollection',
+              features: [
+                { id: 'segamat', type: 'Feature', properties: { name: 'Segamat' }, geometry: { type: 'MultiPolygon', coordinates: [] } },
+                { id: 'tangkak', type: 'Feature', properties: { name: 'Tangkak' }, geometry: { type: 'MultiPolygon', coordinates: [] } }
+              ]
+            }
+          }
+        }}
+      />
+    );
+
+    const earthTab = screen.getByRole('button', { name: /3D Earth/i });
+    fireEvent.click(earthTab);
+
+    const geodeticCard = screen.getByTitle(/Click to rotate globe and center on project location/i);
+    fireEvent.click(geodeticCard);
+
+    const popupDialog = screen.getByRole('dialog', { name: /Johor Project Area/i });
+
+    expect(within(popupDialog).getByText('Segamat')).toBeInTheDocument();
+    expect(within(popupDialog).getByText('Tangkak')).toBeInTheDocument();
   });
 });
 
