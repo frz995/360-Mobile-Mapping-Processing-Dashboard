@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { render, screen, fireEvent, act, within, waitFor } from '@testing-library/react';
 import { SystemShowcase } from '../SystemShowcase';
 
 describe('SystemShowcase Component', () => {
@@ -57,4 +57,51 @@ describe('SystemShowcase Component', () => {
     expect(screen.getByText('01. Ingest')).toBeInTheDocument();
     expect(screen.getByText(/Parse GPS\/GNSS trajectory coordinates/i)).toBeInTheDocument();
   });
+
+  it('triggers Panotrack district 3D popup when clicking bottom-left geodetic card in 3D Earth view', async () => {
+    render(
+      <SystemShowcase
+        onEnterDashboard={vi.fn()}
+        projectSettings={{
+          projectName: 'Johor Mobile Mapping',
+          projectBoundary: {
+            districtIds: ['segamat', 'tangkak'],
+            districtNames: ['Segamat', 'Tangkak'],
+            regionId: 'johor',
+            regionName: 'Johor',
+            bbox: [102.509, 2.29, 103.04, 2.65]
+          }
+        }}
+      />
+    );
+
+    // Switch to 3D Earth view mode
+    const earthTab = screen.getByRole('button', { name: /3D Earth/i });
+    fireEvent.click(earthTab);
+
+    // Click bottom-left geodetic telemetry card
+    const geodeticCard = screen.getByTitle(/Click to rotate globe and center on project location/i);
+    fireEvent.click(geodeticCard);
+
+    // Verify region-based district popup HUD is displayed (1 region, ALL districts nested inside)
+    const popupDialog = screen.getByRole('dialog', { name: /Johor Project Area/i });
+    expect(popupDialog).toBeInTheDocument();
+    expect(within(popupDialog).getByText(/Project Area/i)).toBeInTheDocument();
+    expect(within(popupDialog).getByRole('heading', { name: 'Johor' })).toBeInTheDocument();
+    expect(within(popupDialog).getByText('Segamat')).toBeInTheDocument();
+    expect(within(popupDialog).getByText('Tangkak')).toBeInTheDocument();
+    expect(within(popupDialog).getByText(/mapping frames/i)).toBeInTheDocument();
+    expect(within(popupDialog).getByText(/platform POIs/i)).toBeInTheDocument();
+    expect(within(popupDialog).getByText(/surveyed route/i)).toBeInTheDocument();
+    expect(within(popupDialog).getByText(/pipeline SLA/i)).toBeInTheDocument();
+    expect(within(popupDialog).queryByText(/PANOTRACK STREAM/i)).not.toBeInTheDocument();
+
+    // Verify closing popup (animated close, so the dialog unmounts shortly after)
+    const closeBtn = screen.getByRole('button', { name: /^Close$/i });
+    fireEvent.click(closeBtn);
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: /Johor Project Area/i })).not.toBeInTheDocument();
+    });
+  });
 });
+

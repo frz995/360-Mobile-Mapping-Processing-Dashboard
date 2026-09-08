@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import type { PanotrackPopupData } from './DistrictProjectPopup';
+export type { PanotrackPopupData };
 
 export interface GlobeMarker {
   label?: string;
@@ -6,6 +8,8 @@ export interface GlobeMarker {
   latitude: number;
   longitude: number;
   color?: string;
+  /** 'district' = committed project boundary identity marker; 'survey' = available survey data cluster. */
+  kind?: 'district' | 'survey';
 }
 
 export interface EarthGlobeProps {
@@ -44,6 +48,8 @@ export interface EarthGlobeProps {
   glowIntensity?: number;
   onZoomIn?: () => void;
   onMarkerClick?: (marker: GlobeMarker) => void;
+  onActiveMarkerProjected?: (pos: { x: number; y: number; visible: boolean }) => void;
+  activeTargetCoord?: { lat: number; lng: number } | null;
 }
 
 const RAD = Math.PI / 180;
@@ -353,7 +359,7 @@ export const EarthGlobe: React.FC<EarthGlobeProps> = ({
   dragSensitivity = 0.35,
   zoom,
   minZoom = 0.5,
-  maxZoom = 4.0,
+  maxZoom = 8.0,
   panOffset,
   onZoomChange,
   onPanChange,
@@ -368,6 +374,8 @@ export const EarthGlobe: React.FC<EarthGlobeProps> = ({
   glowIntensity: _glowIntensity = 0.5,
   onZoomIn,
   onMarkerClick,
+  onActiveMarkerProjected,
+  activeTargetCoord,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const pathMapRef = useRef<Map<string, SVGPathElement>>(new Map());
@@ -447,15 +455,9 @@ export const EarthGlobe: React.FC<EarthGlobeProps> = ({
     duration: number;
   } | null>(null);
 
-  // Synchronize when project center coordinates change
-  useEffect(() => {
-    if (centerLongitude !== undefined && centerLatitude !== undefined) {
-      rotRef.current.lambda = centerLongitude;
-      rotRef.current.phi = centerLatitude;
-    }
-  }, [centerLatitude, centerLongitude]);
-
-  // Smooth camera flight trigger
+  // Smooth camera flight trigger (declared BEFORE the center-sync effect so a
+  // newly scheduled flight exists when the center props change in the same render —
+  // otherwise an instant center snap would cancel the fly and the globe would not zoom in)
   useEffect(() => {
     if (!flyTo || !flyTo.timestamp) return;
 
@@ -482,6 +484,17 @@ export const EarthGlobe: React.FC<EarthGlobeProps> = ({
 
     lastInteractionRef.current = performance.now() + 4000;
   }, [flyTo]);
+
+  // Synchronize when project center coordinates change — but never during an active
+  // flight, so the 60 FPS rotation + zoom glide is the single source of motion
+  useEffect(() => {
+    if (centerLongitude !== undefined && centerLatitude !== undefined) {
+      if (!flyAnimRef.current) {
+        rotRef.current.lambda = centerLongitude;
+        rotRef.current.phi = centerLatitude;
+      }
+    }
+  }, [centerLatitude, centerLongitude]);
 
   // Measure container dimensions safely (using unscaled layout dimensions to prevent transform feedback loops)
   useEffect(() => {
@@ -525,15 +538,25 @@ export const EarthGlobe: React.FC<EarthGlobeProps> = ({
   const cy = h / 2 + currentPan.y;
   const radius = Math.max(20, (Math.min(w, h, 800) / 2 - 20) * currentZoom);
 
+  // Layout values tracked through a ref so the RAF loop below does NOT re-run
+  // (cancel + restart) every frame during a camera flight. `radius` / `cx` / `cy`
+  // change once per frame via `onZoomChange`, and having them as effect deps used
+  // to teardown/rebuild the animation loop each frame, which caused stutter/shake.
+  const layoutRef = useRef({ radius, cx, cy });
+  useEffect(() => {
+    layoutRef.current = { radius, cx, cy };
+  });
+
   // Animation Loop for imperative 60 FPS rendering
   useEffect(() => {
-    if (countries.length === 0 || radius <= 0) return;
+    if (radius <= 0) return;
     let reqId = 0;
     let lastTime = performance.now();
 
     const frame = (now: number) => {
       const dt = Math.min(0.05, (now - lastTime) / 1000);
       lastTime = now;
+      const { radius, cx, cy } = layoutRef.current;
 
       // Camera Flight Animation
       if (flyAnimRef.current) {
@@ -597,12 +620,22 @@ export const EarthGlobe: React.FC<EarthGlobeProps> = ({
         }
       }
 
+      // Report active target marker projected screen position for HUD overlays
+      if (onActiveMarkerProjected && activeTargetCoord) {
+        const pp = projectPoint(activeTargetCoord.lng, activeTargetCoord.lat, lambda, phi, gamma, radius, cx, cy);
+        onActiveMarkerProjected({
+          x: pp.sx,
+          y: pp.sy,
+          visible: pp.v && pp.rx > 0.04
+        });
+      }
+
       reqId = requestAnimationFrame(frame);
     };
 
     reqId = requestAnimationFrame(frame);
     return () => cancelAnimationFrame(reqId);
-  }, [countries, markers, radius, cx, cy, autoRotate, autoRotateSpeed, showGraticule]);
+  }, [countries, markers, autoRotate, autoRotateSpeed, showGraticule, onActiveMarkerProjected, activeTargetCoord]);
 
   // Pointer drag events for interactive globe rotation and panning
   const handlePointerDown = (e: React.PointerEvent) => {
@@ -731,7 +764,7 @@ export const EarthGlobe: React.FC<EarthGlobeProps> = ({
   };
 
   const handleDoubleClick = () => {
-    updateZoom(1.0);
+    updateZoom(1.05);
     updatePan({ x: 0, y: 0 });
   };
 
@@ -821,9 +854,9 @@ export const EarthGlobe: React.FC<EarthGlobeProps> = ({
           )}
 
           {/* Country Polygons */}
-          {countries.map((country) => (
+          {countries.map((country, i) => (
             <path
-              key={country.id}
+              key={country.id || `c-${i}`}
               ref={(el) => {
                 if (el) pathMapRef.current.set(country.id, el);
                 else pathMapRef.current.delete(country.id);

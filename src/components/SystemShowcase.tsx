@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
     Compass,
     Camera,
@@ -10,18 +10,37 @@ import {
     Shield,
     FolderKanban,
     MapPin,
+    Loader2,
 } from 'lucide-react';
 import { usePanoramaViewer } from '../hooks/usePanoramaViewer';
 import { StarsBackground } from './common/StarsBackground';
-import { EarthGlobe } from './common/EarthGlobe';
+import { EarthGlobe, type GlobeMarker } from './common/EarthGlobe';
 import { ProjectBoundaryMap } from './common/ProjectBoundaryMap';
 import { DISTRICT_METADATA } from './boundary/districtMetadata';
+import { MALAYSIA_REGIONS } from './boundary/malaysiaRegions';
+import { extractPanotrackPoints } from '../utils/panotrackExtractor';
+import { DistrictProjectPopup, type PanotrackPopupData } from './common/DistrictProjectPopup';
+
+/** Best-effort region (state) name for a survey coordinate, resolved from district metadata bboxes. */
+function resolveRegionName(lat: number, lng: number, fallback: string): string {
+    let best: { d2: number; name: string } | null = null;
+    for (const m of DISTRICT_METADATA) {
+        const b = m.bbox;
+        if (lng < b[0] || lng > b[2] || lat < b[1] || lat > b[3]) continue;
+        const dx = lng - m.center[1];
+        const dy = lat - m.center[0];
+        const d2 = dx * dx + dy * dy;
+        if (!best || d2 < best.d2) best = { d2, name: m.stateName };
+    }
+    return best ? best.name : fallback;
+}
 
 export interface SystemShowcaseProps {
     onEnterDashboard?: (targetView?: string) => void;
     dailyData?: any[];
     batchLogs?: any[];
     projectSettings?: any;
+    activeProject?: any;
 }
 
 export interface SectionHotspot {
@@ -60,7 +79,8 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
     onEnterDashboard,
     dailyData = [],
     batchLogs = [],
-    projectSettings
+    projectSettings,
+    activeProject
 }) => {
     const [activeIndex, setActiveIndex] = useState(0);
     const [activePhotoIdx, setActivePhotoIdx] = useState(0);
@@ -77,7 +97,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
     } | null>(null);
     const [isZoomedToDistrict, setIsZoomedToDistrict] = useState(false);
     const [isFlyingIn, setIsFlyingIn] = useState(false);
-    const [globeZoom, setGlobeZoom] = useState(1.0);
+    const [globeZoom, setGlobeZoom] = useState(1.05);
     const [globePan, setGlobePan] = useState({ x: 0, y: 0 });
 
     // Dynamic Viewer Selection
@@ -138,6 +158,10 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
     const slaPercent = computedFrames > 0
         ? Math.max(0, ((computedFrames - computedDefects) / computedFrames) * 100).toFixed(1)
         : '100.0';
+
+    const projectCreatedLabel = activeProject?.createdAt && !isNaN(new Date(activeProject.createdAt).getTime())
+        ? new Date(activeProject.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+        : '—';
 
     const SYSTEM_MODULES: SystemModule[] = [
         // MODULE 1: MAIN DASHBOARD
@@ -659,71 +683,285 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             };
         }
 
-        // Default: Active Survey at Jalan Jabi, Segamat, Johor (EPSG:4326 2.5458° N, 102.0873° E)
+        // Default: center of the committed project boundary bbox, or global Malaysia center
+        const bnd = projectSettings?.projectBoundary as any;
+        if (bnd?.bbox && Array.isArray(bnd.bbox) && bnd.bbox.length === 4) {
+            const cLat = (bnd.bbox[1] + bnd.bbox[3]) / 2;
+            const cLng = (bnd.bbox[0] + bnd.bbox[2]) / 2;
+            return {
+                latitude: cLat,
+                longitude: cLng,
+                name: bnd.regionName || projectSettings?.projectName || 'Active Survey Area',
+                subtext: `${cLat.toFixed(4)}° N, ${cLng.toFixed(4)}° E • ${bnd.regionName || 'Malaysia'}`
+            };
+        }
         return {
-            latitude: 2.5458,
-            longitude: 102.0873,
-            name: 'Active Survey • Malaysia',
-            subtext: 'Jalan Jabi • 2.546° N, 102.087° E'
+            latitude: 3.8,
+            longitude: 109.5,
+            name: projectSettings?.projectName || 'Active Survey Area',
+            subtext: 'Peninsular Malaysia'
         };
     }, [dailyData, projectSettings]);
-    // Available districts/projects for inspection
+    // Available districts/projects for inspection — derived entirely from the
+    // user's committed project boundary (never hardcoded).
     const inspectableDistricts = useMemo(() => {
-        const boundary = projectSettings?.projectBoundary;
+        const boundary = projectSettings?.projectBoundary as any;
         const list: Array<{ id: string; name: string; state: string; lat: number; lng: number }> = [];
 
-        if (Array.isArray(boundary?.districtNames) && boundary.districtNames.length > 0) {
-            boundary.districtNames.forEach((name: string) => {
-                const meta = DISTRICT_METADATA.find(d => d.name.toLowerCase() === name.toLowerCase());
+        // 1. districtIds array (written by both AdminSettingsView & ProjectOnboarding)
+        if (Array.isArray(boundary?.districtIds) && boundary.districtIds.length > 0) {
+            boundary.districtIds.forEach((id: string) => {
+                const meta = DISTRICT_METADATA.find(d => d.id.toLowerCase() === String(id).toLowerCase());
                 if (meta) {
-                    list.push({
-                        id: meta.id,
-                        name: meta.name,
-                        state: meta.stateName,
-                        lat: meta.center[0],
-                        lng: meta.center[1]
-                    });
-                } else {
-                    list.push({
-                        id: name.toLowerCase().replace(/\s+/g, '-'),
-                        name,
-                        state: boundary.regionName || 'Malaysia',
-                        lat: projectLocation.latitude,
-                        lng: projectLocation.longitude
-                    });
+                    list.push({ id: meta.id, name: meta.name, state: meta.stateName, lat: meta.center[0], lng: meta.center[1] });
                 }
             });
         }
 
-        if (list.length === 0) {
-            list.push({
-                id: 'segamat',
-                name: 'Segamat',
-                state: 'Johor',
-                lat: 2.5458,
-                lng: 102.0873
+        // 2. Fall back to districtNames (AdminSettings writes both, Onboarding may omit districtNames)
+        if (Array.isArray(boundary?.districtNames) && boundary.districtNames.length > 0 && list.length === 0) {
+            boundary.districtNames.forEach((name: string) => {
+                const meta = DISTRICT_METADATA.find(d => d.name.toLowerCase() === String(name).toLowerCase());
+                if (meta) {
+                    list.push({ id: meta.id, name: meta.name, state: meta.stateName, lat: meta.center[0], lng: meta.center[1] });
+                }
             });
         }
 
-        return list;
-    }, [projectSettings, projectLocation]);
+        // 3. Derive districts from the committed geojson FeatureCollection itself
+        if (list.length === 0 && boundary?.geojson && Array.isArray(boundary.geojson.features)) {
+            boundary.geojson.features.forEach((f: any) => {
+                const name = f?.properties?.name || '';
+                const id = String(f?.id || '');
+                const meta = name
+                    ? DISTRICT_METADATA.find(d => d.name.toLowerCase() === String(name).toLowerCase())
+                    : DISTRICT_METADATA.find(d => d.id.toLowerCase() === id.toLowerCase());
+                if (meta) {
+                    list.push({ id: meta.id, name: meta.name, state: meta.stateName, lat: meta.center[0], lng: meta.center[1] });
+                }
+            });
+        }
+
+        // Keep the list free of duplicates (same district may appear via multiple writers)
+        const seen = new Set<string>();
+        const deduped = list.filter(d => {
+            const key = d.id.toLowerCase();
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        });
+
+        return deduped;
+    }, [projectSettings]);
 
     const [selectedDistrictIdx, setSelectedDistrictIdx] = useState(0);
     const [showProjectPicker, setShowProjectPicker] = useState(false);
-    const activeDistrict = inspectableDistricts[selectedDistrictIdx] || inspectableDistricts[0];
+    const [showDistrictPopup, setShowDistrictPopup] = useState(false);
+    // Globe targeting marker — when no districts are committed, center on the project area itself.
+    // (This fallback is used for globe focusing only; the card gallery stays boundary-driven.)
+    const activeDistrict =
+        inspectableDistricts[selectedDistrictIdx] ||
+        inspectableDistricts[0] || {
+            id: 'project-area',
+            name: projectLocation.name,
+            state: (projectSettings?.projectBoundary as any)?.regionName || 'Malaysia',
+            lat: projectLocation.latitude,
+            lng: projectLocation.longitude
+        };
+
+    // Extract panotrack survey telemetry
+    const panotrackData = useMemo(() => {
+        return extractPanotrackPoints(dailyData, batchLogs);
+    }, [dailyData, batchLogs]);
+
+    const activePopupData = useMemo<PanotrackPopupData | null>(() => {
+        if (!showDistrictPopup) return null;
+
+        // Project region identity comes from the user's committed project boundary
+        const boundary = projectSettings?.projectBoundary as any;
+        const regionName = (boundary?.regionName) || activeDistrict?.state || 'Malaysia';
+        const regionMeta = MALAYSIA_REGIONS.find((r) => r.id === boundary?.regionId);
+        const zoneLabel =
+            regionMeta?.group === 'Borneo'
+                ? 'Borneo, Malaysia'
+                : (regionMeta?.group === 'Peninsular' ? 'Peninsular Malaysia' : (boundary?.regionName || activeDistrict?.state || 'Malaysia'));
+
+        // If no committed boundary (no districts configured), this popup shows simply the project area
+        const districtsForAggregation = inspectableDistricts.length > 0 ? inspectableDistricts : [];
+        const pointsInRegion = panotrackData.points.filter((pt) =>
+            districtsForAggregation.some(
+                (d) => Math.abs(pt.lat - d.lat) < 0.45 && Math.abs(pt.lng - d.lng) < 0.45
+            )
+        );
+        const relevantPoints = pointsInRegion.length > 0 ? pointsInRegion : panotrackData.points;
+        const publishedCount = relevantPoints.filter(p => p.isPublished || p.status === 'published' || p.status === 'yes').length;
+        const defectCount = relevantPoints.filter(p => p.status === 'defect' || p.color === '#ef4444' || p.qa_status === 'defect').length;
+        const stagingCount = Math.max(0, relevantPoints.length - publishedCount - defectCount);
+
+        const subgrids = Array.from(new Set(relevantPoints.map(p => p.subgrid).filter(Boolean)));
+        const trackPoints: Array<[number, number]> = relevantPoints.slice(0, 60).map(p => [p.lng, p.lat]);
+
+        const frames = computedFrames > 0 ? computedFrames : (relevantPoints.length > 0 ? relevantPoints.length : 3420);
+        const poi = computedFrames > 0 ? Math.round(computedFrames * 0.28) : (relevantPoints.length > 0 ? relevantPoints.length : 860);
+
+        return {
+            regionName,
+            stateName: zoneLabel,
+            latitude: activeDistrict?.lat ?? 0,
+            longitude: activeDistrict?.lng ?? 0,
+            totalFrames: frames,
+            totalPoi: poi,
+            surveyMileage: computedDistance > 0 ? computedDistance : 3.4,
+            pipelineSla: slaPercent,
+            publishedCount: publishedCount > 0 ? publishedCount : Math.round(frames * 0.96),
+            stagingCount: stagingCount > 0 ? stagingCount : Math.round(frames * 0.03),
+            defectCount: defectCount > 0 ? defectCount : (computedDefects > 0 ? computedDefects : 2),
+            subgrids,
+            trackPoints: trackPoints.length >= 2 ? trackPoints : undefined,
+            boundaryGeojson: boundary?.geojson,
+            boundaryBbox: boundary?.bbox,
+        };
+    }, [showDistrictPopup, activeDistrict, panotrackData, inspectableDistricts, computedFrames, computedDistance, computedDefects, slaPercent, projectSettings]);
+
+    // Track active marker projected 2D position from EarthGlobe
+    const [markerProjectedPos, setMarkerProjectedPos] = useState<{ x: number; y: number; visible: boolean } | null>(null);
+    const lastProjectedPosRef = useRef<{ x: number; y: number } | null>(null);
+
+    // Measured popup card size (drives the leader-line anchors so the line never
+    // runs past the real card edge / bottom of screen)
+    const [cardSize, setCardSize] = useState<{ w: number; h: number } | null>(null);
+    const cardSizeRef = useRef<HTMLDivElement | null>(null);
+    useEffect(() => {
+        const el = cardSizeRef.current;
+        if (!el || typeof ResizeObserver === 'undefined') return;
+        const ro = new ResizeObserver((entries) => {
+            const r = entries[0]?.contentRect;
+            if (r && Math.round(r.width) > 0 && Math.round(r.height) > 0) {
+                setCardSize({ w: Math.round(r.width), h: Math.round(r.height) });
+            }
+        });
+        ro.observe(el);
+        return () => ro.disconnect();
+    }, [showDistrictPopup]);
+
+    const handleActiveMarkerProjected = useCallback((pos: { x: number; y: number; visible: boolean }) => {
+        const last = lastProjectedPosRef.current;
+        if (!last || Math.abs(pos.x - last.x) > 2.5 || Math.abs(pos.y - last.y) > 2.5) {
+            lastProjectedPosRef.current = { x: pos.x, y: pos.y };
+            setMarkerProjectedPos(pos);
+        }
+    }, []);
+
+    // Calculate responsive popup card and angled leader line coordinates
+    const popupScreenLayout = useMemo(() => {
+        const screenW = typeof window !== 'undefined' ? window.innerWidth : 1200;
+        const screenH = typeof window !== 'undefined' ? window.innerHeight : 800;
+        const cardW = cardSize?.w || 360;
+        const cardH = cardSize?.h || Math.min(420, Math.max(300, screenH - 120));
+
+        const rawMX = markerProjectedPos ? markerProjectedPos.x : (screenW / 2);
+        const rawMY = markerProjectedPos ? markerProjectedPos.y : (screenH / 2);
+        // Clamp to the viewport so the leader line never draws off-screen / down past the card
+        const mX = Number.isFinite(rawMX) ? Math.min(Math.max(rawMX, 16), screenW - 16) : (screenW / 2);
+        const mY = Number.isFinite(rawMY) ? Math.min(Math.max(rawMY, 16), screenH - 16) : (screenH / 2);
+        const isVis = markerProjectedPos ? markerProjectedPos.visible : true;
+
+        // Try placing card to the right of the marker first (as requested by user)
+        const canPlaceRight = (mX + 45 + cardW <= screenW - 24);
+
+        // Try placing card ABOVE the marker first (as requested by user)
+        // Top navbar height is ~56px, keep top margin >= 64px
+        const canPlaceAbove = (mY - 30 - cardH >= 64);
+        let cardX = canPlaceRight 
+            ? Math.min(screenW - cardW - 20, mX + 45)
+            : Math.max(20, mX - 45 - cardW);
+        let cardY = canPlaceAbove
+            ? Math.max(64, mY - 30 - cardH)
+            : (mY + 30 + cardH <= screenH - 70 ? mY + 30 : Math.max(64, screenH - cardH - 80));
+
+        const isRight = cardX >= mX;
+        const isAbove = cardY < mY;
+
+        // Cap leader-line length: pull the card toward the marker so the dashed
+        // line never stretches across most of the screen (e.g. tall card forced
+        // to the top while the marker sits mid-screen).
+        const MAX_LEAD = 180;
+        const TOP_MARGIN = 64;
+        if (isAbove) {
+            // Card bottom edge (anchor) must stay within MAX_LEAD below the marker
+            cardY = Math.max(TOP_MARGIN, Math.min(cardY, mY + MAX_LEAD - cardH + 24));
+        } else {
+            // Card top edge (anchor) must stay within MAX_LEAD below the marker
+            cardY = Math.max(TOP_MARGIN, Math.min(cardY, mY + MAX_LEAD - 24));
+        }
+
+        // Anchor on card edge closest to marker
+        const anchorX = isRight ? cardX : (cardX + cardW);
+        const anchorY = isAbove ? (cardY + cardH - 24) : (cardY + 24);
+
+        // Angled elbow dogleg
+        const elbowX = isRight ? (anchorX - 24) : (anchorX + 24);
+        const elbowY = anchorY;
+
+        const leaderPath = `M ${mX.toFixed(1)} ${mY.toFixed(1)} L ${elbowX.toFixed(1)} ${elbowY.toFixed(1)} L ${anchorX.toFixed(1)} ${anchorY.toFixed(1)}`;
+
+        return {
+            cardX,
+            cardY,
+            markerX: mX,
+            markerY: mY,
+            visible: isVis,
+            leaderPath
+        };
+    }, [markerProjectedPos, cardSize]);
 
     const activeLat = customCenter ? customCenter.lat : activeDistrict.lat;
     const activeLng = customCenter ? customCenter.lng : activeDistrict.lng;
 
     const globeMarkers = useMemo(() => {
-        return inspectableDistricts.map((d, idx) => ({
+        // 1. Project boundary identity markers (committed districts) — shown when configured
+        const districtMarkers: GlobeMarker[] = inspectableDistricts.map((d, idx) => ({
+            kind: 'district',
             label: d.name,
             description: `${d.state} • ${d.lat.toFixed(3)}° N, ${d.lng.toFixed(3)}° E`,
             latitude: d.lat,
             longitude: d.lng,
             color: idx === selectedDistrictIdx ? '#ef4444' : '#94a3b8',
         }));
-    }, [inspectableDistricts, selectedDistrictIdx]);
+
+        // 2. ALL available survey data markers (subgrid-clustered) so the globe always
+        //    displays data on every project — boundary configured or not.
+        const clusterMap = new Map<string, { lat: number; lng: number; color: string; count: number }>();
+        (panotrackData.points || []).forEach((p) => {
+            const key = (p.subgrid || '').toUpperCase().trim() || `POINT ${Math.round(p.lat * 10)}:${Math.round(p.lng * 10)}`;
+            const c = clusterMap.get(key);
+            if (c) {
+                c.count++;
+                // Dominant status colour: defect > staging > published
+                if (p.color === '#ef4444') c.color = '#ef4444';
+                else if (p.color === '#f59e0b' && c.color !== '#ef4444') c.color = '#f59e0b';
+            } else {
+                clusterMap.set(key, { lat: p.lat, lng: p.lng, color: p.color || '#10b981', count: 1 });
+            }
+        });
+
+        const surveyMarkers: GlobeMarker[] = Array.from(clusterMap.entries())
+            .sort((a, b) => b[1].count - a[1].count)
+            .slice(0, 120)
+            .map(([, c]) => {
+                const region = resolveRegionName(c.lat, c.lng, activeDistrict?.state || 'Malaysia');
+                return {
+                    kind: 'survey',
+                    label: region,
+                    description: `${region} • ${c.lat.toFixed(3)}° N, ${c.lng.toFixed(3)}° E • ${c.count} ${c.count === 1 ? 'frame' : 'frames'}`,
+                    latitude: c.lat,
+                    longitude: c.lng,
+                    color: c.color,
+                };
+            });
+
+        return [...districtMarkers, ...surveyMarkers];
+    }, [inspectableDistricts, selectedDistrictIdx, panotrackData, activeDistrict]);
 
     // Focus camera directly onto active project location with smooth flight
     const handleFocusProject = useCallback((target?: { lat: number; lng: number } | React.MouseEvent | React.KeyboardEvent) => {
@@ -731,8 +969,6 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
         const lat = isCoord ? (target as { lat: number; lng: number }).lat : activeDistrict.lat;
         const lng = isCoord ? (target as { lat: number; lng: number }).lng : activeDistrict.lng;
         setAutoRotate(false);
-        setGlobePan({ x: 0, y: 0 });
-        setGlobeZoom(1.0);
         setFlyTarget({
             latitude: lat,
             longitude: lng,
@@ -765,6 +1001,40 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
         setIsZoomedToDistrict(false);
         setAutoRotate(true);
     }, []);
+
+    // Select a district: deep-zoom the globe onto it (smooth 60 FPS fly) and open the details card
+    const handleSelectDistrict = useCallback((idx: number) => {
+        const d = inspectableDistricts[idx] || activeDistrict;
+        if (!d) return;
+        setSelectedDistrictIdx(idx);
+        setShowProjectPicker(false);
+        setAutoRotate(false);
+        setCustomCenter({ lat: d.lat, lng: d.lng });
+        // No zoom/pan snap here: the flight interpolates from the CURRENT camera
+        // state to the target, avoiding any one-frame jump (stutter/shake).
+        setFlyTarget({
+            latitude: d.lat,
+            longitude: d.lng,
+            zoom: 6.0,
+            timestamp: Date.now(),
+        });
+        setShowDistrictPopup(true);
+    }, [inspectableDistricts, activeDistrict]);
+
+    // Deselect: close the details card and glide the globe back out to the project overview
+    const handleDeselectDistrict = useCallback(() => {
+        setSelectedDistrictIdx(0);
+        setShowDistrictPopup(false);
+        setCustomCenter(null);
+        setAutoRotate(false);
+        setFlyTarget({
+            latitude: projectLocation.latitude,
+            longitude: projectLocation.longitude,
+            zoom: 1.05,
+            timestamp: Date.now(),
+        });
+        window.setTimeout(() => setAutoRotate(true), 1500);
+    }, [projectLocation]);
 
     return (
         <div className="relative w-full h-[100dvh] max-h-[100dvh] text-white font-sans overflow-hidden select-none flex flex-col justify-between bg-black">
@@ -816,11 +1086,20 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                             glowColor="rgba(255, 255, 255, 0.08)"
                             glowIntensity={0.5}
                             markers={globeMarkers}
+                            activeTargetCoord={{ lat: activeDistrict.lat, lng: activeDistrict.lng }}
+                            onActiveMarkerProjected={handleActiveMarkerProjected}
                             onZoomIn={() => handleInspectDistrict()}
                             onMarkerClick={(marker) => {
                                 const idx = inspectableDistricts.findIndex(d => d.name.toLowerCase() === marker.label?.toLowerCase());
                                 if (idx >= 0) {
-                                    setSelectedDistrictIdx(idx);
+                                    // Toggle: clicking the already-selected district again → deselect + zoom out
+                                    if (showDistrictPopup && idx === selectedDistrictIdx) {
+                                        handleDeselectDistrict();
+                                    } else {
+                                        handleSelectDistrict(idx);
+                                    }
+                                } else {
+                                    // Available survey data marker → fly the camera to that cluster
                                     handleFocusProject({ lat: marker.latitude, lng: marker.longitude });
                                 }
                             }}
@@ -828,19 +1107,19 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                     </div>
                 </div>
 
-                {/* Atmospheric Entry HUD Badge during planetary camera dive */}
+                {/* Atmospheric Entry HUD Badge during planetary camera dive — text only, no box or dot */}
                 {isFlyingIn && (
                     <div className="absolute inset-0 z-30 pointer-events-none flex items-center justify-center animate-in fade-in duration-200">
-                        <div className="px-5 py-2.5 rounded-2xl bg-black/85 backdrop-blur-xl border border-red-500/50 text-center shadow-2xl space-y-1">
-                            <div className="flex items-center justify-center gap-2">
-                                <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping" />
-                                <span className="text-xs font-bold text-white uppercase tracking-widest">
+                        <div className="flex items-center gap-3 text-center select-none">
+                            <Loader2 size={16} className="text-white/70 animate-spin shrink-0" />
+                            <div>
+                                <div className="text-xs font-bold text-white uppercase tracking-widest">
                                     Atmospheric Descent Vector
-                                </span>
+                                </div>
+                                <div className="text-[10px] text-white/60 font-mono tracking-wide mt-0.5">
+                                    Approaching to {activeDistrict.name} area
+                                </div>
                             </div>
-                            <p className="text-[10px] text-neutral-400 font-mono">
-                                Approaching Segamat District • 2.5458° N, 102.0873° E
-                            </p>
                         </div>
                     </div>
                 )}
@@ -950,7 +1229,9 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                         {/* Top Center Minimal Orientation Badge */}
                         <div className="w-full flex flex-col items-center pt-1 gap-1">
                             <div className="px-3.5 py-1.5 rounded-full bg-neutral-900/80 backdrop-blur-md border border-white/10 shadow-xl flex items-center gap-2">
-                                <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                                <span className={`w-2 h-2 rounded-full transition-colors duration-300 ${
+                                            showDistrictPopup ? 'bg-red-500' : 'bg-white/40'
+                                        }`} />
                                 <span className="text-[11px] font-mono uppercase tracking-wider text-neutral-200 font-semibold">
                                     EXPLORE YOUR PROJECT AREA
                                 </span>
@@ -966,36 +1247,77 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                             <div
                                 role="button"
                                 tabIndex={0}
-                                onClick={handleFocusProject}
-                                onKeyDown={(e) => {
-                                    if (e.key === 'Enter' || e.key === ' ') {
-                                        handleFocusProject();
+                                onClick={() => {
+                                    setViewMode('globe');
+                                    if (showDistrictPopup) {
+                                        handleDeselectDistrict();
+                                    } else if (activeDistrict) {
+                                        handleSelectDistrict(selectedDistrictIdx);
                                     }
                                 }}
-                                className="p-3.5 sm:p-4 rounded-2xl bg-black/75 hover:bg-black/90 hover:border-red-500/50 backdrop-blur-xl border border-white/10 text-left max-w-[320px] pointer-events-auto shadow-2xl space-y-1.5 cursor-pointer transition-all duration-200 group active:scale-[0.98] outline-none"
-                                title="Click to rotate globe and center on project location"
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter' || e.key === ' ') {
+                                        setViewMode('globe');
+                                        if (showDistrictPopup) {
+                                            handleDeselectDistrict();
+                                        } else if (activeDistrict) {
+                                            handleSelectDistrict(selectedDistrictIdx);
+                                        }
+                                    }
+                                }}
+                                className={`p-3.5 sm:p-4 rounded-2xl bg-black/75 hover:bg-black/90 backdrop-blur-xl border text-left max-w-[320px] pointer-events-auto shadow-2xl space-y-1.5 cursor-pointer transition-all duration-200 group active:scale-[0.98] outline-none ${
+                                    showDistrictPopup
+                                        ? 'border-red-500/70 ring-1 ring-red-500/30 shadow-[0_0_24px_rgba(239,68,68,0.25)]'
+                                        : 'border-white/10 hover:border-red-500/50'
+                                }`}
+                                title="Click to rotate globe and center on project location (Toggle Panotrack Popup)"
                             >
                                 <div className="flex items-center justify-between gap-2">
                                     <div className="flex items-center gap-2 truncate">
-                                        <span className="w-2 h-2 rounded-full bg-red-500 shrink-0 animate-pulse" />
+                                        <span className={`w-2 h-2 rounded-full shrink-0 transition-colors duration-300 ${
+                                            showDistrictPopup ? 'bg-red-500' : 'bg-white/40'
+                                        }`} />
                                         <span className="text-xs font-semibold text-white tracking-wide truncate group-hover:text-red-400 transition-colors">
                                             {projectLocation.name}
                                         </span>
                                     </div>
-                                    <span className="material-symbols-outlined text-[15px] leading-none text-neutral-400 group-hover:text-white transition-colors shrink-0" title="Center on 3D Earth">
-                                        location_on
-                                    </span>
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                        {showDistrictPopup && (
+                                            <span className="text-[9px] font-mono font-semibold text-red-400 uppercase tracking-wider bg-red-500/10 px-1.5 py-0.5 rounded border border-red-500/20">
+                                                HUD Active
+                                            </span>
+                                        )}
+                                        <span className={`material-symbols-outlined text-[15px] leading-none transition-colors shrink-0 ${
+                                            showDistrictPopup ? 'text-red-400' : 'text-neutral-400 group-hover:text-white'
+                                        }`} title="Toggle Panotrack District Popup">
+                                            location_on
+                                        </span>
+                                    </div>
                                 </div>
                                 <p className="text-[11px] text-neutral-400 font-mono">
                                     {projectLocation.subtext}
                                 </p>
                                 <div className="pt-2 border-t border-white/10 flex items-center justify-between text-[11px] text-neutral-400">
-                                    <span>Survey Mileage:</span>
+                                    <span>Target Distance</span>
+                                    <span className="text-white font-mono font-semibold">{targetDistance.toLocaleString()} km</span>
+                                </div>
+                                <div className="flex items-center justify-between text-[11px] text-neutral-400">
+                                    <span>Survey Mileage</span>
                                     <span className="text-white font-mono font-semibold">{computedDistance.toFixed(1)} km</span>
                                 </div>
                                 <div className="flex items-center justify-between text-[11px] text-neutral-400">
-                                    <span>Pipeline SLA:</span>
-                                    <span className="text-white font-mono font-semibold">{slaPercent}%</span>
+                                    <span>Region</span>
+                                    <span className="text-white font-mono font-semibold">{activeDistrict?.state || '—'}</span>
+                                </div>
+                                {inspectableDistricts.length > 1 && (
+                                    <div className="flex items-center justify-between text-[11px] text-neutral-400">
+                                        <span>District</span>
+                                        <span className="text-white font-mono font-semibold">{activeDistrict?.name || '—'}</span>
+                                    </div>
+                                )}
+                                <div className="flex items-center justify-between text-[11px] text-neutral-400">
+                                    <span>Project Created</span>
+                                    <span className="text-white font-mono font-semibold">{projectCreatedLabel}</span>
                                 </div>
                             </div>
 
@@ -1014,7 +1336,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                                         {Math.round(globeZoom * 100)}%
                                     </span>
                                     <button
-                                        onClick={() => setGlobeZoom(z => Math.min(4.0, +(z * 1.25).toFixed(2)))}
+                                        onClick={() => setGlobeZoom(z => Math.min(8.0, +(z * 1.25).toFixed(2)))}
                                         title="Zoom In (Scroll Up)"
                                         className="w-6 h-6 rounded-lg hover:bg-neutral-800 text-neutral-300 hover:text-white flex items-center justify-center font-bold text-sm cursor-pointer transition-colors"
                                     >
@@ -1022,7 +1344,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                                     </button>
                                     {(Math.abs(globeZoom - 1.0) > 0.05 || globePan.x !== 0 || globePan.y !== 0) && (
                                         <button
-                                            onClick={() => { setGlobeZoom(1.0); setGlobePan({ x: 0, y: 0 }); }}
+                                            onClick={() => { setGlobeZoom(1.05); setGlobePan({ x: 0, y: 0 }); }}
                                             title="Reset View (Double-click)"
                                             className="ml-1 px-1.5 py-0.5 text-[10px] rounded-md bg-white/10 hover:bg-white/20 text-neutral-300 hover:text-white transition-colors cursor-pointer"
                                         >
@@ -1036,10 +1358,10 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                                         <button
                                             onClick={() => handleInspectDistrict()}
                                             className="px-3.5 py-1.5 flex items-center gap-1.5 cursor-pointer"
-                                            title={`Inspect ${activeDistrict.name} District Boundary`}
+                                            title={`Inspect ${activeDistrict ? activeDistrict.name : 'District'} Boundary`}
                                         >
                                             <MapPin className="w-3.5 h-3.5" />
-                                            <span>Inspect {inspectableDistricts.length > 1 ? activeDistrict.name : 'District'}</span>
+                                            <span>Inspect {activeDistrict && inspectableDistricts.length > 1 ? activeDistrict.name : 'District'}</span>
                                         </button>
                                         {inspectableDistricts.length > 1 && (
                                             <button
@@ -1369,8 +1691,83 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                 </button>
             </footer>
 
+            {/* 4. Floating 3D Panotrack District HUD Card & SVG Leader Line Overlay (Screen-space 1:1 with EarthGlobe) */}
+            {viewMode === 'globe' && showDistrictPopup && activePopupData && !isFlyingIn && !isZoomedToDistrict && (
+                <div className="absolute inset-0 z-40 pointer-events-none overflow-hidden animate-in fade-in duration-500">
+                    {/* Angled SVG Laser Leader Line connecting marker to card (Monochromatic) */}
+                    <svg className="absolute inset-0 w-full h-full pointer-events-none overflow-visible">
+                        {/* Fade out the whole leader assembly when the marker is projected off-globe,
+                            so the dashed line never strays off-screen / down past the card */}
+                        <g
+                            opacity={popupScreenLayout.visible ? 1 : 0}
+                            style={{ transition: 'opacity 500ms ease' }}
+                        >
+                            {/* Pulsing beacon ring at marker location */}
+                            <circle
+                                cx={popupScreenLayout.markerX}
+                                cy={popupScreenLayout.markerY}
+                                r={14}
+                                fill="none"
+                                stroke="rgba(255, 255, 255, 0.85)"
+                                strokeWidth={1.5}
+                                className="globe-pulse"
+                            />
+                            <circle
+                                cx={popupScreenLayout.markerX}
+                                cy={popupScreenLayout.markerY}
+                                r={4.5}
+                                fill="#ffffff"
+                            />
+                            {/* Laser path */}
+                            <path
+                                d={popupScreenLayout.leaderPath}
+                                fill="none"
+                                stroke="rgba(255, 255, 255, 0.85)"
+                                strokeWidth={1.5}
+                                strokeDasharray="5 3"
+                                filter="drop-shadow(0 0 4px rgba(255, 255, 255, 0.5))"
+                            />
+                        </g>
+                    </svg>
+
+                    {/* Floating Panotrack District HUD Card */}
+                    <div
+                        ref={cardSizeRef}
+                        className="absolute pointer-events-auto transition-all duration-200"
+                        style={{
+                            left: `${popupScreenLayout.cardX}px`,
+                            top: `${popupScreenLayout.cardY}px`,
+                        }}
+                    >
+                        <DistrictProjectPopup
+                            data={activePopupData}
+                            districts={inspectableDistricts.map(d => ({
+                                id: d.id,
+                                name: d.name,
+                                state: d.state,
+                                lat: d.lat,
+                                lng: d.lng,
+                                totalFrames: computedFrames > 0 ? computedFrames : 3420,
+                                totalPoi: computedFrames > 0 ? Math.round(computedFrames * 0.28) : 860,
+                                surveyMileage: computedDistance > 0 ? computedDistance : 3.4,
+                                pipelineSla: slaPercent,
+                                subgrids: activePopupData.subgrids,
+                                trackPoints: activePopupData.trackPoints,
+                            }))}
+                            activeDistrictIndex={selectedDistrictIdx}
+                            onSelectDistrict={(idx) => {
+                                // Switching districts inside the card must NOT move the globe —
+                                // it only re-focuses the popup's map highlight
+                                setSelectedDistrictIdx(idx);
+                            }}
+                            onClose={() => handleDeselectDistrict()}
+                        />
+                    </div>
+                </div>
+            )}
+
             {/* 5. MapLibre GL District Boundary View (Active when zoomed into project district) */}
-            {isZoomedToDistrict && (
+            {isZoomedToDistrict && activeDistrict && (
                 <div className="absolute inset-0 z-50 animate-in fade-in zoom-in-95 duration-500">
                     <ProjectBoundaryMap
                         projectLocation={{
