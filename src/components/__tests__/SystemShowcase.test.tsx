@@ -14,8 +14,7 @@ describe('SystemShowcase Component', () => {
     expect(screen.getByText(/Mobile Mapping Data Management System/i)).toBeInTheDocument();
     expect(screen.getByText(/Spatial Trajectory Processing & Quality Assurance Pipeline/i)).toBeInTheDocument();
     expect(screen.getByText(/Executive Dashboard & Spatial Telemetry/i)).toBeInTheDocument();
-    expect(screen.getByText(/Execution Flow/i)).toBeInTheDocument();
-    expect(screen.getByText(/Architecture & System Specs/i)).toBeInTheDocument();
+    expect(screen.getByText(/Workflow/i)).toBeInTheDocument();
   });
 
   it('triggers onEnterDashboard with "auth" when Sign In button is clicked', () => {

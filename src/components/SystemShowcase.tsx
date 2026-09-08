@@ -1326,9 +1326,21 @@ return {
                 </div>
             </header>
 
+            {/* Centered Platform Title & Subtitle (Top of Showcase) */}
+            {viewMode === 'modules' && (
+                <div className="relative z-30 w-full text-center space-y-1 px-4 sm:px-8 pt-4 pb-2 shrink-0">
+                    <h1 className="text-lg sm:text-2xl xl:text-3xl font-extrabold tracking-tight text-white leading-[1.15]">
+                        GeoSphere 360° Mobile Mapping Platform
+                    </h1>
+                    <p className="text-[11px] sm:text-xs text-neutral-400 font-normal leading-relaxed max-w-2xl mx-auto">
+                        An integrated WebGIS workspace where survey rigs, GPU processing workers, NAS storage, and PostGIS databases collaborate to transform mobile mapping data into trustworthy, published infrastructure assets.
+                    </p>
+                </div>
+            )}
+
             {/* 3. Main Showcase Section */}
             <main
-                className={`relative z-20 flex-1 w-full px-4 sm:px-8 py-4 sm:py-6 overflow-y-auto lg:overflow-hidden flex items-start lg:items-center justify-start lg:justify-center ${
+                className={`relative z-20 flex-1 w-full px-4 sm:px-8 py-4 sm:py-6 overflow-y-auto lg:overflow-hidden flex flex-col items-center justify-center ${
                     viewMode === 'globe' ? 'pointer-events-none' : 'pointer-events-auto'
                 }`}
                 style={{ backgroundColor: 'transparent' }}
@@ -1541,112 +1553,93 @@ return {
                     </div>
                 )}
 
-                <div className={`w-full max-w-[1600px] mx-auto grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-10 items-stretch ${viewMode === 'globe' ? 'hidden' : 'grid'}`}>
+                <div className={`w-full max-w-[1600px] mx-auto grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 items-stretch ${viewMode === 'globe' ? 'hidden' : 'grid'}`}>
 
                     {/* Left Narrative Panel (Spacious, Typography-Driven, No Card Boxes) */}
-                    <div className={`w-full lg:col-span-5 space-y-5 text-left flex flex-col justify-center order-2 lg:order-1 pb-6 lg:pb-0 transition-[opacity,transform,filter] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${isAnimating ? 'opacity-0 -translate-y-2 scale-[0.99] blur-[2px]' : 'opacity-100 translate-y-0 scale-100 blur-none'}`}>
+                    <div className={`w-full lg:col-span-5 space-y-4 text-left flex flex-col justify-center order-2 lg:order-1 pb-6 lg:pb-0 transition-[opacity,transform,filter] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${isAnimating ? 'opacity-0 -translate-y-2 scale-[0.99] blur-[2px]' : 'opacity-100 translate-y-0 scale-100 blur-none'}`}>
 
-                        {/* Title & Overview */}
-                        <div className="space-y-1.5 pb-2 border-b border-white/10">
-                            <h1 className="text-2xl sm:text-3xl xl:text-4xl font-extrabold tracking-tight text-white leading-[1.1]">
-                                GeoSphere 360° Mobile Mapping Platform
-                            </h1>
-                            <p className="text-xs text-neutral-400 font-normal leading-relaxed">
-                                Centralizing spatial data pipelines with high-precision trajectory tracking, PostGIS cloud synchronization, and frame-by-frame spherical QA auditing.
-                            </p>
-                        </div>
-
-                        {/* Active Module Details (Pure monochromatic text) */}
+                        {/* Active Module Details */}
                         <div className="space-y-2">
-                            <div className="flex items-center justify-between">
-                                <span className="text-xs font-semibold tracking-wider uppercase text-neutral-400">
+                            <div className="flex items-center gap-3">
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold tracking-widest uppercase text-neutral-300 border border-white/10 bg-white/[0.03]">
+                                    <span className="w-1 h-1 rounded-full bg-neutral-400" />
                                     {current.category}
                                 </span>
-                                <span className="text-xs font-mono text-neutral-500 tabular-nums">
-                                    0{activeIndex + 1} / 0{SYSTEM_MODULES.length}
+                                <span className="text-[10px] font-mono text-neutral-600 tabular-nums tracking-wider">
+                                    {String(activeIndex + 1).padStart(2, '0')}/{String(SYSTEM_MODULES.length).padStart(2, '0')}
                                 </span>
                             </div>
 
-                            <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-white leading-tight">
+                            <h2 className="text-lg sm:text-xl font-bold tracking-tight text-white leading-snug pt-0.5">
                                 {current.title}
                             </h2>
 
-                            <p className="text-xs sm:text-sm text-neutral-300 font-normal leading-relaxed">
+                            <p className="text-xs sm:text-[13px] text-neutral-400 font-normal leading-relaxed max-w-lg">
                                 {current.description}
                             </p>
                         </div>
 
-                        {/* Clean Execution Pipeline (No colored text, clean monospace steps) */}
+                        {/* CTA & Metric */}
+                        <div className="pt-1 flex flex-wrap items-center gap-3">
+                            <button
+                                onClick={() => onEnterDashboard && onEnterDashboard(current.id)}
+                                className="group/btn px-4 py-2 rounded-lg font-medium text-xs flex items-center justify-center gap-2 transition-all border border-white/15 hover:border-white/30 bg-white/[0.04] hover:bg-white/[0.08] text-neutral-200 hover:text-white cursor-pointer active:scale-[0.97]"
+                            >
+                                <span>Enter {current.title.split('&')[0].trim()}</span>
+                                <ArrowRight className="w-3.5 h-3.5 text-neutral-500 group-hover/btn:text-neutral-300 transition-colors group-hover/btn:translate-x-0.5 transition-transform" />
+                            </button>
+
+                            <div className="h-4 w-px bg-white/10" />
+
+                            <div className="text-[11px] text-neutral-500 flex items-center gap-1.5">
+                                <span>{current.metricLabel}</span>
+                                <span className="font-semibold text-neutral-200">{current.metricValue}</span>
+                            </div>
+                        </div>
+
+                        {/* System Metadata */}
+                        <div className="pt-2 border-t border-white/[0.06] flex flex-wrap items-center gap-x-5 gap-y-1 text-[10px] text-neutral-500">
+                            <span className="flex items-center gap-1.5">
+                                <span className="w-1 h-1 rounded-full bg-neutral-600" />
+                                PostGIS + Supabase
+                            </span>
+                            <span className="flex items-center gap-1.5">
+                                <span className="w-1 h-1 rounded-full bg-neutral-600" />
+                                MapLibre GL + {viewerDisplayName}
+                            </span>
+                            <span className="flex items-center gap-1.5">
+                                <span className="w-1 h-1 rounded-full bg-neutral-600" />
+                                Published &amp; Production
+                            </span>
+                        </div>
+
+                        {/* Execution Flow - Horizontal Step Indicators (above footer) */}
                         {current.workflow && current.workflow.length > 0 && (
-                            <div className="space-y-2 pt-1">
-                                <span className="text-[11px] font-semibold uppercase tracking-wider text-neutral-400 block">
-                                    Execution Flow
+                            <div className="space-y-2.5 pt-3 mt-auto border-t border-white/[0.06]">
+                                <span className="text-[10px] font-semibold uppercase tracking-[0.15em] text-neutral-500 block">
+                                    Workflow
                                 </span>
-                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-1">
+                                <div className="flex items-stretch gap-0">
                                     {current.workflow.map((wf, idx) => (
-                                        <div key={idx} className="space-y-1">
-                                            <div className="text-[11px] font-mono font-medium text-neutral-300 tracking-wide">
-                                                {wf.step}
+                                        <React.Fragment key={idx}>
+                                            <div className="flex-1 py-1.5">
+                                                <div className="text-[10px] font-mono font-semibold text-neutral-300 tracking-wide mb-0.5">
+                                                    {wf.step}
+                                                </div>
+                                                <div className="text-[10px] text-neutral-500 leading-relaxed">
+                                                    {wf.action}
+                                                </div>
                                             </div>
-                                            <div className="text-xs text-neutral-400 font-normal leading-relaxed">
-                                                {wf.action}
-                                            </div>
-                                        </div>
+                                            {idx < current.workflow.length - 1 && (
+                                                <div className="flex items-center px-1">
+                                                    <div className="w-px h-4 bg-white/10" />
+                                                </div>
+                                            )}
+                                        </React.Fragment>
                                     ))}
                                 </div>
                             </div>
                         )}
-
-                        {/* Clean Specifications Row (No Boxes, Minimalist Definition Line) */}
-                        <div className="pt-2 border-t border-white/10 space-y-2">
-                            <span className="text-[11px] font-semibold uppercase tracking-wider text-neutral-400 block">
-                                Architecture &amp; System Specs
-                            </span>
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-1">
-                                {current.specs.map((spec, i) => (
-                                    <div key={i} className="space-y-0.5">
-                                        <span className="text-[11px] text-neutral-500 block">
-                                            {spec.label}
-                                        </span>
-                                        <span className="text-xs font-medium text-neutral-200 block truncate">
-                                            {spec.value}
-                                        </span>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-
-                        {/* Button with grey outer box without filled color */}
-                        <div className="pt-1 flex flex-wrap items-center gap-4">
-                            <button
-                                onClick={() => onEnterDashboard && onEnterDashboard(current.id)}
-                                className="px-5 py-2.5 rounded-xl font-medium text-xs sm:text-sm flex items-center justify-center gap-2 transition-all border border-neutral-700 hover:border-neutral-500 bg-transparent text-neutral-200 hover:text-white hover:bg-white/5 cursor-pointer shadow-sm active:scale-95"
-                            >
-                                <span>Enter {current.title.split('&')[0].trim()}</span>
-                                <ArrowRight className="w-4 h-4 text-neutral-300" />
-                            </button>
-
-                            <div className="text-xs text-neutral-400 flex items-center gap-1.5">
-                                <span>{current.metricLabel}:</span>
-                                <span className="font-semibold text-white">{current.metricValue}</span>
-                            </div>
-                        </div>
-
-                        {/* Minimal System Metadata Footer */}
-                        <div className="pt-2 border-t border-white/10 flex flex-wrap items-center gap-x-6 gap-y-1 text-neutral-400 text-xs">
-                            <div>
-                                <span className="text-neutral-500">Database: </span>
-                                <span className="text-neutral-300 font-medium">PostGIS + Supabase</span>
-                            </div>
-                            <div>
-                                <span className="text-neutral-500">Renderer: </span>
-                                <span className="text-neutral-300 font-medium">MapLibre GL + {viewerDisplayName}</span>
-                            </div>
-                            <div>
-                                <span className="text-neutral-500">Mode: </span>
-                                <span className="text-neutral-300 font-medium">Published &amp; Production</span>
-                            </div>
-                        </div>
 
                     </div>
 
@@ -1654,108 +1647,135 @@ return {
                     <div
                         onTouchStart={handleTouchStart}
                         onTouchEnd={handleTouchEnd}
-                        className={`w-full lg:col-span-7 flex flex-col justify-center order-1 lg:order-2 transition-[opacity,transform,filter] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] touch-pan-y ${isAnimating ? 'opacity-0 scale-[0.985] translate-y-1 blur-[2px]' : 'opacity-100 scale-100 translate-y-0 blur-none'}`}
+                        className={`w-full lg:col-span-7 flex flex-col gap-2 order-1 lg:order-2 transition-[opacity,transform,filter] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] touch-pan-y ${isAnimating ? 'opacity-0 scale-[0.985] translate-y-1 blur-[2px]' : 'opacity-100 scale-100 translate-y-0 blur-none'}`}
                     >
-                        <div className="w-full aspect-[16/10] lg:aspect-auto lg:h-full p-3 sm:p-4 rounded-2xl bg-neutral-900/70 backdrop-blur-xl border border-white/10 shadow-2xl flex flex-col justify-between overflow-hidden">
-
-                            {/* Subtitle & Image Counter */}
-                            <div className="flex items-center justify-between px-1 pb-2 border-b border-white/10">
-                                <span className="text-xs font-medium text-neutral-200 truncate pr-2">
+                        {/* Subtitle Bar */}
+                        <div className="flex items-center justify-between px-1">
+                            <div className="flex items-center gap-2 min-w-0">
+                                <span className="w-1.5 h-1.5 rounded-full bg-neutral-500 shrink-0" />
+                                <span className="text-[11px] sm:text-xs font-medium text-neutral-300 truncate">
                                     {current.subtitle}
                                 </span>
-                                <span className="text-xs font-mono text-neutral-400 shrink-0">
-                                    {activePhotoIdx + 1} / {current.images.length}
+                            </div>
+                            <span className="text-[10px] font-mono text-neutral-600 shrink-0 ml-2 tabular-nums">
+                                {activePhotoIdx + 1}/{current.images.length}
+                            </span>
+                        </div>
+
+                        {/* Viewport Image */}
+                        <div className="relative w-full flex-1 min-h-0 rounded-xl overflow-hidden flex items-center justify-center bg-black/50">
+                            <img
+                                key={activeImage}
+                                src={activeImage}
+                                alt={current.title}
+                                loading="eager"
+                                decoding="async"
+                                className="w-full h-full object-contain object-center transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]"
+                            />
+
+                            {/* Gallery Navigation Arrows */}
+                            {current.images.length > 1 && (
+                                <>
+                                    <button
+                                        onClick={() => setActivePhotoIdx((activePhotoIdx - 1 + current.images.length) % current.images.length)}
+                                        aria-label="Previous image"
+                                        className="group/prev absolute left-2 top-1/2 -translate-y-1/2 p-1.5 sm:p-2 rounded-full bg-black/60 hover:bg-black/80 text-neutral-200 hover:text-white border border-white/15 hover:border-white/30 cursor-pointer active:scale-90 transition-all backdrop-blur-sm"
+                                    >
+                                        <svg viewBox="0 0 24 24" className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <path d="M19 12H6" />
+                                            <path d="M12 5l-7 7 7 7" />
+                                        </svg>
+                                    </button>
+                                    <button
+                                        onClick={() => setActivePhotoIdx((activePhotoIdx + 1) % current.images.length)}
+                                        aria-label="Next image"
+                                        className="group/next absolute right-2 top-1/2 -translate-y-1/2 p-1.5 sm:p-2 rounded-full bg-black/60 hover:bg-black/80 text-neutral-200 hover:text-white border border-white/15 hover:border-white/30 cursor-pointer active:scale-90 transition-all backdrop-blur-sm"
+                                    >
+                                        <svg viewBox="0 0 24 24" className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <path d="M5 12h13" />
+                                            <path d="M12 5l7 7-7 7" />
+                                        </svg>
+                                    </button>
+                                </>
+                            )}
+                        </div>
+
+                        {/* Active Section Tip Details */}
+                        {activeHotspot && (
+                            <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/[0.06] text-left animate-in fade-in duration-150">
+                                <div className="flex items-center justify-between gap-2 pb-1.5 border-b border-white/[0.06]">
+                                    <div className="flex items-center gap-1.5">
+                                        <span className="text-[11px] font-semibold text-neutral-200">
+                                            {activeHotspot.title}
+                                        </span>
+                                        <span className="text-[9px] text-neutral-600 uppercase tracking-wider">
+                                            {activeHotspot.tag}
+                                        </span>
+                                    </div>
+                                    <button
+                                        onClick={() => setActiveHotspotId(null)}
+                                        className="text-[10px] text-neutral-600 hover:text-neutral-300 cursor-pointer transition-colors"
+                                    >
+                                        Dismiss
+                                    </button>
+                                </div>
+                                <p className="text-[11px] text-neutral-400 mt-1.5 leading-relaxed">
+                                    {activeHotspot.description}
+                                </p>
+                                <div className="mt-1.5 text-[10px] text-neutral-400 font-normal">
+                                    <span className="text-neutral-500">Tip: </span>
+                                    {activeHotspot.tip}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Section Highlights Selector */}
+                        <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-1 overflow-x-auto pb-0.5 no-scrollbar flex-1">
+                                <span className="text-[9px] font-semibold uppercase tracking-[0.15em] text-neutral-600 shrink-0 mr-1">
+                                    Sections
                                 </span>
-                            </div>
-
-                            {/* Viewport Image Frame */}
-                            <div className="relative w-full flex-1 rounded-xl bg-black border border-white/10 overflow-hidden flex items-center justify-center my-2">
-                                <img
-                                    key={activeImage}
-                                    src={activeImage}
-                                    alt={current.title}
-                                    loading="eager"
-                                    decoding="async"
-                                    className="w-full h-full object-contain object-center transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]"
-                                />
-                            </div>
-
-                            {/* Active Section Tip Details */}
-                            {activeHotspot && (
-                                <div className="mb-2 p-2.5 rounded-xl bg-neutral-900/95 border border-white/10 text-left animate-in fade-in duration-150">
-                                    <div className="flex items-center justify-between gap-2 pb-1 border-b border-white/10">
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-xs font-semibold text-white">
-                                                {activeHotspot.title}
-                                            </span>
-                                            <span className="text-[11px] text-neutral-400">
-                                                &bull; {activeHotspot.tag}
-                                            </span>
-                                        </div>
+                                {current.hotspots.map((spot) => {
+                                    const isSelected = activeHotspotId === spot.id;
+                                    return (
                                         <button
-                                            onClick={() => setActiveHotspotId(null)}
-                                            className="text-[11px] text-neutral-400 hover:text-white cursor-pointer"
+                                            key={spot.id}
+                                            onClick={() => setActiveHotspotId(isSelected ? null : spot.id)}
+                                            className={`px-2 py-0.5 rounded text-[10px] font-medium transition-all cursor-pointer shrink-0 ${
+                                                isSelected
+                                                    ? 'bg-white/10 text-neutral-200'
+                                                    : 'text-neutral-600 hover:text-neutral-400 hover:bg-white/[0.04]'
+                                            }`}
                                         >
-                                            Dismiss
+                                            <span>{spot.title.split(':')[0].replace(/Station \d+: /, '')}</span>
                                         </button>
-                                    </div>
-                                    <p className="text-xs text-neutral-300 mt-1 leading-relaxed">
-                                        {activeHotspot.description}
-                                    </p>
-                                    <div className="mt-1 text-[11px] text-neutral-300 font-normal">
-                                        <span className="font-semibold text-white">Tip: </span>
-                                        {activeHotspot.tip}
-                                    </div>
+                                    );
+                                })}
+                            </div>
+
+                            {/* Thumbnail previews */}
+                            {current.images.length > 1 && (
+                                <div className="flex items-center gap-1 shrink-0">
+                                    {current.images.map((imgUrl, idx) => (
+                                        <button
+                                            key={idx}
+                                            onClick={() => setActivePhotoIdx(idx)}
+                                            className={`h-5 w-7 rounded-sm overflow-hidden transition-all cursor-pointer ${
+                                                activePhotoIdx === idx
+                                                    ? 'ring-1 ring-white/40 opacity-100'
+                                                    : 'opacity-30 hover:opacity-60'
+                                            }`}
+                                        >
+                                            <img
+                                                src={imgUrl}
+                                                alt={`Preview ${idx + 1}`}
+                                                loading="eager"
+                                                className="w-full h-full object-cover object-top"
+                                            />
+                                        </button>
+                                    ))}
                                 </div>
                             )}
-
-                            {/* Section Highlights Selector */}
-                            <div className="pt-2 border-t border-white/10 flex items-center justify-between gap-2">
-                                <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 no-scrollbar flex-1">
-                                    <span className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500 shrink-0 mr-1">
-                                        Sections:
-                                    </span>
-                                    {current.hotspots.map((spot) => {
-                                        const isSelected = activeHotspotId === spot.id;
-                                        return (
-                                            <button
-                                                key={spot.id}
-                                                onClick={() => setActiveHotspotId(isSelected ? null : spot.id)}
-                                                className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors cursor-pointer shrink-0 ${isSelected
-                                                    ? 'bg-white/20 text-white font-medium shadow-sm'
-                                                    : 'text-neutral-400 hover:text-white hover:bg-white/10'
-                                                    }`}
-                                            >
-                                                <span>{spot.title.split(':')[0].replace(/Station \d+: /, '')}</span>
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-
-                                {/* Thumbnail previews */}
-                                {current.images.length > 1 && (
-                                    <div className="flex items-center gap-1.5 shrink-0">
-                                        {current.images.map((imgUrl, idx) => (
-                                            <button
-                                                key={idx}
-                                                onClick={() => setActivePhotoIdx(idx)}
-                                                className={`h-6 w-9 rounded-md overflow-hidden border transition-all cursor-pointer ${activePhotoIdx === idx
-                                                    ? 'border-white ring-1 ring-white/40 opacity-100'
-                                                    : 'border-white/10 opacity-50 hover:opacity-90'
-                                                    }`}
-                                            >
-                                                <img
-                                                    src={imgUrl}
-                                                    alt={`Preview ${idx + 1}`}
-                                                    loading="eager"
-                                                    className="w-full h-full object-cover object-top"
-                                                />
-                                            </button>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-
                         </div>
 
                     </div>

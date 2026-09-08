@@ -106,6 +106,12 @@ import {
   clearLastActivity
 } from './utils/workspaceLocation';
 import { can } from './lib/authz';
+
+// Loading-workspace window shown after entering a project (or as a guest).
+// ProjectOnboarding reaches 100% / all ticks at 3000ms; keep this a beat longer
+// so the "complete" state is visible before the workspace mounts.
+const GATE_LOADING_MS = 3600;
+
 // ==============================================
 // Data Interfaces & Types
 // ==============================================
@@ -529,6 +535,28 @@ export default function App() {
   // Derived themeMode for backward compatibility
   const themeMode = currentTheme === 'daylight' || currentTheme === 'alabaster' ? 'light' : 'dark';
 
+  // A user who has applied ANY dashboard theme has finished onboarding — the
+  // theme step is the last interactive config a campaign needs, so once it's
+  // set the showcase/onboarding gate must never auto-trigger for them again.
+  const markOnboarded = useCallback((userKey: string): void => {
+    try {
+      localStorage.setItem(`geosphere360_onboarded_${userKey}`, '1');
+    } catch {
+      /* storage unavailable — non-fatal */
+    }
+  }, []);
+
+  const hasOnboarded = useCallback((userKey: string): boolean => {
+    try {
+      return Boolean(localStorage.getItem(`geosphere360_onboarded_${userKey}`));
+    } catch {
+      return false;
+    }
+  }, []);
+
+  // Latest auth-derived storage key, readable from stable event listeners.
+  const sessionUserKeyRef = useRef<string | null>(null);
+
   // Global Theme Listener
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', currentTheme);
@@ -539,12 +567,16 @@ export default function App() {
         if (e.detail !== 'daylight' && e.detail !== 'alabaster') {
           localStorage.setItem('app_last_dark_theme', e.detail);
         }
+        // Any user-initiated theme apply (onboarding step 4, dashboard theme
+        // selector, or a project with a saved scope.theme) completes onboarding.
+        const onboardKey = sessionUserKeyRef.current;
+        if (onboardKey) markOnboarded(onboardKey);
       }
     };
 
     window.addEventListener('app-theme-changed', handleThemeEvent);
     return () => window.removeEventListener('app-theme-changed', handleThemeEvent);
-  }, [currentTheme]);
+  }, [currentTheme, markOnboarded]);
 
 
   // ===== Supabase Auth Protection State =====
@@ -567,8 +599,14 @@ export default function App() {
 
     setAuthSession(guestSession);
 
-    // Trigger module routing & spotlight focus
-    handleEnterModule(pendingModule || 'webgis');
+    // Guests get the same "Workspace Loading" experience before entering the
+    // read-only app, then route to their requested module.
+    const targetModule = pendingModule || 'webgis';
+    setProjectGate('loading');
+    window.setTimeout(() => {
+      setProjectGate('idle');
+      handleEnterModule(targetModule);
+    }, GATE_LOADING_MS);
     setPendingModule(null);
 
     addAuditLog('CREATE', 'Guest Login', 'User logged in under Guest Read-Only mode', 'info');
@@ -663,6 +701,12 @@ export default function App() {
 
   const isGuestUser = Boolean(authSession?.isGuest || authSession?.user?.role === 'guest' || authSession?.user?.email?.toLowerCase().includes('guest'));
 
+  // Track the current auth-derived storage key so theme-apply events (which
+  // complete onboarding) always target the active user.
+  useEffect(() => {
+    sessionUserKeyRef.current = resolveUserStorageKey(authSession, isGuestUser);
+  }, [authSession, isGuestUser]);
+
   const effectiveUserRole =
     authSession?.user?.user_metadata?.role ||
     authSession?.user?.raw_user_meta_data?.role ||
@@ -727,13 +771,28 @@ export default function App() {
   // Trigger the gate on authenticated login (non-guest).
   const triggerGate = useCallback((session: any, isGuest: boolean) => {
     if (isGuest) {
-      setProjectGate('idle');
+      // Guests still get the "Workspace Loading" experience on session restore,
+      // then resume the page they were viewing.
+      setProjectGate('loading');
+      window.setTimeout(() => {
+        setProjectGate('idle');
+        handleEnterModule(currentPage);
+      }, GATE_LOADING_MS);
       return;
     }
     const currentHashKey = parseWorkspace();
     const userKey = resolveUserStorageKey(session, false);
     const savedId = loadActiveProjectId(userKey);
     const showWelcome = shouldShowWelcome(userKey);
+
+    // A user who has applied a theme has completed onboarding — skip the gate
+    // entirely (even mid-wizard version bumps or an explicit #/onboarding hash)
+    // and land straight on the dashboard.
+    if (hasOnboarded(userKey)) {
+      setProjectGate('idle');
+      if (currentHashKey === 'onboarding') pushWorkspace('dashboard');
+      return;
+    }
 
     // If user explicitly navigated to #/onboarding, OR this is their first ever login (showWelcome),
     // OR they have no active project chosen yet:
@@ -752,7 +811,7 @@ export default function App() {
       // Respect their requested workspace and stay in idle gate!
       setProjectGate('idle');
     }
-  }, [shouldShowWelcome]);
+  }, [shouldShowWelcome, hasOnboarded, pushWorkspace, currentPage]);
 
   const handleGateContinue = useCallback((project: UserProject) => {
     setProjectGate('loading');
@@ -761,11 +820,12 @@ export default function App() {
     saveActiveProjectId(userKey, project.id);
     setProjectSettings((prev: any) => applyProjectScope(prev, project));
     touchProjectOpened(project.id);
-    // Short delay so the loading screen reads before the dashboard settles.
+    // Hold the gate until the loading workspace has fully completed (100% +
+    // all ticks), then settle the dashboard.
     window.setTimeout(() => {
       setProjectGate('idle');
       goToWorkspace('dashboard');
-    }, 2600);
+    }, GATE_LOADING_MS);
   }, [authSession, isGuestUser, goToWorkspace, setProjectSettings]);
 
   const handleGateCreateProject = useCallback(async (draft: ProjectDraft) => {

@@ -344,6 +344,9 @@ export const ProjectOnboarding: React.FC<ProjectOnboardingProps> = ({
   onRefreshProjects
 }) => {
   const [stepIndex, setStepIndex] = useState(0);
+  // Smooth 0→~100 continuous progress for the telemetry loading bar (driven by
+  // elapsed time, so the bar visibly animates even between checklist steps).
+  const [loadingProgress, setLoadingProgress] = useState(0);
 
   // Submode: 'resume' for returning users, 'wizard' for StartGlobal multi-step
   const [mode, setMode] = useState<'resume' | 'wizard'>('resume');
@@ -384,14 +387,30 @@ export const ProjectOnboarding: React.FC<ProjectOnboardingProps> = ({
     }
   }, [wizardStep]);
 
-  // Animated loading step ticker
+  // Animated loading step ticker + continuous progress bar. Progress advances
+  // on a smooth elapsed-time curve, reaching 100% (and ticking every checklist
+  // step) so the loading screen always visibly completes before dismissal.
   useEffect(() => {
     if (stage !== 'loading') return;
     setStepIndex(0);
-    const timer = setInterval(() => {
-      setStepIndex((i) => (i < LOADING_STEPS.length - 1 ? i + 1 : i));
-    }, 700);
-    return () => clearInterval(timer);
+    setLoadingProgress(0);
+    const t0 = Date.now();
+    // Time (ms) for the bar to reach full completion. Kept in sync with the
+    // gate dismissal window in App.tsx so the "complete" state is seen first.
+    const DURATION_MS = 3000;
+    let raf = 0;
+    const tick = () => {
+      const elapsed = Date.now() - t0;
+      const pct = Math.min(1, (elapsed / DURATION_MS) ** 0.62);
+      setLoadingProgress(pct);
+      const next = Math.min(LOADING_STEPS.length, Math.floor(pct * LOADING_STEPS.length));
+      setStepIndex(next);
+      if (pct < 1) {
+        raf = requestAnimationFrame(tick);
+      }
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
   }, [stage]);
 
   // Auto-refresh projects when pick stage opens
@@ -1449,11 +1468,11 @@ export const ProjectOnboarding: React.FC<ProjectOnboardingProps> = ({
               })}
             </div>
 
-            {/* Progress bar */}
-            <div className="h-1 rounded-full overflow-hidden bg-inner/60 backdrop-blur-sm">
+            {/* Animated progress bar */}
+            <div className="h-1 rounded-full overflow-hidden bg-inner/60 backdrop-blur-sm relative">
               <div
-                className="h-full bg-text-base/80 rounded-full transition-all duration-700"
-                style={{ width: `${((stepIndex + 1) / LOADING_STEPS.length) * 100}%` }}
+                className="h-full bg-text-base/80 rounded-full transition-all duration-200 loading-bar-shimmer overflow-hidden"
+                style={{ width: `${Math.round(loadingProgress * 100)}%` }}
               />
             </div>
           </div>
