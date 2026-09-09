@@ -12,7 +12,15 @@ import {
   StorageProviderType,
   ResolveUrlOptions
 } from './storageUrls';
-import { STORAGE_BUCKET_DEFAULT, DATABASE_TABLE_DEFAULTS } from '../config/defaults';
+import { STORAGE_BUCKET_DEFAULT, DATABASE_TABLE_DEFAULTS, MANIFEST_PATH_DEFAULT } from '../config/defaults';
+import {
+  buildManifestUrl,
+  countFramesFromManifest,
+  fetchFrameManifest,
+  resolveProviderBaseUrl,
+  resolveStorageProvider,
+  type StorageSettingsForManifest
+} from './storageInventory';
 
 export {
   formatCloudflareUrl,
@@ -32,6 +40,21 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_KEY || '';
 
 type SupabaseClientInstance = SupabaseClient;
+
+/**
+ * Effective backend currently in use. Populated the first time
+ * `configureSupabaseBackend` runs; empty means "still on env defaults".
+ */
+let _backendUrl = '';
+let _backendKey = '';
+
+/**
+ * Active underlying Supabase client. Replaced in place by
+ * `configureSupabaseBackend`. `supabase` is a stable Proxy over this value, so
+ * every existing caller that imported `supabase` keeps working unchanged and
+ * transparently starts talking to the new host after a backend switch.
+ */
+let _activeSupabaseClient: SupabaseClientInstance
 
 /**
  * Return a no-op client so importing this module never throws when Supabase
@@ -120,6 +143,14 @@ const MAX_SAFE_HEADER_LENGTH = 1500;
  *    substituting the safe anon key so Kong/Cloudflare never rejects with HTTP 431.
  * 2. Reactively retries with the anon key if any request encounters HTTP 431 or NetworkError.
  */
+function currentApiUrl(): string {
+  return _backendUrl || supabaseUrl;
+}
+
+function currentApiKey(): string {
+  return _backendKey || supabaseKey;
+}
+
 function safeSupabaseFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const urlStr =
     typeof input === 'string'
@@ -147,12 +178,12 @@ function safeSupabaseFetch(input: RequestInfo | URL, init?: RequestInit): Promis
   // with HTTP 431 and the persisted session is NOT dropped. The refresh token is carried
   // in the POST body, so gotrue still validates it independently of the Authorization header.
   if (isBloatedToken) {
-    headers.set('Authorization', `Bearer ${supabaseKey}`);
+    headers.set('Authorization', `Bearer ${currentApiKey()}`);
   }
 
   // Ensure Authorization header exists for Supabase requests
-  if (urlStr.includes(supabaseUrl) && !headers.has('Authorization')) {
-    headers.set('Authorization', `Bearer ${supabaseKey}`);
+  if (urlStr.includes(currentApiUrl()) && !headers.has('Authorization')) {
+    headers.set('Authorization', `Bearer ${currentApiKey()}`);
   }
 
   const safeInit: RequestInit = {
@@ -165,17 +196,17 @@ function safeSupabaseFetch(input: RequestInfo | URL, init?: RequestInit): Promis
       if (res.status === 431) {
         console.warn('[Supabase] Received HTTP 431 on', urlStr, 'Retrying with safe anon key...');
         const retryHeaders = new Headers(headers);
-        retryHeaders.set('Authorization', `Bearer ${supabaseKey}`);
+        retryHeaders.set('Authorization', `Bearer ${currentApiKey()}`);
         return fetch(input, { ...safeInit, headers: retryHeaders });
       }
       return res;
     })
     .catch(async (err: any) => {
       const currentAuth = headers.get('Authorization') || '';
-      if (currentAuth && !currentAuth.includes(supabaseKey)) {
+      if (currentAuth && !currentAuth.includes(currentApiKey())) {
         console.warn('[Supabase] NetworkError on', urlStr, 'Retrying with anon key...', err);
         const retryHeaders = new Headers(headers);
-        retryHeaders.set('Authorization', `Bearer ${supabaseKey}`);
+        retryHeaders.set('Authorization', `Bearer ${currentApiKey()}`);
         return fetch(input, { ...safeInit, headers: retryHeaders });
       }
       throw err;
@@ -248,9 +279,9 @@ export async function pruneBloatedUserMetadata(): Promise<void> {
   }
 }
 
-function createSafeSupabaseClient(): SupabaseClientInstance {
-  const url = supabaseUrl || '';
-  const key = supabaseKey || '';
+function createSafeSupabaseClient(overrideUrl?: string, overrideKey?: string): SupabaseClientInstance {
+  const url = (overrideUrl || '').trim() || supabaseUrl || '';
+  const key = (overrideKey || '').trim() || supabaseKey || '';
 
   if (!url || !key) {
     console.error(
@@ -287,7 +318,130 @@ function createSafeSupabaseClient(): SupabaseClientInstance {
   }
 }
 
-export const supabase = createSafeSupabaseClient();
+/**
+ * Stable Proxy over `_activeSupabaseClient`; swaps transparently on backend change.
+ * Also keeps mock-compatibility for tests: assignments / defineProperty (e.g.
+ * `vi.spyOn(supabase, 'from')`) are stored in `overrides` and shadow the active
+ * client until restored, exactly like patching a plain object.
+ */
+const _supabaseOverrides = new Map<string | symbol, unknown>();
+
+const supabaseProxy = new Proxy({} as Record<string | symbol, unknown>, {
+  get(_target, prop: string | symbol) {
+    if (_supabaseOverrides.has(prop)) {
+      return _supabaseOverrides.get(prop);
+    }
+    const active: any = _activeSupabaseClient;
+    const value = active?.[prop as keyof typeof active];
+    return typeof value === 'function' ? value.bind(active) : value;
+  },
+  set(_target, prop: string | symbol, value: unknown) {
+    _supabaseOverrides.set(prop, value);
+    return true;
+  },
+  defineProperty(_target, prop: string | symbol, descriptor: PropertyDescriptor) {
+    if (Object.prototype.hasOwnProperty.call(descriptor, 'value')) {
+      _supabaseOverrides.set(prop, descriptor.value);
+    }
+    return true;
+  },
+  deleteProperty(_target, prop: string | symbol) {
+    _supabaseOverrides.delete(prop);
+    return true;
+  },
+  getOwnPropertyDescriptor(_target, prop: string | symbol): PropertyDescriptor {
+    if (_supabaseOverrides.has(prop)) {
+      return { value: _supabaseOverrides.get(prop), writable: true, enumerable: true, configurable: true };
+    }
+    const active: any = _activeSupabaseClient;
+    if (active && prop in active) {
+      const activeDesc = Object.getOwnPropertyDescriptor(active, prop);
+      if (activeDesc) {
+        return { ...activeDesc, configurable: true };
+      }
+      return { value: active[prop], writable: true, enumerable: true, configurable: true };
+    }
+    return { value: undefined, writable: true, enumerable: true, configurable: true };
+  },
+  has(_target, prop: string | symbol) {
+    return _supabaseOverrides.has(prop) || prop in (_activeSupabaseClient as any);
+  },
+  ownKeys(_target) {
+    return Array.from(
+      new Set([
+        ...Reflect.ownKeys(_target),
+        ...Reflect.ownKeys(_activeSupabaseClient as any),
+        ..._supabaseOverrides.keys()
+      ])
+    );
+  }
+});
+
+export const supabase: SupabaseClientInstance = supabaseProxy as unknown as SupabaseClientInstance;
+
+export interface SupabaseBackendConfig {
+  url?: string;
+  anonKey?: string;
+}
+
+/**
+ * Reconfigure the active Supabase backend (e.g. Supabase Cloud vs self-hosted
+ * on an on-premise server PC vs NAS) at runtime. All existing `supabase.*`
+ * callers transparently begin talking to the new host.
+ *
+ * Sessions are scoped per host by supabase-js storage keys, so switching
+ * backend keeps tokens separate; the previous host is best-effort signed out
+ * before the swap. A `geosphere:backend-change` window event is dispatched so
+ * auth/data layers can react (e.g. clear cached per-backend data, prompt a
+ * fresh login on the new host).
+ */
+export function configureSupabaseBackend(cfg: SupabaseBackendConfig): boolean {
+  const url = (cfg?.url || '').trim().replace(/\/+$/, '');
+  const key = (cfg?.anonKey || '').trim();
+
+  // No backend override supplied — leave the currently active client untouched.
+  // Never fall back to the env default here: that would silently re-point an
+  // already-active self-hosted / on-premise deployment back at Supabase Cloud
+  // and force a sign-out mid-session.
+  if (!url || !key) {
+    return false;
+  }
+
+  if (url === _backendUrl && key === _backendKey) {
+    return false; // already on this backend
+  }
+
+  // Boot default: the module client was already created on the env config and
+  // the backend has never been switched. Don't teardown/sign-out for a no-op.
+  if (_backendUrl === '' && url === supabaseUrl && key === supabaseKey) {
+    return false;
+  }
+
+  try {
+    _activeSupabaseClient.auth.signOut().catch(() => {});
+  } catch { /* best-effort */ }
+
+  _activeSupabaseClient = createSafeSupabaseClient(url, key);
+  _backendUrl = url;
+  _backendKey = key;
+
+  if (typeof window !== 'undefined') {
+    try {
+      window.dispatchEvent(new CustomEvent('geosphere:backend-change', {
+        detail: { url, anonKey: key }
+      }));
+    } catch { /* dispatch failure is non-fatal */ }
+  }
+  console.info(`[Supabase] Backend reconfigured → ${url}`);
+  return true;
+}
+
+/** Return the backend currently wired into the active client. */
+export function getActiveSupabaseBackend(): SupabaseBackendConfig {
+  return { url: _backendUrl || supabaseUrl, anonKey: _backendKey || supabaseKey };
+}
+
+_activeSupabaseClient = createSafeSupabaseClient();
 
 export interface PanoramaItem {
   filename?: string;
@@ -347,9 +501,11 @@ const FILE_INVENTORY_TABLE = 'file_inventory';
 export interface FileInventoryResult {
   /** `true` when the server-side `file_inventory` table was queried successfully (bucket enumeration avoided). */
   fromInventory: boolean;
+  /** `true` when the frame count came from a public provider manifest (non-Supabase storage). */
+  fromManifest?: boolean;
   fileSet: Set<string>;
   countsBySubgrid: Map<string, number>;
-  /** Total number of distinct uploaded image files found. */
+  /** Total number of distinct uploaded image files (multi-res: distinct station folders) found. */
   totalFiles: number;
 }
 
@@ -357,12 +513,19 @@ export interface FileInventoryResult {
  * Resolve uploaded 360 image filenames for a storage bucket/path.
  * Prefers the server-side `file_inventory` table (no client-side bucket enumeration),
  * and falls back to direct storage `.list()` only if that table is unavailable.
+ *
+ * For non-Supabase providers (Cloudflare R2, S3, GCS, Azure, NAS, custom CDN), the
+ * frame count is resolved from the public `manifest.json` first, then degrades to
+ * the legacy Supabase path (file_inventory -> storage.list()) so counts never break.
  */
 let storageInventoryCache: { result: FileInventoryResult; timestamp: number; key: string } | null = null;
 
 async function resolveStorageFiles(
-  candidates: Array<{ bucket: string; path: string }>
+  candidates: Array<{ bucket: string; path: string }>,
+  storageSettings?: StorageSettingsForManifest
 ): Promise<FileInventoryResult> {
+  const provider = resolveStorageProvider(storageSettings);
+  const manifestEnabled = storageSettings?.manifestEnabled !== false;
   // 0) Deduplicate candidate locations case-insensitively
   const seenLoc = new Set<string>();
   const deduplicatedCandidates = candidates.filter(c => {
@@ -372,11 +535,18 @@ async function resolveStorageFiles(
     return true;
   });
 
-  const cacheKey = deduplicatedCandidates.map(c => `${c.bucket}:${c.path}`).sort().join('|');
+  const cacheKeyBase = deduplicatedCandidates.map(c => `${c.bucket}:${c.path}`).sort().join('|');
+  // Non-Supabase providers cache per provider/domain/strategy so switching buckets or
+  // manifest paths invalidates correctly without perturbing the Supabase default path.
+  const providerExt = provider !== 'supabase'
+    ? `|provider=${provider}|base=${resolveProviderBaseUrl(storageSettings)}|manifest=${String(storageSettings?.manifestPath || MANIFEST_PATH_DEFAULT)}|strategy=${String(storageSettings?.imageStorageStrategy || '')}`
+    : '';
+  const cacheKey = `${cacheKeyBase}${providerExt}`;
   const now = Date.now();
   if (storageInventoryCache && storageInventoryCache.key === cacheKey && (now - storageInventoryCache.timestamp) < 45000) {
     return {
       fromInventory: storageInventoryCache.result.fromInventory,
+      fromManifest: storageInventoryCache.result.fromManifest,
       fileSet: new Set(storageInventoryCache.result.fileSet),
       countsBySubgrid: new Map(storageInventoryCache.result.countsBySubgrid),
       totalFiles: storageInventoryCache.result.totalFiles
@@ -389,6 +559,26 @@ async function resolveStorageFiles(
     countsBySubgrid: new Map<string, number>(),
     totalFiles: 0
   };
+
+  // 1a) Non-Supabase provider: resolve frames from the public manifest first.
+  // On ANY failure fall through to the legacy path so counts never break.
+  if (provider !== 'supabase' && manifestEnabled) {
+    try {
+      const manifestUrl = buildManifestUrl(storageSettings);
+      if (manifestUrl) {
+        const manifest = await fetchFrameManifest(manifestUrl);
+        if (manifest && Array.isArray(manifest.frames) && manifest.frames.length > 0) {
+          const counted = countFramesFromManifest(manifest, storageSettings);
+          result.fileSet = counted.fileSet;
+          result.countsBySubgrid = counted.countsBySubgrid;
+          result.totalFiles = counted.totalFiles;
+          result.fromManifest = true;
+          storageInventoryCache = { result, timestamp: Date.now(), key: cacheKey };
+          return result;
+        }
+      }
+    } catch (_) { /* manifest unavailable -> legacy fallback */ }
+  }
 
   const addFile = (name: string) => {
     if (name && name.includes('.') && !name.startsWith('.')) {
@@ -454,6 +644,33 @@ async function resolveStorageFiles(
 
   storageInventoryCache = { result, timestamp: Date.now(), key: cacheKey };
   return result;
+}
+
+/**
+ * Ensure the storage settings used for manifest resolution reflect the
+ * authoritative DB settings (project_settings id='default') even when the
+ * caller passes none or the boot-time defaults — which default to
+ * storageProvider 'supabase' with no provider domain (useAppData hydrates the
+ * real settings in PARALLEL with the first fetchSupabaseData). Without this,
+ * boot + no-arg call sites silently skip the manifest branch and frame counts
+ * collapse to 0 (implementation_plan_v19.md). Supabase providers are left
+ * untouched so the default counting logic never changes.
+ */
+async function ensureManifestSettings(settings?: ExtendedProjectSettings): Promise<StorageSettingsForManifest> {
+  const candidate = settings || {};
+  // When the effective provider can't build a manifest base URL yet — which
+  // happens at boot (defaults default to provider 'supabase' with no domain)
+  // and right after a database-host switch — the authoritative project_settings
+  // on the ACTIVE backend may carry the real provider/domain. Merge them in so
+  // the manifest branch is reached. A genuinely Supabase-backed host keeps the
+  // legacy counting path unchanged (the manifest branch is skipped for provider
+  // 'supabase'), so switching local <-> cloud can never alter Supabase logic.
+  if (!!resolveProviderBaseUrl(candidate)) return candidate;
+  try {
+    const dbSettings = await fetchProjectSettingsFromSupabase();
+    if (dbSettings) return { ...candidate, ...dbSettings };
+  } catch (_) { /* fall back to the passed settings */ }
+  return candidate;
 }
 
 /**
@@ -542,7 +759,8 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
       idx === self.findIndex(t => t.bucket === loc.bucket && t.path === loc.path)
     );
 
-    const storageResolved = await resolveStorageFiles(uniqueLocations);
+const manifestSettings = await ensureManifestSettings(settings);
+    const storageResolved = await resolveStorageFiles(uniqueLocations, manifestSettings);
     const storageImageCounts = storageResolved.countsBySubgrid;
     const storageFileSet = storageResolved.fileSet;
 
@@ -2087,12 +2305,13 @@ export async function testDatabaseHealth(): Promise<{
 
   try {
     const bucket = import.meta.env.VITE_SUPABASE_BUCKET || STORAGE_BUCKET_DEFAULT;
+    const probeSettings = await ensureManifestSettings();
     const storageResolved = await resolveStorageFiles([
       { bucket, path: '' },
       { bucket: bucket.toLowerCase(), path: '' },
       { bucket: bucket.toUpperCase(), path: '' },
       { bucket: 'MMS_PIC', path: '' }
-    ]);
+    ], probeSettings);
     totalFiles = storageResolved.totalFiles;
   } catch {
     storageStatus = 'degraded';
@@ -2336,11 +2555,22 @@ export async function fetchProjectSettingsFromSupabase(): Promise<any | null> {
     console.warn('Project settings query notice:', err);
   }
 
-  // Fallback to localStorage
+  // Fallback to localStorage cache — but only if it parses to a real object.
+  // Corrupt/legacy entries (e.g. the literal string "undefined", or settings
+  // persisted against an OLD host) must never survive as authoritative
+  // settings: treating them as truth is what re-pointed the boot client at a
+  // dead/HTML-serving backend and broke sign-in.
   try {
     const cached = localStorage.getItem('geosphere_project_settings');
-    if (cached) return JSON.parse(cached);
-  } catch (_) { }
+    if (!cached) return null;
+    const parsed = JSON.parse(cached);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed;
+    }
+    localStorage.removeItem('geosphere_project_settings');
+  } catch (_) {
+    try { localStorage.removeItem('geosphere_project_settings'); } catch (__) { }
+  }
 
   return null;
 }

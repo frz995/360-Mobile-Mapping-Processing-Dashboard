@@ -252,26 +252,50 @@ function anyInProcessing(jobs: ProcessingJobRecord[]): boolean {
 
 /**
  * Generate a pre-populated sync command for operators to copy & paste into terminal.
+ * Includes the frame-manifest generation step so the dashboard can count frames
+ * dynamically on the target bucket (implementation_plan_v19.md).
  */
 export function generateUploadScript(
   subgrid: string,
   localFolder: string,
   targetType: 'r2' | 's3' | 'supabase' = 'r2',
-  bucketName: string = 'mms-pic'
+  bucketName: string = 'mms-pic',
+  layout: 'multires_tiles' | 'single_equirectangular' = 'multires_tiles'
 ): string {
   const cleanSub = subgrid.toUpperCase().trim();
   const folder = localFolder || `D:/NAS/DELIVERABLES/${cleanSub}`;
 
+  const manifestStep = `# 2. Generate & upload the frame manifest (drives dynamic frame count in the dashboard)
+node scripts/generate_manifest.mjs "${folder}" --subgrid "${cleanSub}" --layout "${layout}" --output "${folder}/manifest.json"`;
+
+  let manifestPush: string;
+  if (targetType === 'r2') {
+    manifestPush = `rclone copyto "${folder}/manifest.json" r2:${bucketName}/manifest.json`;
+  } else if (targetType === 's3') {
+    manifestPush = `aws s3 cp "${folder}/manifest.json" s3://${bucketName}/manifest.json`;
+  } else {
+    manifestPush = `# upload "${folder}/manifest.json" to the "${bucketName}" Supabase storage bucket root`;
+  }
+
   if (targetType === 'r2') {
     return `# Cloudflare R2 Upload (Multi-threaded & Zero Egress)
-rclone copy "${folder}" r2:${bucketName}/${cleanSub} --transfers 16 --checkers 16 -P --fast-list`;
+rclone copy "${folder}" r2:${bucketName}/${cleanSub} --transfers 16 --checkers 16 -P --fast-list
+
+${manifestStep}
+${manifestPush}`;
   }
 
   if (targetType === 's3') {
     return `# AWS / MinIO S3 Sync
-aws s3 sync "${folder}" s3://${bucketName}/${cleanSub} --exact-timestamps --storage-class STANDARD`;
+aws s3 sync "${folder}" s3://${bucketName}/${cleanSub} --exact-timestamps --storage-class STANDARD
+
+${manifestStep}
+${manifestPush}`;
   }
 
   return `# Supabase Storage API Upload
-python scripts/upload_supabase.py --folder "${folder}" --subgrid "${cleanSub}" --bucket "${bucketName}"`;
+python scripts/upload_supabase.py --folder "${folder}" --subgrid "${cleanSub}" --bucket "${bucketName}"
+
+${manifestStep}
+${manifestPush}`;
 }

@@ -29,7 +29,7 @@ import {
   Crosshair,
   Search
 } from 'lucide-react';
-import { ExtendedProjectSettings } from '../types/admin';
+import { ExtendedProjectSettings, DatabaseProviderType } from '../types/admin';
 import {
   testDatabaseHealth,
   resolvePanoramaUrl,
@@ -42,10 +42,12 @@ import {
   REGION_DEFAULTS,
   S3_BUCKET_DEFAULT,
   AZURE_CONTAINER_DEFAULT,
-  DATABASE_HOST_DEFAULT,
   DATABASE_TABLE_DEFAULTS,
-  DEFAULT_BASEMAP
+  DEFAULT_BASEMAP,
+  MANIFEST_PATH_DEFAULT,
+  getProviderConnectionDefaults
 } from '../config/defaults';
+import { buildManifestUrl, fetchFrameManifest } from '../services/storageInventory';
 import { ThemeManagementCanvas } from './ThemeSelector';
 import { DiagnosticsPanel } from './DiagnosticsPanel';
 import { MALAYSIA_REGIONS, regionToGeoJSON, CUSTOM_REGION_ID } from './boundary/malaysiaRegions';
@@ -76,9 +78,63 @@ const SETTINGS_TABS: ChromeTab<'settings' | 'theme-pack' | 'diagnostics'>[] = [
   }
 ];
 
+/**
+ * Database host provider switch-guard copy. Shown whenever an administrator
+ * changes the provider dropdown so the switch is a deliberate, informed action
+ * (implementation_plan_v19.md — "safe message" requirement).
+ */
+const DATABASE_PROVIDER_LABELS: Record<string, string> = {
+  supabase_cloud: 'Supabase Cloud (Managed Postgres + PostGIS)',
+  standalone_server: 'On-Premise Server PC (Self-Hosted Supabase)',
+  nas: 'On-Premise NAS (Self-Hosted Supabase)',
+  custom: 'Custom PostgREST / Self-Hosted Endpoint'
+};
+
+const DATABASE_PROVIDER_NOTES: Record<string, { short: string; steps: string[]; warning: string }> = {
+  supabase_cloud: {
+    short: 'Production-safe — reachable from Vercel/cloud and any browser. No installation required.',
+    steps: [
+      'Open your Supabase Cloud project dashboard → Settings → API.',
+      'Copy the Project URL and the publishable anon key.',
+      'Paste them into the REST Endpoint / Anon Key fields above, then Save — the profile is stored per provider.'
+    ],
+    warning: 'This is the only provider reachable from anywhere without extra network setup, so it is the recommended backend for Vercel / cloud production hosting.'
+  },
+  standalone_server: {
+    short: 'Runs on an on-premise PC. The dashboard and every browser must be able to reach http://<server-ip>:8000 (office LAN).',
+    steps: [
+      'Deploy the self-hosted Supabase Docker stack on the server PC (docker compose up -d from the supabase/docker folder).',
+      'Open Supabase Studio at http://<server-ip>:8000 → copy the REST URL (http://<server-ip>:8000) and the anon key.',
+      'Make sure the schema, roles (Administrator / Survey Operator), security policies and RLS are present (restore/import them once if this is a fresh instance).',
+      'Enter the server URL + anon key above, then Save — the app reconnects and asks you to sign in on the new host.'
+    ],
+    warning: 'A local self-hosted instance is reachable only on your office LAN. It CANNOT serve production traffic deployed on Vercel, and end-user browsers outside the LAN cannot load it. Keep Cloud Supabase for public/cloud deployments.'
+  },
+  nas: {
+    short: 'Same as on-premise, but the self-hosted Supabase stack lives on the NAS. Reachable only where the NAS host is reachable.',
+    steps: [
+      'Run the self-hosted Supabase Docker stack on the NAS (same supabase/docker compose setup).',
+      'Open Supabase Studio at http://<nas-ip>:8000 → copy the REST URL and the anon key.',
+      'Ensure the schema, roles, security policies and RLS from the production instance are present.',
+      'Enter the NAS URL + anon key above, then Save — the app reconnects and prompts sign-in on the NAS host.'
+    ],
+    warning: 'Only usable inside the network that can reach the NAS. Not suitable as the backend for Vercel/cloud production or remote users.'
+  },
+  custom: {
+    short: 'Point the app at any PostgREST-compatible REST endpoint; the backend must expose the same tables/views/functions.',
+    steps: [
+      'Stand up a PostgREST / Supabase-compatible endpoint with the panorama, batch, staging, audit and settings tables.',
+      'Obtain the REST base URL and its anon/publishable key.',
+      'Paste them into the REST Endpoint / Anon Key fields above, then Save — the app reconnects to the custom host.'
+    ],
+    warning: 'You are responsible for hosting, SSL and CORS on the custom endpoint. Vercel production will work only if the custom host is publicly reachable.'
+  }
+};
+
 interface AdminSettingsViewProps {
   projectSettings: ExtendedProjectSettings;
   setProjectSettings: React.Dispatch<React.SetStateAction<ExtendedProjectSettings>>;
+  committedSettings?: ExtendedProjectSettings;
   themeMode?: 'dark' | 'light';
   dailyData?: any[];
   batchLogs?: any[];
@@ -94,6 +150,7 @@ interface AdminSettingsViewProps {
 export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
   projectSettings,
   setProjectSettings,
+  committedSettings,
   themeMode = 'dark',
   dailyData = [],
   batchLogs = [],
@@ -123,6 +180,21 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
     error?: string;
   } | null>(null);
   const [testFilename, setTestFilename] = useState<string>('SG01-0001.jpg');
+
+  // Frame Manifest (Dynamic Frame Count) probe state
+  const [manifestTestLoading, setManifestTestLoading] = useState(false);
+  const [manifestTestResult, setManifestTestResult] = useState<{
+    ok: boolean;
+    frames: number;
+    layout?: string;
+    url: string;
+    error?: string;
+  } | null>(null);
+
+  // Database Host Provider switch-guard (safe message before reconnecting)
+  const [pendingDbProvider, setPendingDbProvider] = useState<DatabaseProviderType | null>(null);
+  // Small "workflow" doc button explaining how to change the DB host safely
+  const [showDbWorkflowHelp, setShowDbWorkflowHelp] = useState(false);
 
   // Security Credentials Reveal Toggle
   const [showApiKey, setShowApiKey] = useState(false);
@@ -351,7 +423,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
   // so they can resolve 360 image URLs (single equirectangular OR multi-res tiles) against the
   // current bucket even if a point's resolved URL is stale or missing.
   const broadcastStorageConfig = React.useCallback((storageOverride?: any) => {
-    const s = storageOverride && typeof storageOverride === 'object' ? storageOverride : (projectSettings || {});
+    const s = storageOverride && typeof storageOverride === 'object' ? storageOverride : (committedSettings || projectSettings || {});
     const storageProvider = s.storageProvider || import.meta.env.VITE_STORAGE_PROVIDER || '';
     const storageMessage = {
       type: 'SET_STORAGE_CONFIG',
@@ -394,12 +466,12 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
         previewIframeRef.current.contentWindow.postMessage(storageMessage, '*');
       } catch (e) { }
     }
-  }, [projectSettings]);
+  }, [committedSettings, projectSettings]);
 
   // Push updated storage / dynamic bucket config to the WebGIS whenever any of the
   // storage-related settings change (provider, domain, bucket, patterns, strategy...).
   const storageTrack = React.useMemo(() => {
-    const ps = (projectSettings || {}) as any;
+    const ps = (committedSettings || {}) as any;
     return [
       ps.storageProvider,
       ps.imageStorageStrategy,
@@ -426,11 +498,11 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
       ps.wasabiRegion,
       ps.nasServerUrl
     ];
-  }, [projectSettings]);
+  }, [committedSettings]);
 
   React.useEffect(() => {
-    if (!projectSettings) return;
-    broadcastStorageConfig(projectSettings);
+    if (!committedSettings) return;
+    broadcastStorageConfig(committedSettings);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, storageTrack);
 
@@ -774,6 +846,55 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
     setTimeout(() => setToastMessage(null), 3500);
   };
 
+  // Apply the selected provider's connection profile (fields only, DB backend
+  // actually reconnects on Save All Settings in App.tsx handleSaveAllSettings).
+  const applyDatabaseProviderPatch = (provider: DatabaseProviderType) => {
+    setProjectSettings(prev => {
+      const saved = (prev as any)?.providerConfigs?.[provider];
+      const defaults = getProviderConnectionDefaults(provider);
+      const patch: any = { ...prev, databaseProvider: provider };
+      if (saved && typeof saved === 'object') {
+        patch.supabaseUrl = saved.supabaseUrl || defaults.supabaseUrl || '';
+        patch.supabaseKey = saved.supabaseKey ?? defaults.supabaseKey ?? '';
+        patch.databaseAnonKey = saved.databaseAnonKey ?? patch.supabaseKey ?? '';
+        patch.serviceRoleKey = saved.serviceRoleKey ?? '';
+        patch.databaseHost = saved.databaseHost ?? defaults.databaseHost ?? '';
+        patch.databasePort = saved.databasePort ?? defaults.databasePort;
+        patch.databaseName = saved.databaseName ?? defaults.databaseName;
+        patch.databaseSchema = saved.databaseSchema ?? defaults.databaseSchema;
+        patch.connectionMode = saved.connectionMode ?? defaults.connectionMode;
+        patch.sslMode = saved.sslMode ?? defaults.sslMode;
+      } else {
+        // No saved profile for this provider yet → apply that provider's own
+        // defaults. NEVER carry the previous host's URL/key across (that's what
+        // made the form look like it "reverts to Supabase Cloud").
+        patch.supabaseUrl = defaults.supabaseUrl || '';
+        patch.supabaseKey = defaults.supabaseKey || '';
+        patch.databaseAnonKey = defaults.supabaseKey || '';
+        patch.serviceRoleKey = '';
+        patch.databaseHost = defaults.databaseHost || '';
+        patch.databasePort = defaults.databasePort;
+        patch.databaseName = defaults.databaseName;
+        patch.databaseSchema = defaults.databaseSchema;
+        patch.connectionMode = defaults.connectionMode;
+        patch.sslMode = defaults.sslMode;
+      }
+      return patch;
+    });
+  };
+
+  const confirmDbProviderSwitch = () => {
+    if (!pendingDbProvider) return;
+    applyDatabaseProviderPatch(pendingDbProvider);
+    const target = DATABASE_PROVIDER_LABELS[pendingDbProvider] || pendingDbProvider;
+    showToast(`Database provider profile applied: ${target}. Review the fields, then Save All Settings to reconnect.`);
+    setPendingDbProvider(null);
+  };
+
+  const cancelDbProviderSwitch = () => setPendingDbProvider(null);
+
+  const dbProviderName = (p?: string) => DATABASE_PROVIDER_LABELS[p || 'supabase_cloud'] || p || 'Supabase Cloud';
+
   const [isTestingHealth, setIsTestingHealth] = useState(false);
   const [postgisLatencyMs, setPostgisLatencyMs] = useState<number>(38);
 
@@ -980,26 +1101,62 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
+                <div className="sm:col-span-2">
+                  <label className={labelClass}>Database Host Provider</label>
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={projectSettings.databaseProvider || 'supabase_cloud'}
+                      onChange={e => {
+                        const provider = e.target.value as DatabaseProviderType;
+                        if (provider === (projectSettings.databaseProvider || 'supabase_cloud')) return;
+                        // Safe-gate: confirm before applying a different backend profile
+                        setPendingDbProvider(provider);
+                      }}
+                      className={`${inputClass} flex-1`}
+                    >
+                      <option value="supabase_cloud">{DATABASE_PROVIDER_LABELS.supabase_cloud}</option>
+                      <option value="standalone_server">{DATABASE_PROVIDER_LABELS.standalone_server}</option>
+                      <option value="nas">{DATABASE_PROVIDER_LABELS.nas}</option>
+                      <option value="custom">{DATABASE_PROVIDER_LABELS.custom}</option>
+                    </select>
+                    <button
+                      type="button"
+                      title="View the safe workflow for changing the database host provider"
+                      onClick={() => setShowDbWorkflowHelp(true)}
+                      className="shrink-0 p-2 rounded-lg border border-subtle bg-inner text-text-muted hover:text-sky-400 hover:border-sky-400/50 transition-colors"
+                    >
+                      <FileText size={14} />
+                    </button>
+                  </div>
+                  <p className={helperClass}>
+                    <strong className="text-text-base">{dbProviderName(projectSettings.databaseProvider)}</strong>&nbsp;— {DATABASE_PROVIDER_NOTES[projectSettings.databaseProvider || 'supabase_cloud']?.short}
+                  </p>
+                  <p className={`${helperClass} flex items-center gap-1`}>
+                    <AlertTriangle size={11} className={themeMode === 'light' ? 'text-amber-600' : 'text-amber-400'} />
+                    Switching host applies the provider profile on Save, reconnects the app to that backend, and asks you to sign in on the new host. Review the workflow before switching — click the <FileText size={11} className="inline" /> button.
+                  </p>
+                </div>
+
                 <div>
                   <label className={labelClass}>Supabase REST Endpoint URL</label>
                   <input
                     type="text"
                     value={projectSettings.supabaseUrl || import.meta.env.VITE_SUPABASE_URL || ''}
                     onChange={e => setProjectSettings(prev => ({ ...prev, supabaseUrl: e.target.value }))}
-                    placeholder="https://your-project.supabase.co"
+                    placeholder="https://your-project.supabase.co or http://<server-ip>:8000"
                     className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
                   />
                 </div>
 
                 <div>
-                  <label className={labelClass}>Public Anon API Key</label>
+                  <label className={labelClass}>Public Anon API Key (per backend)</label>
                   <div className="flex items-center gap-1.5">
                     <input
                       type={showApiKey ? 'text' : 'password'}
-                      value={import.meta.env.VITE_SUPABASE_ANON_KEY || ''}
-                      readOnly
-                      placeholder="Configure via VITE_SUPABASE_ANON_KEY"
-                      className={`${inputClass} opacity-80 cursor-not-allowed`}
+                      value={projectSettings.supabaseKey || projectSettings.databaseAnonKey || import.meta.env.VITE_SUPABASE_ANON_KEY || ''}
+                      onChange={e => setProjectSettings(prev => ({ ...prev, supabaseKey: e.target.value, databaseAnonKey: e.target.value }))}
+                      placeholder="Paste the anon key for the selected host"
+                      className={`${inputClass}`}
                     />
                     <button
                       type="button"
@@ -1012,71 +1169,75 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                   </div>
                 </div>
 
-                <div>
-                  <label className={labelClass}>Direct PostgreSQL Host / IP</label>
-                  <input
-                    type="text"
-                    value={projectSettings.databaseHost || DATABASE_HOST_DEFAULT}
-                    onChange={e => setProjectSettings(prev => ({ ...prev, databaseHost: e.target.value }))}
-                    placeholder="db.your-project.supabase.co"
-                    className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
-                  />
-                </div>
+                {projectSettings.databaseProvider !== 'custom' && (
+                  <>
+                    <div>
+                      <label className={labelClass}>Direct PostgreSQL Host / IP</label>
+                      <input
+                        type="text"
+                        value={projectSettings.databaseHost || getProviderConnectionDefaults(projectSettings.databaseProvider || 'supabase_cloud').databaseHost || ''}
+                        onChange={e => setProjectSettings(prev => ({ ...prev, databaseHost: e.target.value }))}
+                        placeholder="db.your-project.supabase.co"
+                        className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
+                      />
+                    </div>
 
-                <div>
-                  <label className={labelClass}>Database Port & Pooler</label>
-                  <input
-                    type="number"
-                    value={projectSettings.databasePort || 5432}
-                    onChange={e => setProjectSettings(prev => ({ ...prev, databasePort: parseInt(e.target.value) || 5432 }))}
-                    placeholder="5432 (or 6543 for PgBouncer)"
-                    className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
-                  />
-                </div>
+                    <div>
+                      <label className={labelClass}>Database Port & Pooler</label>
+                      <input
+                        type="number"
+                        value={projectSettings.databasePort || 5432}
+                        onChange={e => setProjectSettings(prev => ({ ...prev, databasePort: parseInt(e.target.value) || 5432 }))}
+                        placeholder="5432 (or 6543 for PgBouncer)"
+                        className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
+                      />
+                    </div>
 
-                <div>
-                  <label className={labelClass}>Database Name & Schema</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <input
-                      type="text"
-                      value={projectSettings.databaseName || 'postgres'}
-                      onChange={e => setProjectSettings(prev => ({ ...prev, databaseName: e.target.value }))}
-                      placeholder="postgres"
-                      className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
-                    />
-                    <input
-                      type="text"
-                      value={projectSettings.databaseSchema || 'public'}
-                      onChange={e => setProjectSettings(prev => ({ ...prev, databaseSchema: e.target.value }))}
-                      placeholder="public"
-                      className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
-                    />
-                  </div>
-                </div>
+                    <div>
+                      <label className={labelClass}>Database Name & Schema</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <input
+                          type="text"
+                          value={projectSettings.databaseName || 'postgres'}
+                          onChange={e => setProjectSettings(prev => ({ ...prev, databaseName: e.target.value }))}
+                          placeholder="postgres"
+                          className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
+                        />
+                        <input
+                          type="text"
+                          value={projectSettings.databaseSchema || 'public'}
+                          onChange={e => setProjectSettings(prev => ({ ...prev, databaseSchema: e.target.value }))}
+                          placeholder="public"
+                          className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
+                        />
+                      </div>
+                    </div>
 
-                <div>
-                  <label className={labelClass}>Connection Protocol & SSL</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <select
-                      value={projectSettings.connectionMode || 'postgrest'}
-                      onChange={e => setProjectSettings(prev => ({ ...prev, connectionMode: e.target.value as any }))}
-                      className={`w-full px-2.5 py-2 rounded-lg font-medium focus:outline-none border ${inputBg}`}
-                    >
-                      <option value="postgrest">PostgREST Client</option>
-                      <option value="direct_tcp">Direct TCP (pg)</option>
-                      <option value="realtime_ws">Realtime WebSocket</option>
-                    </select>
-                    <select
-                      value={projectSettings.sslMode || 'require'}
-                      onChange={e => setProjectSettings(prev => ({ ...prev, sslMode: e.target.value as any }))}
-                      className={`w-full px-2.5 py-2 rounded-lg font-medium focus:outline-none border ${inputBg}`}
-                    >
-                      <option value="require">SSL: Require</option>
-                      <option value="verify-full">SSL: Verify Full</option>
-                      <option value="disable">SSL: Disable</option>
-                    </select>
-                  </div>
-                </div>
+                    <div>
+                      <label className={labelClass}>Connection Protocol & SSL</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <select
+                          value={projectSettings.connectionMode || 'postgrest'}
+                          onChange={e => setProjectSettings(prev => ({ ...prev, connectionMode: e.target.value as any }))}
+                          className={`w-full px-2.5 py-2 rounded-lg font-medium focus:outline-none border ${inputBg}`}
+                        >
+                          <option value="postgrest">PostgREST Client</option>
+                          <option value="direct_tcp">Direct TCP (pg)</option>
+                          <option value="realtime_ws">Realtime WebSocket</option>
+                        </select>
+                        <select
+                          value={projectSettings.sslMode || getProviderConnectionDefaults(projectSettings.databaseProvider || 'supabase_cloud').sslMode || 'require'}
+                          onChange={e => setProjectSettings(prev => ({ ...prev, sslMode: e.target.value as any }))}
+                          className={`w-full px-2.5 py-2 rounded-lg font-medium focus:outline-none border ${inputBg}`}
+                        >
+                          <option value="require">SSL: Require</option>
+                          <option value="verify-full">SSL: Verify Full</option>
+                          <option value="disable">SSL: Disable</option>
+                        </select>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
 
@@ -1523,9 +1684,9 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                     <label className={labelClass}>Local NAS Server IP / HTTP Intranet Share</label>
                     <input
                       type="text"
-                      value={projectSettings.nasServerUrl || 'http://192.168.1.100/360_images'}
+                      value={projectSettings.nasServerUrl || ''}
                       onChange={e => setProjectSettings(prev => ({ ...prev, nasServerUrl: e.target.value, imageStoragePath: e.target.value }))}
-                      placeholder="http://192.168.1.100/360_images"
+                      placeholder="http://<nas-ip>/360_images"
                       className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
                     />
                   </div>
@@ -1563,6 +1724,81 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                       placeholder="MMS_PIC"
                       className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
                     />
+                  </div>
+                )}
+
+                {projectSettings.storageProvider && projectSettings.storageProvider !== 'supabase' && (
+                  <div className="sm:col-span-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <label className={labelClass}>Frame Manifest (Dynamic Frame Count)</label>
+                      <button
+                        type="button"
+                        disabled={manifestTestLoading}
+                        onClick={async () => {
+                          setManifestTestLoading(true);
+                          setManifestTestResult(null);
+                          try {
+                            const url = buildManifestUrl(projectSettings);
+                            if (!url) {
+                              setManifestTestResult({ ok: false, frames: 0, url: '', error: 'No provider base URL configured' });
+                              showToast('No manifest URL: configure the provider domain/bucket first.', 'error');
+                            } else {
+                              const m = await fetchFrameManifest(url);
+                              if (m && Array.isArray(m.frames) && m.frames.length > 0) {
+                                setManifestTestResult({ ok: true, frames: m.frames.length, layout: m.layout, url });
+                                showToast(`Manifest OK &bull; ${m.frames.length} frames &bull; layout ${m.layout || 'auto'}`);
+                              } else {
+                                setManifestTestResult({ ok: false, frames: 0, url, error: 'Manifest unreachable or empty (check CORS / path)' });
+                                showToast('Manifest unreachable or empty.', 'error');
+                              }
+                            }
+                          } catch (err: any) {
+                            setManifestTestResult({ ok: false, frames: 0, url: buildManifestUrl(projectSettings), error: err?.message || 'Manifest probe failed' });
+                          } finally {
+                            setManifestTestLoading(false);
+                          }
+                        }}
+                        className="px-3 py-1.5 bg-inner hover:bg-inner text-sky-400 border border-subtle rounded-lg text-[11px] font-sans font-semibold flex items-center gap-1.5 cursor-pointer transition-colors shadow-sm disabled:opacity-50"
+                      >
+                        <RefreshCw size={11} className={manifestTestLoading ? 'animate-spin' : ''} />
+                        <span>{manifestTestLoading ? 'Checking...' : 'Verify Manifest'}</span>
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-5 gap-3 items-center">
+                      <div className="flex items-center justify-between p-2 rounded-lg border bg-inner/40">
+                        <span className="text-[11px] text-text-base font-medium">Enabled</span>
+                        <input
+                          type="checkbox"
+                          checked={projectSettings.manifestEnabled !== false}
+                          onChange={e => setProjectSettings(prev => ({ ...prev, manifestEnabled: e.target.checked }))}
+                          className="w-4 h-4 accent-sky-500 rounded cursor-pointer"
+                        />
+                      </div>
+                      <div className="sm:col-span-4">
+                        <input
+                          type="text"
+                          value={projectSettings.manifestPath || MANIFEST_PATH_DEFAULT}
+                          onChange={e => setProjectSettings(prev => ({ ...prev, manifestPath: e.target.value || MANIFEST_PATH_DEFAULT }))}
+                          placeholder="manifest.json"
+                          className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
+                        />
+                      </div>
+                    </div>
+                    <p className={helperClass}>
+                      Public JSON listing written by the upload pipeline at the bucket root
+                      (e.g. <code className="font-mono">https://pub-xxx.r2.dev/manifest.json</code>).
+                      Multi-res counts station folders; single counts image files.
+                    </p>
+                    {manifestTestResult && (
+                      <div className={`p-2.5 rounded-lg border text-[11px] font-sans ${manifestTestResult.ok
+                        ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300'
+                        : 'bg-red-500/10 border-red-500/20 text-red-300'}`}>
+                        {manifestTestResult.ok
+                          ? `Manifest OK &bull; ${manifestTestResult.frames} frames &bull; layout ${manifestTestResult.layout || 'auto'}`
+                          : `Manifest check failed &mdash; ${manifestTestResult.error || 'unreachable'}`}
+                        <span className="block mt-0.5 opacity-70 select-all truncate">{manifestTestResult.url}</span>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -3044,6 +3280,113 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
       )}
       {activeTab === 'diagnostics' && (
         <DiagnosticsPanel cardBg={cardBg} />
+      )}
+
+      {/* Database Host Provider switch-guard modal (safe message) */}
+      {pendingDbProvider && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className={`w-full max-w-lg rounded-2xl border shadow-2xl overflow-hidden ${cardBg}`}>
+            <div className={`px-5 py-3.5 flex items-center justify-between border-b ${themeMode === 'light' ? 'border-slate-200' : 'border-subtle'}`}>
+              <h4 className="text-sm font-bold text-text-base flex items-center gap-2">
+                <AlertTriangle size={15} className={themeMode === 'light' ? 'text-amber-600' : 'text-amber-400'} />
+                Switch Database Host Provider?
+              </h4>
+              <button type="button" onClick={cancelDbProviderSwitch} className="text-text-muted hover:text-text-base transition-colors">
+                <XCircle size={17} />
+              </button>
+            </div>
+            <div className={`p-5 space-y-3 max-h-[75vh] overflow-y-auto ${innerCardBg}`}>
+              <p className="text-xs text-text-base leading-relaxed">
+                You are currently using <strong>{dbProviderName(projectSettings.databaseProvider)}</strong>.
+                Switching to <strong>{dbProviderName(pendingDbProvider)}</strong> will reconnect this
+                dashboard to that backend when you press <strong>Save All Settings</strong> and will ask
+                you to sign in on the new host.
+              </p>
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wide text-text-muted mb-1.5">What this requires</p>
+                <ol className="list-decimal list-inside text-[11px] text-text-muted leading-relaxed space-y-1">
+                  {DATABASE_PROVIDER_NOTES[pendingDbProvider]?.steps.map((s, i) => (
+                    <li key={i}>{s}</li>
+                  ))}
+                </ol>
+              </div>
+              <div className={`p-3 rounded-lg border text-[11px] leading-relaxed ${themeMode === 'light' ? 'bg-amber-50 border-amber-300 text-amber-800' : 'bg-amber-500/10 border-amber-500/40 text-amber-200'}`}>
+                <strong>Heads-up:</strong> {DATABASE_PROVIDER_NOTES[pendingDbProvider]?.warning}
+              </div>
+              <p className={`text-[10px] text-text-muted border-t pt-2 ${themeMode === 'light' ? 'border-slate-200' : 'border-subtle'}`}>
+                Nothing reconnects until you click <strong>Save All Settings</strong>. Review the <button type="button" onClick={() => { setPendingDbProvider(null); setShowDbWorkflowHelp(true); }} className="underline text-sky-400">workflow</button> before switching.
+              </p>
+            </div>
+            <div className={`px-5 py-3.5 flex items-center justify-end gap-2.5 border-t ${themeMode === 'light' ? 'border-slate-200' : 'border-subtle'}`}>
+              <button
+                type="button"
+                onClick={cancelDbProviderSwitch}
+                className="px-4 py-2 rounded-lg text-xs font-bold border border-subtle bg-inner text-text-muted hover:text-text-base transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmDbProviderSwitch}
+                className="px-4 py-2 rounded-lg text-xs font-bold bg-sky-600 hover:bg-sky-500 text-text-base transition-colors flex items-center gap-1.5"
+              >
+                <CheckCircle size={13} /> Apply {dbProviderName(pendingDbProvider).split(' (')[0]} Profile
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Database Host Provider — safe change workflow doc modal */}
+      {showDbWorkflowHelp && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className={`w-full max-w-3xl rounded-2xl border shadow-2xl overflow-hidden ${cardBg}`}>
+            <div className={`px-5 py-3.5 flex items-center justify-between border-b ${themeMode === 'light' ? 'border-slate-200' : 'border-subtle'}`}>
+              <h4 className="text-sm font-bold text-text-base flex items-center gap-2">
+                <FileText size={15} className="text-sky-400" />
+                Changing the Database Host — Safe Workflow
+              </h4>
+              <button type="button" onClick={() => setShowDbWorkflowHelp(false)} className="text-text-muted hover:text-text-base transition-colors">
+                <XCircle size={17} />
+              </button>
+            </div>
+            <div className={`p-5 space-y-4 max-h-[70vh] overflow-y-auto ${innerCardBg}`}>
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wide text-text-muted mb-1.5">Steps</p>
+                <ol className="list-decimal list-inside text-[11px] text-text-muted leading-relaxed space-y-1.5">
+                  <li><strong className="text-text-base">Pick the provider</strong> in the dropdown. A safe-message dialog explains what switching requires and how to set up the target backend — confirm only once that backend is ready.</li>
+                  <li><strong className="text-text-base">Connection fields auto-fill</strong> with that provider's saved profile or its defaults (REST URL, anon key, host, port, SSL).</li>
+                  <li><strong className="text-text-base">Verify the fields</strong> and replace them with the target backend's actual REST URL + anon key if needed.</li>
+                  <li><strong className="text-text-base">Click "Save All Settings"</strong> — the app persists the provider, reconnects to the new backend, and prompts you to sign in on the new host.</li>
+                  <li><strong className="text-text-base">Confirm it worked</strong> — Diagnostics health probe goes green, the Frames KPI matches your storage manifest, and panoramas/batches/audits load from the new host.</li>
+                  <li><strong className="text-text-base">If anything fails</strong>, the form keeps your values — correct the URL/key and Save again. The previous backend stays active until the next successful reconnect.</li>
+                </ol>
+              </div>
+              <div className="space-y-2">
+                <p className="text-[11px] font-bold uppercase tracking-wide text-text-muted">Per-provider setup</p>
+                {(['supabase_cloud', 'standalone_server', 'nas', 'custom'] as DatabaseProviderType[]).map(p => (
+                  <div key={p} className={`p-3 rounded-lg border text-[11px] leading-relaxed ${themeMode === 'light' ? 'bg-white border-slate-200 text-slate-700' : 'bg-card border-subtle text-text-muted'}`}>
+                    <p className="font-bold text-text-base mb-1">{dbProviderName(p)}</p>
+                    <ol className="list-disc list-inside space-y-1">{DATABASE_PROVIDER_NOTES[p]?.steps.map((s, i) => <li key={i}>{s}</li>)}</ol>
+                    <p className={`mt-1.5 ${themeMode === 'light' ? 'text-amber-700' : 'text-amber-300'}`}>{DATABASE_PROVIDER_NOTES[p]?.warning}</p>
+                  </div>
+                ))}
+              </div>
+              <p className={`text-[10px] text-text-muted border-t pt-2 ${themeMode === 'light' ? 'border-slate-200' : 'border-subtle'}`}>
+                Viewing this page changes nothing — the backend only switches when you explicitly select a provider and click Save All Settings.
+              </p>
+            </div>
+            <div className={`px-5 py-3.5 flex items-center justify-end border-t ${themeMode === 'light' ? 'border-slate-200' : 'border-subtle'}`}>
+              <button
+                type="button"
+                onClick={() => setShowDbWorkflowHelp(false)}
+                className="px-4 py-2 rounded-lg text-xs font-bold bg-sky-600 hover:bg-sky-500 text-text-base transition-colors flex items-center gap-1.5"
+              >
+                <CheckCircle size={13} /> Got it
+              </button>
+            </div>
+          </div>
+        </div>
       )}
           </div>
         </div>

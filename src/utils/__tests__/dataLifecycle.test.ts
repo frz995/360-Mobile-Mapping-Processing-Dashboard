@@ -96,8 +96,20 @@ describe('Data Lifecycle & WebGIS Handoff Engine', () => {
     expect(script).toContain('--transfers 16');
   });
 
-  it('generates AWS S3 sync script', () => {
+  it('appends the frame-manifest generation step to the upload script', () => {
+    const script = generateUploadScript('SG01', 'D:/NAS/DELIVERABLES/SG01', 'r2', 'mms-pic');
+    expect(script).toContain('node scripts/generate_manifest.mjs "D:/NAS/DELIVERABLES/SG01" --subgrid "SG01" --layout "multires_tiles"');
+    expect(script).toContain('rclone copyto "D:/NAS/DELIVERABLES/SG01/manifest.json" r2:mms-pic/manifest.json');
+  });
+
+  it('uses a single_equirectangular layout for the manifest when requested', () => {
+    const script = generateUploadScript('SG01', 'D:/NAS/DELIVERABLES/SG01', 'r2', 'mms-pic', 'single_equirectangular');
+    expect(script).toContain('--layout "single_equirectangular"');
+  });
+
+  it('generates AWS S3 sync script with manifest upload', () => {
     const script = generateUploadScript('SG01', 'D:/NAS/DELIVERABLES/SG01', 's3', 'mms-pic');
     expect(script).toContain('aws s3 sync "D:/NAS/DELIVERABLES/SG01" s3://mms-pic/SG01');
+    expect(script).toContain('aws s3 cp "D:/NAS/DELIVERABLES/SG01/manifest.json" s3://mms-pic/manifest.json');
   });
 });

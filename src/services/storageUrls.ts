@@ -54,6 +54,8 @@ export interface StorageResolveSettings {
   singleImagePathPattern?: string;
   imageFormatPattern?: string;
   imageStoragePath?: string;
+  manifestEnabled?: boolean;
+  manifestPath?: string;
   s3Bucket?: string;
   s3Region?: string;
   gcsBucket?: string;

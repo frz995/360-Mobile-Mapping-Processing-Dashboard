@@ -42,10 +42,18 @@ export interface SystemHealthMetrics {
   lastPingTime: string;
 }
 
+export type DatabaseProviderType =
+  | 'supabase_cloud'
+  | 'standalone_server'
+  | 'nas'
+  | 'custom';
+
 export interface ExtendedProjectSettings {
   // Database Connection & Endpoint Parameters
+  databaseProvider?: DatabaseProviderType;
   supabaseUrl?: string;
   supabaseKey?: string;
+  databaseAnonKey?: string;
   serviceRoleKey?: string;
   databaseHost?: string;
   databasePort?: number;
@@ -54,6 +62,23 @@ export interface ExtendedProjectSettings {
   databaseUser?: string;
   connectionMode?: 'postgrest' | 'direct_tcp' | 'realtime_ws';
   sslMode?: 'require' | 'verify-ca' | 'verify-full' | 'disable';
+
+  // Per-database-host connection profiles. Each provider keeps its own last
+  // used endpoint/credentials so switching hosts restores the previous config
+  // instead of overwriting the shared fields.
+  providerConfigs?: Record<string, {
+    supabaseUrl?: string;
+    supabaseKey?: string;
+    databaseAnonKey?: string;
+    serviceRoleKey?: string;
+    databaseHost?: string;
+    databasePort?: number;
+    databaseName?: string;
+    databaseSchema?: string;
+    databaseUser?: string;
+    connectionMode?: 'postgrest' | 'direct_tcp' | 'realtime_ws';
+    sslMode?: 'require' | 'verify-ca' | 'verify-full' | 'disable';
+  }>;
 
   // PostGIS Spatial Engine & Projections
   spatialSrid?: string; // 'EPSG:4326', 'EPSG:3375', 'EPSG:3168', 'EPSG:3857', 'EPSG:32647', 'EPSG:32648'
@@ -124,6 +149,8 @@ export interface ExtendedProjectSettings {
   multiResTilePattern?: string;
   multiResFallbackPattern?: string;
   multiResLevelPattern?: string;
+  manifestEnabled?: boolean;
+  manifestPath?: string;
   storageAccessPermission?: 'public_read' | 'signed_url' | 'intranet_only';
   subgridDirectoryHierarchy?: 'flat' | 'subgrid_folder' | 'daily_folder' | 'custom';
   customDirectoryHierarchy?: string;
