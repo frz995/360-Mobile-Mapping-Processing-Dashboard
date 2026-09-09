@@ -33,8 +33,8 @@ import {
   ArrowLeft,
   Menu
 } from 'lucide-react';
-import { supabase, fetchSupabaseData, updateDefectStatusInSupabase, saveQaAuditRunToSupabase, saveAuditLogToSupabase, saveNotificationToSupabase, saveProjectSettingsToSupabase, resolvePanoramaUrl, resolvePanoramaConfigUrl, getDatabaseTableMapping, SUBGRID_COORDINATES, saveProcessingJobToSupabase, pruneBloatedUserMetadata, fetchDeletionRequestsFromSupabase } from './services/supabase';
-import type { QAQCAuditRunRecord } from './types/admin';
+import { supabase, fetchSupabaseData, fetchProjectSettingsFromSupabase, updateDefectStatusInSupabase, saveQaAuditRunToSupabase, saveAuditLogToSupabase, saveNotificationToSupabase, saveProjectSettingsToSupabase, resolvePanoramaUrl, resolvePanoramaConfigUrl, getDatabaseTableMapping, SUBGRID_COORDINATES, saveProcessingJobToSupabase, pruneBloatedUserMetadata, fetchDeletionRequestsFromSupabase, configureSupabaseBackend } from './services/supabase';
+import type { ExtendedProjectSettings, QAQCAuditRunRecord } from './types/admin';
 import { MapComponent } from './components/MapComponent';
 export { MapComponent };
 import { QCAuditModal } from './components/QCAuditModal';
@@ -253,6 +253,28 @@ export default function App() {
     setProjectSettings,
     refreshData
   } = useAppData();
+
+  // Settings are edited in a local DRAFT and only committed to the app-wide
+  // projectSettings when the user presses an Apply / Save action.
+  const [settingsDraft, setSettingsDraft] = useState<ExtendedProjectSettings | undefined>(projectSettings);
+  const [settingsDraftTouched, setSettingsDraftTouched] = useState(false);
+
+  // Keep the draft in sync with committed settings ONLY until the user starts
+  // editing. Once touched, background refreshes / realtime updates must never
+  // clobber the user's in-progress configuration back to the last persisted
+  // (e.g. default Supabase Cloud) values.
+  useEffect(() => {
+    if (!settingsDraftTouched) {
+      setSettingsDraft(projectSettings);
+    }
+  }, [projectSettings, settingsDraftTouched]);
+
+  const handleSettingsDraftChange = (
+    update: ExtendedProjectSettings | ((prev: ExtendedProjectSettings) => ExtendedProjectSettings)
+  ) => {
+    setSettingsDraft(prev => (typeof update === 'function' ? (update as any)(prev) : update));
+    setSettingsDraftTouched(true);
+  };
 
   // Explicit startup warning when required env configuration is missing.
   // Never silently fall back to a hardcoded project/map URL (see implementation_plan_v13.md).
@@ -1132,13 +1154,26 @@ export default function App() {
     setAuthError(null);
     setIsAuthenticating(true);
 
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: authEmail.trim(),
-      password: authPassword
-    });
+    let result: Awaited<ReturnType<typeof supabase.auth.signInWithPassword>>;
+    try {
+      result = await supabase.auth.signInWithPassword({
+        email: authEmail.trim(),
+        password: authPassword
+      });
+    } catch (err) {
+      setIsAuthenticating(false);
+      const msg = err instanceof Error ? err.message : String(err);
+      setAuthError(
+        /JSON\.parse|Unexpected token|unexpected character|not valid JSON/i.test(msg)
+          ? 'The login server returned an HTML page instead of JSON — your Supabase REST URL or anon key is wrong, or the backend host is unreachable. Check Admin Settings → Database Host, or the .env values.'
+          : msg || 'Unexpected error during sign-in.'
+      );
+      return;
+    }
 
     setIsAuthenticating(false);
 
+    const { data, error } = result;
     if (error) {
       setAuthError(error.message || 'Invalid login credentials. Authorized users only.');
     } else if (data.session) {
@@ -1494,34 +1529,76 @@ export default function App() {
 
   const handleSaveAllSettings = () => {
     try {
-      setProjectSettings({ ...projectSettings });
-      saveProjectSettingsToSupabase(projectSettings).catch(err => console.warn('Supabase settings save notice:', err));
+      const next = { ...(settingsDraft as ExtendedProjectSettings) };
+      const provider = next.databaseProvider || 'supabase_cloud';
+      const providerConfigs = {
+        ...(next.providerConfigs || {}),
+        [provider]: {
+          supabaseUrl: next.supabaseUrl || import.meta.env.VITE_SUPABASE_URL,
+          supabaseKey: next.supabaseKey || next.databaseAnonKey || import.meta.env.VITE_SUPABASE_ANON_KEY,
+          databaseAnonKey: next.databaseAnonKey || next.supabaseKey || import.meta.env.VITE_SUPABASE_ANON_KEY,
+          serviceRoleKey: next.serviceRoleKey,
+          databaseHost: next.databaseHost,
+          databasePort: next.databasePort,
+          databaseName: next.databaseName,
+          databaseSchema: next.databaseSchema,
+          databaseUser: next.databaseUser,
+          connectionMode: next.connectionMode,
+          sslMode: next.sslMode
+        }
+      };
+      const committed = { ...next, providerConfigs };
+      setProjectSettings(committed);
+      setSettingsDraftTouched(false);
+      saveProjectSettingsToSupabase(committed).catch(err => console.warn('Supabase settings save notice:', err));
+      const backendSwitched = configureSupabaseBackend({
+        url: committed?.supabaseUrl,
+        anonKey: committed?.supabaseKey || committed?.databaseAnonKey
+      });
+      if (backendSwitched) {
+        // The saveProjectSettingsToSupabase above ran against the PREVIOUS host.
+        // Persist the committed settings to the newly active backend as well so a
+        // reload on the new host keeps the storage provider / R2 domain config
+        // (otherwise the frame KPI collapses to 0 after local <-> cloud switches).
+        // Merge so new-host-only keys (project boundary, scopes, etc.) survive.
+        (async () => {
+          try {
+            const existing = await fetchProjectSettingsFromSupabase();
+            const merged = existing && typeof existing === 'object'
+              ? { ...existing, ...committed }
+              : committed;
+            await saveProjectSettingsToSupabase(merged);
+          } catch (err) {
+            console.warn('New-host settings sync notice:', err);
+          }
+        })();
+      }
       if (activeProject?.id) {
         persistProjectScopeSettings({
-          targetKm: typeof (projectSettings as any)?.targetKm === 'number' ? (projectSettings as any).targetKm : 0,
-          targetImages: typeof (projectSettings as any)?.targetImages === 'number' ? (projectSettings as any).targetImages : 0,
-          targetDeadline: (projectSettings as any)?.targetDeadline,
-          crs: (projectSettings as any)?.selectedCrs,
-          region: (projectSettings as any)?.selectedRegionBBox,
-          basemap: (projectSettings as any)?.defaultBasemapStyle,
-          equipment: (projectSettings as any)?.defaultEquipment
+          targetKm: typeof (next as any)?.targetKm === 'number' ? (next as any).targetKm : 0,
+          targetImages: typeof (next as any)?.targetImages === 'number' ? (next as any).targetImages : 0,
+          targetDeadline: (next as any)?.targetDeadline,
+          crs: (next as any)?.selectedCrs,
+          region: (next as any)?.selectedRegionBBox,
+          basemap: (next as any)?.defaultBasemapStyle,
+          equipment: (next as any)?.defaultEquipment
         }).catch(err => console.warn('Project scope update notice:', err));
       }
       const sampleUrl = getPanoramaUrl('sample.jpg');
-      const tables = getDatabaseTableMapping(projectSettings);
+      const tables = getDatabaseTableMapping(next);
       addAuditLog(
         'EDIT',
         'Saved Project & Database Settings',
-        `Updated storage provider to ${projectSettings.storageProvider || 'supabase'} (Panoramas table: ${tables.panoramasTable}, Sample URL: ${sampleUrl})`,
+        `Updated database host to ${next.databaseProvider || 'supabase_cloud'} and storage provider to ${next.storageProvider || 'supabase'}${backendSwitched ? ' — backend reconnected' : ''} (Panoramas table: ${tables.panoramasTable}, Sample URL: ${sampleUrl})`,
         'info'
       );
       addNotification({
         title: 'Settings Saved & Synced',
-        message: `Project settings saved. Storage provider: ${projectSettings.storageProvider || 'supabase'}, Language: ${projectSettings.language || 'en'}.`,
+        message: `Project settings saved. Storage provider: ${next.storageProvider || 'supabase'}, Language: ${next.language || 'en'}.`,
         category: 'SYSTEM'
       });
       handleRefreshMap();
-      fetchSupabaseData().then(({ dailyData: sDaily, batchLogs: sBatches }) => {
+      fetchSupabaseData(committed).then(({ dailyData: sDaily, batchLogs: sBatches }) => {
         setDailyData(sDaily || []);
         setBatchLogs(sBatches || []);
       }).catch(err => console.warn('Re-sync error on settings save:', err));
@@ -4772,8 +4849,9 @@ export default function App() {
             <div className="flex-1 flex flex-col min-h-0 overflow-hidden animate-in fade-in duration-500">
               <div className="flex-1 min-h-0 overflow-y-auto">
                 <AdminSettingsView
-                  projectSettings={projectSettings as any}
-                  setProjectSettings={setProjectSettings as any}
+                  projectSettings={settingsDraft as any}
+                  setProjectSettings={handleSettingsDraftChange as any}
+                  committedSettings={projectSettings as any}
                   themeMode={themeMode}
                   dailyData={dailyData}
                   batchLogs={batchLogs}

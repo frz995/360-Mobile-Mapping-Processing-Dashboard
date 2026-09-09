@@ -17,6 +17,9 @@ export const STORAGE_BUCKET_DEFAULT = 'MMS_PIC';
 /** Default storage path prefix used when building image paths. */
 export const STORAGE_PATH_PREFIX_DEFAULT = '/MMS_PIC/';
 
+/** Default manifest filename used for provider-agnostic dynamic frame counting. */
+export const MANIFEST_PATH_DEFAULT = 'manifest.json';
+
 /** Default Postgres/Supabase table & view names. */
 export const DATABASE_TABLE_DEFAULTS = {
   panoramasTable: 'panoramas',
@@ -43,6 +46,77 @@ export const AZURE_CONTAINER_DEFAULT = 'panoramas';
 
 /** Default Postgres/Supabase host shown in connection settings. */
 export const DATABASE_HOST_DEFAULT = 'db.aws-0-ap-southeast-1.supabase.co';
+
+/**
+ * Per-database-host connection defaults. Every provider has its OWN connection
+ * character: different endpoint, credentials policy, pooler port and SSL
+ * expectation. Values are derived dynamically (window hostname, env vars) —
+ * never baked-in machine IPs. Env overrides: VITE_ONPREM_URL, VITE_NAS_URL.
+ */
+export interface ProviderConnectionDefaults {
+  supabaseUrl?: string;
+  supabaseKey?: string;
+  databaseHost?: string;
+  databasePort?: number;
+  databaseName?: string;
+  databaseSchema?: string;
+  connectionMode?: 'postgrest' | 'direct_tcp' | 'realtime_ws';
+  sslMode?: 'require' | 'verify-ca' | 'verify-full' | 'disable';
+}
+
+export function getProviderConnectionDefaults(provider: string): ProviderConnectionDefaults {
+  const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
+
+  switch (provider) {
+    case 'standalone_server':
+      return {
+        // The on-premise gateway normally lives on the same machine serving the
+        // dashboard, so derive it from the current host rather than hardcoding.
+        supabaseUrl: import.meta.env.VITE_ONPREM_URL || `http://${hostname}:8000`,
+        supabaseKey: '',
+        databaseHost: hostname,
+        databasePort: 5432,
+        databaseName: 'postgres',
+        databaseSchema: 'public',
+        connectionMode: 'postgrest',
+        sslMode: 'disable'
+      };
+    case 'nas':
+      return {
+        supabaseUrl: import.meta.env.VITE_NAS_URL || '',
+        supabaseKey: '',
+        databaseHost: hostname,
+        databasePort: 5432,
+        databaseName: 'postgres',
+        databaseSchema: 'public',
+        connectionMode: 'postgrest',
+        sslMode: 'disable'
+      };
+    case 'custom':
+      // A raw PostgREST / custom endpoint: REST URL + key only, no direct DB.
+      return {
+        supabaseUrl: '',
+        supabaseKey: '',
+        databasePort: 5432,
+        databaseName: 'postgres',
+        databaseSchema: 'public',
+        connectionMode: 'postgrest',
+        sslMode: 'disable'
+      };
+    case 'supabase_cloud':
+    default:
+      return {
+        supabaseUrl: import.meta.env.VITE_SUPABASE_URL || '',
+        supabaseKey: import.meta.env.VITE_SUPABASE_ANON_KEY || '',
+        databaseHost: DATABASE_HOST_DEFAULT,
+        databasePort: 5432,
+        databaseName: 'postgres',
+        databaseSchema: 'public',
+        connectionMode: 'postgrest',
+        sslMode: 'require'
+      };
+  }
+}
 
 /** Default basemap id used when no basemap is configured. */
 export const DEFAULT_BASEMAP = 'ofm-positron';

@@ -42,6 +42,7 @@ const DEFAULT_PROJECT_SETTINGS = {
   regionZone: 'Central Operations Region',
   clientName: 'Spatial Asset Operations',
   // Database & Image Fetching Settings
+  databaseProvider: 'supabase_cloud',
   storageProvider: 'supabase',
   imageStorageStrategy: 'single_equirectangular',
   supabaseBucket: STORAGE_BUCKET_DEFAULT,
@@ -143,6 +144,13 @@ export function useAppData() {
             return { ...prev, ...incoming };
           });
         }
+
+        // Backend host binding intentionally happens ONLY on explicit Save in
+        // App.tsx's handleSaveAllSettings. The boot client here is always the
+        // env-provided URL + anon key, so a signed-out guest always talks to the
+        // configured host. Re-applying a backend from hydrated/cached settings at
+        // boot is what previously hijacked the login page to a stale localhost
+        // backend and made sign-in POST an HTML gateway page instead of JSON.
 
         // Purge legacy ghost caches to ensure Supabase is 100% Single Source of Truth
         try {
