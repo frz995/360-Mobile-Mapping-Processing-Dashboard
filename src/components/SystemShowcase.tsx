@@ -1288,7 +1288,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
     }, [projectLocation]);
 
     return (
-        <div className="relative w-full showcase-landing text-white font-sans overflow-hidden select-none flex flex-col justify-between bg-black">
+        <div className={`relative w-full showcase-landing text-white font-sans select-none flex flex-col justify-between bg-black ${viewMode === 'modules' ? 'max-lg:overflow-y-auto max-lg:!h-auto max-lg:!max-h-none' : 'overflow-hidden'}`}>
 
             {/* 1. Animate UI Stars Background, 3D Earth Globe & Clean Ambient Lighting */}
             <div className={`absolute inset-0 z-0 overflow-hidden isolate ${viewMode === 'globe' ? 'pointer-events-auto' : 'pointer-events-none'}`}>
@@ -1560,7 +1560,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
 
             {/* 3. Main Showcase Section */}
             <main
-                className={`relative z-20 flex-1 min-h-0 w-full px-4 sm:px-8 py-2 sm:py-6 overflow-y-auto lg:overflow-hidden flex flex-col items-center justify-center ${viewMode === 'globe' ? 'pointer-events-none' : 'pointer-events-auto'
+                className={`relative z-20 flex-1 min-h-0 w-full px-4 sm:px-8 py-4 sm:py-6 overflow-y-auto lg:overflow-hidden flex flex-col items-center justify-center ${viewMode === 'globe' ? 'pointer-events-none' : 'pointer-events-auto'
                     }`}
                 style={{ backgroundColor: 'transparent' }}
             >
@@ -1790,7 +1790,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                     </div>
                 )}
 
-                <div className={`w-full max-w-[1600px] mx-auto my-auto -translate-y-3 sm:-translate-y-5 grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 items-stretch ${viewMode === 'globe' ? 'hidden' : 'grid'}`}>
+                <div className={`w-full max-w-[1600px] mx-auto my-auto lg:-translate-y-3 grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 items-stretch ${viewMode === 'globe' ? 'hidden' : 'grid'}`}>
 
                     {/* Left Narrative Panel (Spacious, Typography-Driven, No Card Boxes) */}
                     <div className={`w-full lg:col-span-5 space-y-4 text-left flex flex-col justify-center order-2 lg:order-1 pb-6 lg:pb-0 transition-[opacity,transform,filter] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform transform-gpu ${isAnimating ? 'opacity-0 -translate-y-2 scale-[0.99] blur-[2px]' : 'opacity-100 translate-y-0 scale-100 blur-none'}`}>

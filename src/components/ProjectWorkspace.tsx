@@ -5,6 +5,7 @@ import { Masthead, UnderlineTabStrip, type ChromeTab } from './production/chrome
 import { EmptyState } from './common/EmptyState';
 import { SkeletonLine } from './common/Skeleton';
 import { ProjectGalleryCard, resolveUserBasemapKey } from './common/ProjectGalleryCard';
+import { FocusCardGrid, FocusCard } from './common/FocusCards';
 import type { UserProject, ProjectDraft, ProjectStatus } from '../services/projects';
 
 type ProjectTab = 'all' | 'active' | 'archived';
@@ -258,8 +259,8 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({
                 />
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-3 items-start">
-                {filtered.map((p) => {
+              <FocusCardGrid className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-3 items-start">
+                {filtered.map((p, idx) => {
                   const isCardActive = activeProject?.id === p.id;
                   const actualKm = isCardActive
                     ? (typeof totalKm === 'number' ? totalKm : (Number(p.scope?.actualKm) || 0))
@@ -272,23 +273,24 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({
                     : (actualKm > 0 ? 100 : 0);
 
                   return (
-                    <ProjectGalleryCard
-                      key={p.id}
-                      project={p}
-                      active={isCardActive}
-                      actualKm={actualKm}
-                      targetKm={targetKm}
-                      progressPct={progressPct}
-                      canWrite={canWrite}
-                      basemapKey={userBasemapKey ?? undefined}
-                      translate={translate}
-                      onLoadProject={onLoadProject}
-                      onEdit={onUpdateProject ? handleOpenEdit : undefined}
-                      onDelete={onDeleteProject ? setConfirmDelete : undefined}
-                    />
+                    <FocusCard key={p.id} index={idx}>
+                      <ProjectGalleryCard
+                        project={p}
+                        active={isCardActive}
+                        actualKm={actualKm}
+                        targetKm={targetKm}
+                        progressPct={progressPct}
+                        canWrite={canWrite}
+                        basemapKey={userBasemapKey ?? undefined}
+                        translate={translate}
+                        onLoadProject={onLoadProject}
+                        onEdit={onUpdateProject ? handleOpenEdit : undefined}
+                        onDelete={onDeleteProject ? setConfirmDelete : undefined}
+                      />
+                    </FocusCard>
                   );
                 })}
-              </div>
+              </FocusCardGrid>
             )}
           </div>
 
