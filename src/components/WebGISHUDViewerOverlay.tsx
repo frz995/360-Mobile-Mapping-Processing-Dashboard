@@ -147,7 +147,7 @@ export const WebGISHUDViewerOverlay: FC<WebGISHUDOverlayProps> = ({
                         borderColor: 'var(--border-subtle)',
                         boxShadow: 'var(--card-shadow)',
                     }}
-                    className="pointer-events-auto backdrop-blur-md border px-2 py-1 rounded-lg font-sans text-[9.5px] flex items-center gap-1.5 transition-colors duration-200 shrink-0 z-0"
+                    className="pointer-events-auto backdrop-blur-md border px-2 py-1 rounded-lg font-sans text-[9.5px] hidden sm:flex items-center gap-1.5 transition-colors duration-200 shrink-0 z-0"
                 >
                     <Navigation style={{ color: 'var(--accent)' }} className="w-2.5 h-2.5 rotate-45 shrink-0" />
                     <span style={{ color: 'var(--text-primary)' }} className="font-semibold whitespace-nowrap">
@@ -262,7 +262,7 @@ export const WebGISHUDViewerOverlay: FC<WebGISHUDOverlayProps> = ({
                         type="button"
                         onClick={() => setIsTrackLocked((prev) => !prev)}
                         title="Toggle Trajectory Bearing Lock"
-                        className="flex items-center gap-1 font-sans text-[9px] hover:text-[var(--accent)] transition-all cursor-pointer"
+                        className="hidden sm:flex items-center gap-1 font-sans text-[9px] hover:text-[var(--accent)] transition-all cursor-pointer"
                     >
                         <Compass className="w-2.5 h-2.5 text-amber-400 shrink-0" />
                         <span style={{ color: 'var(--text-primary)' }} className="font-bold whitespace-nowrap">

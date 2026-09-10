@@ -923,27 +923,14 @@ select:-webkit-autofill:focus {
 }
 
 /* ==========================================================================
-   MOBILE STOPGAP: shrink dense desktop layouts on small phones so panels fit
-   without needing user zoom. Pinch-zoom is left enabled for accessibility.
-   Applied ONLY to the app workspace root (never the landing page, which must
-   keep true viewport units to hard-fill the screen).
-   (Responsive layout work replaces this incrementally.)
+   MOBILE LAYOUT: Use true viewport height so the dashboard fills the screen
+   on mobile browsers (accounts for URL-bar chrome). Content scrolls vertically
+   when it exceeds the viewport.
    ========================================================================== */
-@media (max-width: 430px) {
+@media (max-width: 767px) {
   .app-canvas {
-    /* Preserve existing zoom for layout density */
-    zoom: 0.82;
-    /* Explicitly set height to the true viewport height */
+    height: 100vh;
     height: 100dvh;
-    min-height: 100vh;
-  }
-}
-
-@media (min-width: 431px) and (max-width: 480px) {
-  .app-canvas {
-    zoom: 0.88;
-    height: 100dvh;
-    min-height: 100vh;
   }
 }
 
@@ -964,4 +951,4 @@ select:-webkit-autofill:focus {
     max-height: 100dvh;
   }
 }
-
+

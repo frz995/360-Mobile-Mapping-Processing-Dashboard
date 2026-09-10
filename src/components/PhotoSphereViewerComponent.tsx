@@ -72,7 +72,7 @@ function buildCubemapPanorama(configUrl: string) {
 }
 
 export const PhotoSphereViewerComponent = forwardRef<PhotoSphereViewerHandle, PhotoSphereViewerProps>(
-  ({ panoramaUrl, configUrl, caption, className = 'w-full h-full min-h-[300px]', initialYaw = 0, initialFov, onPositionChange }, ref) => {
+  ({ panoramaUrl, configUrl, caption, className = 'w-full h-full min-h-[260px]', initialYaw = 0, initialFov, onPositionChange }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const viewerRef = useRef<Viewer | null>(null);
     const [isLoading, setIsLoading] = useState<boolean>(true);

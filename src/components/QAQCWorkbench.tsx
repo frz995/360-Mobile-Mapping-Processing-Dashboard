@@ -1363,7 +1363,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
   }
 
   return (
-    <div className="fixed inset-0 z-[99999] bg-app flex flex-col text-text-base select-none font-sans overflow-hidden">
+    <div className="fixed inset-0 h-screen h-[100dvh] z-[99999] bg-app flex flex-col text-text-base select-none font-sans overflow-hidden">
       {/* 1. TOP PRECISION CONSOLE HEADER BAR */}
       <header className="h-14 px-4 bg-card border-b border-subtle flex items-center justify-between shrink-0 relative z-30 shadow-sm gap-2">
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
@@ -2068,7 +2068,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
             )}
 
             {/* Main Dual-Viewport Area */}
-            <div className={`flex-1 relative w-full h-full min-h-[300px] overflow-hidden flex bg-app ${viewportMode === 'vertical' ? 'flex-col lg:flex-row' : 'flex-col'
+            <div className={`flex-1 relative w-full h-full min-h-[260px] sm:min-h-[340px] lg:min-h-[420px] overflow-hidden flex bg-app ${viewportMode === 'vertical' ? 'flex-col lg:flex-row' : 'flex-col'
               }`}>
               {/* 360° PANORAMA CANVAS VIEWPORT */}
               <div

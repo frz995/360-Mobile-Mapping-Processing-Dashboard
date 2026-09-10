@@ -12,7 +12,7 @@ export interface OperationalActionCenterProps {
   qaDefectsCount: number;
   isGuestUser?: boolean;
   canHandleApprovals?: boolean;
-  onNavigate: (workspace: any, filterParams?: { tab?: 'batches' | 'daily' | 'vector' | 'datasets' | 'recovery' | 'approvals'; search?: string }) => void;
+  onNavigate: (workspace: any, filterParams?: { tab?: 'batches' | 'daily' | 'datasets' | 'recovery' | 'approvals'; search?: string }) => void;
   onGeneratePdfReport?: () => void;
   onRetryJob?: (job: ProcessingJobRecord) => void;
   onOpenQAQCWorkbench?: (subgridKey?: string) => void;

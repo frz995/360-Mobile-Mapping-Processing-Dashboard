@@ -11,7 +11,8 @@ import {
   Layers,
   Database,
   CheckCircle2,
-  AlertTriangle
+  AlertTriangle,
+  X
 } from 'lucide-react';
 import { ContentLoading } from './common/ContentLoading';
 import {
@@ -123,135 +124,119 @@ export const DatasetRecoveryPanel: React.FC<DatasetRecoveryPanelProps> = ({
   };
 
   return (
-    <div className="space-y-4">
-      {/* Top Banner Message */}
+    <div className="flex flex-col gap-3 relative">
+      {/* Action Banner Message */}
       {actionMessage && (
-        <div className={`p-4 rounded-xl flex items-center justify-between text-xs border font-semibold transition-all shadow-md bg-card border-subtle text-text-base`}>
-          <div className="flex items-center gap-3">
+        <div className={`p-3 rounded-xl flex items-center justify-between text-xs border font-semibold transition-all shadow-sm ${
+          actionMessage.type === 'success'
+            ? 'bg-emerald-950/30 border-emerald-600/40 text-emerald-200'
+            : 'bg-rose-950/30 border-rose-700/40 text-rose-200'
+        }`}>
+          <div className="flex items-center gap-2.5">
             {actionMessage.type === 'success' ? (
-              <CheckCircle2 size={16} className="text-sky-400 shrink-0" />
+              <CheckCircle2 size={15} className="text-emerald-400 shrink-0" />
             ) : (
-              <AlertTriangle size={16} className="text-rose-400 shrink-0" />
+              <AlertTriangle size={15} className="text-rose-400 shrink-0" />
             )}
             <span>{actionMessage.text}</span>
           </div>
-          <button onClick={() => setActionMessage(null)} className="text-text-muted hover:text-text-base p-1 cursor-pointer">
-            &times;
+          <button
+            onClick={() => setActionMessage(null)}
+            className="text-current hover:text-text-base p-1 cursor-pointer"
+          >
+            <X size={14} />
           </button>
         </div>
       )}
 
-      {/* Summary KPI Cards & Toolbar Header */}
-      <div className="bg-card border border-subtle rounded-2xl p-5 shadow-lg space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-inner border border-subtle flex items-center justify-center text-sky-400">
-              <RotateCcw size={20} />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-base font-bold text-text-base tracking-wide">Dataset Recovery &amp; Recycle Bin</h2>
-                <span className="px-2.5 py-0.5 rounded-full text-xs font-sans font-bold bg-inner border border-subtle text-text-base">
-                  {items.length} Record{items.length !== 1 ? 's' : ''}
-                </span>
-              </div>
-              <p className="text-xs text-text-muted">
-                Restore previously deleted survey subgrids or specific trajectory points back to active production database and map layers.
-              </p>
-            </div>
-          </div>
+      {/* Toolbar */}
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          onClick={loadData}
+          disabled={loading}
+          className="flex items-center gap-2 bg-inner hover:bg-white/5 border border-subtle text-text-base px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer disabled:opacity-50"
+        >
+          <RefreshCw size={13} className={loading ? 'animate-spin text-sky-400' : 'text-sky-400'} />
+          <span>Refresh</span>
+        </button>
 
-          <div className="flex items-center gap-2.5">
-            <button
-              onClick={loadData}
-              disabled={loading}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-inner hover:bg-card text-text-base border border-subtle text-xs font-medium cursor-pointer transition-all shadow-sm"
-              title="Refresh from Supabase"
-            >
-              <RefreshCw size={13} className={loading ? 'animate-spin text-sky-400' : 'text-sky-400'} />
-              <span>Refresh</span>
-            </button>
-            {items.length > 0 && !isGuestUser && (
-              <button
-                onClick={handleEmptyAll}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-inner hover:bg-rose-500/10 text-text-muted hover:text-rose-400 border border-subtle hover:border-rose-500/30 text-xs font-medium cursor-pointer transition-all shadow-sm"
-              >
-                <Trash2 size={13} />
-                <span>Empty Recycle Bin</span>
-              </button>
-            )}
-          </div>
-        </div>
+        {items.length > 0 && !isGuestUser && (
+          <button
+            onClick={handleEmptyAll}
+            className="flex items-center gap-1.5 bg-rose-950/40 hover:bg-rose-950/60 text-rose-300 border border-rose-700/40 px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all shadow-sm cursor-pointer"
+          >
+            <Trash2 size={13} />
+            <span>Empty Recycle Bin</span>
+          </button>
+        )}
 
-        {/* Stats Row */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-subtle text-xs">
-          <div className="p-3 rounded-xl bg-inner/50 border border-subtle">
-            <span className="text-[10px] text-text-muted uppercase font-bold tracking-wider block mb-1">
-              Archived Batches / Subgrids
-            </span>
-            <span className={`text-base font-bold font-sans ${items.length > 0 ? 'text-sky-400' : 'text-text-muted'}`}>
-              {items.length}
-            </span>
-          </div>
-          <div className="p-3 rounded-xl bg-inner/50 border border-subtle">
-            <span className="text-[10px] text-text-muted uppercase font-bold tracking-wider block mb-1">
-              Recoverable POI &amp; Frames
-            </span>
-            <div className="text-base font-bold font-sans flex items-center gap-1.5">
-              <span className={totalRecoverablePoi > 0 ? 'text-sky-400' : 'text-text-muted'}>
-                {totalRecoverablePoi} POI
-              </span>
-              <span className="text-text-muted text-xs font-sans font-normal">/</span>
-              <span className={totalRecoverableFrames > 0 ? 'text-sky-400' : 'text-text-muted'}>
-                {totalRecoverableFrames} frames
-              </span>
-            </div>
-          </div>
-          <div className="p-3 rounded-xl bg-inner/50 border border-subtle">
-            <span className="text-[10px] text-text-muted uppercase font-bold tracking-wider block mb-1">
-              Storage Source
-            </span>
-            <span className="text-xs font-sans font-medium text-text-base flex items-center gap-1.5 mt-0.5">
-              <Database size={13} className="text-sky-400" />
-              <span>Supabase PostgreSQL DB</span>
-            </span>
-          </div>
+        <span className="text-[11px] font-bold uppercase tracking-wider text-text-muted ml-1">
+          Deleted Dataset Archive
+        </span>
+        <span className="text-[10px] font-sans px-2 py-0.5 rounded-full bg-inner border border-subtle text-text-muted">
+          {items.length} record{items.length !== 1 ? 's' : ''}
+        </span>
+      </div>
+
+      {/* Telemetry Strip */}
+      <div className="bg-card border border-subtle rounded-xl px-4 py-2.5 shadow-sm text-xs flex flex-wrap items-center gap-x-4 gap-y-2">
+        <span className="text-[11px] font-bold text-text-muted shrink-0 uppercase tracking-wider">
+          Recovery Telemetry:
+        </span>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+          <span>
+            <span className="text-text-muted">Archived Subgrids: </span>
+            <strong className="font-semibold text-text-base">{items.length}</strong>
+          </span>
+          <span className="text-text-muted">&bull;</span>
+          <span>
+            <span className="text-text-muted">Recoverable: </span>
+            <strong className="font-semibold text-text-base">{totalRecoverablePoi} POI</strong>
+            <span className="text-text-muted"> / </span>
+            <strong className="font-semibold text-text-base">{totalRecoverableFrames} frames</strong>
+          </span>
+          <span className="text-text-muted">&bull;</span>
+          <span className="flex items-center gap-1.5">
+            <span className="text-text-muted">Storage Source: </span>
+            <Database size={12} className="text-sky-400" />
+            <strong className="font-semibold text-text-base">Supabase PostgreSQL DB</strong>
+          </span>
         </div>
       </div>
 
-      {/* Filter and Search Bar */}
-      <div className="bg-card border border-subtle rounded-2xl p-4 shadow-md flex flex-wrap items-center justify-between gap-3 text-xs">
-        <div className="relative flex-1 max-w-md">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
+      {/* Filters */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative flex-1 min-w-[180px] max-w-xs">
+          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search deleted subgrids, point filenames, or operators..."
-            className="w-full bg-inner border border-subtle focus:border-sky-500/50 rounded-xl pl-9 pr-4 py-2 text-xs font-sans text-text-base placeholder-text-muted focus:outline-none transition-all shadow-inner"
+            placeholder="Search deleted subgrids or operators..."
+            className="w-full bg-inner border border-subtle rounded-lg pl-8 pr-3 py-1.5 text-[11px] text-text-base placeholder-text-muted focus:outline-none focus:border-sky-500/60 transition-all"
           />
         </div>
-        <div className="text-[11px] text-text-muted font-sans">
-          Showing {filteredItems.length} of {items.length} items
-        </div>
+        <span className="text-[11px] text-text-muted font-sans ml-auto">
+          {filteredItems.length} / {items.length} items
+        </span>
       </div>
 
       {/* Deleted Items List */}
-      <div className="space-y-3">
-        {loading && items.length === 0 ? (
-          <ContentLoading variant="cards" label="Loading recovery records from Supabase..." rows={3} />
-        ) : filteredItems.length === 0 ? (
-          <div className="bg-card border border-subtle rounded-2xl p-12 text-center text-text-muted space-y-2.5">
-            <div className="w-12 h-12 rounded-2xl bg-inner border border-subtle flex items-center justify-center mx-auto text-text-muted">
-              <Layers size={22} />
-            </div>
-            <p className="text-sm font-semibold text-text-base">No items in Dataset Recovery.</p>
-            <p className="text-xs text-text-muted max-w-md mx-auto">
-              Whenever subgrids or trajectory points are deleted from the Selection Map or tables, their recovery snapshots will be safely archived here for restoration.
-            </p>
+      {loading && items.length === 0 ? (
+        <ContentLoading variant="table" label="Loading recovery records from Supabase..." rows={4} />
+      ) : filteredItems.length === 0 ? (
+        <div className="rounded-xl border border-subtle bg-card px-4 py-10 text-center text-text-muted">
+          <div className="w-10 h-10 rounded-xl bg-inner border border-subtle flex items-center justify-center mx-auto mb-2.5 text-text-muted">
+            <Layers size={18} />
           </div>
-        ) : (
-          filteredItems.map((item) => {
+          <p className="text-xs font-semibold text-text-base">No items in Dataset Recovery.</p>
+          <p className="text-[11px] text-text-muted mt-1 max-w-md mx-auto">
+            Whenever subgrids or trajectory points are deleted from the Selection Map or tables, their recovery snapshots will be safely archived here for restoration.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {filteredItems.map((item) => {
             const isExpanded = expandedId === item.id;
             const isRestoring = restoringId === item.id;
             const formattedDate = new Date(item.deleted_at).toLocaleString('en-GB', {
@@ -261,111 +246,107 @@ export const DatasetRecoveryPanel: React.FC<DatasetRecoveryPanelProps> = ({
               hour: '2-digit',
               minute: '2-digit'
             });
+            const itemPoi = item.poi_count || item.points.length || item.original_record?.poiCount || 0;
+            const itemFrames = item.points.filter((p) => Boolean(p.filename)).length || item.original_record?.availableImagesCount || item.points.length || itemPoi;
 
             return (
               <div
                 key={item.id}
-                className="bg-card border border-subtle rounded-2xl overflow-hidden shadow-md transition-all hover:border-subtle/80"
+                className="bg-card border border-subtle rounded-xl overflow-hidden shadow-sm transition-colors"
               >
                 {/* Item Card Header */}
                 <div
                   onClick={() => setExpandedId(isExpanded ? null : item.id)}
-                  className="p-4.5 flex flex-wrap items-center justify-between gap-3 bg-card hover:bg-inner/40 cursor-pointer border-b border-subtle transition-colors"
+                  className="px-3 py-2.5 flex flex-wrap items-center justify-between gap-3 hover:bg-inner/50 cursor-pointer transition-colors"
                 >
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2 min-w-0">
                     <button
                       type="button"
-                      className="text-text-muted hover:text-text-base p-0.5"
+                      className="text-text-muted hover:text-text-base p-0.5 shrink-0"
                       onClick={(e) => {
                         e.stopPropagation();
                         setExpandedId(isExpanded ? null : item.id);
                       }}
                     >
-                      {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                      {isExpanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
                     </button>
-                  <div>
-                    {(() => {
-                      const itemPoi = item.poi_count || item.points.length || item.original_record?.poiCount || 0;
-                      const itemFrames = item.points.filter((p) => Boolean(p.filename)).length || item.original_record?.availableImagesCount || item.points.length || itemPoi;
-                      return (
-                        <>
-                          <div className="flex items-center gap-2">
-                            <span className="font-sans font-bold text-sm text-text-base">
-                              {item.subgrid}
-                            </span>
-                            <span className="text-[10px] font-sans px-2.5 py-0.5 rounded-md bg-inner border border-subtle text-text-muted font-semibold flex items-center gap-1.5">
-                              <span>{item.type === 'partial_points' ? 'Partial Deletion' : 'Whole Subgrid'}</span>
-                              <span>&bull;</span>
-                              <span className={itemPoi > 0 ? 'text-sky-400' : 'text-text-muted'}>{itemPoi} POI</span>
-                              <span>/</span>
-                              <span className={itemFrames > 0 ? 'text-sky-400' : 'text-text-muted'}>{itemFrames} frames</span>
-                            </span>
-                          </div>
-                          <p className="text-[11px] text-text-muted font-sans mt-0.5">
-                            Deleted on {formattedDate} &bull; by <strong className="text-text-base">{item.deleted_by || 'Operator'}</strong> &bull; {item.km_processed || 0} km
-                          </p>
-                        </>
-                      );
-                    })()}
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-sans font-bold text-xs text-sky-300">
+                          {item.subgrid}
+                        </span>
+                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider border bg-inner border-subtle text-text-muted">
+                          {item.type === 'partial_points' ? 'Partial Deletion' : 'Whole Subgrid'}
+                        </span>
+                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider border bg-sky-950/40 border-sky-500/40 text-sky-300">
+                          {itemPoi} POI
+                        </span>
+                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider border bg-sky-950/40 border-sky-500/40 text-sky-300">
+                          {itemFrames} frames
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-text-muted font-sans mt-0.5 truncate">
+                        Deleted on {formattedDate} &bull; {item.deleted_by || 'Operator'} &bull; {item.km_processed || 0} km
+                      </p>
+                    </div>
                   </div>
-                </div>
 
-                <div className="flex items-center gap-2.5" onClick={(e) => e.stopPropagation()}>
-                  <button
-                    onClick={() => handleRestore(item)}
-                    disabled={isRestoring || isGuestUser}
-                    className="flex items-center gap-1.5 px-4 py-2 bg-sky-600 hover:bg-sky-500 disabled:opacity-40 text-white rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer active:scale-95"
-                  >
-                    {isRestoring ? (
-                      <Loader2 size={13} className="animate-spin" />
-                    ) : (
-                      <RotateCcw size={13} />
-                    )}
-                    <span>Restore Dataset</span>
-                  </button>
-
-                  {!isGuestUser && (
+                  <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
                     <button
-                      onClick={() => handleDeletePermanently(item.id, item.subgrid)}
-                      className="p-2 text-text-muted hover:text-rose-400 hover:bg-inner rounded-xl transition-colors cursor-pointer border border-transparent hover:border-subtle"
-                      title="Delete permanently from Supabase"
+                      onClick={() => handleRestore(item)}
+                      disabled={isRestoring || isGuestUser}
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/40 rounded-lg text-[10px] font-bold transition-all shadow-sm cursor-pointer disabled:opacity-40 active:scale-95"
                     >
-                      <Trash2 size={14} />
+                      {isRestoring ? (
+                        <Loader2 size={12} className="animate-spin" />
+                      ) : (
+                        <RotateCcw size={12} />
+                      )}
+                      <span>Restore</span>
                     </button>
-                  )}
-                </div>
-              </div>
 
-              {/* Expanded Points List Table */}
-              {isExpanded && (
-                <div className="p-4 bg-inner/30 space-y-2 border-t border-subtle">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-bold text-text-base text-[11px] uppercase tracking-wide">
-                      Point Coordinates &amp; File Metadata ({item.points.length} points &bull; {item.points.filter((p) => Boolean(p.filename)).length} frames)
-                    </span>
+                    {!isGuestUser && (
+                      <button
+                        onClick={() => handleDeletePermanently(item.id, item.subgrid)}
+                        className="p-1.5 text-text-muted hover:text-rose-400 hover:bg-rose-500/10 rounded-md transition-colors cursor-pointer border border-transparent hover:border-rose-500/30"
+                        title="Delete permanently from Supabase"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    )}
                   </div>
-                    <div className="overflow-x-auto rounded-xl border border-subtle max-h-56 overflow-y-auto bg-card">
-                      <table className="w-full text-left text-xs">
-                        <thead className="bg-inner/60 text-text-muted border-b border-subtle sticky top-0 font-medium">
+                </div>
+
+                {/* Expanded Points List Table */}
+                {isExpanded && (
+                  <div className="p-3 bg-inner/40 border-t border-subtle">
+                    <div className="flex items-center justify-between text-[10px] font-bold text-text-muted uppercase tracking-wide mb-2">
+                      <span>
+                        Point Coordinates &amp; File Metadata ({item.points.length} points &bull; {item.points.filter((p) => Boolean(p.filename)).length} frames)
+                      </span>
+                    </div>
+                    <div className="overflow-x-auto rounded-lg border border-subtle max-h-56 overflow-y-auto bg-card">
+                      <table className="w-full text-left text-[11px]">
+                        <thead className="bg-inner/60 text-text-muted border-b border-subtle sticky top-0">
                           <tr>
-                            <th className="px-3 py-2 w-10">#</th>
-                            <th className="px-3 py-2">Point Filename</th>
-                            <th className="px-3 py-2">Latitude</th>
-                            <th className="px-3 py-2">Longitude</th>
-                            <th className="px-3 py-2">Heading</th>
+                            <th className="px-2.5 py-1.5 w-8">#</th>
+                            <th className="px-2.5 py-1.5">Point Filename</th>
+                            <th className="px-2.5 py-1.5">Latitude</th>
+                            <th className="px-2.5 py-1.5">Longitude</th>
+                            <th className="px-2.5 py-1.5">Heading</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-subtle font-sans text-[11px]">
                           {item.points.map((p, idx) => (
                             <tr key={idx} className="hover:bg-inner/40">
-                              <td className="px-3 py-1.5 text-text-muted">{idx + 1}</td>
-                              <td className="px-3 py-1.5 text-text-base flex items-center gap-1.5">
+                              <td className="px-2.5 py-1.5 text-text-muted">{idx + 1}</td>
+                              <td className="px-2.5 py-1.5 text-text-base flex items-center gap-1.5">
                                 <FileText size={11} className="text-text-muted shrink-0" />
                                 <span>{p.filename || `${item.subgrid}-${String(idx + 1).padStart(4, '0')}.jpg`}</span>
                               </td>
-                              <td className="px-3 py-1.5 text-text-muted">{p.lat?.toFixed(5)}</td>
-                              <td className="px-3 py-1.5 text-text-muted">{p.lng?.toFixed(5)}</td>
-                              <td className="px-3 py-1.5 text-text-muted">{p.bearing ?? '0.0'}°</td>
+                              <td className="px-2.5 py-1.5 text-text-muted">{p.lat?.toFixed(5)}</td>
+                              <td className="px-2.5 py-1.5 text-text-muted">{p.lng?.toFixed(5)}</td>
+                              <td className="px-2.5 py-1.5 text-text-muted">{p.bearing ?? '0.0'}°</td>
                             </tr>
                           ))}
                         </tbody>
@@ -375,9 +356,9 @@ export const DatasetRecoveryPanel: React.FC<DatasetRecoveryPanelProps> = ({
                 )}
               </div>
             );
-          })
-        )}
-      </div>
+          })}
+        </div>
+      )}
     </div>
   );
 };

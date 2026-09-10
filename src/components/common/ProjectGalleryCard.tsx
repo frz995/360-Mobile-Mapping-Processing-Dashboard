@@ -232,7 +232,7 @@ export function ProjectGalleryCard({
   onDelete
 }: ProjectGalleryCardProps) {
   const preview = useMemo(() => resolveProjectPreview(project), [project]);
-  const mapBasemapKey = basemapKey ?? preview.basemapKey ?? 'dark';
+  const mapBasemapKey = basemapKey ?? preview.basemapKey ?? 'light';
 
   const resolvedActual = typeof actualKm === 'number' && !isNaN(actualKm)
     ? actualKm
@@ -257,7 +257,7 @@ export function ProjectGalleryCard({
       }`}
     >
       {/* Map preview: project boundary on the user's basemap */}
-      <div className="relative h-40 sm:h-44 shrink-0 overflow-hidden bg-inner">
+      <div className="relative h-40 sm:h-44 shrink-0 overflow-hidden rounded-t-2xl bg-inner">
         <ProjectPreviewMap geojson={preview.geojson} bbox={preview.bbox} basemapKey={mapBasemapKey} />
         <div className="absolute inset-0 bg-gradient-to-t from-card via-card/10 to-transparent pointer-events-none" />
 
@@ -267,7 +267,7 @@ export function ProjectGalleryCard({
             {onLoadProject && !active && (
               <button
                 onClick={() => onLoadProject(project)}
-                className="px-2 py-1 text-[10px] font-semibold text-sky-300 bg-sky-500/20 hover:bg-sky-500/30 border border-sky-500/30 rounded-lg backdrop-blur-md transition-all cursor-pointer"
+                className="px-2 py-1 text-[10px] font-semibold text-text-base bg-black/40 hover:bg-black/60 border border-white/10 rounded-lg backdrop-blur-md transition-all cursor-pointer"
               >
                 {translate('projectLoad')}
               </button>
@@ -317,10 +317,15 @@ export function ProjectGalleryCard({
         {/* Title + status (green dot at active text) */}
         <div className="flex items-center justify-between gap-2 min-w-0">
           <span className="text-sm font-bold text-text-base truncate">{project.name}</span>
-          {active || project.status !== 'active' ? (
-            <span className={`inline-flex items-center gap-1.5 shrink-0 text-[10px] font-semibold capitalize ${active ? 'text-emerald-400' : 'text-text-muted'}`}>
-              <StatusDot tone={active ? 'bg-emerald-400' : STATUS_DOT_TONE[project.status]} />
-              {active ? translate('projectStatusActive') : translate(STATUS_KEY[project.status])}
+          {active ? (
+            <span className="inline-flex items-center gap-1.5 shrink-0 text-[10px] font-semibold capitalize text-emerald-400">
+              <StatusDot tone="bg-emerald-400" />
+              {translate('projectCurrent')}
+            </span>
+          ) : project.status !== 'active' ? (
+            <span className="inline-flex items-center gap-1.5 shrink-0 text-[10px] font-semibold capitalize text-text-muted">
+              <StatusDot tone={STATUS_DOT_TONE[project.status]} />
+              {translate(STATUS_KEY[project.status])}
             </span>
           ) : null}
         </div>

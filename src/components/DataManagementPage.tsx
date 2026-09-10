@@ -82,8 +82,6 @@ import type { PanoramaItem, DailyTimeSeries, BatchLog, NotificationItem, AuditLo
 import type { Layer as CatalogLayer, Folder as CatalogFolder } from '../types/catalog';
 type Layer = CatalogLayer;
 type Folder = CatalogFolder;
-import * as shapefile from 'shapefile';
-import * as toGeoJSON from '@tmcw/togeojson';
 
 // Calculate Haversine distance in KM between two GPS coordinates
 function calculateHaversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -109,22 +107,7 @@ function calculatePanoramaTrackKm(panoramas?: PanoramaItem[]): number {
       totalKm += calculateHaversineDistance(p1.latitude, p1.longitude, p2.latitude, p2.longitude);
     }
   }
-  return Math.round(totalKm * 100) / 100;
-}
-
-// Flatten folder tree to get all layers
-function flattenLayers(items: (Layer | Folder)[]): Layer[] {
-  if (!Array.isArray(items)) return [];
-  let layers: Layer[] = [];
-  for (const item of items) {
-    if (!item) continue;
-    if (item.type === 'layer') {
-      layers.push(item);
-    } else if (item.type === 'folder' && Array.isArray(item.children)) {
-      layers = [...layers, ...flattenLayers(item.children)];
-    }
-  }
-  return layers;
+return Math.round(totalKm * 100) / 100;
 }
 
 // Find item in tree by id
@@ -386,13 +369,13 @@ export const DataManagementPage = ({
   projectSettings?: any,
   qaSubgridRecords?: Record<string, { flags: { blurry: boolean; obstruction: boolean; badGps: boolean }; answer: 'yes' | 'no' | null; isLocked: boolean }>,
   translate?: (key: string) => string,
-  initialTab?: 'batches' | 'daily' | 'vector' | 'datasets' | 'recovery',
+  initialTab?: 'batches' | 'daily' | 'datasets' | 'recovery',
   initialSearch?: string,
   canHandleApprovals?: boolean
 }) => {
   const tf = translate || ((key: string) => key);
-  type DataTab = 'batches' | 'daily' | 'vector' | 'datasets' | 'recovery';
-  const defaultTab: DataTab = initialTab || ((projectSettings?.defaultDataTab === 'daily' || projectSettings?.defaultDataTab === 'vector' || projectSettings?.defaultDataTab === 'datasets' || projectSettings?.defaultDataTab === 'recovery') ? projectSettings.defaultDataTab : 'batches');
+  type DataTab = 'batches' | 'daily' | 'datasets' | 'recovery';
+  const defaultTab: DataTab = initialTab || ((projectSettings?.defaultDataTab === 'daily' || projectSettings?.defaultDataTab === 'datasets' || projectSettings?.defaultDataTab === 'recovery') ? projectSettings.defaultDataTab : 'batches');
   const [dataTab, setDataTab] = useState<DataTab>(defaultTab);
   const [recycleBinCount, setRecycleBinCount] = useState<number>(0);
 
@@ -429,7 +412,6 @@ export const DataManagementPage = ({
   const [stagedLayers, setStagedLayers] = useState<(Layer | Folder)[]>([]);
   const [movingItem, setMovingItem] = useState<{ item: Layer | Folder; catalog: 'staged' | 'saved' } | null>(null);
   const [targetFolderId, setTargetFolderId] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const csvInputRef = useRef<HTMLInputElement>(null);
   const [draftDailyData, setDraftDailyData] = useState<DailyTimeSeries[]>(dailyData);
   const [isDailyDirty, setIsDailyDirty] = useState(false);
@@ -1448,162 +1430,6 @@ export const DataManagementPage = ({
     }
   }, [draftDailyData, isDailyDirty]);
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
-    if (files.length === 0) return;
-
-    const colors = ['#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
-
-    for (const file of files) {
-      try {
-        let geojson: any = null;
-
-        if (file.name.toLowerCase().endsWith('.geojson') || file.name.toLowerCase().endsWith('.json')) {
-          const text = await file.text();
-          geojson = JSON.parse(text);
-        } else if (file.name.toLowerCase().endsWith('.kml')) {
-          const text = await file.text();
-          const parser = new DOMParser();
-          const kmlDoc = parser.parseFromString(text, 'text/xml');
-          // Check for XML parsing errors
-          const parserError = kmlDoc.querySelector('parsererror');
-          if (parserError) throw new Error('Invalid KML format');
-          geojson = toGeoJSON.kml(kmlDoc);
-        } else if (file.name.toLowerCase().endsWith('.gpx')) {
-          const text = await file.text();
-          const parser = new DOMParser();
-          const gpxDoc = parser.parseFromString(text, 'text/xml');
-          const parserError = gpxDoc.querySelector('parsererror');
-          if (parserError) throw new Error('Invalid GPX format');
-          geojson = toGeoJSON.gpx(gpxDoc);
-        } else if (file.name.toLowerCase().endsWith('.shp')) {
-          const buffer = await file.arrayBuffer();
-          const shpData = await shapefile.open(buffer);
-          const features = [];
-          let result = await shpData.read();
-          while (!result.done) {
-            features.push(result.value);
-            result = await shpData.read();
-          }
-          geojson = { type: 'FeatureCollection', features };
-        } else if (file.name.toLowerCase().endsWith('.csv')) {
-          const text = await file.text();
-          const lines = text.split('\n').filter(line => line.trim());
-          if (lines.length < 2) throw new Error('CSV must have at least a header row and one data row');
-          const headers = lines[0].split(',').map(h => h.trim());
-          const latIdx = headers.findIndex(h => h.toLowerCase().includes('lat') || h.toLowerCase().includes('latitude'));
-          const lngIdx = headers.findIndex(h => h.toLowerCase().includes('lng') || h.toLowerCase().includes('lon') || h.toLowerCase().includes('longitude'));
-
-          if (latIdx !== -1 && lngIdx !== -1) {
-            const features = lines.slice(1).map(line => {
-              const values = line.split(',').map(v => v.trim());
-              const lat = parseFloat(values[latIdx]);
-              const lng = parseFloat(values[lngIdx]);
-              if (isNaN(lat) || isNaN(lng)) {
-                console.warn('Skipping invalid coordinate:', values[latIdx], values[lngIdx]);
-                return null;
-              }
-              return {
-                type: 'Feature',
-                geometry: { type: 'Point', coordinates: [lng, lat] },
-                properties: {}
-              };
-            }).filter(Boolean);
-            geojson = { type: 'FeatureCollection', features };
-          } else {
-            throw new Error('CSV must have columns with "lat"/"latitude" and "lng"/"lon"/"longitude"');
-          }
-        } else {
-          console.warn('Unsupported file format:', file.name);
-          toast.error(`${file.name} is an unsupported format. Please use GeoJSON, KML, GPX, SHP, or CSV.`);
-          continue;
-        }
-
-        // Validate GeoJSON
-        if (!geojson) throw new Error('Failed to parse file');
-        if (!geojson.type) geojson = { type: 'FeatureCollection', features: [geojson] };
-        if (geojson.type === 'Feature' && !geojson.geometry) throw new Error('Invalid GeoJSON: feature missing geometry');
-        if (geojson.type === 'FeatureCollection' && !Array.isArray(geojson.features)) {
-          geojson.features = [];
-        }
-
-        const newLayer: Layer = {
-          id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
-          type: 'layer',
-          name: file.name,
-          color: colors[(flattenLayers(layerCatalog).length + flattenLayers(stagedLayers).length) % colors.length],
-          visible: true,
-          geojson: geojson,
-          files: [file.name],
-          uploadedAt: new Date().toISOString(),
-        };
-        setStagedLayers([...stagedLayers, newLayer]);
-      } catch (err) {
-        console.error('Error processing file:', err);
-        toast.error(`Error processing ${file.name}: ${(err as Error).message}`);
-      }
-    }
-
-    // Reset input
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
-  };
-
-  // Catalog functions
-  const toggleFolder = (catalog: 'staged' | 'saved', folderId: string) => {
-    if (catalog === 'staged') {
-      setStagedLayers(updateItem(stagedLayers, folderId, item => ({
-        ...(item as Folder),
-        expanded: !(item as Folder).expanded
-      })));
-    } else {
-      setLayerCatalog(updateItem(layerCatalog, folderId, item => ({
-        ...(item as Folder),
-        expanded: !(item as Folder).expanded
-      })));
-    }
-  };
-
-  const toggleLayerVisibility = (catalog: 'staged' | 'saved', layerId: string) => {
-    if (catalog === 'staged') {
-      setStagedLayers(updateItem(stagedLayers, layerId, item => ({
-        ...(item as Layer),
-        visible: !(item as Layer).visible
-      })));
-    } else {
-      setLayerCatalog(updateItem(layerCatalog, layerId, item => ({
-        ...(item as Layer),
-        visible: !(item as Layer).visible
-      })));
-    }
-  };
-
-  const deleteItem = (catalog: 'staged' | 'saved', itemId: string) => {
-    const item = catalog === 'staged' ? findItem(stagedLayers, itemId) : findItem(layerCatalog, itemId);
-    const confirmMessage = item?.type === 'folder'
-      ? 'Are you sure you want to delete this folder and all its contents?'
-      : 'Are you sure you want to delete this layer?';
-
-    if (confirm(confirmMessage)) {
-      if (catalog === 'staged') {
-        setStagedLayers(removeItemFromTree(stagedLayers, itemId));
-      } else {
-        setLayerCatalog(removeItemFromTree(layerCatalog, itemId));
-      }
-    }
-  };
-
-  const editItem = (item: Layer | Folder) => {
-    setEditingItem(item);
-    if (item.type === 'folder') {
-      setIsFolderEditModalOpen(true);
-      setNewFolderName(item.name);
-    } else {
-      setIsLayerEditModalOpen(true);
-    }
-  };
-
   const saveLayerEdit = (updatedLayer: Layer) => {
     const isStaged = stagedLayers.some(l => l.id === updatedLayer.id);
     if (isStaged) {
@@ -1646,23 +1472,6 @@ export const DataManagementPage = ({
     setIsFolderEditModalOpen(false);
     setEditingItem(null);
     setNewFolderName('');
-  };
-
-  const saveStagedLayers = () => {
-    try {
-      setLayerCatalog([...(Array.isArray(layerCatalog) ? layerCatalog : []), ...stagedLayers]);
-      setStagedLayers([]);
-      toast.success('Layers saved! They are now visible on the Dashboard map!');
-    } catch (err) {
-      console.error('Error saving staged layers:', err);
-      toast.error('Failed to save staged layers: ' + (err as Error).message);
-    }
-  };
-
-  const clearStagedLayers = () => {
-    if (confirm('Are you sure you want to discard all staged layers and folders?')) {
-      setStagedLayers([]);
-    }
   };
 
   const moveItemToFolder = (itemId: string, sourceCatalog: 'staged' | 'saved', targetFolderId: string | null) => {
@@ -2826,11 +2635,6 @@ export const DataManagementPage = ({
       )
     },
     {
-      key: 'vector',
-      label: 'Vector Layers',
-      icon: <Layers size={14} />
-    },
-    {
       key: 'datasets',
       label: tf('dataRegistryTab'),
       icon: <Database size={14} />,
@@ -3012,7 +2816,7 @@ export const DataManagementPage = ({
                           </button>
                         </div>
                       </div>
-                      <div ref={currentMapContainerRef} className="relative w-full overflow-hidden" style={{ height: 640 }}>
+                      <div ref={currentMapContainerRef} className="relative w-full overflow-hidden h-[40vh] sm:h-[52vh] lg:h-[640px] min-h-[320px]">
                         <MapComponent
                           dataManagement
                           refreshKey={mapRefreshKey}
@@ -3055,7 +2859,7 @@ export const DataManagementPage = ({
                           <span className="px-2 py-0.5 rounded-md text-[10px] font-bold text-text-muted">Read Only</span>
                         </div>
                       </div>
-                      <div className="relative w-full overflow-hidden" style={{ height: 640 }}>
+                      <div className="relative w-full overflow-hidden h-[40vh] sm:h-[52vh] lg:h-[640px] min-h-[320px]">
                         <MapComponent
                           dataManagement
                           refreshKey={mapRefreshKey}
@@ -3324,160 +3128,7 @@ export const DataManagementPage = ({
           )}
 
           {/* Tab Content */}
-          {dataTab === 'vector' ? (
-            /* Vector Layers Section */
-            <div className="space-y-6">
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Left Column: Upload & Catalog */}
-                <div className="lg:col-span-1 space-y-6">
-                  {/* Upload Area */}
-                  <div className="bg-card border border-subtle rounded-2xl p-6 shadow-sm">
-                    <h2 className="text-base font-bold text-text-base mb-2">Upload Vector Data</h2>
-                    <p className="text-xs text-text-muted mb-5">Supported formats: GeoJSON, KML, GPX, Shapefile, CSV</p>
-
-                    <div className="flex flex-col gap-3">
-                      <label className="flex items-center justify-center gap-2 bg-sky-600 hover:bg-sky-500 px-5 py-2.5 rounded-xl transition-all cursor-pointer text-xs font-bold text-text-base shadow-md">
-                        <Upload size={16} />
-                        <span>Select Files</span>
-                        <input
-                          ref={fileInputRef}
-                          type="file"
-                          accept=".geojson,.json,.kml,.gpx,.shp,.csv"
-                          multiple
-                          hidden
-                          onChange={handleFileUpload}
-                        />
-                      </label>
-
-                      <button
-                        onClick={() => setIsFolderCreateModalOpen(true)}
-                        className="flex items-center justify-center gap-2 bg-inner hover:bg-inner text-text-base border border-subtle px-5 py-2.5 rounded-xl transition-all text-xs font-semibold cursor-pointer"
-                      >
-                        <Folder size={16} className="text-amber-400" />
-                        <span>Create Folder</span>
-                      </button>
-
-                      {stagedLayers.length > 0 && (
-                        <div className="flex gap-2">
-                          <button
-                            onClick={saveStagedLayers}
-                            className="flex-1 flex items-center justify-center gap-2 bg-green-600 hover:bg-green-500 px-6 py-3 rounded-lg transition-all"
-                          >
-                            <Save size={20} />
-                            Save to Dashboard
-                          </button>
-                          <button
-                            onClick={clearStagedLayers}
-                            className="flex-1 flex items-center justify-center gap-2 bg-red-600 hover:bg-red-500 px-6 py-3 rounded-lg transition-all"
-                          >
-                            <X size={20} />
-                            Discard
-                          </button>
-                        </div>
-                      )}
-
-                      {layerCatalog.length > 0 && (
-                        <button
-                          onClick={() => {
-                            setLayerCatalog([]);
-                          }}
-                          className="flex items-center justify-center gap-2 bg-red-600 hover:bg-red-500 px-6 py-3 rounded-lg transition-all"
-                        >
-                          <X size={20} />
-                          Clear All Saved Layers
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Layer Catalog */}
-                  <div className="bg-card border border-subtle rounded-2xl p-6 shadow-sm">
-                    <div className="flex items-center justify-between mb-4">
-                      <h2 className="text-base font-bold text-text-base">Layer Catalog</h2>
-                      <span className="text-text-muted text-xs">
-                        {flattenLayers(layerCatalog).length} saved, {flattenLayers(stagedLayers).length} staged
-                      </span>
-                    </div>
-
-                    {/* Staged Items */}
-                    {stagedLayers.length > 0 && (
-                      <div className="mb-4">
-                        <h3 className="text-xs font-semibold text-amber-500 mb-2 flex items-center gap-2">
-                          <AlertTriangle size={14} />
-                          Staged for Save
-                        </h3>
-                        <div className="space-y-3">
-                          {stagedLayers.map(item => (
-                            <CatalogItem
-                              key={item.id}
-                              item={item}
-                              catalog="staged"
-                              onToggleFolder={(id) => toggleFolder('staged', id)}
-                              onToggleLayer={(id) => toggleLayerVisibility('staged', id)}
-                              onEdit={editItem}
-                              onDelete={(id) => deleteItem('staged', id)}
-                              onMove={(item, catalog) => {
-                                setMovingItem({ item, catalog });
-                                setTargetFolderId(null);
-                                setIsMoveModalOpen(true);
-                              }}
-                            />
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Saved Items */}
-                    {layerCatalog.length > 0 && (
-                      <div>
-                        <h3 className="text-xs font-semibold text-sky-500 mb-2 flex items-center gap-2">
-                          <CheckCircle size={14} />
-                          Saved to Dashboard
-                        </h3>
-                        <div className="space-y-3">
-                          {layerCatalog.map(item => (
-                            <CatalogItem
-                              key={item.id}
-                              item={item}
-                              catalog="saved"
-                              onToggleFolder={(id) => toggleFolder('saved', id)}
-                              onToggleLayer={(id) => toggleLayerVisibility('saved', id)}
-                              onEdit={editItem}
-                              onDelete={(id) => deleteItem('saved', id)}
-                              onMove={(item, catalog) => {
-                                setMovingItem({ item, catalog });
-                                setTargetFolderId(null);
-                                setIsMoveModalOpen(true);
-                              }}
-                            />
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {stagedLayers.length === 0 && layerCatalog.length === 0 && (
-                      <div className="text-text-muted text-center py-8">
-                        <p>No layers or folders yet</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Right Column: Map Preview */}
-                <div className="lg:col-span-2">
-                  <div className="bg-card border border-subtle rounded-2xl overflow-hidden shadow-xl">
-                    <h2 className="text-sm font-bold text-text-base p-4 border-b border-subtle flex items-center gap-2">
-                      <Globe size={16} className="text-sky-400" />
-                      <span>Basemap Preview</span>
-                    </h2>
-                    <div className="h-[600px]">
-                      <MapComponent dataManagement layerCatalog={[...layerCatalog, ...stagedLayers]} refreshKey={mapRefreshKey} onManualRefresh={onRefreshMap} />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          ) : dataTab === 'datasets' ? (
+          {dataTab === 'datasets' ? (
             /* Dataset Registry Section */
             <div className="space-y-6">
               <DatasetRegistryPanel
