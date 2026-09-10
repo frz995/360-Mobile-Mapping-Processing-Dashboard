@@ -741,6 +741,23 @@ select:-webkit-autofill:focus {
   }
 }
 
+@keyframes spinSlow {
+  from {
+    transform: rotate(0deg) scale(1.35);
+  }
+  50% {
+    transform: rotate(180deg) scale(1.1);
+  }
+  to {
+    transform: rotate(360deg) scale(1.35);
+  }
+}
+
+.animate-spin-slow {
+  animation: spinSlow 180s linear infinite;
+  will-change: transform;
+}
+
 .aurora-shimmer {
   background: linear-gradient(
     90deg,
