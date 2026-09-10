@@ -20,7 +20,10 @@ import {
   Check,
   MapPin,
   Tag,
-  GripHorizontal
+  GripHorizontal,
+  Folder,
+  FolderOpen,
+  CalendarDays
 } from 'lucide-react';
 import type { CatalogVectorLayer } from '../../utils/gisImportParser';
 import { CommitSlider } from './CommitSlider';
@@ -47,6 +50,8 @@ export interface SystemLayerStyles {
 
 export interface RoadCatalogPanelProps {
   catalogLayers: CatalogVectorLayer[];
+  dailyData?: any[];
+  batchLogs?: any[];
   systemStyles: SystemLayerStyles;
   onUpdateSystemStyles: (updater: (prev: SystemLayerStyles) => SystemLayerStyles) => void;
   /**
@@ -443,6 +448,8 @@ export const RoadAttributeTableDrawer: React.FC<RoadAttributeTableDrawerProps> =
 
 export const RoadCatalogPanel: React.FC<RoadCatalogPanelProps> = ({
   catalogLayers,
+  dailyData,
+  batchLogs,
   systemStyles,
   onUpdateSystemStyles,
   onPreviewSystemStyles,
@@ -463,6 +470,66 @@ export const RoadCatalogPanel: React.FC<RoadCatalogPanelProps> = ({
   const [editingName, setEditingName] = useState('');
   const [expandedSymbologyLayerId, setExpandedSymbologyLayerId] = useState<string | null>(null);
   const [fallbackTableLayer, setFallbackTableLayer] = useState<CatalogVectorLayer | null>(null);
+  const [expandedSubgrid, setExpandedSubgrid] = useState<string | null>(null);
+
+  // Build masterlist (subgrid) -> daily records folder tree
+  const surveyTree = useMemo(() => {
+    const days = Array.isArray(dailyData) ? (dailyData as any[]) : [];
+    const batches = Array.isArray(batchLogs) ? (batchLogs as any[]) : [];
+    const bySubgrid = new Map<string, any[]>();
+    days.forEach((d) => {
+      const key = String(d?.subgrid || '').trim().toUpperCase();
+      if (!key) return;
+      const list = bySubgrid.get(key) || [];
+      list.push(d);
+      bySubgrid.set(key, list);
+    });
+    batches.forEach((b) => {
+      const key = String(b?.subgrid || '').trim().toUpperCase();
+      if (key && !bySubgrid.has(key)) bySubgrid.set(key, []);
+    });
+    return Array.from(bySubgrid.entries())
+      .map(([code, rows]) => {
+        const master = batches.filter(
+          (b) => String(b?.subgrid || '').trim().toUpperCase() === code
+        );
+        const sortedDays = [...rows].sort((a, b) =>
+          String(a?.date || '').localeCompare(String(b?.date || ''))
+        );
+        const status =
+          master[0]?.status ||
+          (sortedDays.some((r) => String(r?.publishToWebGIS || '').toLowerCase() === 'yes')
+            ? 'Complete'
+            : 'Ongoing');
+        return {
+          code,
+          status,
+          days: sortedDays,
+          frames: sortedDays.reduce(
+            (acc, r) => acc + (Number(r?.availableImagesCount ?? r?.imagesProcessed ?? r?.images) || 0),
+            0
+          ),
+          poi: sortedDays.reduce((acc, r) => acc + (Number(r?.poiCount) || 0), 0)
+        };
+      })
+      .sort((a, b) => a.code.localeCompare(b.code));
+  }, [dailyData, batchLogs]);
+
+  const surveyRecordCount = surveyTree.reduce((acc, s) => acc + s.days.length, 0);
+
+  const formatSurveyDate = (raw?: string) => {
+    if (!raw) return '—';
+    const s = String(raw).trim();
+    const iso = /^\d{4}-\d{2}-\d{2}/.exec(s);
+    if (iso) {
+      const [y, m, d] = iso[0].split('-').map(Number);
+      const dt = new Date(y, m - 1, d);
+      if (!isNaN(dt.getTime())) {
+        return dt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+      }
+    }
+    return s;
+  };
 
   const currentTableLayer = activeTableLayer !== undefined ? activeTableLayer : fallbackTableLayer;
 
@@ -928,7 +995,114 @@ export const RoadCatalogPanel: React.FC<RoadCatalogPanelProps> = ({
       </div>
 
       {/* ------------------------------------------------------------- */}
-      {/* SECTION 2: User Imported Vector Layers (ArcGIS Symbology)    */}
+      {/* SECTION 2: Survey Data — Classic Folder Tree                */}
+      {/* ------------------------------------------------------------- */}
+      <div className="flex flex-col gap-2 border-t border-divider pt-3">
+        <div className="flex items-center justify-between px-0.5">
+          <h3 className="text-[9px] font-bold uppercase tracking-widest text-text-muted">
+            Survey Data ({surveyTree.length} subgrids)
+          </h3>
+          {surveyRecordCount > 0 && (
+            <span className="text-[9px] text-text-muted font-mono">
+              {surveyRecordCount} daily record{surveyRecordCount !== 1 ? 's' : ''}
+            </span>
+          )}
+        </div>
+
+        {surveyTree.length === 0 ? (
+          <p className="px-3 py-3 text-[11px] text-text-muted border border-dashed border-subtle rounded-lg bg-inner/15">
+            No survey data yet. Masterlist records and daily captures will appear here once ingested.
+          </p>
+        ) : (
+          <div className="font-mono text-[11px] leading-relaxed px-1">
+            {surveyTree.map((sg) => {
+              const isExpanded = expandedSubgrid === sg.code;
+
+              return (
+                <div key={sg.code}>
+                  {/* Parent row */}
+                  <div className="flex items-center gap-0 py-0.5 px-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setExpandedSubgrid(isExpanded ? null : sg.code)}
+                      className="flex items-center gap-0 text-left cursor-pointer shrink-0"
+                    >
+                      <span className="text-text-muted w-4 text-center select-none">{isExpanded ? '▾' : '▸'}</span>
+                      {isExpanded ? (
+                        <FolderOpen size={12} className="text-text-muted mx-0.5 shrink-0" />
+                      ) : (
+                        <Folder size={12} className="text-text-muted mx-0.5 shrink-0" />
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setExpandedSubgrid(isExpanded ? null : sg.code)}
+                      className="flex items-center gap-2 text-left cursor-pointer flex-1 min-w-0"
+                    >
+                      <span className="font-bold text-text-base">{sg.code}</span>
+                      <span className="text-text-muted">(Parent)</span>
+                      <span className="ml-auto text-text-muted text-[9px] font-mono shrink-0">
+                        {sg.frames.toLocaleString()} fr &middot; {sg.poi.toLocaleString()} POI
+                      </span>
+                    </button>
+                  </div>
+
+                  {/* Children — tree lines */}
+                  {isExpanded && (
+                    <div className="pl-5 text-[10px]">
+                      {sg.days.length === 0 ? (
+                        <div className="flex items-center gap-2 py-0.5 pl-2 text-text-muted">
+                          <span>│</span>
+                          <span>└─</span>
+                          <span>No child records.</span>
+                        </div>
+                      ) : (
+                        sg.days.map((d, idx) => {
+                          const isLast = idx === sg.days.length - 1;
+                          const connector = isLast ? '└─' : '├─';
+                          const frames = Number(d?.availableImagesCount ?? d?.imagesProcessed ?? d?.images) || 0;
+                          const poi = Number(d?.poiCount) || 0;
+                          const pub = String(d?.publishToWebGIS || '').toLowerCase();
+                          let stText = '—';
+                          let stColor = 'text-text-muted';
+                          if (pub === 'yes' || pub === 'published') {
+                            stText = 'Published';
+                            stColor = 'text-emerald-400';
+                          } else if (pub.includes('in process')) {
+                            stText = 'In Process';
+                            stColor = 'text-amber-400';
+                          } else if (pub.includes('recheck')) {
+                            stText = 'Need Recheck';
+                          } else if (pub === 'no') {
+                            stText = 'Not Published';
+                          } else if (pub) {
+                            stText = pub;
+                          }
+
+                          return (
+                            <div key={idx} className="flex items-center gap-2 py-0.5 px-1.5">
+                              <span className="text-text-muted w-4 text-center select-none shrink-0">{connector}</span>
+                              <CalendarDays size={10} className="text-text-muted shrink-0" />
+                              <span className="text-text-base whitespace-nowrap">{formatSurveyDate(d?.date)}</span>
+                              <span className="text-text-muted whitespace-nowrap">
+                                {frames.toLocaleString()} fr &middot; {poi.toLocaleString()} POI
+                              </span>
+                              <span className={`ml-auto whitespace-nowrap ${stColor}`}>{stText}</span>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ------------------------------------------------------------- */}
+      {/* SECTION 3: User Imported Vector Layers (ArcGIS Symbology)    */}
       {/* ------------------------------------------------------------- */}
       <div className="flex flex-col gap-2.5 border-t border-divider pt-3">
         <div className="flex items-center justify-between px-0.5">

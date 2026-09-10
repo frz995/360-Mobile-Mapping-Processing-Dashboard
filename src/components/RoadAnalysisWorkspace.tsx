@@ -222,20 +222,20 @@ export function mirrorRoadAnalysisToCache(userKey: string, state: RoadAnalysisSa
 }
 
 const TABS: ChromeTab<RoadTab>[] = [
+  { key: 'catalog', icon: <Layers size={14} /> },
   { key: 'region', icon: <Map size={14} /> },
   { key: 'plan', icon: <Route size={14} /> },
   { key: 'import', icon: <Upload size={14} /> },
-  { key: 'catalog', icon: <Layers size={14} /> },
   { key: 'compare', icon: <GitCompare size={14} /> },
   { key: 'allocation', icon: <ArrowRightLeft size={14} /> },
   { key: 'print', icon: <Printer size={14} /> }
 ];
 
 const TAB_LABEL: Record<RoadTab, string> = {
+  catalog: 'Data Catalog',
   region: 'Region',
   plan: 'Plan',
   import: 'Import Data',
-  catalog: 'Data Catalog',
   compare: 'Compare',
   allocation: 'Allocation',
   print: 'Print'
@@ -319,8 +319,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
   }, [projectSettings?.defaultBasemap, projectSettings?.defaultBasemapStyle]);
 
   const [activeTab, setActiveTab] = useState<RoadTab>(() => {
-    const saved = loadRoadAnalysisState(userKey);
-    return saved?.activeTab || 'region';
+    return 'catalog';
   });
 
   const [selectedStateCode, setSelectedStateCode] = useState<string>(() => {
@@ -629,7 +628,6 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
             ? remoteState.extractedLines
             : [];
 
-      if (remoteState.activeTab) setActiveTab(remoteState.activeTab);
       if (remoteState.selectedStateCode !== undefined) setSelectedStateCode(remoteState.selectedStateCode);
       if (Array.isArray(remoteState.selectedDistrictIds)) setSelectedDistrictIds(remoteState.selectedDistrictIds);
       if (!preferLocal && remoteState.planSource) setPlanSource(remoteState.planSource);
@@ -675,7 +673,6 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
   useEffect(() => {
     const saved = loadRoadAnalysisState(userKey);
     if (saved) {
-      if (saved.activeTab) setActiveTab(saved.activeTab);
       if (saved.selectedStateCode !== undefined) setSelectedStateCode(saved.selectedStateCode);
       if (Array.isArray(saved.selectedDistrictIds)) setSelectedDistrictIds(saved.selectedDistrictIds);
       if (saved.planSource) setPlanSource(saved.planSource);
@@ -1813,6 +1810,8 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
               {activeTab === 'catalog' && (
                 <RoadCatalogPanel
                   catalogLayers={catalogLayers}
+                  dailyData={internalDailyData}
+                  batchLogs={internalBatchLogs}
                   systemStyles={systemStyles}
                   onUpdateSystemStyles={handleUpdateSystemStyles}
                   onPreviewSystemStyles={handlePreviewSystemStyles}

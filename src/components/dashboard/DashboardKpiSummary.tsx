@@ -33,7 +33,7 @@ export const DashboardKpiSummary: React.FC<DashboardKpiSummaryProps> = ({
 }) => {
   return (
     <div
-      className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 shrink-0 transition-all duration-300 ${
+      className={`grid grid-cols-2 lg:grid-cols-4 gap-3 shrink-0 transition-all duration-300 ${
         tourStep === 1
           ? 'ring-2 ring-sky-400/90 shadow-[0_0_35px_rgba(56,189,248,0.4)] z-30 relative rounded-xl p-1 bg-sky-950/20'
           : tourStep !== null

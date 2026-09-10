@@ -299,8 +299,8 @@ export default function App() {
     }
   }, [isDataLoading]);
 
-  const [dataManagementTab, setDataManagementTab] = useState<'batches' | 'daily' | 'vector' | 'datasets' | 'recovery'>(() => {
-    const dataTabs = ['batches', 'daily', 'vector', 'datasets', 'recovery'] as const;
+  const [dataManagementTab, setDataManagementTab] = useState<'batches' | 'daily' | 'datasets' | 'recovery'>(() => {
+    const dataTabs = ['batches', 'daily', 'datasets', 'recovery'] as const;
     return restoreWorkspaceTab<typeof dataTabs[number]>('data', dataTabs) ?? 'batches';
   });
   const [dataManagementSearch, setDataManagementSearch] = useState<string>('');
@@ -570,16 +570,13 @@ export default function App() {
     }
   }, []);
 
-  const hasOnboarded = useCallback((userKey: string): boolean => {
-    try {
-      return Boolean(localStorage.getItem(`geosphere360_onboarded_${userKey}`));
-    } catch {
-      return false;
-    }
-  }, []);
-
   // Latest auth-derived storage key, readable from stable event listeners.
   const sessionUserKeyRef = useRef<string | null>(null);
+
+  // True when the current session was restored from persistent storage on load
+  // (page refresh / new tab) rather than created by an explicit sign-in this page
+  // — a restored session must never re-trigger the onboarding gate.
+  const restoredSessionRef = useRef(false);
 
   // Global Theme Listener
   useEffect(() => {
@@ -689,6 +686,7 @@ export default function App() {
     // Check persistent Supabase Auth session on refresh
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
+        restoredSessionRef.current = true;
         setAuthSession(session);
         setShowLanding(false); // Authenticated user stays on Dashboard
         pruneBloatedUserMetadata();
@@ -708,6 +706,9 @@ export default function App() {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session) {
+        if (_event === 'INITIAL_SESSION' || _event === 'TOKEN_REFRESHED') {
+          restoredSessionRef.current = true;
+        }
         setAuthSession(session);
         setShowLanding(false);
         pruneBloatedUserMetadata();
@@ -804,38 +805,30 @@ export default function App() {
       }, GATE_LOADING_MS);
       return;
     }
-    const currentHashKey = parseWorkspace();
-    const userKey = resolveUserStorageKey(session, false);
-    const savedId = loadActiveProjectId(userKey);
-    const showWelcome = shouldShowWelcome(userKey);
 
-    // A user who has applied a theme has completed onboarding — skip the gate
-    // entirely (even mid-wizard version bumps or an explicit #/onboarding hash)
-    // and land straight on the dashboard.
-    if (hasOnboarded(userKey)) {
+    // A session restored from persistent storage (page refresh/new tab while
+    // already signed in) must land straight on the workspace — the onboarding
+    // gate is reserved for genuine sign-ins.
+    if (restoredSessionRef.current) {
       setProjectGate('idle');
-      if (currentHashKey === 'onboarding') pushWorkspace('dashboard');
       return;
     }
 
-    // If user explicitly navigated to #/onboarding, OR this is their first ever login (showWelcome),
-    // OR they have no active project chosen yet:
-    if (currentHashKey === 'onboarding' || showWelcome || !savedId) {
-      const authUserName =
-        session?.user?.user_metadata?.full_name ||
-        session?.user?.user_metadata?.name ||
-        session?.user?.user_metadata?.username ||
-        session?.user?.email ||
-        '';
-      setWelcomeUserName(authUserName);
-      setProjectGate(showWelcome ? 'welcome' : 'pick');
-      pushWorkspace('onboarding');
-    } else {
-      // Returning user who refreshed while on #/dashboard, #/data, etc. with a chosen project:
-      // Respect their requested workspace and stay in idle gate!
-      setProjectGate('idle');
-    }
-  }, [shouldShowWelcome, hasOnboarded, pushWorkspace, currentPage]);
+    const showWelcome = shouldShowWelcome(resolveUserStorageKey(session, false));
+
+    // The onboarding gate always shows on sign-in (welcome on the first login,
+    // picker on every subsequent one), so the current project is always chosen
+    // explicitly instead of being silently carried over.
+    const authUserName =
+      session?.user?.user_metadata?.full_name ||
+      session?.user?.user_metadata?.name ||
+      session?.user?.user_metadata?.username ||
+      session?.user?.email ||
+      '';
+    setWelcomeUserName(authUserName);
+    setProjectGate(showWelcome ? 'welcome' : 'pick');
+    pushWorkspace('onboarding');
+  }, [shouldShowWelcome, pushWorkspace, currentPage]);
 
   const handleGateContinue = useCallback((project: UserProject) => {
     setProjectGate('loading');
@@ -866,6 +859,7 @@ export default function App() {
     if (authLoading) return;
     const sessionUid = authSession?.user?.id || (authSession?.isGuest ? 'guest' : null);
     if (!sessionUid) {
+      restoredSessionRef.current = false;
       setProjectGate('idle');
       gateTriggeredRef.current = null;
       return;
@@ -1024,10 +1018,18 @@ export default function App() {
       addNotification({ category: 'ERROR', title: 'Project Error', message: res.message });
       return { success: false as const, message: res.message };
     }
+    // A freshly created project is the "current" project (same rule as
+    // onboarding: current project => active card, no Load button needed).
+    setActiveProject(res.value);
+    setActiveProjectId(res.value.id);
+    const userKey = resolveUserStorageKey(authSession, isGuestUser);
+    saveActiveProjectId(userKey, res.value.id);
+    touchProjectOpened(res.value.id);
+    setProjectSettings((prev: any) => applyProjectScope(prev, res.value));
     setProjectList((prev) => [res.value, ...prev.filter((p) => p.id !== res.value.id)]);
     addNotification({ category: 'SYSTEM', title: 'Project Created', message: res.value.name });
     return { success: true as const, value: res.value };
-  }, [addNotification]);
+  }, [addNotification, authSession, isGuestUser, setProjectSettings]);
 
   const handleUpdateProject = useCallback(async (id: string, patch: Partial<ProjectDraft>) => {
     const res = await updateProjectService(id, patch);
@@ -1413,6 +1415,27 @@ export default function App() {
   }, [dailyData]);
 
   const [mapRefreshKey, setMapRefreshKey] = useState<number>(Date.now());
+
+  // While the navigation rail animates its width (300ms), the embedded WebGIS
+  // iframe continuously re-renders its tiles/3D scene → visible map flicker.
+  // A short opaque veil over the map hides that repaint so the dashboard stays
+  // clean; it is lifted once the layout has settled.
+  const [mapVeilActive, setMapVeilActive] = useState<boolean>(false);
+  const mapVeilTimerRef = useRef<number | null>(null);
+  const handleToggleSidebar = useCallback(() => {
+    setIsSidebarExpanded((prev) => !prev);
+    setMapVeilActive(true);
+    if (mapVeilTimerRef.current !== null) window.clearTimeout(mapVeilTimerRef.current);
+    mapVeilTimerRef.current = window.setTimeout(() => {
+      mapVeilTimerRef.current = null;
+      setMapVeilActive(false);
+    }, 380);
+  }, []);
+
+  useEffect(() => () => {
+    if (mapVeilTimerRef.current !== null) window.clearTimeout(mapVeilTimerRef.current);
+  }, []);
+
   const handleRefreshMap = () => {
     setMapRefreshKey(Date.now());
     fetchSupabaseData(projectSettings).then(({ dailyData: sDaily, batchLogs: sBatches }) => {
@@ -1652,6 +1675,12 @@ export default function App() {
     } else if (tourStep === 12) {
       setIsAboutModalOpen(false);
       setIsSidebarExpanded(true);
+      setMapVeilActive(true);
+      if (mapVeilTimerRef.current !== null) window.clearTimeout(mapVeilTimerRef.current);
+      mapVeilTimerRef.current = window.setTimeout(() => {
+        mapVeilTimerRef.current = null;
+        setMapVeilActive(false);
+      }, 380);
     }
   }, [tourStep]);
 
@@ -3423,7 +3452,7 @@ export default function App() {
     <div
       data-theme={currentTheme}
       style={{ backgroundColor: 'var(--bg-app)', color: 'var(--text-primary)' }}
-      className="app-canvas min-h-screen md:h-screen w-full max-w-full font-sans flex flex-col overflow-x-hidden overflow-y-auto md:overflow-hidden transition-colors duration-200"
+      className="app-canvas h-[100dvh] md:h-screen w-full max-w-full font-sans flex flex-col overflow-x-hidden overflow-y-auto md:overflow-hidden transition-colors duration-200"
     >
       {/* GLOBAL TOAST NOTIFICATION VIEWPORT */}
       <Toaster />
@@ -3706,7 +3735,7 @@ export default function App() {
             setMobileNavOpen(false);
             setIsAboutModalOpen(true);
           }}
-          onToggleSidebar={() => setIsSidebarExpanded(prev => !prev)}
+          onToggleSidebar={handleToggleSidebar}
           approvalBadgeCount={pendingApprovalCount}
           mobileNavOpen={mobileNavOpen}
           onCloseMobileNav={() => setMobileNavOpen(false)}
@@ -3735,14 +3764,14 @@ export default function App() {
           <WorkspaceErrorBoundary resetKey={currentPage}>
           <React.Suspense fallback={<ContentLoading label="Loading workspace..." variant="spinner" sublabel="Preparing your module" />}>
           <div
-            className={`flex-1 flex flex-col min-h-0 overflow-hidden ${
+            className={`flex flex-col md:flex-1 md:min-h-0 md:overflow-hidden ${
               currentPage === 'dashboard'
                 ? 'relative'
                 : 'absolute inset-0 pointer-events-none opacity-0 -z-50 invisible'
             }`}
             aria-hidden={currentPage !== 'dashboard'}
           >
-            <div key="dashboard-canvas" className="flex-1 flex flex-col gap-3 min-h-0 overflow-y-auto md:overflow-hidden animate-workspace-focus">
+            <div key="dashboard-canvas" className="flex flex-col gap-3 md:flex-1 md:min-h-0 md:overflow-hidden animate-workspace-focus">
               {/* TOP ROW: EXECUTIVE KPI SUMMARY (4 Cards) */}
               <DashboardKpiSummary
                 tourStep={tourStep}
@@ -3800,23 +3829,23 @@ export default function App() {
               />
 
               {/* MIDDLE & BOTTOM GRID: LEFT (COVERAGE MAP) & RIGHT (CONTROL + INSPECTOR) */}
-              <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-3 min-h-0 overflow-y-auto lg:overflow-hidden">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 lg:flex-1 lg:min-h-0 lg:overflow-hidden">
 
                 {/* LEFT COLUMN: INTERACTIVE COVERAGE MAP (7 Cols) */}
-                <div className={`col-span-1 lg:col-span-7 min-h-[380px] lg:min-h-0 bg-card border border-subtle backdrop-blur-md rounded-xl flex flex-col overflow-hidden relative transition-all duration-300 ${tourStep === 2 ? 'ring-2 ring-sky-400/90 shadow-[0_0_35px_rgba(56,189,248,0.4)] z-30 relative scale-[1.002]' : tourStep !== null ? 'opacity-30 blur-[1.5px] pointer-events-none' : ''
+                <div className={`col-span-1 lg:col-span-7 min-h-[340px] sm:min-h-[440px] lg:min-h-0 bg-card border border-subtle backdrop-blur-md rounded-xl flex flex-col overflow-hidden relative transition-all duration-300 ${tourStep === 2 ? 'ring-2 ring-sky-400/90 shadow-[0_0_35px_rgba(56,189,248,0.4)] z-30 relative scale-[1.002]' : tourStep !== null ? 'opacity-30 blur-[1.5px] pointer-events-none' : ''
                   }`}>
                   {/* Header */}
-                  <div className="p-2.5 sm:p-3 border-b border-subtle flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 shrink-0 bg-card">
-                    <span className="text-xs font-bold uppercase tracking-wider text-text-base">
+                  <div className="p-2 sm:p-3 border-b border-subtle flex flex-row flex-wrap items-center justify-between gap-1.5 sm:gap-2 shrink-0 bg-card min-w-0">
+                    <span className="text-xs font-bold uppercase tracking-wider text-text-base truncate flex-1 min-w-0">
                       INTERACTIVE COVERAGE MAP
                     </span>
-                    <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap w-full sm:w-auto justify-end">
+                    <div className="flex items-center gap-1.5 sm:gap-2 flex-none ml-auto">
                       <button
                         onClick={generateExecutivePdfReport}
-                        className="flex-1 sm:flex-none px-2.5 sm:px-3 py-1.5 bg-card hover:bg-inner text-text-base hover:text-text-base border border-subtle text-[10px] sm:text-[11px] font-medium rounded-lg transition-all uppercase tracking-tight cursor-pointer flex items-center justify-center gap-1.5 shadow-sm active:scale-95 whitespace-nowrap"
+                        className="px-2 sm:px-3 py-1 bg-card hover:bg-inner text-text-base hover:text-text-base border border-subtle text-[10px] sm:text-[11px] font-medium rounded-lg transition-all uppercase tracking-tight cursor-pointer flex items-center justify-center gap-1.5 shadow-sm active:scale-95 whitespace-nowrap"
                         title="Generate printable Executive PDF Summary Report"
                       >
-                        <FileText size={13} className="shrink-0" />
+                        <FileText size={12} className="shrink-0" />
                         <span className="hidden xs:inline">GENERATE PDF REPORT</span>
                         <span className="xs:hidden">PDF REPORT</span>
                       </button>
@@ -3831,13 +3860,13 @@ export default function App() {
                             } catch (err) { }
                           });
                         }}
-                        className={`flex-1 sm:flex-none px-2.5 sm:px-3 py-1.5 text-[10px] sm:text-[11px] font-medium rounded-lg border transition-all uppercase tracking-tight flex items-center justify-center gap-1.5 cursor-pointer shadow-sm active:scale-95 whitespace-nowrap ${isDrawingBBox
+                        className={`px-2 sm:px-3 py-1 text-[10px] sm:text-[11px] font-medium rounded-lg border transition-all uppercase tracking-tight flex items-center justify-center gap-1.5 cursor-pointer shadow-sm active:scale-95 whitespace-nowrap ${isDrawingBBox
                           ? 'bg-card border-slate-400 text-text-base'
                           : 'bg-card hover:bg-inner text-text-base border-subtle hover:border-subtle'
                           }`}
                         title="Toggle spatial bounding box rectangle filter on map"
                       >
-                        <Maximize2 size={13} className="shrink-0" />
+                        <Maximize2 size={12} className="shrink-0" />
                         <span>{isDrawingBBox ? 'CLEAR BBOX' : 'BBOX FILTER'}</span>
                       </button>
                     </div>
@@ -3845,6 +3874,9 @@ export default function App() {
 
                   {/* Embedded WebGIS Map */}
                   <div className="flex-1 relative overflow-hidden bg-app">
+                    {/* Resize veil: masks the iframe's tile/3D repaint while the
+                        nav rail width animates (prevents map flicker on expand/collapse). */}
+                    <div className={`absolute inset-0 z-10 bg-app pointer-events-none select-none transition-opacity duration-200 ${mapVeilActive ? 'opacity-100' : 'opacity-0'}`} />
                     {/* Minimalist Trajectory Filter Button & Popup Menu (bottom-left) */}
                     <div className="absolute bottom-3 left-3 z-10 pointer-events-auto flex flex-col items-start gap-2">
                       {/* Popup Panel (shown when isStatusFilterOpen === true) */}
@@ -3965,7 +3997,7 @@ export default function App() {
                         title="Filter Trajectory Status"
                       >
                         <Filter size={13} className={isStatusFilterOpen ? 'text-text-base' : 'text-sky-400'} />
-                        <span>Trajectory Status</span>
+                        <span className="hidden sm:inline">Trajectory Status</span>
                         {(!statusFilters.published || !statusFilters.defect || !statusFilters.stitching || !showPanotrackData) && (
                           <span className="w-1.5 h-1.5 rounded-full bg-sky-400 shrink-0" />
                         )}
@@ -4111,7 +4143,7 @@ export default function App() {
                 </div>
 
                 {/* RIGHT COLUMN: PROCESSING CONTROL & 360 QA INSPECTOR (5 Cols) */}
-                <div className="col-span-1 lg:col-span-5 flex flex-col gap-3 min-h-[400px] lg:min-h-0">
+                <div className="col-span-1 lg:col-span-5 flex flex-col gap-3 min-h-[420px] sm:min-h-[520px] lg:min-h-0">
 
                   {/* TOP RIGHT PANEL: WEBGIS DATABASE & ADMIN */}
                   <div className={`flex-1 bg-card border border-subtle backdrop-blur-md rounded-xl flex flex-col overflow-hidden transition-all duration-700 ${focusedSection === 'processing'
@@ -4157,7 +4189,7 @@ export default function App() {
                       </div>
                       <button
                         onClick={() => goToWorkspace('data')}
-                        className="px-2.5 sm:px-3 py-1.5 bg-card hover:bg-inner text-text-base hover:text-text-base border border-subtle text-[10px] sm:text-[11px] font-medium rounded-lg transition-all uppercase tracking-tight cursor-pointer shadow-sm ml-auto sm:ml-0"
+                        className="px-2.5 sm:px-3 py-1.5 bg-card hover:bg-inner text-text-base hover:text-text-base border border-subtle text-[10px] sm:text-[11px] font-medium rounded-lg transition-all uppercase tracking-tight cursor-pointer shadow-sm shrink-0 self-center whitespace-nowrap"
                       >
                         RE-UPLOAD CSV
                       </button>
@@ -4334,9 +4366,9 @@ export default function App() {
                     </div>
 
                     {/* Card Body */}
-                    <div className="flex-1 flex gap-2.5 p-2.5 min-h-0">
+                    <div className="flex-1 flex flex-col lg:flex-row gap-2.5 p-2.5 min-h-0">
                       {/* Left: 360 Panorama Canvas + Floating HUD Overlay */}
-                      <div className="flex-1 bg-app rounded-lg border border-subtle relative overflow-hidden group flex flex-col min-w-0">
+                      <div className="flex-1 bg-app rounded-lg border border-subtle relative overflow-hidden group flex flex-col min-w-0 min-h-[280px] sm:min-h-[340px] lg:min-h-0">
                         {hasSelectedPoint && (
                           <button
                             onClick={clearMapSelection}
@@ -4549,7 +4581,7 @@ export default function App() {
                       </div>
 
                       {/* Right: Operator QA Defect Flags Panel */}
-                      <div className="w-52 sm:w-56 shrink-0 bg-card rounded-lg border border-subtle p-3 flex flex-col justify-between overflow-y-auto">
+                      <div className="w-full lg:w-56 shrink-0 bg-card rounded-lg border border-subtle p-3 flex flex-col lg:justify-between overflow-y-auto">
                         <div>
                           <div className="flex items-center justify-between gap-1 pb-2 border-b border-subtle mb-2.5">
                             <span className="text-[11px] font-bold text-text-base uppercase tracking-tight flex items-center gap-1.5 whitespace-nowrap">
@@ -4821,7 +4853,7 @@ export default function App() {
               onBackToDashboard={() => goToWorkspace('dashboard')}
             />
           ) : currentPage === 'data' ? (
-            <div className="flex-1 flex flex-col min-h-0 overflow-hidden animate-in fade-in duration-500">
+            <div className="flex flex-col md:flex-1 md:min-h-0 md:overflow-hidden animate-in fade-in duration-500">
               <DataManagementPage
                 dailyData={dailyData}
                 setDailyData={setDailyData}
@@ -4846,7 +4878,7 @@ export default function App() {
               />
             </div>
           ) : currentPage === 'settings' ? (
-            <div className="flex-1 flex flex-col min-h-0 overflow-hidden animate-in fade-in duration-500">
+            <div className="flex flex-col md:flex-1 md:min-h-0 md:overflow-hidden animate-in fade-in duration-500">
               <div className="flex-1 min-h-0 overflow-y-auto">
                 <AdminSettingsView
                   projectSettings={settingsDraft as any}
@@ -4971,7 +5003,7 @@ export default function App() {
               addAuditLog={addAuditLog}
             />
           ) : currentPage === 'dashboard' ? null : (
-            <div key={`workspace-${currentPage}`} className="flex-1 flex flex-col min-h-0 overflow-hidden animate-panel-enter">
+            <div key={`workspace-${currentPage}`} className="flex flex-col md:flex-1 md:min-h-0 md:overflow-hidden animate-panel-enter">
               <WorkspacePlaceholder workspace={getWorkspaceDefinition(currentPage)} translate={t} />
             </div>
           )}

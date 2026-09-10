@@ -77,16 +77,16 @@ describe('ProjectWorkspace smoke', () => {
     expect(screen.getByText('peninsular_malaysia')).toBeInTheDocument()
   })
 
-it('marks the active project with the active badge', () => {
+it('marks the active project with the current badge', () => {
   renderPage({ projectList: [projectFixture()], activeProject: projectFixture() })
-  expect(screen.getByText('projectStatusActive')).toBeInTheDocument()
+  expect(screen.getByText('projectCurrent')).toBeInTheDocument()
   })
 
-  it('does not label non-loaded projects as Active even when their status is active', () => {
+  it('does not label non-loaded projects as Current even when their status is active', () => {
     const projA = projectFixture({ id: 'proj-a', name: 'Alpha' })
     const projB = projectFixture({ id: 'proj-b', name: 'Beta' })
     renderPage({ projectList: [projA, projB], activeProject: projA })
-    expect(screen.getAllByText('projectStatusActive')).toHaveLength(1)
+    expect(screen.getAllByText('projectCurrent')).toHaveLength(1)
   })
 
   it('shows 0 km for an empty new project instead of inheriting the previous project target', () => {

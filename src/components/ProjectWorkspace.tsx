@@ -6,6 +6,7 @@ import { EmptyState } from './common/EmptyState';
 import { SkeletonLine } from './common/Skeleton';
 import { ProjectGalleryCard, resolveUserBasemapKey } from './common/ProjectGalleryCard';
 import { FocusCardGrid, FocusCard } from './common/FocusCards';
+import { DEFAULT_BASEMAP } from '../config/defaults';
 import type { UserProject, ProjectDraft, ProjectStatus } from '../services/projects';
 
 type ProjectTab = 'all' | 'active' | 'archived';
@@ -73,6 +74,7 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({
   const [description, setDescription] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
 
   // Edit project state
   const [editingProject, setEditingProject] = useState<UserProject | null>(null);
@@ -97,7 +99,7 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({
 
   const userBasemapKey =
     resolveUserBasemapKey((projectSettings as any)?.defaultBasemap) ??
-    resolveUserBasemapKey((projectSettings as any)?.defaultBasemapStyle);
+    resolveUserBasemapKey(DEFAULT_BASEMAP);
 
   const filtered = useMemo(() => {
     if (activeTab === 'active') return projectList.filter((p) => p.status !== 'archived');
@@ -140,6 +142,7 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({
       setClientName('');
       setTargetKmInput('');
       setDescription('');
+      setShowCreate(false);
     } finally {
       setSubmitting(false);
     }
@@ -250,7 +253,7 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({
                   hint={activeTab === 'all' && projectList.length === 0 ? translate('projectNoProjectsDesc') : undefined}
                   action={canWrite ? (
                     <button
-                      onClick={() => setActiveTab('all')}
+                      onClick={() => setShowCreate(true)}
                       className="px-3 py-1.5 bg-sky-500/15 hover:bg-sky-500/25 text-sky-400 border border-subtle text-xs font-semibold rounded-lg transition-all cursor-pointer"
                     >
                       + {translate('projectCreateBtn')}
@@ -261,7 +264,7 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({
             ) : (
               <FocusCardGrid className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-3 items-start">
                 {filtered.map((p, idx) => {
-                  const isCardActive = activeProject?.id === p.id;
+                  const isCardActive = String(activeProject?.id ?? '') === String(p.id);
                   const actualKm = isCardActive
                     ? (typeof totalKm === 'number' ? totalKm : (Number(p.scope?.actualKm) || 0))
                     : (Number(p.scope?.actualKm) || 0);
@@ -294,12 +297,62 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({
             )}
           </div>
 
-          {/* Create form */}
-          <div className="bg-card border border-subtle rounded-xl p-4 flex flex-col gap-3">
-            <div className="flex items-center gap-2">
-              <Plus size={15} className="text-sky-400" />
-              <h3 className="text-xs font-bold text-text-base uppercase tracking-wider">{translate('projectCreateTitle')}</h3>
+          {/* Create project action */}
+          <div className="bg-card border border-subtle rounded-xl p-6 flex flex-col items-center justify-center gap-3 text-center">
+            {canWrite ? (
+              <>
+                <div>
+                  <h3 className="text-xs font-bold text-text-base uppercase tracking-wider">{translate('projectCreateTitle')}</h3>
+                  <p className="text-[11px] text-text-muted mt-1">
+                    Configure a new spatial trajectory campaign with name, contract reference, region, and target distance.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowCreate(true)}
+                  className="px-4 py-2 bg-transparent hover:bg-inner text-text-base border border-subtle text-xs font-bold rounded-lg transition-all cursor-pointer active:scale-95"
+                >
+                  {translate('projectCreateBtn')}
+                </button>
+              </>
+            ) : (
+              <p className="text-[11px] text-text-muted">Guest mode &mdash; read only</p>
+            )}
+            {onBackToDashboard && (
+              <button
+                onClick={onBackToDashboard}
+                className="self-center text-[10px] text-text-muted hover:text-text-base transition-colors cursor-pointer mt-1"
+              >
+                ← Back to Dashboard
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Create project dialog */}
+      {showCreate && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-3 sm:p-4"
+          onClick={() => !submitting && setShowCreate(false)}
+        >
+          <div
+            className="bg-card border border-subtle rounded-xl p-5 w-full max-w-md shadow-2xl animate-in fade-in zoom-in-95 flex flex-col gap-4 max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-subtle pb-3">
+              <div className="flex items-center gap-2">
+                <Plus size={16} className="text-sky-400" />
+                <h3 className="text-xs font-bold text-text-base uppercase tracking-wider">{translate('projectCreateTitle')}</h3>
+              </div>
+              <button
+                onClick={() => !submitting && setShowCreate(false)}
+                aria-label="Close"
+                className="p-1 text-text-muted hover:text-text-base rounded transition-colors cursor-pointer"
+              >
+                <X size={15} />
+              </button>
             </div>
+
             <form onSubmit={handleSubmit} className="flex flex-col gap-3">
               <label className="flex flex-col gap-1">
                 <span className="text-[9px] uppercase tracking-wider text-text-muted font-semibold">{translate('projectNameField')}</span>
@@ -383,17 +436,9 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({
                 {submitting ? '…' : `+ ${translate('projectCreateBtn')}`}
               </button>
             </form>
-            {onBackToDashboard && (
-              <button
-                onClick={onBackToDashboard}
-                className="self-start text-[10px] text-text-muted hover:text-text-base transition-colors cursor-pointer mt-1"
-              >
-                ← Back to Dashboard
-              </button>
-            )}
           </div>
         </div>
-      </div>
+      )}
 
       {/* Delete confirmation dialog */}
       {confirmDelete && (

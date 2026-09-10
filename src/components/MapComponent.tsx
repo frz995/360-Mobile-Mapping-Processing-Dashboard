@@ -473,11 +473,11 @@ export const MapComponent = ({
     <div className="relative w-full h-full overflow-hidden bg-app">
       {/* Top-Left GeoSphere 360 Operations Hub Executive Floating Badge */}
       <div className="absolute top-3 left-3 z-20 pointer-events-none">
-        <div className="bg-card backdrop-blur-xl border border-subtle rounded-2xl px-3.5 py-2 shadow-2xl flex items-center gap-3 shrink-0">
-          <div className="p-2 bg-gradient-to-tr from-sky-600 to-emerald-500 rounded-xl shadow-md shadow-emerald-950/40 shrink-0">
-            <Layers size={16} className="text-text-base" />
+        <div className="bg-card backdrop-blur-xl border border-subtle rounded-2xl px-2 py-2 sm:px-3.5 sm:py-2 shadow-2xl flex items-center gap-3 shrink-0">
+          <div className="p-1.5 sm:p-2 bg-gradient-to-tr from-sky-600 to-emerald-500 rounded-xl shadow-md shadow-emerald-950/40 shrink-0">
+            <Layers size={15} className="text-text-base" />
           </div>
-          <div>
+          <div className="hidden sm:block">
             <div className="flex items-center gap-2">
               <h2 className="text-text-base font-bold text-xs sm:text-sm tracking-tight">
                 GeoSphere 360 Operations Hub
@@ -490,7 +490,7 @@ export const MapComponent = ({
         </div>
       </div>
       {/* Live Cursor Coordinate Badge (bottom-right) — non-overlapping position */}
-      <div className="absolute bottom-3 right-3 z-20 pointer-events-none">
+      <div className="absolute bottom-3 right-3 z-20 pointer-events-none hidden sm:block">
         <div className="bg-app backdrop-blur-md border border-subtle rounded-lg px-2.5 py-1 text-[11px] text-text-base shadow-xl flex items-center gap-2 font-sans">
           <span className="text-sky-400 font-semibold">EPSG:4326</span>
           <span className="text-text-muted">|</span>
