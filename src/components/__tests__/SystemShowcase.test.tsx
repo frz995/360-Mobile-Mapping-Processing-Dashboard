@@ -2,6 +2,16 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, act, within, waitFor } from '@testing-library/react';
 import { SystemShowcase } from '../SystemShowcase';
 
+// tsParticles requires OffscreenCanvas (not available in jsdom) — stub the sparkles background.
+vi.mock('../common/Sparkles', () => ({
+  SparklesCore: () => <div data-testid="sparkles-mock" />,
+}));
+
+// WebGL / three.js is not available in jsdom — stub the Atomic point-cloud globe host.
+vi.mock('../common/AtomicGlobeHost', () => ({
+  AtomicGlobeHost: () => <div data-testid="atomic-globe-mock" />,
+}));
+
 afterEach(() => {
   vi.useRealTimers();
 });
@@ -93,10 +103,8 @@ describe('SystemShowcase Component', () => {
     expect(within(popupDialog).getByRole('heading', { name: 'Johor' })).toBeInTheDocument();
     expect(within(popupDialog).getByText('Segamat')).toBeInTheDocument();
     expect(within(popupDialog).getByText('Tangkak')).toBeInTheDocument();
-    expect(within(popupDialog).getByText(/mapping frames/i)).toBeInTheDocument();
-    expect(within(popupDialog).getByText(/platform POIs/i)).toBeInTheDocument();
-    expect(within(popupDialog).getByText(/surveyed route/i)).toBeInTheDocument();
-    expect(within(popupDialog).getByText(/pipeline SLA/i)).toBeInTheDocument();
+    expect(within(popupDialog).getByText(/No survey frames or platform POIs/i)).toBeInTheDocument();
+    expect(within(popupDialog).getByText(/ingress/i)).toBeInTheDocument();
     expect(within(popupDialog).queryByText(/PANOTRACK STREAM/i)).not.toBeInTheDocument();
 
     // Verify closing popup (animated close, so the dialog unmounts shortly after)

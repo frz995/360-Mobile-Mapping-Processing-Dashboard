@@ -370,8 +370,8 @@ export const EarthGlobe: React.FC<EarthGlobeProps> = ({
   landFill = '#262c34',
   landStroke = '#3b434d',
   strokeWidth = 0.5,
-  glowColor: _glowColor = 'rgba(255, 255, 255, 0.08)',
-  glowIntensity: _glowIntensity = 0.5,
+  glowColor = 'rgba(255, 255, 255, 0.08)',
+  glowIntensity = 0.5,
   onZoomIn,
   onMarkerClick,
   onActiveMarkerProjected,
@@ -546,7 +546,6 @@ export const EarthGlobe: React.FC<EarthGlobeProps> = ({
   useEffect(() => {
     layoutRef.current = { radius, cx, cy };
   });
-
   // Animation Loop for imperative 60 FPS rendering
   useEffect(() => {
     if (radius <= 0) return;
@@ -584,7 +583,7 @@ export const EarthGlobe: React.FC<EarthGlobeProps> = ({
           flyAnimRef.current = null;
         }
       } else if (autoRotate && !dragRef.current.active && now - lastInteractionRef.current > 1200) {
-        rotRef.current.lambda += autoRotateSpeed * dt;
+        rotRef.current.lambda -= autoRotateSpeed * dt;
       }
 
       const { lambda, phi, gamma } = rotRef.current;
@@ -754,19 +753,22 @@ export const EarthGlobe: React.FC<EarthGlobeProps> = ({
   const specularId = `globe-specular-${uid}`;
   const ambientShadowId = `globe-ambient-shadow-${uid}`;
   const oceanGradientId = `globe-ocean-${uid}`;
+  const glowId = `globe-glow-${uid}`;
 
-  const handleWheel = (e: React.WheelEvent) => {
+const handleWheel = (e: React.WheelEvent) => {
     if (!enableZoom) return;
     e.preventDefault();
+    flyAnimRef.current = null; // Cancel any in-flight camera animation so user scroll takes over
     const factor = e.deltaY < 0 ? 1.12 : 0.89;
     updateZoom(currentZoom * factor);
     lastInteractionRef.current = performance.now();
-  };
+};
 
-  const handleDoubleClick = () => {
+const handleDoubleClick = () => {
+    flyAnimRef.current = null;
     updateZoom(1.05);
     updatePan({ x: 0, y: 0 });
-  };
+};
 
   return (
     <div
@@ -833,7 +835,21 @@ export const EarthGlobe: React.FC<EarthGlobeProps> = ({
             <stop offset="86%" stopColor="rgba(0, 0, 0, 0.62)" />
             <stop offset="100%" stopColor="rgba(0, 0, 0, 0.88)" />
           </radialGradient>
+
+          {/* 0. Soft Atmospheric Halo (outer glow rim beyond the disc, centered in user space) */}
+          {glowIntensity > 0 && (
+            <radialGradient id={glowId} gradientUnits="userSpaceOnUse" cx={cx} cy={cy} r={Math.max(radius, 1) * 1.35}>
+              <stop offset="0%" stopColor={glowColor} stopOpacity={glowIntensity} />
+              <stop offset="55%" stopColor={glowColor} stopOpacity={glowIntensity * 0.5} />
+              <stop offset="100%" stopColor={glowColor} stopOpacity={0} />
+            </radialGradient>
+          )}
         </defs>
+
+        {/* 0. Atmospheric glow halo rendered underneath the ocean disc so it reads as a soft rim */}
+        {glowIntensity > 0 && (
+          <circle cx={cx} cy={cy} r={radius * 1.35} fill={`url(#${glowId})`} pointerEvents="none" />
+        )}
 
         {/* 1. Base Ocean Disc */}
         <circle cx={cx} cy={cy} r={radius} fill={`url(#${oceanGradientId})`} />

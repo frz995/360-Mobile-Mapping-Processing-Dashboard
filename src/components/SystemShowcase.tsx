@@ -1,4 +1,22 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+
+// Track a CSS media query from JS (fallback for jsdom test env without matchMedia).
+const useMediaQuery = (query: string): boolean => {
+    const [matches, setMatches] = useState<boolean>(() =>
+        typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+            ? window.matchMedia(query).matches
+            : false
+    );
+    useEffect(() => {
+        if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+        const mql = window.matchMedia(query);
+        const onChange = () => setMatches(mql.matches);
+        onChange();
+        mql.addEventListener?.('change', onChange);
+        return () => mql.removeEventListener?.('change', onChange);
+    }, [query]);
+    return matches;
+};
 import {
     Compass,
     Camera,
@@ -14,13 +32,48 @@ import {
 } from 'lucide-react';
 import { usePanoramaViewer } from '../hooks/usePanoramaViewer';
 import { StarsBackground } from './common/StarsBackground';
+import { SparklesCore } from './common/Sparkles';
+import { HoverBorderGradient } from './common/HoverBorderGradient';
 import { EarthGlobe, type GlobeMarker } from './common/EarthGlobe';
+import { AtomicGlobeHost, type AtomicGlobeMarker } from './common/AtomicGlobeHost';
 import { ProjectBoundaryMap } from './common/ProjectBoundaryMap';
 import { DISTRICT_METADATA } from './boundary/districtMetadata';
 import { MALAYSIA_REGIONS } from './boundary/malaysiaRegions';
 import { MALAYSIA_DISTRICTS, districtsToGeoJSON, ensureDistrictGeometriesLoaded } from './boundary/malaysiaDistricts';
 import { extractPanotrackPoints, filterPanotrackByBBoxes } from '../utils/panotrackExtractor';
+import { getImagesProcessedCount, getPOICount } from '../utils/dashboardData';
 import { DistrictProjectPopup, type PanotrackPopupData } from './common/DistrictProjectPopup';
+
+/** Fallback so a WebGL/runtime hiccup inside the vendored AtomicGlobe can never
+ *  leave the showcase blank — errors degrade back to the vector SVG EarthGlobe. */
+class AtomicGlobeBoundary extends React.Component<
+    { markers: GlobeMarker[]; children: React.ReactNode },
+    { failed: boolean }
+> {
+    state = { failed: false };
+    static getDerivedStateFromError() {
+        return { failed: true };
+    }
+    componentDidCatch(error: unknown) {
+        console.error('[AtomicGlobe] runtime error — falling back to vector globe:', error);
+    }
+    render() {
+        if (!this.state.failed) return this.props.children;
+        return (
+            <EarthGlobe
+                autoRotate
+                autoRotateSpeed={1.8}
+                markers={this.props.markers}
+                oceanColor="#0f1318"
+                landFill="#262c34"
+                landStroke="#3b434d"
+                strokeWidth={0.5}
+                glowColor="rgba(255, 255, 255, 0.18)"
+                glowIntensity={0.65}
+            />
+        );
+    }
+}
 
 /** Load the district (and its state) that a survey coordinate falls in, so the
  *  geodetic card & HUD always have a real district to show even without a committed
@@ -99,7 +152,10 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
     const [activePhotoIdx, setActivePhotoIdx] = useState(0);
     const [activeHotspotId, setActiveHotspotId] = useState<string | null>(null);
     const [isAnimating, setIsAnimating] = useState(false);
+    const isMobile = useMediaQuery('(max-width: 640px)');
     const [viewMode, setViewMode] = useState<'globe' | 'modules'>('modules');
+    const [viewTransitioning, setViewTransitioning] = useState(false);
+    const [titleSparklesReady, setTitleSparklesReady] = useState(false);
     const [autoRotate, setAutoRotate] = useState(true);
     const [customCenter, setCustomCenter] = useState<{ lat: number; lng: number } | null>(null);
     const [flyTarget, setFlyTarget] = useState<{
@@ -108,10 +164,37 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
         zoom?: number;
         timestamp: number;
     } | null>(null);
+    const [atomicGlobeFocus, setAtomicGlobeFocus] = useState<{ lat: number; lng: number } | null>(null);
     const [isZoomedToDistrict, setIsZoomedToDistrict] = useState(false);
     const [isFlyingIn, setIsFlyingIn] = useState(false);
     const [globeZoom, setGlobeZoom] = useState(1.05);
     const [globePan, setGlobePan] = useState({ x: 0, y: 0 });
+    const [showAtomicGlobe, setShowAtomicGlobe] = useState(true);
+
+    // While the globe container animates between the corner park and full-screen (700ms),
+    // hold the globe's rotation off so the two animations don't fight and stall.
+    const prevViewModeRef = useRef(viewMode);
+    useEffect(() => {
+        if (prevViewModeRef.current !== viewMode) {
+            prevViewModeRef.current = viewMode;
+            if (viewMode === 'globe') {
+                setViewTransitioning(true);
+                const t = window.setTimeout(() => setViewTransitioning(false), 850);
+                return () => window.clearTimeout(t);
+            }
+        }
+    }, [viewMode]);
+
+    // Defer mounting the title tsParticles canvas until the view-switch transition has
+    // settled, so its one-time engine load + particle spawn doesn't stall the crossfade.
+    useEffect(() => {
+        if (viewMode !== 'modules') {
+            setTitleSparklesReady(false);
+            return;
+        }
+        const t = window.setTimeout(() => setTitleSparklesReady(true), 400);
+        return () => window.clearTimeout(t);
+    }, [viewMode]);
 
     // Dynamic Viewer Selection
     const { viewerDisplayName } = usePanoramaViewer(projectSettings);
@@ -163,10 +246,11 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
 
     // Telemetry calculations
     const computedDistance = dailyData.reduce((acc, item) => acc + (Number(item.distance || item.kmProcessed) || 0), 0);
-    const computedFrames = dailyData.reduce((acc, item) => acc + (Number(item.availableImagesCount || item.panoramas?.length || item.images || item.imagesProcessed || item.poiCount) || 0), 0);
+    const computedFrames = dailyData.reduce((acc, item) => acc + getImagesProcessedCount(item), 0);
     const computedDefects = dailyData.reduce((acc, item) => acc + (Number(item.imagesDefected || item.defectCount) || 0), 0);
+    const computedPoi = dailyData.reduce((acc, item) => acc + getPOICount(item), 0);
     const activeJobs = batchLogs.filter((b: any) => b.status === 'In Progress' || b.status === 'Ongoing').length;
-    const targetDistance = Number(projectSettings?.targetKm) || Number(projectSettings?.targetDistanceKm) || 0;
+    const targetDistance = Number(projectSettings?.targetKm) || Number(projectSettings?.targetDistanceKm) || (computedDistance > 0 ? computedDistance : 0);
     const pctTarget = targetDistance > 0 ? Math.min(100, (computedDistance / targetDistance) * 100).toFixed(1) : '0.0';
     const slaPercent = computedFrames > 0
         ? Math.max(0, ((computedFrames - computedDefects) / computedFrames) * 100).toFixed(1)
@@ -708,12 +792,12 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                 subtext: `${cLat.toFixed(4)}° N, ${cLng.toFixed(4)}° E • ${bnd.regionName || 'Malaysia'}`
             };
         }
-return {
-        latitude: 3.8,
-        longitude: 109.5,
-        name: projectSettings?.projectName || 'Active Survey Area',
-        subtext: 'Peninsular Malaysia'
-    };
+        return {
+            latitude: 3.8,
+            longitude: 109.5,
+            name: projectSettings?.projectName || 'Active Survey Area',
+            subtext: 'Peninsular Malaysia'
+        };
     }, [dailyData, projectSettings]);
     // Available districts/projects for inspection — derived entirely from the
     // user's committed project boundary (never hardcoded). All THREE saved signals are
@@ -923,8 +1007,11 @@ return {
         const subgrids = Array.from(new Set(relevantPoints.map(p => p.subgrid).filter(Boolean)));
         const trackPoints: Array<[number, number]> = relevantPoints.slice(0, 60).map(p => [p.lng, p.lat]);
 
-        const frames = computedFrames > 0 ? computedFrames : (relevantPoints.length > 0 ? relevantPoints.length : 3420);
-        const poi = computedFrames > 0 ? Math.round(computedFrames * 0.28) : (relevantPoints.length > 0 ? relevantPoints.length : 860);
+        // Frame & POI counts reported from REAL data only — frame count follows the app's
+        // canonical getImagesProcessedCount logic (storage-verified frames), POI follows
+        // getPOICount (survey track points). No location-point substitutions or estimates.
+        const frames = computedFrames;
+        const poi = computedPoi;
 
         return {
             regionName,
@@ -933,18 +1020,18 @@ return {
             longitude: activeDistrict?.lng ?? 0,
             totalFrames: frames,
             totalPoi: poi,
-            surveyMileage: computedDistance > 0 ? computedDistance : 3.4,
+            surveyMileage: computedDistance,
             pipelineSla: slaPercent,
-            publishedCount: publishedCount > 0 ? publishedCount : Math.round(frames * 0.96),
-            stagingCount: stagingCount > 0 ? stagingCount : Math.round(frames * 0.03),
-            defectCount: defectCount > 0 ? defectCount : (computedDefects > 0 ? computedDefects : 2),
+            publishedCount,
+            stagingCount,
+            defectCount: defectCount > 0 ? defectCount : computedDefects,
             subgrids,
             trackPoints: trackPoints.length >= 2 ? trackPoints : undefined,
             boundaryGeojson: committedBoundary?.geojson,
             boundaryBbox: committedBoundary?.bbox,
             panotrackPoints: panotrackInProject,
         };
-    }, [showDistrictPopup, activeDistrict, panotrackInProject, panotrackData, computedFrames, computedDistance, computedDefects, slaPercent, projectSettings, committedBoundary]);
+    }, [showDistrictPopup, activeDistrict, panotrackInProject, panotrackData, computedFrames, computedPoi, computedDistance, computedDefects, slaPercent, projectSettings, committedBoundary]);
 
     // Track active marker projected 2D position from EarthGlobe
     const [markerProjectedPos, setMarkerProjectedPos] = useState<{ x: number; y: number; visible: boolean } | null>(null);
@@ -979,8 +1066,8 @@ return {
     const popupScreenLayout = useMemo(() => {
         const screenW = typeof window !== 'undefined' ? window.innerWidth : 1200;
         const screenH = typeof window !== 'undefined' ? window.innerHeight : 800;
-        const cardW = cardSize?.w || 360;
-        const cardH = cardSize?.h || Math.min(420, Math.max(300, screenH - 120));
+        const cardW = Math.min(cardSize?.w || 360, Math.max(220, screenW - 16));
+        const cardH = cardSize?.h || Math.min(430, Math.max(300, screenH - 120));
 
         const rawMX = markerProjectedPos ? markerProjectedPos.x : (screenW / 2);
         const rawMY = markerProjectedPos ? markerProjectedPos.y : (screenH / 2);
@@ -995,7 +1082,7 @@ return {
         // Try placing card ABOVE the marker first (as requested by user)
         // Top navbar height is ~56px, keep top margin >= 64px
         const canPlaceAbove = (mY - 30 - cardH >= 64);
-        let cardX = canPlaceRight 
+        let cardX = canPlaceRight
             ? Math.min(screenW - cardW - 20, mX + 45)
             : Math.max(20, mX - 45 - cardW);
         let cardY = canPlaceAbove
@@ -1038,30 +1125,53 @@ return {
         };
     }, [markerProjectedPos, cardSize]);
 
-    const activeLat = customCenter ? customCenter.lat : activeDistrict.lat;
-    const activeLng = customCenter ? customCenter.lng : activeDistrict.lng;
-
     const globeMarkers = useMemo<GlobeMarker[]>(() => {
         // The globe shows ONLY the committed state — a single region pin. District-level
         // granularity (Segamat / Tangkak) lives in the HUD card, not on the globe.
         const stateName = activeDistrict?.state ||
             (projectSettings?.projectBoundary as any)?.regionName ||
             'Malaysia';
+        const stateSlug = stateName.trim().toLowerCase();
 
         // Prefer the real region geometry centre (MALAYSIA_REGIONS)…
-        const region = MALAYSIA_REGIONS.find((r) => r.name.toLowerCase() === stateName.toLowerCase());
+        const region = MALAYSIA_REGIONS.find((r) => r.name.trim().toLowerCase() === stateSlug);
         let lat = region?.center ? region.center[0] : NaN;
         let lng = region?.center ? region.center[1] : NaN;
+
+        // …then the centre of the actually-committed boundary geometry (bbox),
+        // the authoritative "where the state is" that survives name mismatches.
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+            const cb = committedBoundary?.bbox;
+            if (Array.isArray(cb) && cb.length === 4 && Number.isFinite(cb[0]) && Number.isFinite(cb[1]) && Number.isFinite(cb[2]) && Number.isFinite(cb[3])) {
+                lat = (cb[1] + cb[3]) / 2;
+                lng = (cb[0] + cb[2]) / 2;
+            }
+        }
 
         // …fall back to the average of the committed districts' centres
         if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
             if (resolvedDistricts.length > 0) {
                 lat = resolvedDistricts.reduce((acc, d) => acc + d.lat, 0) / resolvedDistricts.length;
                 lng = resolvedDistricts.reduce((acc, d) => acc + d.lng, 0) / resolvedDistricts.length;
-            } else {
-                lat = projectLocation.latitude;
-                lng = projectLocation.longitude;
             }
+        }
+
+        // …then to the fixed state metadata (guaranteed to sit inside the state),
+        // so a label like "JOHOR" is never pinned to the project location outside it.
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+            const stateMetas = DISTRICT_METADATA.filter(
+                (m) => (m.stateName || m.group || '').trim().toLowerCase() === stateSlug
+            );
+            if (stateMetas.length > 0) {
+                lat = stateMetas.reduce((acc, m) => acc + m.center[0], 0) / stateMetas.length;
+                lng = stateMetas.reduce((acc, m) => acc + m.center[1], 0) / stateMetas.length;
+            }
+        }
+
+        // Last resort: the project location.
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+            lat = projectLocation.latitude;
+            lng = projectLocation.longitude;
         }
 
         const n = resolvedDistricts.length;
@@ -1074,7 +1184,31 @@ return {
             longitude: Number.isFinite(lng) ? lng : 109.5,
             color: '#ef4444',
         }];
-    }, [activeDistrict, resolvedDistricts, projectSettings, projectLocation.latitude, projectLocation.longitude]);
+    }, [activeDistrict, resolvedDistricts, projectSettings, projectLocation.latitude, projectLocation.longitude, committedBoundary]);
+
+    // Anchor for the HUD leader line / beacon ring. Never let a degenerate
+    // fallback coordinate ((0,0) → Gulf of Guinea) drive it — if the active
+    // district has no real location, point at the committed state pin instead.
+    const activeLat = customCenter
+        ? customCenter.lat
+        : Number.isFinite(activeDistrict.lat) && (activeDistrict.lat !== 0 || activeDistrict.lng !== 0)
+            ? activeDistrict.lat
+            : (globeMarkers[0]?.latitude ?? activeDistrict.lat);
+    const activeLng = customCenter
+        ? customCenter.lng
+        : Number.isFinite(activeDistrict.lng) && (activeDistrict.lat !== 0 || activeDistrict.lng !== 0)
+            ? activeDistrict.lng
+            : (globeMarkers[0]?.longitude ?? activeDistrict.lng);
+
+    // Atomic Globe (vendored Framer) markers — reuses the same committed-state pins.
+    const atomicGlobeMarkers = useMemo<AtomicGlobeMarker[]>(() => {
+        return globeMarkers.map((m) => ({
+            label: m.label,
+            lat: m.latitude,
+            lng: m.longitude,
+            description: m.description,
+        }));
+    }, [globeMarkers]);
 
     // Focus camera directly onto active project location with smooth flight
     const handleFocusProject = useCallback((target?: { lat: number; lng: number } | React.MouseEvent | React.KeyboardEvent) => {
@@ -1088,6 +1222,7 @@ return {
             zoom: 1.05,
             timestamp: Date.now(),
         });
+        if (Number.isFinite(lat) && Number.isFinite(lng)) setAtomicGlobeFocus({ lat, lng });
     }, [activeDistrict]);
 
     // Cinematic planetary camera dive handler
@@ -1112,6 +1247,7 @@ return {
 
     const handleReturnToGlobe = useCallback(() => {
         setIsZoomedToDistrict(false);
+        setAtomicGlobeFocus(null);
         setAutoRotate(true);
     }, []);
 
@@ -1131,6 +1267,7 @@ return {
             zoom: 6.0,
             timestamp: Date.now(),
         });
+        if (Number.isFinite(d.lat) && Number.isFinite(d.lng)) setAtomicGlobeFocus({ lat: d.lat, lng: d.lng });
         setShowDistrictPopup(true);
     }, [inspectableDistricts, activeDistrict]);
 
@@ -1146,6 +1283,7 @@ return {
             zoom: 1.05,
             timestamp: Date.now(),
         });
+        setAtomicGlobeFocus(null);
         window.setTimeout(() => setAutoRotate(true), 1500);
     }, [projectLocation]);
 
@@ -1153,71 +1291,120 @@ return {
         <div className="relative w-full showcase-landing text-white font-sans overflow-hidden select-none flex flex-col justify-between bg-black">
 
             {/* 1. Animate UI Stars Background, 3D Earth Globe & Clean Ambient Lighting */}
-            <div className={`absolute inset-0 z-0 overflow-hidden ${viewMode === 'globe' ? 'pointer-events-auto' : 'pointer-events-none'}`}>
+            <div className={`absolute inset-0 z-0 overflow-hidden isolate ${viewMode === 'globe' ? 'pointer-events-auto' : 'pointer-events-none'}`}>
                 <div className="absolute inset-0 bg-[#05070a]" />
 
-                {/* Animate UI Stars Background (multi-depth starfield with warp zoom during flight) */}
-                <div className={`absolute inset-0 pointer-events-none transition-transform duration-700 ease-out ${
-                    isFlyingIn ? 'scale-125' : 'scale-100'
-                }`}>
-                    <StarsBackground
-                        factor={0.035}
-                        speed={55}
-                        starColor="#ffffff"
-                        className="w-full h-full opacity-80"
-                    />
-                </div>
-
-                {/* 3D Interactive Pure SVG Earth Globe Centered on Current Project Location with Fly-In Dive */}
-                <div className={`absolute inset-0 flex items-center justify-center z-10 ${
-                    viewMode === 'globe' ? 'pointer-events-auto' : 'pointer-events-none'
-                }`}>
-                    <div className={`w-full h-full flex items-center justify-center transform-gpu transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] will-change-transform ${
-                        isFlyingIn
-                            ? 'scale-[2.5] opacity-0 blur-[2px]'
-                            : viewMode === 'globe'
-                                ? 'translate-x-0 translate-y-0 scale-100 opacity-100'
-                                : 'lg:-translate-x-[36%] lg:translate-y-[22%] scale-[1.95] opacity-85'
+                {/* Animate UI Stars Background (multi-depth starfield with slow, relaxed rotation) */}
+                <div className={`absolute inset-0 z-0 pointer-events-none transition-transform duration-700 ease-out ${isFlyingIn ? 'scale-125' : 'scale-100'
                     }`}>
-                        <EarthGlobe
-                            autoRotate={autoRotate}
-                            autoRotateSpeed={1.8}
-                            centerLatitude={activeLat}
-                            centerLongitude={activeLng}
-                            flyTo={flyTarget || undefined}
-                            enableDrag={true}
-                            enableZoom={true}
-                            enablePan={true}
-                            zoom={globeZoom}
-                            onZoomChange={setGlobeZoom}
-                            panOffset={globePan}
-                            onPanChange={setGlobePan}
-                            oceanColor="#0f1318"
-                            landFill="#262c34"
-                            landStroke="#3b434d"
-                            strokeWidth={0.5}
-                            glowColor="rgba(255, 255, 255, 0.08)"
-                            glowIntensity={0.5}
-                            markers={globeMarkers}
-                            activeTargetCoord={{ lat: activeDistrict.lat, lng: activeDistrict.lng }}
-                            onActiveMarkerProjected={handleActiveMarkerProjected}
-                            onZoomIn={() => handleInspectDistrict()}
-                            onMarkerClick={(marker) => {
-                                const idx = inspectableDistricts.findIndex(d => d.name.toLowerCase() === marker.label?.toLowerCase());
-                                if (idx >= 0) {
-                                    // Toggle: clicking the already-selected district again → deselect + zoom out
-                                    if (showDistrictPopup && idx === selectedDistrictIdx) {
-                                        handleDeselectDistrict();
-                                    } else {
-                                        handleSelectDistrict(idx);
-                                    }
-                                } else {
-                                    // Available survey data marker → fly the camera to that cluster
-                                    handleFocusProject({ lat: marker.latitude, lng: marker.longitude });
-                                }
-                            }}
+                    <div className="w-full h-full animate-spin-slow">
+                        <StarsBackground
+                            factor={0.035}
+                            speed={55}
+                            starColor="#ffffff"
+                            className="w-full h-full opacity-80"
                         />
                     </div>
+                </div>
+
+                {/* The 3D Interactive Globe (vector Globe by default, switchable to the Atomic point-cloud Globe) */}
+                <div className={`absolute inset-0 flex items-center justify-center z-10 ${viewMode === 'globe' ? 'pointer-events-auto' : 'pointer-events-none'
+                    }`}>
+                    {showAtomicGlobe ? (
+                        <div className={`w-full h-full flex items-center justify-center transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] ${isFlyingIn
+                                ? 'scale-[1.7] opacity-0 blur-[2px]'
+                                : viewMode === 'globe'
+                                    ? 'translate-x-0 translate-y-0 scale-100 opacity-100'
+                                    : 'max-sm:translate-y-[14%] lg:-translate-x-[36%] lg:translate-y-[22%] lg:scale-[1.95] opacity-85'
+                            }`}>
+                            <AtomicGlobeBoundary markers={globeMarkers}>
+                            <AtomicGlobeHost
+                                markers={atomicGlobeMarkers}
+                                className="w-full h-full"
+                                focusTarget={atomicGlobeFocus}
+                                activeTargetCoord={{ lat: activeLat, lng: activeLng }}
+                                zoom={globeZoom}
+                                onZoomChange={setGlobeZoom}
+                                enableZoom
+                                activeMarkerLabel={activeDistrict.name}
+                                onActiveMarkerProjected={handleActiveMarkerProjected}
+                                backgroundColor="transparent"
+                                dotColor="#cfe0ff"
+                                dotDensity={80000}
+                                baseSize={4.5}
+                                backParticleOpacity={0.12}
+                                rotationSpeed={autoRotate && !viewTransitioning ? 0.06 : 0}
+                                centerLng={activeLng}
+                                tilt={18}
+                                globeScale={isMobile ? 0.59 : 1.05}
+                                introDuration={2.2}
+                                persistentAssembly={false}
+                                reformOnScroll={false}
+                                allowVerticalDrag
+                                verticalDragLimit={70}
+                                enableHover
+                                markerType="beacon"
+                                pinColor="#4da6ff"
+                                markerBgColor="#0b1020"
+                                markerTextColor="#ffffff"
+                                markerActiveBgColor="#4da6ff"
+                                markerActiveIconColor="#0b1020"
+                                showArcs
+                                arcColor="#4da6ff"
+                                arcSpeed={0.25}
+                                arcMode="chain"
+                                arcHeight={0.4}
+                                performanceMode="auto"
+                            />
+                            </AtomicGlobeBoundary>
+                        </div>
+                    ) : (
+                        <div className={`w-full h-full flex items-center justify-center transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] ${isFlyingIn
+                                ? 'scale-[2.5] opacity-0 blur-[2px]'
+                                : viewMode === 'globe'
+                                    ? 'translate-x-0 translate-y-0 scale-100 opacity-100'
+                                    : 'max-sm:translate-y-[14%] lg:-translate-x-[36%] lg:translate-y-[22%] lg:scale-[1.95] opacity-85'
+                            }`}>
+                            <EarthGlobe
+                                autoRotate={autoRotate && !viewTransitioning}
+                                autoRotateSpeed={1.8}
+                                centerLatitude={activeLat}
+                                centerLongitude={activeLng}
+                                flyTo={flyTarget || undefined}
+                                enableDrag={true}
+                                enableZoom={true}
+                                enablePan={true}
+                                zoom={globeZoom}
+                                onZoomChange={setGlobeZoom}
+                                panOffset={globePan}
+                                onPanChange={setGlobePan}
+                                oceanColor="#0f1318"
+                                landFill="#262c34"
+                                landStroke="#3b434d"
+                                strokeWidth={0.5}
+                                glowColor="rgba(255, 255, 255, 0.18)"
+                                glowIntensity={0.65}
+                                markers={globeMarkers}
+                                activeTargetCoord={{ lat: activeDistrict.lat, lng: activeDistrict.lng }}
+                                onActiveMarkerProjected={handleActiveMarkerProjected}
+                                onZoomIn={() => handleInspectDistrict()}
+                                onMarkerClick={(marker) => {
+                                    const idx = inspectableDistricts.findIndex(d => d.name.toLowerCase() === marker.label?.toLowerCase());
+                                    if (idx >= 0) {
+                                        // Toggle: clicking the already-selected district again → deselect + zoom out
+                                        if (showDistrictPopup && idx === selectedDistrictIdx) {
+                                            handleDeselectDistrict();
+                                        } else {
+                                            handleSelectDistrict(idx);
+                                        }
+                                    } else {
+                                        // Available survey data marker → fly the camera to that cluster
+                                        handleFocusProject({ lat: marker.latitude, lng: marker.longitude });
+                                    }
+                                }}
+                            />
+                        </div>
+                    )}
                 </div>
 
                 {/* Atmospheric Entry HUD Badge during planetary camera dive — text only, no box or dot */}
@@ -1244,7 +1431,7 @@ return {
             </div>
 
             {/* 2. Top Header Navbar (Module navigation centered, balanced left & right) */}
-            <header className="relative z-30 px-4 sm:px-8 py-3 flex items-center justify-between border-b border-white/10 bg-black/90 backdrop-blur-md shrink-0 gap-4">
+            <header className="relative z-30 px-3 sm:px-8 py-2 sm:py-3 flex items-center justify-between border-b border-white/10 bg-black/90 backdrop-blur-md shrink-0 gap-3 sm:gap-4">
                 {/* Left: System Title */}
                 <div className="flex items-center gap-3 min-w-0 z-10">
                     <div className="max-w-[140px] xs:max-w-[190px] sm:max-w-[240px] 2xl:max-w-none min-w-0 pr-1 sm:pr-2">
@@ -1266,11 +1453,10 @@ return {
                         <button
                             key={mod.id}
                             onClick={() => handleModuleChange(idx)}
-                            className={`text-[11px] 2xl:text-xs font-medium transition-colors cursor-pointer py-1 whitespace-nowrap ${
-                                activeIndex === idx && viewMode === 'modules'
+                            className={`text-[11px] 2xl:text-xs font-medium transition-colors cursor-pointer py-1 whitespace-nowrap ${activeIndex === idx && viewMode === 'modules'
                                     ? 'text-white font-semibold'
                                     : 'text-neutral-400 hover:text-white'
-                            }`}
+                                }`}
                         >
                             {mod.title.split('&')[0].trim()}
                         </button>
@@ -1283,27 +1469,25 @@ return {
                     <div className="h-4 w-px bg-white/20 hidden xl:block" />
 
                     {/* View Mode Switcher: Clean monochromatic text tabs with Google font icons, no box button */}
-                    <div className="hidden sm:flex items-center gap-3 sm:gap-4 text-xs">
+                    <div className="flex items-center gap-1.5 sm:gap-4 text-[11px] sm:text-xs">
                         <button
                             onClick={() => setViewMode('globe')}
-                            className={`py-1 transition-colors cursor-pointer flex items-center gap-1.5 border-b-2 ${
-                                viewMode === 'globe'
+                            className={`py-1 transition-colors cursor-pointer flex items-center gap-1 sm:gap-1.5 border-b-2 ${viewMode === 'globe'
                                     ? 'text-white font-semibold border-white'
                                     : 'text-neutral-400 hover:text-white border-transparent'
-                            }`}
+                                }`}
                         >
-                            <span className="material-symbols-outlined text-[15px] leading-none">public</span>
+                            <span className="material-symbols-outlined text-[13px] sm:text-[15px] leading-none">public</span>
                             <span>3D Earth</span>
                         </button>
                         <button
                             onClick={() => setViewMode('modules')}
-                            className={`py-1 transition-colors cursor-pointer flex items-center gap-1.5 border-b-2 ${
-                                viewMode === 'modules'
+                            className={`py-1 transition-colors cursor-pointer flex items-center gap-1 sm:gap-1.5 border-b-2 ${viewMode === 'modules'
                                     ? 'text-white font-semibold border-white'
                                     : 'text-neutral-400 hover:text-white border-transparent'
-                            }`}
+                                }`}
                         >
-                            <span className="material-symbols-outlined text-[15px] leading-none">grid_view</span>
+                            <span className="material-symbols-outlined text-[13px] sm:text-[15px] leading-none">grid_view</span>
                             <span>Modules</span>
                         </button>
                     </div>
@@ -1312,15 +1496,16 @@ return {
 
                     <button
                         onClick={() => onEnterDashboard && onEnterDashboard('auth')}
-                        className="text-xs font-medium text-neutral-400 hover:text-white transition-colors cursor-pointer py-1"
+                        className="hidden sm:block text-xs font-medium text-neutral-400 hover:text-white transition-colors cursor-pointer py-1"
                     >
                         Sign In
                     </button>
                     <button
                         onClick={() => onEnterDashboard && onEnterDashboard(current.id)}
-                        className="text-xs font-medium text-white hover:text-neutral-300 transition-colors cursor-pointer flex items-center gap-1.5 py-1"
+                        className="text-xs font-medium text-white hover:text-neutral-300 transition-colors cursor-pointer flex items-center gap-1 sm:gap-1.5 py-1"
                     >
-                        <span>Launch Workspace</span>
+                        <span className="hidden sm:inline">Launch Workspace</span>
+                        <span className="sm:hidden text-[10px]">Launch</span>
                         <ArrowRight className="w-3.5 h-3.5 text-neutral-400" />
                     </button>
                 </div>
@@ -1328,37 +1513,69 @@ return {
 
             {/* Centered Platform Title & Subtitle (Top of Showcase) */}
             {viewMode === 'modules' && (
-                <div className="relative z-30 w-full text-center space-y-1 px-4 sm:px-8 pt-4 pb-2 shrink-0">
-                    <h1 className="text-lg sm:text-2xl xl:text-3xl font-extrabold tracking-tight text-white leading-[1.15]">
-                        GeoSphere 360° Mobile Mapping Platform
-                    </h1>
-                    <p className="text-[11px] sm:text-xs text-neutral-400 font-normal leading-relaxed max-w-2xl mx-auto">
-                        An integrated WebGIS workspace where survey rigs, GPU processing workers, NAS storage, and PostGIS databases collaborate to transform mobile mapping data into trustworthy, published infrastructure assets.
-                    </p>
+                <div className="relative z-30 w-full text-center shrink-0 pt-6 sm:pt-10">
+                    {/* Title & Subtitle — stacked above the sparkles */}
+                    <div className="w-full flex flex-col items-center justify-center overflow-hidden px-4 sm:px-8">
+                        <h1 className="text-lg sm:text-3xl xl:text-4xl font-extrabold tracking-tight text-white leading-[1.15] text-center">
+                            GeoSphere 360° Mobile Mapping Platform
+                        </h1>
+                        <p className="text-[11px] sm:text-sm text-neutral-400 font-normal leading-relaxed max-w-2xl mt-2 sm:mt-2.5">
+                            An integrated WebGIS workspace where survey rigs, GPU processing workers, NAS storage, and PostGIS databases collaborate to transform mobile mapping data into trustworthy, published infrastructure assets.
+                        </p>
+                    </div>
+
+                    {/* Sparkles container — below the subtitle */}
+                    <div className="w-full max-w-lg sm:max-w-2xl mx-auto h-20 sm:h-28 relative mt-0.5">
+                        {/* Gradients */}
+                        <div className="absolute left-0 right-0 mx-auto top-0 bg-gradient-to-r from-transparent via-indigo-500 to-transparent h-px w-3/4" />
+                        <div className="absolute left-0 right-0 mx-auto top-0 bg-gradient-to-r from-transparent via-indigo-500 to-transparent h-px w-3/4" />
+                        <div className="absolute left-0 right-0 mx-auto top-0 bg-gradient-to-r from-transparent via-sky-500 to-transparent h-[2px] w-1/4" />
+                        <div className="absolute left-0 right-0 mx-auto top-0 bg-gradient-to-r from-transparent via-sky-500 to-transparent h-px w-1/4" />
+
+                        {/* Soft light glow below the cyan line */}
+                        <div aria-hidden className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 w-80 h-52 pointer-events-none">
+                            {/* soft glow dropping below the line */}
+                            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 w-40 h-16 rounded-full bg-sky-400/30 blur-xl" />
+                            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 w-64 h-24 rounded-full bg-sky-500/15 blur-2xl" />
+                        </div>
+
+                        {/* Core component — mounted after the view-switch transition so tsParticles init
+                            (~500 particles) doesn't collide with the globe park animation / panel crossfade */}
+                        {titleSparklesReady && (
+                            <div className="absolute inset-0 w-full h-full [mask-image:radial-gradient(ellipse_48%_175%_at_50%_0%,black_42%,transparent_78%)]">
+                                <SparklesCore
+                                    id="tsparticlesfullpage"
+                                    background="transparent"
+                                minSize={0.4}
+                                maxSize={1}
+                                particleDensity={1200}
+                                className="w-full h-full"
+                                particleColor="#FFFFFF"
+                                    />
+                                </div>
+                            )}
+                    </div>
                 </div>
             )}
 
             {/* 3. Main Showcase Section */}
             <main
-                className={`relative z-20 flex-1 w-full px-4 sm:px-8 py-4 sm:py-6 overflow-y-auto lg:overflow-hidden flex flex-col items-center justify-center ${
-                    viewMode === 'globe' ? 'pointer-events-none' : 'pointer-events-auto'
-                }`}
+                className={`relative z-20 flex-1 min-h-0 w-full px-4 sm:px-8 py-2 sm:py-6 overflow-y-auto lg:overflow-hidden flex flex-col items-center justify-center ${viewMode === 'globe' ? 'pointer-events-none' : 'pointer-events-auto'
+                    }`}
                 style={{ backgroundColor: 'transparent' }}
             >
 
                 {/* 3D Globe Telemetry HUD & Interactive Controls (Active when viewMode === 'globe') */}
                 {viewMode === 'globe' && (
-                    <div className={`absolute inset-0 pointer-events-none p-4 sm:p-8 flex flex-col justify-between z-20 transition-opacity duration-300 ${
-                        isFlyingIn || isZoomedToDistrict ? 'opacity-0 pointer-events-none' : 'opacity-100'
-                    }`}>
+                    <div className={`absolute inset-0 pointer-events-none p-2 sm:p-8 flex flex-col justify-between z-20 transition-opacity duration-300 ${isFlyingIn || isZoomedToDistrict ? 'opacity-0 pointer-events-none' : 'opacity-100'
+                        }`}>
                         {/* Top Center Minimal Orientation Badge */}
                         <div className="w-full flex flex-col items-center pt-1 gap-1">
-                            <div className="px-3.5 py-1.5 rounded-full bg-neutral-900/80 backdrop-blur-md border border-white/10 shadow-xl flex items-center gap-2">
-                                <span className={`w-2 h-2 rounded-full transition-colors duration-300 ${
-                                            showDistrictPopup ? 'bg-red-500' : 'bg-white/40'
-                                        }`} />
-                                <span className="text-[11px] font-mono uppercase tracking-wider text-neutral-200 font-semibold">
-                                    EXPLORE YOUR PROJECT AREA
+                            <div className="px-2 sm:px-3.5 py-1 sm:py-1.5 rounded-full bg-neutral-900/80 backdrop-blur-md border border-white/10 shadow-xl flex items-center gap-1.5 sm:gap-2">
+                                <span className={`w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full transition-colors duration-300 ${showDistrictPopup ? 'bg-red-500' : 'bg-white/40'
+                                    }`} />
+                                <span className="text-[9px] sm:text-[11px] font-mono uppercase tracking-wider text-neutral-200 font-semibold">
+                                    EXPLORE AVAILABLE PROJECT AREA
                                 </span>
                             </div>
                             <span className="text-[10px] text-neutral-400 font-mono tracking-wide hidden sm:block">
@@ -1390,78 +1607,98 @@ return {
                                         }
                                     }
                                 }}
-                                className={`p-3.5 sm:p-4 rounded-2xl bg-black/75 hover:bg-black/90 backdrop-blur-xl border text-left max-w-[320px] pointer-events-auto shadow-2xl space-y-1.5 cursor-pointer transition-all duration-200 group active:scale-[0.98] outline-none ${
-                                    showDistrictPopup
+                                className={`p-2.5 sm:p-4 rounded-2xl bg-black/75 hover:bg-black/90 backdrop-blur-xl border text-left max-w-[260px] sm:max-w-[320px] pointer-events-auto shadow-2xl space-y-1 sm:space-y-1.5 cursor-pointer transition-all duration-200 group active:scale-[0.98] outline-none ${showDistrictPopup
                                         ? 'border-red-500/70 ring-1 ring-red-500/30 shadow-[0_0_24px_rgba(239,68,68,0.25)]'
                                         : 'border-white/10 hover:border-red-500/50'
-                                }`}
+                                    }`}
                                 title="Click to rotate globe and center on project location (Toggle Panotrack Popup)"
                             >
                                 <div className="flex items-center justify-between gap-2">
-                                    <div className="flex items-center gap-2 truncate">
-                                        <span className={`w-2 h-2 rounded-full shrink-0 transition-colors duration-300 ${
-                                            showDistrictPopup ? 'bg-red-500' : 'bg-white/40'
-                                        }`} />
-                                        <span className="text-xs font-semibold text-white tracking-wide truncate group-hover:text-red-400 transition-colors">
+                                    <div className="flex items-center gap-1.5 sm:gap-2 truncate">
+                                        <span className={`w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full shrink-0 transition-colors duration-300 ${showDistrictPopup ? 'bg-red-500' : 'bg-white/40'
+                                            }`} />
+                                        <span className="text-[11px] sm:text-xs font-semibold text-white tracking-wide truncate group-hover:text-red-400 transition-colors">
                                             {projectLocation.name}
                                         </span>
                                     </div>
-                                    <div className="flex items-center gap-1.5 shrink-0">
+                                    <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
                                         {showDistrictPopup && (
-                                            <span className="text-[10px] font-semibold text-emerald-400/90 uppercase tracking-wider shrink-0">
+                                            <span className="text-[9px] sm:text-[10px] font-semibold text-emerald-400/90 uppercase tracking-wider shrink-0">
                                                 Active
                                             </span>
                                         )}
-                                        <span className={`material-symbols-outlined text-[15px] leading-none transition-colors shrink-0 ${
-                                            showDistrictPopup ? 'text-red-400' : 'text-neutral-400 group-hover:text-white'
-                                        }`} title="Toggle Panotrack District Popup">
+                                        <span className={`material-symbols-outlined text-[13px] sm:text-[15px] leading-none transition-colors shrink-0 ${showDistrictPopup ? 'text-red-400' : 'text-neutral-400 group-hover:text-white'
+                                            }`} title="Toggle Panotrack District Popup">
                                             location_on
                                         </span>
                                     </div>
                                 </div>
-                                <p className="text-[11px] text-neutral-400 font-mono">
+                                <p className="text-[10px] sm:text-[11px] text-neutral-400 font-mono">
                                     {projectLocation.subtext}
                                 </p>
-                                <div className="pt-2 border-t border-white/10 flex items-center justify-between text-[11px] text-neutral-400">
+                                <div className="pt-1.5 sm:pt-2 border-t border-white/10 flex items-center justify-between text-[10px] sm:text-[11px] text-neutral-400">
                                     <span>Target Distance</span>
                                     <span className="text-white font-mono font-semibold">{targetDistance.toLocaleString()} km</span>
                                 </div>
-                                <div className="flex items-center justify-between text-[11px] text-neutral-400">
+                                <div className="flex items-center justify-between text-[10px] sm:text-[11px] text-neutral-400">
                                     <span>Survey Mileage</span>
                                     <span className="text-white font-mono font-semibold">{computedDistance.toFixed(1)} km</span>
                                 </div>
-                                <div className="flex items-center justify-between text-[11px] text-neutral-400">
+                                <div className="flex items-center justify-between text-[10px] sm:text-[11px] text-neutral-400">
                                     <span>State</span>
                                     <span className="text-white font-mono font-semibold">{activeDistrict?.state || '—'}</span>
                                 </div>
-                                <div className="flex items-center justify-between text-[11px] text-neutral-400">
+                                <div className="flex items-center justify-between text-[10px] sm:text-[11px] text-neutral-400">
                                     <span>District</span>
                                     <span className="text-white font-mono font-semibold">{activeDistrict?.name || '—'}</span>
                                 </div>
-                                <div className="flex items-center justify-between text-[11px] text-neutral-400">
+                                <div className="hidden sm:flex items-center justify-between text-[11px] text-neutral-400">
                                     <span>Project Created</span>
                                     <span className="text-white font-mono font-semibold">{projectCreatedLabel}</span>
                                 </div>
                             </div>
 
                             {/* Quick Action Navigation Buttons */}
-                            <div className="flex flex-wrap items-center gap-2 pointer-events-auto">
+                            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 pointer-events-auto">
+                                {/* Globe Renderer Choice: Classic Vector Globe ↔ Atomic Point-Cloud Globe */}
+                                <div className="flex items-center bg-neutral-900/80 backdrop-blur-md px-1 sm:px-1.5 py-0.5 sm:py-1 rounded-lg sm:rounded-xl border border-white/10 shadow-md">
+                                    <button
+                                        onClick={() => setShowAtomicGlobe(false)}
+                                        title="Switch to the classic vector globe"
+                                        className={`px-1.5 sm:px-2.5 py-0.5 sm:py-1 rounded-md sm:rounded-lg text-[9px] sm:text-[10px] font-semibold transition-colors cursor-pointer ${showAtomicGlobe ? 'text-neutral-400 hover:text-white' : 'bg-white/10 text-white'
+                                            }`}
+                                    >
+                                        Vector
+                                    </button>
+                                    <button
+                                        onClick={() => setShowAtomicGlobe(true)}
+                                        title="Switch to the photorealistic point-cloud globe"
+                                        className={`px-1.5 sm:px-2.5 py-0.5 sm:py-1 rounded-md sm:rounded-lg text-[9px] sm:text-[10px] font-semibold transition-colors cursor-pointer ${showAtomicGlobe ? 'bg-sky-500/80 text-white' : 'text-neutral-400 hover:text-white'
+                                            }`}
+                                    >
+                                        <span className="material-symbols-outlined text-[10px] sm:text-[11px] leading-none align-[-2px]">
+                                            blur_on
+                                        </span>
+                                        Atomic
+                                    </button>
+                                </div>
+
                                 {/* Interactive 3D Zoom Controls */}
-                                <div className="flex items-center bg-neutral-900/80 backdrop-blur-md px-1.5 py-1 rounded-xl border border-white/10 shadow-md">
+                                <div className="flex items-center bg-neutral-900/80 backdrop-blur-md px-1 sm:px-1.5 py-0.5 sm:py-1 rounded-lg sm:rounded-xl border border-white/10 shadow-md">
                                     <button
                                         onClick={() => setGlobeZoom(z => Math.max(0.5, +(z / 1.25).toFixed(2)))}
                                         title="Zoom Out (Scroll Down)"
-                                        className="w-6 h-6 rounded-lg hover:bg-neutral-800 text-neutral-300 hover:text-white flex items-center justify-center font-bold text-sm cursor-pointer transition-colors"
+                                        className="w-5 h-5 sm:w-6 sm:h-6 rounded-md sm:rounded-lg hover:bg-neutral-800 text-neutral-300 hover:text-white flex items-center justify-center font-bold text-xs sm:text-sm cursor-pointer transition-colors"
                                     >
                                         -
                                     </button>
-                                    <span className="text-[11px] font-mono px-2 text-neutral-300 select-none min-w-[38px] text-center">
+                                    <span className="text-[10px] sm:text-[11px] font-mono px-1 sm:px-2 text-neutral-300 select-none min-w-[30px] sm:min-w-[38px] text-center">
                                         {Math.round(globeZoom * 100)}%
                                     </span>
                                     <button
                                         onClick={() => setGlobeZoom(z => Math.min(8.0, +(z * 1.25).toFixed(2)))}
                                         title="Zoom In (Scroll Up)"
-                                        className="w-6 h-6 rounded-lg hover:bg-neutral-800 text-neutral-300 hover:text-white flex items-center justify-center font-bold text-sm cursor-pointer transition-colors"
+                                        className="w-5 h-5 sm:w-6 sm:h-6 rounded-md sm:rounded-lg hover:bg-neutral-800 text-neutral-300 hover:text-white flex items-center justify-center font-bold text-xs sm:text-sm cursor-pointer transition-colors"
                                     >
                                         +
                                     </button>
@@ -1469,7 +1706,7 @@ return {
                                         <button
                                             onClick={() => { setGlobeZoom(1.05); setGlobePan({ x: 0, y: 0 }); }}
                                             title="Reset View (Double-click)"
-                                            className="ml-1 px-1.5 py-0.5 text-[10px] rounded-md bg-white/10 hover:bg-white/20 text-neutral-300 hover:text-white transition-colors cursor-pointer"
+                                            className="ml-1 px-1 sm:px-1.5 py-0.5 text-[9px] sm:text-[10px] rounded-md bg-white/10 hover:bg-white/20 text-neutral-300 hover:text-white transition-colors cursor-pointer"
                                         >
                                             Reset
                                         </button>
@@ -1477,14 +1714,15 @@ return {
                                 </div>
 
                                 <div className="relative">
-                                    <div className="flex items-center rounded-xl bg-red-600/90 hover:bg-red-500 shadow-lg text-white font-medium text-xs transition-all active:scale-95">
+                                    <div className="flex items-center rounded-lg sm:rounded-xl bg-red-600/90 hover:bg-red-500 shadow-lg text-white font-medium text-[11px] sm:text-xs transition-all active:scale-95">
                                         <button
                                             onClick={() => handleInspectDistrict()}
-                                            className="px-3.5 py-1.5 flex items-center gap-1.5 cursor-pointer"
+                                            className="px-2.5 sm:px-3.5 py-1 sm:py-1.5 flex items-center gap-1 sm:gap-1.5 cursor-pointer"
                                             title={`Inspect ${activeDistrict ? activeDistrict.name : 'District'} Boundary`}
                                         >
-                                            <MapPin className="w-3.5 h-3.5" />
-                                            <span>Inspect {inspectableDistricts.length > 1 ? activeDistrict.name : (resolvedDistricts.length > 0 ? (activeDistrict?.name || 'District') : 'District')}</span>
+                                            <MapPin className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                                            <span className="hidden min-[420px]:inline">Inspect {inspectableDistricts.length > 1 ? activeDistrict.name : (resolvedDistricts.length > 0 ? (activeDistrict?.name || 'District') : 'District')}</span>
+                                            <span className="min-[420px]:hidden">Inspect</span>
                                         </button>
                                         {inspectableDistricts.length > 1 && (
                                             <button
@@ -1492,10 +1730,10 @@ return {
                                                     e.stopPropagation();
                                                     setShowProjectPicker(prev => !prev);
                                                 }}
-                                                className="pr-2.5 pl-1.5 py-1.5 border-l border-white/20 hover:bg-white/10 rounded-r-xl cursor-pointer flex items-center"
+                                                className="pr-2 pl-1.5 sm:pr-2.5 sm:pl-1.5 py-1 sm:py-1.5 border-l border-white/20 hover:bg-white/10 rounded-r-lg sm:rounded-r-xl cursor-pointer flex items-center"
                                                 title="Choose project district to inspect"
                                             >
-                                                <span className="material-symbols-outlined text-[14px] leading-none">
+                                                <span className="material-symbols-outlined text-[13px] sm:text-[14px] leading-none">
                                                     {showProjectPicker ? 'arrow_drop_up' : 'arrow_drop_down'}
                                                 </span>
                                             </button>
@@ -1517,11 +1755,10 @@ return {
                                                         setShowProjectPicker(false);
                                                         handleFocusProject({ lat: d.lat, lng: d.lng });
                                                     }}
-                                                    className={`w-full px-2.5 py-2 rounded-xl text-left text-xs flex items-center justify-between transition-colors cursor-pointer ${
-                                                        idx === selectedDistrictIdx
+                                                    className={`w-full px-2.5 py-2 rounded-xl text-left text-xs flex items-center justify-between transition-colors cursor-pointer ${idx === selectedDistrictIdx
                                                             ? 'bg-red-500/20 text-white font-semibold'
                                                             : 'text-neutral-300 hover:bg-white/10 hover:text-white'
-                                                    }`}
+                                                        }`}
                                                 >
                                                     <div className="flex items-center gap-2 truncate">
                                                         <MapPin className={`w-3.5 h-3.5 shrink-0 ${idx === selectedDistrictIdx ? 'text-red-400' : 'text-neutral-400'}`} />
@@ -1535,28 +1772,28 @@ return {
                                 </div>
                                 <button
                                     onClick={() => setAutoRotate(!autoRotate)}
-                                    className="px-3 py-1.5 rounded-xl bg-neutral-900/80 hover:bg-neutral-800 text-xs font-medium text-white border border-white/10 transition-colors cursor-pointer shadow-md active:scale-95 flex items-center gap-1.5"
+                                    className="px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg sm:rounded-xl bg-neutral-900/80 hover:bg-neutral-800 text-[11px] sm:text-xs font-medium text-white border border-white/10 transition-colors cursor-pointer shadow-md active:scale-95 flex items-center gap-1 sm:gap-1.5"
                                 >
-                                    <span className="material-symbols-outlined text-[14px] leading-none">{autoRotate ? 'pause' : 'play_arrow'}</span>
+                                    <span className="material-symbols-outlined text-[13px] sm:text-[14px] leading-none">{autoRotate ? 'pause' : 'play_arrow'}</span>
                                     <span>{autoRotate ? 'Pause' : 'Rotate'}</span>
                                 </button>
                                 <button
                                     onClick={() => setViewMode('modules')}
-                                    className="px-4 py-1.5 rounded-xl bg-white text-black font-semibold text-xs transition-all hover:bg-neutral-200 cursor-pointer shadow-lg flex items-center gap-1.5 active:scale-95"
+                                    className="px-3 sm:px-4 py-1 sm:py-1.5 rounded-lg sm:rounded-xl bg-white text-black font-semibold text-[11px] sm:text-xs transition-all hover:bg-neutral-200 cursor-pointer shadow-lg flex items-center gap-1 sm:gap-1.5 active:scale-95"
                                 >
-                                    <span className="material-symbols-outlined text-[14px] leading-none">grid_view</span>
+                                    <span className="material-symbols-outlined text-[13px] sm:text-[14px] leading-none">grid_view</span>
                                     <span>Modules</span>
-                                    <ArrowRight className="w-3.5 h-3.5" />
+                                    <ArrowRight className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                                 </button>
                             </div>
                         </div>
                     </div>
                 )}
 
-                <div className={`w-full max-w-[1600px] mx-auto grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 items-stretch ${viewMode === 'globe' ? 'hidden' : 'grid'}`}>
+                <div className={`w-full max-w-[1600px] mx-auto my-auto -translate-y-3 sm:-translate-y-5 grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 items-stretch ${viewMode === 'globe' ? 'hidden' : 'grid'}`}>
 
                     {/* Left Narrative Panel (Spacious, Typography-Driven, No Card Boxes) */}
-                    <div className={`w-full lg:col-span-5 space-y-4 text-left flex flex-col justify-center order-2 lg:order-1 pb-6 lg:pb-0 transition-[opacity,transform,filter] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${isAnimating ? 'opacity-0 -translate-y-2 scale-[0.99] blur-[2px]' : 'opacity-100 translate-y-0 scale-100 blur-none'}`}>
+                    <div className={`w-full lg:col-span-5 space-y-4 text-left flex flex-col justify-center order-2 lg:order-1 pb-6 lg:pb-0 transition-[opacity,transform,filter] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform transform-gpu ${isAnimating ? 'opacity-0 -translate-y-2 scale-[0.99] blur-[2px]' : 'opacity-100 translate-y-0 scale-100 blur-none'}`}>
 
                         {/* Active Module Details */}
                         <div className="space-y-2">
@@ -1581,13 +1818,14 @@ return {
 
                         {/* CTA & Metric */}
                         <div className="pt-1 flex flex-wrap items-center gap-3">
-                            <button
+                            <HoverBorderGradient
                                 onClick={() => onEnterDashboard && onEnterDashboard(current.id)}
-                                className="group/btn px-4 py-2 rounded-lg font-medium text-xs flex items-center justify-center gap-2 transition-all border border-white/15 hover:border-white/30 bg-white/[0.04] hover:bg-white/[0.08] text-neutral-200 hover:text-white cursor-pointer active:scale-[0.97]"
+                                containerClassName="group/btn rounded-lg cursor-pointer active:scale-[0.97]"
+                                className="px-4 py-2 rounded-lg font-medium text-xs flex items-center justify-center gap-2 text-neutral-200"
                             >
                                 <span>Enter {current.title.split('&')[0].trim()}</span>
-                                <ArrowRight className="w-3.5 h-3.5 text-neutral-500 group-hover/btn:text-neutral-300 transition-colors group-hover/btn:translate-x-0.5 transition-transform" />
-                            </button>
+                                <ArrowRight className="w-3.5 h-3.5 text-neutral-400 group-hover/btn:text-neutral-200 transition-colors group-hover/btn:translate-x-0.5 transition-transform" />
+                            </HoverBorderGradient>
 
                             <div className="h-4 w-px bg-white/10" />
 
@@ -1647,7 +1885,7 @@ return {
                     <div
                         onTouchStart={handleTouchStart}
                         onTouchEnd={handleTouchEnd}
-                        className={`w-full lg:col-span-7 flex flex-col gap-2 order-1 lg:order-2 transition-[opacity,transform,filter] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] touch-pan-y ${isAnimating ? 'opacity-0 scale-[0.985] translate-y-1 blur-[2px]' : 'opacity-100 scale-100 translate-y-0 blur-none'}`}
+                        className={`w-full lg:col-span-7 flex flex-col gap-2 order-1 lg:order-2 transition-[opacity,transform,filter] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] touch-pan-y will-change-transform transform-gpu ${isAnimating ? 'opacity-0 scale-[0.985] translate-y-1 blur-[2px]' : 'opacity-100 scale-100 translate-y-0 blur-none'}`}
                     >
                         {/* Subtitle Bar */}
                         <div className="flex items-center justify-between px-1">
@@ -1741,11 +1979,10 @@ return {
                                         <button
                                             key={spot.id}
                                             onClick={() => setActiveHotspotId(isSelected ? null : spot.id)}
-                                            className={`px-2 py-0.5 rounded text-[10px] font-medium transition-all cursor-pointer shrink-0 ${
-                                                isSelected
+                                            className={`px-2 py-0.5 rounded text-[10px] font-medium transition-all cursor-pointer shrink-0 ${isSelected
                                                     ? 'bg-white/10 text-neutral-200'
                                                     : 'text-neutral-600 hover:text-neutral-400 hover:bg-white/[0.04]'
-                                            }`}
+                                                }`}
                                         >
                                             <span>{spot.title.split(':')[0].replace(/Station \d+: /, '')}</span>
                                         </button>
@@ -1760,11 +1997,10 @@ return {
                                         <button
                                             key={idx}
                                             onClick={() => setActivePhotoIdx(idx)}
-                                            className={`h-5 w-7 rounded-sm overflow-hidden transition-all cursor-pointer ${
-                                                activePhotoIdx === idx
+                                            className={`h-5 w-7 rounded-sm overflow-hidden transition-all cursor-pointer ${activePhotoIdx === idx
                                                     ? 'ring-1 ring-white/40 opacity-100'
                                                     : 'opacity-30 hover:opacity-60'
-                                            }`}
+                                                }`}
                                         >
                                             <img
                                                 src={imgUrl}
@@ -1784,7 +2020,7 @@ return {
             </main>
 
             {/* 4. Pinned Footer Navigation Controls (Active in modules mode) */}
-            <footer className={`relative z-30 w-full px-4 sm:px-8 py-3 items-center justify-between border-t border-white/10 bg-black shrink-0 ${viewMode === 'modules' ? 'flex' : 'hidden'}`}>
+            <footer className={`relative z-30 w-full px-2 sm:px-8 py-2 sm:py-3 items-center justify-between border-t border-white/10 bg-black shrink-0 ${viewMode === 'modules' ? 'flex' : 'hidden'}`}>
                 <button
                     onClick={() => handleModuleChange((activeIndex - 1 + SYSTEM_MODULES.length) % SYSTEM_MODULES.length)}
                     className="flex items-center gap-2 text-neutral-400 hover:text-white transition-colors cursor-pointer group"
@@ -1796,7 +2032,7 @@ return {
                     </div>
                 </button>
 
-{/* Step Indicator Dots (module navigation) */}
+                {/* Step Indicator Dots (module navigation) */}
                 <div className="flex-1 flex items-center justify-center gap-2 min-w-0">
                     {SYSTEM_MODULES.map((m, i) => (
                         <button
@@ -1883,9 +2119,9 @@ return {
                                 state: d.state,
                                 lat: d.lat,
                                 lng: d.lng,
-                                totalFrames: computedFrames > 0 ? computedFrames : 3420,
-                                totalPoi: computedFrames > 0 ? Math.round(computedFrames * 0.28) : 860,
-                                surveyMileage: computedDistance > 0 ? computedDistance : 3.4,
+                                totalFrames: computedFrames,
+                                totalPoi: computedPoi,
+                                surveyMileage: computedDistance,
                                 pipelineSla: slaPercent,
                                 subgrids: activePopupData.subgrids,
                                 trackPoints: activePopupData.trackPoints,

@@ -415,7 +415,7 @@ export const DistrictProjectPopup: React.FC<DistrictProjectPopupProps> = ({
     <div
       role="dialog"
       aria-label={`${regionName} Project Area`}
-      className={`relative w-[330px] sm:w-[360px] rounded-2xl bg-[#090d14]/95 border border-white/15 backdrop-blur-2xl text-white p-3.5 space-y-2.5 pointer-events-auto select-none overflow-hidden ${
+      className={`relative w-[calc(100vw-24px)] max-w-[330px] sm:w-[360px] sm:max-w-[360px] max-h-[calc(100dvh-90px)] overflow-y-auto no-scrollbar rounded-2xl bg-[#090d14]/95 border border-white/15 backdrop-blur-2xl text-white p-3.5 space-y-2.5 pointer-events-auto select-none ${
         closing
           ? 'animate-out fade-out-0 zoom-out-95 ease-in duration-500'
           : 'animate-in fade-in-0 zoom-in-95 slide-in-from-bottom-2 ease-out duration-500'
@@ -538,14 +538,21 @@ export const DistrictProjectPopup: React.FC<DistrictProjectPopupProps> = ({
           </div>
 
           {/* Overall project details (text summary, no KPI cards) */}
-          <p className="text-[11px] leading-relaxed text-neutral-300">
-            This project captures{' '}
-            <span className="text-white font-semibold">{safeFrames.toLocaleString()} mapping frames</span>{' '}
-            and <span className="text-white font-semibold">{safePoi.toLocaleString()} platform POIs</span>{' '}
-            across {scopeText}, covering{' '}
-            <span className="text-white font-semibold">{safeMileage.toFixed(1)} km</span> of surveyed route
-            with a pipeline SLA of <span className="text-white font-semibold">{pipelineSla}%</span>.
-          </p>
+          {safeFrames === 0 && safePoi === 0 ? (
+            <p className="text-[11px] leading-relaxed text-neutral-300">
+              No survey frames or platform POIs are committed to this project yet — captured data will appear here as
+              soon as ingress to <span className="text-white font-semibold">{scopeText}</span> begins.
+            </p>
+          ) : (
+            <p className="text-[11px] leading-relaxed text-neutral-300">
+              This project captures{' '}
+              <span className="text-white font-semibold">{safeFrames.toLocaleString()} mapping frames</span>{' '}
+              and <span className="text-white font-semibold">{safePoi.toLocaleString()} platform POIs</span>{' '}
+              across {scopeText}, covering{' '}
+              <span className="text-white font-semibold">{safeMileage.toFixed(1)} km</span> of surveyed route
+              with a pipeline SLA of <span className="text-white font-semibold">{pipelineSla}%</span>.
+            </p>
+          )}
 
           {subgrids.length > 0 && (
             <div className="pt-1.5 mt-0.5 border-t border-white/10 flex items-center justify-between text-[10px] font-mono text-neutral-400">
