@@ -1066,8 +1066,8 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
     const popupScreenLayout = useMemo(() => {
         const screenW = typeof window !== 'undefined' ? window.innerWidth : 1200;
         const screenH = typeof window !== 'undefined' ? window.innerHeight : 800;
-        const cardW = Math.min(cardSize?.w || 360, Math.max(220, screenW - 16));
-        const cardH = cardSize?.h || Math.min(430, Math.max(300, screenH - 120));
+        const cardW = Math.min(cardSize?.w || (isMobile ? 240 : 360), Math.max(190, screenW - 16));
+        const cardH = cardSize?.h || Math.min(isMobile ? 270 : 430, Math.max(isMobile ? 140 : 300, screenH - (isMobile ? 220 : 120)));
 
         const rawMX = markerProjectedPos ? markerProjectedPos.x : (screenW / 2);
         const rawMY = markerProjectedPos ? markerProjectedPos.y : (screenH / 2);
@@ -1076,18 +1076,28 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
         const mY = Number.isFinite(rawMY) ? Math.min(Math.max(rawMY, 16), screenH - 16) : (screenH / 2);
         const isVis = markerProjectedPos ? markerProjectedPos.visible : true;
 
+        // Reserved zones (px) the card must stay clear of so it never overlaps
+        // the top header nav or the bottom geodetic HUD + zoom/inspect controls.
+        const TOP_MARGIN = 64;
+        const BOTTOM_RESERVE = isMobile ? 210 : 90;
+
         // Try placing card to the right of the marker first (as requested by user)
         const canPlaceRight = (mX + 45 + cardW <= screenW - 24);
 
         // Try placing card ABOVE the marker first (as requested by user)
-        // Top navbar height is ~56px, keep top margin >= 64px
-        const canPlaceAbove = (mY - 30 - cardH >= 64);
+        // Top navbar height is ~56px, keep top margin >= TOP_MARGIN
+        const canPlaceAbove = (mY - 30 - cardH >= TOP_MARGIN);
+
+        // Hard bounds: never above the top nav, never below the bottom HUD reserve.
+        const minY = TOP_MARGIN;
+        const maxY = Math.max(minY, screenH - BOTTOM_RESERVE - cardH);
+
         let cardX = canPlaceRight
             ? Math.min(screenW - cardW - 20, mX + 45)
             : Math.max(20, mX - 45 - cardW);
         let cardY = canPlaceAbove
-            ? Math.max(64, mY - 30 - cardH)
-            : (mY + 30 + cardH <= screenH - 70 ? mY + 30 : Math.max(64, screenH - cardH - 80));
+            ? Math.max(TOP_MARGIN, mY - 30 - cardH)
+            : (mY + 30 + cardH <= maxY ? mY + 30 : maxY);
 
         const isRight = cardX >= mX;
         const isAbove = cardY < mY;
@@ -1096,14 +1106,15 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
         // line never stretches across most of the screen (e.g. tall card forced
         // to the top while the marker sits mid-screen).
         const MAX_LEAD = 180;
-        const TOP_MARGIN = 64;
         if (isAbove) {
             // Card bottom edge (anchor) must stay within MAX_LEAD below the marker
-            cardY = Math.max(TOP_MARGIN, Math.min(cardY, mY + MAX_LEAD - cardH + 24));
+            cardY = Math.min(cardY, mY + MAX_LEAD - cardH + 24);
         } else {
             // Card top edge (anchor) must stay within MAX_LEAD below the marker
-            cardY = Math.max(TOP_MARGIN, Math.min(cardY, mY + MAX_LEAD - 24));
+            cardY = Math.min(cardY, mY + MAX_LEAD - 24);
         }
+        // Final clamp into the safe band between the top nav and bottom HUD.
+        cardY = Math.max(minY, Math.min(maxY, cardY));
 
         // Anchor on card edge closest to marker
         const anchorX = isRight ? cardX : (cardX + cardW);
@@ -1123,7 +1134,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             visible: isVis,
             leaderPath
         };
-    }, [markerProjectedPos, cardSize]);
+    }, [markerProjectedPos, cardSize, isMobile]);
 
     const globeMarkers = useMemo<GlobeMarker[]>(() => {
         // The globe shows ONLY the committed state — a single region pin. District-level
@@ -1133,22 +1144,22 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             'Malaysia';
         const stateSlug = stateName.trim().toLowerCase();
 
-        // Prefer the real region geometry centre (MALAYSIA_REGIONS)…
-        const region = MALAYSIA_REGIONS.find((r) => r.name.trim().toLowerCase() === stateSlug);
-        let lat = region?.center ? region.center[0] : NaN;
-        let lng = region?.center ? region.center[1] : NaN;
+        let lat = NaN;
+        let lng = NaN;
 
-        // …then the centre of the actually-committed boundary geometry (bbox),
-        // the authoritative "where the state is" that survives name mismatches.
+        // 1. Always anchor to the full STATE boundary geometry — the area-weighted
+        //    centroid of the real Malaysian state shape (MALAYSIA_REGIONS). This keeps
+        //    the "Johor" label at the exact visual center of the state at every zoom
+        //    level, instead of jumping to the committed-district corner (Segamat +
+        //    Tangkak in Johor's northwest) that only matters when inspecting a district.
         if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-            const cb = committedBoundary?.bbox;
-            if (Array.isArray(cb) && cb.length === 4 && Number.isFinite(cb[0]) && Number.isFinite(cb[1]) && Number.isFinite(cb[2]) && Number.isFinite(cb[3])) {
-                lat = (cb[1] + cb[3]) / 2;
-                lng = (cb[0] + cb[2]) / 2;
-            }
+            const region = MALAYSIA_REGIONS.find((r) => r.name.trim().toLowerCase() === stateSlug);
+            lat = region?.center ? region.center[0] : NaN;
+            lng = region?.center ? region.center[1] : NaN;
         }
 
-        // …fall back to the average of the committed districts' centres
+        // 2. Fall back to the average of the committed districts' centres — still
+        //    guaranteed to sit inside the state.
         if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
             if (resolvedDistricts.length > 0) {
                 lat = resolvedDistricts.reduce((acc, d) => acc + d.lat, 0) / resolvedDistricts.length;
@@ -1156,7 +1167,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             }
         }
 
-        // …then to the fixed state metadata (guaranteed to sit inside the state),
+        // 3. Then to the fixed state metadata (guaranteed to sit inside the state),
         // so a label like "JOHOR" is never pinned to the project location outside it.
         if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
             const stateMetas = DISTRICT_METADATA.filter(
@@ -1184,21 +1195,35 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             longitude: Number.isFinite(lng) ? lng : 109.5,
             color: '#ef4444',
         }];
-    }, [activeDistrict, resolvedDistricts, projectSettings, projectLocation.latitude, projectLocation.longitude, committedBoundary]);
+    }, [activeDistrict, resolvedDistricts, projectSettings, projectLocation.latitude, projectLocation.longitude]);
 
-    // Anchor for the HUD leader line / beacon ring. Never let a degenerate
-    // fallback coordinate ((0,0) → Gulf of Guinea) drive it — if the active
+    // Anchor for the HUD leader line / beacon ring / globe centering. Never let a
+    // degenerate fallback coordinate ((0,0) → Gulf of Guinea) drive it — if the active
     // district has no real location, point at the committed state pin instead.
-    const activeLat = customCenter
-        ? customCenter.lat
-        : Number.isFinite(activeDistrict.lat) && (activeDistrict.lat !== 0 || activeDistrict.lng !== 0)
+    // While the globe is at OVERVIEW (not flying into / zoomed into a district) this
+    // anchor follows the committed STATE pin (globeMarkers = area-weighted state
+    // centroid), so the pulsing beacon + leader line sit at the exact state center
+    // when zoomed out. Once the user dives into or wheels in on a district, it
+    // switches to that district so the tagging stays on visible landmass.
+    const districtAnchorLat =
+        Number.isFinite(activeDistrict.lat) && (activeDistrict.lat !== 0 || activeDistrict.lng !== 0)
             ? activeDistrict.lat
             : (globeMarkers[0]?.latitude ?? activeDistrict.lat);
-    const activeLng = customCenter
-        ? customCenter.lng
-        : Number.isFinite(activeDistrict.lng) && (activeDistrict.lat !== 0 || activeDistrict.lng !== 0)
+    const districtAnchorLng =
+        Number.isFinite(activeDistrict.lng) && (activeDistrict.lat !== 0 || activeDistrict.lng !== 0)
             ? activeDistrict.lng
             : (globeMarkers[0]?.longitude ?? activeDistrict.lng);
+    const inspectingDistrict = atomicGlobeFocus !== null || globeZoom >= 2.0;
+    const activeLat = customCenter
+        ? customCenter.lat
+        : inspectingDistrict
+            ? districtAnchorLat
+            : (globeMarkers[0]?.latitude ?? districtAnchorLat);
+    const activeLng = customCenter
+        ? customCenter.lng
+        : inspectingDistrict
+            ? districtAnchorLng
+            : (globeMarkers[0]?.longitude ?? districtAnchorLng);
 
     // Atomic Globe (vendored Framer) markers — reuses the same committed-state pins.
     const atomicGlobeMarkers = useMemo<AtomicGlobeMarker[]>(() => {
@@ -1326,6 +1351,11 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                                 zoom={globeZoom}
                                 onZoomChange={setGlobeZoom}
                                 enableZoom
+                                onDragStart={() => {
+                                    // User grabbed the globe — release any fly-to focus so the
+                                    // rotation targets aren't hard-overwritten every frame.
+                                    setAtomicGlobeFocus(null);
+                                }}
                                 activeMarkerLabel={activeDistrict.name}
                                 onActiveMarkerProjected={handleActiveMarkerProjected}
                                 backgroundColor="transparent"
@@ -1673,13 +1703,13 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                                     <button
                                         onClick={() => setShowAtomicGlobe(true)}
                                         title="Switch to the photorealistic point-cloud globe"
-                                        className={`px-1.5 sm:px-2.5 py-0.5 sm:py-1 rounded-md sm:rounded-lg text-[9px] sm:text-[10px] font-semibold transition-colors cursor-pointer ${showAtomicGlobe ? 'bg-sky-500/80 text-white' : 'text-neutral-400 hover:text-white'
+                                        className={`px-1.5 sm:px-2.5 py-0.5 sm:py-1 rounded-md sm:rounded-lg text-[9px] sm:text-[10px] font-semibold transition-colors cursor-pointer inline-flex items-center gap-0.5 sm:gap-1 ${showAtomicGlobe ? 'bg-sky-500/80 text-white' : 'text-neutral-400 hover:text-white'
                                             }`}
                                     >
-                                        <span className="material-symbols-outlined text-[10px] sm:text-[11px] leading-none align-[-2px]">
+                                        <span className="material-symbols-outlined text-[10px] sm:text-[11px] leading-none shrink-0">
                                             blur_on
                                         </span>
-                                        Atomic
+                                        <span className="leading-none">Atomic</span>
                                     </button>
                                 </div>
 

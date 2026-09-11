@@ -30,6 +30,8 @@ interface AtomicGlobeHostProps {
   onZoomChange?: (zoom: number) => void;
   /** Allow mouse-wheel zoom over the globe. */
   enableZoom?: boolean;
+  /** Called when the user starts dragging the globe (pointer down on canvas). */
+  onDragStart?: () => void;
 
   // AtomicGlobe tuning (flattened for readability)
   backgroundColor?: string;
@@ -74,6 +76,7 @@ export function AtomicGlobeHost({
   zoom,
   onZoomChange,
   enableZoom,
+  onDragStart,
   ...tuning
 }: AtomicGlobeHostProps) {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -145,6 +148,7 @@ export function AtomicGlobeHost({
     focusTarget: focusTarget ?? null,
     activeTargetCoord: activeTargetCoord ?? null,
     onActiveTargetProjected: onActiveMarkerProjected,
+    onDragStart,
     zoom: zoom ?? 1,
     markers: safeMarkers,
     globe: {
