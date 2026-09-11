@@ -60,6 +60,63 @@ function bboxOfGeometry(geometry?: any): [number, number, number, number] | null
   return [minLng, minLat, maxLng, maxLat];
 }
 
+/**
+ * Compute the area-weighted centroid of a Polygon / MultiPolygon geometry.
+ * Returns [lat, lng] — a far better "visual center" than the bbox midpoint,
+ * especially for states like Johor whose bounding box is stretched south by
+ * offshore islands, pulling the bbox midpoint into the ocean.
+ * Falls back to the bbox center if the geometry is degenerate.
+ */
+function centroidOfGeometry(
+  geometry: any,
+  bbox: [number, number, number, number]
+): [number, number] {
+  const bboxFallback: [number, number] = [(bbox[1] + bbox[3]) / 2, (bbox[0] + bbox[2]) / 2];
+  if (!geometry) return bboxFallback;
+
+  // Collect outer rings (first ring of each polygon = exterior).
+  const outerRings: number[][][] = [];
+  if (geometry.type === 'Polygon' && Array.isArray(geometry.coordinates)) {
+    if (geometry.coordinates[0]) outerRings.push(geometry.coordinates[0]);
+  } else if (geometry.type === 'MultiPolygon' && Array.isArray(geometry.coordinates)) {
+    geometry.coordinates.forEach((poly: any) => {
+      if (Array.isArray(poly) && poly[0]) outerRings.push(poly[0]);
+    });
+  }
+  if (outerRings.length === 0) return bboxFallback;
+
+  // Shoelace-formula centroid, area-weighted across all sub-polygons.
+  let totalArea = 0;
+  let weightedLng = 0;
+  let weightedLat = 0;
+
+  for (const ring of outerRings) {
+    let area = 0;
+    let cLng = 0;
+    let cLat = 0;
+    for (let i = 0; i < ring.length - 1; i++) {
+      const [lng0, lat0] = ring[i];
+      const [lng1, lat1] = ring[i + 1];
+      const cross = lng0 * lat1 - lng1 * lat0;
+      area += cross;
+      cLng += (lng0 + lng1) * cross;
+      cLat += (lat0 + lat1) * cross;
+    }
+    area /= 2;
+    const absArea = Math.abs(area);
+    if (absArea < 1e-12) continue;
+    cLng /= 6 * area;
+    cLat /= 6 * area;
+    totalArea += absArea;
+    weightedLng += cLng * absArea;
+    weightedLat += cLat * absArea;
+  }
+
+  if (totalArea < 1e-12) return bboxFallback;
+  // Return [lat, lng] to match the center convention.
+  return [weightedLat / totalArea, weightedLng / totalArea];
+}
+
 function bboxOfFeatureCollection(fc: any): [number, number, number, number] | null {
   if (!fc || !Array.isArray(fc.features)) return null;
   let minLng = Infinity;
@@ -118,7 +175,7 @@ if (sourceFc && Array.isArray(sourceFc.features)) {
       id,
       name,
       bbox,
-      center: [(bbox[1] + bbox[3]) / 2, (bbox[0] + bbox[2]) / 2],
+      center: centroidOfGeometry(feature?.geometry, bbox),
       zoom: pickZoom(bbox),
       group: isBorneo(name) ? 'Borneo' : 'Peninsular',
       geojson

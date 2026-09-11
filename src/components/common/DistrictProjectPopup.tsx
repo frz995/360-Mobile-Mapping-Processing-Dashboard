@@ -415,7 +415,7 @@ export const DistrictProjectPopup: React.FC<DistrictProjectPopupProps> = ({
     <div
       role="dialog"
       aria-label={`${regionName} Project Area`}
-      className={`relative w-[calc(100vw-24px)] max-w-[330px] sm:w-[360px] sm:max-w-[360px] max-h-[calc(100dvh-90px)] overflow-y-auto no-scrollbar rounded-2xl bg-[#090d14]/95 border border-white/15 backdrop-blur-2xl text-white p-3.5 space-y-2.5 pointer-events-auto select-none ${
+      className={`relative w-[calc(100vw-24px)] max-w-[240px] sm:w-[340px] sm:max-w-[340px] max-h-[calc(100dvh-220px)] sm:max-h-[calc(100dvh-130px)] overflow-y-auto no-scrollbar rounded-2xl bg-[#090d14]/95 border border-white/15 backdrop-blur-2xl text-white p-2 sm:p-3.5 space-y-1.5 sm:space-y-2.5 pointer-events-auto select-none ${
         closing
           ? 'animate-out fade-out-0 zoom-out-95 ease-in duration-500'
           : 'animate-in fade-in-0 zoom-in-95 slide-in-from-bottom-2 ease-out duration-500'
@@ -429,18 +429,18 @@ export const DistrictProjectPopup: React.FC<DistrictProjectPopupProps> = ({
       <div className="absolute top-0 left-0 right-0 h-[1.5px] bg-gradient-to-r from-transparent via-white/40 to-transparent" />
 
       {/* Header */}
-      <div className="flex items-start justify-between gap-2 border-b border-white/10 pb-2">
+      <div className="flex items-start justify-between gap-2 border-b border-white/10 pb-1.5 sm:pb-2">
         <div className="space-y-0.5 min-w-0 text-left">
           <div className="flex items-center gap-1.5">
             <span className="w-1.5 h-1.5 rounded-full bg-white" />
-            <span className="text-[10px] font-mono uppercase tracking-widest text-neutral-400 font-semibold">
+            <span className="text-[9px] sm:text-[10px] font-mono uppercase tracking-widest text-neutral-400 font-semibold">
               Project Area
             </span>
           </div>
-          <h3 className="text-base sm:text-lg font-bold text-white tracking-tight leading-tight truncate">
+          <h3 className="text-sm sm:text-base font-bold text-white tracking-tight leading-tight truncate">
             {regionName}
           </h3>
-          <div className="flex items-center gap-1.5 text-[10px] text-neutral-400 font-mono">
+          <div className="flex items-center gap-1.5 text-[9px] sm:text-[10px] text-neutral-400 font-mono">
             <span className="truncate">{data.stateName}</span>
             <span>•</span>
             <span className="text-neutral-300">{districtLabel}</span>
@@ -452,17 +452,17 @@ export const DistrictProjectPopup: React.FC<DistrictProjectPopupProps> = ({
         </div>
         <button
           onClick={handleClose}
-          className="w-7 h-7 rounded-xl bg-white/5 hover:bg-white/15 border border-white/10 text-neutral-400 hover:text-white transition-all flex items-center justify-center cursor-pointer shrink-0 active:scale-90"
+          className="w-6 h-6 sm:w-7 sm:h-7 rounded-xl bg-white/5 hover:bg-white/15 border border-white/10 text-neutral-400 hover:text-white transition-all flex items-center justify-center cursor-pointer shrink-0 active:scale-90"
           title="Close"
           aria-label="Close"
         >
-          <X className="w-3.5 h-3.5" />
+          <X className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
         </button>
       </div>
 
       {/* District chips (all districts of the state are listed & selectable) */}
       {districts.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5 max-h-28 overflow-y-auto no-scrollbar">
+        <div className="flex flex-wrap items-center gap-1.5 max-h-14 sm:max-h-28 overflow-y-auto no-scrollbar">
           {districts.map((d, idx) => {
             const meta = DISTRICT_METADATA.find((m) => m.name.toLowerCase() === d.name.toLowerCase());
             const isActive = idx === activeIdx;
@@ -471,7 +471,7 @@ export const DistrictProjectPopup: React.FC<DistrictProjectPopupProps> = ({
                 key={d.id || d.name}
                 onClick={() => handleSelectDistrict(idx)}
                 title={meta ? `${d.name}, ${meta.stateName}` : d.state}
-                className={`px-2.5 py-1 rounded-lg text-[10px] font-mono border transition-all cursor-pointer ${
+                className={`px-2 py-0.5 rounded-lg text-[9px] sm:text-[10px] font-mono border transition-all cursor-pointer ${
                   isActive
                     ? 'bg-white text-black border-white font-semibold'
                     : 'bg-white/5 border-white/10 text-neutral-300 hover:bg-white/15 hover:text-white'
@@ -486,11 +486,11 @@ export const DistrictProjectPopup: React.FC<DistrictProjectPopupProps> = ({
 
       {/* Embedded project map (display-only dashboard: boundary outline + survey points) */}
       <div className="rounded-xl bg-[#0e121a] border border-white/10 overflow-hidden shadow-lg text-left">
-        <div className={`relative w-full h-[180px] overflow-hidden ${basemapStyle === 'dark' ? 'bg-[#0b0f16]' : 'bg-[#eceff3]'}`}>
+        <div className={`relative w-full h-[90px] sm:h-[180px] overflow-hidden ${basemapStyle === 'dark' ? 'bg-[#0b0f16]' : 'bg-[#eceff3]'}`}>
           <div ref={mapContainerRef} className="w-full h-full" />
 
           {/* Light / Dark toggle */}
-          <div className="absolute top-2 right-2 z-10 flex items-center bg-black/75 backdrop-blur-md rounded-md border border-white/15 p-0.5 text-[9px] font-mono">
+          <div className="absolute top-1.5 right-1.5 z-10 flex items-center bg-black/75 backdrop-blur-md rounded-md border border-white/15 p-0.5 text-[8px] sm:text-[9px] font-mono">
             <button
               onClick={() => setBasemapStyle('light')}
               className={`px-1.5 py-0.5 rounded ${
@@ -511,7 +511,7 @@ export const DistrictProjectPopup: React.FC<DistrictProjectPopupProps> = ({
 
           {/* Panotrack status legend (only when project panotrack points are shown) */}
           {(data.panotrackPoints || []).length > 0 && (
-            <div className="absolute bottom-2 left-2 z-10 flex flex-wrap items-center gap-x-2.5 gap-y-1 bg-black/75 backdrop-blur-md rounded-md border border-white/15 px-2 py-1 text-[8px] font-mono text-neutral-300 pointer-events-none">
+            <div className="absolute bottom-1.5 left-1.5 z-10 flex flex-wrap items-center gap-x-2 gap-y-0.5 bg-black/75 backdrop-blur-md rounded-md border border-white/15 px-1.5 py-0.5 text-[7px] sm:text-[8px] font-mono text-neutral-300 pointer-events-none">
               {[
                 { label: 'Published', color: '#10b981' },
                 { label: 'Staging', color: '#f59e0b' },
@@ -527,24 +527,24 @@ export const DistrictProjectPopup: React.FC<DistrictProjectPopupProps> = ({
         </div>
 
         {/* Metrics */}
-        <div className="p-3 space-y-2">
+        <div className="p-2 sm:p-3 space-y-1.5">
           <div className="flex items-center justify-between">
-            <h4 className="text-sm font-bold text-white tracking-tight leading-snug">
+            <h4 className="text-xs sm:text-sm font-bold text-white tracking-tight leading-snug">
               {regionName} Region · Survey
             </h4>
-            <span className="text-[10px] font-mono text-neutral-500">
+            <span className="text-[9px] sm:text-[10px] font-mono text-neutral-500">
               {districtCount === 0 ? 'Project area' : `${districtCount} ${districtCount === 1 ? 'district' : 'districts'}`}
             </span>
           </div>
 
           {/* Overall project details (text summary, no KPI cards) */}
           {safeFrames === 0 && safePoi === 0 ? (
-            <p className="text-[11px] leading-relaxed text-neutral-300">
+            <p className="text-[10px] sm:text-[11px] leading-relaxed text-neutral-300">
               No survey frames or platform POIs are committed to this project yet — captured data will appear here as
               soon as ingress to <span className="text-white font-semibold">{scopeText}</span> begins.
             </p>
           ) : (
-            <p className="text-[11px] leading-relaxed text-neutral-300">
+            <p className="text-[10px] sm:text-[11px] leading-relaxed text-neutral-300">
               This project captures{' '}
               <span className="text-white font-semibold">{safeFrames.toLocaleString()} mapping frames</span>{' '}
               and <span className="text-white font-semibold">{safePoi.toLocaleString()} platform POIs</span>{' '}
@@ -555,13 +555,13 @@ export const DistrictProjectPopup: React.FC<DistrictProjectPopupProps> = ({
           )}
 
           {subgrids.length > 0 && (
-            <div className="pt-1.5 mt-0.5 border-t border-white/10 flex items-center justify-between text-[10px] font-mono text-neutral-400">
+            <div className="pt-1.5 mt-0.5 border-t border-white/10 flex items-center justify-between text-[9px] sm:text-[10px] font-mono text-neutral-400">
               <span>Survey region</span>
               <span className="text-neutral-200 font-medium truncate pl-2">{regionName}</span>
             </div>
           )}
 
-          <div className="pt-1.5 mt-0.5 border-t border-white/10 flex items-center justify-between text-[10px] font-mono text-neutral-400">
+          <div className="pt-1.5 mt-0.5 border-t border-white/10 flex items-center justify-between text-[9px] sm:text-[10px] font-mono text-neutral-400">
             <span>State · District</span>
             <span className="text-neutral-200 font-medium truncate pl-2">
               {districts[activeIdx]?.state && districts[activeIdx]?.name
