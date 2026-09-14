@@ -44,9 +44,9 @@ export const WORKSPACES: WorkspaceDefinition[] = [
   { key: 'processing', labelKey: 'workspaceProcessing', descriptionKey: 'workspaceProcessingDesc', icon: Cpu, tag: 'live' },
   { key: 'lineage', labelKey: 'workspaceLineage', descriptionKey: 'workspaceLineageDesc', icon: GitBranch, tag: 'live' },
   { key: 'analytics', labelKey: 'workspaceAnalytics', descriptionKey: 'workspaceAnalyticsDesc', icon: BarChart3, tag: 'live' },
+  { key: 'roadAnalysis', labelKey: 'workspaceRoadAnalysis', descriptionKey: 'workspaceRoadAnalysisDesc', icon: Route, tag: 'live' },
   { key: 'reports', labelKey: 'workspaceReports', descriptionKey: 'workspaceReportsDesc', icon: FileText, tag: 'live' },
-  { key: 'administration', labelKey: 'workspaceAdministration', descriptionKey: 'workspaceAdministrationDesc', icon: Shield, tag: 'live', guard: ['manageUsers', 'approveDeletions'] },
-  { key: 'roadAnalysis', labelKey: 'workspaceRoadAnalysis', descriptionKey: 'workspaceRoadAnalysisDesc', icon: Route, tag: 'live' }
+  { key: 'administration', labelKey: 'workspaceAdministration', descriptionKey: 'workspaceAdministrationDesc', icon: Shield, tag: 'live', guard: ['manageUsers', 'approveDeletions'] }
 ];
 
 export function getWorkspaceDefinition(key: WorkspaceKey): WorkspaceDefinition {
@@ -77,7 +77,7 @@ export const WORKSPACE_CATEGORIES: WorkspaceCategory[] = [
   {
     key: 'webgis',
     labelKey: 'workspaceCategoryWebGIS',
-    members: ['dashboard', 'data', 'analytics', 'reports', 'roadAnalysis']
+    members: ['dashboard', 'data', 'roadAnalysis', 'analytics', 'reports']
   },
   {
     key: 'production',

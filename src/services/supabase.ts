@@ -3247,16 +3247,18 @@ export async function fetchProcessingJobsFromSupabase(): Promise<ProcessingJobRe
           }
         }
       });
-      const merged = Array.from(map.values()).sort(
-        (a, b) => (b.created_at || '').localeCompare(a.created_at || '')
-      );
+      const merged = Array.from(map.values())
+        .filter((j) => !j.id?.startsWith('mock-'))
+        .sort(
+          (a, b) => (b.created_at || '').localeCompare(a.created_at || '')
+        );
       setLocalJobs(merged);
       return merged;
     }
   } catch (err) {
     console.warn('fetchProcessingJobsFromSupabase catch:', err);
   }
-  return local.filter((j) => !deleted.has(j.id || ''));
+  return local.filter((j) => !deleted.has(j.id || '') && !j.id?.startsWith('mock-'));
 }
 
 export async function saveProcessingJobToSupabase(job: ProcessingJobRecord): Promise<ProcessingJobRecord | null> {
@@ -3337,7 +3339,7 @@ export async function updateProcessingJobStatusInSupabase(
     return true;
   } catch (err) {
     console.warn('updateProcessingJobStatusInSupabase catch:', err);
-    return true;
+return true;
   }
 }
 

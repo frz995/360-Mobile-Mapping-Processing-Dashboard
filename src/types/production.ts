@@ -113,7 +113,7 @@ export interface ProcessingJobRecord {
 
 export type ExternalJobStatus = 'none' | 'awaiting_submit' | 'running_external' | 'done';
 
-export type ProcessingCenterTab = 'board' | 'handoff' | 'qa' | 'capacity';
+export type ProcessingCenterTab = 'board' | 'handoff' | 'qa' | 'monitor' | 'lifecycle';
 
 export type LineageTab = 'graph' | 'trace' | 'survey' | 'registry';
 
@@ -230,6 +230,12 @@ export interface WorkstationStationConfig {
   lastHeartbeat?: string;
   isOnline?: boolean;
   latencyMs?: number;
+  cpuUsage?: number;
+  gpuUsage?: number;
+  gpuName?: string;
+  ramTotalGb?: number;
+  ramUsedGb?: number;
+  storageUsedPct?: number;
 }
 
 export const DEFAULT_4_WORKSTATIONS: WorkstationStationConfig[] = [
@@ -239,7 +245,7 @@ export const DEFAULT_4_WORKSTATIONS: WorkstationStationConfig[] = [
     stepNumber: 1,
     ipAddress: '192.168.1.101',
     software: 'Privacy Keeper / Face & Plate Blur',
-    defaultOperator: 'Blurring Operator',
+    defaultOperator: 'Multi-PC',
     sourceFolderTemplate: '/RAW/{subgrid}/',
     outputFolderTemplate: '/BLURRED/{subgrid}/',
     description: 'Detects and blurs pedestrian faces and license plates on the raw frames before stitching.',
@@ -251,7 +257,7 @@ export const DEFAULT_4_WORKSTATIONS: WorkstationStationConfig[] = [
     stepNumber: 2,
     ipAddress: '192.168.1.102',
     software: 'Creator 6 / PTGui / Insta360 Stitcher',
-    defaultOperator: 'Stitching Operator',
+    defaultOperator: 'Multi-PC',
     sourceFolderTemplate: '/BLURRED/{subgrid}/',
     outputFolderTemplate: '/STITCHED/{subgrid}/',
     description: 'Stitches the blurred six-camera frames into 360° equirectangular panoramas.',
@@ -263,7 +269,7 @@ export const DEFAULT_4_WORKSTATIONS: WorkstationStationConfig[] = [
     stepNumber: 3,
     ipAddress: '192.168.1.103',
     software: 'Adobe Lightroom Classic / Camera RAW',
-    defaultOperator: 'Colorist Operator',
+    defaultOperator: 'Multi-PC',
     sourceFolderTemplate: '/STITCHED/{subgrid}/',
     outputFolderTemplate: '/ENHANCED/{subgrid}/',
     description: 'Applies bulk color grading, shadow recovery, clarity, and sharpness presets.',
@@ -275,7 +281,7 @@ export const DEFAULT_4_WORKSTATIONS: WorkstationStationConfig[] = [
     stepNumber: 4,
     ipAddress: '192.168.1.104',
     software: 'Adobe Photoshop (Batch Actions)',
-    defaultOperator: 'Retouch Operator',
+    defaultOperator: 'Multi-PC',
     sourceFolderTemplate: '/ENHANCED/{subgrid}/',
     outputFolderTemplate: '/PROCESSED/{subgrid}/',
     description: 'Applies circular nadir hood mask or generative inpaint to remove the vehicle, plus watermark.',
@@ -322,6 +328,17 @@ export interface WorkerHealthInfo {
   status: string;
   jobs_active: number;
   nas_base: string;
+  cpu_usage?: number;
+  cpu_cores?: number;
+  gpu_usage?: number;
+  gpu_name?: string;
+  gpu_vram_total_gb?: number;
+  gpu_vram_used_gb?: number;
+  ram_total_gb?: number;
+  ram_used_gb?: number;
+  storage_used_pct?: number;
+  hostname?: string;
+  uptime_sec?: number;
 }
 
 export interface ProductionApiSettings {

@@ -4,7 +4,8 @@ import {
   Columns3,
   Inbox,
   ListChecks,
-  Gauge
+  Activity,
+  Route
 } from 'lucide-react';
 import { fetchDatasetsFromSupabase, fetchProcessingJobsFromSupabase, supabase } from '../services/supabase';
 import { getActiveProjectId } from '../services/projectContext';
@@ -18,7 +19,8 @@ import { UnderlineTabStrip, type ChromeTab } from './production/chrome';
 import { JobBoardPanel } from './production/processing/JobBoardPanel';
 import { HandoffPanel } from './production/processing/HandoffPanel';
 import { QAConsultPanel } from './production/processing/QAConsultPanel';
-import { CapacityPanel } from './production/processing/CapacityPanel';
+import { WorkerMonitorPanel } from './production/processing/WorkerMonitorPanel';
+import { SubgridLifecyclePanel } from './production/processing/SubgridLifecyclePanel';
 import { JobDetailsDrawer } from './production/processing/JobDetailsDrawer';
 
 export interface ProcessingCenterWorkspaceProps {
@@ -30,13 +32,15 @@ export interface ProcessingCenterWorkspaceProps {
   addAuditLog?: (type: any, title: string, details: string, status?: any) => void;
   onBackToDashboard?: () => void;
   translate?: (key: string) => string;
+  onOpenStoragePath?: (path: string) => void;
 }
 
 const TABS: ChromeTab<ProcessingCenterTab>[] = [
   { key: 'board', icon: <Columns3 size={14} /> },
+  { key: 'lifecycle', icon: <Route size={14} /> },
   { key: 'handoff', icon: <Inbox size={14} /> },
   { key: 'qa', icon: <ListChecks size={14} /> },
-  { key: 'capacity', icon: <Gauge size={14} /> }
+  { key: 'monitor', icon: <Activity size={14} /> }
 ];
 
 export const ProcessingCenterWorkspace: React.FC<ProcessingCenterWorkspaceProps> = ({
@@ -46,10 +50,11 @@ export const ProcessingCenterWorkspace: React.FC<ProcessingCenterWorkspaceProps>
   addNotification,
   addAuditLog,
   onBackToDashboard: _onBackToDashboard,
-  translate = (k) => k
+  translate = (k) => k,
+  onOpenStoragePath
 }) => {
   const [activeTab, setActiveTab] = useState<ProcessingCenterTab>(() => {
-    const processingTabs = ['board', 'handoff', 'qa', 'capacity'] as const;
+    const processingTabs = ['board', 'handoff', 'qa', 'monitor', 'lifecycle'] as const;
     return restoreWorkspaceTab<typeof processingTabs[number]>('processing', processingTabs) ?? 'board';
   });
   useEffect(() => {
@@ -58,6 +63,8 @@ export const ProcessingCenterWorkspace: React.FC<ProcessingCenterWorkspaceProps>
   const [datasets, setDatasets] = useState<DatasetRecord[]>([]);
   const [jobs, setJobs] = useState<ProcessingJobRecord[]>([]);
   const [selectedJob, setSelectedJob] = useState<ProcessingJobRecord | null>(null);
+  const [boardFocusSg, setBoardFocusSg] = useState<string | null>(null);
+  const [qaFocusSg, setQaFocusSg] = useState<string | null>(null);
   const pollStopRef = useRef<(() => void) | null>(null);
 
   const api: ProductionApiClient = useMemo(
@@ -118,6 +125,16 @@ export const ProcessingCenterWorkspace: React.FC<ProcessingCenterWorkspaceProps>
     authSession?.user?.email || authSession?.user?.user_metadata?.full_name || 'Operator';
   const userLabel = isGuestUser ? 'Guest' : userEmail;
 
+  const handleFocusSubgrid = (subgrid: string | null) => {
+    setBoardFocusSg(subgrid);
+    setActiveTab('board');
+  };
+
+  const handleOpenQa = (subgrid?: string) => {
+    setQaFocusSg(subgrid ?? null);
+    setActiveTab('qa');
+  };
+
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden animate-in fade-in duration-500">
       <div className="flex-1 flex flex-col gap-3 min-h-0 overflow-y-auto p-4">
@@ -127,7 +144,7 @@ export const ProcessingCenterWorkspace: React.FC<ProcessingCenterWorkspaceProps>
             Processing Center
           </h2>
           <p className="text-xs text-text-muted mt-0.5 leading-relaxed">
-            Central job operations: NAS GPU Worker (ENHANCE/MASK), external-PC handoff (STITCH/BLUR/REPORT/EXPORT job types), acceptance QA decisions and live capacity. Metadata in Supabase only.
+            Central job operations: NAS GPU Worker (ENHANCE/MASK), external-PC handoff (STITCH/BLUR/REPORT/EXPORT job types), acceptance QA decisions and live worker/system monitoring. Metadata in Supabase only.
           </p>
         </div>
 
@@ -155,7 +172,19 @@ export const ProcessingCenterWorkspace: React.FC<ProcessingCenterWorkspaceProps>
                 onAddNotification={addNotification}
                 onAddAuditLog={addAuditLog}
                 userLabel={userLabel}
+                initialSubgrid={boardFocusSg || undefined}
                 onOpenJobDetails={setSelectedJob}
+              />
+            )}
+            {activeTab === 'lifecycle' && (
+              <SubgridLifecyclePanel
+                jobs={jobs}
+                datasets={datasets}
+                projectSettings={projectSettings}
+                translate={translate}
+                onExplorePath={onOpenStoragePath}
+                onFocusSubgrid={handleFocusSubgrid}
+                onOpenQa={handleOpenQa}
               />
             )}
             {activeTab === 'handoff' && (
@@ -184,10 +213,11 @@ export const ProcessingCenterWorkspace: React.FC<ProcessingCenterWorkspaceProps>
                 onAddNotification={addNotification}
                 onAddAuditLog={addAuditLog}
                 userLabel={userLabel}
+                initialSubgrid={qaFocusSg || undefined}
               />
             )}
-            {activeTab === 'capacity' && (
-              <CapacityPanel
+            {activeTab === 'monitor' && (
+              <WorkerMonitorPanel
                 jobs={jobs}
                 api={api}
                 projectSettings={projectSettings}

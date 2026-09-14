@@ -176,9 +176,7 @@ Sharpness Amount: ${Math.round(params.sharpness * 0.8)}`;
       provider: is4PcMode ? 'PC 3 — Lightroom Station' : 'NAS GPU Worker',
       software_version: is4PcMode
         ? 'Adobe Lightroom Classic'
-        : projectSettings?.productionApiMode === 'http'
-          ? 'enhance-worker'
-          : 'mock',
+        : 'enhance-worker',
       total_items: selected.file_count || 0,
       status: 'QUEUED',
       progress: 0,

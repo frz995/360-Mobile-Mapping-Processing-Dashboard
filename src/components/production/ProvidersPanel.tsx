@@ -559,11 +559,10 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({
                     <td className="py-2.5 px-3">
                       <select
                         className="bg-transparent text-xs text-zinc-300 focus:outline-none border-b border-transparent focus:border-zinc-500 cursor-pointer font-sans"
-                        value={projectSettings?.productionApiMode || 'mock'}
+                        value={projectSettings?.productionApiMode || 'http'}
                         disabled={isGuestUser}
                         onChange={(e) => setApi({ productionApiMode: e.target.value as any })}
                       >
-                        <option value="mock" className="bg-card text-zinc-200">mock (simulated live dev)</option>
                         <option value="http" className="bg-card text-zinc-200">http (FastAPI Worker)</option>
                       </select>
                     </td>

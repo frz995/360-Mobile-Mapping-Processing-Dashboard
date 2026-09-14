@@ -28,6 +28,7 @@ export interface NASStorageWorkspaceProps {
   addAuditLog?: (type: any, title: string, details: string, status?: any) => void;
   onBackToDashboard?: () => void;
   translate?: (key: string) => string;
+  initialFocusPath?: string;
 }
 
 const TABS: ChromeTab<StorageTab>[] = [
@@ -45,11 +46,12 @@ export const NASStorageWorkspace: React.FC<NASStorageWorkspaceProps> = ({
   addNotification,
   addAuditLog,
   onBackToDashboard: _onBackToDashboard,
-  translate = (k) => k
+  translate = (k) => k,
+  initialFocusPath
 }) => {
   const [activeTab, setActiveTab] = useState<StorageTab>(() => {
     const storageTabs = ['overview', 'browser', 'rawregistry', 'validation', 'index'] as const;
-    return restoreWorkspaceTab<typeof storageTabs[number]>('storage', storageTabs) ?? 'overview';
+    return initialFocusPath ? 'browser' : restoreWorkspaceTab<typeof storageTabs[number]>('storage', storageTabs) ?? 'overview';
   });
   useEffect(() => {
     persistWorkspaceTab('storage', activeTab);
@@ -117,6 +119,7 @@ export const NASStorageWorkspace: React.FC<NASStorageWorkspaceProps> = ({
                 onAddNotification={addNotification}
                 onAddAuditLog={addAuditLog}
                 userLabel={userLabel}
+                initialPath={initialFocusPath}
               />
             )}
             {activeTab === 'rawregistry' && (

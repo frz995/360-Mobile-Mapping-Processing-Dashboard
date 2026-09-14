@@ -25,6 +25,7 @@ export interface BrowserPanelProps {
   onAddNotification?: (item: any) => void;
   onAddAuditLog?: (type: any, title: string, details: string, status?: any) => void;
   userLabel: string;
+  initialPath?: string;
 }
 
 const PREVIEW_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp', '.tif', '.tiff', '.bmp']);
@@ -40,9 +41,15 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
   isGuestUser,
   onAddNotification,
   onAddAuditLog,
-  userLabel
+  userLabel,
+  initialPath
 }) => {
-  const [stack, setStack] = useState<string[]>([]);
+  const [stack, setStack] = useState<string[]>(
+    () =>
+      initialPath
+        ? initialPath.replace(/^\/+/, '').split('/').filter(Boolean)
+        : []
+  );
   const [listing, setListing] = useState<NasFolderListing | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -90,7 +97,9 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
     : (() => {
         const base = (
           projectSettings?.nasServerUrl ||
+          projectSettings?.productionApiUrl ||
           import.meta.env.VITE_NAS_SERVER_URL ||
+          import.meta.env.VITE_PRODUCTION_API_URL ||
           ''
         ).replace(/\/+$/, '');
         const pfx = [currentPath, selected?.name]

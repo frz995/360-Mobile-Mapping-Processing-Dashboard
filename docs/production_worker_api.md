@@ -134,8 +134,33 @@ Capacity + recursive inventory of the NAS working base. Cached for
 ### GET /health
 
 ```json
-{ "status": "ok", "jobs_active": 1, "nas_base": "/nas/360_images" }
+{
+  "status": "ok",
+  "jobs_active": 1,
+  "nas_base": "/nas/360_images",
+  "hostname": "nas-worker",
+  "uptime_sec": 86400,
+  "cpu_usage": 34,
+  "cpu_cores": 24,
+  "gpu_usage": 11,
+  "gpu_name": "NVIDIA GeForce RTX 3080",
+  "gpu_vram_total_gb": 10,
+  "gpu_vram_used_gb": 1.1,
+  "ram_total_gb": 128,
+  "ram_used_gb": 41.5,
+  "storage_used_pct": 5,
+  "source": "worker"
+}
 ```
+
+> All resource fields are **optional**. The Node dashboard Worker Monitor shows
+> them automatically when present (`cpu_usage`, `cpu_cores`, `gpu_usage`,
+> `gpu_name`, `ram_total_gb`, `ram_used_gb`, `storage_used_pct`). Per-PC station
+> agents should expose the same shape on `http://<station-ip>:8000/health`
+> (mirroring `providers.stations[].ipAddress/port`) so the Monitor resolves each
+> workstation's RAM/GPU/storage too. When a field is absent, the dashboard falls
+> back to browser APIs (`getGpuHardwareName`, `navigator.hardwareConcurrency`)
+> and estimates.
 
 ## Execution scope
 

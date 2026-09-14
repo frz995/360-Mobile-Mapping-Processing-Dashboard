@@ -32,6 +32,7 @@ import {
   formatEta,
   isJobActive,
   isJobTerminal,
+  isWorkerAlive,
   jobStatusMeta
 } from '../../../utils/productionQueue';
 import { formatDateTime } from '../common';
@@ -54,6 +55,7 @@ export interface JobBoardPanelProps {
   onAddNotification?: (item: any) => void;
   onAddAuditLog?: (type: any, title: string, details: string, status?: any) => void;
   userLabel: string;
+  initialSubgrid?: string;
   onOpenJobDetails?: (job: ProcessingJobRecord) => void;
 }
 
@@ -85,18 +87,20 @@ interface SafeJobAction {
 export const JobBoardPanel: React.FC<JobBoardPanelProps> = ({
   jobs,
   api,
+  projectSettings,
   isGuestUser,
   onRefreshJobs,
   onAddNotification,
   onAddAuditLog,
   userLabel,
+  initialSubgrid,
   onOpenJobDetails
 }) => {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>('ALL');
   const [filterType, setFilterType] = useState<string>('ALL');
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(initialSubgrid || '');
   const [mineOnly, setMineOnly] = useState(false);
 
   // Safe Action confirmation modal state
@@ -111,11 +115,11 @@ export const JobBoardPanel: React.FC<JobBoardPanelProps> = ({
     else if (filterStatus === 'REVIEW') out = out.filter((j) => j.status === 'REVIEW_REQUIRED');
     else if (filterStatus === 'DONE') out = out.filter((j) => isJobTerminal(j.status));
     else if (filterStatus === 'FAILED') out = out.filter((j) => j.status === 'FAILED');
-    if (mineOnly) out = out.filter((j) => (j.operator || j.assigned_to) === userLabel);
+    if (mineOnly) out = out.filter((j) => (j.operator || j.assigned_to || j.worker) === userLabel);
     const q = search.trim().toLowerCase();
     if (q) {
       out = out.filter((j) =>
-        [j.name, j.subgrid, j.operator, j.assigned_to, j.source_folder, j.output_folder]
+        [j.name, j.subgrid, j.operator, j.assigned_to, j.worker, j.source_folder, j.output_folder]
           .filter(Boolean)
           .join(' ')
           .toLowerCase()
@@ -129,6 +133,10 @@ export const JobBoardPanel: React.FC<JobBoardPanelProps> = ({
     onAddNotification?.({ title, message: details, category: category as any, read: false });
     onAddAuditLog?.('CREATE', title, details, audit);
   };
+
+  // The board is scoped to the active project by RLS (scoped() in the fetch), so a
+  // single project label applies to every row shown here.
+  const projectLabel = projectSettings?.projectName || 'Default Project';
 
   const handleExecuteSafeAction = async () => {
     if (!safeAction || !safeAction.job || isGuestUser) return;
@@ -320,11 +328,13 @@ export const JobBoardPanel: React.FC<JobBoardPanelProps> = ({
             <thead className="sticky top-0 bg-inner text-text-muted uppercase tracking-wide text-[10px] border-b border-subtle z-10 shadow-sm">
               <tr>
                 <th className="py-2 px-3">Job</th>
+                <th className="py-2 px-3">Project</th>
                 <th className="py-2 px-3">Status</th>
-                <th className="py-2 px-3 w-44">Progress</th>
+                <th className="py-2 px-3 w-44">Progress / ETA</th>
                 <th className="py-2 px-3">Type / handoff</th>
                 <th className="py-2 px-3">Subgrid</th>
-                <th className="py-2 px-3">Operator</th>
+                <th className="py-2 px-3">Worker</th>
+                <th className="py-2 px-3">Started</th>
                 <th className="py-2 px-3 text-right w-56">Actions</th>
               </tr>
             </thead>
@@ -347,6 +357,10 @@ export const JobBoardPanel: React.FC<JobBoardPanelProps> = ({
                       <div className="text-[10px] text-text-muted font-sans">{job.id ? job.id.slice(0, 8) : ''} · <span className="font-sans">{formatDateTime(job.created_at)}</span></div>
                       {job.source_folder && <div className="text-[10px] text-text-muted font-sans truncate max-w-[240px]">in: {job.source_folder}</div>}
                       {job.output_folder && <div className="text-[10px] text-text-muted font-sans truncate max-w-[240px]">out: {job.output_folder}</div>}
+                    </td>
+                    <td className="py-2 px-3">
+                      <div className="text-text-base font-medium truncate max-w-[160px]">{projectLabel}</div>
+                      {job.project_id && <div className="text-[10px] font-sans text-text-muted">{job.project_id.slice(0, 8)}</div>}
                     </td>
                     <td className="py-2 px-3">
                       <div className="flex items-center gap-1.5 font-mono text-[11px]">
@@ -407,8 +421,32 @@ export const JobBoardPanel: React.FC<JobBoardPanelProps> = ({
                     </td>
                     <td className="py-2 px-3 font-sans text-sky-300">{extractCanonicalSubgrid(job.subgrid) || '—'}</td>
                     <td className="py-2 px-3 text-text-muted">
-                      {job.assigned_to || job.operator || '—'}
+                      <div className="flex items-center gap-1.5">
+                        <span
+                          className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                            job.last_heartbeat
+                              ? isWorkerAlive(job)
+                                ? 'bg-emerald-400'
+                                : 'bg-zinc-500'
+                              : 'hidden'
+                          }`}
+                          title={job.last_heartbeat ? `Last heartbeat ${formatDateTime(job.last_heartbeat)}` : 'No heartbeat yet'}
+                        />
+                        <span className="text-text-base">{job.worker || job.assigned_to || job.operator || '—'}</span>
+                      </div>
+                      {job.last_heartbeat && (
+                        <div className="text-[10px] font-sans text-text-muted truncate max-w-[160px]">hb {formatDateTime(job.last_heartbeat)}</div>
+                      )}
                       {job.launch_command && <div className="text-[10px] font-sans text-text-muted truncate max-w-[160px]">⮞ {job.launch_command}</div>}
+                    </td>
+                    <td className="py-2 px-3">
+                      {job.started_at ? (
+                        <div className="text-text-base">{formatDateTime(job.started_at)}</div>
+                      ) : job.status === 'PENDING' || job.status === 'QUEUED' || job.status === 'CANCELLED' ? (
+                        <div className="text-[10px] text-text-muted uppercase tracking-wide">Not started</div>
+                      ) : (
+                        <div className="text-text-muted">{formatDateTime(job.completed_at || job.created_at)}</div>
+                      )}
                     </td>
                     <td className="py-2 px-3 text-right">
                       {isGuestUser ? (

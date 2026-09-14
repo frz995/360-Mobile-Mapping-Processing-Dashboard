@@ -40,7 +40,7 @@ import type {
   WorkstationStationConfig
 } from '../../../types/production';
 import { DEFAULT_4_WORKSTATIONS } from '../../../types/production';
-import { jobStatusMeta } from '../../../utils/productionQueue';
+import { jobStatusTextClass } from '../../../utils/productionQueue';
 import { extractCanonicalSubgrid } from '../../../utils/datasetLineage';
 
 export interface HandoffPanelProps {
@@ -263,12 +263,12 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
     const currentType = job.job_type;
     const stageMeta = STATION_JOB_TYPE_MAP[currentType];
 
-    // 1. Strict Check: Query the physical NAS output folder
+    // Strict Check: Query the physical NAS output folder
     const listing = await api.listFolder(job.output_folder || '');
     const fileCount = listing?.fileCount || 0;
 
-    // In HTTP mode with real NAS connection: If output folder is empty (not processed yet by operator), DO NOT transfer!
-    if (api.mode === 'http' && fileCount === 0) {
+    // If output folder is empty (not processed yet by operator), DO NOT transfer!
+    if (fileCount === 0) {
       setAdvanceWarningJob({ job, fileCount: 0 });
       setBusyId(null);
       return;
@@ -437,9 +437,7 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
   }, [jobs]);
 
   const renderWorkstationCard = (job: ProcessingJobRecord, stationConfig?: WorkstationStationConfig) => {
-    const meta = jobStatusMeta(job.status);
     const busy = busyId === job.id;
-    const assigned = job.assigned_to;
     const jid = job.id || '';
 
     return (
@@ -452,8 +450,8 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
             className="flex items-center gap-2 cursor-pointer hover:opacity-90 min-w-0 flex-1"
             onClick={() => onOpenJobDetails?.(job)}
           >
-            <span className="font-sans font-bold text-sky-300 text-xs truncate">{job.subgrid || 'SUBGRID'}</span>
-            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border uppercase tracking-wider shrink-0 ${meta.className}`}>
+            <span className="font-sans font-bold text-text-base text-xs truncate">{job.subgrid || 'SUBGRID'}</span>
+            <span className={`text-[9px] font-bold uppercase tracking-wider shrink-0 ${jobStatusTextClass(job.status)}`}>
               {job.status}
             </span>
           </div>
@@ -490,8 +488,8 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
             <span className="font-semibold text-text-base">{job.provider || stationConfig?.software || 'Software'}</span>
           </div>
           <div className="flex items-center justify-between text-text-muted">
-            <span>Operator PC:</span>
-            <span className="font-semibold text-sky-300">{assigned || job.operator || 'Unassigned'}</span>
+            <span>Station:</span>
+            <span className="font-semibold text-text-base">{stationConfig?.name?.split('—')[0]?.trim() || 'PC'}</span>
           </div>
         </div>
 
@@ -560,7 +558,7 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-sm font-bold text-text-base">Automated GPU Worker Dispatch Console</h3>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-inner text-text-muted border border-subtle uppercase">
+                <span className="text-[10px] font-bold text-text-muted uppercase">
                   Headless Server
                 </span>
               </div>
@@ -572,14 +570,10 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
 
           <div className="flex items-center gap-2 text-xs font-sans">
             <span className="p-2 bg-inner rounded-xl border border-subtle text-text-muted">
-              URL: <strong className="text-text-base">{projectSettings?.productionApiUrl || 'http://127.0.0.1:8000'}</strong>
+              URL: <strong className="text-text-base">{projectSettings?.productionApiUrl || '—'}</strong>
             </span>
-            <span className={`px-2.5 py-2 rounded-xl border font-bold uppercase ${
-              api.mode === 'mock'
-                ? 'bg-inner text-text-muted border-subtle'
-                : 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
-            }`}>
-              {api.mode === 'mock' ? '● MOCK DAEMON' : '● CONNECTED'}
+            <span className={`text-xs font-bold uppercase ${projectSettings?.productionApiUrl ? 'text-emerald-300' : 'text-text-muted'}`}>
+              {projectSettings?.productionApiUrl ? '● CONNECTED' : '● NOT CONFIGURED'}
             </span>
           </div>
         </div>
@@ -592,10 +586,10 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
               <Zap size={14} className="text-text-muted" />
             </div>
             <div className="text-base font-bold text-text-base">
-              {api.mode === 'http' ? 'NAS GPU Worker' : 'Local Mock Daemon'}
+              NAS GPU Worker
             </div>
             <div className="text-[10px] text-text-muted font-sans">
-              {api.mode === 'http' ? 'FastAPI · PyTorch / CUDA' : 'Simulated Browser Dispatch'}
+              {projectSettings?.productionApiUrl ? 'FastAPI · PyTorch / CUDA' : 'Worker URL not configured'}
             </div>
           </div>
 
@@ -629,10 +623,10 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
               <Play size={14} className="text-text-muted" />
             </div>
             <div className="text-base font-bold text-text-base">
-              {api.mode === 'http' ? 'Connected' : 'Standalone'}
+              {projectSettings?.productionApiUrl ? 'Configured' : 'No URL set'}
             </div>
             <div className="text-[10px] text-text-muted">
-              {api.mode === 'http' ? 'Live HTTP backend' : 'In-memory queue'}
+              {projectSettings?.productionApiUrl ? 'Live HTTP backend' : 'Set worker URL in Providers'}
             </div>
           </div>
         </div>
@@ -698,7 +692,6 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
 
           <div className="flex flex-col gap-2.5">
             {gpuJobs.map((j) => {
-              const meta = jobStatusMeta(j.status);
               const progressPct = j.total_items ? Math.round(((j.completed_items || 0) / j.total_items) * 100) : 0;
 
               return (
@@ -709,10 +702,10 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
                 >
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
-                      <span className="font-sans font-bold text-sky-300">{j.subgrid || 'SUBGRID'}</span>
+                      <span className="font-sans font-bold text-text-base">{j.subgrid || 'SUBGRID'}</span>
                       <span className="text-text-base font-semibold">{j.name || j.job_type}</span>
                     </div>
-                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded border uppercase ${meta.className}`}>
+                    <span className={`text-[9px] font-bold uppercase ${jobStatusTextClass(j.status)}`}>
                       {j.status}
                     </span>
                   </div>
@@ -1019,7 +1012,7 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
                                 type="text"
                                 value={row.operator}
                                 onChange={(e) => updateTableRow(idx, 'operator', e.target.value)}
-                                className="w-full bg-inner border border-subtle rounded px-2 py-1 text-[11px] text-sky-300 font-semibold focus:border-sky-500/60"
+                                className="w-full bg-inner border border-subtle rounded px-2 py-1 text-[11px] text-text-base focus:border-sky-500/60"
                                 placeholder="Operator name"
                               />
                             </td>
@@ -1028,7 +1021,7 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
                                 type="text"
                                 value={row.sourceFolder}
                                 onChange={(e) => updateTableRow(idx, 'sourceFolder', e.target.value)}
-                                className="w-full bg-inner border border-subtle rounded px-2.5 py-1.5 text-[11px] font-sans text-sky-300 focus:text-text-base focus:border-sky-500/60"
+                                className="w-full bg-inner border border-subtle rounded px-2.5 py-1.5 text-[11px] font-sans text-text-base focus:border-sky-500/60"
                                 placeholder="Source input folder"
                               />
                             </td>
@@ -1037,7 +1030,7 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
                                 type="text"
                                 value={row.outputFolder}
                                 onChange={(e) => updateTableRow(idx, 'outputFolder', e.target.value)}
-                                className="w-full bg-inner border border-subtle rounded px-2.5 py-1.5 text-[11px] font-sans text-emerald-300 focus:text-text-base focus:border-emerald-500/60"
+                                className="w-full bg-inner border border-subtle rounded px-2.5 py-1.5 text-[11px] font-sans text-text-base focus:border-sky-500/60"
                                 placeholder="Destination output folder"
                               />
                             </td>
@@ -1149,7 +1142,7 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
                         operator: e.target.value
                       })
                     }
-                    className="w-full bg-inner border border-subtle rounded-lg px-3 py-2 text-sky-300 font-semibold focus:outline-none focus:border-sky-500/60"
+                    className="w-full bg-inner border border-subtle rounded-lg px-3 py-2 text-text-base focus:outline-none focus:border-sky-500/60"
                   />
                 </div>
               </div>
@@ -1160,7 +1153,7 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
                   type="text"
                   value={editingJob.source_folder || ''}
                   onChange={(e) => setEditingJob({ ...editingJob, source_folder: e.target.value })}
-                  className="w-full bg-inner border border-subtle rounded-lg px-3 py-2 font-sans text-sky-300 focus:outline-none focus:border-sky-500/60"
+                  className="w-full bg-inner border border-subtle rounded-lg px-3 py-2 font-sans text-text-base focus:outline-none focus:border-sky-500/60"
                 />
               </div>
 
@@ -1170,7 +1163,7 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
                   type="text"
                   value={editingJob.output_folder || ''}
                   onChange={(e) => setEditingJob({ ...editingJob, output_folder: e.target.value })}
-                  className="w-full bg-inner border border-subtle rounded-lg px-3 py-2 font-sans text-emerald-300 focus:outline-none focus:border-emerald-500/60"
+                  className="w-full bg-inner border border-subtle rounded-lg px-3 py-2 font-sans text-text-base focus:outline-none focus:border-sky-500/60"
                 />
               </div>
 
