@@ -1,0 +1,7 @@
+cd /c/Users/PC
+git --version
+git clone --depth 1 https://github.com/supabase/supabase
+mkdir supabase-project
+cp -rf supabase/docker/* supabase-project/
+cp supabase/docker/.env.example supabase-project/.env
+cd supabase-project

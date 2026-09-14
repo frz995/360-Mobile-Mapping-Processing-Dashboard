@@ -21,8 +21,6 @@ import {
   Map as MapIcon,
   ShieldCheck,
   Maximize2,
-  Box,
-  Layers,
   Filter,
   ClipboardList,
   History,
@@ -1731,7 +1729,6 @@ export default function App() {
       });
   }, [dailyData, dashDailyFilters]);
   const [isDrawingBBox, setIsDrawingBBox] = useState(false);
-  const [mapView3D, setMapView3D] = useState(false);
   const [statusFilters, setStatusFilters] = useState<{ published: boolean; defect: boolean; stitching: boolean }>({
     published: true,
     defect: true,
@@ -2934,9 +2931,6 @@ export default function App() {
 
         // Publish live heading to the store (HUD reads it without re-rendering App).
         setHeading(yawVal);
-      } else if (e.data?.type === 'VIEW_MODE_CHANGED') {
-        const mode = String(e.data.mode || '').toUpperCase();
-        setMapView3D(mode === '3D');
       }
     };
     window.addEventListener('message', handlePanoramaMessage);
@@ -3855,44 +3849,6 @@ export default function App() {
                       INTERACTIVE COVERAGE MAP
                     </span>
                     <div className="flex items-center gap-1.5 sm:gap-2 flex-none ml-auto">
-                      <div className="flex items-center bg-app border border-subtle rounded-lg p-0.5 shadow-sm" title="Toggle map view between 2D and 3D with a continuous fly animation">
-                        <button
-                          onClick={() => {
-                            setMapView3D(false);
-                            const iframes = document.querySelectorAll<HTMLIFrameElement>('iframe');
-                            iframes.forEach(f => {
-                              try {
-                                f.contentWindow?.postMessage({ type: 'SET_VIEW_MODE', mode: '2D' }, '*');
-                              } catch (err) { }
-                            });
-                          }}
-                          className={`px-2 py-1 text-[10px] sm:text-[11px] font-semibold rounded-md transition-all flex items-center justify-center gap-1 cursor-pointer ${!mapView3D
-                            ? 'bg-card text-sky-400 border border-sky-400/40 shadow-sm'
-                            : 'text-text-muted hover:text-text-base hover:bg-inner border border-transparent'
-                            }`}
-                        >
-                          <Layers size={12} className="shrink-0" />
-                          <span className="hidden sm:inline">2D</span>
-                        </button>
-                        <button
-                          onClick={() => {
-                            setMapView3D(true);
-                            const iframes = document.querySelectorAll<HTMLIFrameElement>('iframe');
-                            iframes.forEach(f => {
-                              try {
-                                f.contentWindow?.postMessage({ type: 'SET_VIEW_MODE', mode: '3D' }, '*');
-                              } catch (err) { }
-                            });
-                          }}
-                          className={`px-2 py-1 text-[10px] sm:text-[11px] font-semibold rounded-md transition-all flex items-center justify-center gap-1 cursor-pointer ${mapView3D
-                            ? 'bg-card text-sky-400 border border-sky-400/40 shadow-sm'
-                            : 'text-text-muted hover:text-text-base hover:bg-inner border border-transparent'
-                            }`}
-                        >
-                          <Box size={12} className="shrink-0" />
-                          <span className="hidden sm:inline">3D</span>
-                        </button>
-                      </div>
                       <button
                         onClick={generateExecutivePdfReport}
                         className="px-2 sm:px-3 py-1 bg-card hover:bg-inner text-text-base hover:text-text-base border border-subtle text-[10px] sm:text-[11px] font-medium rounded-lg transition-all uppercase tracking-tight cursor-pointer flex items-center justify-center gap-1.5 shadow-sm active:scale-95 whitespace-nowrap"
