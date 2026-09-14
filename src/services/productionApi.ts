@@ -53,18 +53,20 @@ export interface ProductionApiClient {
 // ---------------------------------------------------------------------
 
 function buildHttpClient(settings: ProductionApiSettings): ProductionApiClient {
-  const baseUrl = (settings.baseUrl || 'http://localhost:8000').replace(/\/+$/, '');
+  const baseUrl = (settings.baseUrl || '').replace(/\/+$/, '');
   const apiKey = settings.apiKey || '';
   const api = (path: string, init?: RequestInit) =>
-    fetch(`${baseUrl}${path}`, {
-      ...init,
-      signal: init?.signal ?? AbortSignal.timeout(10_000),
-      headers: {
-        'Content-Type': 'application/json',
-        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-        ...(init?.headers || {})
-      }
-    });
+    baseUrl
+      ? fetch(`${baseUrl}${path}`, {
+          ...init,
+          signal: init?.signal ?? AbortSignal.timeout(10_000),
+          headers: {
+            'Content-Type': 'application/json',
+            ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+            ...(init?.headers || {})
+          }
+        })
+      : Promise.reject(new Error('Worker URL not configured'));
 
   return {
     mode: 'http' as const,
@@ -148,6 +150,6 @@ export function createProductionApiClient(settings: ProductionApiSettings): Prod
   const baseUrl =
     settings.baseUrl ||
     (typeof window !== 'undefined' && (window as any).__NAS_WORKER_URL__) ||
-    'http://localhost:8000';
+    '';
   return buildHttpClient({ ...settings, baseUrl });
 }

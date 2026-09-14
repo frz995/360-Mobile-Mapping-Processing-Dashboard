@@ -33,6 +33,7 @@ import {
 import { usePanoramaViewer } from '../hooks/usePanoramaViewer';
 import { StarsBackground } from './common/StarsBackground';
 import { SparklesCore } from './common/Sparkles';
+import { GeoSphereFullLogo } from './common/GeoSphereLogo';
 import { HoverBorderGradient } from './common/HoverBorderGradient';
 import { EarthGlobe, type GlobeMarker } from './common/EarthGlobe';
 import { AtomicGlobeHost, type AtomicGlobeMarker } from './common/AtomicGlobeHost';
@@ -1289,7 +1290,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
         setFlyTarget({
             latitude: d.lat,
             longitude: d.lng,
-            zoom: 6.0,
+            zoom: 1.55,
             timestamp: Date.now(),
         });
         if (Number.isFinite(d.lat) && Number.isFinite(d.lng)) setAtomicGlobeFocus({ lat: d.lat, lng: d.lng });
@@ -1313,7 +1314,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
     }, [projectLocation]);
 
     return (
-        <div className={`relative w-full showcase-landing text-white font-sans select-none flex flex-col justify-between bg-black ${viewMode === 'modules' ? 'max-lg:overflow-y-auto max-lg:!h-auto max-lg:!max-h-none' : 'overflow-hidden'}`}>
+        <div className={`relative w-full showcase-landing text-white font-sans select-none flex flex-col justify-between bg-black overflow-hidden`}>
 
             {/* 1. Animate UI Stars Background, 3D Earth Globe & Clean Ambient Lighting */}
             <div className={`absolute inset-0 z-0 overflow-hidden isolate ${viewMode === 'globe' ? 'pointer-events-auto' : 'pointer-events-none'}`}>
@@ -1363,7 +1364,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                                 dotDensity={80000}
                                 baseSize={4.5}
                                 backParticleOpacity={0.12}
-                                rotationSpeed={autoRotate && !viewTransitioning ? 0.06 : 0}
+                                rotationSpeed={viewMode === 'modules' || (autoRotate && !viewTransitioning) ? 0.06 : 0}
                                 centerLng={activeLng}
                                 tilt={18}
                                 globeScale={isMobile ? 0.59 : 1.05}
@@ -1396,7 +1397,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                                     : 'max-sm:translate-y-[14%] lg:-translate-x-[36%] lg:translate-y-[22%] lg:scale-[1.95] opacity-85'
                             }`}>
                             <EarthGlobe
-                                autoRotate={autoRotate && !viewTransitioning}
+                                autoRotate={viewMode === 'modules' || (autoRotate && !viewTransitioning)}
                                 autoRotateSpeed={1.8}
                                 centerLatitude={activeLat}
                                 centerLongitude={activeLng}
@@ -1461,9 +1462,11 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             </div>
 
             {/* 2. Top Header Navbar (Module navigation centered, balanced left & right) */}
-            <header className="relative z-30 px-3 sm:px-8 py-2 sm:py-3 flex items-center justify-between border-b border-white/10 bg-black/90 backdrop-blur-md shrink-0 gap-3 sm:gap-4">
+            <header className="relative z-30 px-3 sm:px-8 py-2 sm:py-3 flex items-center justify-between shrink-0 gap-3 sm:gap-4">
+                <div aria-hidden className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent pointer-events-none" />
                 {/* Left: System Title */}
                 <div className="flex items-center gap-3 min-w-0 z-10">
+                    <GeoSphereFullLogo size={36} className="text-white shrink-0" />
                     <div className="max-w-[140px] xs:max-w-[190px] sm:max-w-[240px] 2xl:max-w-none min-w-0 pr-1 sm:pr-2">
                         <span className="text-xs sm:text-sm font-semibold tracking-tight text-white block leading-tight truncate">
                             Mobile Mapping Data Management System
@@ -1496,7 +1499,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                 {/* Right: View Mode Switcher + Action Buttons */}
                 <div className="flex items-center gap-3 sm:gap-4 shrink-0 z-10">
                     {/* Vertical divider separating module navigation / system links from the 3D Earth view mode switcher */}
-                    <div className="h-4 w-px bg-white/20 hidden xl:block" />
+                    <div className="h-4 w-px bg-white/10 hidden xl:block" />
 
                     {/* View Mode Switcher: Clean monochromatic text tabs with Google font icons, no box button */}
                     <div className="flex items-center gap-1.5 sm:gap-4 text-[11px] sm:text-xs">
@@ -1543,24 +1546,25 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
 
             {/* Centered Platform Title & Subtitle (Top of Showcase) */}
             {viewMode === 'modules' && (
-                <div className="relative z-30 w-full text-center shrink-0 pt-6 sm:pt-10">
+                <div className="relative z-30 w-full text-center shrink-0 pt-3 sm:pt-5">
                     {/* Title & Subtitle — stacked above the sparkles */}
                     <div className="w-full flex flex-col items-center justify-center overflow-hidden px-4 sm:px-8">
-                        <h1 className="text-lg sm:text-3xl xl:text-4xl font-extrabold tracking-tight text-white leading-[1.15] text-center">
-                            GeoSphere 360° Mobile Mapping Platform
+                        <h1 className="text-base sm:text-2xl xl:text-3xl font-extrabold tracking-tight text-white leading-[1.15] text-center">
+                            GeoSphere 360°
+                            <span className="block text-sm sm:text-lg xl:text-xl font-semibold tracking-wide text-neutral-300 mt-0.5 sm:mt-1">
+                                A Cloud-Native Mobile Mapping Platform
+                            </span>
                         </h1>
-                        <p className="text-[11px] sm:text-sm text-neutral-400 font-normal leading-relaxed max-w-2xl mt-2 sm:mt-2.5">
+                        <p className="text-[10px] sm:text-[13px] text-neutral-400 font-normal leading-relaxed max-w-2xl mt-1.5 sm:mt-2">
                             An integrated WebGIS workspace where survey rigs, GPU processing workers, NAS storage, and PostGIS databases collaborate to transform mobile mapping data into trustworthy, published infrastructure assets.
                         </p>
                     </div>
 
                     {/* Sparkles container — below the subtitle */}
-                    <div className="w-full max-w-lg sm:max-w-2xl mx-auto h-20 sm:h-28 relative mt-0.5">
+                    <div className="w-full max-w-lg sm:max-w-2xl mx-auto h-12 sm:h-16 relative mt-0.5">
                         {/* Gradients */}
                         <div className="absolute left-0 right-0 mx-auto top-0 bg-gradient-to-r from-transparent via-indigo-500 to-transparent h-px w-3/4" />
-                        <div className="absolute left-0 right-0 mx-auto top-0 bg-gradient-to-r from-transparent via-indigo-500 to-transparent h-px w-3/4" />
                         <div className="absolute left-0 right-0 mx-auto top-0 bg-gradient-to-r from-transparent via-sky-500 to-transparent h-[2px] w-1/4" />
-                        <div className="absolute left-0 right-0 mx-auto top-0 bg-gradient-to-r from-transparent via-sky-500 to-transparent h-px w-1/4" />
 
                         {/* Soft light glow below the cyan line */}
                         <div aria-hidden className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 w-80 h-52 pointer-events-none">
@@ -1572,7 +1576,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                         {/* Core component — mounted after the view-switch transition so tsParticles init
                             (~500 particles) doesn't collide with the globe park animation / panel crossfade */}
                         {titleSparklesReady && (
-                            <div className="absolute inset-0 w-full h-full [mask-image:radial-gradient(ellipse_48%_175%_at_50%_0%,black_42%,transparent_78%)]">
+                            <div className="absolute inset-0 w-full h-full [mask-image:radial-gradient(ellipse_48%_175%_at_50%_0%,black_42%,transparent_78%)] animate-in fade-in duration-700 ease-out">
                                 <SparklesCore
                                     id="tsparticlesfullpage"
                                     background="transparent"
@@ -1590,7 +1594,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
 
             {/* 3. Main Showcase Section */}
             <main
-                className={`relative z-20 flex-1 min-h-0 w-full px-4 sm:px-8 py-4 sm:py-6 overflow-y-auto lg:overflow-hidden flex flex-col items-center justify-center ${viewMode === 'globe' ? 'pointer-events-none' : 'pointer-events-auto'
+                className={`relative z-20 flex-1 min-h-0 w-full px-4 sm:px-8 py-2 sm:py-3 flex flex-col items-center justify-center overflow-hidden ${viewMode === 'globe' ? 'pointer-events-none' : 'pointer-events-auto'
                     }`}
                 style={{ backgroundColor: 'transparent' }}
             >
@@ -1608,7 +1612,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                                     EXPLORE AVAILABLE PROJECT AREA
                                 </span>
                             </div>
-                            <span className="text-[10px] text-neutral-400 font-mono tracking-wide hidden sm:block">
+                            <span className="text-[11px] text-neutral-400 font-mono tracking-wide hidden sm:block">
                                 Left-drag: Rotate • Right-drag / Shift: Pan • Scroll: Zoom • Double-click: Reset
                             </span>
                         </div>
@@ -1637,7 +1641,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                                         }
                                     }
                                 }}
-                                className={`p-2.5 sm:p-4 rounded-2xl bg-black/75 hover:bg-black/90 backdrop-blur-xl border text-left max-w-[260px] sm:max-w-[320px] pointer-events-auto shadow-2xl space-y-1 sm:space-y-1.5 cursor-pointer transition-all duration-200 group active:scale-[0.98] outline-none ${showDistrictPopup
+                                className={`p-2.5 sm:p-4 rounded-2xl bg-black/75 hover:bg-black/90 backdrop-blur-xl border text-left max-w-[260px] sm:max-w-[320px] pointer-events-auto shadow-2xl space-y-1 sm:space-y-1.5 cursor-pointer transition-all duration-200 group active:scale-[0.98] outline-none hover:-translate-y-0.5 ${showDistrictPopup
                                         ? 'border-red-500/70 ring-1 ring-red-500/30 shadow-[0_0_24px_rgba(239,68,68,0.25)]'
                                         : 'border-white/10 hover:border-red-500/50'
                                     }`}
@@ -1693,7 +1697,14 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                                 {/* Globe Renderer Choice: Classic Vector Globe ↔ Atomic Point-Cloud Globe */}
                                 <div className="flex items-center bg-neutral-900/80 backdrop-blur-md px-1 sm:px-1.5 py-0.5 sm:py-1 rounded-lg sm:rounded-xl border border-white/10 shadow-md">
                                     <button
-                                        onClick={() => setShowAtomicGlobe(false)}
+                                        onClick={() => {
+                                            // Share one default district zoom (~atomic dive scale) so the
+                                            // vector globe mounts at the same apparent focus level instead of
+                                            // carrying over a stale deep-zoom value between renderers.
+                                            if (showDistrictPopup) setGlobeZoom(1.55);
+                                            setFlyTarget(null);
+                                            setShowAtomicGlobe(false);
+                                        }}
                                         title="Switch to the classic vector globe"
                                         className={`px-1.5 sm:px-2.5 py-0.5 sm:py-1 rounded-md sm:rounded-lg text-[9px] sm:text-[10px] font-semibold transition-colors cursor-pointer ${showAtomicGlobe ? 'text-neutral-400 hover:text-white' : 'bg-white/10 text-white'
                                             }`}
@@ -1701,7 +1712,14 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                                         Vector
                                     </button>
                                     <button
-                                        onClick={() => setShowAtomicGlobe(true)}
+                                        onClick={() => {
+                                            // Atomic's dive is relative to its own fit scale — reset the shared zoom to
+                                            // baseline so it focuses at its natural ~1.55x dive rather than inheriting the
+                                            // vector globe's deep-zoom value.
+                                            if (showDistrictPopup) setGlobeZoom(1.05);
+                                            setFlyTarget(null);
+                                            setShowAtomicGlobe(true);
+                                        }}
                                         title="Switch to the photorealistic point-cloud globe"
                                         className={`px-1.5 sm:px-2.5 py-0.5 sm:py-1 rounded-md sm:rounded-lg text-[9px] sm:text-[10px] font-semibold transition-colors cursor-pointer inline-flex items-center gap-0.5 sm:gap-1 ${showAtomicGlobe ? 'bg-sky-500/80 text-white' : 'text-neutral-400 hover:text-white'
                                             }`}
@@ -1760,7 +1778,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                                                     e.stopPropagation();
                                                     setShowProjectPicker(prev => !prev);
                                                 }}
-                                                className="pr-2 pl-1.5 sm:pr-2.5 sm:pl-1.5 py-1 sm:py-1.5 border-l border-white/20 hover:bg-white/10 rounded-r-lg sm:rounded-r-xl cursor-pointer flex items-center"
+                                                className="pr-2 pl-1.5 sm:pr-2.5 sm:pl-1.5 py-1 sm:py-1.5 border-l border-white/10 hover:bg-white/10 rounded-r-lg sm:rounded-r-xl cursor-pointer flex items-center"
                                                 title="Choose project district to inspect"
                                             >
                                                 <span className="material-symbols-outlined text-[13px] sm:text-[14px] leading-none">
@@ -1820,10 +1838,10 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                     </div>
                 )}
 
-                <div className={`w-full max-w-[1600px] mx-auto my-auto lg:-translate-y-3 grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 items-stretch ${viewMode === 'globe' ? 'hidden' : 'grid'}`}>
+                <div className={`w-full max-w-[1600px] mx-auto my-auto min-h-0 grid grid-cols-1 lg:grid-cols-12 gap-3 sm:gap-5 items-stretch ${viewMode === 'globe' ? 'hidden' : 'grid'}`}>
 
                     {/* Left Narrative Panel (Spacious, Typography-Driven, No Card Boxes) */}
-                    <div className={`w-full lg:col-span-5 space-y-4 text-left flex flex-col justify-center order-2 lg:order-1 pb-6 lg:pb-0 transition-[opacity,transform,filter] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform transform-gpu ${isAnimating ? 'opacity-0 -translate-y-2 scale-[0.99] blur-[2px]' : 'opacity-100 translate-y-0 scale-100 blur-none'}`}>
+                    <div className={`w-full lg:col-span-5 space-y-3 text-left flex flex-col justify-center order-2 lg:order-1 pb-4 lg:pb-0 min-h-0 transition-[opacity,transform,filter] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform transform-gpu ${isAnimating ? 'opacity-0 -translate-y-2 scale-[0.99] blur-[2px]' : 'opacity-100 translate-y-0 scale-100 blur-none'}`}>
 
                         {/* Active Module Details */}
                         <div className="space-y-2">
@@ -1891,8 +1909,13 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                                     {current.workflow.map((wf, idx) => (
                                         <React.Fragment key={idx}>
                                             <div className="flex-1 py-1.5">
-                                                <div className="text-[10px] font-mono font-semibold text-neutral-300 tracking-wide mb-0.5">
-                                                    {wf.step}
+                                                <div className="flex items-center gap-1.5 mb-0.5">
+                                                    <span className="w-4 h-4 shrink-0 rounded-full bg-white/[0.06] border border-white/10 text-[8px] font-mono font-semibold text-neutral-400 flex items-center justify-center">
+                                                        {idx + 1}
+                                                    </span>
+                                                    <span className="text-[10px] font-mono font-semibold text-neutral-300 tracking-wide">
+                                                        {wf.step}
+                                                    </span>
                                                 </div>
                                                 <div className="text-[10px] text-neutral-500 leading-relaxed">
                                                     {wf.action}
@@ -1915,7 +1938,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                     <div
                         onTouchStart={handleTouchStart}
                         onTouchEnd={handleTouchEnd}
-                        className={`w-full lg:col-span-7 flex flex-col gap-2 order-1 lg:order-2 transition-[opacity,transform,filter] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] touch-pan-y will-change-transform transform-gpu ${isAnimating ? 'opacity-0 scale-[0.985] translate-y-1 blur-[2px]' : 'opacity-100 scale-100 translate-y-0 blur-none'}`}
+                        className={`w-full lg:col-span-7 flex flex-col gap-2 order-1 lg:order-2 min-h-0 transition-[opacity,transform,filter] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] touch-pan-y will-change-transform transform-gpu ${isAnimating ? 'opacity-0 scale-[0.985] translate-y-1 blur-[2px]' : 'opacity-100 scale-100 translate-y-0 blur-none'}`}
                     >
                         {/* Subtitle Bar */}
                         <div className="flex items-center justify-between px-1">
@@ -2027,7 +2050,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                                         <button
                                             key={idx}
                                             onClick={() => setActivePhotoIdx(idx)}
-                                            className={`h-5 w-7 rounded-sm overflow-hidden transition-all cursor-pointer ${activePhotoIdx === idx
+                                            className={`h-7 w-10 rounded-sm overflow-hidden transition-all cursor-pointer ${activePhotoIdx === idx
                                                     ? 'ring-1 ring-white/40 opacity-100'
                                                     : 'opacity-30 hover:opacity-60'
                                                 }`}
@@ -2050,7 +2073,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             </main>
 
             {/* 4. Pinned Footer Navigation Controls (Active in modules mode) */}
-            <footer className={`relative z-30 w-full px-2 sm:px-8 py-2 sm:py-3 items-center justify-between border-t border-white/10 bg-black shrink-0 ${viewMode === 'modules' ? 'flex' : 'hidden'}`}>
+            <footer className={`relative z-30 w-full px-2 sm:px-8 py-2 sm:py-3 items-center justify-between shrink-0 ${viewMode === 'modules' ? 'flex' : 'hidden'}`}>
                 <button
                     onClick={() => handleModuleChange((activeIndex - 1 + SYSTEM_MODULES.length) % SYSTEM_MODULES.length)}
                     className="flex items-center gap-2 text-neutral-400 hover:text-white transition-colors cursor-pointer group"

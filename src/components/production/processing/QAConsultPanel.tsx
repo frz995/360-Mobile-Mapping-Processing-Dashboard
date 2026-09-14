@@ -27,6 +27,7 @@ export interface QAConsultPanelProps {
   onAddNotification?: (item: any) => void;
   onAddAuditLog?: (type: any, title: string, details: string, status?: any) => void;
   userLabel: string;
+  initialSubgrid?: string;
 }
 
 const INPUT_CLASS =
@@ -40,15 +41,16 @@ export const QAConsultPanel: React.FC<QAConsultPanelProps> = ({
   onRefreshJobs,
   onAddNotification,
   onAddAuditLog,
-  userLabel
+  userLabel,
+  initialSubgrid
 }) => {
   const [selJobId, setSelJobId] = useState<string | null>(null);
   const [notes, setNotes] = useState('');
   const [busy, setBusy] = useState(false);
 
   const pending = useMemo(
-    () =>
-      jobs.filter(
+    () => {
+      let base = jobs.filter(
         (j) =>
           j.status === 'QA_PENDING' ||
           j.status === 'REVIEW_REQUIRED' ||
@@ -56,8 +58,14 @@ export const QAConsultPanel: React.FC<QAConsultPanelProps> = ({
           (j.status === 'COMPLETED' &&
             (j.job_type === 'MASK' || j.job_type === 'QAQC' || (j.settings as any)?.isFinalStage) &&
             !j.qa_decision)
-      ),
-    [jobs]
+      );
+      if (initialSubgrid) {
+        const target = extractCanonicalSubgrid(initialSubgrid);
+        base = base.filter((j) => extractCanonicalSubgrid(j.subgrid) === target);
+      }
+      return base;
+    },
+    [jobs, initialSubgrid]
   );
 
   // Auto-select first pending job.
@@ -197,6 +205,11 @@ export const QAConsultPanel: React.FC<QAConsultPanelProps> = ({
         <span className="text-[11px] text-text-muted font-sans">
           {stats.pending} pending · {stats.approved} approved · {stats.rejected} rejected
         </span>
+        {initialSubgrid && (
+          <span className="text-[10px] font-bold px-2 py-0.5 rounded-md border border-sky-500/40 bg-sky-500/10 text-sky-300">
+            Focus: {extractCanonicalSubgrid(initialSubgrid)}
+          </span>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-3 items-start">

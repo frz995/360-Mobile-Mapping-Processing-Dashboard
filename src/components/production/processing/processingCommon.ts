@@ -9,7 +9,8 @@ export const PROCESSING_TAB_LABELS: Record<string, string> = {
   board: 'processingTabBoard',
   handoff: 'processingTabHandoff',
   qa: 'processingTabQA',
-  capacity: 'processingTabCapacity'
+  monitor: 'processingTabMonitor',
+  lifecycle: 'processingTabLifecycle'
 };
 
 /** Worker-executable job types (NAS GPU Worker actually processes these). */
@@ -55,9 +56,9 @@ export function jobTypeDescription(jobType: string): string {
 export function qaDecisionMeta(decision?: string): { label: string; className: string } | null {
   if (!decision) return null;
   if (decision === 'APPROVED')
-    return { label: 'APPROVED', className: 'text-emerald-300 border-emerald-500/40 bg-emerald-950/40' };
+    return { label: 'APPROVED', className: 'text-emerald-300 border-emerald-500/40 bg-emerald-500/15' };
   if (decision === 'REJECTED')
-    return { label: 'REJECTED', className: 'text-rose-300 border-rose-500/40 bg-rose-950/40' };
+    return { label: 'REJECTED', className: 'text-rose-300 border-rose-500/40 bg-rose-500/15' };
   return null;
 }
 

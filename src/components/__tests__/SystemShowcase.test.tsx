@@ -20,7 +20,8 @@ describe('SystemShowcase Component', () => {
   it('renders GeoSphere 360 title, branding, and active module', () => {
     render(<SystemShowcase onEnterDashboard={vi.fn()} />);
 
-    expect(screen.getByText(/GeoSphere 360° Mobile Mapping Platform/i)).toBeInTheDocument();
+    expect(screen.getByText('GeoSphere 360°')).toBeInTheDocument();
+    expect(screen.getByText('A Cloud-Native Mobile Mapping Platform')).toBeInTheDocument();
     expect(screen.getByText(/Mobile Mapping Data Management System/i)).toBeInTheDocument();
     expect(screen.getByText(/Spatial Trajectory Processing & Quality Assurance Pipeline/i)).toBeInTheDocument();
     expect(screen.getByText(/Executive Dashboard & Spatial Telemetry/i)).toBeInTheDocument();

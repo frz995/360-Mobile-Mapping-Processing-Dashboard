@@ -56,15 +56,32 @@ export function isJobTerminal(status?: ProcessingJobStatus): boolean {
   return !!status && TERMINAL_STATUSES.includes(status);
 }
 
-/** Rough seconds remaining estimate based on recent progress velocity. */
+/** The wall-clock reference for ETA: actual process start when known, else job creation. */
+export function jobStartTime(job: ProcessingJobRecord): string | null | undefined {
+  return job.started_at || job.created_at;
+}
+
+/**
+ * Rough seconds remaining estimate based on recent progress velocity.
+ * Baselines against `started_at` (never the queue time) so jobs that sat
+ * queued before running get a realistic ETA instead of an inflated one.
+ */
 export function estimateEtaSeconds(job: ProcessingJobRecord): number | null {
   if (!isJobActive(job.status) || !job.progress || job.progress >= 100) return null;
   const denominator = Math.max(1, job.progress);
-  const created = job.created_at ? Date.now() - new Date(job.created_at).getTime() : 0;
-  if (created <= 0) return null;
-  const elapsedPerProgress = created / denominator;
+  const startRef = jobStartTime(job);
+  const elapsedMs = startRef ? Date.now() - new Date(startRef).getTime() : 0;
+  if (elapsedMs <= 0) return null;
+  const elapsedPerProgress = elapsedMs / denominator;
   const remaining = 100 - job.progress;
-  return Math.round(elapsedPerProgress * remaining);
+  return Math.round((elapsedPerProgress * remaining) / 1000);
+}
+
+/** True when `last_heartbeat` is recent enough to consider the worker alive. */
+export function isWorkerAlive(job: ProcessingJobRecord, windowMs = 2 * 60 * 1000): boolean {
+  if (!job.last_heartbeat) return false;
+  const t = Date.now() - new Date(job.last_heartbeat).getTime();
+  return Number.isFinite(t) && t >= 0 && t < windowMs;
 }
 
 export function formatEta(seconds: number | null): string {
@@ -83,12 +100,19 @@ export interface JobStatusMeta {
   dot: string;
 }
 
+export function jobStatusTextClass(status?: ProcessingJobStatus): string {
+  return jobStatusMeta(status)
+    .className.split(' ')
+    .filter((c) => c.startsWith('text-'))
+    .join(' ');
+}
+
 export function jobStatusMeta(status?: ProcessingJobStatus): JobStatusMeta {
   switch (status) {
     case 'PENDING':
       return { label: 'PENDING', className: 'bg-slate-500/15 text-slate-300 border-slate-500/40', dot: 'bg-slate-400' };
     case 'QUEUED':
-      return { label: 'QUEUED', className: 'bg-sky-500/15 text-sky-300 border-sky-500/40', dot: 'bg-sky-400' };
+      return { label: 'QUEUED', className: 'bg-yellow-500/15 text-yellow-300 border-yellow-500/40', dot: 'bg-yellow-400' };
     case 'IN_PROGRESS':
       return { label: 'IN PROGRESS', className: 'bg-amber-500/15 text-amber-300 border-amber-500/40', dot: 'bg-amber-400' };
     case 'COMPLETED':

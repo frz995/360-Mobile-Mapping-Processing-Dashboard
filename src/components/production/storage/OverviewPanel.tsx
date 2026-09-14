@@ -72,7 +72,7 @@ export const OverviewPanel: React.FC<OverviewPanelProps> = ({
   const deliverableCount = datasets.filter((d) => d.dataset_type === 'DELIVERABLE').length;
 
   const workerOnline = !!health && health.status === 'ok';
-  const workerUrl = api.baseUrl || 'http://localhost:8000';
+  const workerUrl = api.baseUrl || '—';
   const used = storage?.used || 0;
   const total = storage?.total || 0;
   const free = storage?.free || 0;

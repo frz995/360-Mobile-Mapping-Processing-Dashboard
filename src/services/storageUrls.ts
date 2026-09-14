@@ -64,6 +64,7 @@ export interface StorageResolveSettings {
   wasabiBucket?: string;
   wasabiRegion?: string;
   nasServerUrl?: string;
+  productionApiUrl?: string;
 }
 
 export function formatCloudflareUrl(domainOrUrl: string): string {
@@ -222,7 +223,14 @@ export function resolvePanoramaUrl(
     }
 
     case 'nas_local': {
-      const nasUrl = (settings?.nasServerUrl || import.meta.env.VITE_NAS_SERVER_URL || '').replace(/\/+$/, '');
+      const nasUrl = (
+        settings?.nasServerUrl ||
+        settings?.productionApiUrl ||
+        import.meta.env.VITE_NAS_SERVER_URL ||
+        import.meta.env.VITE_PRODUCTION_API_URL ||
+        ''
+      ).replace(/\/+$/, '');
+      if (!nasUrl) return '';
       if (options?.asConfigUrl) return `${nasUrl}/tiles/${targetSubgrid}/${nameWithoutExt}/config.json`;
       return `${nasUrl}/${cleanFn}`;
     }

@@ -194,8 +194,13 @@ html.showcase-active[data-theme] main,
 html.showcase-active[data-theme] section,
 html.showcase-active[data-theme] body,
 html.showcase-active[data-theme] #root,
-html.showcase-active[data-theme] div[class*="min-h-screen"] {
+html.showcase-active[data-theme] div[class*="min-h-screen"],
+html.showcase-active[data-theme] header,
+html.showcase-active[data-theme] footer,
+html.showcase-active[data-theme] nav,
+html.showcase-active[data-theme] aside {
     background-color: transparent !important;
+    border-color: transparent !important;
 }
 
 /* Top Navbar, Header, Sidebar */

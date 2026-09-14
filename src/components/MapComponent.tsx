@@ -425,6 +425,15 @@ export const MapComponent = ({
           nasServerUrl: s.nasServerUrl || ''
         }
       }, '*');
+
+      // 5. Send dynamic Supabase backend target so the standalone WebGIS
+      //    refetches published points from the active local/cloud DB when the
+      //    user switches the database provider in Dashboard settings.
+      iframeRef.current.contentWindow.postMessage({
+        type: 'SET_SUPABASE_TARGET',
+        url: s.supabaseUrl || import.meta.env.VITE_SUPABASE_URL || '',
+        anonKey: s.supabaseKey || s.databaseAnonKey || import.meta.env.VITE_SUPABASE_ANON_KEY || ''
+      }, '*');
     } catch (e) { }
   }, [effectiveSettings]);
 

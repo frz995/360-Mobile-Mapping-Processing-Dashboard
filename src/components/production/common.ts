@@ -24,7 +24,7 @@ export function getProductionApiSettings(
     baseUrl:
       projectSettings?.productionApiUrl ||
       import.meta.env.VITE_PRODUCTION_API_URL ||
-      'http://localhost:8000',
+      '',
     concurrency: projectSettings?.productionConcurrency || 4,
     nasWorkBasePath:
       projectSettings?.nasWorkBasePath ||
@@ -48,7 +48,7 @@ export function productionNasUrlFor(
     projectSettings?.productionApiUrl ||
     import.meta.env.VITE_NAS_SERVER_URL ||
     import.meta.env.VITE_PRODUCTION_API_URL ||
-    'http://localhost:8000'
+    ''
   ).replace(/\/+$/, '');
 
   const pfx = [folder || '', filename || '']
@@ -56,7 +56,7 @@ export function productionNasUrlFor(
     .join('/')
     .replace(/^\/+/, '');
 
-  if (!pfx) return '';
+  if (!pfx || !base) return '';
 
   if (base.endsWith('/api/images')) {
     return `${base}/${pfx}`;

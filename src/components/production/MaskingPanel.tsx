@@ -165,9 +165,7 @@ Action Sequence:
       provider: is4PcMode ? 'PC 4 — Photoshop Station' : 'NAS GPU Worker',
       software_version: is4PcMode
         ? 'Adobe Photoshop Batch'
-        : projectSettings?.productionApiMode === 'http'
-          ? 'lama-cleaner'
-          : 'mock',
+        : 'lama-cleaner',
       total_items: selected.file_count || 0,
       status: 'QUEUED',
       progress: 0,
