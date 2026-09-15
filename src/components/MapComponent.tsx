@@ -87,6 +87,20 @@ export const MapComponent = ({
   // project-boundary source repeatedly (which races removeSource → flashing + errors).
   const boundaryPushRef = useRef<string | null>(null);
 
+  // Manual refresh (sidebar Refresh / refreshKey bump) forces a full reload of the
+  // embedded WebGIS iframe: nonce change remounts the <iframe>, and the existing
+  // onLoad/MAP_READY dispatch re-applies basemap, boundary, storage config and
+  // staged points on the fresh session.
+  const [iframeReloadNonce, setIframeReloadNonce] = useState(0);
+  const prevRefreshKeyRef = useRef(refreshKey);
+  useEffect(() => {
+    if (refreshKey === prevRefreshKeyRef.current) return;
+    prevRefreshKeyRef.current = refreshKey;
+    boundaryPushRef.current = null;
+    setPreparing(true);
+    setIframeReloadNonce(n => n + 1);
+  }, [refreshKey]);
+
   const formattedStagedItems = useMemo(() => {
     if (!stagedItems || stagedItems.length === 0) return [];
 
@@ -375,7 +389,10 @@ export const MapComponent = ({
             geojson: payloadGeojson,
             bbox: payloadBbox
           }, '*');
-          if (boundary.focusActive) {
+          // Only send FOCUS_BOUNDARY if there are no survey points loaded,
+          // so the map zooms into the actual survey trajectory when points are present.
+          const hasSurveyPoints = formattedStagedItems.some(it => (it.panoramas || it.points || []).length > 0);
+          if (boundary.focusActive && !hasSurveyPoints) {
             iframeRef.current.contentWindow.postMessage({
               type: 'FOCUS_BOUNDARY',
               bbox: payloadBbox
@@ -435,7 +452,7 @@ export const MapComponent = ({
         anonKey: s.supabaseKey || s.databaseAnonKey || import.meta.env.VITE_SUPABASE_ANON_KEY || ''
       }, '*');
     } catch (e) { }
-  }, [effectiveSettings]);
+  }, [effectiveSettings, formattedStagedItems]);
 
   useEffect(() => {
     const handler = (e: MessageEvent) => {
@@ -451,6 +468,10 @@ export const MapComponent = ({
         }
       }
       if (e.data?.type === 'MAP_READY' || e.data?.type === 'VIEWER_READY' || e.data?.type === 'WEBGIS_READY' || e.data?.type === 'MAP_LOADED') {
+        // Force the project boundary to re-push: deliveries sent before the
+        // iframe's message listener attached were lost while the fingerprint
+        // was already consumed, so the dedup below would swallow every retry.
+        boundaryPushRef.current = '';
         syncMapSettings();
         sendStagedData();
         finishPreparingNow();
@@ -534,7 +555,7 @@ export const MapComponent = ({
           iframeRef.current = el;
           if (iframeRefCb) iframeRefCb(el);
         }}
-        key="webgis-map"
+        key={`webgis-map-${iframeReloadNonce}`}
         src={`${import.meta.env.VITE_MAP_URL || ''}/?embed=true&dashboard=true${dataManagement ? '&noSonar=1' : ''}`}
         onLoad={() => {
           if (iframeRef.current && iframeRef.current.contentWindow) {

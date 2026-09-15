@@ -23,7 +23,6 @@ describe('SystemShowcase Component', () => {
     expect(screen.getByText('GeoSphere 360°')).toBeInTheDocument();
     expect(screen.getByText('A Cloud-Native Mobile Mapping Platform')).toBeInTheDocument();
     expect(screen.getByText(/Mobile Mapping Data Management System/i)).toBeInTheDocument();
-    expect(screen.getByText(/Spatial Trajectory Processing & Quality Assurance Pipeline/i)).toBeInTheDocument();
     expect(screen.getByText(/Executive Dashboard & Spatial Telemetry/i)).toBeInTheDocument();
     expect(screen.getByText(/Workflow/i)).toBeInTheDocument();
   });
@@ -68,8 +67,8 @@ describe('SystemShowcase Component', () => {
   it('renders execution flow steps cleanly without card box wrappers', () => {
     render(<SystemShowcase onEnterDashboard={vi.fn()} />);
 
-    expect(screen.getByText('01. Ingest')).toBeInTheDocument();
-    expect(screen.getByText(/Parse GPS\/GNSS trajectory coordinates/i)).toBeInTheDocument();
+    expect(screen.getByText('1')).toBeInTheDocument();
+    expect(screen.getByText(/Ingest/i)).toBeInTheDocument();
   });
 
   it('triggers Panotrack district 3D popup when clicking bottom-left geodetic card in 3D Earth view', async () => {

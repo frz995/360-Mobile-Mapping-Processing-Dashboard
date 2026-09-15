@@ -45,7 +45,7 @@ import { DefectsGalleryModal } from './components/DefectsGalleryModal';
 import { ContentLoading } from './components/common/ContentLoading';
 import { Toaster } from './components/common/Toaster';
 import { WorkspaceErrorBoundary } from './components/common/WorkspaceErrorBoundary';
-import { GeoSphereFullLogo } from './components/common/GeoSphereLogo';
+import { GeoSphereIcon } from './components/common/GeoSphereLogo';
 import { translate } from './lib/i18n';
 import { APP_VERSION } from './config/defaults';
 import { ProjectOnboarding, type GateStage } from './components/ProjectOnboarding';
@@ -692,9 +692,13 @@ export default function App() {
   } | null>(null);
 
   useEffect(() => {
+    // Tracks whether a session already existed, so late auth pulses (tab refocus,
+    // token refresh) don't re-trigger workspace navigation.
+    let hadSession = false;
     // Check persistent Supabase Auth session on refresh
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
+        hadSession = true;
         restoredSessionRef.current = true;
         setAuthSession(session);
         setShowLanding(false); // Authenticated user stays on Dashboard
@@ -719,9 +723,21 @@ export default function App() {
           restoredSessionRef.current = true;
         }
         setAuthSession(session);
+        // Supabase re-emits auth pulses (SIGNED_IN/TOKEN_REFRESHED) when the tab
+        // regains focus. Only the FIRST session (no previous one) may switch the
+        // workspace — otherwise a re-emitted pulse yanks the user off the
+        // landing showcase they navigated to via the onboarding Back button and
+        // dumps them on a stale dashboard page.
+        if (hadSession) {
+          pruneBloatedUserMetadata();
+          setAuthLoading(false);
+          return;
+        }
+        hadSession = true;
         setShowLanding(false);
         pruneBloatedUserMetadata();
       } else {
+        hadSession = false;
         setAuthSession(null);
         setShowLanding(true);
         clearWorkspaceLocation();
@@ -3339,7 +3355,7 @@ export default function App() {
           {/* Header Branding */}
           <div className="text-center mb-8">
             <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-card border border-subtle shadow-sm mb-4">
-              <GeoSphereFullLogo size={34} className="text-text-base" />
+              <GeoSphereIcon size={32} colorful className="shrink-0" />
             </div>
             <h1 className="text-xl font-semibold text-text-base tracking-tight">
               Sign in to GeoSphere 360

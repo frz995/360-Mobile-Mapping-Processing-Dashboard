@@ -8,6 +8,7 @@ import {
   Search
 } from 'lucide-react';
 import type { UserProject, ProjectDraft } from '../services/projects';
+import { GeoSphereFullLogo } from './common/GeoSphereLogo';
 import {
   MALAYSIA_REGIONS,
   regionToGeoJSON,
@@ -145,12 +146,12 @@ const OnboardingVideoBackground: React.FC<{ opacity?: number; blur?: boolean; br
     >
       <source src="/screenshots/video%20onboarding.mp4?v=3" type="video/mp4" />
     </video>
-    {/* Atmospheric gradient overlay for contrast */}
-    <div className="absolute inset-0 bg-gradient-to-t from-app/75 via-transparent to-app/20" />
+    {/* Atmospheric gradient overlay for contrast (kept at the bottom only so the top stays clear) */}
+    <div className="absolute inset-0 bg-gradient-to-t from-app/75 via-transparent to-transparent" />
     <div
       className="absolute inset-0"
       style={{
-        background: 'radial-gradient(ellipse at center, transparent 35%, var(--bg-app) 88%)'
+        background: 'radial-gradient(ellipse at 50% 95%, transparent 45%, color-mix(in srgb, var(--bg-app) 70%, transparent) 88%)'
       }}
     />
   </div>
@@ -575,10 +576,13 @@ export const ProjectOnboarding: React.FC<ProjectOnboardingProps> = ({
       {/* STAGE 2: PICK OR STARTGLOBAL WIZARD */}
       {stage === 'pick' && (
         <div className="relative h-full w-full flex flex-col overflow-hidden">
-          {/* CLEAN TOP BAR */}
-          <header className="relative h-14 px-6 sm:px-8 border-b border-subtle bg-card flex items-center justify-between shrink-0 z-10">
+          {/* Ambient full screen back canvas — spans the full stage so the video reaches the top edge behind the header */}
+          <OnboardingVideoBackground opacity={0.55} blur={false} />
+
+          {/* CLEAN TOP BAR (fully transparent — the video canvas shows through) */}
+          <header className="onboarding-header relative h-14 px-6 sm:px-8 bg-transparent flex items-center justify-between shrink-0 z-10">
             <div className="flex items-center gap-2.5">
-              <span className="text-xs font-bold text-text-base tracking-tight">GeoSphere 360</span>
+              <GeoSphereFullLogo size={24} colorful className="h-6 w-auto" />
             </div>
 
             {/* Stepper Progress (Clean, restrained StartGlobal 5-step centered in header) */}
@@ -649,9 +653,6 @@ export const ProjectOnboarding: React.FC<ProjectOnboardingProps> = ({
 
           {/* MAIN BODY AREA */}
           <div className="relative flex-1 overflow-y-auto px-4 sm:px-8 py-8 flex justify-center">
-            {/* Ambient full screen back canvas (brightened for clear visibility) */}
-            <OnboardingVideoBackground opacity={0.55} blur={false} />
-
             {/* ---------------- SUB-MODE A: FAST RESUME SCREEN ---------------- */}
             {mode === 'resume' && recent.length > 0 && (
               <div className="relative z-10 w-full max-w-xl flex flex-col gap-5 my-auto animate-step-in">
