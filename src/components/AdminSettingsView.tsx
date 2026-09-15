@@ -321,7 +321,10 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
             bbox: boundary.bbox
           }, '*');
           if (boundary.focusActive) {
-            previewIframeRef.current.contentWindow.postMessage({ type: 'FOCUS_BOUNDARY', bbox: boundary.bbox }, '*');
+            // Passive live preview: do NOT auto-FOCUS_BOUNDARY — that direct
+            // fitBounds (fired at load + retries) overrode the map's two-stage
+            // intro zoom choreography. The dim overlay still reflects the
+            // setting; the intro camera lands on the panotrack extent.
           }
           previewIframeRef.current.contentWindow.postMessage({
             type: 'DIM_OUTSIDE_BOUNDARY',
@@ -2882,7 +2885,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                         setTimeout(sendPreviewData, 400);
                         setTimeout(sendPreviewData, 1200);
                       }}
-                      className="w-full h-full min-h-[400px] lg:min-h-[520px] border-0"
+                      className="absolute inset-0 w-full h-full border-0"
                       title="WebGIS Live Map Preview"
                       allow="geolocation; camera; accelerometer; gyroscope"
                     />

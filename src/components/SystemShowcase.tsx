@@ -1462,17 +1462,15 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             </div>
 
             {/* 2. Top Header Navbar (Module navigation centered, balanced left & right) */}
-            <header className="relative z-30 px-3 sm:px-8 py-2 sm:py-3 flex items-center justify-between shrink-0 gap-3 sm:gap-4">
+            <header className="relative z-30 px-3 sm:px-8 py-2 sm:py-3 pt-[max(0.5rem,env(safe-area-inset-top))] sm:pt-3 flex items-center justify-between shrink-0 gap-2 sm:gap-4">
                 <div aria-hidden className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent pointer-events-none" />
                 {/* Left: System Title */}
-                <div className="flex items-center gap-3 min-w-0 z-10">
-                    <GeoSphereFullLogo size={36} className="text-white shrink-0" />
-                    <div className="max-w-[140px] xs:max-w-[190px] sm:max-w-[240px] 2xl:max-w-none min-w-0 pr-1 sm:pr-2">
-                        <span className="text-xs sm:text-sm font-semibold tracking-tight text-white block leading-tight truncate">
+                <div className="flex items-center gap-2.5 xs:gap-3.5 min-w-0 z-10">
+                    <GeoSphereFullLogo size={26} colorful className="shrink-0 h-4 xs:h-6 sm:h-7 w-auto pr-1" />
+                    <div className="hidden sm:block h-5 w-px bg-white/20 shrink-0" />
+                    <div className="min-w-0 pr-1 sm:pr-2">
+                        <span className="hidden sm:block text-[11px] sm:text-xs md:text-[13px] font-medium tracking-tight text-white/90 leading-tight truncate">
                             Mobile Mapping Data Management System
-                        </span>
-                        <span className="text-[10px] sm:text-xs text-neutral-400 font-medium hidden xs:block truncate">
-                            Spatial Trajectory Processing &amp; Quality Assurance Pipeline
                         </span>
                     </div>
                 </div>
@@ -1497,12 +1495,12 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                 </nav>
 
                 {/* Right: View Mode Switcher + Action Buttons */}
-                <div className="flex items-center gap-3 sm:gap-4 shrink-0 z-10">
+                <div className="flex items-center gap-2 sm:gap-4 shrink-0 z-10">
                     {/* Vertical divider separating module navigation / system links from the 3D Earth view mode switcher */}
                     <div className="h-4 w-px bg-white/10 hidden xl:block" />
 
                     {/* View Mode Switcher: Clean monochromatic text tabs with Google font icons, no box button */}
-                    <div className="flex items-center gap-1.5 sm:gap-4 text-[11px] sm:text-xs">
+                    <div className="flex items-center gap-1 sm:gap-4 text-[10px] sm:text-xs">
                         <button
                             onClick={() => setViewMode('globe')}
                             className={`py-1 transition-colors cursor-pointer flex items-center gap-1 sm:gap-1.5 border-b-2 ${viewMode === 'globe'
@@ -1510,7 +1508,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                                     : 'text-neutral-400 hover:text-white border-transparent'
                                 }`}
                         >
-                            <span className="material-symbols-outlined text-[13px] sm:text-[15px] leading-none">public</span>
+                            <span className="material-symbols-outlined text-[12px] sm:text-[15px] leading-none">public</span>
                             <span>3D Earth</span>
                         </button>
                         <button
@@ -1520,7 +1518,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                                     : 'text-neutral-400 hover:text-white border-transparent'
                                 }`}
                         >
-                            <span className="material-symbols-outlined text-[13px] sm:text-[15px] leading-none">grid_view</span>
+                            <span className="material-symbols-outlined text-[12px] sm:text-[15px] leading-none">grid_view</span>
                             <span>Modules</span>
                         </button>
                     </div>
@@ -1529,17 +1527,17 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
 
                     <button
                         onClick={() => onEnterDashboard && onEnterDashboard('auth')}
-                        className="hidden sm:block text-xs font-medium text-neutral-400 hover:text-white transition-colors cursor-pointer py-1"
+                        className="hidden sm:block text-[10px] sm:text-xs font-medium text-neutral-400 hover:text-white transition-colors cursor-pointer py-1"
                     >
                         Sign In
                     </button>
                     <button
                         onClick={() => onEnterDashboard && onEnterDashboard(current.id)}
-                        className="text-xs font-medium text-white hover:text-neutral-300 transition-colors cursor-pointer flex items-center gap-1 sm:gap-1.5 py-1"
+                        className="text-[10px] sm:text-xs font-medium text-white hover:text-neutral-300 transition-colors cursor-pointer flex items-center gap-1 sm:gap-1.5 py-1"
                     >
                         <span className="hidden sm:inline">Launch Workspace</span>
-                        <span className="sm:hidden text-[10px]">Launch</span>
-                        <ArrowRight className="w-3.5 h-3.5 text-neutral-400" />
+                        <span className="sm:hidden text-[9px]">Launch</span>
+                        <ArrowRight className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5 text-neutral-400" />
                     </button>
                 </div>
             </header>
@@ -1549,12 +1547,12 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                 <div className="relative z-30 w-full text-center shrink-0 pt-3 sm:pt-5">
                     {/* Title & Subtitle — stacked above the sparkles */}
                     <div className="w-full flex flex-col items-center justify-center overflow-hidden px-4 sm:px-8">
-                        <h1 className="text-base sm:text-2xl xl:text-3xl font-extrabold tracking-tight text-white leading-[1.15] text-center">
-                            GeoSphere 360°
-                            <span className="block text-sm sm:text-lg xl:text-xl font-semibold tracking-wide text-neutral-300 mt-0.5 sm:mt-1">
-                                A Cloud-Native Mobile Mapping Platform
-                            </span>
+                        <h1 className="text-xl sm:text-3xl xl:text-4xl font-bold tracking-tight text-white drop-shadow-lg">
+                            GeoSphere 360&deg;
                         </h1>
+                        <span className="block text-xs sm:text-base xl:text-lg font-semibold tracking-wide text-neutral-300 mt-0.5 sm:mt-1">
+                            A Cloud-Native Mobile Mapping Platform
+                        </span>
                         <p className="text-[10px] sm:text-[13px] text-neutral-400 font-normal leading-relaxed max-w-2xl mt-1.5 sm:mt-2">
                             An integrated WebGIS workspace where survey rigs, GPU processing workers, NAS storage, and PostGIS databases collaborate to transform mobile mapping data into trustworthy, published infrastructure assets.
                         </p>
@@ -1594,7 +1592,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
 
             {/* 3. Main Showcase Section */}
             <main
-                className={`relative z-20 flex-1 min-h-0 w-full px-4 sm:px-8 py-2 sm:py-3 flex flex-col items-center justify-center overflow-hidden ${viewMode === 'globe' ? 'pointer-events-none' : 'pointer-events-auto'
+                className={`relative z-20 flex-1 min-h-0 w-full px-4 sm:px-8 py-2 sm:py-3 flex flex-col items-center justify-center overflow-x-hidden overflow-y-auto lg:overflow-hidden ${viewMode === 'globe' ? 'pointer-events-none' : 'pointer-events-auto'
                     }`}
                 style={{ backgroundColor: 'transparent' }}
             >
@@ -1841,7 +1839,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                 <div className={`w-full max-w-[1600px] mx-auto my-auto min-h-0 grid grid-cols-1 lg:grid-cols-12 gap-3 sm:gap-5 items-stretch ${viewMode === 'globe' ? 'hidden' : 'grid'}`}>
 
                     {/* Left Narrative Panel (Spacious, Typography-Driven, No Card Boxes) */}
-                    <div className={`w-full lg:col-span-5 space-y-3 text-left flex flex-col justify-center order-2 lg:order-1 pb-4 lg:pb-0 min-h-0 transition-[opacity,transform,filter] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform transform-gpu ${isAnimating ? 'opacity-0 -translate-y-2 scale-[0.99] blur-[2px]' : 'opacity-100 translate-y-0 scale-100 blur-none'}`}>
+                    <div className={`w-full lg:col-span-5 space-y-3 text-left flex flex-col justify-start sm:justify-center order-2 lg:order-1 pb-4 lg:pb-0 min-h-0 transition-[opacity,transform,filter] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform transform-gpu ${isAnimating ? 'opacity-0 -translate-y-2 scale-[0.99] blur-[2px]' : 'opacity-100 translate-y-0 scale-100 blur-none'}`}>
 
                         {/* Active Module Details */}
                         <div className="space-y-2">
@@ -1855,11 +1853,11 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                                 </span>
                             </div>
 
-                            <h2 className="text-lg sm:text-xl font-bold tracking-tight text-white leading-snug pt-0.5">
+                            <h2 className="text-base sm:text-xl font-bold tracking-tight text-white leading-snug pt-0.5">
                                 {current.title}
                             </h2>
 
-                            <p className="text-xs sm:text-[13px] text-neutral-400 font-normal leading-relaxed max-w-lg">
+                            <p className="text-[11px] sm:text-[13px] text-neutral-400 font-normal leading-relaxed max-w-lg">
                                 {current.description}
                             </p>
                         </div>
@@ -1914,7 +1912,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                                                         {idx + 1}
                                                     </span>
                                                     <span className="text-[10px] font-mono font-semibold text-neutral-300 tracking-wide">
-                                                        {wf.step}
+                                                        {wf.step.replace(/^\d+[.\s]+/, '')}
                                                     </span>
                                                 </div>
                                                 <div className="text-[10px] text-neutral-500 leading-relaxed">
@@ -1944,7 +1942,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                         <div className="flex items-center justify-between px-1">
                             <div className="flex items-center gap-2 min-w-0">
                                 <span className="w-1.5 h-1.5 rounded-full bg-neutral-500 shrink-0" />
-                                <span className="text-[11px] sm:text-xs font-medium text-neutral-300 truncate">
+                                <span className="text-[10px] sm:text-xs font-medium text-neutral-300 truncate">
                                     {current.subtitle}
                                 </span>
                             </div>
@@ -1954,7 +1952,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                         </div>
 
                         {/* Viewport Image */}
-                        <div className="relative w-full flex-1 min-h-0 rounded-xl overflow-hidden flex items-center justify-center bg-black/50">
+                        <div className="relative w-full h-[240px] min-[420px]:h-[280px] sm:h-[400px] lg:h-auto lg:flex-1 rounded-xl overflow-hidden flex items-center justify-center bg-black/50">
                             <img
                                 key={activeImage}
                                 src={activeImage}
@@ -2073,26 +2071,26 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             </main>
 
             {/* 4. Pinned Footer Navigation Controls (Active in modules mode) */}
-            <footer className={`relative z-30 w-full px-2 sm:px-8 py-2 sm:py-3 items-center justify-between shrink-0 ${viewMode === 'modules' ? 'flex' : 'hidden'}`}>
+            <footer className={`relative z-30 w-full px-3 sm:px-8 py-2 sm:py-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:pb-3 items-center justify-between gap-2 shrink-0 ${viewMode === 'modules' ? 'flex' : 'hidden'}`}>
                 <button
                     onClick={() => handleModuleChange((activeIndex - 1 + SYSTEM_MODULES.length) % SYSTEM_MODULES.length)}
-                    className="flex items-center gap-2 text-neutral-400 hover:text-white transition-colors cursor-pointer group"
+                    className="flex items-center gap-2 shrink-0 text-neutral-400 hover:text-white transition-colors cursor-pointer group"
                 >
-                    <ChevronLeft className="w-4 h-4 text-neutral-400 group-hover:text-white transition-colors" />
+                    <ChevronLeft className="w-4 h-4 text-neutral-400 group-hover:text-white transition-colors shrink-0" />
                     <div className="hidden sm:block text-left">
                         <span className="text-[10px] text-neutral-500 block uppercase tracking-wider font-semibold">Previous</span>
-                        <span className="text-xs font-medium text-neutral-300 group-hover:text-white">{prevModule.title.split('&')[0]}</span>
+                        <span className="text-xs font-medium text-neutral-300 group-hover:text-white whitespace-nowrap">{prevModule.title.split('&')[0]}</span>
                     </div>
                 </button>
 
                 {/* Step Indicator Dots (module navigation) */}
-                <div className="flex-1 flex items-center justify-center gap-2 min-w-0">
+                <div className="flex-1 flex items-center justify-center gap-1.5 sm:gap-2 min-w-0 overflow-hidden">
                     {SYSTEM_MODULES.map((m, i) => (
                         <button
                             key={m.id}
                             onClick={() => handleModuleChange(i)}
                             aria-label={`Go to module ${i + 1}: ${m.title}`}
-                            className={`cursor-pointer p-1 rounded-full transition-all ${i === activeIndex ? '' : 'hover:bg-white/10'}`}
+                            className={`cursor-pointer p-1 shrink-0 rounded-full transition-all ${i === activeIndex ? '' : 'hover:bg-white/10'}`}
                         >
                             <span
                                 className={`block rounded-full transition-all duration-300 ${i === activeIndex
@@ -2106,13 +2104,13 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
 
                 <button
                     onClick={() => handleModuleChange((activeIndex + 1) % SYSTEM_MODULES.length)}
-                    className="flex items-center gap-2 text-neutral-400 hover:text-white transition-colors cursor-pointer group"
+                    className="flex items-center gap-2 shrink-0 text-neutral-400 hover:text-white transition-colors cursor-pointer group"
                 >
                     <div className="hidden sm:block text-right">
                         <span className="text-[10px] text-neutral-500 block uppercase tracking-wider font-semibold">Next</span>
-                        <span className="text-xs font-medium text-neutral-300 group-hover:text-white">{nextModule.title.split('&')[0]}</span>
+                        <span className="text-xs font-medium text-neutral-300 group-hover:text-white whitespace-nowrap">{nextModule.title.split('&')[0]}</span>
                     </div>
-                    <ChevronRight className="w-4 h-4 text-neutral-400 group-hover:text-white transition-colors" />
+                    <ChevronRight className="w-4 h-4 text-neutral-400 group-hover:text-white transition-colors shrink-0" />
                 </button>
             </footer>
 

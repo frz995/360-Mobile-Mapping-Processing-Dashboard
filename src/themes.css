@@ -215,6 +215,12 @@ html.showcase-active[data-theme] aside {
     border-color: var(--border-subtle) !important;
 }
 
+/* Exception: onboarding floating header stays transparent over the video canvas */
+[data-theme] header.onboarding-header {
+    background-color: transparent !important;
+    border-color: transparent !important;
+}
+
 /* Main Cards, Admin Panels & Widget Containers */
 [data-theme] div[class*="rounded-2xl"],
 [data-theme] div[class*="rounded-3xl"] {
