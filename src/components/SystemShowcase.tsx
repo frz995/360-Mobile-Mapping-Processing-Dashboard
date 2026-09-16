@@ -22,19 +22,18 @@ import {
     Camera,
     Database,
     ArrowRight,
-    ChevronLeft,
-    ChevronRight,
     Cpu,
     Shield,
     FolderKanban,
     MapPin,
     Loader2,
 } from 'lucide-react';
+import { motion, useMotionValue, useMotionValueEvent, useReducedMotion, useScroll, useSpring } from 'framer-motion';
+import Lenis from 'lenis';
+import Snap from 'lenis/snap';
 import { usePanoramaViewer } from '../hooks/usePanoramaViewer';
 import { StarsBackground } from './common/StarsBackground';
-import { SparklesCore } from './common/Sparkles';
 import { GeoSphereFullLogo } from './common/GeoSphereLogo';
-import { HoverBorderGradient } from './common/HoverBorderGradient';
 import { EarthGlobe, type GlobeMarker } from './common/EarthGlobe';
 import { AtomicGlobeHost, type AtomicGlobeMarker } from './common/AtomicGlobeHost';
 import { ProjectBoundaryMap } from './common/ProjectBoundaryMap';
@@ -44,6 +43,17 @@ import { MALAYSIA_DISTRICTS, districtsToGeoJSON, ensureDistrictGeometriesLoaded 
 import { extractPanotrackPoints, filterPanotrackByBBoxes } from '../utils/panotrackExtractor';
 import { getImagesProcessedCount, getPOICount } from '../utils/dashboardData';
 import { DistrictProjectPopup, type PanotrackPopupData } from './common/DistrictProjectPopup';
+import { AmbienceLayer } from './showcase/AmbienceLayer';
+import { HeroSection } from './showcase/HeroSection';
+import { ModuleSection } from './showcase/ModuleSection';
+import { OutroSection } from './showcase/OutroSection';
+import { SectionRail } from './showcase/SectionRail';
+import { LaunchPortal } from './showcase/LaunchPortal';
+import type { SectionHotspot, SystemModule, WorkflowStep } from './showcase/types';
+import { HERO_SECTION, globePoseFor, springGlide } from './showcase/showcaseMotion';
+
+// Shared showcase types live in ./showcase/types — re-exported for compatibility.
+export type { SectionHotspot, SystemModule, WorkflowStep };
 
 /** Fallback so a WebGL/runtime hiccup inside the vendored AtomicGlobe can never
  *  leave the showcase blank — errors degrade back to the vector SVG EarthGlobe. */
@@ -110,38 +120,6 @@ export interface SystemShowcaseProps {
     activeProject?: any;
 }
 
-export interface SectionHotspot {
-    id: string;
-    x: number; // percentage (0 - 100)
-    y: number; // percentage (0 - 100)
-    title: string;
-    tag: string;
-    description: string;
-    tip: string;
-    stepNumber?: number;
-}
-
-interface WorkflowStep {
-    step: string;
-    action: string;
-}
-
-interface SystemModule {
-    id: string;
-    category: string;
-    title: string;
-    subtitle: string;
-    description: string;
-    metricLabel: string;
-    metricValue: string;
-    statusBadge: string;
-    images: string[];
-    icon: React.ElementType;
-    workflow: WorkflowStep[];
-    specs: { label: string; value: string }[];
-    hotspots: SectionHotspot[];
-}
-
 export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
     onEnterDashboard,
     dailyData = [],
@@ -150,11 +128,92 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
     activeProject
 }) => {
     const [activeIndex, setActiveIndex] = useState(0);
-    const [activePhotoIdx, setActivePhotoIdx] = useState(0);
-    const [activeHotspotId, setActiveHotspotId] = useState<string | null>(null);
-    const [isAnimating, setIsAnimating] = useState(false);
+    // Which scroll-story panel owns the viewport mid-band (-1 hero, 0..5 modules, 6 outro)
+    const [activeSection, setActiveSection] = useState(HERO_SECTION);
+    // Cinematic launch portal request (covers the swap into a workspace)
+    const [launch, setLaunch] = useState<{ view: string; title: string; image?: string } | null>(null);
+    const reducedMotion = useReducedMotion();
+
+    // Scroll story plumbing — the scroll port drives section tracking, the
+    // header progress hairline, and the backdrop globe choreography.
+    const scrollRef = useRef<HTMLDivElement>(null);
+    const { scrollY, scrollYProgress } = useScroll({ container: scrollRef });
+    // Live Lenis instance (see creation effect below) — shared by the smooth
+    // wheel glide and programmatic section navigation.
+    const lenisRef = useRef<Lenis | null>(null);
+    // Section-landing snap instance (see creation effect below).
+    const snapRef = useRef<Snap | null>(null);
+
+    // ─── Lenis breathable smooth-scroll + section landing snap ───────────
+    // Lenis (darkroom.engineering) turns the scroll port's wheel/trackpad
+    // input into a silky lerped glide, but drives the native scrollTop so
+    // framer's scroll tracking, IntersectionObserver, keyboard nav and
+    // accessibility all keep working untouched. Nested scrollables (the module
+    // gallery) keep their native scrolling via allowNestedScroll. The Snap
+    // plugin watches the debounced virtual-scroll and, when the user reaches
+    // the "benchmark" of a section boundary (within half a viewport), glides
+    // the section flush to its anchor so the story always comes to rest
+    // centered. Reduced-motion is deliberately overridden (see the option
+    // below) so the story reads the same on every machine.
+    useEffect(() => {
+        const container = scrollRef.current;
+        if (!container) return;
+        const lenis = new Lenis({
+            wrapper: container,
+            autoRaf: true,
+            lerp: 0.07,
+            allowNestedScroll: true,
+            // This scroll story is deliberately a motion-first experience.
+            // Lenis defaults to honoring prefers-reduced-motion by snapping
+            // instantly, so opt out to keep the glide on machines that report
+            // OS-level animation reduction.
+            respectReducedMotion: false,
+        });
+        lenisRef.current = lenis;
+        const snap = new Snap(lenis, {
+            type: 'proximity',
+            distanceThreshold: '50%',
+            debounce: 400,
+        });
+        snap.addElements(
+            Array.from(container.querySelectorAll<HTMLElement>('[data-section-idx]')),
+            { align: 'start' },
+        );
+        snapRef.current = snap;
+        return () => {
+            lenisRef.current = null;
+            snapRef.current = null;
+            snap.destroy();
+            lenis.destroy();
+        };
+    }, []);
+
+    // Backdrop globe pose springs (stationary parallax with per-section targets)
+    const poseX = useMotionValue(0);
+    const poseY = useMotionValue(0);
+    const poseScale = useMotionValue(1);
+    const poseOpacity = useMotionValue(0.9);
+    const globeX = useSpring(poseX, springGlide);
+    const globeY = useSpring(poseY, springGlide);
+    const globeScale = useSpring(poseScale, springGlide);
+    const globeOpacity = useSpring(poseOpacity, springGlide);
+    // Scroll-velocity lean — fast flicks tilt the globe like it has mass.
+    const tiltTarget = useMotionValue(0);
+    const globeTilt = useSpring(tiltTarget, { stiffness: 140, damping: 18, mass: 0.6 });
+    const tiltDecayRef = useRef<number | null>(null);
     const isMobile = useMediaQuery('(max-width: 640px)');
     const [viewMode, setViewMode] = useState<'globe' | 'modules'>('modules');
+    // Pause snapping while the globe mode hides the scroll port (a round-trip
+    // through zeroed rects would otherwise drag the story back to the hero
+    // unseen), then re-measure the anchors when returning to modules.
+    useEffect(() => {
+        if (viewMode === 'modules') {
+            snapRef.current?.resize();
+            snapRef.current?.start();
+        } else {
+            snapRef.current?.stop();
+        }
+    }, [viewMode]);
     const [viewTransitioning, setViewTransitioning] = useState(false);
     const [titleSparklesReady, setTitleSparklesReady] = useState(false);
     const [autoRotate, setAutoRotate] = useState(true);
@@ -200,37 +259,33 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
     // Dynamic Viewer Selection
     const { viewerDisplayName } = usePanoramaViewer(projectSettings);
 
-    // Mobile swipe handlers
-    const [touchStartX, setTouchStartX] = useState<number | null>(null);
-
-    const handleTouchStart = (e: React.TouchEvent) => {
-        setTouchStartX(e.targetTouches[0].clientX);
-    };
-
-    const handleTouchEnd = (e: React.TouchEvent) => {
-        if (!touchStartX) return;
-        const touchEndX = e.changedTouches[0].clientX;
-        const diff = touchStartX - touchEndX;
-
-        if (diff > 50) {
-            handleModuleChange((activeIndex + 1) % SYSTEM_MODULES.length);
-        } else if (diff < -50) {
-            handleModuleChange((activeIndex - 1 + SYSTEM_MODULES.length) % SYSTEM_MODULES.length);
+    // Glide the scroll story to a section (-1 hero, 0..5 modules, 6 outro).
+    const scrollToSection = useCallback((idx: number) => {
+        const root = scrollRef.current;
+        if (!root) return;
+        const el = root.querySelector<HTMLElement>(`[data-section-idx="${idx}"]`);
+        if (!el) return;
+        const lenis = lenisRef.current;
+        if (lenis) {
+            // Lenis glides with the same lerp as wheel input and respects the
+            // scroll port's scroll-padding-top so the sticky header stays clear.
+            lenis.scrollTo(el);
+            return;
         }
-        setTouchStartX(null);
-    };
+        try {
+            el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        } catch {
+            try { root.scrollTop = el.offsetTop; } catch { /* test env */ }
+        }
+    }, []);
 
-    // Smooth navigation helper
-    const handleModuleChange = (newIndex: number) => {
+    // Smooth navigation helper — module nav clicks glide the scroll story
+    const handleModuleChange = useCallback((newIndex: number) => {
         setViewMode('modules');
-        if (newIndex === activeIndex) return;
-        setIsAnimating(true);
-        setActiveHotspotId(null);
-        setTimeout(() => {
-            setActiveIndex(newIndex);
-            setIsAnimating(false);
-        }, 220);
-    };
+        setActiveIndex(newIndex);
+        setActiveSection(newIndex);
+        window.setTimeout(() => scrollToSection(newIndex), 40);
+    }, [scrollToSection]);
 
     // Keyboard arrow navigation
     useEffect(() => {
@@ -244,6 +299,85 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [activeIndex]);
+
+    // Track which scroll-story section owns the viewport mid-band.
+    useEffect(() => {
+        const root = scrollRef.current;
+        if (!root || typeof IntersectionObserver === 'undefined') return;
+        const io = new IntersectionObserver(
+            (entries) => {
+                for (const entry of entries) {
+                    if (!entry.isIntersecting) continue;
+                    const idx = Number((entry.target as HTMLElement).dataset.sectionIdx);
+                    if (!Number.isFinite(idx)) continue;
+                    setActiveSection(idx);
+                    if (idx >= 0 && idx < SYSTEM_MODULES.length) setActiveIndex(idx);
+                }
+            },
+            { root, rootMargin: '-45% 0px -45% 0px', threshold: 0 }
+        );
+        root.querySelectorAll<HTMLElement>('[data-section-idx]').forEach((el) => io.observe(el));
+        return () => io.disconnect();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [viewMode]);
+
+    // Backdrop globe choreography — spring to the pose of the active section.
+    useEffect(() => {
+        const apply = () => {
+            const vw = typeof window !== 'undefined' ? window.innerWidth : 1280;
+            const vh = typeof window !== 'undefined' ? window.innerHeight : 800;
+            const pose = globePoseFor(activeSection, isMobile, vw, vh, viewMode === 'globe');
+            poseX.set(pose.x);
+            poseY.set(pose.y);
+            poseScale.set(pose.scale);
+            poseOpacity.set(pose.opacity);
+        };
+        apply();
+        window.addEventListener('resize', apply);
+        return () => window.removeEventListener('resize', apply);
+    }, [activeSection, isMobile, viewMode, poseX, poseY, poseScale, poseOpacity]);
+
+    // Scroll-velocity lean: quick flicks tilt the globe, then it settles back.
+    const lastScrollYRef = useRef<number | null>(null);
+    useMotionValueEvent(scrollY, 'change', (latest: number) => {
+        const prev = lastScrollYRef.current;
+        lastScrollYRef.current = latest;
+        if (prev === null || viewMode !== 'modules' || reducedMotion) return;
+        const delta = latest - prev;
+        const lean = Math.max(-5, Math.min(5, delta * 0.05));
+        tiltTarget.set(lean);
+        if (tiltDecayRef.current !== null) window.clearTimeout(tiltDecayRef.current);
+        tiltDecayRef.current = window.setTimeout(() => {
+            tiltDecayRef.current = null;
+            tiltTarget.set(0);
+        }, 140);
+    });
+
+    // Cinematic launch: the portal overlay covers the hard swap into a workspace.
+    const handleLaunchModule = useCallback((view: string) => {
+        if (!onEnterDashboard) return;
+        if (reducedMotion) {
+            onEnterDashboard(view);
+            return;
+        }
+        const mod = SYSTEM_MODULES.find((m) => m.id === view);
+        setLaunch({
+            view,
+            title: mod ? mod.title.split('&')[0].trim() : 'Dashboard',
+            image: mod?.images[0],
+        });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [onEnterDashboard, reducedMotion]);
+
+    useEffect(() => {
+        if (!launch) return;
+        const t = window.setTimeout(() => {
+            const view = launch.view;
+            setLaunch(null);
+            if (onEnterDashboard) onEnterDashboard(view);
+        }, 700);
+        return () => window.clearTimeout(t);
+    }, [launch, onEnterDashboard]);
 
     // Telemetry calculations
     const computedDistance = dailyData.reduce((acc, item) => acc + (Number(item.distance || item.kmProcessed) || 0), 0);
@@ -271,7 +405,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             description: 'The central operational hub of the platform. Features high-precision MapLibre GL trajectory rendering, executive KPI telemetry meters, live workstation pipeline streams, and direct workspace navigation.',
             metricLabel: 'Total Distance Mapped',
             metricValue: `${computedDistance.toFixed(1)} km (${pctTarget}% · ${activeJobs} Active)`,
-            statusBadge: 'Telemetry Active',
+            statusBadge: 'Production WebGIS',
             images: [
                 '/screenshots/Dashboard_UI_1.png',
                 '/screenshots/Dashboard_UI_13.png',
@@ -349,7 +483,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             description: 'Unified field survey data management canvas. Validates raw CSV trajectory logs against NAS storage, organizes records into Subgrid Masterlists and Daily Ledgers, and manages staging status.',
             metricLabel: 'Surveyed Records',
             metricValue: `${computedFrames.toLocaleString()} Frames`,
-            statusBadge: 'Storage Verified',
+            statusBadge: 'Data Management',
             images: [
                 '/screenshots/Dashboard_UI_17.png',
                 '/screenshots/Dashboard_UI_2.png',
@@ -416,7 +550,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             description: 'End-to-end multi-PC production routing and automated GPU worker dispatch. Coordinates sequential desktop handoffs across Station 1 (Blur), Station 2 (Stitching), Station 3 (Lightroom), and Station 4 (Photoshop), with real-time NAS storage tracking and immutable lineage tracing.',
             metricLabel: 'Pipeline Architecture',
             metricValue: '4-Station + NAS GPU Worker',
-            statusBadge: 'Pipeline Connected',
+            statusBadge: 'Production Pipeline',
             images: [
                 '/screenshots/Dashboard_UI_29.png',
                 '/screenshots/Dashboard_UI_30.png',
@@ -504,7 +638,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             description: 'Dedicated high-throughput quality control workspace. Computes frame sharpness using Tenengrad gradient variance, identifies camera pitch/yaw errors, flags vehicle nadir obstructions, and allows instant side-by-side verification.',
             metricLabel: 'Quality SLA Health',
             metricValue: `${slaPercent}% Compliance`,
-            statusBadge: `${slaPercent}% Quality`,
+            statusBadge: 'Batch QAQC',
             images: [
                 '/screenshots/Dashboard_UI_26.png',
                 '/screenshots/Dashboard_UI_27.png',
@@ -571,7 +705,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             description: 'Centralized spatial database architecture backed by PostgreSQL and PostGIS. Handles realtime GPS trajectory ingestion, automated duplicate subgrid prevention, spatial GIST indexing, vector layer staging, and cloud synchronization.',
             metricLabel: 'Spatial Infrastructure',
             metricValue: 'PostGIS + GIST Index',
-            statusBadge: 'PostGIS Connected',
+            statusBadge: 'Database Management',
             images: [
                 '/screenshots/Dashboard_UI_9.png',
                 '/screenshots/Dashboard_UI_10.png',
@@ -727,11 +861,6 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
         });
     }, []);
 
-    useEffect(() => {
-        setActivePhotoIdx(0);
-        setActiveHotspotId(null);
-    }, [activeIndex]);
-
     // Toggle html class so themes.css !important rules don't block the background image
     useEffect(() => {
         document.documentElement.classList.add('showcase-active');
@@ -741,10 +870,6 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
     }, []);
 
     const current = SYSTEM_MODULES[activeIndex];
-    const prevModule = SYSTEM_MODULES[(activeIndex - 1 + SYSTEM_MODULES.length) % SYSTEM_MODULES.length];
-    const nextModule = SYSTEM_MODULES[(activeIndex + 1) % SYSTEM_MODULES.length];
-    const activeImage = current.images[activePhotoIdx] || current.images[0];
-    const activeHotspot = current.hotspots.find((h) => h.id === activeHotspotId);
 
     // Derive overall current project location dynamically
     const projectLocation = useMemo(() => {
@@ -1314,7 +1439,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
     }, [projectLocation]);
 
     return (
-        <div className={`relative w-full showcase-landing text-white font-sans select-none flex flex-col justify-between bg-black overflow-hidden`}>
+        <div className={`relative w-full showcase-landing text-white font-sans select-none bg-black overflow-hidden`}>
 
             {/* 1. Animate UI Stars Background, 3D Earth Globe & Clean Ambient Lighting */}
             <div className={`absolute inset-0 z-0 overflow-hidden isolate ${viewMode === 'globe' ? 'pointer-events-auto' : 'pointer-events-none'}`}>
@@ -1333,15 +1458,17 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                     </div>
                 </div>
 
-                {/* The 3D Interactive Globe (vector Globe by default, switchable to the Atomic point-cloud Globe) */}
-                <div className={`absolute inset-0 flex items-center justify-center z-10 ${viewMode === 'globe' ? 'pointer-events-auto' : 'pointer-events-none'
-                    }`}>
+                {/* The 3D Interactive Globe (vector Globe by default, switchable to the Atomic point-cloud Globe).
+                    Wrapped in a spring-driven motion layer: per-section parallax poses + scroll-velocity lean. */}
+                <motion.div
+                    className={`absolute inset-0 flex items-center justify-center z-10 will-change-transform ${viewMode === 'globe' ? 'pointer-events-auto' : 'pointer-events-none'
+                        }`}
+                    style={{ x: globeX, y: globeY, scale: globeScale, opacity: globeOpacity, rotateX: globeTilt, transformPerspective: 1600 }}
+                >
                     {showAtomicGlobe ? (
                         <div className={`w-full h-full flex items-center justify-center transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] ${isFlyingIn
                                 ? 'scale-[1.7] opacity-0 blur-[2px]'
-                                : viewMode === 'globe'
-                                    ? 'translate-x-0 translate-y-0 scale-100 opacity-100'
-                                    : 'max-sm:translate-y-[14%] lg:-translate-x-[36%] lg:translate-y-[22%] lg:scale-[1.95] opacity-85'
+                                : 'scale-100 opacity-100'
                             }`}>
                             <AtomicGlobeBoundary markers={globeMarkers}>
                             <AtomicGlobeHost
@@ -1392,9 +1519,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                     ) : (
                         <div className={`w-full h-full flex items-center justify-center transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] ${isFlyingIn
                                 ? 'scale-[2.5] opacity-0 blur-[2px]'
-                                : viewMode === 'globe'
-                                    ? 'translate-x-0 translate-y-0 scale-100 opacity-100'
-                                    : 'max-sm:translate-y-[14%] lg:-translate-x-[36%] lg:translate-y-[22%] lg:scale-[1.95] opacity-85'
+                                : 'scale-100 opacity-100'
                             }`}>
                             <EarthGlobe
                                 autoRotate={viewMode === 'modules' || (autoRotate && !viewTransitioning)}
@@ -1436,7 +1561,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                             />
                         </div>
                     )}
-                </div>
+                </motion.div>
 
                 {/* Atmospheric Entry HUD Badge during planetary camera dive — text only, no box or dot */}
                 {isFlyingIn && (
@@ -1461,9 +1586,29 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                 )}
             </div>
 
+            {/* Global ambience — film grain, vignette & cursor spotlight */}
+            <AmbienceLayer />
+
+            {/* Soft upper-corner edge light — white halo bleeding off the far top-left
+                corner behind the frosted header. Purely decorative. */}
+            <div aria-hidden className="absolute inset-0 z-[1] pointer-events-none">
+                <div
+                    className="absolute -top-56 -left-56 w-[36rem] h-[36rem] rounded-full"
+                    style={{
+                        background:
+                            'radial-gradient(closest-side, rgba(255,255,255,0.06), rgba(255,255,255,0.02) 45%, transparent 72%)',
+                        filter: 'blur(36px)',
+                    }}
+                />
+            </div>
+
             {/* 2. Top Header Navbar (Module navigation centered, balanced left & right) */}
-            <header className="relative z-30 px-3 sm:px-8 py-2 sm:py-3 pt-[max(0.5rem,env(safe-area-inset-top))] sm:pt-3 flex items-center justify-between shrink-0 gap-2 sm:gap-4">
-                <div aria-hidden className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent pointer-events-none" />
+            <header className="absolute top-0 left-0 right-0 z-40 px-3 sm:px-8 py-2 sm:py-3 pt-[max(0.5rem,env(safe-area-inset-top))] sm:pt-3 flex items-center justify-between gap-2 sm:gap-4 bg-[#05070a]/40 backdrop-blur-xl border-b border-white/[0.06]">
+                <motion.div
+                    aria-hidden
+                    style={{ scaleX: scrollYProgress }}
+                    className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-sky-400/70 via-white/70 to-transparent origin-left pointer-events-none"
+                />
                 {/* Left: System Title */}
                 <div className="flex items-center gap-2.5 xs:gap-3.5 min-w-0 z-10">
                     <GeoSphereFullLogo size={26} colorful className="shrink-0 h-4 xs:h-6 sm:h-7 w-auto pr-1" />
@@ -1542,63 +1687,9 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                 </div>
             </header>
 
-            {/* Centered Platform Title & Subtitle (Top of Showcase) */}
-            {viewMode === 'modules' && (
-                <div className="relative z-30 w-full text-center shrink-0 pt-3 sm:pt-5">
-                    {/* Title & Subtitle — stacked above the sparkles */}
-                    <div className="w-full flex flex-col items-center justify-center overflow-hidden px-4 sm:px-8">
-                        <h1 className="text-xl sm:text-3xl xl:text-4xl font-bold tracking-tight text-white drop-shadow-lg">
-                            GeoSphere 360&deg;
-                        </h1>
-                        <span className="block text-xs sm:text-base xl:text-lg font-semibold tracking-wide text-neutral-300 mt-0.5 sm:mt-1">
-                            A Cloud-Native Mobile Mapping Platform
-                        </span>
-                        <p className="text-[10px] sm:text-[13px] text-neutral-400 font-normal leading-relaxed max-w-2xl mt-1.5 sm:mt-2">
-                            An integrated WebGIS workspace where survey rigs, GPU processing workers, NAS storage, and PostGIS databases collaborate to transform mobile mapping data into trustworthy, published infrastructure assets.
-                        </p>
-                    </div>
-
-                    {/* Sparkles container — below the subtitle */}
-                    <div className="w-full max-w-lg sm:max-w-2xl mx-auto h-12 sm:h-16 relative mt-0.5">
-                        {/* Gradients */}
-                        <div className="absolute left-0 right-0 mx-auto top-0 bg-gradient-to-r from-transparent via-indigo-500 to-transparent h-px w-3/4" />
-                        <div className="absolute left-0 right-0 mx-auto top-0 bg-gradient-to-r from-transparent via-sky-500 to-transparent h-[2px] w-1/4" />
-
-                        {/* Soft light glow below the cyan line */}
-                        <div aria-hidden className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 w-80 h-52 pointer-events-none">
-                            {/* soft glow dropping below the line */}
-                            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 w-40 h-16 rounded-full bg-sky-400/30 blur-xl" />
-                            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 w-64 h-24 rounded-full bg-sky-500/15 blur-2xl" />
-                        </div>
-
-                        {/* Core component — mounted after the view-switch transition so tsParticles init
-                            (~500 particles) doesn't collide with the globe park animation / panel crossfade */}
-                        {titleSparklesReady && (
-                            <div className="absolute inset-0 w-full h-full [mask-image:radial-gradient(ellipse_48%_175%_at_50%_0%,black_42%,transparent_78%)] animate-in fade-in duration-700 ease-out">
-                                <SparklesCore
-                                    id="tsparticlesfullpage"
-                                    background="transparent"
-                                minSize={0.4}
-                                maxSize={1}
-                                particleDensity={1200}
-                                className="w-full h-full"
-                                particleColor="#FFFFFF"
-                                    />
-                                </div>
-                            )}
-                    </div>
-                </div>
-            )}
-
-            {/* 3. Main Showcase Section */}
-            <main
-                className={`relative z-20 flex-1 min-h-0 w-full px-4 sm:px-8 py-2 sm:py-3 flex flex-col items-center justify-center overflow-x-hidden overflow-y-auto lg:overflow-hidden ${viewMode === 'globe' ? 'pointer-events-none' : 'pointer-events-auto'
-                    }`}
-                style={{ backgroundColor: 'transparent' }}
-            >
-
-                {/* 3D Globe Telemetry HUD & Interactive Controls (Active when viewMode === 'globe') */}
-                {viewMode === 'globe' && (
+            {/* 3. Globe Mode — Telemetry HUD & Interactive Controls (internals unchanged) */}
+            {viewMode === 'globe' && (
+                <main className="absolute inset-x-0 top-14 sm:top-16 bottom-0 z-20 pointer-events-none">
                     <div className={`absolute inset-0 pointer-events-none p-2 sm:p-8 flex flex-col justify-between z-20 transition-opacity duration-300 ${isFlyingIn || isZoomedToDistrict ? 'opacity-0 pointer-events-none' : 'opacity-100'
                         }`}>
                         {/* Top Center Minimal Orientation Badge */}
@@ -1834,287 +1925,56 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                             </div>
                         </div>
                     </div>
-                )}
+                </main>
+            )}
 
-                <div className={`w-full max-w-[1600px] mx-auto my-auto min-h-0 grid grid-cols-1 lg:grid-cols-12 gap-3 sm:gap-5 items-stretch ${viewMode === 'globe' ? 'hidden' : 'grid'}`}>
+            {/* 4. Modules Mode — premium scroll story (hero → 6 module panels → outro) */}
+            <div
+                ref={scrollRef}
+                className={`absolute inset-0 z-20 overflow-y-auto overflow-x-hidden showcase-scrollport ${viewMode === 'modules' ? '' : 'hidden'
+                    }`}
+            >
+                <HeroSection
+                    distanceKm={computedDistance}
+                    frames={computedFrames}
+                    activeJobs={activeJobs}
+                    sparklesReady={titleSparklesReady}
+                    viewerName={viewerDisplayName}
+                    onLaunch={() => handleLaunchModule(current.id)}
+                    onExplore3D={() => setViewMode('globe')}
+                />
 
-                    {/* Left Narrative Panel (Spacious, Typography-Driven, No Card Boxes) */}
-                    <div className={`w-full lg:col-span-5 space-y-3 text-left flex flex-col justify-start sm:justify-center order-2 lg:order-1 pb-4 lg:pb-0 min-h-0 transition-[opacity,transform,filter] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform transform-gpu ${isAnimating ? 'opacity-0 -translate-y-2 scale-[0.99] blur-[2px]' : 'opacity-100 translate-y-0 scale-100 blur-none'}`}>
+                {SYSTEM_MODULES.map((mod, i) => (
+                    <ModuleSection
+                        key={mod.id}
+                        mod={mod}
+                        index={i}
+                        total={SYSTEM_MODULES.length}
+                        onEnter={handleLaunchModule}
+                    />
+                ))}
 
-                        {/* Active Module Details */}
-                        <div className="space-y-2">
-                            <div className="flex items-center gap-3">
-                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold tracking-widest uppercase text-neutral-300 border border-white/10 bg-white/[0.03]">
-                                    <span className="w-1 h-1 rounded-full bg-neutral-400" />
-                                    {current.category}
-                                </span>
-                                <span className="text-[10px] font-mono text-neutral-600 tabular-nums tracking-wider">
-                                    {String(activeIndex + 1).padStart(2, '0')}/{String(SYSTEM_MODULES.length).padStart(2, '0')}
-                                </span>
-                            </div>
+                <OutroSection
+                    modules={SYSTEM_MODULES}
+                    onLaunch={() => handleLaunchModule(current.id)}
+                    onSignIn={() => onEnterDashboard && onEnterDashboard('auth')}
+                    onJumpTo={handleModuleChange}
+                />
+            </div>
 
-                            <h2 className="text-base sm:text-xl font-bold tracking-tight text-white leading-snug pt-0.5">
-                                {current.title}
-                            </h2>
+            {/* 5. Sticky Section Rail (replaces the old footer pager) */}
+            {viewMode === 'modules' && (
+                <SectionRail
+                    modules={SYSTEM_MODULES}
+                    activeSection={activeSection}
+                    progress={scrollYProgress}
+                    onHome={() => scrollToSection(HERO_SECTION)}
+                    onSelect={handleModuleChange}
+                    onLaunch={() => handleLaunchModule(current.id)}
+                />
+            )}
 
-                            <p className="text-[11px] sm:text-[13px] text-neutral-400 font-normal leading-relaxed max-w-lg">
-                                {current.description}
-                            </p>
-                        </div>
-
-                        {/* CTA & Metric */}
-                        <div className="pt-1 flex flex-wrap items-center gap-3">
-                            <HoverBorderGradient
-                                onClick={() => onEnterDashboard && onEnterDashboard(current.id)}
-                                containerClassName="group/btn rounded-lg cursor-pointer active:scale-[0.97]"
-                                className="px-4 py-2 rounded-lg font-medium text-xs flex items-center justify-center gap-2 text-neutral-200"
-                            >
-                                <span>Enter {current.title.split('&')[0].trim()}</span>
-                                <ArrowRight className="w-3.5 h-3.5 text-neutral-400 group-hover/btn:text-neutral-200 transition-colors group-hover/btn:translate-x-0.5 transition-transform" />
-                            </HoverBorderGradient>
-
-                            <div className="h-4 w-px bg-white/10" />
-
-                            <div className="text-[11px] text-neutral-500 flex items-center gap-1.5">
-                                <span>{current.metricLabel}</span>
-                                <span className="font-semibold text-neutral-200">{current.metricValue}</span>
-                            </div>
-                        </div>
-
-                        {/* System Metadata */}
-                        <div className="pt-2 border-t border-white/[0.06] flex flex-wrap items-center gap-x-5 gap-y-1 text-[10px] text-neutral-500">
-                            <span className="flex items-center gap-1.5">
-                                <span className="w-1 h-1 rounded-full bg-neutral-600" />
-                                PostGIS + Supabase
-                            </span>
-                            <span className="flex items-center gap-1.5">
-                                <span className="w-1 h-1 rounded-full bg-neutral-600" />
-                                MapLibre GL + {viewerDisplayName}
-                            </span>
-                            <span className="flex items-center gap-1.5">
-                                <span className="w-1 h-1 rounded-full bg-neutral-600" />
-                                Published &amp; Production
-                            </span>
-                        </div>
-
-                        {/* Execution Flow - Horizontal Step Indicators (above footer) */}
-                        {current.workflow && current.workflow.length > 0 && (
-                            <div className="space-y-2.5 pt-3 mt-auto border-t border-white/[0.06]">
-                                <span className="text-[10px] font-semibold uppercase tracking-[0.15em] text-neutral-500 block">
-                                    Workflow
-                                </span>
-                                <div className="flex items-stretch gap-0">
-                                    {current.workflow.map((wf, idx) => (
-                                        <React.Fragment key={idx}>
-                                            <div className="flex-1 py-1.5">
-                                                <div className="flex items-center gap-1.5 mb-0.5">
-                                                    <span className="w-4 h-4 shrink-0 rounded-full bg-white/[0.06] border border-white/10 text-[8px] font-mono font-semibold text-neutral-400 flex items-center justify-center">
-                                                        {idx + 1}
-                                                    </span>
-                                                    <span className="text-[10px] font-mono font-semibold text-neutral-300 tracking-wide">
-                                                        {wf.step.replace(/^\d+[.\s]+/, '')}
-                                                    </span>
-                                                </div>
-                                                <div className="text-[10px] text-neutral-500 leading-relaxed">
-                                                    {wf.action}
-                                                </div>
-                                            </div>
-                                            {idx < current.workflow.length - 1 && (
-                                                <div className="flex items-center px-1">
-                                                    <div className="w-px h-4 bg-white/10" />
-                                                </div>
-                                            )}
-                                        </React.Fragment>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-
-                    </div>
-
-                    {/* Right Screenshot Preview Frame */}
-                    <div
-                        onTouchStart={handleTouchStart}
-                        onTouchEnd={handleTouchEnd}
-                        className={`w-full lg:col-span-7 flex flex-col gap-2 order-1 lg:order-2 min-h-0 transition-[opacity,transform,filter] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] touch-pan-y will-change-transform transform-gpu ${isAnimating ? 'opacity-0 scale-[0.985] translate-y-1 blur-[2px]' : 'opacity-100 scale-100 translate-y-0 blur-none'}`}
-                    >
-                        {/* Subtitle Bar */}
-                        <div className="flex items-center justify-between px-1">
-                            <div className="flex items-center gap-2 min-w-0">
-                                <span className="w-1.5 h-1.5 rounded-full bg-neutral-500 shrink-0" />
-                                <span className="text-[10px] sm:text-xs font-medium text-neutral-300 truncate">
-                                    {current.subtitle}
-                                </span>
-                            </div>
-                            <span className="text-[10px] font-mono text-neutral-600 shrink-0 ml-2 tabular-nums">
-                                {activePhotoIdx + 1}/{current.images.length}
-                            </span>
-                        </div>
-
-                        {/* Viewport Image */}
-                        <div className="relative w-full h-[240px] min-[420px]:h-[280px] sm:h-[400px] lg:h-auto lg:flex-1 rounded-xl overflow-hidden flex items-center justify-center bg-black/50">
-                            <img
-                                key={activeImage}
-                                src={activeImage}
-                                alt={current.title}
-                                loading="eager"
-                                decoding="async"
-                                className="w-full h-full object-contain object-center transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]"
-                            />
-
-                            {/* Gallery Navigation Arrows */}
-                            {current.images.length > 1 && (
-                                <>
-                                    <button
-                                        onClick={() => setActivePhotoIdx((activePhotoIdx - 1 + current.images.length) % current.images.length)}
-                                        aria-label="Previous image"
-                                        className="group/prev absolute left-2 top-1/2 -translate-y-1/2 p-1.5 sm:p-2 rounded-full bg-black/60 hover:bg-black/80 text-neutral-200 hover:text-white border border-white/15 hover:border-white/30 cursor-pointer active:scale-90 transition-all backdrop-blur-sm"
-                                    >
-                                        <svg viewBox="0 0 24 24" className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                            <path d="M19 12H6" />
-                                            <path d="M12 5l-7 7 7 7" />
-                                        </svg>
-                                    </button>
-                                    <button
-                                        onClick={() => setActivePhotoIdx((activePhotoIdx + 1) % current.images.length)}
-                                        aria-label="Next image"
-                                        className="group/next absolute right-2 top-1/2 -translate-y-1/2 p-1.5 sm:p-2 rounded-full bg-black/60 hover:bg-black/80 text-neutral-200 hover:text-white border border-white/15 hover:border-white/30 cursor-pointer active:scale-90 transition-all backdrop-blur-sm"
-                                    >
-                                        <svg viewBox="0 0 24 24" className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                            <path d="M5 12h13" />
-                                            <path d="M12 5l7 7-7 7" />
-                                        </svg>
-                                    </button>
-                                </>
-                            )}
-                        </div>
-
-                        {/* Active Section Tip Details */}
-                        {activeHotspot && (
-                            <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/[0.06] text-left animate-in fade-in duration-150">
-                                <div className="flex items-center justify-between gap-2 pb-1.5 border-b border-white/[0.06]">
-                                    <div className="flex items-center gap-1.5">
-                                        <span className="text-[11px] font-semibold text-neutral-200">
-                                            {activeHotspot.title}
-                                        </span>
-                                        <span className="text-[9px] text-neutral-600 uppercase tracking-wider">
-                                            {activeHotspot.tag}
-                                        </span>
-                                    </div>
-                                    <button
-                                        onClick={() => setActiveHotspotId(null)}
-                                        className="text-[10px] text-neutral-600 hover:text-neutral-300 cursor-pointer transition-colors"
-                                    >
-                                        Dismiss
-                                    </button>
-                                </div>
-                                <p className="text-[11px] text-neutral-400 mt-1.5 leading-relaxed">
-                                    {activeHotspot.description}
-                                </p>
-                                <div className="mt-1.5 text-[10px] text-neutral-400 font-normal">
-                                    <span className="text-neutral-500">Tip: </span>
-                                    {activeHotspot.tip}
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Section Highlights Selector */}
-                        <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-1 overflow-x-auto pb-0.5 no-scrollbar flex-1">
-                                <span className="text-[9px] font-semibold uppercase tracking-[0.15em] text-neutral-600 shrink-0 mr-1">
-                                    Sections
-                                </span>
-                                {current.hotspots.map((spot) => {
-                                    const isSelected = activeHotspotId === spot.id;
-                                    return (
-                                        <button
-                                            key={spot.id}
-                                            onClick={() => setActiveHotspotId(isSelected ? null : spot.id)}
-                                            className={`px-2 py-0.5 rounded text-[10px] font-medium transition-all cursor-pointer shrink-0 ${isSelected
-                                                    ? 'bg-white/10 text-neutral-200'
-                                                    : 'text-neutral-600 hover:text-neutral-400 hover:bg-white/[0.04]'
-                                                }`}
-                                        >
-                                            <span>{spot.title.split(':')[0].replace(/Station \d+: /, '')}</span>
-                                        </button>
-                                    );
-                                })}
-                            </div>
-
-                            {/* Thumbnail previews */}
-                            {current.images.length > 1 && (
-                                <div className="flex items-center gap-1 shrink-0">
-                                    {current.images.map((imgUrl, idx) => (
-                                        <button
-                                            key={idx}
-                                            onClick={() => setActivePhotoIdx(idx)}
-                                            className={`h-7 w-10 rounded-sm overflow-hidden transition-all cursor-pointer ${activePhotoIdx === idx
-                                                    ? 'ring-1 ring-white/40 opacity-100'
-                                                    : 'opacity-30 hover:opacity-60'
-                                                }`}
-                                        >
-                                            <img
-                                                src={imgUrl}
-                                                alt={`Preview ${idx + 1}`}
-                                                loading="eager"
-                                                className="w-full h-full object-cover object-top"
-                                            />
-                                        </button>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-
-                    </div>
-
-                </div>
-            </main>
-
-            {/* 4. Pinned Footer Navigation Controls (Active in modules mode) */}
-            <footer className={`relative z-30 w-full px-3 sm:px-8 py-2 sm:py-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:pb-3 items-center justify-between gap-2 shrink-0 ${viewMode === 'modules' ? 'flex' : 'hidden'}`}>
-                <button
-                    onClick={() => handleModuleChange((activeIndex - 1 + SYSTEM_MODULES.length) % SYSTEM_MODULES.length)}
-                    className="flex items-center gap-2 shrink-0 text-neutral-400 hover:text-white transition-colors cursor-pointer group"
-                >
-                    <ChevronLeft className="w-4 h-4 text-neutral-400 group-hover:text-white transition-colors shrink-0" />
-                    <div className="hidden sm:block text-left">
-                        <span className="text-[10px] text-neutral-500 block uppercase tracking-wider font-semibold">Previous</span>
-                        <span className="text-xs font-medium text-neutral-300 group-hover:text-white whitespace-nowrap">{prevModule.title.split('&')[0]}</span>
-                    </div>
-                </button>
-
-                {/* Step Indicator Dots (module navigation) */}
-                <div className="flex-1 flex items-center justify-center gap-1.5 sm:gap-2 min-w-0 overflow-hidden">
-                    {SYSTEM_MODULES.map((m, i) => (
-                        <button
-                            key={m.id}
-                            onClick={() => handleModuleChange(i)}
-                            aria-label={`Go to module ${i + 1}: ${m.title}`}
-                            className={`cursor-pointer p-1 shrink-0 rounded-full transition-all ${i === activeIndex ? '' : 'hover:bg-white/10'}`}
-                        >
-                            <span
-                                className={`block rounded-full transition-all duration-300 ${i === activeIndex
-                                    ? 'w-6 h-1.5 bg-white shadow-[0_0_8px_rgba(255,255,255,0.6)]'
-                                    : 'w-1.5 h-1.5 bg-white/25'
-                                    }`}
-                            />
-                        </button>
-                    ))}
-                </div>
-
-                <button
-                    onClick={() => handleModuleChange((activeIndex + 1) % SYSTEM_MODULES.length)}
-                    className="flex items-center gap-2 shrink-0 text-neutral-400 hover:text-white transition-colors cursor-pointer group"
-                >
-                    <div className="hidden sm:block text-right">
-                        <span className="text-[10px] text-neutral-500 block uppercase tracking-wider font-semibold">Next</span>
-                        <span className="text-xs font-medium text-neutral-300 group-hover:text-white whitespace-nowrap">{nextModule.title.split('&')[0]}</span>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-neutral-400 group-hover:text-white transition-colors shrink-0" />
-                </button>
-            </footer>
-
-            {/* 4. Floating 3D Panotrack District HUD Card & SVG Leader Line Overlay (Screen-space 1:1 with EarthGlobe) */}
+            {/* 6. Floating 3D Panotrack District HUD Card & SVG Leader Line Overlay (Screen-space 1:1 with EarthGlobe) */}
             {viewMode === 'globe' && showDistrictPopup && activePopupData && !isFlyingIn && !isZoomedToDistrict && (
                 <div className="absolute inset-0 z-40 pointer-events-none overflow-hidden animate-in fade-in duration-500">
                     {/* Angled SVG Laser Leader Line connecting marker to card (Monochromatic) */}
@@ -2209,6 +2069,9 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                     />
                 </div>
             )}
+
+            {/* 8. Cinematic Launch Portal — zoom-through transition into a workspace */}
+            <LaunchPortal launch={launch} />
 
         </div>
     );

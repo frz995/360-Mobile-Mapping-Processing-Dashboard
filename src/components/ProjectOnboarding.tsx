@@ -1425,9 +1425,11 @@ export const ProjectOnboarding: React.FC<ProjectOnboardingProps> = ({
 
           <div className="relative z-10 w-full max-w-sm flex flex-col gap-6 animate-step-in">
             <div className="text-center">
-              <div className="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-inner/80 backdrop-blur-md border border-subtle mb-3 text-text-base shadow-sm">
-                <Loader2 size={20} className="animate-spin" />
-              </div>
+              <img
+                  src="/icon animation/Globe Animation.svg"
+                  alt=""
+                  className="w-28 h-28 mx-auto mb-3 object-contain invert"
+                />
               <h1 className="text-base font-semibold text-text-base tracking-tight">
                 {translate('onboardingLoadingTitle')}
               </h1>
