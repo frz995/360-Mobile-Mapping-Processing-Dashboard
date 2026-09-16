@@ -36,6 +36,44 @@ if (typeof window !== 'undefined' && !window.matchMedia) {
     }) as any
 }
 
+// jsdom lacks IntersectionObserver — showcase scroll reveals degrade to their
+// final state without it, but provide a no-op stub so consumers can mount.
+if (typeof window !== 'undefined' && !('IntersectionObserver' in window)) {
+  class IntersectionObserverStub {
+    readonly root = null
+    readonly rootMargin = ''
+    readonly thresholds: number[] = []
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+    takeRecords(): IntersectionObserverEntry[] { return [] }
+  }
+  ;(window as any).IntersectionObserver = IntersectionObserverStub
+  ;(globalThis as any).IntersectionObserver = IntersectionObserverStub
+}
+
+// jsdom lacks ResizeObserver - Lenis constructs its Dimensions watcher on the
+// scroll-port element, so provide a no-op stub for it and the rest of the page.
+if (typeof window !== 'undefined' && !('ResizeObserver' in window)) {
+  class ResizeObserverStub {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+  ;(window as any).ResizeObserver = ResizeObserverStub
+  ;(globalThis as any).ResizeObserver = ResizeObserverStub
+}
+
+// jsdom does not implement scroll APIs — no-op them for click-driven navigation.
+if (typeof window !== 'undefined') {
+  if (!Element.prototype.scrollIntoView) {
+    Element.prototype.scrollIntoView = function () {} as any
+  }
+  if (!('scrollTo' in Element.prototype)) {
+    ;(Element.prototype as any).scrollTo = function () {}
+  }
+}
+
 afterAll(() => {
   vi.restoreAllMocks()
 })

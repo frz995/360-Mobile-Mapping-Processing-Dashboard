@@ -17,21 +17,33 @@ afterEach(() => {
 });
 
 describe('SystemShowcase Component', () => {
-  it('renders GeoSphere 360 title, branding, and active module', () => {
+  it('renders GeoSphere 360 title, branding, and the first module section', () => {
     render(<SystemShowcase onEnterDashboard={vi.fn()} />);
 
-    expect(screen.getByText('GeoSphere 360°')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'GeoSphere 360°' })).toBeInTheDocument();
     expect(screen.getByText('A Cloud-Native Mobile Mapping Platform')).toBeInTheDocument();
-    expect(screen.getByText(/Mobile Mapping Data Management System/i)).toBeInTheDocument();
-    expect(screen.getByText(/Executive Dashboard & Spatial Telemetry/i)).toBeInTheDocument();
-    expect(screen.getByText(/Workflow/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/Mobile Mapping Data Management System/i).length).toBeGreaterThan(0);
+    expect(screen.getByRole('heading', { level: 2, name: /Executive Dashboard & Spatial Telemetry/i })).toBeInTheDocument();
+    // Every module panel ships its own workflow timeline in the scroll story
+    expect(screen.getAllByText(/Workflow/i).length).toBeGreaterThanOrEqual(6);
+  });
+
+  it('renders all six module sections inside the scroll story', () => {
+    render(<SystemShowcase onEnterDashboard={vi.fn()} />);
+
+    expect(screen.getByRole('heading', { level: 2, name: /Data Management & Masterlist Ledgers/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: /Production Workspace, NAS & Lineage/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: /Panoramic StreetView & QA\/QC Defect Workspace/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: /PostGIS Spatial Hub & Vector Layer Staging/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: /Executive Reports, Audit Trail & RBAC Governance/i })).toBeInTheDocument();
   });
 
   it('triggers onEnterDashboard with "auth" when Sign In button is clicked', () => {
     const handleEnter = vi.fn();
     render(<SystemShowcase onEnterDashboard={handleEnter} />);
 
-    const signInBtn = screen.getByRole('button', { name: /Sign In/i });
+    // First Sign In button lives in the sticky header
+    const signInBtn = screen.getAllByRole('button', { name: /Sign In/i })[0];
     fireEvent.click(signInBtn);
 
     expect(handleEnter).toHaveBeenCalledWith('auth');
@@ -41,7 +53,8 @@ describe('SystemShowcase Component', () => {
     const handleEnter = vi.fn();
     render(<SystemShowcase onEnterDashboard={handleEnter} />);
 
-    const launchBtn = screen.getByRole('button', { name: /Launch Workspace/i });
+    // Header launch button navigates immediately (no cinematic portal)
+    const launchBtn = screen.getAllByRole('button', { name: /Launch Workspace/i })[0];
     fireEvent.click(launchBtn);
 
     expect(handleEnter).toHaveBeenCalledWith('webgis');
@@ -55,7 +68,7 @@ describe('SystemShowcase Component', () => {
     const dataPill = screen.getByRole('button', { name: /^Data Management$/i });
     fireEvent.click(dataPill);
 
-    // Advance timers for 220ms animation delay inside act
+    // Advance timers for the deferred smooth-scroll inside act
     act(() => {
       vi.advanceTimersByTime(300);
     });
@@ -67,8 +80,9 @@ describe('SystemShowcase Component', () => {
   it('renders execution flow steps cleanly without card box wrappers', () => {
     render(<SystemShowcase onEnterDashboard={vi.fn()} />);
 
-    expect(screen.getByText('1')).toBeInTheDocument();
-    expect(screen.getByText(/Ingest/i)).toBeInTheDocument();
+    // Each of the six module timelines numbers its steps 1..3
+    expect(screen.getAllByText('1').length).toBeGreaterThanOrEqual(6);
+    expect(screen.getByText('Ingest')).toBeInTheDocument();
   });
 
   it('triggers Panotrack district 3D popup when clicking bottom-left geodetic card in 3D Earth view', async () => {

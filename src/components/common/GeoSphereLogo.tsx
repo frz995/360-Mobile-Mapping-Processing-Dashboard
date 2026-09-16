@@ -79,24 +79,27 @@ export const GeoSphereIcon: React.FC<GeoSphereIconProps> = ({
       {/* Rear Chevron Unit */}
       <path
         d="M 189 11 C 145.3 24.9, 77.7 15.0, 62 67 C 89.0 65.7, 118.7 56.0, 147 52 Z"
-        fill={colorful ? `url(#${wingGradBack})` : 'currentColor'}
+        fill={colorful ? '#FFFFFF' : 'currentColor'}
         opacity={colorful ? 1 : 0.65}
       />
       <path
         d="M 189 11 L 147 52 C 145.6 80.5, 135.4 109.0, 132 138 C 186.3 122.4, 175.4 54.6, 189 11 Z"
-        fill={colorful ? `url(#${stemGradBack})` : 'currentColor'}
+        fill={colorful ? '#FFFFFF' : 'currentColor'}
+        stroke="none"
         opacity={colorful ? 1 : 0.45}
       />
 
       {/* Front Chevron Unit */}
       <path
         d="M 137 63 C 93.3 76.9, 25.7 67.0, 10 119 C 37.0 117.7, 66.7 108.0, 95 104 Z"
-        fill={colorful ? `url(#${wingGradFront})` : 'currentColor'}
+        fill={colorful ? '#FFFFFF' : 'currentColor'}
+        stroke="none"
         opacity={colorful ? 1 : 1.0}
       />
       <path
         d="M 137 63 L 95 104 C 93.6 132.5, 83.4 161.0, 80 190 C 134.3 174.4, 123.4 106.6, 137 63 Z"
-        fill={colorful ? `url(#${stemGradFront})` : 'currentColor'}
+        fill={colorful ? '#FFFFFF' : 'currentColor'}
+        stroke="none"
         opacity={colorful ? 1 : 0.8}
       />
     </svg>
@@ -106,7 +109,8 @@ export const GeoSphereIcon: React.FC<GeoSphereIconProps> = ({
 /**
  * GeoSphere 360 Full Logo.
  * Includes the dynamic flight vector mark and the brand text "GeoSphere 360°".
- * - "GeoSphere" rendered in radiant amber gradient matching the mark.
+ * - "GeoSphere" rendered in a grey → white gradient.
+ * - Mark filled white (clean, no outer stroke).
  * - "360°" rendered in crisp white with the degree symbol.
  * - ViewBox: 0 0 820 200 (aspect ratio 4.1:1).
  */
@@ -170,11 +174,11 @@ export const GeoSphereFullLogo: React.FC<GeoSphereFullLogoProps> = ({
           <stop offset="100%" stopColor="#D84315" />
         </linearGradient>
 
-        {/* Text Gradient matching Logo Mark */}
+        {/* Text Gradient: grey → white monochrome brand */}
         <linearGradient id={textGrad} x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="#FFD54F" />
-          <stop offset="40%" stopColor="#FFA000" />
-          <stop offset="100%" stopColor="#F57C00" />
+          <stop offset="0%" stopColor="#9CA3AF" />
+          <stop offset="55%" stopColor="#D4D4D8" />
+          <stop offset="100%" stopColor="#FFFFFF" />
         </linearGradient>
       </defs>
 
@@ -183,24 +187,24 @@ export const GeoSphereFullLogo: React.FC<GeoSphereFullLogoProps> = ({
         {/* Rear Chevron Unit */}
         <path
           d="M 189 11 C 145.3 24.9, 77.7 15.0, 62 67 C 89.0 65.7, 118.7 56.0, 147 52 Z"
-          fill={colorful ? `url(#${wingGradBack})` : 'currentColor'}
+          fill={colorful ? '#FFFFFF' : 'currentColor'}
           opacity={colorful ? 1 : 0.65}
         />
         <path
           d="M 189 11 L 147 52 C 145.6 80.5, 135.4 109.0, 132 138 C 186.3 122.4, 175.4 54.6, 189 11 Z"
-          fill={colorful ? `url(#${stemGradBack})` : 'currentColor'}
+          fill={colorful ? '#FFFFFF' : 'currentColor'}
           opacity={colorful ? 1 : 0.45}
         />
 
         {/* Front Chevron Unit */}
         <path
           d="M 137 63 C 93.3 76.9, 25.7 67.0, 10 119 C 37.0 117.7, 66.7 108.0, 95 104 Z"
-          fill={colorful ? `url(#${wingGradFront})` : 'currentColor'}
+          fill={colorful ? '#FFFFFF' : 'currentColor'}
           opacity={colorful ? 1 : 1.0}
         />
         <path
           d="M 137 63 L 95 104 C 93.6 132.5, 83.4 161.0, 80 190 C 134.3 174.4, 123.4 106.6, 137 63 Z"
-          fill={colorful ? `url(#${stemGradFront})` : 'currentColor'}
+          fill={colorful ? '#FFFFFF' : 'currentColor'}
           opacity={colorful ? 1 : 0.8}
         />
       </g>
