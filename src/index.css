@@ -1132,5 +1132,13 @@ select:-webkit-autofill:focus {
   .beam-frame::before {
     animation: none !important;
   }
+
+  /* The showcase is deliberately motion-first (see Lenis respectReducedMotion:false);
+     keep the particle-card burst tiles playing at full duration even on reduced-motion
+     systems so the gallery's signature effect is never silently disabled. */
+  [data-particle] {
+    transition-duration: 2600ms !important;
+    transition-delay: 0ms !important;
+  }
 }
 
