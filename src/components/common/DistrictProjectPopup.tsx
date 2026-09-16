@@ -107,92 +107,6 @@ export function mergeCommittedBoundaryFeatures(
   return Array.from(byName.values());
 }
 
-/** True when running under jsdom (vitest) — the burst veil is skipped there so
- *  the popup close / assertions stay fast and deterministic. */
-const IS_TEST_ENV = typeof navigator !== 'undefined' && navigator.userAgent.includes('jsdom');
-
-/**
- * Full-card particle-burst veil. On mount the popup appears covered by a dark
- * tile field that disbands outward into scattered particles (with reduced-motion
- * overridden via `data-particle` in index.css), revealing the existing Project
- * Area / district / basemap / survey detail content beneath. Pointer-transparent
- * and unmounts itself once the burst finishes.
- */
-function ParticleBurstVeil() {
-  const [burst, setBurst] = useState(false);
-  const [dead, setDead] = useState(false);
-
-  useEffect(() => {
-    const t1 = window.setTimeout(() => setBurst(true), 500);
-    const t2 = window.setTimeout(() => setDead(true), 500 + 2750);
-    return () => {
-      window.clearTimeout(t1);
-      window.clearTimeout(t2);
-    };
-  }, []);
-
-  if (dead || IS_TEST_ENV) return null;
-
-  const cols = 16;
-  const rows = 10;
-  const tiles: React.ReactNode[] = [];
-
-  for (let y = 0; y < rows; y++) {
-    for (let x = 0; x < cols; x++) {
-      const dx = x - cols / 2;
-      const dy = y - rows / 2;
-      const angle = Math.atan2(dy, dx);
-      const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-      const spread = 90 + Math.random() * 180;
-      const randX = Math.cos(angle) * spread * (1 + Math.random() * 0.5);
-      const randY = Math.sin(angle) * spread * (1 + Math.random() * 0.5);
-      const rotate = (Math.random() * 2 - 1) * 150;
-      const scale = 0.6 + Math.random() * 0.4;
-      const delay = dist * 24 + Math.random() * 140;
-      const scatter = `translate3d(${randX}px, ${randY}px, 0) rotate(${rotate}deg) scale(${scale})`;
-
-      tiles.push(
-        <div
-          key={`${x}-${y}`}
-          aria-hidden="true"
-          data-particle
-          className="absolute pointer-events-none"
-          style={{
-            width: `${100 / cols}%`,
-            height: `${100 / rows}%`,
-            left: `${(x / cols) * 100}%`,
-            top: `${(y / rows) * 100}%`,
-          }}
-        >
-          <div
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              width: '100.5%',
-              height: '100.5%',
-              borderRadius: 3,
-              background: 'linear-gradient(165deg, #101722 0%, #0b1018 48%, #06090f 100%)',
-              transform: burst ? scatter : 'translate3d(0,0,0) rotate(0deg) scale(1)',
-              opacity: burst ? 0 : 1,
-              transition: `transform 2600ms cubic-bezier(.2,.8,.2,1) ${delay}ms, opacity 2300ms ease-in ${delay + 220}ms`,
-              willChange: 'transform, opacity',
-            }}
-          />
-        </div>
-      );
-    }
-  }
-
-  return (
-    <div
-      aria-hidden="true"
-      className="absolute -inset-[1px] z-50 overflow-hidden rounded-3xl pointer-events-none select-none"
-    >
-      {tiles}
-    </div>
-  );
-}
 
 export const DistrictProjectPopup: React.FC<DistrictProjectPopupProps> = ({
   data,
@@ -502,7 +416,7 @@ export const DistrictProjectPopup: React.FC<DistrictProjectPopupProps> = ({
     <div
       role="dialog"
       aria-label={`${regionName} Project Area`}
-      className={`relative w-[calc(100vw-24px)] max-w-[240px] sm:w-[340px] sm:max-w-[340px] max-h-[calc(100dvh-220px)] sm:max-h-[calc(100dvh-130px)] overflow-y-auto no-scrollbar rounded-2xl bg-[#090d14]/95 border border-white/15 backdrop-blur-2xl text-white p-2 sm:p-3.5 space-y-1.5 sm:space-y-2.5 pointer-events-auto select-none ${
+      className={`relative w-[calc(100vw-24px)] max-w-[240px] sm:w-[320px] sm:max-w-[320px] max-h-[calc(100dvh-220px)] sm:max-h-[calc(100dvh-130px)] overflow-y-auto no-scrollbar rounded-2xl bg-[#090d14]/95 border border-white/15 backdrop-blur-2xl text-white p-1.5 sm:p-2 space-y-0.5 sm:space-y-1 pointer-events-auto select-none ${
         closing
           ? 'animate-out fade-out-0 zoom-out-95 ease-in duration-500'
           : 'animate-in fade-in-0 zoom-in-95 slide-in-from-bottom-2 ease-out duration-500'
@@ -516,7 +430,7 @@ export const DistrictProjectPopup: React.FC<DistrictProjectPopupProps> = ({
       <div className="absolute top-0 left-0 right-0 h-[1.5px] bg-gradient-to-r from-transparent via-white/40 to-transparent" />
 
       {/* Header */}
-      <div className="flex items-start justify-between gap-2 border-b border-white/10 pb-1.5 sm:pb-2">
+      <div className="flex items-start justify-between gap-2 border-b border-white/10 pb-1 sm:pb-1.5">
         <div className="space-y-0.5 min-w-0 text-left">
           <div className="flex items-center gap-1.5">
             <span className="w-1.5 h-1.5 rounded-full bg-white" />
@@ -573,7 +487,7 @@ export const DistrictProjectPopup: React.FC<DistrictProjectPopupProps> = ({
 
       {/* Embedded project map (display-only dashboard: boundary outline + survey points) */}
       <div className="rounded-xl bg-[#0e121a] border border-white/10 overflow-hidden shadow-lg text-left">
-        <div className={`relative w-full h-[90px] sm:h-[180px] overflow-hidden ${basemapStyle === 'dark' ? 'bg-[#0b0f16]' : 'bg-[#eceff3]'}`}>
+        <div className={`relative w-full h-[64px] sm:h-[108px] overflow-hidden ${basemapStyle === 'dark' ? 'bg-[#0b0f16]' : 'bg-[#eceff3]'}`}>
           <div ref={mapContainerRef} className="w-full h-full" />
 
           {/* Light / Dark toggle */}
@@ -614,7 +528,7 @@ export const DistrictProjectPopup: React.FC<DistrictProjectPopupProps> = ({
         </div>
 
         {/* Metrics */}
-        <div className="p-2 sm:p-3 space-y-1.5">
+        <div className="p-1.5 sm:p-2.5 space-y-1">
           <div className="flex items-center justify-between">
             <h4 className="text-xs sm:text-sm font-bold text-white tracking-tight leading-snug">
               {regionName} Region · Survey
@@ -660,11 +574,6 @@ export const DistrictProjectPopup: React.FC<DistrictProjectPopupProps> = ({
           </div>
         </div>
       </div>
-
-      {/* Particle-burst veil: covers the popup on mount, then disbands into
-          scattered particles to reveal the Project Area / district / basemap
-          / survey details beneath. Purely decorative + pointer-transparent. */}
-      <ParticleBurstVeil />
     </div>
   );
 };

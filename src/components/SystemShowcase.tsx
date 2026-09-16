@@ -1192,8 +1192,8 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
     const popupScreenLayout = useMemo(() => {
         const screenW = typeof window !== 'undefined' ? window.innerWidth : 1200;
         const screenH = typeof window !== 'undefined' ? window.innerHeight : 800;
-        const cardW = Math.min(cardSize?.w || (isMobile ? 240 : 360), Math.max(190, screenW - 16));
-        const cardH = cardSize?.h || Math.min(isMobile ? 270 : 430, Math.max(isMobile ? 140 : 300, screenH - (isMobile ? 220 : 120)));
+        const cardW = Math.min(cardSize?.w || (isMobile ? 240 : 320), Math.max(190, screenW - 16));
+        const cardH = cardSize?.h || Math.min(isMobile ? 200 : 250, Math.max(isMobile ? 100 : 160, screenH - (isMobile ? 220 : 120)));
 
         const rawMX = markerProjectedPos ? markerProjectedPos.x : (screenW / 2);
         const rawMY = markerProjectedPos ? markerProjectedPos.y : (screenH / 2);
@@ -1207,47 +1207,33 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
         const TOP_MARGIN = 64;
         const BOTTOM_RESERVE = isMobile ? 210 : 90;
 
-        // Try placing card to the right of the marker first (as requested by user)
-        const canPlaceRight = (mX + 45 + cardW <= screenW - 24);
-
-        // Try placing card ABOVE the marker first (as requested by user)
-        // Top navbar height is ~56px, keep top margin >= TOP_MARGIN
-        const canPlaceAbove = (mY - 30 - cardH >= TOP_MARGIN);
-
-        // Hard bounds: never above the top nav, never below the bottom HUD reserve.
+        // HORIZONTAL layout: place the card to the RIGHT of the marker, vertically
+        // centered on it, and tag the dashed line at the card's LEFT-CENTER edge
+        // (like "-----------[card]"), per user request.
         const minY = TOP_MARGIN;
         const maxY = Math.max(minY, screenH - BOTTOM_RESERVE - cardH);
 
-        let cardX = canPlaceRight
+        // Prefer right side; fall back to left side when there's no room.
+        const canPlaceRight = (mX + 45 + cardW <= screenW - 24);
+        const cardX = canPlaceRight
             ? Math.min(screenW - cardW - 20, mX + 45)
             : Math.max(20, mX - 45 - cardW);
-        let cardY = canPlaceAbove
-            ? Math.max(TOP_MARGIN, mY - 30 - cardH)
-            : (mY + 30 + cardH <= maxY ? mY + 30 : maxY);
 
-        const isRight = cardX >= mX;
-        const isAbove = cardY < mY;
+        // Vertically center the card on the marker, clamped into the safe band.
+        let cardY = Math.max(minY, Math.min(maxY, mY - cardH / 2));
 
-        // Cap leader-line length: pull the card toward the marker so the dashed
-        // line never stretches across most of the screen (e.g. tall card forced
-        // to the top while the marker sits mid-screen).
+        // Cap leader-line length: pull the card up/down toward the marker so the
+        // dashed line stays short instead of stretching across most of the screen.
         const MAX_LEAD = 180;
-        if (isAbove) {
-            // Card bottom edge (anchor) must stay within MAX_LEAD below the marker
-            cardY = Math.min(cardY, mY + MAX_LEAD - cardH + 24);
-        } else {
-            // Card top edge (anchor) must stay within MAX_LEAD below the marker
-            cardY = Math.min(cardY, mY + MAX_LEAD - 24);
-        }
-        // Final clamp into the safe band between the top nav and bottom HUD.
-        cardY = Math.max(minY, Math.min(maxY, cardY));
+        cardY = Math.max(minY, Math.min(maxY, Math.min(cardY, mY + MAX_LEAD / 2 - cardH / 2)));
 
-        // Anchor on card edge closest to marker
+        // Anchor at the LEFT-CENTER edge of the card facing the marker.
+        const isRight = cardX >= mX;
         const anchorX = isRight ? cardX : (cardX + cardW);
-        const anchorY = isAbove ? (cardY + cardH - 24) : (cardY + 24);
+        const anchorY = cardY + cardH / 2;
 
-        // Angled elbow dogleg
-        const elbowX = isRight ? (anchorX - 24) : (anchorX + 24);
+        // Angled elbow dogleg that turns into the card's center edge
+        const elbowX = isRight ? (anchorX - 26) : (anchorX + 26);
         const elbowY = anchorY;
 
         const leaderPath = `M ${mX.toFixed(1)} ${mY.toFixed(1)} L ${elbowX.toFixed(1)} ${elbowY.toFixed(1)} L ${anchorX.toFixed(1)} ${anchorY.toFixed(1)}`;
@@ -1645,25 +1631,25 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                     <div className="h-4 w-px bg-white/10 hidden xl:block" />
 
                     {/* View Mode Switcher: Clean monochromatic text tabs with Google font icons, no box button */}
-                    <div className="flex items-center gap-1 sm:gap-4 text-[10px] sm:text-xs">
+                    <div className="flex items-center gap-1.5 sm:gap-4 text-[8px] xs:text-[9px] sm:text-xs">
                         <button
                             onClick={() => setViewMode('globe')}
-                            className={`py-1 transition-colors cursor-pointer flex items-center gap-1 sm:gap-1.5 border-b-2 ${viewMode === 'globe'
+                            className={`py-1 transition-colors cursor-pointer flex items-center gap-0.5 xs:gap-1 sm:gap-1.5 border-b-2 ${viewMode === 'globe'
                                     ? 'text-white font-semibold border-white'
                                     : 'text-neutral-400 hover:text-white border-transparent'
                                 }`}
                         >
-                            <span className="material-symbols-outlined text-[12px] sm:text-[15px] leading-none">public</span>
+                            <span className="material-symbols-outlined text-[9px] xs:text-[10px] sm:text-[15px] leading-none">public</span>
                             <span>3D Earth</span>
                         </button>
                         <button
                             onClick={() => setViewMode('modules')}
-                            className={`py-1 transition-colors cursor-pointer flex items-center gap-1 sm:gap-1.5 border-b-2 ${viewMode === 'modules'
+                            className={`py-1 transition-colors cursor-pointer flex items-center gap-0.5 xs:gap-1 sm:gap-1.5 border-b-2 ${viewMode === 'modules'
                                     ? 'text-white font-semibold border-white'
                                     : 'text-neutral-400 hover:text-white border-transparent'
                                 }`}
                         >
-                            <span className="material-symbols-outlined text-[12px] sm:text-[15px] leading-none">grid_view</span>
+                            <span className="material-symbols-outlined text-[9px] xs:text-[10px] sm:text-[15px] leading-none">grid_view</span>
                             <span>Modules</span>
                         </button>
                     </div>
@@ -1978,7 +1964,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             {viewMode === 'globe' && showDistrictPopup && activePopupData && !isFlyingIn && !isZoomedToDistrict && (
                 <div className="absolute inset-0 z-40 pointer-events-none overflow-hidden animate-in fade-in duration-500">
                     {/* Angled SVG Laser Leader Line connecting marker to card (Monochromatic) */}
-                    <svg className="absolute inset-0 w-full h-full pointer-events-none overflow-visible">
+                    <svg className="absolute inset-0 w-full h-full pointer-events-none overflow-visible z-10">
                         {/* Fade out the whole leader assembly when the marker is projected off-globe,
                             so the dashed line never strays off-screen / down past the card */}
                         <g
