@@ -4,7 +4,6 @@ import * as maplibregl from 'maplibre-gl';
 import { DISTRICT_METADATA } from '../boundary/districtMetadata';
 import type { PanotrackPoint } from '../../utils/panotrackExtractor';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
-import { ParticleCard } from './ParticleCard';
 
 // Setup MapLibre web worker (same as the standalone boundary dashboard)
 const effectiveWorkerUrl =
@@ -27,13 +26,6 @@ export interface DistrictGalleryItem {
   pipelineSla?: string;
   subgrids?: string[];
   trackPoints?: Array<[number, number]>;
-}
-
-/** One vertical particle-burst card in the popup's system module gallery. */
-export interface PopupGalleryItem {
-  img: string;
-  title: string;
-  subtitle?: string;
 }
 
 export interface PanotrackPopupData {
@@ -65,8 +57,6 @@ export interface DistrictProjectPopupProps {
   onSelectDistrict?: (index: number) => void;
   onClose: () => void;
   className?: string;
-  /** Vertical system-module screenshot gallery (particle burst on appear). */
-  gallery?: PopupGalleryItem[];
 }
 
 /** Find a feature inside the boundary FeatureCollection by district name fuzzy match. */
@@ -117,6 +107,93 @@ export function mergeCommittedBoundaryFeatures(
   return Array.from(byName.values());
 }
 
+/** True when running under jsdom (vitest) — the burst veil is skipped there so
+ *  the popup close / assertions stay fast and deterministic. */
+const IS_TEST_ENV = typeof navigator !== 'undefined' && navigator.userAgent.includes('jsdom');
+
+/**
+ * Full-card particle-burst veil. On mount the popup appears covered by a dark
+ * tile field that disbands outward into scattered particles (with reduced-motion
+ * overridden via `data-particle` in index.css), revealing the existing Project
+ * Area / district / basemap / survey detail content beneath. Pointer-transparent
+ * and unmounts itself once the burst finishes.
+ */
+function ParticleBurstVeil() {
+  const [burst, setBurst] = useState(false);
+  const [dead, setDead] = useState(false);
+
+  useEffect(() => {
+    const t1 = window.setTimeout(() => setBurst(true), 500);
+    const t2 = window.setTimeout(() => setDead(true), 500 + 2750);
+    return () => {
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+    };
+  }, []);
+
+  if (dead || IS_TEST_ENV) return null;
+
+  const cols = 16;
+  const rows = 10;
+  const tiles: React.ReactNode[] = [];
+
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      const dx = x - cols / 2;
+      const dy = y - rows / 2;
+      const angle = Math.atan2(dy, dx);
+      const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+      const spread = 90 + Math.random() * 180;
+      const randX = Math.cos(angle) * spread * (1 + Math.random() * 0.5);
+      const randY = Math.sin(angle) * spread * (1 + Math.random() * 0.5);
+      const rotate = (Math.random() * 2 - 1) * 150;
+      const scale = 0.6 + Math.random() * 0.4;
+      const delay = dist * 24 + Math.random() * 140;
+      const scatter = `translate3d(${randX}px, ${randY}px, 0) rotate(${rotate}deg) scale(${scale})`;
+
+      tiles.push(
+        <div
+          key={`${x}-${y}`}
+          aria-hidden="true"
+          data-particle
+          className="absolute pointer-events-none"
+          style={{
+            width: `${100 / cols}%`,
+            height: `${100 / rows}%`,
+            left: `${(x / cols) * 100}%`,
+            top: `${(y / rows) * 100}%`,
+          }}
+        >
+          <div
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: '100.5%',
+              height: '100.5%',
+              borderRadius: 3,
+              background: 'linear-gradient(165deg, #101722 0%, #0b1018 48%, #06090f 100%)',
+              transform: burst ? scatter : 'translate3d(0,0,0) rotate(0deg) scale(1)',
+              opacity: burst ? 0 : 1,
+              transition: `transform 2600ms cubic-bezier(.2,.8,.2,1) ${delay}ms, opacity 2300ms ease-in ${delay + 220}ms`,
+              willChange: 'transform, opacity',
+            }}
+          />
+        </div>
+      );
+    }
+  }
+
+  return (
+    <div
+      aria-hidden="true"
+      className="absolute -inset-[1px] z-50 overflow-hidden rounded-3xl pointer-events-none select-none"
+    >
+      {tiles}
+    </div>
+  );
+}
+
 export const DistrictProjectPopup: React.FC<DistrictProjectPopupProps> = ({
   data,
   districts = [],
@@ -124,7 +201,6 @@ export const DistrictProjectPopup: React.FC<DistrictProjectPopupProps> = ({
   onSelectDistrict,
   onClose,
   className = '',
-  gallery = [],
 }) => {
   const regionName = data.regionName || districts[0]?.state || 'Malaysia';
   const districtCount = districts.length;
@@ -585,43 +661,10 @@ export const DistrictProjectPopup: React.FC<DistrictProjectPopupProps> = ({
         </div>
       </div>
 
-      {/* Vertical system-module screenshot gallery — cards fade in with a
-          staggered blur/drop, then each image bursts into particles on appear. */}
-      {gallery.length > 0 && (
-        <div className="pt-1">
-          <div className="flex items-center gap-1.5 pb-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-sky-400 shrink-0" />
-            <span className="text-[9px] font-mono uppercase tracking-widest text-neutral-400 font-semibold">
-              System Modules
-            </span>
-            <span className="ml-auto text-[8px] font-mono text-neutral-600 shrink-0">
-              {gallery.length} modules
-            </span>
-          </div>
-          <div className="flex flex-col gap-2">
-            {gallery.map((item, i) => (
-              <div
-                key={`${item.title}-${i}`}
-                className="animate-in fade-in-0 slide-in-from-bottom-2 fill-mode-both"
-                style={{
-                  animationDuration: '420ms',
-                  animationDelay: `${180 + i * 90}ms`,
-                  animationTimingFunction: 'cubic-bezier(.16,1,.3,1)',
-                }}
-              >
-                <ParticleCard
-                  img={item.img}
-                  title={item.title}
-                  subtitle={item.subtitle}
-                  cols={10}
-                  rows={5}
-                  explosionDelay={620 + i * 130}
-                />
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      {/* Particle-burst veil: covers the popup on mount, then disbands into
+          scattered particles to reveal the Project Area / district / basemap
+          / survey details beneath. Purely decorative + pointer-transparent. */}
+      <ParticleBurstVeil />
     </div>
   );
 };

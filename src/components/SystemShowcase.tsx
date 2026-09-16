@@ -2044,11 +2044,6 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                                 setSelectedDistrictIdx(idx);
                             }}
                             onClose={() => handleDeselectDistrict()}
-                            gallery={SYSTEM_MODULES.map((m) => ({
-                                img: m.images[0],
-                                title: m.title,
-                                subtitle: m.category,
-                            }))}
                         />
                     </div>
                 </div>
