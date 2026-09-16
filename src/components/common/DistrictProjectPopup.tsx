@@ -4,6 +4,7 @@ import * as maplibregl from 'maplibre-gl';
 import { DISTRICT_METADATA } from '../boundary/districtMetadata';
 import type { PanotrackPoint } from '../../utils/panotrackExtractor';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
+import { ParticleCard } from './ParticleCard';
 
 // Setup MapLibre web worker (same as the standalone boundary dashboard)
 const effectiveWorkerUrl =
@@ -26,6 +27,13 @@ export interface DistrictGalleryItem {
   pipelineSla?: string;
   subgrids?: string[];
   trackPoints?: Array<[number, number]>;
+}
+
+/** One vertical particle-burst card in the popup's system module gallery. */
+export interface PopupGalleryItem {
+  img: string;
+  title: string;
+  subtitle?: string;
 }
 
 export interface PanotrackPopupData {
@@ -57,6 +65,8 @@ export interface DistrictProjectPopupProps {
   onSelectDistrict?: (index: number) => void;
   onClose: () => void;
   className?: string;
+  /** Vertical system-module screenshot gallery (particle burst on appear). */
+  gallery?: PopupGalleryItem[];
 }
 
 /** Find a feature inside the boundary FeatureCollection by district name fuzzy match. */
@@ -114,6 +124,7 @@ export const DistrictProjectPopup: React.FC<DistrictProjectPopupProps> = ({
   onSelectDistrict,
   onClose,
   className = '',
+  gallery = [],
 }) => {
   const regionName = data.regionName || districts[0]?.state || 'Malaysia';
   const districtCount = districts.length;
@@ -573,6 +584,44 @@ export const DistrictProjectPopup: React.FC<DistrictProjectPopupProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Vertical system-module screenshot gallery — cards fade in with a
+          staggered blur/drop, then each image bursts into particles on appear. */}
+      {gallery.length > 0 && (
+        <div className="pt-1">
+          <div className="flex items-center gap-1.5 pb-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-sky-400 shrink-0" />
+            <span className="text-[9px] font-mono uppercase tracking-widest text-neutral-400 font-semibold">
+              System Modules
+            </span>
+            <span className="ml-auto text-[8px] font-mono text-neutral-600 shrink-0">
+              {gallery.length} modules
+            </span>
+          </div>
+          <div className="flex flex-col gap-2">
+            {gallery.map((item, i) => (
+              <div
+                key={`${item.title}-${i}`}
+                className="animate-in fade-in-0 slide-in-from-bottom-2 fill-mode-both"
+                style={{
+                  animationDuration: '420ms',
+                  animationDelay: `${180 + i * 90}ms`,
+                  animationTimingFunction: 'cubic-bezier(.16,1,.3,1)',
+                }}
+              >
+                <ParticleCard
+                  img={item.img}
+                  title={item.title}
+                  subtitle={item.subtitle}
+                  cols={10}
+                  rows={5}
+                  explosionDelay={620 + i * 130}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
