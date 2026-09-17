@@ -7,6 +7,8 @@ interface ModuleTourCardsProps {
     modules: SystemModule[];
     activeSection: number;
     isMobile: boolean;
+    /** Fires with the hovered card id (or null) so the host can restack. */
+    onHoverChange?: (id: string | null) => void;
 }
 
 /** Single white identity for every tour card. */
@@ -67,64 +69,113 @@ const LINE_DOT_DURATION_S = 0.7;
 /** Clamp helper. */
 const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), Math.max(lo, hi));
 
+/** How long a touch must be held on a card before it counts as a hover. */
+const LONG_PRESS_MS = 380;
+/** Finger drift that cancels the pending long press (it was a scroll). */
+const LONG_PRESS_SLOP_PX = 12;
+/** How long the lifted card lingers after the finger lifts. */
+const HOVER_LINGER_MS = 1400;
+
+/** Id of the card under a viewport point, or null. */
+const cardAtPoint = (
+    cards: ReadonlyArray<{ id: string; left: number; top: number }>,
+    cardW: number,
+    cardH: number,
+    x: number,
+    y: number,
+): string | null =>
+    cards.find(
+        (c) => x >= c.left && x <= c.left + cardW && y >= c.top && y <= c.top + cardH,
+    )?.id ?? null;
+
+/** Backoff schedule for the autoplay retries (ms). */
+const PLAY_RETRY_DELAYS = [120, 300, 700, 1500, 3000];
+/** Media events after which a stalled `play()` is worth re-attempting. */
+const PLAY_RETRY_EVENTS = ['loadedmetadata', 'loadeddata', 'canplay', 'canplaythrough', 'stalled', 'suspend'];
+
 /**
  * One tour video. Browsers are unreliable about honoring the `autoPlay`
  * attribute alone (especially for `<source>` children mounted lazily inside an
- * animated layer), so force `muted` and kick playback off manually, retrying on
- * `canplay`.
+ * animated layer), and a `play()` that lands before the media is decodable
+ * rejects and leaves the card frozen on its poster forever. So we force
+ * `muted`/`playsInline`, kick playback manually, re-attempt on every media
+ * readiness event, back off a few times, and finally wait for the first user
+ * gesture — which is what unblocks a document-level autoplay denial.
  *
- * On phones the cards sit behind the globe and are never hovered, so six
- * concurrently decoding video streams buy nothing while costing smoothness
- * during fast scrolls — there we render the still poster instead.
+ * Playback is also `active`-driven: the web plays every card at rest, while
+ * touch devices only decode the card the user is actually holding (a long
+ * press), which keeps fast scrolls smooth instead of decoding six streams.
  */
-const TourVideo: React.FC<{ moduleId: string; isMobile: boolean }> = ({ moduleId, isMobile }) => {
+const TourVideo: React.FC<{ moduleId: string; active: boolean; isMobile: boolean }> = ({
+    moduleId,
+    active,
+    isMobile,
+}) => {
     const ref = useRef<HTMLVideoElement | null>(null);
     const poster = `/videos/tour-${moduleId}-poster.png`;
 
     useEffect(() => {
-        if (isMobile) return;
         const el = ref.current;
         if (!el) return;
+
         el.muted = true;
         el.defaultMuted = true;
-        const tryPlay = () => {
-            try {
-                const p = el.play();
-                if (p && typeof p.catch === 'function') p.catch(() => { /* autoplay blocked */ });
-            } catch { /* jsdom / unsupported */ }
-        };
-        tryPlay();
-        el.addEventListener('loadeddata', tryPlay);
-        el.addEventListener('canplay', tryPlay);
-        return () => {
-            el.removeEventListener('loadeddata', tryPlay);
-            el.removeEventListener('canplay', tryPlay);
-        };
-    }, [moduleId, isMobile]);
+        el.setAttribute('muted', '');
+        el.playsInline = true;
 
-    if (isMobile) {
-        return (
-            <img
-                src={poster}
-                alt=""
-                loading="lazy"
-                draggable={false}
-                className="absolute inset-0 w-full h-full object-cover"
-                aria-hidden="true"
-            />
-        );
-    }
+        if (!active) {
+            try { el.pause(); } catch { /* jsdom / unsupported */ }
+            return;
+        }
+
+        let disposed = false;
+        let attempt = 0;
+        let timer: number | undefined;
+
+        const tryPlay = () => {
+            if (disposed || !el.paused) return;
+            let p: Promise<void> | undefined;
+            try { p = el.play(); } catch { p = undefined; }
+            if (!p || typeof p.catch !== 'function') return;
+            p.catch(() => {
+                if (disposed) return;
+                if (attempt < PLAY_RETRY_DELAYS.length) {
+                    timer = window.setTimeout(tryPlay, PLAY_RETRY_DELAYS[attempt++]);
+                }
+            });
+        };
+
+        tryPlay();
+        const onReady = () => tryPlay();
+        PLAY_RETRY_EVENTS.forEach((ev) => el.addEventListener(ev, onReady));
+        // A policy-blocked autoplay clears on the first real interaction.
+        window.addEventListener('pointerdown', onReady, { passive: true });
+        window.addEventListener('touchstart', onReady, { passive: true });
+        window.addEventListener('keydown', onReady);
+        document.addEventListener('visibilitychange', onReady);
+
+        return () => {
+            disposed = true;
+            if (timer) window.clearTimeout(timer);
+            PLAY_RETRY_EVENTS.forEach((ev) => el.removeEventListener(ev, onReady));
+            window.removeEventListener('pointerdown', onReady);
+            window.removeEventListener('touchstart', onReady);
+            window.removeEventListener('keydown', onReady);
+            document.removeEventListener('visibilitychange', onReady);
+        };
+    }, [moduleId, active]);
 
     return (
         <video
             ref={ref}
-            autoPlay
+            autoPlay={active}
             loop
             muted
             playsInline
-            preload="auto"
+            preload={isMobile ? 'metadata' : 'auto'}
             poster={poster}
             className="absolute inset-0 w-full h-full object-cover"
+            data-tour-id={moduleId}
             data-testid="module-tour-video"
             aria-hidden="true"
         >
@@ -132,7 +183,6 @@ const TourVideo: React.FC<{ moduleId: string; isMobile: boolean }> = ({ moduleId
         </video>
     );
 };
-
 /**
  * Six module tour videos tagged AROUND the OUTSIDE of the backdrop globe,
  * top half only (side-centre → top pair, never below the centre line). Each
@@ -150,6 +200,7 @@ export const ModuleTourCards: React.FC<ModuleTourCardsProps> = ({
     modules,
     activeSection,
     isMobile,
+    onHoverChange,
 }) => {
     const [hovered, setHovered] = useState<string | null>(null);
     const [revealed, setRevealed] = useState(false);
@@ -170,6 +221,7 @@ export const ModuleTourCards: React.FC<ModuleTourCardsProps> = ({
     // the hero: reset while away, then re-arm the timer on return. The first
     // pass waits for the Atomic globe to assemble; replays start promptly.
     const hasRevealedRef = useRef(false);
+    const layerRef = useRef<HTMLDivElement | null>(null);
     useEffect(() => {
         if (!visible) {
             setRevealed(false);
@@ -366,18 +418,103 @@ export const ModuleTourCards: React.FC<ModuleTourCardsProps> = ({
     useEffect(() => {
         if (isMobile) return;
         const onMove = (e: MouseEvent) => {
-            const hit = layout.cards.find(
-                (c) =>
-                    e.clientX >= c.left &&
-                    e.clientX <= c.left + layout.cardW &&
-                    e.clientY >= c.top &&
-                    e.clientY <= c.top + layout.cardH,
-            );
-            setHovered(hit ? hit.id : null);
+            setHovered(cardAtPoint(layout.cards, layout.cardW, layout.cardH, e.clientX, e.clientY));
         };
         window.addEventListener('mousemove', onMove);
         return () => window.removeEventListener('mousemove', onMove);
     }, [isMobile, layout]);
+
+    // Touch screens have no hover at all, so a long press stands in for it:
+    // hold a card for ~380ms and it lifts, plays its tour, and stays up for a
+    // beat after the finger leaves. Drifting past the slop counts as a scroll
+    // and cancels, so fast flicks never snag a card.
+    useEffect(() => {
+        if (!isMobile) return;
+        let pressTimer: number | undefined;
+        let lingerTimer: number | undefined;
+        let origin: { x: number; y: number } | null = null;
+        let armed = false;
+
+        const clearPress = () => {
+            if (pressTimer) window.clearTimeout(pressTimer);
+            pressTimer = undefined;
+            origin = null;
+        };
+
+        const onTouchStart = (e: TouchEvent) => {
+            clearPress();
+            if (lingerTimer) { window.clearTimeout(lingerTimer); lingerTimer = undefined; }
+            if (e.touches.length !== 1) return;
+            const t = e.touches[0];
+            origin = { x: t.clientX, y: t.clientY };
+            pressTimer = window.setTimeout(() => {
+                if (!origin) return;
+                const hit = cardAtPoint(layout.cards, layout.cardW, layout.cardH, origin.x, origin.y);
+                if (!hit) return;
+                armed = true;
+                setHovered(hit);
+            }, LONG_PRESS_MS);
+        };
+
+        const onTouchMove = (e: TouchEvent) => {
+            if (!origin || e.touches.length !== 1) return;
+            const t = e.touches[0];
+            if (Math.hypot(t.clientX - origin.x, t.clientY - origin.y) > LONG_PRESS_SLOP_PX) clearPress();
+        };
+
+        const onTouchEnd = () => {
+            clearPress();
+            if (!armed) return;
+            armed = false;
+            lingerTimer = window.setTimeout(() => setHovered(null), HOVER_LINGER_MS);
+        };
+
+        window.addEventListener('touchstart', onTouchStart, { passive: true });
+        window.addEventListener('touchmove', onTouchMove, { passive: true });
+        window.addEventListener('touchend', onTouchEnd, { passive: true });
+        window.addEventListener('touchcancel', onTouchEnd, { passive: true });
+        return () => {
+            clearPress();
+            if (lingerTimer) window.clearTimeout(lingerTimer);
+            window.removeEventListener('touchstart', onTouchStart);
+            window.removeEventListener('touchmove', onTouchMove);
+            window.removeEventListener('touchend', onTouchEnd);
+            window.removeEventListener('touchcancel', onTouchEnd);
+        };
+    }, [isMobile, layout]);
+
+    // iOS only allows playback whose first `play()` happened inside a real
+    // user gesture. The long press fires from a timer, so on the first touch we
+    // "unlock" every tour video with a play→pause — after that the timed play()
+    // from the long press is legal, without leaving six videos decoding.
+    useEffect(() => {
+        if (!isMobile) return;
+        let unlocked = false;
+        const unlock = () => {
+            if (unlocked) return;
+            unlocked = true;
+            layerRef.current?.querySelectorAll('video').forEach((el) => {
+                let p: Promise<void> | undefined;
+                try { p = el.play(); } catch { p = undefined; }
+                if (p && typeof p.then === 'function') {
+                    p.then(() => { try { el.pause(); } catch { /* noop */ } }).catch(() => { /* blocked */ });
+                }
+            });
+            window.removeEventListener('touchstart', unlock);
+            window.removeEventListener('pointerdown', unlock);
+        };
+        window.addEventListener('touchstart', unlock, { passive: true });
+        window.addEventListener('pointerdown', unlock, { passive: true });
+        return () => {
+            window.removeEventListener('touchstart', unlock);
+            window.removeEventListener('pointerdown', unlock);
+        };
+    }, [isMobile]);
+
+    // Let the parent lift this layer above the globe while a card is held.
+    useEffect(() => {
+        onHoverChange?.(hovered);
+    }, [hovered, onHoverChange]);
 
     const introDelayFor = (i: number) => (revealed && !revealDone ? i * REVEAL_STAGGER_S : 0);
 
@@ -386,6 +523,7 @@ export const ModuleTourCards: React.FC<ModuleTourCardsProps> = ({
             {visible && (
                 <motion.div
                     key="module-tour-layer"
+                    ref={layerRef}
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
@@ -468,7 +606,7 @@ export const ModuleTourCards: React.FC<ModuleTourCardsProps> = ({
                                 initial={{ opacity: 0, scale: 0.82, y: 18 }}
                                 animate={{
                                     opacity: revealed ? restOpacity : 0,
-                                    scale: revealed ? (isHovered && !isMobile ? 2.2 : 1) : 0.82,
+                                    scale: revealed ? (isHovered ? (isMobile ? 2 : 2.2) : 1) : 0.82,
                                     y: revealed ? 0 : 18,
                                 }}
                                 transition={{
@@ -490,7 +628,7 @@ export const ModuleTourCards: React.FC<ModuleTourCardsProps> = ({
                                 }}
                                 data-testid="module-tour-card"
                             >
-                                <TourVideo moduleId={mod.id} isMobile={isMobile} />
+                                <TourVideo moduleId={mod.id} active={!isMobile || isHovered} isMobile={isMobile} />
 
                                 {/* Readability scrim only — card body stays opaque */}
                                 <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/85 to-transparent pointer-events-none" />

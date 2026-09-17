@@ -53,7 +53,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
     return (
         <section
             data-section-idx={HERO_SECTION}
-            className="relative min-h-dvh-safe snap-start flex flex-col items-center justify-start sm:justify-center text-center px-4 sm:px-8 pt-16 sm:pt-24 pb-8 sm:pb-10 pointer-events-none"
+            className="relative min-h-dvh-safe snap-start flex flex-col items-center justify-start sm:justify-center text-center px-4 sm:px-8 pt-16 sm:pt-24 pb-[max(2rem,env(safe-area-inset-bottom))] sm:pb-10 pointer-events-none"
         >
             {/* Aurora depth field */}
             <div aria-hidden className="absolute inset-0 overflow-hidden pointer-events-none">
@@ -205,7 +205,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
             {/* Scroll hint — flow after the marquee on mobile (mt-auto pins
                 it to the bottom while keeping the marquee above it); absolute
                 bottom-pinned on larger screens. */}
-            <div className="relative z-10 mt-4 sm:mt-0 sm:absolute sm:bottom-7 left-0 right-0 flex justify-center pointer-events-none">
+            <div className="relative z-10 mt-4 sm:mt-0 sm:absolute sm:bottom-[max(1.75rem,env(safe-area-inset-bottom))] left-0 right-0 flex justify-center pointer-events-none">
                 <motion.div
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
