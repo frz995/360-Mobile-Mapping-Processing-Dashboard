@@ -411,95 +411,16 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
         : '—';
 
     const SYSTEM_MODULES: SystemModule[] = [
-        // MODULE 1: MAIN DASHBOARD
-        {
-            id: 'webgis',
-            category: 'Executive Command Center',
-            title: 'Executive Dashboard & Spatial Telemetry',
-            subtitle: 'Geodetic Telemetry, Trajectory Tracking & Live Status Stream',
-            description: 'The central operational hub of the platform. Features high-precision MapLibre GL trajectory rendering, executive KPI telemetry meters, live workstation pipeline streams, and direct workspace navigation.',
-            metricLabel: 'Total Distance Mapped',
-            metricValue: `${computedDistance.toFixed(1)} km (${pctTarget}% · ${activeJobs} Active)`,
-            statusBadge: 'Production WebGIS',
-            images: [
-                '/screenshots/Dashboard_UI_1.png',
-                '/screenshots/Dashboard_UI_13.png',
-                '/screenshots/Dashboard_UI_5.png',
-                '/screenshots/Dashboard_UI_6.png',
-                '/screenshots/Dashboard_UI_7.png',
-                '/screenshots/Dashboard_UI_8.png'
-            ],
-            icon: Compass,
-            iconImage: '/icon module/production_webgis.png',
-            workflow: [
-                { step: '01. Ingest', action: 'Parse GPS/GNSS trajectory coordinates' },
-                { step: '02. Project', action: 'Cluster points into subgrid boundaries' },
-                { step: '03. Verify', action: 'Calculate geodesic road mileage (KM)' }
-            ],
-            specs: [
-                { label: 'Spatial Tracking', value: 'High-Precision GNSS' },
-                { label: 'Map Engine', value: 'MapLibre GL Vector Basemap' },
-                { label: 'Action Stream', value: 'Operational Action Center' }
-            ],
-            hotspots: [
-                {
-                    id: 'm1-kpi',
-                    x: 25,
-                    y: 12,
-                    title: 'Executive Telemetry KPI Cards',
-                    tag: 'Metrics HUD',
-                    description: 'Real-time meters showing Total Distance Mapped (KM), Processed 360 Panoramas, Active Processing Jobs, and Overall Pipeline Health SLA.',
-                    tip: 'Hover or click any metric card to inspect its underlying subgrid completion breakdown.'
-                },
-                {
-                    id: 'm1-action',
-                    x: 50,
-                    y: 22,
-                    title: 'Operational Action Center',
-                    tag: 'Live Work Stream',
-                    description: 'Live monitoring bar displaying ongoing workstation batches, QA defect flags requiring attention, and pending staging subgrids.',
-                    tip: 'Click the direct action button to jump straight to the required defect table.'
-                },
-                {
-                    id: 'm1-map',
-                    x: 35,
-                    y: 56,
-                    title: 'Interactive Vector WebGIS Map',
-                    tag: 'Spatial Trajectory',
-                    description: 'Hardware-accelerated MapLibre GL canvas rendering road trajectory geometries, subgrid boundaries, and station point nodes.',
-                    tip: 'Click any station node along the route to load that frame in the 360° spherical viewer.'
-                },
-                {
-                    id: 'm1-admin',
-                    x: 82,
-                    y: 52,
-                    title: 'Subgrid Processing & Admin Table',
-                    tag: 'Batch Queue',
-                    description: 'Subgrid batch ledger showing active processing status, station progress percentage, and frame counts.',
-                    tip: 'Filter by subgrid code (e.g. N94E70) to inspect specific regional processing batches.'
-                },
-                {
-                    id: 'm1-qa',
-                    x: 82,
-                    y: 84,
-                    title: '360 View & QA Mini-Inspector',
-                    tag: 'Spherical Preview',
-                    description: 'Embedded spherical panorama preview displaying heading orientation, coordinates, and optical quality status.',
-                    tip: 'Click the maximize icon to open the full-screen 8K panoramic defect workspace.'
-                }
-            ]
-        },
-
-        // MODULE 2: DATA MANAGEMENT PANEL
+        // MODULE 1: PROJECT MANAGEMENT
         {
             id: 'data',
-            category: 'Field Ingestion & Subgrid Ledgers',
-            title: 'Data Management & Masterlist Ledgers',
-            subtitle: 'Subgrid Masterlist, Daily Collections & Folder Verification',
-            description: 'Unified field survey data management canvas. Validates raw CSV trajectory logs against NAS storage, organizes records into Subgrid Masterlists and Daily Ledgers, and manages staging status.',
+            category: 'Survey & Project Setup',
+            title: 'Project Management',
+            subtitle: 'Organise survey projects, areas, datasets and project information',
+            description: 'The starting point of every capture. Set up survey projects, define the districts and subgrid areas they cover, and keep the project ledger organised. Field CSV logs are validated against NAS storage and reconciled into the subgrid masterlist and daily records, so every area of the project stays accounted for.',
             metricLabel: 'Surveyed Records',
             metricValue: `${computedFrames.toLocaleString()} Frames`,
-            statusBadge: 'Data Management',
+            statusBadge: 'Survey Workspace',
             images: [
                 '/screenshots/Dashboard_UI_17.png',
                 '/screenshots/Dashboard_UI_2.png',
@@ -509,9 +430,9 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             icon: FolderKanban,
             iconImage: '/icon module/data_management.png',
             workflow: [
-                { step: '01. Collect', action: 'Upload field CSV & raw panorama sets' },
-                { step: '02. Verify', action: 'Cross-check files against storage bucket' },
-                { step: '03. Reconcile', action: 'Update masterlist & daily progress records' }
+                { step: '01. Set Up', action: 'Create survey projects, areas & subgrid boundaries' },
+                { step: '02. Collect', action: 'Import field CSV & raw panorama sets' },
+                { step: '03. Reconcile', action: 'Verify files against storage & update ledgers' }
             ],
             specs: [
                 { label: 'File Validation', value: 'NAS & Bucket Verification' },
@@ -558,13 +479,81 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             ]
         },
 
-        // MODULE 3: PRODUCTION WORKSPACE & PROCESSING CENTER
+        // MODULE 2: 360° IMAGERY
+        {
+            id: 'qaqc',
+            category: 'Captured Imagery Review',
+            title: '360° Imagery',
+            subtitle: 'Review captured panoramic imagery alongside spatial locations and survey metadata',
+            description: 'A full-screen panoramic review surface. Step through captured 360° frames in driving order, see exactly where each frame sits on the route with its heading and position, and read the survey metadata attached to every image. Optical quality checks run alongside each frame so blur and obstruction are caught before the delivery pass.',
+            metricLabel: 'Quality Compliance',
+            metricValue: `${slaPercent}% SLA`,
+            statusBadge: 'Panoramic Review',
+            images: [
+                '/screenshots/Dashboard_UI_26.png',
+                '/screenshots/Dashboard_UI_27.png',
+                '/screenshots/Dashboard_UI_28.png',
+                '/screenshots/Dashboard_UI_3.png'
+            ],
+            icon: Camera,
+            iconImage: '/icon module/qaqc.png',
+            workflow: [
+                { step: '01. Sequence', action: 'Load trajectory nodes in travel order' },
+                { step: '02. Review', action: 'Step through frames with heading & metadata' },
+                { step: '03. Flag', action: 'Mark blur, obstruction & bad GPS cases' }
+            ],
+            specs: [
+                { label: 'Sensor Format', value: '8K 360° Equirectangular' },
+                { label: 'Sharpness Metric', value: 'Tenengrad Variance (Min 12.0)' },
+                { label: 'Defect Classes', value: 'Blur, Obstruction, Bad GPS' }
+            ],
+            hotspots: [
+                {
+                    id: 'm4-viewer',
+                    x: 35,
+                    y: 45,
+                    title: '360° Panoramic Viewer Canvas',
+                    tag: 'Equirectangular Sphere',
+                    description: 'Hardware-accelerated viewer canvas supporting spherical pan, tilt, pitch, and zoom with compass heading.',
+                    tip: 'Press Spacebar on your keyboard to auto-advance through trajectory frames in driving sequence.'
+                },
+                {
+                    id: 'm4-matrix',
+                    x: 75,
+                    y: 25,
+                    title: 'Defect Classification Matrix',
+                    tag: 'Defect Tagger',
+                    description: 'Classifies optical and positional anomalies into Blur, Nadir Obstruction, Horizon Leveling, or GPS Drift with confidence scores.',
+                    tip: 'Defects are permanently tagged and exported into contractor re-survey lists.'
+                },
+                {
+                    id: 'm4-tenengrad',
+                    x: 75,
+                    y: 58,
+                    title: 'Tenengrad Sharpness Analyzer',
+                    tag: 'Edge Gradient Math',
+                    description: 'Evaluates image focus using Tenengrad gradient variance in the middle horizon ROI (10% to 52% height).',
+                    tip: 'Adjust variance threshold in QAQC Studio to adapt to cloudy vs sunny conditions.'
+                },
+                {
+                    id: 'm4-strip',
+                    x: 50,
+                    y: 88,
+                    title: 'Trajectory Frame Sequence Strip',
+                    tag: 'Sequence Timeline',
+                    description: 'Timeline scrubber displaying all frames along the surveyed street with color-coded pass/fail status pins.',
+                    tip: 'Use Left/Right arrow keys for rapid keyboard navigation across hundreds of frames.'
+                }
+            ]
+        },
+
+        // MODULE 3: PROCESSING PIPELINE
         {
             id: 'production',
-            category: 'Multi-Station & GPU Worker Pipeline',
-            title: 'Production Workspace, NAS & Lineage',
-            subtitle: '4-Station Desktop Pipeline, GPU Worker & Asset Lineage',
-            description: 'End-to-end multi-PC production routing and automated GPU worker dispatch. Coordinates sequential desktop handoffs across Station 1 (Blur), Station 2 (Stitching), Station 3 (Lightroom), and Station 4 (Photoshop), with real-time NAS storage tracking and immutable lineage tracing.',
+            category: 'Pipeline & Worker Operations',
+            title: 'Processing Pipeline',
+            subtitle: 'Track data preparation, processing jobs, progress, failures and outputs',
+            description: 'A production pipeline that moves captured data from raw intake through blurring, stitching, enhancement and final assembly. Each subgrid advances through dedicated workstations and NAS GPU workers; progress is visible at a glance, failures are flagged early, and every finished output carries a full processing record.',
             metricLabel: 'Pipeline Architecture',
             metricValue: '4-Station + NAS GPU Worker',
             statusBadge: 'Production Pipeline',
@@ -587,7 +576,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             specs: [
                 { label: '4-Station Flow', value: 'PC1 Blur → PC2 Stitch → PC3 LR → PC4 PS' },
                 { label: 'FastAPI Daemon', value: 'Headless PyTorch CUDA Worker' },
-                { label: 'Lineage Engine', value: 'Asset Transformation Trace DAG' }
+                { label: 'Lineage Engine', value: 'Asset Lineage Trace DAG' }
             ],
             hotspots: [
                 {
@@ -639,92 +628,191 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                     id: 'm3-lineage',
                     x: 50,
                     y: 75,
-                    title: 'Data Lineage & Transformation Trace Graph',
+                    title: 'Data Lineage Trace Graph',
                     tag: 'Lineage Graph',
-                    description: 'Visual DAG tree mapping raw input datasets through intermediate transformations to final deliverable outputs.',
+                    description: 'Visual DAG tree mapping raw input datasets through intermediate processing stages to final deliverable outputs.',
                     tip: 'Every deliverable can be traced back to its exact operator, software version, and parameters.'
                 }
             ]
         },
 
-        // MODULE 4: QA/QC WORKSPACE
+        // MODULE 4: QA / QC
         {
-            id: 'qaqc',
-            category: 'Optical & Spherical Quality Assurance',
-            title: 'Panoramic StreetView & QA/QC Defect Workspace',
-            subtitle: 'Automated Optical Sharpness, Tenengrad Analysis & Defect Flags',
-            description: 'Dedicated high-throughput quality control workspace. Computes frame sharpness using Tenengrad gradient variance, identifies camera pitch/yaw errors, flags vehicle nadir obstructions, and allows instant side-by-side verification.',
-            metricLabel: 'Quality SLA Health',
-            metricValue: `${slaPercent}% Compliance`,
-            statusBadge: 'Batch QAQC',
+            id: 'reports',
+            category: 'Quality Assurance & Audit',
+            title: 'QA / QC',
+            subtitle: 'Review survey data and identify issues before final delivery',
+            description: 'The quality gate before delivery. Compile QA results across every surveyed area, verify defect rates against agreed thresholds, and follow coverage and capture gaps through to resolution. Formal progress and quality reports are exported ahead of sign-off, with every decision recorded in the audit trail.',
+            metricLabel: 'Delivery Readiness',
+            metricValue: `${slaPercent}% SLA`,
+            statusBadge: 'Quality Review',
             images: [
-                '/screenshots/Dashboard_UI_26.png',
-                '/screenshots/Dashboard_UI_27.png',
-                '/screenshots/Dashboard_UI_28.png',
-                '/screenshots/Dashboard_UI_3.png'
+                '/screenshots/Dashboard_UI_39.png',
+                '/screenshots/Dashboard_UI_37.png',
+                '/screenshots/Dashboard_UI_36.png',
+                '/screenshots/Dashboard_UI_38.png',
+                '/screenshots/Dashboard_UI_14.png',
+                '/screenshots/Dashboard_UI_15.png'
             ],
-            icon: Camera,
-            iconImage: '/icon module/qaqc.png',
+            icon: Shield,
+            iconImage: '/icon module/security-audit.png',
             workflow: [
-                { step: '01. Sequence', action: 'Load trajectory nodes in travel order' },
-                { step: '02. Compute', action: 'Run multi-thread Tenengrad analysis' },
-                { step: '03. Classify', action: 'Flag Blur, Obstruction & Bad GPS' }
+                { step: '01. Compile', action: 'Aggregate QA results by surveyed area' },
+                { step: '02. Verify', action: 'Check defect rates against agreed thresholds' },
+                { step: '03. Deliver', action: 'Export formal progress & quality reports' }
             ],
             specs: [
-                { label: 'Sensor Format', value: '8K 360° Equirectangular' },
-                { label: 'Sharpness Metric', value: 'Tenengrad Variance (Min 12.0)' },
-                { label: 'Defect Classes', value: 'Blur, Obstruction, Bad GPS' }
+                { label: 'Audit Trail', value: 'Immutable Event Timestamping' },
+                { label: 'Reporting', value: 'Formal Executive PDF / CSV Milestones' },
+                { label: 'Security', value: 'Role-Based Access Control (RBAC)' }
             ],
             hotspots: [
                 {
-                    id: 'm4-viewer',
-                    x: 35,
-                    y: 45,
-                    title: '360° Panoramic Viewer Canvas',
-                    tag: 'Equirectangular Sphere',
-                    description: 'Hardware-accelerated viewer canvas supporting spherical pan, tilt, pitch, and zoom with compass heading.',
-                    tip: 'Press Spacebar on your keyboard to auto-advance through trajectory frames in driving sequence.'
+                    id: 'm6-executive',
+                    x: 30,
+                    y: 35,
+                    title: 'Progress & Quality Audit Report',
+                    tag: 'Formal Export',
+                    description: 'Project-wide progress and quality summary over all surveyed subgrids covering distance, coverage, QA quality, and capture gaps in a print-ready document.',
+                    tip: 'Click "Generate & Print" to auto-open print dialog and export client-ready PDF.'
                 },
                 {
-                    id: 'm4-matrix',
-                    x: 75,
-                    y: 25,
-                    title: 'Defect Classification Matrix',
-                    tag: 'Defect Tagger',
-                    description: 'Classifies optical and positional anomalies into Blur, Nadir Obstruction, Horizon Leveling, or GPS Drift with confidence scores.',
-                    tip: 'Defects are permanently tagged and exported into contractor re-survey lists.'
+                    id: 'm6-analytics',
+                    x: 70,
+                    y: 35,
+                    title: 'Project Survey Reports & Progress Ledger',
+                    tag: 'Survey Ledger',
+                    description: 'Live contract progress tracking against total mileage targets with subgrid summaries and daily operation records.',
+                    tip: 'Tracks contractor SLA defect rates against allowed threshold percentages.'
                 },
                 {
-                    id: 'm4-tenengrad',
-                    x: 75,
-                    y: 58,
-                    title: 'Tenengrad Sharpness Analyzer',
-                    tag: 'Edge Gradient Math',
-                    description: 'Evaluates image focus using Tenengrad gradient variance in the middle horizon ROI (10% to 52% height).',
-                    tip: 'Adjust variance threshold in QAQC Studio to adapt to cloudy vs sunny conditions.'
-                },
-                {
-                    id: 'm4-strip',
+                    id: 'm6-operations',
                     x: 50,
-                    y: 88,
-                    title: 'Trajectory Frame Sequence Strip',
-                    tag: 'Sequence Timeline',
-                    description: 'Timeline scrubber displaying all frames along the surveyed street with color-coded pass/fail status pins.',
-                    tip: 'Use Left/Right arrow keys for rapid keyboard navigation across hundreds of frames.'
+                    y: 35,
+                    title: 'Survey Operations Analytics',
+                    tag: 'Operations Overview',
+                    description: 'Realtime charts of road capture analytics, publication status distribution (Published vs Partial), and daily throughput trends.',
+                    tip: 'Visualizes live database metrics without modifying raw imagery.'
+                },
+                {
+                    id: 'm6-coverage',
+                    x: 50,
+                    y: 65,
+                    title: 'Survey Coverage & Capture Gaps Analysis',
+                    tag: 'Gap Detection',
+                    description: 'Detects incomplete subgrids, survey frame shortages, and unpublished capture risks across regional grid zones.',
+                    tip: 'Flagged capture gaps automatically generate field re-survey work orders.'
+                },
+                {
+                    id: 'm6-audit',
+                    x: 70,
+                    y: 75,
+                    title: 'Immutable Audit Trail Ledger',
+                    tag: 'Event Logging',
+                    description: 'Cryptographically verified event logs recording every file upload, QA rejection, parameter edit, and user sign-in.',
+                    tip: 'Audit logs cannot be altered or deleted, ensuring full accountability.'
+                },
+                {
+                    id: 'm6-rbac',
+                    x: 50,
+                    y: 85,
+                    title: 'Role-Based Access Control (RBAC)',
+                    tag: 'Security Matrix',
+                    description: 'Granular role management for Admins, Operators, QA Reviewers, and Guests with permission restrictions.',
+                    tip: 'Guest mode allows safe read-only browsing without risk of modifying survey data.'
                 }
             ]
         },
 
-        // MODULE 5: POSTGIS SPATIAL HUB & CLOUD STAGING
+        // MODULE 5: GIS WORKSPACE
+        {
+            id: 'webgis',
+            category: 'Spatial Operations',
+            title: 'GIS Workspace',
+            subtitle: 'View, analyse and manage spatial datasets directly within the operational map',
+            description: 'The operational map of the project. Survey trajectories, subgrid boundaries and station points render on a vector basemap alongside the live status of incoming batches. Use the map to inspect progress by area, open a 360° frame from any route point, and jump into the workspace that manages the underlying data.',
+            metricLabel: 'Total Distance Mapped',
+            metricValue: `${computedDistance.toFixed(1)} km (${pctTarget}% · ${activeJobs} Active)`,
+            statusBadge: 'Operational Map',
+            images: [
+                '/screenshots/Dashboard_UI_1.png',
+                '/screenshots/Dashboard_UI_13.png',
+                '/screenshots/Dashboard_UI_5.png',
+                '/screenshots/Dashboard_UI_6.png',
+                '/screenshots/Dashboard_UI_7.png',
+                '/screenshots/Dashboard_UI_8.png'
+            ],
+            icon: Compass,
+            iconImage: '/icon module/production_webgis.png',
+            workflow: [
+                { step: '01. Ingest', action: 'Parse GPS/GNSS trajectory coordinates' },
+                { step: '02. Project', action: 'Cluster points into subgrid boundaries' },
+                { step: '03. Verify', action: 'Calculate geodesic road mileage' }
+            ],
+            specs: [
+                { label: 'Spatial Tracking', value: 'High-Precision GNSS' },
+                { label: 'Map Engine', value: 'MapLibre GL Vector Basemap' },
+                { label: 'Action Stream', value: 'Operational Action Center' }
+            ],
+            hotspots: [
+                {
+                    id: 'm1-kpi',
+                    x: 25,
+                    y: 12,
+                    title: 'Project Telemetry Overview',
+                    tag: 'Project Metrics',
+                    description: 'Live figures for Total Distance Mapped (KM), Processed 360 Panoramas, Active Processing Jobs, and Overall Pipeline Health SLA.',
+                    tip: 'Hover or click any metric card to inspect its underlying subgrid completion breakdown.'
+                },
+                {
+                    id: 'm1-action',
+                    x: 50,
+                    y: 22,
+                    title: 'Operational Action Center',
+                    tag: 'Live Work Stream',
+                    description: 'Live monitoring bar displaying ongoing workstation batches, QA defect flags requiring attention, and pending staging subgrids.',
+                    tip: 'Click the direct action button to jump straight to the required defect table.'
+                },
+                {
+                    id: 'm1-map',
+                    x: 35,
+                    y: 56,
+                    title: 'Interactive Vector WebGIS Map',
+                    tag: 'Spatial Trajectory',
+                    description: 'Hardware-accelerated MapLibre GL canvas rendering road trajectory geometries, subgrid boundaries, and station point nodes.',
+                    tip: 'Click any station node along the route to load that frame in the 360° spherical viewer.'
+                },
+                {
+                    id: 'm1-admin',
+                    x: 82,
+                    y: 52,
+                    title: 'Subgrid Processing & Admin Table',
+                    tag: 'Batch Queue',
+                    description: 'Subgrid batch ledger showing active processing status, station progress percentage, and frame counts.',
+                    tip: 'Filter by subgrid code (e.g. N94E70) to inspect specific regional processing batches.'
+                },
+                {
+                    id: 'm1-qa',
+                    x: 82,
+                    y: 84,
+                    title: '360 View & QA Mini-Inspector',
+                    tag: 'Spherical Preview',
+                    description: 'Embedded spherical panorama preview displaying heading orientation, coordinates, and optical quality status.',
+                    tip: 'Click the maximize icon to open the full-screen 8K panoramic defect workspace.'
+                }
+            ]
+        },
+
+        // MODULE 6: DATA MANAGEMENT
         {
             id: 'postgis',
-            category: 'Spatial Relational Database & Cloud Sync',
-            title: 'PostGIS Spatial Hub & Vector Layer Staging',
-            subtitle: 'Relational Spatial Staging, GIST Indexing & Map Sync',
-            description: 'Centralized spatial database architecture backed by PostgreSQL and PostGIS. Handles realtime GPS trajectory ingestion, automated duplicate subgrid prevention, spatial GIST indexing, vector layer staging, and cloud synchronization.',
+            category: 'Spatial Registry & Storage',
+            title: 'Data Management',
+            subtitle: 'Maintain project datasets, metadata, files and processing records in one environment',
+            description: 'One environment for everything the pipeline produces. Spatial datasets are staged in PostGIS with geospatial indexing, raw and processed imagery are tracked in storage with signed access, and every processing record stays in sync with the operational map. Verified datasets publish only after passing the quality gate.',
             metricLabel: 'Spatial Infrastructure',
             metricValue: 'PostGIS + GIST Index',
-            statusBadge: 'Database Management',
+            statusBadge: 'Spatial Database',
             images: [
                 '/screenshots/Dashboard_UI_9.png',
                 '/screenshots/Dashboard_UI_10.png',
@@ -779,94 +867,6 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                     tag: 'Object Storage',
                     description: 'Manages object storage buckets for high-resolution 8K panoramas with automatic signed URL generation.',
                     tip: 'Pre-signed URLs protect raw unblurred imagery from unauthorized public access.'
-                }
-            ]
-        },
-
-        // MODULE 6: REPORTS, AUDIT & RBAC GOVERNANCE
-        {
-            id: 'reports',
-            category: 'Governance, Compliance & Security',
-            title: 'Executive Reports, Audit Trail & RBAC Governance',
-            subtitle: 'Immutable Event Logging, Milestone Ledgers & Role-Based Access',
-            description: 'Enterprise governance, audit trail, and security suite. Generates formal PDF/CSV milestone reports, records all dataset transformations in an immutable audit ledger, and enforces granular Role-Based Access Control (RBAC).',
-            metricLabel: 'Governance Status',
-            metricValue: `${dailyData.length} Survey Records`,
-            statusBadge: 'Audit Trail Locked',
-            images: [
-                '/screenshots/Dashboard_UI_39.png',
-                '/screenshots/Dashboard_UI_37.png',
-                '/screenshots/Dashboard_UI_36.png',
-                '/screenshots/Dashboard_UI_38.png',
-                '/screenshots/Dashboard_UI_14.png',
-                '/screenshots/Dashboard_UI_15.png'
-            ],
-            icon: Shield,
-            iconImage: '/icon module/security-audit.png',
-            workflow: [
-                { step: '01. Record', action: 'Log user edits, imports & sign-offs' },
-                { step: '02. Audit', action: 'Verify SLA defect rates per contractor' },
-                { step: '03. Export', action: 'Generate executive summary reports' }
-            ],
-            specs: [
-                { label: 'Audit Trail', value: 'Immutable Event Timestamping' },
-                { label: 'Reporting', value: 'Formal Executive PDF / CSV Milestones' },
-                { label: 'Security', value: 'Role-Based Access Control (RBAC)' }
-            ],
-            hotspots: [
-                {
-                    id: 'm6-executive',
-                    x: 30,
-                    y: 35,
-                    title: 'Executive Progress & Quality Audit Report',
-                    tag: 'Formal Export',
-                    description: 'Project-wide KPI summary over all surveyed subgrids covering distance, coverage, QA quality, and capture gaps in a print-ready document.',
-                    tip: 'Click "Generate & Print" to auto-open print dialog and export client-ready PDF.'
-                },
-                {
-                    id: 'm6-analytics',
-                    x: 70,
-                    y: 35,
-                    title: 'Project Survey Reports & Progress Ledger',
-                    tag: 'Survey Ledger',
-                    description: 'Live contract progress tracking against total mileage targets with subgrid summaries and daily operation records.',
-                    tip: 'Tracks contractor SLA defect rates against allowed threshold percentages.'
-                },
-                {
-                    id: 'm6-operations',
-                    x: 50,
-                    y: 35,
-                    title: 'Survey Operations Analytics',
-                    tag: 'Operations KPI',
-                    description: 'Realtime charts of road capture analytics, publication status distribution (Published vs Partial), and daily throughput trends.',
-                    tip: 'Visualizes live database metrics without modifying raw imagery.'
-                },
-                {
-                    id: 'm6-coverage',
-                    x: 50,
-                    y: 65,
-                    title: 'Survey Coverage & Capture Gaps Analysis',
-                    tag: 'Gap Detection',
-                    description: 'Detects incomplete subgrids, survey frame shortages, and unpublished capture risks across regional grid zones.',
-                    tip: 'Flagged capture gaps automatically generate field re-survey work orders.'
-                },
-                {
-                    id: 'm6-audit',
-                    x: 70,
-                    y: 75,
-                    title: 'Immutable Audit Trail Ledger',
-                    tag: 'Event Logging',
-                    description: 'Cryptographically verified event logs recording every file upload, QA rejection, parameter edit, and user sign-in.',
-                    tip: 'Audit logs cannot be altered or deleted, ensuring full accountability.'
-                },
-                {
-                    id: 'm6-rbac',
-                    x: 50,
-                    y: 85,
-                    title: 'Role-Based Access Control (RBAC)',
-                    tag: 'Security Matrix',
-                    description: 'Granular role management for Admins, Operators, QA Reviewers, and Guests with permission restrictions.',
-                    tip: 'Guest mode allows safe read-only browsing without risk of modifying survey data.'
                 }
             ]
         }
@@ -1525,7 +1525,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
         <div className={`relative w-full showcase-landing text-white font-sans select-none bg-black overflow-hidden`}>
 
             {/* 1. Animate UI Stars Background, 3D Earth Globe & Clean Ambient Lighting */}
-            <div className={`absolute inset-0 z-0 overflow-hidden isolate ${viewMode === 'globe' ? 'pointer-events-auto' : 'pointer-events-none'}`}>
+            <div className={`absolute inset-0 overflow-hidden ${viewMode === 'globe' ? 'pointer-events-auto' : 'pointer-events-none'}`}>
                 <div className="absolute inset-0 bg-[#05070a]" />
 
                 {/* Animate UI Stars Background (multi-depth starfield with slow, relaxed rotation) */}
@@ -1646,13 +1646,15 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                     )}
                 </motion.div>
 
-                {/* Module tour videos — mounted INSIDE the fixed backdrop at z-5,
-                    i.e. BEHIND the globe (z-10) and behind the scrolling content
-                    (z-20), so the cards read as parked behind the sphere. Kept
-                    out of the scrollport so they stay locked to the globe, and
-                    revealed one-by-one after the globe assembles. */}
+                {/* Module tour videos — parked at z-5: BEHIND the globe (z-10)
+                    and behind the scrolling content (z-20), so the cards read
+                    as parked behind the sphere. While one is hovered on desktop
+                    the layer lifts to z-50 (above header & scrollport) so the
+                    expanded video passes in front of the hero copy. Kept out of
+                    the scrollport so they stay locked to the globe, and revealed
+                    one-by-one after the globe assembles. */}
                 {viewMode === 'modules' && (
-                    <div className={`absolute inset-0 pointer-events-none ${tourHovered ? 'z-30' : 'z-[5]'}`}>
+                    <div className={`absolute inset-0 pointer-events-none ${tourHovered ? (isMobile ? 'z-[15]' : 'z-50') : 'z-[5]'}`}>
                         <ModuleTourCards
                             modules={SYSTEM_MODULES}
                             activeSection={activeSection}
@@ -2059,8 +2061,8 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                     activeJobs={activeJobs}
                     sparklesReady={titleSparklesReady}
                     viewerName={viewerDisplayName}
-                    onLaunch={() => handleLaunchModule(current.id)}
-                    onExplore3D={() => setViewMode('globe')}
+                    onExplorePlatform={() => handleModuleChange(0)}
+                    onExploreEarth={() => setViewMode('globe')}
                 />
 
                 {SYSTEM_MODULES.map((mod, i) => (

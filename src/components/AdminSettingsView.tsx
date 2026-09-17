@@ -2869,7 +2869,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                             </h4>
                           </div>
                           <p className={`text-[9px] font-medium ${themeMode === 'light' ? 'text-text-muted' : 'text-text-muted'}`}>
-                            Mobile Mapping & Spatial Asset Intelligence
+                            Mobile Mapping & Spatial Asset Operations
                           </p>
                         </div>
                       </div>

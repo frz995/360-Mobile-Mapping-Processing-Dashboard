@@ -32,20 +32,31 @@ export const OutroSection: React.FC<OutroSectionProps> = ({ modules, onLaunch, o
                     variants={revealItem}
                     className="text-[10px] font-mono font-semibold tracking-[0.3em] uppercase text-sky-300/70"
                 >
-                    <ScrambleText text="READY WHEN YOU ARE" />
+                    <ScrambleText text="BUILT AROUND THE MOBILE MAPPING WORKFLOW" />
                 </motion.span>
 
                 <motion.h2
                     variants={revealItem}
                     className="mt-4 bg-gradient-to-b from-white via-white to-neutral-400 bg-clip-text text-transparent text-3xl sm:text-5xl xl:text-6xl font-semibold tracking-tight leading-[1.05]"
                 >
-                    Launch the Workspace
+                    From Survey Capture to Verified Data
                 </motion.h2>
 
                 <motion.p variants={revealItem} className="mt-4 text-xs sm:text-sm text-neutral-400 max-w-xl leading-relaxed">
-                    Six integrated modules. One committed source of truth. Sign in to operate the
-                    full mobile-mapping production line — or keep exploring the platform in 3D.
+                    Everything you need to manage captured data from project setup through
+                    processing, validation, and delivery.
                 </motion.p>
+
+                <motion.div variants={revealItem} className="flex flex-wrap items-center justify-center gap-2 mt-6">
+                    {['Import', 'Process', 'Review', 'QA/QC', 'Analyse', 'Deliver'].map((step, i) => (
+                        <React.Fragment key={step}>
+                            {i > 0 && <span className="text-sky-400/60 text-[10px]">→</span>}
+                            <span className="font-mono text-[10px] font-medium tracking-[0.18em] uppercase text-neutral-300 px-3 py-1.5 rounded-md border border-white/[0.07] bg-white/[0.02]">
+                                {step}
+                            </span>
+                        </React.Fragment>
+                    ))}
+                </motion.div>
 
                 <motion.div variants={revealItem} className="flex flex-wrap items-center justify-center gap-3 mt-8">
                     <MagneticWrap strength={0.35} max={8}>
