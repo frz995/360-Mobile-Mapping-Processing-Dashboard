@@ -37,9 +37,11 @@ export const AmbienceLayer: React.FC = () => {
 
     return (
         <div aria-hidden className="absolute inset-0 z-[1] pointer-events-none">
-            {/* Film grain */}
+            {/* Film grain — the overlay blend re-samples the whole scrolling
+                page every frame, which stutters phones, so it only blends on
+                larger screens. */}
             <div
-                className="absolute inset-0 opacity-[0.045] mix-blend-overlay"
+                className="absolute inset-0 opacity-[0.045] sm:mix-blend-overlay"
                 style={{ backgroundImage: GRAIN_URI, backgroundSize: '180px 180px' }}
             />
             {/* Edge vignette */}

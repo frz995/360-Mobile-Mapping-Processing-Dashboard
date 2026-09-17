@@ -72,11 +72,17 @@ const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), M
  * attribute alone (especially for `<source>` children mounted lazily inside an
  * animated layer), so force `muted` and kick playback off manually, retrying on
  * `canplay`.
+ *
+ * On phones the cards sit behind the globe and are never hovered, so six
+ * concurrently decoding video streams buy nothing while costing smoothness
+ * during fast scrolls — there we render the still poster instead.
  */
-const TourVideo: React.FC<{ moduleId: string }> = ({ moduleId }) => {
+const TourVideo: React.FC<{ moduleId: string; isMobile: boolean }> = ({ moduleId, isMobile }) => {
     const ref = useRef<HTMLVideoElement | null>(null);
+    const poster = `/videos/tour-${moduleId}-poster.png`;
 
     useEffect(() => {
+        if (isMobile) return;
         const el = ref.current;
         if (!el) return;
         el.muted = true;
@@ -94,7 +100,20 @@ const TourVideo: React.FC<{ moduleId: string }> = ({ moduleId }) => {
             el.removeEventListener('loadeddata', tryPlay);
             el.removeEventListener('canplay', tryPlay);
         };
-    }, [moduleId]);
+    }, [moduleId, isMobile]);
+
+    if (isMobile) {
+        return (
+            <img
+                src={poster}
+                alt=""
+                loading="lazy"
+                draggable={false}
+                className="absolute inset-0 w-full h-full object-cover"
+                aria-hidden="true"
+            />
+        );
+    }
 
     return (
         <video
@@ -104,7 +123,7 @@ const TourVideo: React.FC<{ moduleId: string }> = ({ moduleId }) => {
             muted
             playsInline
             preload="auto"
-            poster={`/videos/tour-${moduleId}-poster.png`}
+            poster={poster}
             className="absolute inset-0 w-full h-full object-cover"
             data-testid="module-tour-video"
             aria-hidden="true"
@@ -386,7 +405,7 @@ export const ModuleTourCards: React.FC<ModuleTourCardsProps> = ({
                         style={{ overflow: 'visible' }}
                         aria-hidden="true"
                     >
-                        {layout.cards.map((card, i) => {
+                        {layout.cards.map((_, i) => {
                             const mod = modules[i];
                             const { gx, gy, ax, ay } = layout.lineAnchors[i];
                             const lineDim = hovered !== null && hovered !== mod.id;
@@ -471,7 +490,7 @@ export const ModuleTourCards: React.FC<ModuleTourCardsProps> = ({
                                 }}
                                 data-testid="module-tour-card"
                             >
-                                <TourVideo moduleId={mod.id} />
+                                <TourVideo moduleId={mod.id} isMobile={isMobile} />
 
                                 {/* Readability scrim only — card body stays opaque */}
                                 <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/85 to-transparent pointer-events-none" />

@@ -1630,7 +1630,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             </div>
 
             {/* 2. Top Header Navbar (Module navigation centered, balanced left & right) */}
-            <header className="absolute top-0 left-0 right-0 z-40 px-3 sm:px-8 py-2 sm:py-3 pt-[max(0.5rem,env(safe-area-inset-top))] sm:pt-3 flex items-center justify-between gap-2 sm:gap-4 bg-[#05070a]/40 backdrop-blur-xl border-b border-white/[0.06]">
+            <header className="absolute top-0 left-0 right-0 z-40 px-3 sm:px-8 py-2 sm:py-3 pt-[max(0.5rem,env(safe-area-inset-top))] sm:pt-3 flex items-center justify-between gap-2 sm:gap-4 bg-[#05070a]/60 backdrop-blur-sm sm:bg-[#05070a]/40 sm:backdrop-blur-xl border-b border-white/[0.06]">
                 <motion.div
                     aria-hidden
                     style={{ scaleX: scrollYProgress }}
