@@ -941,23 +941,26 @@ select:-webkit-autofill:focus {
 }
 
 /* ==========================================================================
-   FULLSCREEN LANDING ROOT — hard-fill the viewport on every browser.
-   `position: fixed; inset: 0` pins the landing to the visual viewport so no
-   dark body background can peek through under the URL-bar/home-indicator
-   area during chrome transitions. The dvh height remains as a floor for
-   browsers with broken fixed-inset behavior.
+   FULLSCREEN LANDING ROOT — hard-fill the viewport on every browser, on
+   bezel (notched/rounded) and bezeless (edge-to-edge) screens alike.
+   `position: fixed; inset: 0` pins the landing to the full visual viewport,
+   so it extends behind the URL-bar / home-indicator / notch cutouts.
+   NOTE: never combine that with a fixed `height` — height over-constrains the
+   box, and when it resolves shorter than the viewport the page background
+   peeks out along the bottom edge as a gray canvas band. The dvh floor stays
+   only as a fallback for browsers with broken fixed-inset handling.
    ========================================================================== */
 .showcase-landing {
   position: fixed;
   inset: 0;
-  height: 100vh;
-  max-height: 100vh;
+  height: auto;
+  min-height: 100vh;
+  background-color: #05070a;
 }
 
 @supports (height: 100dvh) {
   .showcase-landing {
-    height: 100dvh;
-    max-height: 100dvh;
+    min-height: 100dvh;
   }
 }
 
@@ -1116,14 +1119,22 @@ select:-webkit-autofill:focus {
 }
 
 /*
- * Phones: the flare blobs live inside the fixed backdrop, so animating a big
- * blurred layer re-rasterises it on every scroll frame — visible as shake
- * during fast flicks. Freeze the motion and shrink the blur radius there.
+ * Phones: freeze the ambient loops. Every one of these animates a large
+ * blurred or full-screen layer inside the fixed backdrop, so the compositor
+ * re-rasterises them on each scroll frame and the page visibly shakes during
+ * fast flicks. `animation-play-state: paused` holds the resting keyframe
+ * (keeping its scale/opacity) instead of dropping the animation entirely.
  */
 @media (max-width: 640px) {
   .animate-corner-flare,
+  .animate-corner-flare-soft,
+  .animate-aurora-a,
+  .animate-aurora-b,
+  .animate-spin-slow {
+    animation-play-state: paused !important;
+  }
+  .animate-corner-flare,
   .animate-corner-flare-soft {
-    animation: none !important;
     filter: blur(16px) !important;
   }
 }

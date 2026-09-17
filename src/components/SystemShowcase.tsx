@@ -159,6 +159,17 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
     useEffect(() => {
         const container = scrollRef.current;
         if (!container) return;
+        // Touch screens keep their NATIVE scrolling. Lenis only smooths
+        // wheel/trackpad input (touch is passed straight through), yet the Snap
+        // plugin would still fire `scrollTo` against the finger's momentum —
+        // the two fight, and the result is the shake/vibration seen during fast
+        // flick scrolling. CSS `snap-start` on the sections still gives touch
+        // users landing points, handled by the compositor instead of JS.
+        const coarsePointer =
+            typeof window !== 'undefined' &&
+            typeof window.matchMedia === 'function' &&
+            window.matchMedia('(pointer: coarse)').matches;
+        if (coarsePointer) return;
         const lenis = new Lenis({
             wrapper: container,
             autoRaf: true,
@@ -231,6 +242,9 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
     const [globeZoom, setGlobeZoom] = useState(1.05);
     const [globePan, setGlobePan] = useState({ x: 0, y: 0 });
     const [showAtomicGlobe, setShowAtomicGlobe] = useState(true);
+    // Card currently held/pointed in the tour layer — lets the layer restack
+    // above the globe so a long-pressed card is actually readable.
+    const [tourHovered, setTourHovered] = useState<string | null>(null);
 
     // While the globe container animates between the corner park and full-screen (700ms),
     // hold the globe's rotation off so the two animations don't fight and stall.
@@ -1562,11 +1576,12 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                     out of the scrollport so they stay locked to the globe, and
                     revealed one-by-one after the globe assembles. */}
                 {viewMode === 'modules' && (
-                    <div className="absolute inset-0 z-[5] pointer-events-none">
+                    <div className={`absolute inset-0 pointer-events-none ${tourHovered ? 'z-30' : 'z-[5]'}`}>
                         <ModuleTourCards
                             modules={SYSTEM_MODULES}
                             activeSection={activeSection}
                             isMobile={isMobile}
+                            onHoverChange={setTourHovered}
                         />
                     </div>
                 )}
