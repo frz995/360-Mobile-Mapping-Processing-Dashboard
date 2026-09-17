@@ -585,19 +585,18 @@ export const ModuleTourCards: React.FC<ModuleTourCardsProps> = ({
                         {isMobile && visible && showTip && !hoveredMod && (
                             <motion.div
                                 key="module-tour-tip"
-                                initial={{ opacity: 0, y: -10, x: '-50%' }}
-                                animate={{ opacity: 1, y: 0, x: '-50%' }}
-                                exit={{ opacity: 0, y: -10, x: '-50%' }}
+                                initial={{ opacity: 0, x: '-50%', y: '-50%' }}
+                                animate={{ opacity: 1, x: '-50%', y: '-50%' }}
+                                exit={{ opacity: 0, x: '-50%', y: '-50%' }}
                                 transition={{ duration: 0.45, ease: 'easeOut' }}
-                                className="fixed left-1/2 z-[59] flex items-center gap-2 rounded-full border border-white/15 bg-black/75 backdrop-blur-md px-3 py-1.5 shadow-xl pointer-events-none"
-                                style={{ top: 'calc(env(safe-area-inset-top, 0px) + 3.5rem)' }}
+                                className="fixed left-1/2 top-1/2 z-[59] flex items-center gap-1.5 rounded-full border border-white/15 bg-black/70 backdrop-blur-md px-2.5 py-1 shadow-lg pointer-events-none"
                                 data-testid="module-tour-tip"
                             >
-                                <span className="material-symbols-outlined text-[14px] leading-none text-white/70">
+                                <span className="material-symbols-outlined text-[12px] leading-none text-white/70">
                                     touch_app
                                 </span>
-                                <span className="text-[10px] uppercase tracking-[0.16em] text-white/80 whitespace-nowrap">
-                                    Press a card to preview
+                                <span className="text-[9px] uppercase tracking-[0.14em] text-white/80 whitespace-nowrap">
+                                    Long press card to preview
                                 </span>
                             </motion.div>
                         )}
