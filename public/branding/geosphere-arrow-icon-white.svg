@@ -1,0 +1,9 @@
+<svg viewBox="0 0 200 200" width="200" height="200" fill="none" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
+  <!-- GeoSphere white dual-chevron flight mark (icon only, no text, no font dependency) -->
+  <g id="flight-mark">
+    <path d="M 189 11 C 145.3 24.9, 77.7 15.0, 62 67 C 89.0 65.7, 118.7 56.0, 147 52 Z" fill="#FFFFFF" />
+    <path d="M 189 11 L 147 52 C 145.6 80.5, 135.4 109.0, 132 138 C 186.3 122.4, 175.4 54.6, 189 11 Z" fill="#FFFFFF" />
+    <path d="M 137 63 C 93.3 76.9, 25.7 67.0, 10 119 C 37.0 117.7, 66.7 108.0, 95 104 Z" fill="#FFFFFF" />
+    <path d="M 137 63 L 95 104 C 93.6 132.5, 83.4 161.0, 80 190 C 134.3 174.4, 123.4 106.6, 137 63 Z" fill="#FFFFFF" />
+  </g>
+</svg>

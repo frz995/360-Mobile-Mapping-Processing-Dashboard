@@ -1,0 +1,21 @@
+{
+  "name": "geosphere-remotion-tours",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Remotion authoring project for the GeoSphere 360 module tour videos rendered into ../public/videos.",
+  "scripts": {
+    "studio": "remotion studio src/index.ts",
+    "render": "node scripts/render-all.cjs"
+  },
+  "dependencies": {
+    "@remotion/google-fonts": "^4.0.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "remotion": "^4.0.0"
+  },
+  "devDependencies": {
+    "@remotion/cli": "^4.0.0",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0"
+  }
+}

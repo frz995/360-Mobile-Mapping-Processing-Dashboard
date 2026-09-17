@@ -37,7 +37,7 @@ export const OutroSection: React.FC<OutroSectionProps> = ({ modules, onLaunch, o
 
                 <motion.h2
                     variants={revealItem}
-                    className="mt-4 text-3xl sm:text-5xl xl:text-6xl font-semibold tracking-tight text-white leading-[1.05]"
+                    className="mt-4 bg-gradient-to-b from-white via-white to-neutral-400 bg-clip-text text-transparent text-3xl sm:text-5xl xl:text-6xl font-semibold tracking-tight leading-[1.05]"
                 >
                     Launch the Workspace
                 </motion.h2>
@@ -79,7 +79,16 @@ export const OutroSection: React.FC<OutroSectionProps> = ({ modules, onLaunch, o
                                 className="group flex flex-col items-center gap-2 rounded-xl border border-white/[0.07] bg-white/[0.02] hover:bg-white/[0.05] hover:border-white/25 px-3 py-4 cursor-pointer transition-colors"
                                 title={m.title}
                             >
-                                <Icon className="w-4 h-4 text-neutral-400 group-hover:text-sky-300 transition-colors" />
+                                {m.iconImage ? (
+                                    <img
+                                        src={m.iconImage}
+                                        alt=""
+                                        className="icon-white w-7 h-7 object-contain group-hover:scale-110 transition-transform"
+                                        loading="lazy"
+                                    />
+                                ) : (
+                                    <Icon className="w-4 h-4 text-neutral-400 group-hover:text-sky-300 transition-colors" />
+                                )}
                                 <span className="text-[9px] font-medium uppercase tracking-[0.12em] text-neutral-500 group-hover:text-neutral-200 transition-colors leading-tight text-center">
                                     {m.title.split('&')[0].trim()}
                                 </span>

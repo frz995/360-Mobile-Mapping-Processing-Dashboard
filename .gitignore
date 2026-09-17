@@ -18,6 +18,9 @@ dist-ssr
 # TypeScript build info
 *.tsbuildinfo
 
+# Remotion render cache
+remotion/.remotion/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

@@ -21,7 +21,7 @@ describe('SystemShowcase Component', () => {
     render(<SystemShowcase onEnterDashboard={vi.fn()} />);
 
     expect(screen.getByRole('heading', { level: 1, name: 'GeoSphere 360°' })).toBeInTheDocument();
-    expect(screen.getByText('A Cloud-Native Mobile Mapping Platform')).toBeInTheDocument();
+    expect(screen.getByText('A Cloud-Native Mobile Mapping Platform.')).toBeInTheDocument();
     expect(screen.getAllByText(/Mobile Mapping Data Management System/i).length).toBeGreaterThan(0);
     expect(screen.getByRole('heading', { level: 2, name: /Executive Dashboard & Spatial Telemetry/i })).toBeInTheDocument();
     // Every module panel ships its own workflow timeline in the scroll story

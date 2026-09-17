@@ -27,6 +27,8 @@ export interface SystemModule {
     statusBadge: string;
     images: string[];
     icon: React.ElementType;
+    /** Optional raster module icon (favored over `icon` when set). */
+    iconImage?: string;
     workflow: WorkflowStep[];
     specs: { label: string; value: string }[];
     hotspots: SectionHotspot[];
