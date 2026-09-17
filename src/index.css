@@ -1115,6 +1115,19 @@ select:-webkit-autofill:focus {
   will-change: transform, opacity;
 }
 
+/*
+ * Phones: the flare blobs live inside the fixed backdrop, so animating a big
+ * blurred layer re-rasterises it on every scroll frame — visible as shake
+ * during fast flicks. Freeze the motion and shrink the blur radius there.
+ */
+@media (max-width: 640px) {
+  .animate-corner-flare,
+  .animate-corner-flare-soft {
+    animation: none !important;
+    filter: blur(16px) !important;
+  }
+}
+
 /* Pulsing ping ring for screenshot hotspot pins */
 @keyframes hotspot-ping {
   0% {
