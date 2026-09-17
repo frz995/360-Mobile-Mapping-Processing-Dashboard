@@ -3,6 +3,12 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Render transparent-background PNG module icons as white silhouettes.
+   brightness(0) → black, invert(1) → white; alpha/transparency untouched. */
+img.icon-white {
+  filter: brightness(0) invert(1);
+}
+
 body {
   margin: 0;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
@@ -936,11 +942,14 @@ select:-webkit-autofill:focus {
 
 /* ==========================================================================
    FULLSCREEN LANDING ROOT — hard-fill the viewport on every browser.
-   `100vh` is the floor fallback (works everywhere); `100dvh` upgrades to the
-   true visible height only where the unit is supported (mobile URL chrome).
-   Declared AFTER the base rule so the @supports upgrade always wins.
+   `position: fixed; inset: 0` pins the landing to the visual viewport so no
+   dark body background can peek through under the URL-bar/home-indicator
+   area during chrome transitions. The dvh height remains as a floor for
+   browsers with broken fixed-inset behavior.
    ========================================================================== */
 .showcase-landing {
+  position: fixed;
+  inset: 0;
   height: 100vh;
   max-height: 100vh;
 }
@@ -1084,6 +1093,28 @@ select:-webkit-autofill:focus {
   will-change: transform;
 }
 
+/* Soft upper-corner light flare — a slow breathing bloom drifting off the
+   top-left edge behind the header. */
+@keyframes corner-flare {
+  0%,
+  100% {
+    opacity: 0.7;
+    transform: scale(1) translate(0, 0);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.14) translate(30px, 22px);
+  }
+}
+.animate-corner-flare {
+  animation: corner-flare 9s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+.animate-corner-flare-soft {
+  animation: corner-flare 13s ease-in-out infinite reverse;
+  will-change: transform, opacity;
+}
+
 /* Pulsing ping ring for screenshot hotspot pins */
 @keyframes hotspot-ping {
   0% {
@@ -1127,6 +1158,8 @@ select:-webkit-autofill:focus {
   .animate-showcase-marquee,
   .animate-aurora-a,
   .animate-aurora-b,
+  .animate-corner-flare,
+  .animate-corner-flare-soft,
   .animate-hotspot-ping,
   .animate-scroll-hint,
   .beam-frame::before {

@@ -48,6 +48,7 @@ import { HeroSection } from './showcase/HeroSection';
 import { ModuleSection } from './showcase/ModuleSection';
 import { OutroSection } from './showcase/OutroSection';
 import { SectionRail } from './showcase/SectionRail';
+import { ModuleTourCards } from './showcase/ModuleTourCards';
 import { LaunchPortal } from './showcase/LaunchPortal';
 import type { SectionHotspot, SystemModule, WorkflowStep } from './showcase/types';
 import { HERO_SECTION, globePoseFor, springGlide } from './showcase/showcaseMotion';
@@ -415,6 +416,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                 '/screenshots/Dashboard_UI_8.png'
             ],
             icon: Compass,
+            iconImage: '/icon module/production_webgis.png',
             workflow: [
                 { step: '01. Ingest', action: 'Parse GPS/GNSS trajectory coordinates' },
                 { step: '02. Project', action: 'Cluster points into subgrid boundaries' },
@@ -491,6 +493,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                 '/screenshots/Dashboard_UI_18.png'
             ],
             icon: FolderKanban,
+            iconImage: '/icon module/data_management.png',
             workflow: [
                 { step: '01. Collect', action: 'Upload field CSV & raw panorama sets' },
                 { step: '02. Verify', action: 'Cross-check files against storage bucket' },
@@ -561,6 +564,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                 '/screenshots/Dashboard_UI_35.png'
             ],
             icon: Cpu,
+            iconImage: '/icon module/Production_pipeline.png',
             workflow: [
                 { step: '01. Blur', action: 'PC 1: YOLOv8 face & license plate blur' },
                 { step: '02. Stitch', action: 'PC 2: PTGui / Creator 6 360° stitching' },
@@ -646,6 +650,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                 '/screenshots/Dashboard_UI_3.png'
             ],
             icon: Camera,
+            iconImage: '/icon module/qaqc.png',
             workflow: [
                 { step: '01. Sequence', action: 'Load trajectory nodes in travel order' },
                 { step: '02. Compute', action: 'Run multi-thread Tenengrad analysis' },
@@ -713,6 +718,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                 '/screenshots/Dashboard_UI_12.png'
             ],
             icon: Database,
+            iconImage: '/icon module/database_management.png',
             workflow: [
                 { step: '01. Stage', action: 'Write imported rows to staging tables' },
                 { step: '02. Index', action: 'Apply spatial GIST index on geometry' },
@@ -782,6 +788,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                 '/screenshots/Dashboard_UI_15.png'
             ],
             icon: Shield,
+            iconImage: '/icon module/security-audit.png',
             workflow: [
                 { step: '01. Record', action: 'Log user edits, imports & sign-offs' },
                 { step: '02. Audit', action: 'Verify SLA defect rates per contractor' },
@@ -1549,6 +1556,21 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                     )}
                 </motion.div>
 
+                {/* Module tour videos — mounted INSIDE the fixed backdrop at z-5,
+                    i.e. BEHIND the globe (z-10) and behind the scrolling content
+                    (z-20), so the cards read as parked behind the sphere. Kept
+                    out of the scrollport so they stay locked to the globe, and
+                    revealed one-by-one after the globe assembles. */}
+                {viewMode === 'modules' && (
+                    <div className="absolute inset-0 z-[5] pointer-events-none">
+                        <ModuleTourCards
+                            modules={SYSTEM_MODULES}
+                            activeSection={activeSection}
+                            isMobile={isMobile}
+                        />
+                    </div>
+                )}
+
                 {/* Atmospheric Entry HUD Badge during planetary camera dive — text only, no box or dot */}
                 {isFlyingIn && (
                     <div className="absolute inset-0 z-30 pointer-events-none flex items-center justify-center animate-in fade-in duration-200">
@@ -1575,15 +1597,34 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             {/* Global ambience — film grain, vignette & cursor spotlight */}
             <AmbienceLayer />
 
-            {/* Soft upper-corner edge light — white halo bleeding off the far top-left
-                corner behind the frosted header. Purely decorative. */}
-            <div aria-hidden className="absolute inset-0 z-[1] pointer-events-none">
+            {/* Soft upper-corner edge light — a brighter white halo bleeding
+                off the far top-left corner behind the frosted header, with a
+                slower secondary bloom breathing out of phase. Purely
+                decorative. */}
+            <div aria-hidden className="absolute inset-0 z-[1] pointer-events-none overflow-hidden">
                 <div
-                    className="absolute -top-56 -left-56 w-[36rem] h-[36rem] rounded-full"
+                    className="animate-corner-flare-soft absolute -top-72 -left-72 w-[52rem] h-[52rem] rounded-full"
                     style={{
                         background:
-                            'radial-gradient(closest-side, rgba(255,255,255,0.06), rgba(255,255,255,0.02) 45%, transparent 72%)',
-                        filter: 'blur(36px)',
+                            'radial-gradient(closest-side, rgba(255,255,255,0.07), rgba(186,215,255,0.03) 48%, transparent 74%)',
+                        filter: 'blur(48px)',
+                    }}
+                />
+                <div
+                    className="animate-corner-flare absolute -top-64 -left-64 w-[42rem] h-[42rem] rounded-full"
+                    style={{
+                        background:
+                            'radial-gradient(closest-side, rgba(255,255,255,0.13), rgba(255,255,255,0.04) 45%, transparent 72%)',
+                        filter: 'blur(38px)',
+                    }}
+                />
+                <div
+                    className="animate-corner-flare absolute -top-44 -left-44 w-[18rem] h-[18rem] rounded-full"
+                    style={{
+                        background:
+                            'radial-gradient(closest-side, rgba(255,255,255,0.2), rgba(255,255,255,0.06) 50%, transparent 76%)',
+                        filter: 'blur(30px)',
+                        animationDuration: '7s',
                     }}
                 />
             </div>

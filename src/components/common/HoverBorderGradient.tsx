@@ -37,16 +37,16 @@ export function HoverBorderGradient({
     };
 
     const movingMap: Record<Direction, string> = {
-        TOP: "radial-gradient(20.7% 50% at 50% 0%, hsl(0, 0%, 100%) 0%, rgba(255, 255, 255, 0) 100%)",
-        LEFT: "radial-gradient(16.6% 43.1% at 0% 50%, hsl(0, 0%, 100%) 0%, rgba(255, 255, 255, 0) 100%)",
+        TOP: "radial-gradient(75% 210% at 50% 0%, hsl(0, 0%, 100%) 0%, rgba(255, 255, 255, 0) 100%)",
+        LEFT: "radial-gradient(210% 75% at 0% 50%, hsl(0, 0%, 100%) 0%, rgba(255, 255, 255, 0) 100%)",
         BOTTOM:
-            "radial-gradient(20.7% 50% at 50% 100%, hsl(0, 0%, 100%) 0%, rgba(255, 255, 255, 0) 100%)",
+            "radial-gradient(75% 210% at 50% 100%, hsl(0, 0%, 100%) 0%, rgba(255, 255, 255, 0) 100%)",
         RIGHT:
-            "radial-gradient(16.2% 41.199999999999996% at 100% 50%, hsl(0, 0%, 100%) 0%, rgba(255, 255, 255, 0) 100%)",
+            "radial-gradient(210% 75% at 100% 50%, hsl(0, 0%, 100%) 0%, rgba(255, 255, 255, 0) 100%)",
     };
 
     const highlight =
-        "radial-gradient(75% 181.15942028985506% at 50% 50%, #3275F8 0%, rgba(255, 255, 255, 0) 100%)";
+        "radial-gradient(85% 190% at 50% 50%, #3275F8 0%, rgba(255, 255, 255, 0) 100%)";
 
     useEffect(() => {
         if (!hovered) {
@@ -79,10 +79,10 @@ export function HoverBorderGradient({
             </div>
             <motion.div
                 className={cn(
-                    "flex-none inset-0 overflow-hidden absolute z-0 rounded-[inherit]"
+                    "flex-none inset-0 overflow-visible absolute z-0 rounded-[inherit]"
                 )}
                 style={{
-                    filter: "blur(2px)",
+                    filter: "blur(6px)",
                     position: "absolute",
                     width: "100%",
                     height: "100%",
@@ -95,7 +95,7 @@ export function HoverBorderGradient({
                 }}
                 transition={{ ease: "linear", duration: duration ?? 1 }}
             />
-            <div className="bg-black absolute z-1 flex-none inset-[2px] rounded-[inherit]" />
+            <div className="bg-black absolute z-1 flex-none inset-[3px] rounded-[inherit]" />
         </Tag>
     );
 }
