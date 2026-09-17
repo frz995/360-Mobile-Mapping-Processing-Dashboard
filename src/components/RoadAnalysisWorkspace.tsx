@@ -1618,13 +1618,13 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
         )}
 
         {/* Main Panel Canvas */}
-        <div className="bg-card border border-subtle rounded-2xl shadow-md overflow-hidden flex flex-col flex-1 min-h-0">
+        <div className="bg-card border border-subtle rounded-2xl shadow-md overflow-hidden flex flex-col flex-1 min-h-fit md:min-h-0">
           <div className="px-3 pt-2 border-b border-divider bg-card shrink-0">
             <UnderlineTabStrip tabs={TABS} active={activeTab} onChange={setActiveTab} tabLabel={(k) => TAB_LABEL[k]} />
           </div>
 
           <div className="flex flex-col lg:flex-row flex-1 min-h-0">
-            <aside className="w-full lg:w-80 shrink-0 border-b lg:border-b-0 lg:border-r border-divider overflow-y-auto p-3 flex flex-col gap-3 bg-app/40 max-h-[42vh] lg:max-h-none">
+            <aside className="w-full lg:w-80 shrink-0 border-b lg:border-b-0 lg:border-r border-divider overflow-y-auto p-3 flex flex-col gap-3 bg-app/40 max-h-[38vh] md:max-h-[42vh] lg:max-h-none">
               {activeTab === 'region' && (
                 <>
                   <div>
@@ -2489,7 +2489,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
             <div className="flex-1 min-w-0 bg-app overflow-hidden relative flex flex-col">
               {/* Live map — always mounted; hidden (not unmounted) while on the Print tab */}
               <div
-                className="flex-1 min-h-0 relative"
+                className="flex-1 min-h-0 max-md:min-h-[52vh] relative"
                 style={{
                   visibility: activeTab === 'print' ? 'hidden' : 'visible',
                   pointerEvents: activeTab === 'print' ? 'none' : 'auto'

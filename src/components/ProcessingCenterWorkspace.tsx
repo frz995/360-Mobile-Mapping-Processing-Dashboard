@@ -136,8 +136,8 @@ export const ProcessingCenterWorkspace: React.FC<ProcessingCenterWorkspaceProps>
   };
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 overflow-hidden animate-in fade-in duration-500">
-      <div className="flex-1 flex flex-col gap-3 min-h-0 overflow-y-auto p-4">
+    <div className="flex-1 flex flex-col min-h-0 md:overflow-hidden animate-in fade-in duration-500">
+      <div className="flex-1 flex flex-col gap-3 min-h-0 md:overflow-y-auto p-4">
         {/* Header */}
         <div className="px-1">
           <h2 className="text-base font-bold text-text-base tracking-wide">
@@ -149,7 +149,7 @@ export const ProcessingCenterWorkspace: React.FC<ProcessingCenterWorkspaceProps>
         </div>
 
         {/* Main Panel Canvas */}
-        <div className="bg-card border border-subtle rounded-2xl shadow-md overflow-hidden flex flex-col min-h-0">
+        <div className="bg-card border border-subtle rounded-2xl shadow-md md:overflow-hidden flex flex-col min-h-0">
           <div className="px-3 pt-2 border-b border-divider bg-card">
             <UnderlineTabStrip
               tabs={TABS}
@@ -159,7 +159,7 @@ export const ProcessingCenterWorkspace: React.FC<ProcessingCenterWorkspaceProps>
             />
           </div>
 
-          <div key={activeTab} className="p-4 flex-1 flex flex-col min-h-0 overflow-y-auto animate-panel-enter">
+          <div key={activeTab} className="p-4 flex-1 flex flex-col min-h-0 md:overflow-y-auto animate-panel-enter">
             {/* Active tab panel */}
             {activeTab === 'board' && (
               <JobBoardPanel

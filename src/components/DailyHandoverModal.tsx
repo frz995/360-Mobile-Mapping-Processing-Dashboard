@@ -125,11 +125,11 @@ export const DailyHandoverModal: React.FC<DailyHandoverModalProps> = ({
     const operatorName = formatDisplayName(currentUser);
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-md animate-fadeIn select-none font-sans">
-            <div className="relative w-full max-w-3xl max-h-[90vh] bg-card border border-subtle rounded-2xl shadow-2xl flex flex-col overflow-hidden text-text-base transition-all">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/80 backdrop-blur-md animate-fadeIn select-none font-sans">
+            <div className="relative w-full max-w-3xl max-h-[82vh] sm:max-h-[90vh] bg-card border border-subtle rounded-2xl shadow-2xl flex flex-col overflow-hidden text-text-base transition-all">
 
                 {/* 1. Header Section */}
-                <div className="px-5 py-4 border-b border-subtle flex items-center justify-between shrink-0">
+                <div className="px-4 py-3.5 sm:px-5 sm:py-4 border-b border-subtle flex items-center justify-between shrink-0">
                     <div>
                         <h3 className="text-sm sm:text-base font-bold text-text-base">
                             Daily Operations Briefing
@@ -155,7 +155,7 @@ export const DailyHandoverModal: React.FC<DailyHandoverModalProps> = ({
                 </div>
 
                 {/* 2. Scrollable Body Content */}
-                <div className="flex-1 overflow-y-auto p-5 space-y-4">
+                <div className="flex-1 overflow-y-auto p-4 space-y-3.5 sm:p-5 sm:space-y-4">
 
                     {/* Operational Telemetry Summary Bar */}
                     <div className="bg-inner border border-subtle rounded-xl p-3 text-xs flex flex-wrap items-center justify-between gap-y-2 gap-x-4">
@@ -336,7 +336,7 @@ export const DailyHandoverModal: React.FC<DailyHandoverModalProps> = ({
                 </div>
 
                 {/* 3. Footer Controls */}
-                <div className="px-5 py-3.5 border-t border-subtle flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
+                <div className="px-4 py-3 sm:px-5 sm:py-3.5 border-t border-subtle flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
                     <label className="flex items-center gap-2 text-xs text-text-muted hover:text-text-base cursor-pointer select-none">
                         <input
                             type="checkbox"

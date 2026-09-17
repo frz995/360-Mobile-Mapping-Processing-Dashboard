@@ -499,7 +499,7 @@ export const DatasetsPanel: React.FC<DatasetsPanelProps> = ({
       {/* Panotrack Data Grid Table */}
       <div className="bg-inner border border-subtle rounded-xl overflow-hidden shadow-sm">
         <div className="overflow-x-auto max-h-[500px]">
-          <table className="w-full text-left text-[11px] border-collapse font-mono">
+          <table className="w-full min-w-[900px] text-left text-[11px] border-collapse font-mono">
             <thead className="sticky top-0 bg-card/95 backdrop-blur text-zinc-400 uppercase tracking-wider text-[10px] font-semibold border-b border-subtle z-10">
               <tr>
                 <th className="py-2.5 px-3">Subgrid / Tour</th>
@@ -731,7 +731,7 @@ export const DatasetsPanel: React.FC<DatasetsPanelProps> = ({
 
             {/* 8-Column Data Table */}
             <div className="p-4 overflow-auto flex-1 font-mono text-[11px]">
-              <table className="w-full text-left border-collapse">
+              <table className="w-full min-w-[900px] text-left border-collapse">
                 <thead className="sticky top-0 bg-card text-zinc-400 uppercase tracking-wider text-[10px] font-semibold border-b border-subtle">
                   <tr>
                     <th className="py-2 px-2.5">filename</th>

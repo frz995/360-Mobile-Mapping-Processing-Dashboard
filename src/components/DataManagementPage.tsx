@@ -3579,19 +3579,20 @@ export const DataManagementPage = ({
 
                 {/* Pagination Controls Footer */}
                 {totalItems > 0 && (
-                  <div className="px-5 py-3.5 bg-card border-t border-subtle flex flex-wrap items-center justify-between gap-3 text-xs text-text-muted">
-                    <div className="flex items-center gap-4">
+                  <div className="px-4 py-3 sm:px-5 sm:py-3.5 bg-card border-t border-subtle flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-2.5 sm:gap-3 text-xs text-text-muted">
+                    <div className="flex items-center justify-between gap-4 sm:justify-start">
                       <span>
                         Showing <strong className="text-text-base font-bold">{(safePage - 1) * pageSize + 1}</strong> to{' '}
                         <strong className="text-text-base font-bold">{Math.min(safePage * pageSize, totalItems)}</strong> of{' '}
-                        <strong className="text-text-base font-bold">{totalItems}</strong> entries
+                        <strong className="text-text-base font-bold">{totalItems}</strong>
                       </span>
-                      <div className="flex items-center gap-2">
-                        <span>Rows per page:</span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="hidden sm:inline">Rows per page:</span>
                         <select
                           value={pageSize}
                           onChange={(e) => setPageSize(Number(e.target.value))}
-                          className="bg-card border border-subtle hover:border-slate-600 text-text-base rounded-lg px-2.5 py-1 text-xs font-semibold focus:outline-none focus:border-sky-500 cursor-pointer"
+                          title="Rows per page"
+                          className="bg-card border border-subtle hover:border-slate-600 text-text-base rounded-lg px-2 sm:px-2.5 py-1 text-xs font-semibold focus:outline-none focus:border-sky-500 cursor-pointer"
                         >
                           <option value={10}>10</option>
                           <option value={25}>25</option>
@@ -3601,26 +3602,28 @@ export const DataManagementPage = ({
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center justify-between sm:justify-end gap-2">
                       <button
                         onClick={() => setPage(p => Math.max(1, p - 1))}
                         disabled={safePage === 1}
-                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-card hover:bg-inner disabled:opacity-40 text-text-base font-medium transition-colors cursor-pointer border border-subtle text-xs"
+                        aria-label="Previous page"
+                        className="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-lg bg-card hover:bg-inner disabled:opacity-40 text-text-base font-medium transition-colors cursor-pointer border border-subtle text-xs"
                       >
                         <ChevronLeft size={14} />
-                        Previous
+                        <span className="hidden sm:inline">Previous</span>
                       </button>
 
-                      <span className="px-3.5 py-1.5 bg-card rounded-lg text-text-base font-semibold border border-subtle text-xs">
+                      <span className="px-3 sm:px-3.5 py-1.5 bg-card rounded-lg text-text-base font-semibold border border-subtle text-xs whitespace-nowrap">
                         Page {safePage} of {totalPages}
                       </span>
 
                       <button
                         onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                         disabled={safePage === totalPages}
-                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-card hover:bg-inner disabled:opacity-40 text-text-base font-medium transition-colors cursor-pointer border border-subtle text-xs"
+                        aria-label="Next page"
+                        className="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-lg bg-card hover:bg-inner disabled:opacity-40 text-text-base font-medium transition-colors cursor-pointer border border-subtle text-xs"
                       >
-                        Next
+                        <span className="hidden sm:inline">Next</span>
                         <ChevronRight size={14} />
                       </button>
                     </div>

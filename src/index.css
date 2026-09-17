@@ -1139,6 +1139,170 @@ select:-webkit-autofill:focus {
   }
 }
 
+/*
+ * Mobile density pass for every dashboard PANEL (dashboard home excluded).
+ *
+ * `.mobile-compact` is applied to the <main> content canvas whenever the
+ * active page is not `dashboard`, and directly on the Project & Map Settings
+ * root so it also works when that view is rendered standalone.
+ *
+ * Two goals:
+ *   1. FIT - `overflow-wrap: anywhere` lowers the intrinsic min-content width
+ *      so long single-token values (endpoints, URLs, table names, bucket keys)
+ *      can no longer force a flex/grid row wider than the viewport, which is
+ *      what clipped the right-hand side of the cards on phones.
+ *   2. DENSITY - text, padding, gaps and icon sizes step down so a phone shows
+ *      far more of each panel without touching the desktop layout.
+ * Everything lives below the 640px breakpoint, so desktop is byte-identical.
+ */
+@media (max-width: 640px) {
+  .mobile-compact {
+    overflow-wrap: anywhere;
+    font-size: 0.625rem;
+    line-height: 1.25;
+  }
+  .mobile-compact h2 {
+    font-size: 0.75rem;
+    line-height: 1rem;
+  }
+  .mobile-compact h3 {
+    font-size: 0.5625rem;
+    line-height: 0.8rem;
+    letter-spacing: 0.01em;
+  }
+  .mobile-compact h4 {
+    font-size: 0.5625rem;
+    line-height: 0.8rem;
+  }
+  .mobile-compact p {
+    line-height: 1.25;
+  }
+  .mobile-compact .text-sm {
+    font-size: 0.625rem;
+    line-height: 0.875rem;
+  }
+  .mobile-compact .text-xs {
+    font-size: 0.53125rem;
+    line-height: 0.8rem;
+  }
+  .mobile-compact .text-\[11px\] {
+    font-size: 0.5rem;
+    line-height: 0.7rem;
+  }
+  .mobile-compact .text-\[10px\] {
+    font-size: 0.5rem;
+    line-height: 0.65rem;
+  }
+  .mobile-compact .p-5 {
+    padding: 0.4rem;
+  }
+  .mobile-compact .p-4 {
+    padding: 0.35rem;
+  }
+  .mobile-compact .p-3\.5 {
+    padding: 0.35rem;
+  }
+  .mobile-compact .p-3 {
+    padding: 0.3rem;
+  }
+  .mobile-compact .p-2 {
+    padding: 0.25rem;
+  }
+  .mobile-compact .px-3 {
+    padding-left: 0.4rem;
+    padding-right: 0.4rem;
+  }
+  .mobile-compact .px-3\.5 {
+    padding-left: 0.45rem;
+    padding-right: 0.45rem;
+  }
+  .mobile-compact .py-2\.5 {
+    padding-top: 0.25rem;
+    padding-bottom: 0.25rem;
+  }
+  .mobile-compact .py-2 {
+    padding-top: 0.25rem;
+    padding-bottom: 0.25rem;
+  }
+  .mobile-compact .pb-3 {
+    padding-bottom: 0.35rem;
+  }
+  .mobile-compact .pt-2 {
+    padding-top: 0.25rem;
+  }
+  .mobile-compact .space-y-5 > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 0.35rem;
+  }
+  .mobile-compact .space-y-4 > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 0.3rem;
+  }
+  .mobile-compact .space-y-3 > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 0.25rem;
+  }
+  .mobile-compact .space-y-2 > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 0.2rem;
+  }
+  .mobile-compact .space-y-1\.5 > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 0.15rem;
+  }
+  .mobile-compact .gap-3 {
+    gap: 0.3rem;
+  }
+  .mobile-compact .gap-2 {
+    gap: 0.25rem;
+  }
+  .mobile-compact .mb-1 {
+    margin-bottom: 0.08rem;
+  }
+  .mobile-compact .mt-1 {
+    margin-top: 0.08rem;
+  }
+  .mobile-compact .mt-0\.5 {
+    margin-top: 0.04rem;
+  }
+  .mobile-compact .leading-relaxed {
+    line-height: 1.25;
+  }
+  .mobile-compact .rounded-2xl {
+    border-radius: 0.5rem;
+  }
+  .mobile-compact .rounded-xl {
+    border-radius: 0.45rem;
+  }
+  .mobile-compact svg[width="17"],
+  .mobile-compact svg[width="18"] {
+    width: 12px;
+    height: 12px;
+  }
+  /*
+   * Nothing may push past the panel canvas border on phones. Flex/grid items
+   * default to `min-width: auto` (= min-content), which is the usual culprit
+   * for a row poking through the rounded canvas edge; zeroing it lets the row
+   * wrap or shrink instead. Tables are deliberately excluded so the
+   * `min-w-[...]` horizontal-scroll pattern still works.
+   */
+  .mobile-compact > *,
+  .mobile-compact .flex > *:not(button),
+  .mobile-compact .grid > * {
+    min-width: 0;
+  }
+  .mobile-compact [role="tablist"] > * {
+    flex: 0 0 auto;
+  }
+  .mobile-compact img,
+  .mobile-compact canvas,
+  .mobile-compact video,
+  .mobile-compact iframe {
+    max-width: 100%;
+  }
+  .mobile-compact input,
+  .mobile-compact select,
+  .mobile-compact textarea {
+    min-width: 0;
+    max-width: 100%;
+  }
+}
+
 /* Pulsing ping ring for screenshot hotspot pins */
 @keyframes hotspot-ping {
   0% {

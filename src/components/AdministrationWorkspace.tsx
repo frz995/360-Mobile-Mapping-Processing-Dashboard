@@ -421,8 +421,8 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
   });
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 overflow-hidden animate-in fade-in duration-500">
-      <div className="flex-1 flex flex-col gap-3 min-h-0 overflow-y-auto p-4">
+    <div className="flex-1 flex flex-col min-h-0 md:overflow-hidden animate-in fade-in duration-500">
+      <div className="flex-1 flex flex-col gap-3 min-h-0 md:overflow-y-auto p-4">
         {/* Header */}
         <div className="px-1">
           <h2 className="text-base font-bold text-text-base tracking-wide">
@@ -434,7 +434,7 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
         </div>
 
         {/* Main Panel Canvas */}
-        <div className="bg-card border border-subtle rounded-2xl shadow-md overflow-hidden flex flex-col min-h-0">
+        <div className="bg-card border border-subtle rounded-2xl shadow-md md:overflow-hidden flex flex-col min-h-0">
           <div className="px-3 pt-2 border-b border-divider bg-card">
             <UnderlineTabStrip
               tabs={ADMIN_TABS}
@@ -443,7 +443,7 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
             />
           </div>
 
-          <div key={activeTab} className="p-5 flex-1 flex flex-col min-h-0 space-y-4 overflow-y-auto animate-panel-enter">
+          <div key={activeTab} className="p-5 flex-1 flex flex-col min-h-0 space-y-4 md:overflow-y-auto animate-panel-enter">
             {/* TAB 1: USER MANAGEMENT */}
             {activeTab === 'users' && (
               <div className="space-y-4 animate-in fade-in">
@@ -493,7 +493,7 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
 
             {/* Users Table */}
             <div className="border border-subtle rounded-lg overflow-x-auto">
-              <table className="w-full text-xs text-left border-collapse">
+              <table className="w-full min-w-[900px] text-xs text-left border-collapse">
                 <thead>
                   <tr className="bg-app text-text-muted uppercase text-[10px] tracking-wider border-b border-subtle">
                     <th className="px-3.5 py-2.5">User</th>
@@ -833,7 +833,7 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
             </div>
 
             <div className="border border-subtle rounded-lg overflow-x-auto">
-              <table className="w-full text-xs text-left border-collapse">
+              <table className="w-full min-w-[880px] text-xs text-left border-collapse">
                 <thead>
                   <tr className="bg-app text-text-muted uppercase text-[10px] tracking-wider border-b border-subtle">
                     <th className="px-3.5 py-2.5">Request ID</th>

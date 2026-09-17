@@ -496,7 +496,7 @@ export const PipelinePanel: React.FC<PipelinePanelProps> = ({
       {/* Dense Engineering Data Table */}
       <div className="bg-inner border border-subtle rounded-xl overflow-hidden shadow-sm">
         <div className="overflow-x-auto max-h-[540px]">
-          <table className="w-full text-left text-[11px] border-collapse">
+          <table className="w-full min-w-[960px] text-left text-[11px] border-collapse">
             <thead className="sticky top-0 bg-card/95 backdrop-blur text-zinc-400 uppercase tracking-wider text-[10px] font-semibold border-b border-subtle z-10">
               <tr>
                 <th className="py-2.5 px-3 w-8">

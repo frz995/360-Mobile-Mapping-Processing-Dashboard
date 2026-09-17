@@ -454,17 +454,48 @@ export const ProjectBoundaryMap: React.FC<ProjectBoundaryMapProps> = ({
       {/* MapLibre Canvas Viewport */}
       <div ref={mapContainerRef} className="w-full h-full" />
 
-      {/* Top Left Floating Header: Back to 3D Globe + District Meta */}
-      <div className="absolute top-4 left-4 sm:left-8 z-30 flex flex-col gap-2 pointer-events-auto max-w-[calc(100vw-32px)] sm:max-w-md">
+      {/* Top Floating Header: Back to 3D Globe + Boundary Toggle + District Meta.
+          On mobile the toggle stays in the column flow (below the button) so the two
+          never collide; on sm+ it floats to the container's top-right corner,
+          clear of the MapLibre nav control. */}
+      <div className="absolute top-4 left-4 right-4 sm:left-8 sm:right-16 z-30 flex flex-col items-start gap-2 pointer-events-none">
         <button
           onClick={handleReturn}
-          className="self-start px-3.5 py-2 rounded-xl bg-neutral-900/90 hover:bg-neutral-800 text-xs font-semibold text-white border border-white/15 transition-all shadow-2xl flex items-center gap-2 cursor-pointer active:scale-95 group backdrop-blur-md"
+          className="pointer-events-auto self-start max-w-full px-3 sm:px-3.5 py-2 rounded-xl bg-neutral-900/90 hover:bg-neutral-800 text-xs font-semibold text-white border border-white/15 transition-all shadow-2xl flex items-center gap-2 cursor-pointer active:scale-95 group backdrop-blur-md"
         >
-          <ArrowLeft className="w-3.5 h-3.5 text-neutral-400 group-hover:text-white transition-colors" />
-          <span>Return to 3D Earth Globe</span>
+          <ArrowLeft className="w-3.5 h-3.5 shrink-0 text-neutral-400 group-hover:text-white transition-colors" />
+          <span className="hidden sm:inline">Return to 3D Earth Globe</span>
+          <span className="sm:hidden">Return to 3D</span>
         </button>
 
-        <div className="p-3.5 sm:p-4 rounded-2xl bg-black/80 backdrop-blur-xl border border-white/10 shadow-2xl text-left space-y-1.5">
+        {/* Interactive Toggle Switch Button: in-flow on mobile, floating top-right on sm+ */}
+        <div className="pointer-events-auto self-start sm:absolute sm:top-0 sm:right-0">
+          <button
+            onClick={() => setShowBoundary(!showBoundary)}
+            role="switch"
+            aria-checked={showBoundary}
+            aria-label={showBoundary ? 'District boundaries visible' : 'District boundaries hidden'}
+            title={showBoundary ? 'Toggle district boundaries off' : 'Toggle district boundaries on'}
+            className="px-3 py-1.5 rounded-xl bg-black/85 backdrop-blur-md border border-white/15 shadow-xl hover:border-white/30 transition-all cursor-pointer flex items-center gap-2.5 text-xs text-white group select-none active:scale-95"
+          >
+            <span className="material-symbols-outlined text-[15px] leading-none text-neutral-300 group-hover:text-white transition-colors">
+              layers
+            </span>
+            <span className="text-neutral-200 text-[11px] font-medium tracking-wide whitespace-nowrap">
+              {showBoundary ? 'District: Visible' : 'District: Hidden'}
+            </span>
+            {/* Toggle Switch Track & Knob */}
+            <div
+              className={`w-8 h-4 rounded-full p-0.5 transition-colors duration-200 ease-in-out flex items-center ${
+                showBoundary ? 'bg-red-500 justify-end' : 'bg-neutral-700 justify-start'
+              }`}
+            >
+              <div className="w-3 h-3 rounded-full bg-white shadow-md transition-all duration-200" />
+            </div>
+          </button>
+        </div>
+
+        <div className="pointer-events-auto w-full sm:w-auto sm:max-w-md p-3.5 sm:p-4 rounded-2xl bg-black/80 backdrop-blur-xl border border-white/10 shadow-2xl text-left space-y-1.5">
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" />
             <span className="text-xs font-bold text-white tracking-wide truncate">
@@ -482,32 +513,6 @@ export const ProjectBoundaryMap: React.FC<ProjectBoundaryMapProps> = ({
             </span>
           </div>
         </div>
-      </div>
-
-      {/* Top Right Map Controls Overlay: Interactive Toggle Switch Button */}
-      <div className="absolute top-4 right-14 sm:right-16 z-30 flex items-center gap-2 pointer-events-auto">
-        <button
-          onClick={() => setShowBoundary(!showBoundary)}
-          role="switch"
-          aria-checked={showBoundary}
-          title={showBoundary ? 'Toggle district boundaries off' : 'Toggle district boundaries on'}
-          className="px-3 py-1.5 rounded-xl bg-black/85 backdrop-blur-md border border-white/15 shadow-xl hover:border-white/30 transition-all cursor-pointer flex items-center gap-2.5 text-xs text-white group select-none active:scale-95"
-        >
-          <span className="material-symbols-outlined text-[15px] leading-none text-neutral-300 group-hover:text-white transition-colors">
-            layers
-          </span>
-          <span className="text-neutral-200 text-[11px] font-medium tracking-wide">
-            {showBoundary ? 'District: Visible' : 'District: Hidden'}
-          </span>
-          {/* Toggle Switch Track & Knob */}
-          <div
-            className={`w-8 h-4 rounded-full p-0.5 transition-colors duration-200 ease-in-out flex items-center ${
-              showBoundary ? 'bg-red-500 justify-end' : 'bg-neutral-700 justify-start'
-            }`}
-          >
-            <div className="w-3 h-3 rounded-full bg-white shadow-md transition-all duration-200" />
-          </div>
-        </button>
       </div>
 
       {/* Bottom Floating Telemetry & Launch Bar */}

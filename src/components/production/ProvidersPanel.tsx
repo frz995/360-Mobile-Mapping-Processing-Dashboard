@@ -381,7 +381,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({
 
           <div className="bg-inner border border-subtle rounded-xl overflow-hidden shadow-sm">
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-[11px] border-collapse">
+              <table className="w-full min-w-[860px] text-left text-[11px] border-collapse">
                 <thead className="bg-card/95 backdrop-blur text-zinc-400 uppercase tracking-wider text-[10px] font-semibold border-b border-subtle">
                   <tr>
                     <th className="py-2.5 px-3">Station Name</th>
@@ -544,7 +544,7 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({
 
           <div className="bg-inner border border-subtle rounded-xl overflow-hidden shadow-sm">
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-[11px] border-collapse">
+              <table className="w-full min-w-[720px] text-left text-[11px] border-collapse">
                 <thead className="bg-card/95 backdrop-blur text-zinc-400 uppercase tracking-wider text-[10px] font-semibold border-b border-subtle">
                   <tr>
                     <th className="py-2.5 px-3">API Mode</th>
