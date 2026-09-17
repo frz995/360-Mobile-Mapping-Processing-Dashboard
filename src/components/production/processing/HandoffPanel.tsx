@@ -690,7 +690,7 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
             <span className="text-[11px] text-text-muted">{gpuJobs.length} active job(s)</span>
           </div>
 
-          <div className="flex flex-col gap-2.5">
+          <div className="flex flex-col gap-2.5 overflow-y-auto min-h-0 xl:max-h-[52vh]">
             {gpuJobs.map((j) => {
               const progressPct = j.total_items ? Math.round(((j.completed_items || 0) / j.total_items) * 100) : 0;
 
@@ -742,7 +742,7 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
 
   // Otherwise (4-Station Multi-PC Workstations Mode):
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 min-h-0">
       {/* Top Bar with Mode Toggle and Dispatch Action */}
       <div className="flex items-center justify-between gap-3 flex-wrap bg-card border border-subtle rounded-2xl p-4 shadow-sm">
         <div className="flex items-center gap-3">
@@ -796,7 +796,7 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
             </span>
           </div>
           <p className="text-[10px] text-text-muted italic">Face &amp; Plate Blur</p>
-          <div className="flex-1 flex flex-col gap-2.5 overflow-y-auto">
+          <div className="flex-1 flex flex-col gap-2.5 overflow-y-auto min-h-0 xl:max-h-[52vh]">
             {laneJobs.blur.map((j) => renderWorkstationCard(j, workstations[0]))}
             {laneJobs.blur.length === 0 && (
               <div className="flex-1 flex items-center justify-center text-center p-6 text-[11px] text-text-muted border border-dashed border-subtle rounded-lg">
@@ -821,7 +821,7 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
             </span>
           </div>
           <p className="text-[10px] text-text-muted italic">Creator 6 / PTGui / Insta360 Stitcher</p>
-          <div className="flex-1 flex flex-col gap-2.5 overflow-y-auto">
+          <div className="flex-1 flex flex-col gap-2.5 overflow-y-auto min-h-0 xl:max-h-[52vh]">
             {laneJobs.stitch.map((j) => renderWorkstationCard(j, workstations[1]))}
             {laneJobs.stitch.length === 0 && (
               <div className="flex-1 flex items-center justify-center text-center p-6 text-[11px] text-text-muted border border-dashed border-subtle rounded-lg">
@@ -846,7 +846,7 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
             </span>
           </div>
           <p className="text-[10px] text-text-muted italic">Adobe Lightroom Classic Presets</p>
-          <div className="flex-1 flex flex-col gap-2.5 overflow-y-auto">
+          <div className="flex-1 flex flex-col gap-2.5 overflow-y-auto min-h-0 xl:max-h-[52vh]">
             {laneJobs.lightroom.map((j) => renderWorkstationCard(j, workstations[2]))}
             {laneJobs.lightroom.length === 0 && (
               <div className="flex-1 flex items-center justify-center text-center p-6 text-[11px] text-text-muted border border-dashed border-subtle rounded-lg">
@@ -871,7 +871,7 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
             </span>
           </div>
           <p className="text-[10px] text-text-muted italic">Nadir Car Hood Mask &amp; Inpaint</p>
-          <div className="flex-1 flex flex-col gap-2.5 overflow-y-auto">
+          <div className="flex-1 flex flex-col gap-2.5 overflow-y-auto min-h-0 xl:max-h-[52vh]">
             {laneJobs.photoshop.map((j) => renderWorkstationCard(j, workstations[3]))}
             {laneJobs.photoshop.length === 0 && (
               <div className="flex-1 flex items-center justify-center text-center p-6 text-[11px] text-text-muted border border-dashed border-subtle rounded-lg">

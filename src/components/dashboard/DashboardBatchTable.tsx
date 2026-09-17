@@ -63,7 +63,7 @@ export const DashboardBatchTable: React.FC<DashboardBatchTableProps> = ({
   t
 }) => {
   return (
-    <div className="flex-1 overflow-auto">
+    <div className="flex-1 overflow-auto max-h-[184px] lg:max-h-none">
       {activeTab === 'batches' ? (
         <table className="w-full text-left text-[11px]">
           <thead className="bg-card text-text-muted sticky top-0 z-10 border-b border-subtle">
@@ -83,7 +83,7 @@ export const DashboardBatchTable: React.FC<DashboardBatchTableProps> = ({
           <tbody className="divide-y divide-[rgba(255,255,255,0.06)]">
             {isDataLoading ? (
               <tr>
-                <td colSpan={10} className="py-12 text-center text-text-muted">
+                <td colSpan={10} className="py-6 lg:py-12 text-center text-text-muted">
                   <div className="flex flex-col items-center justify-center gap-2">
                     <Loader2 size={22} className="animate-spin text-sky-400" />
                     <span className="text-xs font-semibold text-text-base">Loading batch logs...</span>
@@ -92,7 +92,7 @@ export const DashboardBatchTable: React.FC<DashboardBatchTableProps> = ({
               </tr>
             ) : activeBatchLogs.length === 0 ? (
               <tr>
-                <td colSpan={10} className="py-10 text-center text-text-muted">
+                <td colSpan={10} className="py-6 lg:py-10 text-center text-text-muted">
                   <div className="flex flex-col items-center justify-center gap-2">
                     <Database size={28} className="text-text-muted" />
                     <span className="text-xs font-semibold text-text-base">No batch logs found</span>
@@ -109,7 +109,7 @@ export const DashboardBatchTable: React.FC<DashboardBatchTableProps> = ({
                   <tr
                     key={log.id || i}
                     onClick={() => toggleSubgridFilter(batchSubgrid)}
-                    className={`cursor-pointer transition-all ${isSelected ? 'bg-sky-950/70 text-text-base font-medium' : 'hover:bg-inner text-text-base'}`}
+                    className={`h-12 lg:h-auto cursor-pointer transition-all ${isSelected ? 'bg-sky-950/70 text-text-base font-medium' : 'hover:bg-inner text-text-base'}`}
                   >
                     <td className="px-3.5 py-3.5 font-sans text-[11px] text-text-base font-semibold whitespace-nowrap">{formattedBatchId}</td>
                     <td className="px-3.5 py-3.5 font-medium text-text-base whitespace-nowrap">{log.grid || '1'}</td>
@@ -301,7 +301,7 @@ export const DashboardBatchTable: React.FC<DashboardBatchTableProps> = ({
           <tbody className="divide-y divide-[rgba(255,255,255,0.06)]">
             {isDataLoading ? (
               <tr>
-                <td colSpan={9} className="py-12 text-center text-text-muted">
+                <td colSpan={9} className="py-6 lg:py-12 text-center text-text-muted">
                   <div className="flex flex-col items-center justify-center gap-2">
                     <Loader2 size={22} className="animate-spin text-sky-400" />
                     <span className="text-xs font-semibold text-text-base">Loading daily progress...</span>
@@ -310,7 +310,7 @@ export const DashboardBatchTable: React.FC<DashboardBatchTableProps> = ({
               </tr>
             ) : dailyData.length === 0 ? (
               <tr>
-                <td colSpan={9} className="py-10 text-center text-text-muted">
+                <td colSpan={9} className="py-6 lg:py-10 text-center text-text-muted">
                   <div className="flex flex-col items-center justify-center gap-2">
                     <Calendar size={28} className="text-text-muted" />
                     <span className="text-xs font-semibold text-text-base">No daily records yet</span>
@@ -365,7 +365,7 @@ export const DashboardBatchTable: React.FC<DashboardBatchTableProps> = ({
                   <tr
                     key={log.id || `dash-d-${log.date}-${log.subgrid}-${i}`}
                     onClick={() => handleSelectDailyRun(log)}
-                    className={`cursor-pointer transition-all duration-150 ${isRowSelected
+                    className={`h-12 lg:h-auto cursor-pointer transition-all duration-150 ${isRowSelected
                       ? '!bg-sky-900/60 border-l-4 border-sky-400 !text-white font-semibold shadow-inner'
                       : 'hover:bg-inner text-text-base'
                       }`}

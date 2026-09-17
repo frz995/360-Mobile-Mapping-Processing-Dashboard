@@ -3767,7 +3767,7 @@ export default function App() {
         />
 
         {/* MAIN DASHBOARD CONTENT CANVAS */}
-        <main className={`flex-1 flex flex-col p-3 gap-3 overflow-y-auto md:overflow-hidden relative ${currentPage === 'dashboard' ? 'bg-card' : 'bg-app [background:var(--canvas-bg)]'}`}>
+        <main className={`flex-1 flex flex-col p-3 gap-3 overflow-y-auto md:overflow-hidden relative ${currentPage !== 'dashboard' ? 'mobile-compact' : ''} ${currentPage === 'dashboard' ? 'bg-card' : 'bg-app [background:var(--canvas-bg)]'}`}>
 
           {/* SUPABASE DISCONNECTED ERROR FALLBACK BANNER */}
           {supabaseError && (
@@ -4171,7 +4171,7 @@ export default function App() {
                 <div className="col-span-1 lg:col-span-5 flex flex-col gap-3 min-h-[420px] sm:min-h-[520px] lg:min-h-0">
 
                   {/* TOP RIGHT PANEL: WEBGIS DATABASE & ADMIN */}
-                  <div className={`flex-1 bg-card border border-subtle backdrop-blur-md rounded-xl flex flex-col overflow-hidden transition-all duration-700 ${focusedSection === 'processing'
+                  <div className={`flex-none lg:flex-1 bg-card border border-subtle backdrop-blur-md rounded-xl flex flex-col overflow-hidden transition-all duration-700 ${focusedSection === 'processing'
                     ? 'relative z-30 ring-4 ring-emerald-400 shadow-[0_0_50px_rgba(52,211,153,0.5)] scale-[1.005]'
                     : focusedSection
                       ? 'filter blur-[4px] opacity-25 pointer-events-none'
@@ -4904,7 +4904,7 @@ export default function App() {
             </div>
           ) : currentPage === 'settings' ? (
             <div className="flex flex-col md:flex-1 md:min-h-0 md:overflow-hidden animate-in fade-in duration-500">
-              <div className="flex-1 min-h-0 overflow-y-auto">
+              <div className="flex-1 min-h-0 md:overflow-y-auto">
                 <AdminSettingsView
                   projectSettings={settingsDraft as any}
                   setProjectSettings={handleSettingsDraftChange as any}

@@ -348,9 +348,9 @@ export const WorkerMonitorPanel: React.FC<WorkerMonitorPanelProps> = ({
       </div>
 
       <div className="bg-inner border border-subtle rounded-xl overflow-hidden">
-        <div className="overflow-auto">
-          <table className="w-full text-left text-[11px]">
-            <thead className="bg-card/60 text-[10px] uppercase tracking-wider text-text-muted">
+        <div className="overflow-auto max-h-[60vh]">
+          <table className="w-full min-w-[900px] text-left text-[11px] whitespace-nowrap">
+            <thead className="sticky top-0 z-10 bg-card text-[10px] uppercase tracking-wider text-text-muted">
               <tr>
                 <th className="px-4 py-2">Station</th>
                 <th className="px-4 py-2">IP Address</th>

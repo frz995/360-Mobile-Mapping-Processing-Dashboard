@@ -943,8 +943,8 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
   const helperClass = 'text-[10px] text-text-muted mt-1';
 
   return (
-    <div className={`flex-1 flex flex-col min-h-0 overflow-y-auto overflow-x-hidden animate-in fade-in duration-500 ${themeMode === 'light' ? 'text-slate-900' : 'text-text-base'}`}>
-      <div className="flex-1 flex flex-col gap-3 min-h-0 p-4">
+    <div className={`mobile-compact flex-1 flex flex-col min-h-0 w-full min-w-0 md:overflow-y-auto animate-in fade-in duration-500 ${themeMode === 'light' ? 'text-slate-900' : 'text-text-base'}`}>
+      <div className="flex-1 flex flex-col gap-3 min-h-0 p-3 sm:p-4 min-w-0">
 
         {/* Header */}
         <div className="px-1">
@@ -1007,7 +1007,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
         )}
 
         {/* Main Panel Canvas */}
-        <div className="bg-card border border-subtle rounded-2xl shadow-md overflow-hidden flex flex-col min-h-0">
+        <div className="bg-card border border-subtle rounded-2xl shadow-md md:overflow-hidden flex flex-col min-h-0 w-full max-w-full min-w-0">
           <div className="px-3 pt-2 border-b border-divider bg-card">
             <UnderlineTabStrip
               tabs={SETTINGS_TABS}
@@ -1016,7 +1016,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
             />
           </div>
 
-          <div key={activeTab} className="p-4 sm:p-5 flex-1 flex flex-col min-h-0 space-y-4 overflow-y-auto overflow-x-hidden animate-panel-enter">
+          <div key={activeTab} className="p-3 sm:p-5 flex-1 flex flex-col min-h-0 space-y-4 w-full max-w-full min-w-0 md:overflow-y-auto md:overflow-x-hidden animate-panel-enter">
 
       {/* ========================================================================= */}
       {/* TAB 1: PROJECT & SECURITY SETTINGS */}
@@ -2845,7 +2845,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
               </div>
 
               {/* RIGHT COLUMN: REAL-TIME LIVE MAP DASHBOARD PREVIEW (7 COLS - SPACIOUS) */}
-              <div className="lg:col-span-7 flex flex-col min-h-[460px] lg:min-h-[580px]">
+              <div className="lg:col-span-7 flex flex-col min-h-[190px] sm:min-h-[420px] lg:min-h-[580px]">
                 <div className={`p-4 rounded-xl border flex-1 flex flex-col space-y-3 ${innerCardBg}`}>
                   <div className="flex items-center justify-between">
                     <h4 className={`text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 ${themeMode === 'light' ? 'text-slate-800' : 'text-text-base'}`}>
@@ -2855,7 +2855,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                   </div>
 
                   {/* REAL EMBEDDED WEBGIS MAP IFRAME CONTAINER (SPACIOUS & THEME-AWARE) */}
-                  <div className={`relative flex-1 min-h-[400px] lg:min-h-[520px] rounded-xl overflow-hidden border ${themeMode === 'light' ? 'border-slate-200 bg-slate-100' : 'border-subtle bg-app'} flex flex-col shadow-2xl`}>
+                  <div className={`relative flex-1 min-h-[150px] sm:min-h-[340px] lg:min-h-[520px] rounded-xl overflow-hidden border ${themeMode === 'light' ? 'border-slate-200 bg-slate-100' : 'border-subtle bg-app'} flex flex-col shadow-2xl`}>
                     {/* Top-Left GeoSphere 360 Operations Hub Floating Badge */}
                     <div className="absolute top-3 left-3 z-20 pointer-events-none">
                       <div className={`backdrop-blur-xl border rounded-2xl px-3 py-1.5 shadow-2xl flex items-center gap-2.5 shrink-0 ${themeMode === 'light' ? 'bg-white/95 border-slate-200 text-slate-800' : 'bg-card border-subtle text-text-base'}`}>

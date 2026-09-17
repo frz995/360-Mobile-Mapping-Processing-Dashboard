@@ -1201,6 +1201,57 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
         return () => ro.disconnect();
     }, [showDistrictPopup]);
 
+    // The globe-mode HUD chrome that the popup card must never cover: the
+    // geodetic telemetry card (bottom-left) and the renderer/zoom controls
+    // (bottom-right). Their real boxes are measured rather than guessed, so the
+    // card lands clear of them at any viewport size.
+    const geodeticCardRef = useRef<HTMLDivElement | null>(null);
+    const globeControlsRef = useRef<HTMLDivElement | null>(null);
+    const topBadgeRef = useRef<HTMLDivElement | null>(null);
+    const [hudRects, setHudRects] = useState<Array<{ left: number; top: number; right: number; bottom: number }>>([]);
+    useEffect(() => {
+        if (viewMode !== 'globe') {
+            setHudRects([]);
+            return;
+        }
+        const measure = () => {
+            const next = [geodeticCardRef.current, globeControlsRef.current, topBadgeRef.current]
+                .filter((n): n is HTMLDivElement => !!n && n.isConnected && n.offsetParent !== null)
+                .map((n) => {
+                    const r = n.getBoundingClientRect();
+                    return { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+                })
+                .filter((r) => r.right - r.left > 0 && r.bottom - r.top > 0);
+            setHudRects((prev) =>
+                prev.length === next.length &&
+                prev.every(
+                    (p, i) =>
+                        Math.abs(p.left - next[i].left) < 1 &&
+                        Math.abs(p.top - next[i].top) < 1 &&
+                        Math.abs(p.right - next[i].right) < 1 &&
+                        Math.abs(p.bottom - next[i].bottom) < 1,
+                )
+                    ? prev
+                    : next,
+            );
+        };
+        measure();
+        const raf = window.requestAnimationFrame(measure);
+        let ro: ResizeObserver | undefined;
+        if (typeof ResizeObserver !== 'undefined') {
+            ro = new ResizeObserver(measure);
+            [geodeticCardRef.current, globeControlsRef.current, topBadgeRef.current].forEach((n) => {
+                if (n) ro?.observe(n);
+            });
+        }
+        window.addEventListener('resize', measure);
+        return () => {
+            window.cancelAnimationFrame(raf);
+            ro?.disconnect();
+            window.removeEventListener('resize', measure);
+        };
+    }, [viewMode, showDistrictPopup]);
+
     const handleActiveMarkerProjected = useCallback((pos: { x: number; y: number; visible: boolean }) => {
         const last = lastProjectedPosRef.current;
         if (!last || Math.abs(pos.x - last.x) > 2.5 || Math.abs(pos.y - last.y) > 2.5) {
@@ -1223,39 +1274,64 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
         const mY = Number.isFinite(rawMY) ? Math.min(Math.max(rawMY, 16), screenH - 16) : (screenH / 2);
         const isVis = markerProjectedPos ? markerProjectedPos.visible : true;
 
-        // Reserved zones (px) the card must stay clear of so it never overlaps
-        // the top header nav or the bottom geodetic HUD + zoom/inspect controls.
+        // Keep-clear zones: the top header nav plus the measured HUD chrome
+        // (geodetic card + controls) so the popup never sits on top of them.
         const TOP_MARGIN = 64;
-        const BOTTOM_RESERVE = isMobile ? 210 : 90;
-
-        // HORIZONTAL layout: place the card to the RIGHT of the marker, vertically
-        // centered on it, and tag the dashed line at the card's LEFT-CENTER edge
-        // (like "-----------[card]"), per user request.
+        const SIDE_MARGIN = 16;
+        const GAP = 14;
         const minY = TOP_MARGIN;
-        const maxY = Math.max(minY, screenH - BOTTOM_RESERVE - cardH);
+        const maxY = Math.max(minY, screenH - SIDE_MARGIN - cardH);
+        const clampY = (v: number) => Math.min(Math.max(v, minY), maxY);
+        const clampX = (v: number) => Math.min(Math.max(v, SIDE_MARGIN), Math.max(SIDE_MARGIN, screenW - cardW - SIDE_MARGIN));
 
-        // Prefer right side; fall back to left side when there's no room.
-        const canPlaceRight = (mX + 45 + cardW <= screenW - 24);
-        const cardX = canPlaceRight
-            ? Math.min(screenW - cardW - 20, mX + 45)
-            : Math.max(20, mX - 45 - cardW);
+        const blockers = hudRects.map((r) => ({
+            left: r.left - GAP,
+            top: r.top - GAP,
+            right: r.right + GAP,
+            bottom: r.bottom + GAP,
+        }));
+        const overlapArea = (x: number, y: number) =>
+            blockers.reduce((sum, b) => {
+                const w = Math.min(x + cardW, b.right) - Math.max(x, b.left);
+                const h = Math.min(y + cardH, b.bottom) - Math.max(y, b.top);
+                return sum + (w > 0 && h > 0 ? w * h : 0);
+            }, 0);
 
-        // Vertically center the card on the marker, clamped into the safe band.
-        let cardY = Math.max(minY, Math.min(maxY, mY - cardH / 2));
+        // Candidates in order of preference: right of the marker, left of it,
+        // then above it (which is also the only option once the bottom HUD owns
+        // the whole lower band).
+        const centreY = clampY(mY - cardH / 2);
+        const candidates = [
+            { x: clampX(mX + 46), y: centreY },
+            { x: clampX(mX - 46 - cardW), y: centreY },
+            { x: clampX(mX - cardW / 2), y: clampY(mY - 74 - cardH) },
+        ];
+        const chosen =
+            candidates.find((c) => overlapArea(c.x, c.y) === 0) ||
+            candidates.reduce((best, c) => (overlapArea(c.x, c.y) < overlapArea(best.x, best.y) ? c : best), candidates[0]);
 
-        // Cap leader-line length: pull the card up/down toward the marker so the
-        // dashed line stays short instead of stretching across most of the screen.
-        const MAX_LEAD = 180;
-        cardY = Math.max(minY, Math.min(maxY, Math.min(cardY, mY + MAX_LEAD / 2 - cardH / 2)));
+        const cardX = chosen.x;
+        const cardY = chosen.y;
 
-        // Anchor at the LEFT-CENTER edge of the card facing the marker.
+        // Tag the line on the card edge that faces the marker, mid-edge, and
+        // elbow it in with a short dogleg so it reads as a proper callout.
+        const stackedAbove = cardY + cardH <= mY;
+        const stackedBelow = cardY >= mY;
         const isRight = cardX >= mX;
-        const anchorX = isRight ? cardX : (cardX + cardW);
-        const anchorY = cardY + cardH / 2;
+        let anchorX: number;
+        let anchorY: number;
+        if (stackedAbove || stackedBelow) {
+            // Card parked above/below the marker → tag the facing horizontal edge.
+            anchorX = cardX + cardW / 2;
+            anchorY = stackedAbove ? cardY + cardH : cardY;
+        } else {
+            anchorX = isRight ? cardX : (cardX + cardW);
+            anchorY = cardY + cardH / 2;
+        }
 
-        // Angled elbow dogleg that turns into the card's center edge
-        const elbowX = isRight ? (anchorX - 26) : (anchorX + 26);
-        const elbowY = anchorY;
+        const span = Math.min(26, Math.max(12, (stackedAbove || stackedBelow ? Math.abs(anchorY - mY) : Math.abs(anchorX - mX)) * 0.35));
+        const elbowX = (stackedAbove || stackedBelow) ? anchorX : (isRight ? anchorX - span : anchorX + span);
+        const elbowY = stackedAbove ? anchorY + span : (stackedBelow ? anchorY - span : anchorY);
 
         const leaderPath = `M ${mX.toFixed(1)} ${mY.toFixed(1)} L ${elbowX.toFixed(1)} ${elbowY.toFixed(1)} L ${anchorX.toFixed(1)} ${anchorY.toFixed(1)}`;
 
@@ -1267,7 +1343,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             visible: isVis,
             leaderPath
         };
-    }, [markerProjectedPos, cardSize, isMobile]);
+    }, [markerProjectedPos, cardSize, isMobile, hudRects]);
 
     const globeMarkers = useMemo<GlobeMarker[]>(() => {
         // The globe shows ONLY the committed state — a single region pin. District-level
@@ -1736,7 +1812,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                         }`}>
                         {/* Top Center Minimal Orientation Badge */}
                         <div className="w-full flex flex-col items-center pt-1 gap-1">
-                            <div className="px-2 sm:px-3.5 py-1 sm:py-1.5 rounded-full bg-neutral-900/80 backdrop-blur-md border border-white/10 shadow-xl flex items-center gap-1.5 sm:gap-2">
+                            <div ref={topBadgeRef} className="px-2 sm:px-3.5 py-1 sm:py-1.5 rounded-full bg-neutral-900/80 backdrop-blur-md border border-white/10 shadow-xl flex items-center gap-1.5 sm:gap-2">
                                 <span className={`w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full transition-colors duration-300 ${showDistrictPopup ? 'bg-red-500' : 'bg-white/40'
                                     }`} />
                                 <span className="text-[9px] sm:text-[11px] font-mono uppercase tracking-wider text-neutral-200 font-semibold">
@@ -1754,6 +1830,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                             <div
                                 role="button"
                                 tabIndex={0}
+                                ref={geodeticCardRef}
                                 onClick={() => {
                                     setViewMode('globe');
                                     if (showDistrictPopup) {
@@ -1824,7 +1901,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                             </div>
 
                             {/* Quick Action Navigation Buttons */}
-                            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 pointer-events-auto">
+                            <div ref={globeControlsRef} className="flex flex-wrap items-center gap-1.5 sm:gap-2 pointer-events-auto">
                                 {/* Globe Renderer Choice: Classic Vector Globe ↔ Atomic Point-Cloud Globe */}
                                 <div className="flex items-center bg-neutral-900/80 backdrop-blur-md px-1 sm:px-1.5 py-0.5 sm:py-1 rounded-lg sm:rounded-xl border border-white/10 shadow-md">
                                     <button
@@ -2020,7 +2097,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             {viewMode === 'globe' && showDistrictPopup && activePopupData && !isFlyingIn && !isZoomedToDistrict && (
                 <div className="absolute inset-0 z-40 pointer-events-none overflow-hidden animate-in fade-in duration-500">
                     {/* Angled SVG Laser Leader Line connecting marker to card (Monochromatic) */}
-                    <svg className="absolute inset-0 w-full h-full pointer-events-none overflow-visible z-10">
+                    <svg className="absolute inset-0 w-full h-full pointer-events-none overflow-visible z-0">
                         {/* Fade out the whole leader assembly when the marker is projected off-globe,
                             so the dashed line never strays off-screen / down past the card */}
                         <g
@@ -2058,7 +2135,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                     {/* Floating Panotrack District HUD Card */}
                     <div
                         ref={cardSizeRef}
-                        className="absolute pointer-events-auto transition-all duration-200"
+                        className="absolute z-10 pointer-events-auto transition-all duration-200"
                         style={{
                             left: `${popupScreenLayout.cardX}px`,
                             top: `${popupScreenLayout.cardY}px`,
