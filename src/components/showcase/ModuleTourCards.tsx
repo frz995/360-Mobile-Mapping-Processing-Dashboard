@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { globePoseFor, HERO_SECTION } from './showcaseMotion';
 import type { SystemModule } from './types';
@@ -69,12 +70,20 @@ const LINE_DOT_DURATION_S = 0.7;
 /** Clamp helper. */
 const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), Math.max(lo, hi));
 
-/** How long a touch must be held on a card before it counts as a hover. */
-const LONG_PRESS_MS = 380;
-/** Finger drift that cancels the pending long press (it was a scroll). */
+/** How long a touch must be held on a card before it counts as a hover.
+ *  Deliberately short — a mere press, not a "long press". */
+const LONG_PRESS_MS = 200;
+/** Finger drift that cancels the pending press (it was a scroll). */
 const LONG_PRESS_SLOP_PX = 12;
-/** How long the lifted card lingers after the finger lifts. */
-const HOVER_LINGER_MS = 1400;
+/** Mobile hint pill: when it appears after the reveal and how long it stays. */
+const TIP_DELAY_MS = 900;
+const TIP_VISIBLE_MS = 7000;
+
+/** The centred mobile preview box for a held card. */
+const previewSize = (vw: number) => {
+    const w = Math.min(vw - 28, 440);
+    return { w, h: Math.round((w * 9) / 16) + 40 };
+};
 
 /** Id of the card under a viewport point, or null. */
 const cardAtPoint = (
@@ -424,16 +433,16 @@ export const ModuleTourCards: React.FC<ModuleTourCardsProps> = ({
         return () => window.removeEventListener('mousemove', onMove);
     }, [isMobile, layout]);
 
-    // Touch screens have no hover at all, so a long press stands in for it:
-    // hold a card for ~380ms and it lifts, plays its tour, and stays up for a
-    // beat after the finger leaves. Drifting past the slop counts as a scroll
-    // and cancels, so fast flicks never snag a card.
+    // Touch screens have no hover at all, so a short press stands in for it:
+    // hold a card for ~200ms and its preview opens, centred, with the tour
+    // playing. The preview then STAYS until the user touches outside it (or
+    // scrolls the story on), which is handled by the dismissal effect below.
+    // Drifting past the slop counts as a scroll and cancels, so fast flicks
+    // never snag a card.
     useEffect(() => {
         if (!isMobile) return;
         let pressTimer: number | undefined;
-        let lingerTimer: number | undefined;
         let origin: { x: number; y: number } | null = null;
-        let armed = false;
 
         const clearPress = () => {
             if (pressTimer) window.clearTimeout(pressTimer);
@@ -443,16 +452,13 @@ export const ModuleTourCards: React.FC<ModuleTourCardsProps> = ({
 
         const onTouchStart = (e: TouchEvent) => {
             clearPress();
-            if (lingerTimer) { window.clearTimeout(lingerTimer); lingerTimer = undefined; }
             if (e.touches.length !== 1) return;
             const t = e.touches[0];
             origin = { x: t.clientX, y: t.clientY };
             pressTimer = window.setTimeout(() => {
                 if (!origin) return;
                 const hit = cardAtPoint(layout.cards, layout.cardW, layout.cardH, origin.x, origin.y);
-                if (!hit) return;
-                armed = true;
-                setHovered(hit);
+                if (hit) setHovered(hit);
             }, LONG_PRESS_MS);
         };
 
@@ -462,26 +468,72 @@ export const ModuleTourCards: React.FC<ModuleTourCardsProps> = ({
             if (Math.hypot(t.clientX - origin.x, t.clientY - origin.y) > LONG_PRESS_SLOP_PX) clearPress();
         };
 
-        const onTouchEnd = () => {
-            clearPress();
-            if (!armed) return;
-            armed = false;
-            lingerTimer = window.setTimeout(() => setHovered(null), HOVER_LINGER_MS);
-        };
-
         window.addEventListener('touchstart', onTouchStart, { passive: true });
         window.addEventListener('touchmove', onTouchMove, { passive: true });
-        window.addEventListener('touchend', onTouchEnd, { passive: true });
-        window.addEventListener('touchcancel', onTouchEnd, { passive: true });
+        window.addEventListener('touchend', clearPress, { passive: true });
+        window.addEventListener('touchcancel', clearPress, { passive: true });
         return () => {
             clearPress();
-            if (lingerTimer) window.clearTimeout(lingerTimer);
             window.removeEventListener('touchstart', onTouchStart);
             window.removeEventListener('touchmove', onTouchMove);
-            window.removeEventListener('touchend', onTouchEnd);
-            window.removeEventListener('touchcancel', onTouchEnd);
+            window.removeEventListener('touchend', clearPress);
+            window.removeEventListener('touchcancel', clearPress);
         };
     }, [isMobile, layout]);
+
+    // Closing the mobile preview: a touch anywhere that is neither inside the
+    // preview nor on the card that opened it dismisses it, and so does
+    // scrolling the story on (the preview is fixed, so it would otherwise hang
+    // over the rest of the page).
+    useEffect(() => {
+        if (!isMobile || !hovered) return;
+        const close = () => setHovered(null);
+        const onTouch = (e: TouchEvent) => {
+            const t = e.touches[0];
+            if (!t) return;
+            const { w: pw, h: ph } = previewSize(viewport.w);
+            const left = (viewport.w - pw) / 2;
+            const top = (viewport.h - ph) / 2;
+            const inPreview =
+                t.clientX >= left && t.clientX <= left + pw && t.clientY >= top && t.clientY <= top + ph;
+            const card = layout.cards.find((c) => c.id === hovered);
+            const inCard =
+                !!card &&
+                t.clientX >= card.left && t.clientX <= card.left + layout.cardW &&
+                t.clientY >= card.top && t.clientY <= card.top + layout.cardH;
+            if (!inPreview && !inCard) close();
+        };
+        window.addEventListener('scroll', close, true);
+        window.addEventListener('touchstart', onTouch, { passive: true });
+        return () => {
+            window.removeEventListener('scroll', close, true);
+            window.removeEventListener('touchstart', onTouch);
+        };
+    }, [isMobile, hovered, viewport, layout]);
+
+    // Discoverability: phones have no cursor, so nothing suggests the cards are
+    // pressable. Show a brief pill after the reveal; it steps aside the moment
+    // the user tries a card, and never comes back this session.
+    const tipDismissedRef = useRef(false);
+    const [showTip, setShowTip] = useState(false);
+    useEffect(() => {
+        if (!isMobile || !visible || tipDismissedRef.current) {
+            setShowTip(false);
+            return;
+        }
+        const show = window.setTimeout(() => setShowTip(true), TIP_DELAY_MS);
+        const hide = window.setTimeout(() => setShowTip(false), TIP_DELAY_MS + TIP_VISIBLE_MS);
+        return () => {
+            window.clearTimeout(show);
+            window.clearTimeout(hide);
+        };
+    }, [isMobile, visible]);
+    useEffect(() => {
+        if (isMobile && hovered) {
+            tipDismissedRef.current = true;
+            setShowTip(false);
+        }
+    }, [isMobile, hovered]);
 
     // iOS only allows playback whose first `play()` happened inside a real
     // user gesture. The long press fires from a timer, so on the first touch we
@@ -518,8 +570,101 @@ export const ModuleTourCards: React.FC<ModuleTourCardsProps> = ({
 
     const introDelayFor = (i: number) => (revealed && !revealDone ? i * REVEAL_STAGGER_S : 0);
 
+    const hoveredIndex = hovered ? modules.findIndex((m) => m.id === hovered) : -1;
+    const hoveredMod = hoveredIndex >= 0 ? modules[hoveredIndex] : null;
+    const preview = previewSize(viewport.w);
+
+    // The scene above the scroll story (preview + tip) has to escape BOTH the
+    // fixed backdrop's stacking context and the scrollport that overlays it, so
+    // it is portaled onto <body> and painted above the whole landing.
+    const overlay =
+        typeof document !== 'undefined'
+            ? createPortal(
+                <>
+                    <AnimatePresence>
+                        {isMobile && visible && showTip && !hoveredMod && (
+                            <motion.div
+                                key="module-tour-tip"
+                                initial={{ opacity: 0, y: -10, x: '-50%' }}
+                                animate={{ opacity: 1, y: 0, x: '-50%' }}
+                                exit={{ opacity: 0, y: -10, x: '-50%' }}
+                                transition={{ duration: 0.45, ease: 'easeOut' }}
+                                className="fixed left-1/2 z-[59] flex items-center gap-2 rounded-full border border-white/15 bg-black/75 backdrop-blur-md px-3 py-1.5 shadow-xl pointer-events-none"
+                                style={{ top: 'calc(env(safe-area-inset-top, 0px) + 3.5rem)' }}
+                                data-testid="module-tour-tip"
+                            >
+                                <span className="material-symbols-outlined text-[14px] leading-none text-white/70">
+                                    touch_app
+                                </span>
+                                <span className="text-[10px] uppercase tracking-[0.16em] text-white/80 whitespace-nowrap">
+                                    Press a card to preview
+                                </span>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+
+                    <AnimatePresence>
+                        {isMobile && visible && hoveredMod && (
+                            <motion.div
+                                key="module-tour-preview"
+                                initial={{ opacity: 0, scale: 0.9 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                exit={{ opacity: 0, scale: 0.94 }}
+                                transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
+                                className="fixed inset-0 z-[60] flex items-center justify-center pointer-events-none"
+                                aria-hidden="true"
+                                data-testid="module-tour-preview"
+                            >
+                                <div
+                                    className="relative rounded-2xl overflow-hidden border"
+                                    style={{
+                                        width: preview.w,
+                                        height: preview.h,
+                                        borderColor: CARD_WHITE,
+                                        boxShadow: `0 30px 80px -30px rgba(0,0,0,0.95), 0 0 70px -18px ${CARD_WHITE}`,
+                                        background: '#0b1018',
+                                    }}
+                                >
+                                    <TourVideo moduleId={hoveredMod.id} active isMobile={isMobile} />
+
+                                    <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/85 to-transparent pointer-events-none" />
+
+                                    <div className="absolute left-2.5 top-2.5 flex items-center gap-1.5">
+                                        {hoveredMod.iconImage ? (
+                                            <img
+                                                src={hoveredMod.iconImage}
+                                                alt=""
+                                                className="icon-white w-4 h-4 object-contain opacity-90"
+                                                loading="lazy"
+                                            />
+                                        ) : (
+                                            <span className="w-2 h-2 rounded-full" style={{ background: CARD_WHITE }} />
+                                        )}
+                                        <span className="text-[9px] font-mono uppercase tracking-[0.2em] text-white/85">
+                                            {String(hoveredIndex + 1).padStart(2, '0')}
+                                        </span>
+                                    </div>
+
+                                    <div className="absolute inset-x-0 bottom-0 px-3 pb-2.5">
+                                        <span className="block text-sm font-medium leading-tight text-white/95">
+                                            {hoveredMod.title.split('&')[0].trim()}
+                                        </span>
+                                        <span className="mt-0.5 block text-[9px] uppercase tracking-[0.18em] text-white/55">
+                                            Tap outside to close
+                                        </span>
+                                    </div>
+                                </div>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+                </>,
+                document.body,
+            )
+            : null;
+
     return (
-        <AnimatePresence>
+        <>
+            <AnimatePresence>
             {visible && (
                 <motion.div
                     key="module-tour-layer"
@@ -606,7 +751,7 @@ export const ModuleTourCards: React.FC<ModuleTourCardsProps> = ({
                                 initial={{ opacity: 0, scale: 0.82, y: 18 }}
                                 animate={{
                                     opacity: revealed ? restOpacity : 0,
-                                    scale: revealed ? (isHovered ? (isMobile ? 2 : 2.2) : 1) : 0.82,
+                                    scale: revealed ? (isHovered && !isMobile ? 2.2 : 1) : 0.82,
                                     y: revealed ? 0 : 18,
                                 }}
                                 transition={{
@@ -628,7 +773,9 @@ export const ModuleTourCards: React.FC<ModuleTourCardsProps> = ({
                                 }}
                                 data-testid="module-tour-card"
                             >
-                                <TourVideo moduleId={mod.id} active={!isMobile || isHovered} isMobile={isMobile} />
+                                {/* Phones decode nothing in the ring itself —
+                                    the centred preview owns playback there. */}
+                                <TourVideo moduleId={mod.id} active={!isMobile} isMobile={isMobile} />
 
                                 {/* Readability scrim only — card body stays opaque */}
                                 <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/85 to-transparent pointer-events-none" />
@@ -657,5 +804,7 @@ export const ModuleTourCards: React.FC<ModuleTourCardsProps> = ({
                 </motion.div>
             )}
         </AnimatePresence>
+            {overlay}
+        </>
     );
 };
