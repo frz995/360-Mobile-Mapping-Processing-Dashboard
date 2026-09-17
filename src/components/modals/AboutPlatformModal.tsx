@@ -108,7 +108,7 @@ export const AboutPlatformModal: React.FC<AboutPlatformModalProps> = ({
               <div className="p-3 rounded-xl bg-card border border-subtle space-y-1">
                 <div className="font-bold text-text-base">2. Interactive 360° QA Inspector &amp; SLA Benchmarks</div>
                 <p className="text-text-muted text-[11px]">
-                  Supports AI defect threshold benchmarks (<code className="bg-inner px-1 py-0.5 rounded text-text-base font-sans text-[10px]">95%, 85%, 75%, 60%</code>) with custom flag labels (<code className="bg-inner px-1 py-0.5 rounded text-text-base font-sans text-[10px]">Blurry Frame, Lens Obstruction, Bad GPS</code>).
+                  Supports automated defect threshold benchmarks (<code className="bg-inner px-1 py-0.5 rounded text-text-base font-sans text-[10px]">95%, 85%, 75%, 60%</code>) with custom flag labels (<code className="bg-inner px-1 py-0.5 rounded text-text-base font-sans text-[10px]">Blurry Frame, Lens Obstruction, Bad GPS</code>).
                 </p>
               </div>
 

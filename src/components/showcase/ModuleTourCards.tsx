@@ -274,7 +274,9 @@ export const ModuleTourCards: React.FC<ModuleTourCardsProps> = ({
         const hh = cardH / 2;
 
         const margin = 10;
-        const topMargin = 72;
+        // Web: park the top pair well below the header bar so the cards are
+        // never clipped behind it at rest. Mobile keeps the tighter rail.
+        const topMargin = isMobile ? 72 : 100;
         const bottomMargin = 18;
 
         const clearance = globeR + (isMobile ? GLOBE_GAP + 8 : GLOBE_GAP);
@@ -747,11 +749,13 @@ export const ModuleTourCards: React.FC<ModuleTourCardsProps> = ({
                         return (
                             <motion.div
                                 key={mod.id}
-                                initial={{ opacity: 0, scale: 0.82, y: 18 }}
+                                initial={{ opacity: 0, scale: 0.82, y: 18, left: card.left, top: card.top }}
                                 animate={{
                                     opacity: revealed ? restOpacity : 0,
                                     scale: revealed ? (isHovered && !isMobile ? 2.2 : 1) : 0.82,
                                     y: revealed ? 0 : 18,
+                                    left: card.left,
+                                    top: card.top,
                                 }}
                                 transition={{
                                     duration: 0.72,
@@ -760,8 +764,6 @@ export const ModuleTourCards: React.FC<ModuleTourCardsProps> = ({
                                 }}
                                 className="absolute rounded-xl overflow-hidden border"
                                 style={{
-                                    left: card.left,
-                                    top: card.top,
                                     width: layout.cardW,
                                     height: layout.cardH,
                                     borderColor: isHovered ? CARD_WHITE : `${CARD_WHITE}66`,

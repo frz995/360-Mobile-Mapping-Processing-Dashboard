@@ -2165,7 +2165,7 @@ export default function App() {
           <!-- DOCUMENT HEADER -->
           <div class="doc-header">
             <div>
-              <div class="org-title">GEOSPHERE 360 • SPATIAL ASSET INTELLIGENCE</div>
+              <div class="org-title">GEOSPHERE 360 • SPATIAL ASSET OPERATIONS</div>
               <h1 class="main-title">GeoSphere 360 Operations Hub</h1>
               <div class="sub-title">Executive Mobile Survey Progress & Quality Control Audit Report</div>
             </div>
@@ -2421,7 +2421,7 @@ export default function App() {
           <!-- DOCUMENT FOOTER -->
           <div class="doc-footer">
             <div>
-              <strong>GEOSPHERE 360 OPERATIONS HUB</strong> • Mobile Mapping & Spatial Asset Intelligence
+              <strong>GEOSPHERE 360 OPERATIONS HUB</strong> • Mobile Mapping & Spatial Asset Operations
             </div>
             <div>
               STRICTLY CONFIDENTIAL • Page 1 of 1 • Generated via Executive Processing Dashboard

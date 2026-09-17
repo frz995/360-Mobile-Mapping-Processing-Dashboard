@@ -514,7 +514,7 @@ export const MapComponent = ({
               </h2>
             </div>
             <p className="text-[10px] text-text-muted font-medium mt-0.5">
-              Mobile Mapping & Spatial Asset Intelligence
+              Mobile Mapping & Spatial Asset Operations
             </p>
           </div>
         </div>

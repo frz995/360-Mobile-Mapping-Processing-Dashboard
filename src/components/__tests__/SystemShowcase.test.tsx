@@ -20,10 +20,10 @@ describe('SystemShowcase Component', () => {
   it('renders GeoSphere 360 title, branding, and the first module section', () => {
     render(<SystemShowcase onEnterDashboard={vi.fn()} />);
 
-    expect(screen.getByRole('heading', { level: 1, name: 'GeoSphere 360°' })).toBeInTheDocument();
-    expect(screen.getByText('A Cloud-Native Mobile Mapping Platform.')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'Mobile Mapping Data, Managed in One Place' })).toBeInTheDocument();
+    expect(screen.getByText('A practical workspace for mobile mapping operations.')).toBeInTheDocument();
     expect(screen.getAllByText(/Mobile Mapping Data Management System/i).length).toBeGreaterThan(0);
-    expect(screen.getByRole('heading', { level: 2, name: /Executive Dashboard & Spatial Telemetry/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: 'Project Management' })).toBeInTheDocument();
     // Every module panel ships its own workflow timeline in the scroll story
     expect(screen.getAllByText(/Workflow/i).length).toBeGreaterThanOrEqual(6);
   });
@@ -31,11 +31,12 @@ describe('SystemShowcase Component', () => {
   it('renders all six module sections inside the scroll story', () => {
     render(<SystemShowcase onEnterDashboard={vi.fn()} />);
 
-    expect(screen.getByRole('heading', { level: 2, name: /Data Management & Masterlist Ledgers/i })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { level: 2, name: /Production Workspace, NAS & Lineage/i })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { level: 2, name: /Panoramic StreetView & QA\/QC Defect Workspace/i })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { level: 2, name: /PostGIS Spatial Hub & Vector Layer Staging/i })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { level: 2, name: /Executive Reports, Audit Trail & RBAC Governance/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: 'Project Management' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: '360° Imagery' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: 'Processing Pipeline' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: 'GIS Workspace' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: 'Data Management' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: 'QA / QC' })).toBeInTheDocument();
   });
 
   it('triggers onEnterDashboard with "auth" when Sign In button is clicked', () => {
@@ -57,7 +58,7 @@ describe('SystemShowcase Component', () => {
     const launchBtn = screen.getAllByRole('button', { name: /Launch Workspace/i })[0];
     fireEvent.click(launchBtn);
 
-    expect(handleEnter).toHaveBeenCalledWith('webgis');
+    expect(handleEnter).toHaveBeenCalledWith('data');
   });
 
   it('allows switching modules using module navigation pills', () => {
@@ -73,7 +74,7 @@ describe('SystemShowcase Component', () => {
       vi.advanceTimersByTime(300);
     });
 
-    expect(screen.getByText(/Subgrid Masterlist, Daily Collections & Folder Verification/i)).toBeInTheDocument();
+    expect(screen.getByText(/Maintain project datasets, metadata, files and processing records in one environment/i)).toBeInTheDocument();
     vi.useRealTimers();
   });
 
@@ -103,7 +104,7 @@ describe('SystemShowcase Component', () => {
     );
 
     // Switch to 3D Earth view mode
-    const earthTab = screen.getByRole('button', { name: /3D Earth/i });
+    const earthTab = screen.getAllByRole('button', { name: /3D Earth/i })[0];
     fireEvent.click(earthTab);
 
     // Click bottom-left geodetic telemetry card
@@ -145,7 +146,7 @@ describe('SystemShowcase Component', () => {
       />
     );
 
-    const earthTab = screen.getByRole('button', { name: /3D Earth/i });
+    const earthTab = screen.getAllByRole('button', { name: /3D Earth/i })[0];
     fireEvent.click(earthTab);
 
     const geodeticCard = screen.getByTitle(/Click to rotate globe and center on project location/i);
@@ -184,7 +185,7 @@ describe('SystemShowcase Component', () => {
       />
     );
 
-    const earthTab = screen.getByRole('button', { name: /3D Earth/i });
+    const earthTab = screen.getAllByRole('button', { name: /3D Earth/i })[0];
     fireEvent.click(earthTab);
 
     const geodeticCard = screen.getByTitle(/Click to rotate globe and center on project location/i);
@@ -221,7 +222,7 @@ describe('SystemShowcase Component', () => {
       />
     );
 
-    const earthTab = screen.getByRole('button', { name: /3D Earth/i });
+    const earthTab = screen.getAllByRole('button', { name: /3D Earth/i })[0];
     fireEvent.click(earthTab);
 
     const geodeticCard = screen.getByTitle(/Click to rotate globe and center on project location/i);

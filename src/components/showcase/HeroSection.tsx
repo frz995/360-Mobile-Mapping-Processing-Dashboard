@@ -13,17 +13,17 @@ interface HeroSectionProps {
     activeJobs: number;
     sparklesReady: boolean;
     viewerName: string;
-    onLaunch: () => void;
-    onExplore3D: () => void;
+    onExplorePlatform: () => void;
+    onExploreEarth: () => void;
 }
 
 const MARQUEE_ITEMS = [
-    'Executive Dashboard & Spatial Telemetry',
-    'Data Management & Masterlist Ledgers',
-    'Production Workspace, NAS & Lineage',
-    'Panoramic StreetView & QA/QC Defect Workspace',
-    'PostGIS Spatial Hub & Vector Layer Staging',
-    'Executive Reports, Audit Trail & RBAC Governance',
+    'Project Management & Survey Ledgers',
+    '360° Imagery · Panoramic Review',
+    'Processing Pipeline · Workstations & GPU Workers',
+    'QA / QC · Quality & Audit',
+    'GIS Workspace · Operational Map',
+    'Data Management · Spatial Registry',
 ];
 
 const wordVariant = {
@@ -45,15 +45,15 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
     activeJobs,
     sparklesReady,
     viewerName,
-    onLaunch,
-    onExplore3D,
+    onExplorePlatform,
+    onExploreEarth,
 }) => {
     const marquee = [...MARQUEE_ITEMS, `Photo-Sphere · ${viewerName}`];
 
     return (
         <section
             data-section-idx={HERO_SECTION}
-            className="relative min-h-dvh-safe snap-start flex flex-col items-center justify-start sm:justify-center text-center px-4 sm:px-8 pt-16 sm:pt-24 pb-[max(2rem,env(safe-area-inset-bottom))] sm:pb-10 pointer-events-none"
+            className="relative min-h-dvh-safe snap-start flex flex-col items-center justify-start sm:justify-center text-center px-4 sm:px-8 pt-12 sm:pt-24 pb-[max(2rem,env(safe-area-inset-bottom))] sm:pb-10 pointer-events-none"
         >
             {/* Aurora depth field */}
             <div aria-hidden className="absolute inset-0 overflow-hidden pointer-events-none">
@@ -63,10 +63,10 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
 
             {/* Headline — per-word mask reveal */}
             <h1
-                aria-label="GeoSphere 360°"
-                className="relative z-10 mt-2 sm:mt-5 text-3xl sm:text-6xl xl:text-7xl font-bold tracking-tight bg-gradient-to-b from-white via-white to-white/55 bg-clip-text text-transparent"
+                aria-label="Mobile Mapping Data, Managed in One Place"
+                className="relative z-10 mt-2 sm:mt-5 text-2xl sm:text-6xl xl:text-7xl font-bold tracking-tight bg-gradient-to-b from-white via-white to-white/55 bg-clip-text text-transparent"
             >
-                {['GeoSphere', '360°'].map((w, i) => (
+                {['Mobile', 'Mapping', 'Data,', 'Managed', 'in', 'One', 'Place'].map((w, i) => (
                     <span key={w} className="inline-block overflow-hidden align-bottom pb-[0.08em] mr-[0.28em] last:mr-0">
                         <motion.span
                             className="inline-block"
@@ -87,7 +87,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                 transition={{ delay: 0.5, duration: 0.8, ease: EASE }}
                 className="relative z-10 block mt-2 text-xs sm:text-base xl:text-lg font-semibold tracking-wide text-neutral-300"
             >
-                A Cloud-Native Mobile Mapping Platform.
+                A practical workspace for mobile mapping operations.
             </motion.span>
 
             <motion.p
@@ -96,8 +96,9 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                 transition={{ delay: 0.62, duration: 0.8, ease: EASE }}
                 className="relative z-10 mt-2 sm:mt-3 text-[10px] sm:text-[13px] text-neutral-400 leading-relaxed max-w-md sm:max-w-2xl"
             >
-                An integrated WebGIS workspace where survey rigs, GPU processing workers, NAS storage, and PostGIS
-                databases collaborate to transform mobile mapping data into trustworthy, published infrastructure assets.
+                GeoSphere 360 brings mobile mapping imagery, 360° data, GIS, processing, and QA/QC workflows into a
+                single operational platform. Manage survey projects, imagery, processing activities, spatial data,
+                QA/QC, and project outputs from a single web-based environment.
             </motion.p>
 
             {/* Sparkles emitter (lazy-mounted after the view transition settles) */}
@@ -105,7 +106,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ delay: 0.75, duration: 1 }}
-                className="relative z-10 w-full max-w-lg sm:max-w-2xl mx-auto h-12 sm:h-16 mt-1"
+                className="relative z-10 w-full max-w-lg sm:max-w-2xl mx-auto h-8 sm:h-16 mt-0 sm:mt-1"
             >
                 <div className="absolute left-0 right-0 mx-auto top-0 bg-gradient-to-r from-transparent via-indigo-500 to-transparent h-px w-3/4" />
                 <div className="absolute left-0 right-0 mx-auto top-0 bg-gradient-to-r from-transparent via-sky-500 to-transparent h-[2px] w-1/4" />
@@ -158,24 +159,24 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                 initial={{ opacity: 0, y: 18 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 1, duration: 0.8, ease: EASE }}
-                className="relative z-10 flex flex-wrap items-center justify-center gap-2 sm:gap-3 mt-5 sm:mt-8 pointer-events-auto"
+                className="relative z-10 flex flex-wrap items-center justify-center gap-2 sm:gap-3 mt-3 sm:mt-8 pointer-events-auto"
             >
                 <MagneticWrap>
                     <HoverBorderGradient
-                        onClick={onLaunch}
+                        onClick={onExplorePlatform}
                         containerClassName="group/btn rounded-lg cursor-pointer active:scale-[0.97]"
                         className="px-4 py-2 sm:px-5 sm:py-2.5 rounded-lg font-medium text-[11px] sm:text-sm flex items-center justify-center gap-2 text-neutral-100"
                     >
-                        <span>Launch Workspace</span>
+                        <span>Explore Platform</span>
                         <ArrowRight className="w-3.5 h-3.5 text-neutral-400 group-hover/btn:text-white transition-all group-hover/btn:translate-x-0.5" />
                     </HoverBorderGradient>
                 </MagneticWrap>
                 <button
-                    onClick={onExplore3D}
+                    onClick={onExploreEarth}
                     className="group flex items-center gap-2 rounded-lg border border-white/10 hover:border-white/30 bg-white/[0.02] hover:bg-white/[0.05] px-3 py-2 sm:px-4 sm:py-2.5 text-[11px] sm:text-xs font-medium text-neutral-300 hover:text-white transition-all cursor-pointer active:scale-[0.97]"
                 >
                     <span className="material-symbols-outlined text-[15px] leading-none text-neutral-400 group-hover:text-sky-300 transition-colors">public</span>
-                    <span>Explore in 3D</span>
+                    <span>Explore 3D Earth</span>
                 </button>
             </motion.div>
 
