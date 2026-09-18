@@ -17,6 +17,8 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 // maplibre self-constructing its own worker path (which Vite dev serves with
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import type { CatalogVectorLayer } from '../../utils/gisImportParser';
+import { estimateGeometryBytes } from '../../utils/gisImportParser';
+import type { ImportPreview } from './RoadImportPanel';
 import { type SystemLayerStyles } from './RoadCatalogPanel';
 import { resolveSpatialSubgrid } from '../../utils/subgridComparison';
 import { extractSubgridName } from '../../utils/subgrid';
@@ -51,6 +53,53 @@ export interface RoadTraceApi {
 }
 
 const EMPTY_FC: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] };
+
+// Catalog layers at/above this feature count (or estimated serialized size)
+// are registered on the map immediately with empty data and fed to MapLibre
+// asynchronously at idle. A full-country road network can otherwise block the
+// main thread for seconds while the geojson source builds its index/tile tree.
+const HEAVY_CATALOG_FEATURE_COUNT = 4000;
+const HEAVY_CATALOG_BYTES = 1_500_000;
+
+/** Live import-preview overlay (Original vs Clipped dataset) during clip-confirmation. */
+const PREVIEW_SRC = 'ra-cat-preview';
+const PREVIEW_LAYER_IDS = [
+  'ra-preview-fill',
+  'ra-preview-poly-line',
+  'ra-preview-casing',
+  'ra-preview-line',
+  'ra-preview-point'
+] as const;
+
+/**
+ * Pushes a large catalog layer's geometry into an already-registered geojson
+ * source off the critical path, so the first committed frame paints before
+ * MapLibre ingests the dataset on its worker + main-thread clone.
+ */
+function scheduleCatalogGeometryLoad(
+  map: MaplibreMap,
+  pending: Array<{ srcId: string; geojson: any }>
+): void {
+  const flush = () => {
+    for (const { srcId, geojson } of pending) {
+      const src = map.getSource(srcId);
+      if (src && typeof (src as any).setData === 'function') {
+        (src as any).setData(geojson);
+      }
+    }
+  };
+  if (typeof window.requestIdleCallback === 'function') {
+    window.requestIdleCallback(flush, { timeout: 3000 });
+  } else {
+    let frames = 0;
+    const afterPaint = () => {
+      frames++;
+      if (frames >= 2) flush();
+      else requestAnimationFrame(afterPaint);
+    };
+    requestAnimationFrame(afterPaint);
+  }
+}
 
 function traceLineFc(runs: LonLat[][]): GeoJSON.FeatureCollection {
   return {
@@ -110,6 +159,11 @@ export interface RoadAnalysisMapProps {
   showRoadLines?: boolean;
   /** User-imported custom GIS layers to display and style dynamically. */
   catalogLayers?: CatalogVectorLayer[];
+  /**
+   * Live import-preview overlay (Original vs Clipped dataset) shown while the
+   * user decides whether to clip a file that exceeds the selected region.
+   */
+  catalogPreview?: ImportPreview | null;
   /** Styling customizations for system baseline layers. */
   systemStyles?: SystemLayerStyles;
   /** Bounding box to zoom map to when requested by catalog. */
@@ -447,6 +501,7 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
   active = true,
   showRoadLines = true,
   catalogLayers = [],
+  catalogPreview,
   systemStyles,
   focusBbox,
   selectedFeature,
@@ -556,12 +611,14 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
   const catalogLayersRef        = useRef<CatalogVectorLayer[]>(catalogLayers);
   const systemStylesRef         = useRef<SystemLayerStyles | undefined>(systemStyles);
   const selectedFeatureRef      = useRef<any>(selectedFeature);
+  const catalogPreviewRef       = useRef<ImportPreview | null | undefined>(catalogPreview);
   const prevCatalogFingerprintRef = useRef<string>('');
   const show3DRef = useRef(show3D);
 
   catalogLayersRef.current   = catalogLayers;
   systemStylesRef.current    = systemStyles;
   selectedFeatureRef.current = selectedFeature;
+  catalogPreviewRef.current  = catalogPreview;
   show3DRef.current          = show3D;
 
   // ── Road Network Trace: imperative overlay API (zero React churn per frame) ──
@@ -585,6 +642,7 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
           id: 'ra-trace-passed',
           type: 'line',
           source: TRACE_PASSED_SRC,
+          layout: { 'line-cap': 'round', 'line-join': 'round' },
           paint: {
             'line-color': '#10b981',
             'line-width': 3,
@@ -598,6 +656,7 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
           id: 'ra-trace-live-gap',
           type: 'line',
           source: TRACE_LIVE_SRC,
+          layout: { 'line-cap': 'round', 'line-join': 'round' },
           paint: {
             'line-color': '#ef4444',
             'line-width': 3.6,
@@ -610,6 +669,7 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
           id: 'ra-trace-live-passed',
           type: 'line',
           source: TRACE_LIVE_PASSED_SRC,
+          layout: { 'line-cap': 'round', 'line-join': 'round' },
           paint: {
             'line-color': '#10b981',
             'line-width': 3,
@@ -645,6 +705,7 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
           id: 'ra-trace-gap',
           type: 'line',
           source: TRACE_GAP_SRC,
+          layout: { 'line-cap': 'round', 'line-join': 'round' },
           paint: {
             'line-color': '#ef4444',
             'line-width': 3.4,
@@ -668,6 +729,7 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
           id: 'ra-trace-line',
           type: 'line',
           source: TRACE_SRC,
+          layout: { 'line-cap': 'round', 'line-join': 'round' },
           paint: {
             'line-color': '#ef4444',
             'line-width': 3.6,
@@ -850,11 +912,16 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
     }
 
     // 3. User Catalog Vector Layers (rendered below baseline lines so road analysis remains clear)
+    const pendingCatalogGeometry: Array<{ srcId: string; geojson: any }> = [];
     catalogLayers.forEach((catLayer) => {
       if (!catLayer.visible || !catLayer.geojson) return;
 
       const srcId = `ra-cat-${catLayer.id}`;
-      map.addSource(srcId, { type: 'geojson', data: catLayer.geojson });
+      const heavy =
+        (catLayer.featureCount ?? 0) >= HEAVY_CATALOG_FEATURE_COUNT ||
+        (catLayer.geometryBytes ?? 0) > HEAVY_CATALOG_BYTES;
+      map.addSource(srcId, { type: 'geojson', data: heavy ? EMPTY_FC : catLayer.geojson });
+      if (heavy) pendingCatalogGeometry.push({ srcId, geojson: catLayer.geojson });
       addedSourceIdsRef.current.add(srcId);
       dynamicSourcesRef.current.push(srcId);
 
@@ -1054,6 +1121,7 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
         id: 'ra-roads',
         type: 'line',
         source: 'ra-roads',
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: {
           'line-color': planColor,
           'line-width': planWidth,
@@ -1218,6 +1286,59 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
       });
     }
 
+    // 6b. Live import preview (Original vs Clipped) — persistent source whose
+    //     data is pushed via setData() from a dedicated effect. Oversized
+    //     previews defer to the idle-time catalog loader so toggling modes never
+    //     freezes the main thread.
+    const preview = catalogPreviewRef.current;
+    const previewColor = preview?.color || '#38bdf8';
+    map.addSource(PREVIEW_SRC, { type: 'geojson', data: EMPTY_FC });
+    addedSourceIdsRef.current.add(PREVIEW_SRC);
+    dynamicSourcesRef.current.push(PREVIEW_SRC);
+
+    map.addLayer({
+      id: 'ra-preview-fill', type: 'fill', source: PREVIEW_SRC,
+      filter: ['match', ['geometry-type'], ['Polygon', 'MultiPolygon'], true, false],
+      paint: { 'fill-color': previewColor, 'fill-opacity': 0.35 }
+    });
+    map.addLayer({
+      id: 'ra-preview-poly-line', type: 'line', source: PREVIEW_SRC,
+      filter: ['match', ['geometry-type'], ['Polygon', 'MultiPolygon'], true, false],
+      paint: { 'line-color': previewColor, 'line-width': 2, 'line-opacity': 1 }
+    });
+    map.addLayer({
+      id: 'ra-preview-casing', type: 'line', source: PREVIEW_SRC,
+      filter: ['match', ['geometry-type'], ['LineString', 'MultiLineString'], true, false],
+      paint: { 'line-color': '#0b1220', 'line-width': 8, 'line-opacity': 0.6 }
+    });
+    map.addLayer({
+      id: 'ra-preview-line', type: 'line', source: PREVIEW_SRC,
+      filter: ['match', ['geometry-type'], ['LineString', 'MultiLineString'], true, false],
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: { 'line-color': previewColor, 'line-width': 3.5, 'line-opacity': 0.95 }
+    });
+    map.addLayer({
+      id: 'ra-preview-point', type: 'circle', source: PREVIEW_SRC,
+      filter: ['match', ['geometry-type'], ['Point', 'MultiPoint'], true, false],
+      paint: {
+        'circle-radius': 6, 'circle-color': previewColor, 'circle-opacity': 0.95,
+        'circle-stroke-color': '#ffffff', 'circle-stroke-width': 1.5
+      }
+    });
+    dynamicLayersRef.current.push(...PREVIEW_LAYER_IDS);
+
+    const previewFc = preview?.geojson;
+    if (previewFc && Array.isArray(previewFc.features) && previewFc.features.length > 0) {
+      const heavy =
+        previewFc.features.length >= HEAVY_CATALOG_FEATURE_COUNT ||
+        estimateGeometryBytes(previewFc) > HEAVY_CATALOG_BYTES;
+      if (heavy) {
+        pendingCatalogGeometry.push({ srcId: PREVIEW_SRC, geojson: previewFc });
+      } else {
+        (map.getSource(PREVIEW_SRC) as maplibregl.GeoJSONSource | undefined)?.setData(previewFc);
+      }
+    }
+
     // Record catalog structural fingerprint so the catalog effect can decide
     // between a full rebuild and an in-place style update.
     prevCatalogFingerprintRef.current = computeStructuralFingerprint(catalogLayers);
@@ -1256,6 +1377,12 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
     };
     fitBounds();
 
+    // Feed oversized catalog geometry to the map sources after the frame
+    // commits (see HEAVY_CATALOG_* / scheduleCatalogGeometryLoad).
+    if (pendingCatalogGeometry.length > 0) {
+      scheduleCatalogGeometryLoad(map, pendingCatalogGeometry);
+    }
+
     // 7. Re-apply the3D building layer whenever the basemap is rebuilt (a style
     //    swap recreates the Map, so the previous fill-extrusion layer is gone).
     applyBuildingLayer(map, show3DRef.current);
@@ -1287,6 +1414,34 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
       features: selectedFeature?.geometry ? [selectedFeature] : []
     });
   }, [selectedFeature]);
+
+  // ── Import preview: live update via setData / setPaintProperty (no rebuild) ──
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !styleLoadedRef.current) return;
+    const src = map?.getSource?.(PREVIEW_SRC) as maplibregl.GeoJSONSource | undefined;
+    const preview = catalogPreview;
+    const geojson = preview?.geojson;
+
+    if (src?.setData) {
+      const heavy =
+        geojson &&
+        Array.isArray(geojson.features) &&
+        (geojson.features.length >= HEAVY_CATALOG_FEATURE_COUNT ||
+          estimateGeometryBytes(geojson) > HEAVY_CATALOG_BYTES);
+      if (heavy) {
+        scheduleCatalogGeometryLoad(map, [{ srcId: PREVIEW_SRC, geojson }]);
+      } else {
+        src.setData(geojson && Array.isArray(geojson.features) ? geojson : EMPTY_FC);
+      }
+    }
+
+    const color = preview?.color || '#38bdf8';
+    if (map.getLayer('ra-preview-line')) map.setPaintProperty('ra-preview-line', 'line-color', color);
+    if (map.getLayer('ra-preview-point')) map.setPaintProperty('ra-preview-point', 'circle-color', color);
+    if (map.getLayer('ra-preview-fill')) map.setPaintProperty('ra-preview-fill', 'fill-color', color);
+    if (map.getLayer('ra-preview-poly-line')) map.setPaintProperty('ra-preview-poly-line', 'line-color', color);
+  }, [catalogPreview]);
 
   // ── Catalog layers: full rebuild only on structural changes; setPaintProperty otherwise ──
   useEffect(() => {

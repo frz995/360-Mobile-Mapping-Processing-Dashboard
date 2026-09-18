@@ -3,7 +3,10 @@ import {
   parseGisImportFile,
   computeGeoJsonBBox,
   classifyGeometryType,
-  parseCsvToGeoJson
+  parseCsvToGeoJson,
+  isImportMemoryError,
+  IMPORT_MEMORY_ERROR_MESSAGE,
+  MAX_IMPORT_FILE_BYTES
 } from '../gisImportParser';
 
 describe('gisImportParser', () => {
@@ -135,6 +138,7 @@ describe('gisImportParser', () => {
       expect(res.hasRoadLines).toBe(true);
       expect(res.totalDistanceKm).toBeGreaterThan(0);
       expect(res.bbox).toEqual([101.2, 3.2, 101.4, 3.4]);
+      expect(res.geometryBytes).toBeGreaterThan(0);
     });
 
     it('successfully parses a KML file', async () => {
@@ -223,6 +227,23 @@ describe('gisImportParser', () => {
         type: 'application/json'
       });
       await expect(parseGisImportFile(file)).rejects.toThrow(/invalid json format/i);
+    });
+
+    it('rejects files over the raw size ceiling with guidance before reading', async () => {
+      const huge = new File([new ArrayBuffer(MAX_IMPORT_FILE_BYTES + 1)], 'huge.geojson', {
+        type: 'application/geo+json'
+      });
+      await expect(parseGisImportFile(huge)).rejects.toThrow(/too large for the browser/i);
+    });
+
+    it('classifies browser out-of-memory errors separately from format errors', () => {
+      expect(isImportMemoryError(new Error('Array buffer allocation failed'))).toBe(true);
+      expect(isImportMemoryError(new Error('Allocation failed: JavaScript heap'))).toBe(true);
+      expect(isImportMemoryError(new Error('out of memory'))).toBe(true);
+      expect(isImportMemoryError(new Error('Invalid JSON format'))).toBe(false);
+      expect(isImportMemoryError(new Error('File not found'))).toBe(false);
+      expect(isImportMemoryError(new Error('Unknown error'))).toBe(false);
+      expect(IMPORT_MEMORY_ERROR_MESSAGE).toMatch(/ran out of memory/i);
     });
   });
 });

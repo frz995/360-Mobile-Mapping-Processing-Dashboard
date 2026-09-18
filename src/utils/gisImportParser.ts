@@ -1,12 +1,45 @@
 import * as toGeoJSON from '@tmcw/togeojson';
 import * as shapefile from 'shapefile';
 import { extractZipFiles } from './zipReader';
-import { extractLineRuns, readFileAsText, readFileAsArrayBuffer } from './roadPlanParser';
+import { readFileAsText, readFileAsArrayBuffer } from './roadPlanParser';
+import type { GisImportWorkerResponse } from '../workers/gisImport.worker';
 
 export { readFileAsText, readFileAsArrayBuffer };
 
 export type GisFormat = 'geojson' | 'kml' | 'shp_zip' | 'shp' | 'gpx' | 'csv';
 export type GisGeometryType = 'LineString' | 'Polygon' | 'Point' | 'Mixed';
+
+/**
+ * Cheap estimate of the serialized JSON size of a GeoJSON document.
+ * Walks the tree once counting coordinate scalars (a Position like [lng, lat]
+ * counts 2-3 scalars) instead of allocating a full JSON.stringify — safe to run
+ * even inside a Web Worker without doubling peak memory.
+ */
+export function estimateGeometryBytes(geojson: any): number {
+  if (!geojson) return 0;
+  let scalars = 0;
+  let depth = 0;
+  const walk = (v: any): void => {
+    if (Array.isArray(v)) {
+      if (v.length >= 2 && typeof v[0] === 'number' && typeof v[1] === 'number') {
+        scalars += v.length;
+        return;
+      }
+      depth++;
+      v.forEach(walk);
+      depth--;
+    } else if (v && typeof v === 'object') {
+      depth++;
+      for (const k of Object.keys(v)) {
+        if (depth > 0) scalars += k.length; // property name characters
+        walk(v[k]);
+      }
+      depth--;
+    }
+  };
+  walk(geojson);
+  return scalars * 8 + depth * 4 + 256;
+}
 
 export interface CatalogVectorLayer {
   id: string;
@@ -29,7 +62,6 @@ export interface CatalogVectorLayer {
   uploadedAt: string;
   fileSizeFormatted?: string;
   hasRoadLines: boolean;
-  lineRuns?: Array<Array<[number, number]>>;
   totalDistanceKm?: number;
   showLabels?: boolean;
   labelField?: string;
@@ -39,6 +71,13 @@ export interface CatalogVectorLayer {
   labelHaloColor?: string;
   labelHaloWidth?: number;
   labelMinZoom?: number;
+  // Approximate serialized size of `geojson` (bytes), computed once off the
+  // main thread. Persistence uses this to decide whether the geometry is small
+  // enough to cache in localStorage without freezing the UI.
+  geometryBytes?: number;
+  // True when the layer's geometry was too large to persist in the local cache
+  // (the on-screen copy keeps rendering from memory until the page reloads).
+  geometryDropped?: boolean;
 }
 
 export interface GisImportResult {
@@ -49,9 +88,36 @@ export interface GisImportResult {
   geometryType: GisGeometryType;
   bbox: [number, number, number, number] | null;
   hasRoadLines: boolean;
-  lineRuns: Array<Array<[number, number]>>;
   totalDistanceKm: number;
+  geometryBytes?: number;
   warnings?: string[];
+  /**
+   * Region-aware clip computed off the main thread (in the parse worker), so
+   * the import panel receives the exact polygon-clipped FeatureCollection plus
+   * its statistics WITHOUT re-walking the dataset on the UI thread. `null`
+   * means the dataset fits inside the selected district (no clip needed) or no
+   * region was supplied; undefined means the inline parse path ran (small XML
+   * formats) and the panel falls back to clipping on the main thread.
+   */
+  regionClip?: {
+    /** Polygon-clipped FeatureCollection ready to import. */
+    fc: any;
+    featureCount: number;
+    geometryType: GisGeometryType;
+    bbox: [number, number, number, number] | null;
+    hasRoadLines: boolean;
+    lineCount: number;
+    totalDistanceKm: number;
+    /** Serialized-size estimate of `fc` (bytes). */
+    geometryBytes: number;
+    /** Fields below are the raw clip inputs, reused to keep budgets straight. */
+    originalFeatureCount: number;
+  } | null;
+}
+
+export interface DecodedSpatialFile {
+  geojson: any;
+  format: GisFormat;
 }
 
 /**
@@ -157,6 +223,147 @@ export function classifyGeometryType(geojson: any): GisGeometryType {
   if (types.size === 0) return 'Point';
   if (types.size === 1) return types.values().next().value as GisGeometryType;
   return 'Mixed';
+}
+
+/**
+ * XML parsing helper. Kept behind this indirection because Web Workers do not
+ * expose DOMParser, so callers can branch between worker/inline execution.
+ */
+function parseXmlString(text: string): Document {
+  const Parser = (globalThis as any).DOMParser as typeof DOMParser | undefined;
+  if (!Parser) {
+    throw new Error('XML parsing is unavailable in this environment.');
+  }
+  return new Parser().parseFromString(text, 'text/xml');
+}
+
+/**
+ * Single-pass import statistics: bounding box, geometry classification, line
+ * count, and total line kilometres are all computed in ONE traversal of the
+ * GeoJSON tree, WITHOUT materializing a duplicate copy of the coordinates for
+ * every line (the previous pipeline built a full `lineRuns` array that was
+ * stored on the layer but never read back). This keeps peak memory flat for
+ * large road datasets.
+ */
+export function analyzeImportGeometry(geojson: any): {
+  bbox: [number, number, number, number] | null;
+  geometryType: GisGeometryType;
+  lineCount: number;
+  totalDistanceKm: number;
+} {
+  let minLng = Infinity;
+  let minLat = Infinity;
+  let maxLng = -Infinity;
+  let maxLat = -Infinity;
+  let count = 0;
+  const types = new Set<string>();
+  let lineCount = 0;
+  let totalDistanceKm = 0;
+
+  if (!geojson) {
+    return { bbox: null, geometryType: 'Point', lineCount, totalDistanceKm };
+  }
+
+  const recordCoord = (c: any) => {
+    if (Array.isArray(c) && c.length >= 2 && !isNaN(c[0]) && !isNaN(c[1])) {
+      const lng = Number(c[0]);
+      const lat = Number(c[1]);
+      if (lng < minLng) minLng = lng;
+      if (lat < minLat) minLat = lat;
+      if (lng > maxLng) maxLng = lng;
+      if (lat > maxLat) maxLat = lat;
+      count++;
+    }
+  };
+
+  // Sums haversine distance along one polyline WITHOUT allocating run arrays;
+  // `lineCount` is incremented once per usable line (> 1 vertex).
+  const addRun = (coords: any) => {
+    if (!Array.isArray(coords)) return;
+    let vertexCount = 0;
+    let prevLng = 0;
+    let prevLat = 0;
+    for (const c of coords) {
+      if (!Array.isArray(c) || c.length < 2) continue;
+      const lng = Number(c[0]);
+      const lat = Number(c[1]);
+      if (vertexCount > 0) {
+        const dLat = ((lat - prevLat) * Math.PI) / 180;
+        const dLon = ((lng - prevLng) * Math.PI) / 180;
+        const a =
+          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+          Math.cos((prevLat * Math.PI) / 180) *
+            Math.cos((lat * Math.PI) / 180) *
+            Math.sin(dLon / 2) *
+            Math.sin(dLon / 2);
+        const cAngle = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        totalDistanceKm += 6371 * cAngle;
+      }
+      prevLng = lng;
+      prevLat = lat;
+      vertexCount++;
+    }
+    if (vertexCount >= 2) lineCount++;
+  };
+
+  const visitGeom = (geom: any) => {
+    if (!geom || !geom.type) return;
+    const t = geom.type;
+    const coords = geom.coordinates;
+    if (t === 'Point') {
+      recordCoord(coords);
+      types.add('Point');
+    } else if (t === 'MultiPoint') {
+      (Array.isArray(coords) ? coords : []).forEach(recordCoord);
+      types.add('Point');
+    } else if (t === 'LineString') {
+      (Array.isArray(coords) ? coords : []).forEach(recordCoord);
+      types.add('LineString');
+      addRun(coords);
+    } else if (t === 'MultiLineString') {
+      (Array.isArray(coords) ? coords : []).forEach((line: any) => {
+        (Array.isArray(line) ? line : []).forEach(recordCoord);
+      });
+      types.add('LineString');
+      (Array.isArray(coords) ? coords : []).forEach((line: any) => addRun(line));
+    } else if (t === 'Polygon') {
+      (Array.isArray(coords) ? coords : []).forEach((ring: any) => {
+        (Array.isArray(ring) ? ring : []).forEach(recordCoord);
+      });
+      types.add('Polygon');
+    } else if (t === 'MultiPolygon') {
+      (Array.isArray(coords) ? coords : []).forEach((poly: any) => {
+        (Array.isArray(poly) ? poly : []).forEach((ring: any) => {
+          (Array.isArray(ring) ? ring : []).forEach(recordCoord);
+        });
+      });
+      types.add('Polygon');
+    } else if (t === 'GeometryCollection' && Array.isArray(geom.geometries)) {
+      geom.geometries.forEach(visitGeom);
+    }
+  };
+
+  if (geojson.type === 'FeatureCollection' && Array.isArray(geojson.features)) {
+    geojson.features.forEach((f: any) => {
+      if (f?.geometry) visitGeom(f.geometry);
+    });
+  } else if (geojson.type === 'Feature' && geojson.geometry) {
+    visitGeom(geojson.geometry);
+  } else if (geojson.type) {
+    visitGeom(geojson);
+  } else if (geojson.geometry) {
+    visitGeom(geojson.geometry);
+  }
+
+  const geometryType: GisGeometryType =
+    types.size === 0 ? 'Point' : types.size === 1 ? (types.values().next().value as GisGeometryType) : 'Mixed';
+
+  return {
+    bbox: count === 0 || minLng === Infinity ? null : [minLng, minLat, maxLng, maxLat],
+    geometryType,
+    lineCount,
+    totalDistanceKm
+  };
 }
 
 /**
@@ -326,25 +533,37 @@ export function parseCsvToGeoJson(csvText: string): any {
 }
 
 /**
- * Universal spatial GIS file parser supporting:
- * - GeoJSON (.geojson, .json)
- * - KML (.kml)
- * - Shapefile inside ZIP (.zip containing .shp, .dbf, .shx)
- * - Standalone Shapefile (.shp)
- * - GPX (.gpx)
- * - CSV (.csv with coordinates)
+ * Decodes a spatial file into a GeoJSON container (worker-safe for the non-XML
+ * formats). XML formats (KML/KMZ/GPX and zipped KML archives) need DOMParser,
+ * which Web Workers do not provide, so those always execute inline on the main
+ * thread; the remaining formats reuse the exact same body inside a Worker.
  */
-export async function parseGisImportFile(file: File): Promise<GisImportResult> {
+export async function decodeSpatialFile(
+  file: File,
+  warnings: string[],
+  onProgress?: (stage: string) => void
+): Promise<DecodedSpatialFile> {
   const lowerName = file.name.toLowerCase();
-  const warnings: string[] = [];
+
+  // Fail fast before reading a file that would exhaust the tab's memory once it
+  // is buffered, parsed into GeoJSON, cloned, and (region-aware) clipped.
+  if (file.size > MAX_IMPORT_FILE_BYTES) {
+    throw new Error(
+      `This file is ${formatBytes(file.size)} — too large for the browser to import in one pass. ` +
+        'Clip the dataset to a single district (or fewer features) and re-export, then upload the smaller file.'
+    );
+  }
 
   let geojson: any = null;
   let format: GisFormat = 'geojson';
+
+  onProgress?.('Reading file…');
 
   // 1. GeoJSON (.geojson, .json)
   if (lowerName.endsWith('.geojson') || lowerName.endsWith('.json')) {
     format = 'geojson';
     const text = await readFileAsText(file);
+    onProgress?.('Parsing GeoJSON geometry…');
     try {
       geojson = JSON.parse(text);
     } catch {
@@ -355,8 +574,8 @@ export async function parseGisImportFile(file: File): Promise<GisImportResult> {
   else if (lowerName.endsWith('.kml')) {
     format = 'kml';
     const text = await readFileAsText(file);
-    const parser = new DOMParser();
-    const kmlDoc = parser.parseFromString(text, 'text/xml');
+    onProgress?.('Parsing KML placemarks…');
+    const kmlDoc = parseXmlString(text);
     const parserError = kmlDoc.querySelector('parsererror');
     if (parserError) {
       throw new Error(`Invalid KML format: XML parsing failed for "${file.name}".`);
@@ -367,8 +586,8 @@ export async function parseGisImportFile(file: File): Promise<GisImportResult> {
   else if (lowerName.endsWith('.gpx')) {
     format = 'gpx';
     const text = await readFileAsText(file);
-    const parser = new DOMParser();
-    const gpxDoc = parser.parseFromString(text, 'text/xml');
+    onProgress?.('Parsing GPX tracks…');
+    const gpxDoc = parseXmlString(text);
     const parserError = gpxDoc.querySelector('parsererror');
     if (parserError) {
       throw new Error(`Invalid GPX format: XML parsing failed for "${file.name}".`);
@@ -379,12 +598,14 @@ export async function parseGisImportFile(file: File): Promise<GisImportResult> {
   else if (lowerName.endsWith('.csv')) {
     format = 'csv';
     const text = await readFileAsText(file);
+    onProgress?.('Parsing CSV coordinates…');
     geojson = parseCsvToGeoJson(text);
   }
     // 5. Shapefile in ZIP or KMZ (.zip, .kmz)
   else if (lowerName.endsWith('.zip') || lowerName.endsWith('.kmz')) {
     format = lowerName.endsWith('.kmz') ? 'kml' : 'shp_zip';
     const buffer = await readFileAsArrayBuffer(file);
+    onProgress?.('Extracting archive…');
     const zipEntries = await extractZipFiles(buffer);
 
     // Check if the zip is actually a KMZ or zipped KML
@@ -394,8 +615,8 @@ export async function parseGisImportFile(file: File): Promise<GisImportResult> {
     if (kmlEntry && (!shpEntry || lowerName.endsWith('.kmz'))) {
       format = 'kml';
       const kmlText = new TextDecoder('utf-8').decode(kmlEntry.data);
-      const parser = new DOMParser();
-      const kmlDoc = parser.parseFromString(kmlText, 'text/xml');
+      onProgress?.('Decoding KML placemarks…');
+      const kmlDoc = parseXmlString(kmlText);
       const parserError = kmlDoc.querySelector('parsererror');
       if (parserError) {
         throw new Error(`Invalid KML format in archive "${file.name}".`);
@@ -425,6 +646,7 @@ export async function parseGisImportFile(file: File): Promise<GisImportResult> {
         : undefined;
 
       const source = await shapefile.open(shpBuffer, dbfBuffer);
+      onProgress?.('Reading shapefile records…');
       const features: any[] = [];
       let record = await source.read();
       while (!record.done) {
@@ -458,6 +680,7 @@ export async function parseGisImportFile(file: File): Promise<GisImportResult> {
   else if (lowerName.endsWith('.shp')) {
     format = 'shp';
     const buffer = await readFileAsArrayBuffer(file);
+    onProgress?.('Reading shapefile records…');
     const source = await shapefile.open(buffer);
 
     const features: any[] = [];
@@ -480,11 +703,26 @@ export async function parseGisImportFile(file: File): Promise<GisImportResult> {
     );
   }
 
-  // Normalize GeoJSON container
-  if (!geojson) {
-    throw new Error(`Failed to extract spatial data from "${file.name}".`);
-  }
+  return { geojson, format };
+}
 
+// ---------------------------------------------------------------------------
+// Result assembly (pure, worker-safe)
+// ---------------------------------------------------------------------------
+
+/**
+ * Turns a decoded GeoJSON container into the final import result: wraps loose
+ * geometries into a FeatureCollection, normalizes projected coordinates, then
+ * computes ALL statistics (bbox, geometry type, line count, total distance) in a
+ * single traversal instead of the previous 4-5 full-document scans.
+ */
+export function buildImportResult(
+  geojson: any,
+  format: GisFormat,
+  filename: string,
+  warnings: string[],
+  onProgress?: (stage: string) => void
+): GisImportResult {
   if (geojson.type === 'Feature') {
     geojson = { type: 'FeatureCollection', features: [geojson] };
   } else if (geojson.type && geojson.type !== 'FeatureCollection') {
@@ -499,11 +737,11 @@ export async function parseGisImportFile(file: File): Promise<GisImportResult> {
 
   const features = Array.isArray(geojson.features) ? geojson.features : [];
   if (features.length === 0) {
-    throw new Error(`The file "${file.name}" contained 0 spatial features.`);
+    throw new Error(`The file "${filename}" contained 0 spatial features.`);
   }
 
-  const bbox = computeGeoJsonBBox(geojson);
-  const geometryType = classifyGeometryType(geojson);
+  onProgress?.('Computing geometry statistics…');
+  const { bbox, geometryType, lineCount, totalDistanceKm } = analyzeImportGeometry(geojson);
 
   // Check for coordinates outside WGS84 range (likely projected UTM/State Plane)
   if (bbox) {
@@ -515,39 +753,140 @@ export async function parseGisImportFile(file: File): Promise<GisImportResult> {
     }
   }
 
-  // Extract road runs if lines are present
-  const lineRuns = extractLineRuns(geojson);
-  const hasRoadLines = lineRuns.length > 0;
-
-  // Calculate approximate distance in KM for line runs
-  let totalDistanceKm = 0;
-  if (hasRoadLines) {
-    for (const run of lineRuns) {
-      for (let i = 0; i < run.length - 1; i++) {
-        const [lon1, lat1] = run[i];
-        const [lon2, lat2] = run[i + 1];
-        const R = 6371; // km
-        const dLat = ((lat2 - lat1) * Math.PI) / 180;
-        const dLon = ((lon2 - lon1) * Math.PI) / 180;
-        const a =
-          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-          Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-        totalDistanceKm += R * c;
-      }
-    }
-  }
+  const hasRoadLines = lineCount > 0;
 
   return {
     geojson,
     format,
-    filename: file.name,
+    filename,
     featureCount: features.length,
     geometryType,
     bbox,
     hasRoadLines,
-    lineRuns,
     totalDistanceKm,
+    geometryBytes: estimateGeometryBytes(geojson),
     warnings: warnings.length > 0 ? warnings : undefined
   };
+}
+
+// ---------------------------------------------------------------------------
+// Dispatch: Web Worker for large non-XML formats, inline fallback otherwise
+// ---------------------------------------------------------------------------
+
+const WORKER_PARSE_EXT = /\.(geojson|json|shp|csv)$/i;
+
+/**
+ * Hard ceiling on the RAW uploaded file size. Above this the browser is very
+ * likely to run out of memory once the file is read into an ArrayBuffer, parsed
+ * into a GeoJSON tree, cloned back from the worker, and clipped — the failure
+ * surfaces to the user as an unhelpful "Array buffer allocation failed", so we
+ * fail fast with guidance instead.
+ */
+export const MAX_IMPORT_FILE_BYTES = 350 * 1024 * 1024;
+
+/**
+ * True when an error is really a browser out-of-memory / allocation failure
+ * rather than a genuine format problem with the uploaded file.
+ */
+export function isImportMemoryError(err: any): boolean {
+  const msg = String(err?.message ?? err ?? '').toLowerCase();
+  return (
+    msg.includes('array buffer allocation failed') ||
+    msg.includes('allocation failed') ||
+    msg.includes('out of memory') ||
+    msg.includes('memory limit') ||
+    msg.includes('failed to allocate')
+  );
+}
+
+export const IMPORT_MEMORY_ERROR_MESSAGE =
+  'The browser ran out of memory while importing this file. The dataset is too large to load in one pass — clip it to a single district (or fewer features) and re-export, then upload the smaller file.';
+
+function isWorkerParseSupported(name: string): boolean {
+  return WORKER_PARSE_EXT.test(name) && typeof Worker !== 'undefined';
+}
+
+let importWorker: Worker | null = null;
+let importWorkerCount = 0;
+
+function getImportWorker(): Worker | null {
+  if (importWorker) return importWorker;
+  try {
+    importWorker = new Worker(new URL('../workers/gisImport.worker.ts', import.meta.url), { type: 'module' });
+  } catch {
+    importWorker = null;
+  }
+  return importWorker;
+}
+
+function parseInline(file: File, onProgress?: (stage: string) => void): Promise<GisImportResult> {
+  const warnings: string[] = [];
+  return decodeSpatialFile(file, warnings, onProgress).then(({ geojson, format }) =>
+    buildImportResult(geojson, format, file.name, warnings, onProgress)
+  );
+}
+
+async function parseInWorker(file: File, onProgress?: (stage: string) => void, districtsGeo?: any): Promise<GisImportResult> {
+  const worker = getImportWorker();
+  if (!worker) return parseInline(file, onProgress);
+  const target = worker;
+  return new Promise<GisImportResult>((resolve, reject) => {
+    const id = ++importWorkerCount;
+    const onMessage = (event: MessageEvent<GisImportWorkerResponse>) => {
+      if (!event.data || event.data.id !== id) return;
+      // Live stage updates from the worker never resolve the import promise.
+      if (event.data.status === 'progress') {
+        onProgress?.(event.data.stage);
+        return;
+      }
+      cleanup();
+      if (event.data.status === 'ok') {
+        if (event.data.result) {
+          resolve(event.data.result);
+        } else {
+          reject(new Error('Failed to parse the GIS file in the background worker.'));
+        }
+      } else {
+        reject(new Error(event.data.error || 'Failed to parse the GIS file in the background worker.'));
+      }
+    };
+    const onError = (err: ErrorEvent) => {
+      cleanup();
+      reject(new Error(err.message || 'Failed to parse the GIS file in the background worker.'));
+    };
+    function cleanup() {
+      target.removeEventListener('message', onMessage);
+      target.removeEventListener('error', onError);
+    }
+    target.addEventListener('message', onMessage);
+    target.addEventListener('error', onError);
+    target.postMessage({ id, file, districtsGeo });
+  });
+}
+
+/**
+ * Universal spatial GIS file parser supporting GeoJSON, KML, KMZ, Shapefile
+ * (zip or standalone), GPX, and CSV.
+ *
+ * Large non-XML datasets (GeoJSON, CSV, standalone Shapefile) are parsed in a
+ * dedicated Web Worker so the UI never freezes while the file is decoded —
+ * INCLUDING the region-aware clip: when `districtsGeo` is supplied, the worker
+ * also performs the bbox gate, the polygon clip, and all clipped statistics
+ * (`result.regionClip`) off the UI thread. XML formats (KML/KMZ/GPX and zipped
+ * archives) always run inline because DOMParser is not available in workers.
+ * Falls back to inline parsing automatically when workers are unavailable
+ * (e.g. tests, older browsers, or strict CSP).
+ *
+ * `onProgress` receives human-readable stage labels (e.g. "Reading file…",
+ * "Extracting archive…") as the import advances, on both the worker and the
+ * inline path, so the UI can show live status while a large dataset loads.
+ */
+export async function parseGisImportFile(
+  file: File,
+  onProgress?: (stage: string) => void,
+  districtsGeo?: any
+): Promise<GisImportResult> {
+  return isWorkerParseSupported(file.name)
+    ? parseInWorker(file, onProgress, districtsGeo)
+    : parseInline(file, onProgress);
 }

@@ -11,7 +11,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
-    "clean-db": "node scripts/clear_all_survey_data.cjs"
+    "clean-db": "node scripts/clear_all_survey_data.cjs",
+    "roads:topology": "python scripts/road_topology_clean.py"
   },
   "dependencies": {
     "@photo-sphere-viewer/core": "^5.15.1",

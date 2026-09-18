@@ -35,7 +35,7 @@ import {
 } from './boundary/malaysiaDistricts';
 import { RoadAnalysisMap } from './roadAnalysis/RoadAnalysisMap';
 import type { RoadTraceApi } from './roadAnalysis/RoadAnalysisMap';
-import { RoadImportPanel } from './roadAnalysis/RoadImportPanel';
+import { RoadImportPanel, type ImportPreview } from './roadAnalysis/RoadImportPanel';
 import { RoadAnalysisPrintPanel } from './roadAnalysis/RoadAnalysisPrintPanel';
 import { RoadCatalogPanel, RoadAttributeTableDrawer, type SystemLayerStyles } from './roadAnalysis/RoadCatalogPanel';
 import type { CatalogVectorLayer } from '../utils/gisImportParser';
@@ -43,7 +43,14 @@ import { getRoadExtractionAdapter, type ExtractedRoadLine } from '../services/ro
 import { parseRoadPlanFile, extractLineRuns } from '../utils/roadPlanParser';
 import { extractPanotrackPoints, filterPanotrackByDistricts } from '../utils/panotrackExtractor';
 import { pathLengthLngLatKm } from '../utils/geo';
-import { computeSubgridMetrics, type SubgridMetric, type SubgridRelationNotice } from '../utils/subgridComparison';
+import {
+  computeSubgridMetrics,
+  connectRunsByEndpoints,
+  PLAN_ENDPOINT_SNAP_M,
+  PLAN_TJUNCTION_SNAP_M,
+  type SubgridMetric,
+  type SubgridRelationNotice
+} from '../utils/subgridComparison';
 import { buildTracePlans } from '../utils/roadNetworkTrace';
 import { useRoadTraceRunner } from '../hooks/useRoadTraceRunner';
 import { extractSubgridName } from '../utils/subgrid';
@@ -122,6 +129,8 @@ export interface RoadAnalysisSavedState {
   updatedAt?: string;
   /** Project id this state belongs to, scoped per-project. */
   projectId?: string;
+  /** True when catalog geometry was too large to persist in the local cache. */
+  catalogGeometryDropped?: boolean;
 }
 
 export const ROAD_ANALYSIS_CACHE_VERSION = 3;
@@ -187,15 +196,30 @@ export function persistRoadAnalysisCache(userKey: string, state: RoadAnalysisSav
     const existing = loadRoadAnalysisState(userKey) || {};
     // Edits bump the local-edit clock and clear the cloud-synced marker.
     const lastLocalEditAt = new Date().toISOString();
+    const merged: RoadAnalysisSavedState = {
+      ...existing,
+      ...state,
+      schemaVersion: ROAD_ANALYSIS_CACHE_VERSION,
+      lastLocalEditAt,
+      savedToCloud: false
+    };
+    // Guard: a full-country GeoJSON snapshot must never be JSON.stringify'd
+    // synchronously on the main thread (freeze) or thrown at the localStorage
+    // quota. Oversized catalog geometry is cached without its coordinates.
+    const { layers, dropped, totalBytes } = prepareCatalogLayersForPersistence(merged.catalogLayers);
+    if (Array.isArray(merged.catalogLayers)) {
+      merged.catalogLayers = layers;
+      merged.catalogGeometryDropped = dropped;
+    }
+    if (dropped) {
+      console.warn(
+        `[RoadAnalysis] Catalog geometry (~${(totalBytes / 1024 / 1024).toFixed(1)} MB) exceeds the local cache budget; ` +
+          'geometry was not persisted. The layer still renders until the page reloads — re-import it to restore geometry.'
+      );
+    }
     localStorage.setItem(
       getRoadAnalysisStorageKey(userKey),
-      JSON.stringify({
-        ...existing,
-        ...state,
-        schemaVersion: ROAD_ANALYSIS_CACHE_VERSION,
-        lastLocalEditAt,
-        savedToCloud: false
-      })
+      JSON.stringify(merged)
     );
     return true;
   } catch (err) {
@@ -207,7 +231,42 @@ export function persistRoadAnalysisCache(userKey: string, state: RoadAnalysisSav
 }
 
 /**
- * Mirror a successfully cloud-saved snapshot back into the local cache so the
+ * Approximate serialized-geometry budget for the local cache (bytes).
+ * `persistRoadAnalysisCache` stringifies the ENTIRE workspace snapshot on the
+ * main thread; letting a full-country road network (tens of MB of GeoJSON) pass
+ * through would freeze the UI for seconds and blow the ~5MB localStorage quota
+ * anyway. Geometry above the budget is left out of the cached snapshot — the
+ * live layer keeps rendering from memory until the page reloads.
+ */
+export const CATALOG_GEOMETRY_PERSIST_LIMIT_BYTES = 1_500_000;
+
+/**
+ * Drops catalog geometry once the combined serialized size of all catalog
+ * geojsons exceeds the persistence budget. Layers are kept in full (colors,
+ * styling, metadata) but flagged `geometryDropped: true` so the UI can explain
+ * why the geometry is missing after a reload.
+ */
+export function prepareCatalogLayersForPersistence(
+  layers: CatalogVectorLayer[] | undefined
+): { layers?: CatalogVectorLayer[]; totalBytes: number; dropped: boolean } {
+  const source = Array.isArray(layers) ? layers : [];
+  let totalBytes = 0;
+  for (const l of source) {
+    if (!l.geojson) continue; // already stripped or no geometry
+    if (l.geometryBytes !== undefined) totalBytes += l.geometryBytes;
+    else totalBytes += JSON.stringify(l.geojson).length;
+  }
+  if (totalBytes <= CATALOG_GEOMETRY_PERSIST_LIMIT_BYTES) {
+    return { layers, totalBytes, dropped: false };
+  }
+  const stripped = source.map((l) =>
+    l.geojson ? { ...l, geojson: undefined, geometryDropped: true } : l
+  );
+  return { layers: stripped, totalBytes, dropped: true };
+}
+
+/**
+ * Mirrors a successfully cloud-saved snapshot back into the local cache so the
  * cache becomes an exact, synced mirror of the DB (marked `savedToCloud: true`)
  * rather than a competing source of truth.
  */
@@ -396,6 +455,9 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
   const TRACE_THRESHOLD_PCT = 95;
   // Subgrid the trace is currently walking (drives the on-map status card).
   const [traceScope, setTraceScope] = useState<string | null>(null);
+  // Trace is only supported for imported GIS vector layers (SHP/KML/Geojson),
+  // never for the OSM-extracted network. This opens the blocking notice modal.
+  const [showOsmTraceNotice, setShowOsmTraceNotice] = useState(false);
   // Print-preview map instance (owned by RoadAnalysisPrintPanel).
   const printMapRef = useRef<MaplibreMap | null>(null);
 
@@ -940,10 +1002,17 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
 
   const extractedLengthKm = useMemo(() => linesLengthKm(extractedRuns), [extractedRuns]);
 
-  // Runs currently used as the plan (for map rendering and guards).
+  // Runs currently used as the plan (for map rendering and guards). Endpoints
+  // within the snap tolerance are stitched into a shared node so OSM ways that
+  // were split at junctions / clipped at borders render as one continuous
+  // topology instead of a row of loose line ends.
   const activePlanRuns = useMemo(() => {
-    if (planSource === 'extracted') return extractedRuns;
-    if (planSource === 'manual') return manualRuns;
+    if (planSource === 'extracted') {
+      return connectRunsByEndpoints(extractedRuns, PLAN_ENDPOINT_SNAP_M, PLAN_TJUNCTION_SNAP_M, true);
+    }
+    if (planSource === 'manual') {
+      return connectRunsByEndpoints(manualRuns, PLAN_ENDPOINT_SNAP_M, PLAN_TJUNCTION_SNAP_M, true);
+    }
     return [];
   }, [planSource, extractedRuns, manualRuns]);
 
@@ -1007,24 +1076,35 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
 
   // Trace a single subgrid from its Compare card (or all subgrids via header).
   const handleTraceSubgrid = useCallback((sgName: string | null) => {
+    // The network trace runs only against imported GIS vector layers. OSM
+    // extracted roads are not a supported trace source — show the notice and
+    // never start the runner.
+    if (planSource !== 'manual') {
+      setShowOsmTraceNotice(true);
+      return;
+    }
     if (traceRunner.phase === 'running' || traceRunner.phase === 'paused') {
       traceRunner.stop();
       return;
     }
     setTraceScope(sgName);
     traceRunner.start(sgName ? { scope: sgName } : undefined);
-  }, [traceRunner]);
+  }, [traceRunner, planSource]);
 
   // Reset / re-run the last trace scope after it finished (reset icon).
   const lastTraceScopeRef = useRef<string | null>(null);
   const handleTraceReset = useCallback(() => {
+    if (planSource !== 'manual') {
+      setShowOsmTraceNotice(true);
+      return;
+    }
     traceRunner.stop();
     if (lastTraceScopeRef.current) {
       traceRunner.start({ scope: lastTraceScopeRef.current });
     } else {
       traceRunner.start();
     }
-  }, [traceRunner]);
+  }, [traceRunner, planSource]);
 
   useEffect(() => {
     lastTraceScopeRef.current = traceScope;
@@ -1370,6 +1450,13 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
       setHasUnsavedEdits(true);
     },
     [userKey, extractedLines, manualGeoJson, planSource, selectedStateCode, selectedDistrictIds, mapBasemap]
+  );
+
+  // Live Original-vs-Clipped overlay while the Import tab reviews an oversized file.
+  const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
+  const handleImportPreviewChange = useCallback(
+    (preview: ImportPreview | null) => setImportPreview(preview),
+    []
   );
 
   const handleLayerImported = useCallback(
@@ -1882,6 +1969,8 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                 <RoadImportPanel
                   onLayerImported={handleLayerImported}
                   onNavigateToCatalog={() => setActiveTab('catalog')}
+                  districtsGeo={regionGeo?.geojson ?? null}
+                  onPreviewChange={handleImportPreviewChange}
                 />
               )}
 
@@ -2574,6 +2663,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                   capturedPoints={capturedPoints}
                   roadRuns={activePlanRuns}
                   catalogLayers={catalogLayers}
+                  catalogPreview={importPreview}
                   systemStyles={systemStyles}
                   focusBbox={focusBbox}
                   selectedFeature={selectedTableFeature}
@@ -3112,6 +3202,71 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                         className="px-3.5 py-1.5 bg-inner hover:bg-inner/80 text-text-base border border-subtle rounded-lg text-xs font-mono cursor-pointer transition-colors"
                       >
                         Close Guide
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* OSM plan trace-blocked notice: the network trace only runs on imported vector layers */}
+              {showOsmTraceNotice && (
+                <div
+                  role="dialog"
+                  aria-modal="true"
+                  aria-label="Trace unavailable for OSM plan"
+                  className="fixed inset-0 bg-[var(--modal-overlay)] flex items-center justify-center z-[1000] p-4 backdrop-blur-sm animate-in fade-in duration-150"
+                  onClick={() => setShowOsmTraceNotice(false)}
+                >
+                  <div
+                    className="bg-card border border-subtle rounded-xl p-5 max-w-md w-full flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div className="flex justify-between items-start pb-3 mb-3 border-b border-subtle shrink-0">
+                      <div className="flex items-center gap-2">
+                        <span className="w-7 h-7 rounded-lg bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-400 shrink-0">
+                          <Waypoints size={14} />
+                        </span>
+                        <div>
+                          <div className="text-[9px] uppercase tracking-wider text-text-muted font-mono font-semibold">
+                            Road Network Trace
+                          </div>
+                          <h2 className="text-sm font-bold text-text-base tracking-wide font-mono mt-0.5">
+                            Trace unavailable for OSM plan
+                          </h2>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowOsmTraceNotice(false)}
+                        className="w-6 h-6 rounded border border-subtle flex items-center justify-center text-text-muted hover:text-text-base hover:bg-inner cursor-pointer transition-colors font-mono text-xs"
+                        aria-label="Close trace notice"
+                      >
+                        ✕
+                      </button>
+                    </div>
+
+                    <p className="text-xs text-text-muted leading-relaxed font-sans">
+                      Trace not available for using OSM data. You can run only using Vector layers
+                      from Import — Shp, Kml, Geojson, etc. Go to Import tab.
+                    </p>
+
+                    <div className="pt-3 mt-4 border-t border-subtle flex items-center justify-end gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setShowOsmTraceNotice(false)}
+                        className="px-3 py-1.5 bg-inner hover:bg-inner/80 text-text-base border border-subtle rounded-lg text-xs font-mono cursor-pointer transition-colors"
+                      >
+                        Close
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowOsmTraceNotice(false);
+                          setActiveTab('import');
+                        }}
+                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white border border-emerald-500/40 rounded-lg text-xs font-mono font-semibold cursor-pointer transition-colors"
+                      >
+                        Go to Import tab
                       </button>
                     </div>
                   </div>

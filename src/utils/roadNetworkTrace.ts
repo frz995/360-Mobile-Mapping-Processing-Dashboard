@@ -13,8 +13,11 @@ import { calculateGeodesicDistanceMeters, pathLengthLngLatKm } from './geo';
 import { extractSubgridName } from './subgrid';
 import {
   clipLineRunsToBbox,
+  connectRunsByEndpoints,
   getSubgridBbox,
-  subgridLinesLengthKm
+  subgridLinesLengthKm,
+  PLAN_ENDPOINT_SNAP_M,
+  PLAN_TJUNCTION_SNAP_M
 } from './subgridComparison';
 
 export type LonLat = [number, number];
@@ -167,6 +170,12 @@ export function buildTracePlans(
       const pts = surveys.flatMap((s) => s.coords.map((c) => ({ lng: c[0], lat: c[1] })));
       const bbox = getSubgridBbox(sg, pts, catalogLayers);
       const clipped = bbox.some((v) => v !== 0) ? clipLineRunsToBbox(planRuns, bbox) : [];
+      // Clipping can cut a run at the cell edge and strand short stubs; stitch
+      // the in-cell fragments back into a connected network before walking.
+      const stitched =
+        clipped.length > 1
+          ? connectRunsByEndpoints(clipped, PLAN_ENDPOINT_SNAP_M, PLAN_TJUNCTION_SNAP_M, true)
+          : clipped;
       // Stable chronological chain: parseable dates first, then original order.
       const ordered = surveys
         .map((s, i) => ({ s, i }))
@@ -182,8 +191,8 @@ export function buildTracePlans(
         subgrid: sg,
         bbox,
         surveys: ordered,
-        planRuns: clipped,
-        planKm: subgridLinesLengthKm(clipped),
+        planRuns: stitched,
+        planKm: subgridLinesLengthKm(stitched),
         capturedKm: ordered.reduce((sum, s) => sum + s.lengthKm, 0),
         totalTraceM: ordered.reduce((sum, s) => sum + polylineTotalM(s.coords), 0)
       });
@@ -294,9 +303,17 @@ interface CaptureIndex {
 function buildCaptureIndex(tracks: LonLat[][], toleranceM: number): CaptureIndex {
   const cellDeg = Math.max((toleranceM / 111000) * 2, 0.0004);
   const grid = new Map<string, LonLat[]>();
+  const denseStep = Math.max(6, toleranceM / 3);
   (tracks || []).forEach((trk) => {
-    (trk || []).forEach((pt) => {
-      if (!Array.isArray(pt) || pt.length < 2) return;
+    // Densify each captured trajectory so sparse frames still create a
+    // continuous capture corridor for the plan-line classifier. Raw points
+    // only would leave holes between frames (the "road surveyed but skipped"
+    // symptom).
+    const valid = (trk || []).filter(
+      (pt) => Array.isArray(pt) && pt.length >= 2 && Number.isFinite(pt[0]) && Number.isFinite(pt[1])
+    ) as LonLat[];
+    const pts = valid.length >= 2 ? densifyRun(valid, denseStep) : valid;
+    pts.forEach((pt) => {
       const key = `${Math.floor(pt[0] / cellDeg)}|${Math.floor(pt[1] / cellDeg)}`;
       const bucket = grid.get(key);
       if (bucket) bucket.push(pt);
@@ -435,9 +452,9 @@ export interface SubgridWalk {
  * cross-country jumps stay invisible so the trace never paints dashed lines
  * across open ground.
  */
-export const LINK_DRAW_MAX_M = 150;
+export const LINK_DRAW_MAX_M = 120;
 
-function chainRunsOrder(
+export function chainRunsOrder(
   runs: LonLat[][],
   bbox?: [number, number, number, number]
 ): { ordered: LonLat[][]; links: LonLat[][] } {
@@ -485,29 +502,82 @@ function chainRunsOrder(
 
   let current = remaining.shift()!;
   ordered.push(current);
+  const visitedEnds: LonLat[] = [current[0], current[current.length - 1]];
 
   while (remaining.length > 0) {
     const end = current[current.length - 1];
-    let bestIdx = 0;
+    let bestIdx = -1;
     let bestDist = Number.POSITIVE_INFINITY;
     let bestFromEnd = true;
-    remaining.forEach((run, idx) => {
+
+    // 1. Direct continuation: find any remaining run that connects to `end` directly (dist <= 1.0m)
+    for (let i = 0; i < remaining.length; i++) {
+      const run = remaining[i];
       const dStart = distM(end, run[0]);
       const dEnd = distM(end, run[run.length - 1]);
-      if (dStart < bestDist) {
+      if (dStart <= 1.0) {
+        bestIdx = i;
         bestDist = dStart;
-        bestIdx = idx;
         bestFromEnd = true;
+        break;
       }
-      if (dEnd < bestDist) {
+      if (dEnd <= 1.0) {
+        bestIdx = i;
         bestDist = dEnd;
-        bestIdx = idx;
         bestFromEnd = false;
+        break;
       }
-    });
+    }
+
+    // 2. Branch traversal: if at a dead-end, check recent visited junctions for unvisited branches
+    if (bestIdx < 0) {
+      for (let vi = visitedEnds.length - 1; vi >= 0; vi--) {
+        const v = visitedEnds[vi];
+        for (let i = 0; i < remaining.length; i++) {
+          const run = remaining[i];
+          const dStart = distM(v, run[0]);
+          const dEnd = distM(v, run[run.length - 1]);
+          if (dStart <= 1.0) {
+            bestIdx = i;
+            bestDist = 0;
+            bestFromEnd = true;
+            break;
+          }
+          if (dEnd <= 1.0) {
+            bestIdx = i;
+            bestDist = 0;
+            bestFromEnd = false;
+            break;
+          }
+        }
+        if (bestIdx >= 0) break;
+      }
+    }
+
+    // 3. Greedy fallback: nearest remaining run endpoint from current end
+    if (bestIdx < 0) {
+      remaining.forEach((run, idx) => {
+        const dStart = distM(end, run[0]);
+        const dEnd = distM(end, run[run.length - 1]);
+        if (dStart < bestDist) {
+          bestDist = dStart;
+          bestIdx = idx;
+          bestFromEnd = true;
+        }
+        if (dEnd < bestDist) {
+          bestDist = dEnd;
+          bestIdx = idx;
+          bestFromEnd = false;
+        }
+      });
+    }
+
     const next = remaining.splice(bestIdx, 1)[0];
     if (!bestFromEnd) next.reverse();
-    if (bestDist > CONNECTOR_MIN_GAP_M && bestDist <= LINK_DRAW_MAX_M) links.push([end, next[0]]);
+    if (bestDist > CONNECTOR_MIN_GAP_M && bestDist <= LINK_DRAW_MAX_M) {
+      links.push([end, next[0]]);
+    }
+    visitedEnds.push(next[0], next[next.length - 1]);
     ordered.push(next);
     current = next;
   }
@@ -557,10 +627,61 @@ function mergeShortGaps(segments: WalkSegment[], maxGapM: number): void {
       gapLen += segments[j].lengthM;
       j += 1;
     }
-    if (gapLen < maxGapM) {
+    // Only bridge if:
+    // 1) It is an internal gap bounded by covered segments on BOTH sides, OR
+    // 2) It is a tiny joint stub (<= 10m) adjacent to a covered segment.
+    // An entire isolated unsurveyed run (i === 0 && j === segments.length) must NEVER be bridged.
+    const isInternal = i > 0 && j < segments.length;
+    const isBoundaryStub = (i > 0 || j < segments.length) && gapLen <= 10;
+    if ((isInternal && gapLen < maxGapM) || isBoundaryStub) {
       for (let k = i; k < j; k++) segments[k] = { ...segments[k], covered: true };
     }
     i = j;
+  }
+}
+
+/**
+ * Prunes false-covered stubs at junction mouths: when a survey vehicle drove
+ * along an intersecting main road, its tolerance buffer marks the first 10-25m
+ * mouth of an unsurveyed side street as covered. If the rest of the run is
+ * predominantly a gap, this terminal stub is bleed-over from the cross street
+ * and should be drawn as an uncovered gap so the red line connects to the junction.
+ */
+function pruneJunctionBleed(segments: WalkSegment[], maxBleedM = 25): void {
+  if (segments.length < 2) return;
+  const totalM = segments.reduce((sum, s) => sum + s.lengthM, 0);
+  const gapM = segments.filter((s) => !s.covered).reduce((sum, s) => sum + s.lengthM, 0);
+  if (totalM <= 0 || gapM / totalM < 0.4) return;
+
+  // Leading covered stub at start of run
+  if (segments[0].covered) {
+    let leadM = 0;
+    let endIdx = 0;
+    while (endIdx < segments.length && segments[endIdx].covered) {
+      leadM += segments[endIdx].lengthM;
+      endIdx++;
+    }
+    if (leadM <= maxBleedM && endIdx < segments.length) {
+      for (let k = 0; k < endIdx; k++) {
+        segments[k] = { ...segments[k], covered: false };
+      }
+    }
+  }
+
+  // Trailing covered stub at end of run
+  const last = segments.length - 1;
+  if (segments[last].covered) {
+    let trailM = 0;
+    let startIdx = last;
+    while (startIdx >= 0 && segments[startIdx].covered) {
+      trailM += segments[startIdx].lengthM;
+      startIdx--;
+    }
+    if (trailM <= maxBleedM && startIdx >= 0) {
+      for (let k = startIdx + 1; k <= last; k++) {
+        segments[k] = { ...segments[k], covered: false };
+      }
+    }
   }
 }
 
@@ -592,6 +713,7 @@ function splitRunCoverage(
     });
   }
   mergeShortGaps(segments, MIN_UNCOVERED_M);
+  pruneJunctionBleed(segments);
 
   let runM = 0;
   let covM = 0;
