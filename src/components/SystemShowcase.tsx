@@ -1548,6 +1548,34 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                         }`}
                     style={{ x: globeX, y: globeY, scale: globeScale, opacity: globeOpacity, rotateX: globeTilt, transformPerspective: 1600 }}
                 >
+                    {/* Soft atmospheric glow light behind the globe */}
+                    <div
+                        className="absolute pointer-events-none -z-10 select-none flex items-center justify-center"
+                        aria-hidden="true"
+                    >
+                        {/* Outer ambient aura (wide, very soft cyan/blue dispersion) */}
+                        <div
+                            className="w-[min(115vw,880px)] h-[min(115vw,880px)] rounded-full blur-[100px] opacity-45 transition-opacity duration-1000"
+                            style={{
+                                background: 'radial-gradient(circle, rgba(56, 189, 248, 0.18) 0%, rgba(30, 64, 175, 0.12) 38%, rgba(15, 23, 42, 0) 70%)',
+                            }}
+                        />
+                        {/* Core ethereal rim glow (concentrated soft backlight behind sphere) */}
+                        <div
+                            className="absolute w-[min(85vw,640px)] h-[min(85vw,640px)] rounded-full blur-[65px] opacity-65"
+                            style={{
+                                background: 'radial-gradient(circle, rgba(147, 197, 253, 0.24) 0%, rgba(56, 189, 248, 0.14) 35%, rgba(14, 165, 233, 0) 65%)',
+                            }}
+                        />
+                        {/* Subtle inner highlight center bloom */}
+                        <div
+                            className="absolute w-[min(50vw,400px)] h-[min(50vw,400px)] rounded-full blur-[45px] opacity-40"
+                            style={{
+                                background: 'radial-gradient(circle, rgba(224, 242, 254, 0.20) 0%, rgba(56, 189, 248, 0.06) 50%, transparent 70%)',
+                            }}
+                        />
+                    </div>
+
                     {showAtomicGlobe ? (
                         <div className={`w-full h-full flex items-center justify-center transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] ${isFlyingIn
                                 ? 'scale-[1.7] opacity-0 blur-[2px]'

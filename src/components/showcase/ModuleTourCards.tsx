@@ -19,18 +19,7 @@ const CARD_WHITE = '#FFFFFF';
 const GLOBE_GAP = 20;
 
 /**
- * Designed anchor bearings for six cards, left → right across the globe's
- * TOP half only (side-centre, upper diagonals, top pair). Never below the
- * globe's centre line. Desktop layout.
  */
-const SLOT_DIRS: Array<[number, number]> = [
-    [-1.02, 0.0],
-    [-0.8, -0.3],
-    [-0.42, -0.57],
-    [0.42, -0.57],
-    [0.8, -0.3],
-    [1.02, 0.0],
-];
 
 /**
  * Mobile variant: the two centred cards park at the BOTTOM of the globe,
@@ -47,7 +36,7 @@ const MOBILE_SLOT_DIRS: Array<[number, number]> = [
 ];
 
 const slotDir = (i: number, table: Array<[number, number]>, n: number): [number, number] => {
-    if (n === table.length) return table[i];
+    if (i < table.length) return table[i];
     const ux = -1.02 + (2.04 * (i + 0.5)) / n;
     return [ux, -0.57 * Math.sqrt(Math.max(0, 1 - (ux / 1.02) ** 2))];
 };
@@ -262,71 +251,169 @@ export const ModuleTourCards: React.FC<ModuleTourCardsProps> = ({
         const globeCX = vw / 2 + pose.x;
         const globeCY = vh / 2 + pose.y;
         // Match EarthGlobe's own disk radius — (min(w, h, 800) / 2 - 20) * zoom
-        // (hero zoom is 1.05) — then the backdrop pose scale, so the tags hug
-        // the real sphere instead of a rough guess. The Atomic point-cloud
-        // globe projects a visibly larger disk on mobile, so pad harder there.
+        // (hero zoom is 1.05) — then the backdrop pose scale.
         const baseR = Math.max(20, Math.min(vw, vh, 800) / 2 - 20);
         const globeR = baseR * 1.05 * pose.scale * (isMobile ? 1.1 : 1.02);
 
-        const cardW = isMobile ? Math.max(96, vw * 0.28) : 190;
-        const cardH = cardW * (9 / 16) + 20;
+        const cardW = isMobile ? Math.max(96, vw * 0.28) : Math.min(176, Math.max(150, vw * 0.115));
+        const cardH = cardW * (9 / 16) + 18;
         const hw = cardW / 2;
         const hh = cardH / 2;
 
-        const margin = 10;
-        // Web: park the top pair well below the header bar so the cards are
-        // never clipped behind it at rest. Mobile keeps the tighter rail.
-        const topMargin = isMobile ? 72 : 100;
-        const bottomMargin = 18;
+        const margin = 12;
+        const topMargin = isMobile ? 72 : 96;
+        const bottomMargin = 16;
+        const clearance = globeR + (isMobile ? GLOBE_GAP + 8 : GLOBE_GAP + 6);
+        const ringR = clearance + Math.hypot(hw, hh);
 
-        const clearance = globeR + (isMobile ? GLOBE_GAP + 8 : GLOBE_GAP);
-        // Placing the CENTRE at globeR + half-diagonal guarantees the nearest
-        // corner clears the rim at any bearing. Mobile uses a much tighter
-        // ring (pushClear still settles every card clear of the disk) so the
-        // centred top pair sits lower and the tag lines stay short.
-        const ringR = isMobile
-            ? clearance + hh * 0.55
-            : clearance + Math.hypot(hw, hh);
+        if (!isMobile) {
+            // DESKTOP: 2 Flanking Mid-Height Cards + 4 Lower-Curve Cards strictly matching user's sketch!
+            // Slot 0: 01 Project Management (Mid-Left with horizontal ──o line)
+            // Slot 1: 02 360° Imagery (Lower-Left Box 1 with ┌── line from globe rim)
+            // Slot 2: 03 Processing Pipeline (Lower-Center-Left Box 2 with │ straight line under Johor)
+            // Slot 3: 04 QA / QC (Lower-Center-Right Box 3 with │ straight line under Indonesia)
+            // Slot 4: 05 GIS Workspace (Lower-Right Box 4 with ──┐ line pointing LEFT to globe)
+            // Slot 5: 06 Data Management (Mid-Right with horizontal o── line)
+            const getSlotType = (modId: string, idx: number): number => {
+                switch (modId) {
+                    case 'data':       return 0; // 01 Project Management
+                    case 'qaqc':       return 1; // 02 360° Imagery (Box 1)
+                    case 'production': return 2; // 03 Processing Pipeline (Box 2)
+                    case 'reports':    return 3; // 04 QA / QC (Box 3)
+                    case 'webgis':     return 4; // 05 GIS Workspace (Box 4)
+                    case 'postgis':    return 5; // 06 Data Management
+                    // Backward-compat aliases
+                    case 'image':      return 1;
+                    case 'pipeline':   return 2;
+                    case 'gis':        return 4;
+                    case 'analytics':  return 5;
+                    default:           return idx % 6;
+                }
+            };
 
+            // Card dimensions scaled cleanly for desktop
+            const desktopCardW = Math.min(160, Math.max(126, vw * 0.10));
+            const desktopCardH = desktopCardW * (9 / 16) + 18;
+            const dhw = desktopCardW / 2;
+            const dhh = desktopCardH / 2;
+
+            // Slot 0 (01 Project Management): Mid-Left, outside globe rim
+            const card0_right = Math.min(globeCX - globeR - 20, vw * 0.28);
+            const card0_left = Math.max(margin, card0_right - desktopCardW);
+            const card0_cx = card0_left + dhw;
+            const card0_cy = globeCY - 0.08 * globeR;
+
+            // Slot 5 (06 Data Management): Mid-Right, outside globe rim
+            const card5_left = Math.max(globeCX + globeR + 20, vw * 0.72);
+            const card5_cx = Math.min(vw - margin - dhw, card5_left + dhw);
+            const card5_cy = globeCY - 0.08 * globeR;
+
+            // Center gap between Slot 2 (Box 2) and Slot 3 (Box 3) leaves room for "Scroll to explore"
+            const centerHalfGap = Math.max(28, vw * 0.024);
+            const card2_cx = globeCX - centerHalfGap - dhw;
+            const card2_cy = Math.min(vh - dhh - 24, globeCY + globeR * 0.62);
+
+            const card3_cx = globeCX + centerHalfGap + dhw;
+            const card3_cy = Math.min(vh - dhh - 24, globeCY + globeR * 0.62);
+
+            // Slot 1 (02 360° Imagery - Box 1): Lower-Left, between Card 01 and Box 2
+            const card1_left = Math.max(card0_left + 36, (card2_cx - dhw) - desktopCardW - Math.max(16, vw * 0.015));
+            const card1_cx = card1_left + dhw;
+            const card1_cy = Math.min(vh - dhh - 30, globeCY + globeR * 0.38);
+
+            // Slot 4 (05 GIS Workspace - Box 4): Lower-Right, between Box 3 and Card 06
+            const card4_right = Math.min((card5_cx + dhw) - 36, (card3_cx + dhw) + desktopCardW + Math.max(16, vw * 0.015));
+            const card4_left = card4_right - desktopCardW;
+            const card4_cx = card4_left + dhw;
+            const card4_cy = Math.min(vh - dhh - 30, globeCY + globeR * 0.38);
+
+            const slotCoords: Record<number, { cx: number; cy: number; left: number; top: number }> = {
+                0: { cx: card0_cx, cy: card0_cy, left: card0_left, top: card0_cy - dhh },
+                1: { cx: card1_cx, cy: card1_cy, left: card1_left, top: card1_cy - dhh },
+                2: { cx: card2_cx, cy: card2_cy, left: card2_cx - dhw, top: card2_cy - dhh },
+                3: { cx: card3_cx, cy: card3_cy, left: card3_cx - dhw, top: card3_cy - dhh },
+                4: { cx: card4_cx, cy: card4_cy, left: card4_left, top: card4_cy - dhh },
+                5: { cx: card5_cx, cy: card5_cy, left: card5_cx - dhw, top: card5_cy - dhh },
+            };
+
+            const cards = modules.map((mod, i) => {
+                const s = getSlotType(mod.id, i);
+                const pos = slotCoords[s] ?? slotCoords[i % 6];
+                const left = clamp(pos.left, margin, vw - desktopCardW - margin);
+                const top = clamp(pos.top, topMargin, vh - desktopCardH - bottomMargin);
+                return {
+                    id: mod.id,
+                    left,
+                    top,
+                    cx: left + dhw,
+                    cy: top + dhh,
+                };
+            });
+
+            // Orthogonal leader lines matching user's sketch with geometric precision
+            const lineAnchors = cards.map((card, i) => {
+                const s = getSlotType(modules[i].id, i);
+                let gx = globeCX;
+                let gy = globeCY;
+                let pathD = '';
+                let bracketD = '';
+
+                if (s === 0) {
+                    // Slot 0 (01 Project Management): Horizontal line from globe left rim to card right edge
+                    gx = globeCX - globeR;
+                    gy = card.cy;
+                    const cardRight = card.left + desktopCardW;
+                    pathD = `M ${gx} ${gy} H ${cardRight}`;
+                    bracketD = `M ${cardRight} ${card.cy - 6} L ${cardRight} ${card.cy + 6}`;
+                } else if (s === 1) {
+                    // Slot 1 (02 360° Imagery - Box 1): line from card top turning RIGHT towards globe
+                    gy = card.top - 20;
+                    const dogleg = Math.max(46, vw * 0.036);
+                    gx = card.cx + dogleg;
+                    pathD = `M ${gx} ${gy} H ${card.cx} V ${card.top}`;
+                    bracketD = `M ${card.cx - 6} ${card.top} L ${card.cx + 6} ${card.top}`;
+                } else if (s === 2) {
+                    // Slot 2 (03 Processing Pipeline - Box 2): │ vertical drop under Johor to card top
+                    gx = card.cx;
+                    gy = card.top - 34;
+                    pathD = `M ${gx} ${gy} V ${card.top}`;
+                    bracketD = `M ${card.cx - 6} ${card.top} L ${card.cx + 6} ${card.top}`;
+                } else if (s === 3) {
+                    // Slot 3 (04 QA / QC - Box 3): │ vertical drop under Indonesia to card top
+                    gx = card.cx;
+                    gy = card.top - 34;
+                    pathD = `M ${gx} ${gy} V ${card.top}`;
+                    bracketD = `M ${card.cx - 6} ${card.top} L ${card.cx + 6} ${card.top}`;
+                } else if (s === 4) {
+                    // Slot 4 (05 GIS Workspace - Box 4): line from card top turning LEFT towards globe
+                    gy = card.top - 20;
+                    const dogleg = Math.max(46, vw * 0.036);
+                    gx = card.cx - dogleg;
+                    pathD = `M ${gx} ${gy} H ${card.cx} V ${card.top}`;
+                    bracketD = `M ${card.cx - 6} ${card.top} L ${card.cx + 6} ${card.top}`;
+                } else {
+                    // Slot 5 (06 Data Management): Horizontal line from globe right rim to card left edge
+                    gx = globeCX + globeR;
+                    gy = card.cy;
+                    const cardLeft = card.left;
+                    pathD = `M ${gx} ${gy} H ${cardLeft}`;
+                    bracketD = `M ${cardLeft} ${card.cy - 6} L ${cardLeft} ${card.cy + 6}`;
+                }
+
+                return { gx, gy, ax: card.cx, ay: card.cy, pathD, bracketD };
+            });
+
+            return { cardW: desktopCardW, cardH: desktopCardH, cards, globeCX, globeCY, globeR, lineAnchors };
+        }
+
+        // MOBILE FALLBACK
         const minX = margin + hw;
         const maxX = vw - margin - hw;
         const minY = topMargin + hh;
-        // Desktop rings the top half only; mobile also parks a centred pair
-        // below the globe (under which the hero CTA buttons sit).
-        const maxY = isMobile
-            ? Math.max(globeCY, vh - bottomMargin - hh)
-            : globeCY;
-
-        // Nearest distance from the globe centre to the card rectangle.
-        const distToDisk = (x: number, y: number) => {
-            const qx = clamp(globeCX, x - hw, x + hw);
-            const qy = clamp(globeCY, y - hh, y + hh);
-            return Math.hypot(globeCX - qx, globeCY - qy);
-        };
-        // Push a card outward from the sphere until its rectangle is clear.
-        const pushClear = (x: number, y: number) => {
-            let px = x;
-            let py = y;
-            for (let it = 0; it < 6; it++) {
-                const dist = distToDisk(px, py);
-                if (dist >= clearance) break;
-                let dx = px - globeCX;
-                let dy = py - globeCY;
-                let len = Math.hypot(dx, dy);
-                if (len < 1e-3) { dx = 1; dy = 0; len = 1; }
-                const push = clearance - dist + 2;
-                px += (dx / len) * push;
-                py += (dy / len) * push;
-            }
-            return { x: px, y: py };
-        };
-
-        const slotTable = isMobile ? MOBILE_SLOT_DIRS : SLOT_DIRS;
-        // Mobile's bottom pair intentionally overlaps the globe — it renders
-        // behind the sphere, so no disk clearance is applied to those two.
-        const isBottomPair = (i: number) => isMobile && i >= 2 && i <= 3;
+        const maxY = Math.max(globeCY, vh - bottomMargin - hh);
+        const isBottomPair = (i: number) => i >= 2 && i <= 3;
         const pos = modules.map((_, i) => {
-            const [ux, uy] = slotDir(i, slotTable, modules.length);
+            const [ux, uy] = slotDir(i, MOBILE_SLOT_DIRS, modules.length);
             if (isBottomPair(i)) {
                 return {
                     x: clamp(globeCX + ux * globeR, minX, Math.max(minX, maxX)),
@@ -335,91 +422,23 @@ export const ModuleTourCards: React.FC<ModuleTourCardsProps> = ({
             }
             let x = globeCX + ux * ringR;
             let y = clamp(globeCY + uy * ringR, minY, maxY);
-            const cleared = pushClear(x, y);
-            x = clamp(cleared.x, minX, Math.max(minX, maxX));
-            y = clamp(cleared.y, minY, maxY);
-            // Short viewports can clamp the push back onto the rim — slide
-            // sideways away from the centre until the rectangle is clear.
-            if (distToDisk(x, y) < clearance) {
-                const side = x >= globeCX ? 1 : -1;
-                let guard = 0;
-                while (distToDisk(x, y) < clearance && guard < 60) {
-                    const next = x + side * 10;
-                    if (next < minX || next > maxX) break;
-                    x = next;
-                    guard++;
-                }
-            }
-            return { x, y };
+            return { x: clamp(x, minX, Math.max(minX, maxX)), y: clamp(y, minY, maxY) };
         });
-
-        // Two relaxation passes: same-height cards separate symmetrically
-        // sideways (keeps the centred top pair balanced); otherwise the lower
-        // one drops toward the centre line and re-clears the disk.
-        for (let pass = 0; pass < 2; pass++) {
-            for (let a = 0; a < pos.length; a++) {
-                for (let b = a + 1; b < pos.length; b++) {
-                    if (isBottomPair(a) || isBottomPair(b)) continue;
-                    const A = pos[a];
-                    const B = pos[b];
-                    const ox = cardW + 12 - Math.abs(A.x - B.x);
-                    const oy = cardH + 10 - Math.abs(A.y - B.y);
-                    if (ox <= 0 || oy <= 0) continue;
-                    if (Math.abs(A.y - B.y) < cardH / 2) {
-                        const shift = ox / 2 + 1;
-                        const aLeft = A.x <= B.x;
-                        A.x = clamp(A.x + (aLeft ? -shift : shift), minX, Math.max(minX, maxX));
-                        B.x = clamp(B.x + (aLeft ? shift : -shift), minX, Math.max(minX, maxX));
-                    } else {
-                        const lower = A.y > B.y ? A : B;
-                        const moved = pushClear(lower.x, clamp(lower.y + oy, minY, globeCY));
-                        lower.x = clamp(moved.x, minX, Math.max(minX, maxX));
-                        lower.y = clamp(moved.y, minY, globeCY);
-                    }
-                }
-            }
-        }
 
         const cards = modules.map((mod, i) => {
             const left = clamp(pos[i].x - hw, margin, Math.max(margin, vw - cardW - margin));
             const top = clamp(pos[i].y - hh, topMargin, Math.max(topMargin, vh - cardH - bottomMargin));
-
-            return {
-                id: mod.id,
-                left,
-                top,
-                cx: left + hw,
-                cy: top + hh,
-            };
+            return { id: mod.id, left, top, cx: left + hw, cy: top + hh };
         });
 
-        // Tag-line bearings follow the slot design.
-        const lineDirs = modules.map(
-            (_, i) => slotDir(i, slotTable, modules.length),
-        );
-
-        // Rim dot + card anchor per line. Web: every tag meets the card's
-        // SIDE edge that faces the globe (mid-height). Mobile: the edge that
-        // physically faces the rim dot — so the centred pair tags on its
-        // bottom, while side/diagonal cards still tag sideways.
-        const lineAnchors = cards.map((card, i) => {
-            const [lvx, lvy] = lineDirs[i];
-            const llen = Math.hypot(lvx, lvy) || 1;
-            const ux = lvx / llen;
-            const uy = lvy / llen;
-            const gx = globeCX + ux * globeR;
-            const gy = globeCY + uy * globeR;
-            if (!isMobile) {
-                return { gx, gy, ax: card.cx - Math.sign(ux) * hw, ay: card.cy };
-            }
-            const faceSide = Math.abs(ux) > Math.abs(uy);
-            return {
-                gx,
-                gy,
-                ax: faceSide ? card.cx - Math.sign(ux) * hw : card.cx,
-                ay: faceSide ? card.cy : card.cy - Math.sign(uy) * hh,
-            };
-        });
+        const lineAnchors = cards.map((card) => ({
+            gx: globeCX,
+            gy: globeCY,
+            ax: card.cx,
+            ay: card.cy,
+            pathD: '',
+            bracketD: '',
+        }));
 
         return { cardW, cardH, cards, globeCX, globeCY, globeR, lineAnchors };
     }, [viewport, modules, activeSection, isMobile]);
@@ -691,20 +710,23 @@ export const ModuleTourCards: React.FC<ModuleTourCardsProps> = ({
                     >
                         {layout.cards.map((_, i) => {
                             const mod = modules[i];
-                            const { gx, gy, ax, ay } = layout.lineAnchors[i];
-                            const lineDim = hovered !== null && hovered !== mod.id;
+                            const { gx, gy, pathD, bracketD } = layout.lineAnchors[i];
+                            const isHovered = hovered === mod.id;
+                            const lineDim = hovered !== null && !isHovered;
                             const tagDelay = introDelayFor(i) + 0.15;
                             return (
                                 <g key={`tag-${mod.id}`}>
+                                    {/* Architectural dogleg elbow leader line */}
                                     <motion.path
-                                        d={`M ${gx} ${gy} L ${ax} ${ay}`}
-                                        stroke="rgba(255,255,255,0.55)"
-                                        strokeWidth={1}
+                                        d={pathD}
+                                        stroke={isHovered ? '#38bdf8' : 'rgba(255,255,255,0.45)'}
+                                        strokeWidth={isHovered ? 1.5 : 1}
                                         strokeLinecap="round"
+                                        strokeLinejoin="round"
                                         initial={{ pathLength: 0, opacity: 0 }}
                                         animate={{
                                             pathLength: revealed ? 1 : 0,
-                                            opacity: revealed ? (lineDim ? 0.12 : 0.75) : 0,
+                                            opacity: revealed ? (lineDim ? 0.12 : isHovered ? 1 : 0.72) : 0,
                                         }}
                                         transition={{
                                             pathLength: {
@@ -713,21 +735,59 @@ export const ModuleTourCards: React.FC<ModuleTourCardsProps> = ({
                                                 delay: tagDelay,
                                             },
                                             opacity: {
-                                                duration: revealDone ? 0.45 : LINE_DOT_DURATION_S,
+                                                duration: revealDone ? 0.35 : LINE_DOT_DURATION_S,
                                                 ease: 'easeOut',
                                                 delay: revealDone ? 0 : tagDelay,
                                             },
                                         }}
                                     />
+
+                                    {/* Card docking connector bracket */}
+                                    <motion.path
+                                        d={bracketD}
+                                        stroke={isHovered ? '#38bdf8' : 'rgba(255,255,255,0.65)'}
+                                        strokeWidth={isHovered ? 2 : 1.2}
+                                        strokeLinecap="round"
+                                        initial={{ opacity: 0 }}
+                                        animate={{
+                                            opacity: revealed ? (lineDim ? 0.12 : isHovered ? 1 : 0.75) : 0,
+                                        }}
+                                        transition={{
+                                            duration: 0.3,
+                                            delay: tagDelay + LINE_DURATION_S * 0.7,
+                                        }}
+                                    />
+
+                                    {/* Outer targeting halo ring on the globe rim */}
                                     <motion.circle
                                         cx={gx}
                                         cy={gy}
-                                        r={2.5}
-                                        fill={CARD_WHITE}
-                                        initial={{ opacity: 0 }}
-                                        animate={{ opacity: revealed ? (lineDim ? 0.15 : 0.9) : 0 }}
+                                        r={isHovered ? 6.5 : 4.5}
+                                        stroke={isHovered ? '#38bdf8' : 'rgba(255,255,255,0.35)'}
+                                        strokeWidth={1}
+                                        fill={isHovered ? 'rgba(56,189,248,0.18)' : 'none'}
+                                        initial={{ opacity: 0, scale: 0.4 }}
+                                        animate={{
+                                            opacity: revealed ? (lineDim ? 0.15 : isHovered ? 1 : 0.85) : 0,
+                                            scale: revealed ? 1 : 0.4,
+                                        }}
                                         transition={{
-                                            duration: revealDone ? 0.4 : LINE_DOT_DURATION_S,
+                                            duration: revealDone ? 0.3 : LINE_DOT_DURATION_S,
+                                            ease: 'easeOut',
+                                            delay: revealDone ? 0 : tagDelay,
+                                        }}
+                                    />
+
+                                    {/* Inner anchor dot on the globe rim */}
+                                    <motion.circle
+                                        cx={gx}
+                                        cy={gy}
+                                        r={isHovered ? 2.8 : 2.2}
+                                        fill={isHovered ? '#38bdf8' : CARD_WHITE}
+                                        initial={{ opacity: 0 }}
+                                        animate={{ opacity: revealed ? (lineDim ? 0.15 : 0.95) : 0 }}
+                                        transition={{
+                                            duration: revealDone ? 0.3 : LINE_DOT_DURATION_S,
                                             ease: 'easeOut',
                                             delay: revealDone ? 0 : tagDelay,
                                         }}
@@ -768,7 +828,7 @@ export const ModuleTourCards: React.FC<ModuleTourCardsProps> = ({
                                     height: layout.cardH,
                                     borderColor: isHovered ? CARD_WHITE : `${CARD_WHITE}66`,
                                     boxShadow: `0 18px 50px -22px rgba(0,0,0,0.95), 0 0 46px -14px ${CARD_WHITE}`,
-                                    zIndex: isHovered ? 2 : 1,
+                                    zIndex: isHovered ? 25 : 1,
                                     pointerEvents: 'none',
                                     background: '#0b1018',
                                 }}

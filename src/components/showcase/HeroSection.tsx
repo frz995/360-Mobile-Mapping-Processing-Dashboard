@@ -3,116 +3,90 @@ import { motion } from 'framer-motion';
 import { ArrowRight } from 'lucide-react';
 import { SparklesCore } from '../common/Sparkles';
 import { HoverBorderGradient } from '../common/HoverBorderGradient';
-import { CountUp } from './CountUp';
 import { MagneticWrap } from './MagneticWrap';
 import { EASE, HERO_SECTION } from './showcaseMotion';
 
 interface HeroSectionProps {
-    distanceKm: number;
-    frames: number;
-    activeJobs: number;
-    sparklesReady: boolean;
-    viewerName: string;
+    distanceKm?: number;
+    frames?: number;
+    activeJobs?: number;
+    sparklesReady?: boolean;
+    viewerName?: string;
     onExplorePlatform: () => void;
     onExploreEarth: () => void;
 }
-
-const MARQUEE_ITEMS = [
-    'Project Management & Survey Ledgers',
-    '360° Imagery · Panoramic Review',
-    'Processing Pipeline · Workstations & GPU Workers',
-    'QA / QC · Quality & Audit',
-    'GIS Workspace · Operational Map',
-    'Data Management · Spatial Registry',
-];
 
 const wordVariant = {
     hidden: { y: '115%' },
     show: (i: number) => ({
         y: '0%',
-        transition: { delay: 0.25 + i * 0.09, duration: 0.95, ease: EASE },
+        transition: { delay: 0.25 + i * 0.08, duration: 0.85, ease: EASE },
     }),
 };
 
 /**
  * Opening act of the scroll story: word-mask headline reveal over drifting
- * aurora light, live count-up telemetry, tech-stack marquee and the primary
- * launch CTAs. The backdrop globe shines at full presence behind this panel.
+ * aurora light, centered title and subtitle, sparkles divider, and primary launch CTAs.
  */
 export const HeroSection: React.FC<HeroSectionProps> = ({
-    distanceKm,
-    frames,
-    activeJobs,
-    sparklesReady,
-    viewerName,
+    sparklesReady = true,
     onExplorePlatform,
     onExploreEarth,
 }) => {
-    const marquee = [...MARQUEE_ITEMS, `Photo-Sphere · ${viewerName}`];
-
     return (
         <section
             data-section-idx={HERO_SECTION}
-            className="relative min-h-dvh-safe snap-start flex flex-col items-center justify-start sm:justify-center text-center px-4 sm:px-8 pt-12 sm:pt-24 pb-[max(2rem,env(safe-area-inset-bottom))] sm:pb-10 pointer-events-none"
+            className="relative min-h-dvh-safe snap-start flex flex-col items-center justify-center text-center px-4 sm:px-8 py-16 pointer-events-none"
         >
             {/* Aurora depth field */}
             <div aria-hidden className="absolute inset-0 overflow-hidden pointer-events-none">
-                <div className="absolute left-1/2 top-[16%] -translate-x-1/2 w-[560px] h-[380px] rounded-full bg-sky-500/10 blur-[110px] animate-aurora-a" />
-                <div className="absolute left-[28%] top-[42%] w-[420px] h-[320px] rounded-full bg-indigo-500/10 blur-[120px] animate-aurora-b" />
+                <div className="absolute left-1/2 top-[20%] -translate-x-1/2 w-[520px] h-[340px] rounded-full bg-sky-500/10 blur-[110px] animate-aurora-a" />
+                <div className="absolute left-[30%] top-[40%] w-[400px] h-[280px] rounded-full bg-indigo-500/10 blur-[120px] animate-aurora-b" />
             </div>
 
-            {/* Headline — per-word mask reveal */}
-            <h1
-                aria-label="Mobile Mapping Data, Managed in One Place"
-                className="relative z-10 mt-2 sm:mt-5 text-2xl sm:text-6xl xl:text-7xl font-bold tracking-tight bg-gradient-to-b from-white via-white to-white/55 bg-clip-text text-transparent"
-            >
-                {['Mobile', 'Mapping', 'Data,', 'Managed', 'in', 'One', 'Place'].map((w, i) => (
-                    <span key={w} className="inline-block overflow-hidden align-bottom pb-[0.08em] mr-[0.28em] last:mr-0">
-                        <motion.span
-                            className="inline-block"
-                            custom={i}
-                            variants={wordVariant}
-                            initial="hidden"
-                            animate="show"
-                        >
-                            {w}
-                        </motion.span>
-                    </span>
-                ))}
-            </h1>
+            {/* Headline — centered, gracefully sized and fitted */}
+            <div className="relative z-10 w-full max-w-xl sm:max-w-2xl md:max-w-3xl lg:max-w-4xl mx-auto px-2">
+                <h1
+                    aria-label="Mobile Mapping Data, Managed in One Place"
+                    className="text-2xl sm:text-4xl md:text-5xl lg:text-[52px] font-bold tracking-tight bg-gradient-to-b from-white via-white to-white/70 bg-clip-text text-transparent leading-[1.18] sm:leading-[1.15] text-balance"
+                >
+                    {['Mobile', 'Mapping', 'Data,', 'Managed', 'in', 'One', 'Place'].map((w, i) => (
+                        <span key={w} className="inline-block overflow-hidden align-bottom pb-[0.06em] mr-[0.24em] last:mr-0">
+                            <motion.span
+                                className="inline-block"
+                                custom={i}
+                                variants={wordVariant}
+                                initial="hidden"
+                                animate="show"
+                            >
+                                {w}
+                            </motion.span>
+                        </span>
+                    ))}
+                </h1>
 
-            <motion.span
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.5, duration: 0.8, ease: EASE }}
-                className="relative z-10 block mt-2 text-xs sm:text-base xl:text-lg font-semibold tracking-wide text-neutral-300"
-            >
-                A practical workspace for mobile mapping operations.
-            </motion.span>
+                <motion.p
+                    initial={{ opacity: 0, y: 14 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.5, duration: 0.75, ease: EASE }}
+                    className="mt-3 sm:mt-4 text-xs sm:text-sm md:text-base font-medium tracking-wide text-neutral-300/85 max-w-lg sm:max-w-xl mx-auto text-balance"
+                >
+                    A practical workspace for mobile mapping operations.
+                </motion.p>
+            </div>
 
-            <motion.p
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.62, duration: 0.8, ease: EASE }}
-                className="relative z-10 mt-2 sm:mt-3 text-[10px] sm:text-[13px] text-neutral-400 leading-relaxed max-w-md sm:max-w-2xl"
-            >
-                GeoSphere 360 brings mobile mapping imagery, 360° data, GIS, processing, and QA/QC workflows into a
-                single operational platform. Manage survey projects, imagery, processing activities, spatial data,
-                QA/QC, and project outputs from a single web-based environment.
-            </motion.p>
-
-            {/* Sparkles emitter (lazy-mounted after the view transition settles) */}
+            {/* Sparkles emitter line */}
             <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                transition={{ delay: 0.75, duration: 1 }}
-                className="relative z-10 w-full max-w-lg sm:max-w-2xl mx-auto h-8 sm:h-16 mt-0 sm:mt-1"
+                transition={{ delay: 0.65, duration: 0.9 }}
+                className="relative z-10 w-full max-w-xs sm:max-w-md mx-auto h-6 sm:h-8 my-3 sm:my-4"
             >
                 <div className="absolute left-0 right-0 mx-auto top-0 bg-gradient-to-r from-transparent via-indigo-500 to-transparent h-px w-3/4" />
                 <div className="absolute left-0 right-0 mx-auto top-0 bg-gradient-to-r from-transparent via-sky-500 to-transparent h-[2px] w-1/4" />
-                <div aria-hidden className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 w-80 h-52 pointer-events-none">
-                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 w-40 h-16 rounded-full bg-sky-400/30 blur-xl" />
-                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 w-64 h-24 rounded-full bg-sky-500/15 blur-2xl" />
+                <div aria-hidden className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 w-64 h-32 pointer-events-none">
+                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 w-32 h-10 rounded-full bg-sky-400/25 blur-xl" />
+                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 w-48 h-16 rounded-full bg-sky-500/10 blur-2xl" />
                 </div>
                 {sparklesReady && (
                     <div className="absolute inset-0 w-full h-full [mask-image:radial-gradient(ellipse_48%_175%_at_50%_0%,black_42%,transparent_78%)]">
@@ -121,7 +95,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                             background="transparent"
                             minSize={0.4}
                             maxSize={1}
-                            particleDensity={1200}
+                            particleDensity={900}
                             className="w-full h-full"
                             particleColor="#FFFFFF"
                         />
@@ -129,43 +103,18 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                 )}
             </motion.div>
 
-            {/* Live telemetry stat row — full-width 3-col grid so mobile
-                spacing stays even and the dividers never wrap mid-row */}
-            <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.85, duration: 0.85, ease: EASE }}
-                className="relative z-10 -mt-3 sm:mt-2 w-full max-w-xs sm:max-w-md mx-auto grid grid-cols-3 divide-x divide-white/10"
-            >
-                {[
-                    { label: 'Distance Mapped', node: <CountUp value={distanceKm} decimals={1} suffix=" km" className="text-sm sm:text-lg font-semibold text-white tabular-nums" /> },
-                    { label: '360° Frames', node: <CountUp value={frames} className="text-sm sm:text-lg font-semibold text-white tabular-nums" /> },
-                    { label: 'Active Jobs', node: <CountUp value={activeJobs} className="text-sm sm:text-lg font-semibold text-white tabular-nums" /> },
-                ].map((s) => (
-                    <div
-                        key={s.label}
-                        className="flex flex-col items-center justify-center text-center px-2 sm:px-5 min-w-0"
-                    >
-                        {s.node}
-                        <div className="text-[8px] sm:text-[9px] uppercase tracking-[0.1em] sm:tracking-[0.14em] text-neutral-500 mt-0.5 whitespace-nowrap">
-                            {s.label}
-                        </div>
-                    </div>
-                ))}
-            </motion.div>
-
             {/* CTAs */}
             <motion.div
-                initial={{ opacity: 0, y: 18 }}
+                initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 1, duration: 0.8, ease: EASE }}
-                className="relative z-10 flex flex-wrap items-center justify-center gap-2 sm:gap-3 mt-3 sm:mt-8 pointer-events-auto"
+                transition={{ delay: 0.8, duration: 0.75, ease: EASE }}
+                className="relative z-10 flex flex-wrap items-center justify-center gap-2.5 sm:gap-3.5 pointer-events-auto"
             >
                 <MagneticWrap>
                     <HoverBorderGradient
                         onClick={onExplorePlatform}
                         containerClassName="group/btn rounded-lg cursor-pointer active:scale-[0.97]"
-                        className="px-4 py-2 sm:px-5 sm:py-2.5 rounded-lg font-medium text-[11px] sm:text-sm flex items-center justify-center gap-2 text-neutral-100"
+                        className="px-4 py-2 sm:px-5 sm:py-2.5 rounded-lg font-medium text-xs sm:text-sm flex items-center justify-center gap-2 text-neutral-100"
                     >
                         <span>Explore Platform</span>
                         <ArrowRight className="w-3.5 h-3.5 text-neutral-400 group-hover/btn:text-white transition-all group-hover/btn:translate-x-0.5" />
@@ -173,54 +122,30 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                 </MagneticWrap>
                 <button
                     onClick={onExploreEarth}
-                    className="group flex items-center gap-2 rounded-lg border border-white/10 hover:border-white/30 bg-white/[0.02] hover:bg-white/[0.05] px-3 py-2 sm:px-4 sm:py-2.5 text-[11px] sm:text-xs font-medium text-neutral-300 hover:text-white transition-all cursor-pointer active:scale-[0.97]"
+                    className="group flex items-center gap-2 rounded-lg border border-white/10 hover:border-white/30 bg-white/[0.03] hover:bg-white/[0.08] px-3.5 py-2 sm:px-4 sm:py-2.5 text-xs font-medium text-neutral-300 hover:text-white transition-all cursor-pointer active:scale-[0.97]"
                 >
                     <span className="material-symbols-outlined text-[15px] leading-none text-neutral-400 group-hover:text-sky-300 transition-colors">public</span>
                     <span>Explore 3D Earth</span>
                 </button>
             </motion.div>
 
-            {/* Tech-stack marquee */}
-            <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 1.2, duration: 1 }}
-                className="marquee-host relative z-10 w-full mt-auto sm:mt-14 border-y border-white/[0.06] py-2.5 overflow-hidden [mask-image:linear-gradient(to_right,transparent,black_12%,black_88%,transparent)]"
-            >
-                <div className="flex w-max animate-showcase-marquee">
-                    {[0, 1].map((dup) => (
-                        <div key={dup} className="flex items-center" aria-hidden={dup === 1}>
-                            {marquee.map((item) => (
-                                <span key={`${dup}-${item}`} className="flex items-center whitespace-nowrap">
-                                    <span className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 font-medium px-5">
-                                        {item}
-                                    </span>
-                                    <span className="text-[7px] text-white/15">◆</span>
-                                </span>
-                            ))}
-                        </div>
-                    ))}
-                </div>
-            </motion.div>
-
-            {/* Scroll hint — flow after the marquee on mobile (mt-auto pins
-                it to the bottom while keeping the marquee above it); absolute
-                bottom-pinned on larger screens. */}
-            <div className="relative z-10 mt-4 sm:mt-0 sm:absolute sm:bottom-[max(1.75rem,env(safe-area-inset-bottom))] left-0 right-0 flex justify-center pointer-events-none">
+            {/* Scroll hint — pinned to bottom */}
+            <div className="absolute bottom-[max(1.5rem,env(safe-area-inset-bottom))] left-0 right-0 flex justify-center pointer-events-none">
                 <motion.div
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
-                    transition={{ delay: 1.5, duration: 0.8 }}
+                    transition={{ delay: 1.0, duration: 0.8 }}
                     className="flex flex-col items-center gap-1 text-white"
                 >
-                    <span className="text-[9px] tracking-[0.3em] uppercase text-white/75">Scroll to explore</span>
+                    <span className="text-[9px] tracking-[0.3em] uppercase text-white/70">Scroll to explore</span>
                     <img
                         src="/icon animation/Arrow.svg"
                         alt=""
-                        className="w-8 h-8 drop-shadow-[0_0_12px_rgba(255,255,255,0.25)]"
+                        className="w-7 h-7 drop-shadow-[0_0_12px_rgba(255,255,255,0.25)]"
                     />
                 </motion.div>
             </div>
         </section>
     );
 };
+
