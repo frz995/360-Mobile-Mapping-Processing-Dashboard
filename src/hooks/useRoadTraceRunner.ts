@@ -3,6 +3,7 @@ import type { MutableRefObject } from 'react';
 import type { Map as MaplibreMap } from 'maplibre-gl';
 import {
   buildSubgridWalk,
+  chainRunsOrder,
   computePlanCoverage,
   finalizeSubgridResult,
   type LonLat,
@@ -71,6 +72,8 @@ interface CellState {
   walkerDoneM: number;
   groupsPassed: LonLat[][];
   groupsGap: LonLat[][];
+  /** Dashed joints between disconnected plan runs (topology connectors). */
+  links: LonLat[][];
 }
 
 interface RunnerState {
@@ -126,29 +129,44 @@ function cut(seg: WalkSegment, t: number): LonLat {
  * Splits a cell's plan runs into `k` length-balanced buckets, each an
  * independently animated walker (multiple trace lines run at once inside the
  * subgrid, entering from different grid angles).
+ *
+ * Topology preservation: runs are first chained into one continuous walk
+ * order (greedy nearest-endpoint), then that ORDERED list is cut into
+ * contiguous spans. Sorting by length (the old behaviour) scattered
+ * geographically-jointed roads across different walkers, so junctions were
+ * drawn as disconnected stubs. Keeping the chain in order means roads that
+ * connect stay within the same walker, and the joints that DO fall between
+ * walkers are returned as dashed connectors.
  */
 function splitCellIntoWalkers(
   cellIdx: number,
   plan: SubgridTracePlan,
   walkerCount: number,
   p: RoadTraceRunnerParams
-): ActiveWalker[] {
+): { walkers: ActiveWalker[]; links: LonLat[][] } {
   const runs = (plan.planRuns || [])
     .filter((r) => r && r.length >= 2)
-    .map((r) => r.map((c) => c.slice() as LonLat))
-    .sort((a, b) => b.length - a.length);
-  if (runs.length === 0) return [];
+    .map((r) => r.map((c) => c.slice() as LonLat));
+  if (runs.length === 0) return { walkers: [], links: [] };
 
-  const k = Math.min(walkerCount, runs.length);
+  const { ordered, links } = chainRunsOrder(runs, plan.bbox);
+
+  const k = Math.max(1, Math.min(walkerCount, ordered.length));
+  const totalWeight = ordered.reduce((sum, r) => sum + r.length, 0);
+  const target = k > 0 ? totalWeight / k : totalWeight;
   const buckets: Array<Array<Array<[number, number]>>> = Array.from({ length: k }, () => []);
-  const bucketWeight: number[] = Array.from({ length: k }, () => 0);
-  runs.forEach((run) => {
-    const target = bucketWeight.indexOf(Math.min(...bucketWeight));
-    buckets[target].push(run);
-    bucketWeight[target] += run.length;
+  let bucketIdx = 0;
+  let bucketWeight = 0;
+  ordered.forEach((run) => {
+    if (bucketIdx < k - 1 && bucketWeight >= target) {
+      bucketIdx += 1;
+      bucketWeight = 0;
+    }
+    buckets[bucketIdx].push(run);
+    bucketWeight += run.length;
   });
 
-  return buckets
+  const walkers = buckets
     .filter((bucket) => bucket.length > 0)
     .map((bucket) => ({
       cellIdx,
@@ -161,6 +179,8 @@ function splitCellIntoWalkers(
       openGap: null,
       done: false
     }));
+
+  return { walkers, links };
 }
 
 /**
@@ -188,7 +208,8 @@ export function useRoadTraceRunner(params: RoadTraceRunnerParams) {
   const buildNextCellWalkers = useCallback((s: RunnerState): ActiveWalker[] | null => {
     while (s.buildCursor < s.cells.length) {
       const cell = s.cells[s.buildCursor++];
-      const rawWalkers = splitCellIntoWalkers(cell.cellIdx, cell.plan, cell.declaredWalkers, paramsRef.current);
+      const { walkers: rawWalkers, links } = splitCellIntoWalkers(cell.cellIdx, cell.plan, cell.declaredWalkers, paramsRef.current);
+      cell.links = links;
       cell.walkerTotalM = rawWalkers.reduce((sum, w) => sum + w.walk.totalM, 0);
       if (rawWalkers.length === 0) {
         finalizeCellRef.current(s, cell);
@@ -230,6 +251,9 @@ export function useRoadTraceRunner(params: RoadTraceRunnerParams) {
       api.setTraceRuns(s.cacheGap);
       api.setPassed(s.cachePassed);
     }
+    // Topology connectors: the dashed joints that keep the drawn plan network
+    // visually continuous across disconnected runs / walkers. Cheap, small FC.
+    api.setConnectors(s.cells.flatMap((c) => c.links));
   }, []);
 
   /** Cheap per-frame update: growing partials + head markers. */
@@ -298,6 +322,7 @@ export function useRoadTraceRunner(params: RoadTraceRunnerParams) {
     }
     api?.setTraceRuns(s.cacheGap);
     api?.setPassed(s.cachePassed);
+    api?.setConnectors(s.cells.flatMap((c) => c.links));
     api?.setLiveGap([]);
     api?.setLivePassed([]);
     api?.setHead(null);
@@ -526,7 +551,8 @@ export function useRoadTraceRunner(params: RoadTraceRunnerParams) {
           walkerTotalM: 0,
           walkerDoneM: 0,
           groupsPassed: [],
-          groupsGap: []
+          groupsGap: [],
+          links: []
         });
       });
 

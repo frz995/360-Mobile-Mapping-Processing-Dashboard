@@ -51,6 +51,13 @@ function buildOverpassQuery(bbox) {
     `way["highway"="unclassified"](${b});`,
     `way["highway"="residential"](${b});`,
     `way["highway"="service"](${b});`,
+    `way["highway"="motorway_link"](${b});`,
+    `way["highway"="trunk_link"](${b});`,
+    `way["highway"="primary_link"](${b});`,
+    `way["highway"="secondary_link"](${b});`,
+    `way["highway"="tertiary_link"](${b});`,
+    `way["highway"="living_street"](${b});`,
+    `way["highway"="road"](${b});`,
     ');out geom qt;'
   ].join('');
 }
@@ -63,10 +70,14 @@ function decodeElementsToLines(payload) {
     const h = (el.tags?.highway || '').toLowerCase();
     if (h && !DRIVABLE_HIGHWAY.has(h)) continue;
     const coords = [];
+    let aligned = Array.isArray(el.nodes) && el.nodes.length === el.geometry.length;
     for (const g of el.geometry) {
       const lng = Number(g?.lon);
       const lat = Number(g?.lat);
-      if (!Number.isFinite(lng) || !Number.isFinite(lat)) continue;
+      if (!Number.isFinite(lng) || !Number.isFinite(lat)) {
+        aligned = false;
+        continue;
+      }
       // Round to 5 decimals (~1 m precision) to halve coordinate string size
       coords.push([Math.round(lng * 1e5) / 1e5, Math.round(lat * 1e5) / 1e5]);
     }
@@ -75,7 +86,11 @@ function decodeElementsToLines(payload) {
       id: el.id != null ? `overpass-${el.id}` : undefined,
       coordinates: coords,
       highway: el.tags?.highway,
-      name: el.tags?.name
+      name: el.tags?.name,
+      // Endpoint node refs let the client join ways at shared OSM nodes
+      // (exact topology) instead of relying on coordinate snapping alone.
+      startNode: aligned ? el.nodes[0] : undefined,
+      endNode: aligned ? el.nodes[el.nodes.length - 1] : undefined
     });
   }
   return lines;

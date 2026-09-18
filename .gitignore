@@ -31,3 +31,13 @@ remotion/.remotion/
 *.njsproj
 *.sln
 *.sw?
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Local scratch & temporary notes
+scratch/
+git clone supabase.txt
+opencode.json
+

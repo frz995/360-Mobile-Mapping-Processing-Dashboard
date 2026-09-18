@@ -3,6 +3,7 @@ import {
   buildSubgridWalk,
   buildTracePlans,
   chainConnector,
+  chainRunsOrder,
   compareSubgridGridNames,
   computePlanCoverage,
   densifyRun,
@@ -152,6 +153,61 @@ describe('roadNetworkTrace utility', () => {
     });
   });
 
+  describe('chainRunsOrder', () => {
+    it('chains runs by nearest endpoint and orients them into walk order', () => {
+      const a: LonLat[] = [
+        [BASE_LNG, BASE_LAT],
+        [BASE_LNG + 0.001, BASE_LAT]
+      ];
+      // Reversed so the walk must flip it to enter at its near endpoint.
+      const b: LonLat[] = [
+        [BASE_LNG + 0.011, BASE_LAT],
+        [BASE_LNG + 0.010, BASE_LAT]
+      ];
+      const { ordered, links } = chainRunsOrder([a, b]);
+      expect(ordered.length).toBe(2);
+      // Second run oriented so it starts nearer the previous run's end.
+      expect(ordered[1][0][0]).toBeCloseTo(BASE_LNG + 0.010, 5);
+      // ~1 km joint is a cross-country jump → nothing drawn.
+      expect(links.length).toBe(0);
+    });
+
+    it('emits a link only for short joins', () => {
+      const a: LonLat[] = [
+        [BASE_LNG, BASE_LAT],
+        [BASE_LNG + 0.001, BASE_LAT]
+      ];
+      const close: LonLat[] = [
+        [BASE_LNG + 0.002, BASE_LAT],
+        [BASE_LNG + 0.003, BASE_LAT]
+      ];
+      const { links } = chainRunsOrder([a, close]);
+      expect(links.length).toBe(1);
+      expect(links[0][0][0]).toBeCloseTo(BASE_LNG + 0.001, 5);
+    });
+
+    it('traverses a branched T-junction network without generating cross-country jump links', () => {
+      // Main road split at junction (BASE_LNG + 0.005), side road branching north
+      const mainWest: LonLat[] = [
+        [BASE_LNG, BASE_LAT],
+        [BASE_LNG + 0.005, BASE_LAT]
+      ];
+      const mainEast: LonLat[] = [
+        [BASE_LNG + 0.005, BASE_LAT],
+        [BASE_LNG + 0.01, BASE_LAT]
+      ];
+      const sideNorth: LonLat[] = [
+        [BASE_LNG + 0.005, BASE_LAT],
+        [BASE_LNG + 0.005, BASE_LAT + 0.003]
+      ];
+
+      const { ordered, links } = chainRunsOrder([mainWest, mainEast, sideNorth]);
+      expect(ordered.length).toBe(3);
+      // All 3 edges connect at the junction -> zero jump links
+      expect(links.length).toBe(0);
+    });
+  });
+
   describe('polyline helpers', () => {
     const line: LonLat[] = [
       [BASE_LNG, BASE_LAT],
@@ -217,6 +273,19 @@ describe('roadNetworkTrace utility', () => {
     it('returns zero coverage without tracks or plan', () => {
       expect(computePlanCoverage([run], [], 25).coveredPct).toBe(0);
       expect(computePlanCoverage([], [denseLine(BASE_LAT, BASE_LNG, BASE_LNG + 0.001, 5)], 25).planKm).toBe(0);
+    });
+
+    it('leaves an entire isolated unsurveyed short road as uncovered', () => {
+      // Short run ~22 meters
+      const shortRun: LonLat[] = [
+        [BASE_LNG, BASE_LAT],
+        [BASE_LNG + 0.0002, BASE_LAT]
+      ];
+      // Zero capture tracks
+      const res = computePlanCoverage([shortRun], [], 25);
+      expect(res.coveredPct).toBe(0);
+      expect(res.uncoveredRuns.length).toBe(1);
+      expect(res.uncoveredRuns[0].length).toBeGreaterThanOrEqual(2);
     });
   });
 
@@ -305,6 +374,27 @@ describe('roadNetworkTrace utility', () => {
       // Gap slices exist in the left (uncaptured) half.
       const maxGapLng = Math.max(...gapSegs.map((s) => s.b[0]));
       expect(maxGapLng).toBeLessThanOrEqual(BASE_LNG + 0.0007);
+    });
+
+    it('prunes cross-street junction bleed so an unsurveyed side road gap extends to the junction', () => {
+      // Side road from BASE_LNG (junction with main road) East to BASE_LNG + 0.002 (~220m)
+      const sideRoad: LonLat[] = [
+        [BASE_LNG, BASE_LAT],
+        [BASE_LNG + 0.002, BASE_LAT]
+      ];
+      // Capture survey only on the main road: passing through BASE_LNG at lat BASE_LAT - 0.0001 to BASE_LAT + 0.0001
+      // (Bleeds ~11m into sideRoad at the junction mouth)
+      const mainRoadCapture: LonLat[] = [
+        [BASE_LNG, BASE_LAT - 0.0001],
+        [BASE_LNG, BASE_LAT + 0.0001]
+      ];
+      const walk = buildSubgridWalk('N93E70', [sideRoad], [mainRoadCapture], 25);
+      // Because sideRoad is predominantly unsurveyed, the junction bleed must be pruned
+      // and the gap must start directly at BASE_LNG:
+      const gapSegs = walk.segments.filter((s) => !s.covered);
+      expect(gapSegs.length).toBeGreaterThan(0);
+      expect(gapSegs[0].a[0]).toBeCloseTo(BASE_LNG, 5);
+      expect(walk.gapM).toBeCloseTo(walk.totalM, 0);
     });
 
     it('returns an empty walk without plan geometry', () => {

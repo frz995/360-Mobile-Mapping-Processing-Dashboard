@@ -26,6 +26,10 @@ export interface ExtractedRoadLine {
   coordinates: Array<[number, number]>;
   highway?: string;
   name?: string;
+  /** OSM node id of the first vertex (way node refs), when known. */
+  startNode?: number;
+  /** OSM node id of the last vertex (way node refs), when known. */
+  endNode?: number;
 }
 
 export interface RoadExtractionResult {
@@ -46,6 +50,7 @@ interface OverpassElement {
   id?: number;
   tags?: Record<string, string>;
   geometry?: Array<{ lat: number; lon: number }>;
+  nodes?: number[];
 }
 
 function bboxToString(b: RoadExtractionBBox): string {
@@ -55,7 +60,7 @@ function bboxToString(b: RoadExtractionBBox): string {
 function buildOptimizedOverpassQuery(b: RoadExtractionBBox): string {
   const bboxStr = bboxToString(b);
   return [
-    '[out:json][timeout:20];(',
+    '[out:json][timeout:25];(',
     `way["highway"="motorway"](${bboxStr});`,
     `way["highway"="trunk"](${bboxStr});`,
     `way["highway"="primary"](${bboxStr});`,
@@ -64,6 +69,13 @@ function buildOptimizedOverpassQuery(b: RoadExtractionBBox): string {
     `way["highway"="unclassified"](${bboxStr});`,
     `way["highway"="residential"](${bboxStr});`,
     `way["highway"="service"](${bboxStr});`,
+    `way["highway"="motorway_link"](${bboxStr});`,
+    `way["highway"="trunk_link"](${bboxStr});`,
+    `way["highway"="primary_link"](${bboxStr});`,
+    `way["highway"="secondary_link"](${bboxStr});`,
+    `way["highway"="tertiary_link"](${bboxStr});`,
+    `way["highway"="living_street"](${bboxStr});`,
+    `way["highway"="road"](${bboxStr});`,
     ');out geom qt;'
   ].join('');
 }
@@ -83,12 +95,115 @@ function isDrivable(tags?: Record<string, string>): boolean {
 }
 
 /**
+ * Merges road lines that share OSM endpoint node refs into single continuous
+ * runs. Two ways meeting at a node that no other way uses (degree 2) are the
+ * same physical street split by editors; joining them by node identity is
+ * exact — no coordinate tolerance involved. Junction nodes (degree >= 3) are
+ * left as separate runs that already share the exact junction coordinate.
+ */
+export function mergeRoadLinesBySharedNodes(lines: ExtractedRoadLine[]): ExtractedRoadLine[] {
+  if (!lines || lines.length === 0) return [];
+  if (lines.length === 1) return lines.slice();
+
+  const atNode = new Map<number, Array<{ li: number; end: 0 | 1 }>>();
+  lines.forEach((l, li) => {
+    ([0, 1] as const).forEach((end) => {
+      const n = end === 0 ? l.startNode : l.endNode;
+      if (typeof n !== 'number' || !Number.isFinite(n)) return;
+      const list = atNode.get(n);
+      if (list) list.push({ li, end });
+      else atNode.set(n, [{ li, end }]);
+    });
+  });
+
+  // node -> the two (line, end) halves it joins; only degree-2 nodes link.
+  const partner = new Map<string, { li: number; end: 0 | 1 }>();
+  const parent = lines.map((_, i) => i);
+  const find = (x: number): number => {
+    while (parent[x] !== x) {
+      parent[x] = parent[parent[x]];
+      x = parent[x];
+    }
+    return x;
+  };
+  atNode.forEach((list) => {
+    if (list.length !== 2 || list[0].li === list[1].li) return;
+    partner.set(`${list[0].li}|${list[0].end}`, { li: list[1].li, end: list[1].end });
+    partner.set(`${list[1].li}|${list[1].end}`, { li: list[0].li, end: list[0].end });
+    const a = find(list[0].li);
+    const b = find(list[1].li);
+    if (a !== b) parent[a] = b;
+  });
+
+  const groups = new Map<number, number[]>();
+  lines.forEach((_, li) => {
+    const root = find(li);
+    const g = groups.get(root);
+    if (g) g.push(li);
+    else groups.set(root, [li]);
+  });
+
+  const out: ExtractedRoadLine[] = [];
+  groups.forEach((members) => {
+    if (members.length === 1) {
+      out.push(lines[members[0]]);
+      return;
+    }
+
+    let startLi = members[0];
+    let startEnd: 0 | 1 = 0;
+    let cyclic = true;
+    for (const li of members) {
+      let open: 0 | 1 | -1 = -1;
+      if (!partner.has(`${li}|0`)) open = 0;
+      else if (!partner.has(`${li}|1`)) open = 1;
+      if (open !== -1) {
+        startLi = li;
+        startEnd = open;
+        cyclic = false;
+        break;
+      }
+    }
+
+    const coords: Array<[number, number]> = [];
+    const used = new Set<number>();
+    let cur: number = startLi;
+    let enterEnd: 0 | 1 = startEnd;
+    while (!used.has(cur)) {
+      used.add(cur);
+      const seq =
+        enterEnd === 0
+          ? lines[cur].coordinates
+          : lines[cur].coordinates.slice().reverse();
+      if (coords.length === 0) {
+        coords.push(...seq);
+      } else {
+        const tail = coords[coords.length - 1];
+        if (tail[0] !== seq[0][0] || tail[1] !== seq[0][1]) coords.push(seq[0]);
+        for (let i = 1; i < seq.length; i++) coords.push(seq[i]);
+      }
+      const nx = partner.get(`${cur}|${enterEnd === 0 ? 1 : 0}`);
+      if (!nx) break;
+      cur = nx.li;
+      enterEnd = nx.end;
+    }
+    if (cyclic && coords.length > 1) {
+      const first = coords[0];
+      const last = coords[coords.length - 1];
+      if (first[0] !== last[0] || first[1] !== last[1]) coords.push([first[0], first[1]]);
+    }
+    out.push({ ...lines[startLi], coordinates: coords });
+  });
+  return out;
+}
+
+/**
  * Decode an Overpass JSON payload into drivable road lines.
  */
 function decodeOverpassPayload(payload: any): ExtractedRoadLine[] {
   // If the server proxy already decoded and compacted the lines, return directly
   if (payload && Array.isArray(payload.lines)) {
-    return payload.lines;
+    return mergeRoadLinesBySharedNodes(payload.lines);
   }
 
   const elements: OverpassElement[] =
@@ -99,10 +214,14 @@ function decodeOverpassPayload(payload: any): ExtractedRoadLine[] {
     if (el.type !== 'way' || !Array.isArray(el.geometry)) continue;
     if (!isDrivable(el.tags)) continue;
     const coords: Array<[number, number]> = [];
+    let aligned = Array.isArray(el.nodes) && el.nodes.length === el.geometry.length;
     for (const g of el.geometry) {
       const lng = Number(g?.lon);
       const lat = Number(g?.lat);
-      if (!Number.isFinite(lng) || !Number.isFinite(lat)) continue;
+      if (!Number.isFinite(lng) || !Number.isFinite(lat)) {
+        aligned = false;
+        continue;
+      }
       coords.push([Math.round(lng * 1e5) / 1e5, Math.round(lat * 1e5) / 1e5]);
     }
     if (coords.length < 2) continue;
@@ -110,10 +229,12 @@ function decodeOverpassPayload(payload: any): ExtractedRoadLine[] {
       id: el.id != null ? `overpass-${el.id}` : undefined,
       coordinates: coords,
       highway: el.tags?.highway,
-      name: el.tags?.name
+      name: el.tags?.name,
+      startNode: aligned ? el.nodes?.[0] : undefined,
+      endNode: aligned ? el.nodes?.[el.nodes.length - 1] : undefined
     });
   }
-  return lines;
+  return mergeRoadLinesBySharedNodes(lines);
 }
 
 /**

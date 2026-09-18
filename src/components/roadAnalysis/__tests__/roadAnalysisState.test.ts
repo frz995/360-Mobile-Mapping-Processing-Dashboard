@@ -286,7 +286,33 @@ describe('RoadAnalysisWorkspace state persistence', () => {
       const cache = loadRoadAnalysisState('user-cache-6');
       expect(cache?.catalogLayers?.[0]?.strokeWidth).toBe(3.5);
       expect(cache?.catalogLayers?.[0]?.name).toBe('Road A');
+      expect(cache?.catalogLayers?.[0]?.geojson).toBeDefined();
+      expect(cache?.catalogGeometryDropped).toBe(false);
       expect(cache?.savedToCloud).toBe(false);
+    });
+
+    it('drops oversized catalog geometry from the cache instead of freezing on JSON.stringify', () => {
+      const bigLayer = {
+        id: 'L1',
+        name: 'Malaysia Roads',
+        visible: true,
+        color: '#38bdf8',
+        opacity: 0.9,
+        strokeWidth: 3.5,
+        featureCount: 50,
+        geometryBytes: 50_000_000, // ~50MB of road geometry
+        geojson: { type: 'FeatureCollection', features: [] }
+      } as any;
+      persistRoadAnalysisCache('user-cache-big', { catalogLayers: [bigLayer] });
+
+      const cache = loadRoadAnalysisState('user-cache-big');
+      expect(cache?.catalogGeometryDropped).toBe(true);
+      expect(cache?.catalogLayers?.[0]?.id).toBe('L1');
+      expect(cache?.catalogLayers?.[0]?.name).toBe('Malaysia Roads');
+      expect(cache?.catalogLayers?.[0]?.geojson).toBeUndefined();
+      expect(cache?.catalogLayers?.[0]?.geometryDropped).toBe(true);
+      // Styling metadata survives the strip.
+      expect(cache?.catalogLayers?.[0]?.color).toBe('#38bdf8');
     });
 
     it('a partial edit does not clobber previously cached style state', () => {
