@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   pointInBbox,
   clipLineRunsToBbox,
+  clipLineRunsToBboxWithIds,
   connectRunsByEndpoints,
   getSubgridBbox,
   computeSubgridMetrics,
@@ -251,7 +252,7 @@ describe('subgridComparison utility', () => {
     expect(stitched[1][3][1]).toBeCloseTo(3.0, 6);
   });
 
-  it('does not weld parallel carriageways via the close-range snap', () => {
+    it('does not weld parallel carriageways via the close-range snap', () => {
     const laneA: Array<[number, number]> = [[100.0, 3.0], [100.01, 3.0], [100.02, 3.0]];
     const laneB: Array<[number, number]> = [
       [100.0, 3.00012],
@@ -265,6 +266,94 @@ describe('subgridComparison utility', () => {
     expect(stitched[1][2]).toEqual([100.02, 3.00012]);
   });
 
+  it('clusters every nearby junction endpoint onto ONE shared node', () => {
+    // Four roads whose junction ends all land within ~25 m of each other —
+    // the old one-merge-per-endpoint rule stranded the 3rd/4th stub metres
+    // short of the junction.
+    const runs: Array<Array<[number, number]>> = [
+      [[100.0, 3.0], [100.01, 3.0]], // west arm → ends at the junction
+      [[100.0102, 3.0], [100.04, 3.0]], // east arm, start ~22 m off
+      [[100.0101, 3.0002], [100.0101, 3.04]], // south arm, start ~24 m off
+      [[100.0102, 3.0002], [100.0102, 3.05]] // converging road, start ~22 m off
+    ];
+    const stitched = connectRunsByEndpoints(runs, 25, 40, false);
+
+    const junctionEnds = [
+      stitched[0][stitched[0].length - 1],
+      stitched[1][0],
+      stitched[2][0],
+      stitched[3][0]
+    ];
+    junctionEnds.forEach((end) => {
+      expect(end[0]).toBeCloseTo(junctionEnds[0][0], 5);
+      expect(end[1]).toBeCloseTo(junctionEnds[0][1], 5);
+    });
+    // Cluster centroid sits near the geometric middle of the four stub ends.
+    expect(junctionEnds[0][0]).toBeCloseTo(100.010125, 4);
+    expect(junctionEnds[0][1]).toBeCloseTo(3.0001, 4);
+  });
+
+  it('welds a long parallel stub stranded near a junction end node', () => {
+    // Long (>80 m) stub running parallel to the through road, whose END stops
+    // ~31 m short AND behind of the through road's end node. The segment
+    // projector rejects it (parallel + not approaching), the endpoint snap
+    // misses it (beyond 25 m) — only the vertex weld can connect it.
+    const through: Array<[number, number]> = [[100.0, 3.0], [100.02, 3.0]];
+    const stub: Array<[number, number]> = [
+      [100.015, 3.0002],
+      [100.0198, 3.0002]
+    ];
+    const stitched = connectRunsByEndpoints([through, stub], 25, 40, false);
+
+    expect(stitched[1][1]).toEqual([100.02, 3.0]);
+    expect(stitched[0]).toEqual(through);
+  });
+
+  it('keeps a reversed cul-de-sac end away from the junction node', () => {
+    // Stub END faces AWAY from the nearby through-road end node (30 m away):
+    // the vertex weld must not grab it (heading points away), so both runs
+    // stay separate.
+    const through: Array<[number, number]> = [[100.0, 3.0], [100.02, 3.0]];
+    const culDeSac: Array<[number, number]> = [
+      [100.018, 3.0002],
+      [100.0203, 3.0002]
+    ];
+    const stitched = connectRunsByEndpoints([through, culDeSac], 25, 40, false);
+
+    expect(stitched.length).toBe(2);
+    expect(stitched[1][1]).toEqual([100.0203, 3.0002]);
+  });
+
+  it('keeps endpoint ids on fragments that retain their original terminal coordinate', () => {
+    const bbox: [number, number, number, number] = [10.0, 10.0, 20.0, 20.0];
+
+    // Wholly inside: both ids survive.
+    const inside = clipLineRunsToBboxWithIds(
+      [[[11.0, 15.0], [15.0, 15.0]]],
+      [{ start: 1, end: 2 }],
+      bbox
+    );
+    expect(inside.endpointIds[0]).toEqual({ start: 1, end: 2 });
+
+    // Start clipped off: start id dropped, end kept.
+    const straddles = clipLineRunsToBboxWithIds(
+      [[[5.0, 15.0], [15.0, 15.0]]],
+      [{ start: 1, end: 2 }],
+      bbox
+    );
+    expect(straddles.runs[0][0]).toEqual([10.0, 15.0]);
+    expect(straddles.endpointIds[0]).toEqual({ end: 2 });
+
+    // Entire run clipped at both ends: no ids survive.
+    const clipped = clipLineRunsToBboxWithIds(
+      [[[5.0, 15.0], [12.0, 15.0], [18.0, 15.0], [25.0, 15.0]]],
+      [{ start: 1, end: 2 }],
+      bbox
+    );
+    expect(clipped.runs[0]).toEqual([[10.0, 15.0], [12.0, 15.0], [18.0, 15.0], [20.0, 15.0]]);
+    expect(clipped.endpointIds[0]).toEqual({});
+  });
+
   it('generates a 5x5 km bounding box centered at points', () => {
     const points = [
       { lng: 101.5, lat: 3.1 },
@@ -275,6 +364,19 @@ describe('subgridComparison utility', () => {
     expect(bbox[1]).toBeCloseTo(3.1 - 0.0225, 4);
     expect(bbox[2]).toBeCloseTo(101.5 + 0.0225, 4);
     expect(bbox[3]).toBeCloseTo(3.1 + 0.0225, 4);
+  });
+
+  it('centers the bbox on the midpoint of the captured bounds, not the mean', () => {
+    // Skewed point cloud: midpoint = 101.4, mean = 101.43. The midpoint rule
+    // keeps the extreme (101.1) captured point anchored on the box edge.
+    const points = [
+      { lng: 101.1, lat: 3.1 },
+      { lng: 101.5, lat: 3.1 },
+      { lng: 101.7, lat: 3.1 }
+    ];
+    const bbox = getSubgridBbox('N99E99', points);
+    expect(bbox[0]).toBeCloseTo(101.4 - 0.0225, 4);
+    expect(bbox[2]).toBeCloseTo(101.4 + 0.0225, 4);
   });
 
   it('computes point in polygon geometry correctly', () => {

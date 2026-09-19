@@ -14,12 +14,7 @@ import {
   ArrowRightLeft,
   Printer,
   Search,
-  Cuboid,
-  Waypoints,
-  Play,
-  Pause,
-  X,
-  RotateCcw
+  Cuboid
 } from 'lucide-react';
 import type { Map as MaplibreMap } from 'maplibre-gl';
 import { UnderlineTabStrip, StatusDot, type ChromeTab } from './production/chrome';
@@ -34,7 +29,6 @@ import {
   type MalaysiaDistrict
 } from './boundary/malaysiaDistricts';
 import { RoadAnalysisMap } from './roadAnalysis/RoadAnalysisMap';
-import type { RoadTraceApi } from './roadAnalysis/RoadAnalysisMap';
 import { RoadImportPanel, type ImportPreview } from './roadAnalysis/RoadImportPanel';
 import { RoadAnalysisPrintPanel } from './roadAnalysis/RoadAnalysisPrintPanel';
 import { RoadCatalogPanel, RoadAttributeTableDrawer, resolveLayerFeatures, type SystemLayerStyles } from './roadAnalysis/RoadCatalogPanel';
@@ -53,8 +47,8 @@ import {
   type SubgridMetric,
   type SubgridRelationNotice
 } from '../utils/subgridComparison';
-import { buildTracePlans } from '../utils/roadNetworkTrace';
-import { useRoadTraceRunner } from '../hooks/useRoadTraceRunner';
+import { buildTracePlans, computePlanCoverage, finalizeSubgridResult } from '../utils/roadNetworkTrace';
+import { useCoverageSegmentation } from '../hooks/useCoverageSegmentation';
 import { useRoadPlanStitcher } from '../hooks/useRoadPlanStitcher';
 import { extractSubgridName } from '../utils/subgrid';
 import {
@@ -114,6 +108,8 @@ export interface RoadAnalysisSavedState {
   planSource?: PlanSource;
   mapBasemap?: string;
   showRoadLines?: boolean;
+  /** Static red coverage-gap overlay toggle (replaced the animated trace). */
+  showCoverage?: boolean;
   manualGeoJson?: any;
   extractedLines?: ExtractedRoadLine[];
   catalogLayers?: CatalogVectorLayer[];
@@ -496,16 +492,12 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   // Live main-map instance (for the Print panel's "Current map extent" mode).
   const liveMapRef = useRef<MaplibreMap | null>(null);
-  // Imperative overlay handle for the Road Network Trace animation.
-  const traceApiRef = useRef<RoadTraceApi | null>(null);
-  // Trace session-only settings (10x default, fixed; results are NOT persisted).
+  // Road-coverage segmentation settings. The static red "coverage gap" overlay
+  // replaced the animated Road Network Trace but keeps its semantics: a plan
+  // stretch with no panotrack within tolerance stays uncovered, and a subgrid
+  // is complete when the uncovered share stays at/below threshold.
   const TRACE_TOLERANCE_M = 25;
   const TRACE_THRESHOLD_PCT = 95;
-  // Subgrid the trace is currently walking (drives the on-map status card).
-  const [traceScope, setTraceScope] = useState<string | null>(null);
-  // Trace is only supported for imported GIS vector layers (SHP/KML/Geojson),
-  // never for the OSM-extracted network. This opens the blocking notice modal.
-  const [showOsmTraceNotice, setShowOsmTraceNotice] = useState(false);
   // Print-preview map instance (owned by RoadAnalysisPrintPanel).
   const printMapRef = useRef<MaplibreMap | null>(null);
 
@@ -603,6 +595,11 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
   const [showRoadLines, setShowRoadLines] = useState<boolean>(() => {
     const saved = loadRoadAnalysisState(userKey);
     return typeof saved?.showRoadLines === 'boolean' ? saved.showRoadLines : true;
+  });
+
+  const [showCoverage, setShowCoverage] = useState<boolean>(() => {
+    const saved = loadRoadAnalysisState(userKey);
+    return typeof saved?.showCoverage === 'boolean' ? saved.showCoverage : true;
   });
 
   const [mapBasemap, setMapBasemap] = useState<string>(() => {
@@ -784,6 +781,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
         setSystemStyles(localCache.systemStyles);
       }
       if (typeof remoteState.showRoadLines === 'boolean') setShowRoadLines(remoteState.showRoadLines);
+      if (typeof remoteState.showCoverage === 'boolean') setShowCoverage(remoteState.showCoverage);
       if (remoteState.mapBasemap) setMapBasemap(remoteState.mapBasemap);
       if (remoteState.updatedAt) setLastSavedAt(new Date(remoteState.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
 
@@ -822,6 +820,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
       if (Array.isArray(saved.catalogLayers)) setCatalogLayers(saved.catalogLayers);
       if (saved.systemStyles) setSystemStyles(saved.systemStyles);
       if (typeof saved.showRoadLines === 'boolean') setShowRoadLines(saved.showRoadLines);
+      if (typeof saved.showCoverage === 'boolean') setShowCoverage(saved.showCoverage);
       if (saved.mapBasemap) setMapBasemap(saved.mapBasemap);
       setLastSavedFingerprint(
         computeRoadAnalysisFingerprint(
@@ -881,6 +880,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
         planSource,
         mapBasemap,
         showRoadLines,
+        showCoverage,
         manualGeoJson,
         extractedLines,
         catalogLayers,
@@ -897,6 +897,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
       planSource,
       mapBasemap,
       showRoadLines,
+      showCoverage,
       manualGeoJson,
       extractedLines,
       catalogLayers,
@@ -1130,64 +1131,50 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
     return buildTracePlans(internalDailyData, {
       catalogLayers,
       planRuns: activePlanRuns,
+      planSourceRuns: roadPlanInput.runs,
+      planSourceEndpointIds: roadPlanInput.endpointIds,
       subgridFilter: regionSubgrids
     });
-  }, [internalDailyData, catalogLayers, activePlanRuns, capturedPoints, activeRegionDistricts]);
+  }, [internalDailyData, catalogLayers, activePlanRuns, roadPlanInput, capturedPoints, activeRegionDistricts]);
 
-  const traceRunner = useRoadTraceRunner({
-    plans: tracePlans,
+  // Static road-coverage segmentation (replaces the animated trace). The plan
+  // network is classified once against panotrack tracks; uncovered stretches
+  // are drawn as static red lines on the map. `system` plans are the dashboard
+  // catalog fallback (nothing to classify), so segmentation is kept idle.
+  const coverage = useCoverageSegmentation({
+    planRuns: planSource !== 'system' ? activePlanRuns : [],
     capturedTracks,
     toleranceM: TRACE_TOLERANCE_M,
-    thresholdPct: TRACE_THRESHOLD_PCT,
-    traceApiRef,
-    mapRef: liveMapRef
+    enabled: showCoverage
   });
 
-  // Trace a single subgrid from its Compare card (or all subgrids via header).
-  const handleTraceSubgrid = useCallback((sgName: string | null) => {
-    // The network trace runs only against imported GIS vector layers. OSM
-    // extracted roads are not a supported trace source — show the notice and
-    // never start the runner.
-    if (planSource !== 'manual') {
-      setShowOsmTraceNotice(true);
-      return;
-    }
-    if (traceRunner.phase === 'running' || traceRunner.phase === 'paused') {
-      traceRunner.stop();
-      return;
-    }
-    setTraceScope(sgName);
-    traceRunner.start(sgName ? { scope: sgName } : undefined);
-  }, [traceRunner, planSource]);
+  // Static per-subgrid COMPLETE / INCOMPLETE verdicts for the Compare cards.
+  const traceVerdicts = useMemo(() => {
+    return tracePlans.map((plan) =>
+      finalizeSubgridResult(
+        plan,
+        computePlanCoverage(plan.planRuns, capturedTracks, TRACE_TOLERANCE_M),
+        TRACE_THRESHOLD_PCT
+      )
+    );
+  }, [tracePlans, capturedTracks]);
 
-  // Reset / re-run the last trace scope after it finished (reset icon).
-  const lastTraceScopeRef = useRef<string | null>(null);
-  const handleTraceReset = useCallback(() => {
-    if (planSource !== 'manual') {
-      setShowOsmTraceNotice(true);
-      return;
-    }
-    traceRunner.stop();
-    if (lastTraceScopeRef.current) {
-      traceRunner.start({ scope: lastTraceScopeRef.current });
-    } else {
-      traceRunner.start();
-    }
-  }, [traceRunner, planSource]);
+  const traceVerdictBySubgrid = useMemo(() => {
+    const byKey: Record<string, (typeof traceVerdicts)[number]> = {};
+    traceVerdicts.forEach((v) => {
+      byKey[v.subgrid] = v;
+    });
+    return byKey;
+  }, [traceVerdicts]);
 
-  useEffect(() => {
-    lastTraceScopeRef.current = traceScope;
-  }, [traceScope]);
-
-  // While tracing, keep the live subgrid name in sync for the status card.
-  useEffect(() => {
-    if (traceRunner.phase === 'running' || traceRunner.phase === 'paused') {
-      const current = traceRunner.progress?.subgrid;
-      if (current) setTraceScope(current);
-    } else if (traceRunner.phase === 'idle') {
-      setTraceScope(null);
-    }
-  }, [traceRunner.phase, traceRunner.progress?.subgrid]);
+  // Master toggle: header "Coverage" button and per-subgrid "Gaps" buttons both
+  // flip this (persisted alongside the rest of the workspace snapshot).
+  const toggleCoverage = useCallback(() => {
+    const next = !showCoverage;
+    setShowCoverage(next);
+    persistSnapshot({ showCoverage: next });
+    setHasUnsavedEdits(true);
+  }, [persistSnapshot, showCoverage]);
 
   const activeSubgridsCount = useMemo(() => {
     return subgridMetrics.filter(
@@ -1230,6 +1217,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
       planSource,
       mapBasemap,
       showRoadLines,
+      showCoverage,
       manualGeoJson,
       extractedLines,
       catalogLayers,
@@ -2209,19 +2197,19 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                               {filteredSubgridMetrics.length !== subgridMetrics.length ? ` of ${subgridMetrics.length}` : ''}{' '}
                               subgrid{subgridMetrics.length === 1 ? '' : 's'}
                             </span>
-                            {activePlanRuns.length > 0 && tracePlans.length > 0 && (
+                            {activePlanRuns.length > 0 && (
                               <button
                                 type="button"
-                                onClick={() => handleTraceSubgrid(null)}
+                                onClick={toggleCoverage}
                                 className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono cursor-pointer transition-colors border ${
-                                  traceRunner.phase === 'running' || traceRunner.phase === 'paused'
+                                  showCoverage
                                     ? 'bg-sky-500/10 border-sky-500/30 text-sky-300'
                                     : 'bg-inner border-subtle text-text-muted hover:text-sky-300 hover:border-sky-500/30'
                                 }`}
-                                title="Run the plan network trace across every subgrid: panotrack-covered roads are fast-forwarded, missing stretches are drawn in red"
+                                title="Toggle the red coverage-gap overlay: plan roads without panotrack within tolerance are drawn in red, covered roads are left green"
                               >
-                                <Waypoints size={11} className={traceRunner.phase === 'running' ? 'animate-pulse' : ''} />
-                                Trace All
+                                <Route size={11} className="shrink-0" />
+                                Cover
                               </button>
                             )}
                           </div>
@@ -2277,9 +2265,8 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                           ) : (
                             filteredSubgridMetrics.map((sg) => {
                               const isSelected = selectedSubgridId === sg.subgrid;
-                              const traceResult = traceRunner.results.find((r) => r.subgrid === sg.subgrid);
-                              const isTracing = traceScope === sg.subgrid && (traceRunner.phase === 'running' || traceRunner.phase === 'paused');
-                              const canTrace = activePlanRuns.length > 0 && tracePlans.some((p) => p.subgrid === sg.subgrid);
+                              const traceResult = traceVerdictBySubgrid[sg.subgrid];
+                              const hasPlan = !!traceResult && traceResult.status !== 'no-plan';
                               return (
                                 <div
                                   key={sg.subgrid}
@@ -2295,29 +2282,20 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                                       <span className="font-mono font-bold text-xs text-text-base tracking-wide">
                                         {sg.subgrid}
                                       </span>
-                                      {traceResult && (
+                                      {hasPlan && (
                                         <span
                                           className={`px-1.5 py-0.5 rounded border text-[8px] font-mono font-bold tracking-wider shrink-0 ${
-                                            traceResult.status === 'complete'
+                                            traceResult!.status === 'complete'
                                               ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-400'
-                                              : traceResult.status === 'incomplete'
-                                                ? 'bg-rose-500/10 border-rose-500/40 text-rose-400'
-                                                : 'bg-inner border-subtle text-text-muted'
+                                              : 'bg-rose-500/10 border-rose-500/40 text-rose-400'
                                           }`}
                                           title={
-                                            traceResult.status === 'complete'
-                                              ? `Trace complete — ${traceResult.coveredPct?.toFixed(1)}% of plan covered`
-                                              : traceResult.status === 'incomplete'
-                                                ? `Trace incomplete — ${traceResult.gapKm.toFixed(2)} km missing (red lines)`
-                                                : 'No plan geometry inside this cell'
+                                            traceResult!.status === 'complete'
+                                              ? `Coverage complete — ${traceResult!.tracedPct?.toFixed(1)}% of plan traced`
+                                              : `Coverage incomplete — ${traceResult!.tracedKm.toFixed(2)} km traced (red lines)`
                                           }
                                         >
-                                          {traceResult.status === 'complete' ? 'COMPLETE' : traceResult.status === 'incomplete' ? 'INCOMPLETE' : 'NO PLAN'}
-                                        </span>
-                                      )}
-                                      {isTracing && (
-                                        <span className="px-1.5 py-0.5 rounded border border-sky-500/40 bg-sky-500/10 text-[8px] font-mono font-bold tracking-wider text-sky-300 shrink-0 animate-pulse">
-                                          TRACING
+                                          {traceResult!.status === 'complete' ? 'COMPLETE' : 'INCOMPLETE'}
                                         </span>
                                       )}
                                     </div>
@@ -2330,19 +2308,22 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                                       >
                                         Focus 5×5 km
                                       </button>
-                                      {canTrace && (
+                                      {hasPlan && (
                                         <button
                                           type="button"
-                                          onClick={() => handleTraceSubgrid(sg.subgrid)}
+                                          onClick={() => {
+                                            if (!showCoverage) toggleCoverage();
+                                            handleZoomToSubgrid(sg);
+                                          }}
                                           className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono cursor-pointer transition-colors border ${
-                                            isTracing
+                                            showCoverage
                                               ? 'bg-sky-500/10 border-sky-500/30 text-sky-300'
                                               : 'bg-inner border-subtle text-text-muted hover:text-sky-300 hover:border-sky-500/30'
                                           }`}
-                                          title={`Trace the plan road network of ${sg.subgrid}: covered parts are skipped, missing stretches drawn in red`}
+                                          title={`Show the red coverage gaps of ${sg.subgrid} (enables the Coverage overlay and focuses the map)`}
                                         >
-                                          <Waypoints size={11} className={isTracing ? 'animate-pulse' : ''} />
-                                          Trace
+                                          <Route size={11} className="shrink-0" />
+                                          Gaps
                                         </button>
                                       )}
                                     </div>
@@ -2780,6 +2761,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                 <RoadAnalysisMap
                   active
                   showRoadLines={showRoadLines}
+                  showCoverage={showCoverage}
                   show3D={show3D}
                   style={mapStyle}
                   bbox={regionGeo?.bbox ?? null}
@@ -2787,6 +2769,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                   dimmedRegionsGeojson={dimmedRegionsGeojson}
                   capturedPoints={capturedPoints}
                   roadRuns={activePlanRuns}
+                  coverageRuns={showCoverage ? coverage.coverage?.uncoveredRuns ?? [] : []}
                   catalogLayers={catalogLayers}
                   catalogPreview={importPreview}
                   systemStyles={systemStyles}
@@ -2794,97 +2777,32 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                   selectedFeature={selectedTableFeature}
                   onSelectSubgrid={handleSelectSubgrid}
                   mapInstanceRef={liveMapRef}
-                  traceApiRef={traceApiRef}
                 />
 
-                {/* Road Network Trace floating status card */}
-                {traceRunner.phase !== 'idle' && traceRunner.progress && (
-                  <div
-                    style={{
-                      backgroundColor: 'var(--bg-card)',
-                      borderColor: 'var(--border-subtle)',
-                      boxShadow: 'var(--card-shadow)',
-                      color: 'var(--text-primary)'
-                    }}
-                    className="absolute top-3 right-3 z-[1000] w-64 rounded-xl border backdrop-blur-md shadow-lg p-3 animate-in fade-in duration-200"
-                  >
-                    <div className="flex items-center justify-between mb-1.5">
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        <Waypoints
-                          size={13}
-                          className={`text-sky-400 shrink-0 ${traceRunner.phase === 'running' ? 'animate-pulse' : ''}`}
-                        />
-                        <span className="text-[11px] font-bold font-mono text-text-base truncate">
-                          {traceRunner.phase === 'finished'
-                            ? 'Trace Finished'
-                            : (traceRunner.progress.subgrid || 'Network Trace')}
-                        </span>
-                        {traceRunner.phase === 'paused' && (
-                          <span className="text-[8px] font-mono font-bold px-1 py-0.5 rounded border border-amber-500/40 bg-amber-500/10 text-amber-300 shrink-0">
-                            PAUSED
-                          </span>
-                        )}
+                {/* Coverage segmentation progress popup: dims + blurs the live map
+                    while the worker classifies large plan networks against panotrack. */}
+                {coverage.phase === 'running' && (
+                  <div className="absolute inset-0 z-[1001] flex items-center justify-center bg-black/45 backdrop-blur-sm animate-in fade-in duration-150">
+                    <div
+                      style={{
+                        backgroundColor: 'var(--bg-card)',
+                        borderColor: 'var(--border-subtle)',
+                        boxShadow: 'var(--card-shadow)',
+                        color: 'var(--text-primary)'
+                      }}
+                      className="rounded-xl border shadow-2xl px-5 py-4 flex items-center gap-3"
+                    >
+                      <Loader2 size={16} className="text-sky-400 animate-spin shrink-0" />
+                      <div className="min-w-[200px]">
+                        <div className="text-[11px] font-bold font-mono text-text-base">
+                          Segmenting road coverage…
+                        </div>
+                        <div className="text-[10px] text-text-muted mt-0.5 font-mono">
+                          {coverage.progress
+                            ? `${Math.round((coverage.progress.done / Math.max(1, coverage.progress.total)) * 100)}% · ${coverage.progress.done.toLocaleString()} / ${coverage.progress.total.toLocaleString()} plan roads analyzed`
+                            : 'Analyzing panotrack vs road plan…'}
+                        </div>
                       </div>
-                      <div className="flex items-center gap-1 shrink-0">
-                        {traceRunner.phase === 'running' && (
-                          <button
-                            type="button"
-                            onClick={traceRunner.pause}
-                            className="w-6 h-6 rounded-lg bg-inner border border-subtle flex items-center justify-center text-text-muted hover:text-text-base cursor-pointer transition-colors"
-                            title="Pause trace"
-                          >
-                            <Pause size={11} />
-                          </button>
-                        )}
-                        {traceRunner.phase === 'paused' && (
-                          <button
-                            type="button"
-                            onClick={traceRunner.resume}
-                            className="w-6 h-6 rounded-lg bg-inner border border-subtle flex items-center justify-center text-sky-400 hover:text-sky-300 cursor-pointer transition-colors"
-                            title="Resume trace"
-                          >
-                            <Play size={11} />
-                          </button>
-                        )}
-                        {traceRunner.phase !== 'finished' && (
-                          <button
-                            type="button"
-                            onClick={traceRunner.stop}
-                            className="w-6 h-6 rounded-lg bg-inner border border-subtle flex items-center justify-center text-text-muted hover:text-rose-400 cursor-pointer transition-colors"
-                            title="Stop and clear trace"
-                          >
-                            <X size={11} />
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={handleTraceReset}
-                          className="w-6 h-6 rounded-lg bg-inner border border-subtle flex items-center justify-center text-text-muted hover:text-sky-400 cursor-pointer transition-colors"
-                          title="Reset — clear results and start the trace again"
-                        >
-                          <RotateCcw size={11} />
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="h-1.5 rounded-full bg-app overflow-hidden mb-1.5">
-                      <div
-                        className={`h-full rounded-full transition-[width] duration-150 ${
-                          traceRunner.phase === 'finished' ? 'bg-emerald-400' : 'bg-sky-400'
-                        }`}
-                        style={{ width: `${Math.round((traceRunner.progress.mode === 'single' ? traceRunner.progress.subgridFraction : traceRunner.progress.overallFraction) * 100)}%` }}
-                      />
-                    </div>
-
-                    <div className="flex items-center justify-between text-[9px] font-mono text-text-muted mb-1">
-                      <span>
-                        {traceRunner.phase === 'finished'
-                          ? `${traceRunner.results.filter((r) => r.status === 'complete').length} complete · ${traceRunner.results.filter((r) => r.status === 'incomplete').length} incomplete`
-                          : traceRunner.progress.mode === 'single'
-                            ? `${Math.round(traceRunner.progress.subgridFraction * 100)}% of cell`
-                            : `${traceRunner.progress.activeWalkers} traces · ${traceRunner.progress.doneCells}/${traceRunner.progress.totalCells} cells`}
-                      </span>
-                      <span>{Math.round(traceRunner.progress.overallFraction * 100)}%</span>
                     </div>
                   </div>
                 )}
@@ -3327,71 +3245,6 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                         className="px-3.5 py-1.5 bg-inner hover:bg-inner/80 text-text-base border border-subtle rounded-lg text-xs font-mono cursor-pointer transition-colors"
                       >
                         Close Guide
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* OSM plan trace-blocked notice: the network trace only runs on imported vector layers */}
-              {showOsmTraceNotice && (
-                <div
-                  role="dialog"
-                  aria-modal="true"
-                  aria-label="Trace unavailable for OSM plan"
-                  className="fixed inset-0 bg-[var(--modal-overlay)] flex items-center justify-center z-[1000] p-4 backdrop-blur-sm animate-in fade-in duration-150"
-                  onClick={() => setShowOsmTraceNotice(false)}
-                >
-                  <div
-                    className="bg-card border border-subtle rounded-xl p-5 max-w-md w-full flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <div className="flex justify-between items-start pb-3 mb-3 border-b border-subtle shrink-0">
-                      <div className="flex items-center gap-2">
-                        <span className="w-7 h-7 rounded-lg bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-400 shrink-0">
-                          <Waypoints size={14} />
-                        </span>
-                        <div>
-                          <div className="text-[9px] uppercase tracking-wider text-text-muted font-mono font-semibold">
-                            Road Network Trace
-                          </div>
-                          <h2 className="text-sm font-bold text-text-base tracking-wide font-mono mt-0.5">
-                            Trace unavailable for OSM plan
-                          </h2>
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setShowOsmTraceNotice(false)}
-                        className="w-6 h-6 rounded border border-subtle flex items-center justify-center text-text-muted hover:text-text-base hover:bg-inner cursor-pointer transition-colors font-mono text-xs"
-                        aria-label="Close trace notice"
-                      >
-                        ✕
-                      </button>
-                    </div>
-
-                    <p className="text-xs text-text-muted leading-relaxed font-sans">
-                      Trace not available for using OSM data. You can run only using Vector layers
-                      from Import — Shp, Kml, Geojson, etc. Go to Import tab.
-                    </p>
-
-                    <div className="pt-3 mt-4 border-t border-subtle flex items-center justify-end gap-2 shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => setShowOsmTraceNotice(false)}
-                        className="px-3 py-1.5 bg-inner hover:bg-inner/80 text-text-base border border-subtle rounded-lg text-xs font-mono cursor-pointer transition-colors"
-                      >
-                        Close
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowOsmTraceNotice(false);
-                          setActiveTab('import');
-                        }}
-                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white border border-emerald-500/40 rounded-lg text-xs font-mono font-semibold cursor-pointer transition-colors"
-                      >
-                        Go to Import tab
                       </button>
                     </div>
                   </div>

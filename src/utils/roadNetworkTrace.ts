@@ -13,11 +13,13 @@ import { calculateGeodesicDistanceMeters, pathLengthLngLatKm } from './geo';
 import { extractSubgridName } from './subgrid';
 import {
   clipLineRunsToBbox,
+  clipLineRunsToBboxWithIds,
   connectRunsByEndpoints,
   getSubgridBbox,
   subgridLinesLengthKm,
   PLAN_ENDPOINT_SNAP_M,
-  PLAN_TJUNCTION_SNAP_M
+  PLAN_TJUNCTION_SNAP_M,
+  type PlanRunEndpointIds
 } from './subgridComparison';
 
 export type LonLat = [number, number];
@@ -42,8 +44,10 @@ export interface SubgridTracePlan {
 
 export interface PlanCoverage {
   planKm: number;
-  coveredKm: number;
-  coveredPct: number;
+  /** Plan meters WITHOUT any panotrack within tolerance — the stretches the
+   *  trace paints with its trace color. */
+  tracedKm: number;
+  tracedPct: number;
   uncoveredRuns: LonLat[][];
 }
 
@@ -56,9 +60,9 @@ export interface SubgridTraceResult {
   surveyCount: number;
   capturedKm: number;
   planKm: number;
-  coveredKm: number;
-  coveredPct: number | null;
-  gapKm: number;
+  /** Plan km lacking panotrack coverage (the painted / traced portion). */
+  tracedKm: number;
+  tracedPct: number | null;
   uncoveredRuns: LonLat[][];
 }
 
@@ -129,6 +133,12 @@ export interface BuildTracePlansOptions {
   catalogLayers?: any[];
   /** Active plan line runs (extracted OSM or manual/GIS layer), unclipped. */
   planRuns?: LonLat[][];
+  /** Raw pre-stitch runs still carrying per-run endpoint node ids. When the
+   *  source carries ids, each subgrid clips THESE (not the stitched runs) so
+   *  the per-cell re-stitch can join by node identity again; id-less sources
+   *  keep stitched geometry. */
+  planSourceRuns?: LonLat[][];
+  planSourceEndpointIds?: PlanRunEndpointIds[];
   /** When provided, only subgrids present in this set are traced. */
   subgridFilter?: Set<string>;
 }
@@ -143,7 +153,7 @@ export function buildTracePlans(
   dailyData: any[],
   options: BuildTracePlansOptions = {}
 ): SubgridTracePlan[] {
-  const { catalogLayers = [], planRuns = [], subgridFilter } = options;
+  const { catalogLayers = [], planRuns = [], planSourceRuns, planSourceEndpointIds, subgridFilter } = options;
 
   const bySubgrid = new Map<string, TraceSurvey[]>();
   (dailyData || []).forEach((d: any, idx: number) => {
@@ -163,18 +173,37 @@ export function buildTracePlans(
     bySubgrid.set(sg, list);
   });
 
+  // Id-carrying sources are clipped per cell so the endpoint ids survive into
+  // the subgrid re-stitch; id-less sources fall back to the already-stitched
+  // geometry so nothing is lost when the source has no node references.
+  const hasSourceIds =
+    Array.isArray(planSourceRuns) &&
+    Array.isArray(planSourceEndpointIds) &&
+    planSourceEndpointIds.some((ids) => ids.start != null || ids.end != null);
+  const clipInput = hasSourceIds ? (planSourceRuns as LonLat[][]) : planRuns;
+
   const plans: SubgridTracePlan[] = [];
   Array.from(bySubgrid.entries())
     .sort((a, b) => compareSubgridGridNames(a[0], b[0]))
     .forEach(([sg, surveys]) => {
       const pts = surveys.flatMap((s) => s.coords.map((c) => ({ lng: c[0], lat: c[1] })));
       const bbox = getSubgridBbox(sg, pts, catalogLayers);
-      const clipped = bbox.some((v) => v !== 0) ? clipLineRunsToBbox(planRuns, bbox) : [];
+      const clip = () => (bbox.some((v) => v !== 0) ? clipLineRunsToBbox(clipInput, bbox) : []);
+      const clippedWithIds = hasSourceIds && bbox.some((v) => v !== 0)
+        ? clipLineRunsToBboxWithIds(clipInput, planSourceEndpointIds as PlanRunEndpointIds[], bbox)
+        : null;
+      const clipped = clippedWithIds ? clippedWithIds.runs : clip();
       // Clipping can cut a run at the cell edge and strand short stubs; stitch
       // the in-cell fragments back into a connected network before walking.
       const stitched =
         clipped.length > 1
-          ? connectRunsByEndpoints(clipped, PLAN_ENDPOINT_SNAP_M, PLAN_TJUNCTION_SNAP_M, true)
+          ? connectRunsByEndpoints(
+              clipped,
+              PLAN_ENDPOINT_SNAP_M,
+              PLAN_TJUNCTION_SNAP_M,
+              true,
+              clippedWithIds ? clippedWithIds.endpointIds : undefined
+            )
           : clipped;
       // Stable chronological chain: parseable dates first, then original order.
       const ordered = surveys
@@ -343,35 +372,48 @@ function nearestCaptureDistM(pt: LonLat, index: CaptureIndex): number {
 /**
  * Classifies every ~`sampleStepM` segment of each plan run as covered when
  * BOTH its endpoints have a captured panotrack point within `toleranceM`.
- * Contiguous uncovered segments are merged into `uncoveredRuns` (the red gaps
- * that follow the plan road geometry).
+ * Contiguous uncovered segments (where no panotrack exists near the road —
+ * the stretches the trace paints) are returned in `uncoveredRuns`.
+ *
+ * `onRunProgress` (when provided) is invoked after each plan run is evaluated
+ * with the number of runs completed and the total run count, so a worker/hook
+ * can stream progress while the classification runs.
  */
 export function computePlanCoverage(
   planRuns: LonLat[][],
   capturedTracks: LonLat[][],
   toleranceM = 25,
-  sampleStepM = 10
+  sampleStepM = 10,
+  onRunProgress?: (done: number, total: number) => void
 ): PlanCoverage {
   const index = buildCaptureIndex(capturedTracks, toleranceM);
   let planKm = 0;
   let coveredKm = 0;
   const uncoveredRuns: LonLat[][] = [];
 
-  (planRuns || []).forEach((run) => {
-    if (!run || run.length < 2) return;
+  const list = (planRuns || []).filter(
+    (run) => Array.isArray(run) && run.length >= 2
+  );
+  const total = list.length;
+  let done = 0;
+  list.forEach((run) => {
     const samples = densifyRun(run, sampleStepM);
-    if (samples.length < 2) return;
-    const split = splitRunCoverage(samples, index, toleranceM);
-    planKm += split.runM / 1000;
-    coveredKm += split.covM / 1000;
-    uncoveredRuns.push(...split.uncoveredRuns);
+    if (samples.length >= 2) {
+      const split = splitRunCoverage(samples, index, toleranceM);
+      planKm += split.runM / 1000;
+      coveredKm += split.covM / 1000;
+      uncoveredRuns.push(...split.uncoveredRuns);
+    }
+    done += 1;
+    onRunProgress?.(done, total);
   });
 
-  const coveredPct = planKm > 0 ? clamp((coveredKm / planKm) * 100, 0, 100) : 0;
+  const tracedKm = Math.max(0, planKm - coveredKm);
+  const tracedPct = planKm > 0 ? clamp((tracedKm / planKm) * 100, 0, 100) : 0;
   return {
     planKm: round2(planKm),
-    coveredKm: round2(coveredKm),
-    coveredPct,
+    tracedKm: round2(tracedKm),
+    tracedPct,
     uncoveredRuns
   };
 }
@@ -383,10 +425,13 @@ export function finalizeSubgridResult(
   thresholdPct: number
 ): SubgridTraceResult {
   const hasPlan = plan.planRuns.length > 0 && coverage.planKm > 0.0001;
-  const gapKm = Math.max(0, coverage.planKm - coverage.coveredKm);
+  // Semantics are inverted from a "coverage" reading: the trace is complete
+  // when the traced (no-panotrack) portion is at or below the threshold. An
+  // entirely panotrack-saturated plan has zero traced km and is vacuously
+  // complete.
   const status: SubgridTraceStatus = !hasPlan
     ? 'no-plan'
-    : coverage.coveredPct >= thresholdPct
+    : coverage.tracedKm <= 0 || coverage.tracedPct >= thresholdPct
       ? 'complete'
       : 'incomplete';
 
@@ -397,9 +442,8 @@ export function finalizeSubgridResult(
     surveyCount: plan.surveys.length,
     capturedKm: round2(plan.capturedKm),
     planKm: round2(coverage.planKm),
-    coveredKm: round2(coverage.coveredKm),
-    coveredPct: hasPlan ? Math.round(coverage.coveredPct * 10) / 10 : null,
-    gapKm: hasPlan ? round2(gapKm) : 0,
+    tracedKm: round2(coverage.tracedKm),
+    tracedPct: hasPlan ? Math.round(coverage.tracedPct * 10) / 10 : null,
     uncoveredRuns: hasPlan ? coverage.uncoveredRuns : []
   };
 }

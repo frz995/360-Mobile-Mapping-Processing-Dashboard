@@ -94,6 +94,36 @@ describe('roadPlanParser', () => {
       expect(endpointIds[0]).toEqual({ start: 11, end: 12 });
     });
 
+    it('reads contains-based fallback aliases (FNodeID, bare FROM/TO, nodeA/nodeB)', () => {
+      const variants = [
+        { properties: { FNodeID: 1, TNodeID: 2 } },
+        { properties: { FROM: 'n-1', TO: 'n-2' } },
+        { properties: { nodeA: 'a', nodeB: 'b' } },
+        { properties: { Start_Node_1: 31, End_Node_1: 32 } }
+      ];
+      for (const { properties } of variants) {
+        const feature = {
+          type: 'Feature',
+          properties,
+          geometry: { type: 'LineString', coordinates: [[102.0, 2.0], [102.1, 2.1]] }
+        };
+        const { runs, endpointIds } = extractLineRunsWithIds(feature);
+        expect(runs).toHaveLength(1);
+        expect(endpointIds[0].start).not.toBeUndefined();
+        expect(endpointIds[0].end).not.toBeUndefined();
+      }
+    });
+
+    it('prefers canonical startNode/endNode over fallback aliases', () => {
+      const feature = {
+        type: 'Feature',
+        properties: { from_node_id: 'FALLBACK', startNode: 'CANON', endNode: 9 },
+        geometry: { type: 'LineString', coordinates: [[102.0, 2.0], [102.1, 2.1]] }
+      };
+      const { endpointIds } = extractLineRunsWithIds(feature);
+      expect(endpointIds[0]).toEqual({ start: 'CANON', end: 9 });
+    });
+
     it('carries ids through the compact-plan shape and preserves string ids', () => {
       const compactPlan = {
         type: 'FeatureCollection',
