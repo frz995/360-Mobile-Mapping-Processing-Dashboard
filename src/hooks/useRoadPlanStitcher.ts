@@ -45,14 +45,19 @@ export interface RoadPlanStitchResult {
  * (tests, CSP) compute inline so behavior is identical; large plans are posted
  * to the `planStitch` worker and the result async-replaces the previous one.
  */
+const EMPTY_RUNS: Array<Array<[number, number]>> = [];
+
 export function useRoadPlanStitcher(input: RoadPlanStitchInput): RoadPlanStitchResult {
-  const runs = input.runs || [];
+  const runs = input.runs || EMPTY_RUNS;
   const endpointIds = input.endpointIds;
-  const [result, setResult] = useState<RoadPlanStitchResult>({ runs: [], stale: false });
+  const [result, setResult] = useState<RoadPlanStitchResult>({ runs: EMPTY_RUNS, stale: false });
 
   useEffect(() => {
     if (runs.length === 0) {
-      setResult({ runs: [], stale: false });
+      setResult((prev) => {
+        if (prev.runs.length === 0 && !prev.stale) return prev;
+        return { runs: EMPTY_RUNS, stale: false };
+      });
       return;
     }
 

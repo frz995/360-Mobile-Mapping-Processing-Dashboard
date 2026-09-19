@@ -14,11 +14,8 @@ import { extractSubgridName } from './subgrid';
 import {
   clipLineRunsToBbox,
   clipLineRunsToBboxWithIds,
-  connectRunsByEndpoints,
   getSubgridBbox,
   subgridLinesLengthKm,
-  PLAN_ENDPOINT_SNAP_M,
-  PLAN_TJUNCTION_SNAP_M,
   type PlanRunEndpointIds
 } from './subgridComparison';
 
@@ -44,8 +41,11 @@ export interface SubgridTracePlan {
 
 export interface PlanCoverage {
   planKm: number;
-  /** Plan meters WITHOUT any panotrack within tolerance — the stretches the
-   *  trace paints with its trace color. */
+  /** Length of plan roads covered by panotrack within tolerance. */
+  coveredKm: number;
+  /** Percentage of plan roads covered by panotrack (0..100). */
+  coveredPct: number;
+  /** Plan meters WITHOUT any panotrack within tolerance (drawn in red as coverage gaps). */
   tracedKm: number;
   tracedPct: number;
   uncoveredRuns: LonLat[][];
@@ -60,7 +60,11 @@ export interface SubgridTraceResult {
   surveyCount: number;
   capturedKm: number;
   planKm: number;
-  /** Plan km lacking panotrack coverage (the painted / traced portion). */
+  /** Plan km covered by panotrack within tolerance. */
+  coveredKm: number;
+  /** Percentage of plan covered by panotrack. */
+  coveredPct: number | null;
+  /** Plan km lacking panotrack coverage (the painted red gaps). */
   tracedKm: number;
   tracedPct: number | null;
   uncoveredRuns: LonLat[][];
@@ -193,18 +197,9 @@ export function buildTracePlans(
         ? clipLineRunsToBboxWithIds(clipInput, planSourceEndpointIds as PlanRunEndpointIds[], bbox)
         : null;
       const clipped = clippedWithIds ? clippedWithIds.runs : clip();
-      // Clipping can cut a run at the cell edge and strand short stubs; stitch
-      // the in-cell fragments back into a connected network before walking.
-      const stitched =
-        clipped.length > 1
-          ? connectRunsByEndpoints(
-              clipped,
-              PLAN_ENDPOINT_SNAP_M,
-              PLAN_TJUNCTION_SNAP_M,
-              true,
-              clippedWithIds ? clippedWithIds.endpointIds : undefined
-            )
-          : clipped;
+      // Subgrid plan lines strictly keep the un-welded geometry clipped to the
+      // cell bbox so the red coverage overlay matches the drawn green plan lines.
+      const subgridPlanRuns = clipped;
       // Stable chronological chain: parseable dates first, then original order.
       const ordered = surveys
         .map((s, i) => ({ s, i }))
@@ -220,8 +215,8 @@ export function buildTracePlans(
         subgrid: sg,
         bbox,
         surveys: ordered,
-        planRuns: stitched,
-        planKm: subgridLinesLengthKm(stitched),
+        planRuns: subgridPlanRuns,
+        planKm: subgridLinesLengthKm(subgridPlanRuns),
         capturedKm: ordered.reduce((sum, s) => sum + s.lengthKm, 0),
         totalTraceM: ordered.reduce((sum, s) => sum + polylineTotalM(s.coords), 0)
       });
@@ -238,22 +233,29 @@ export function chainConnector(prev: TraceSurvey, next: TraceSurvey): LonLat[] |
   if (!prev?.coords?.length || !next?.coords?.length) return null;
   const a = prev.coords[prev.coords.length - 1];
   const b = next.coords[0];
-  return distM(a, b) > CONNECTOR_MIN_GAP_M ? [a, b] : null;
+  if (distM(a, b) < CONNECTOR_MIN_GAP_M) return null;
+  return [a, b];
 }
 
 // ─────────────────────────────── polyline math ───────────────────────────────
 
+/** Cumulative distance array along a polyline (meters, starting at 0). */
 export function polylineCumulativeM(coords: LonLat[]): number[] {
+  if (!coords || coords.length === 0) return [];
   const cum: number[] = [0];
+  let acc = 0;
   for (let i = 1; i < coords.length; i++) {
-    cum.push(cum[i - 1] + distM(coords[i - 1], coords[i]));
+    acc += distM(coords[i - 1], coords[i]);
+    cum.push(acc);
   }
   return cum;
 }
 
 export function polylineTotalM(coords: LonLat[]): number {
-  const cum = polylineCumulativeM(coords);
-  return cum[cum.length - 1] || 0;
+  if (!coords || coords.length < 2) return 0;
+  let total = 0;
+  for (let i = 1; i < coords.length; i++) total += distM(coords[i - 1], coords[i]);
+  return total;
 }
 
 function clamp(v: number, min: number, max: number): number {
@@ -324,35 +326,72 @@ export function densifyRun(coords: LonLat[], maxStepM = 10): LonLat[] {
 
 // ──────────────────────────── coverage evaluation ────────────────────────────
 
+export interface CapturePoint {
+  pt: LonLat;
+  dir?: [number, number];
+}
+
 interface CaptureIndex {
-  grid: Map<string, LonLat[]>;
+  grid: Map<string, CapturePoint[]>;
   cellDeg: number;
+}
+
+/**
+ * Computes a normalized 2D direction vector [dx, dy] in meters from point a to b.
+ * Returns null if the distance between a and b is under 0.5 meters.
+ */
+export function segmentUnitVector(a: LonLat, b: LonLat): [number, number] | null {
+  const midLatRad = ((a[1] + b[1]) / 2) * (Math.PI / 180);
+  const dx = (b[0] - a[0]) * 111320 * Math.cos(midLatRad);
+  const dy = (b[1] - a[1]) * 110540;
+  const len = Math.hypot(dx, dy);
+  if (len < 0.5) return null;
+  return [dx / len, dy / len];
 }
 
 function buildCaptureIndex(tracks: LonLat[][], toleranceM: number): CaptureIndex {
   const cellDeg = Math.max((toleranceM / 111000) * 2, 0.0004);
-  const grid = new Map<string, LonLat[]>();
-  const denseStep = Math.max(6, toleranceM / 3);
+  const grid = new Map<string, CapturePoint[]>();
+  const denseStep = Math.max(5, toleranceM / 3);
+
   (tracks || []).forEach((trk) => {
-    // Densify each captured trajectory so sparse frames still create a
-    // continuous capture corridor for the plan-line classifier. Raw points
-    // only would leave holes between frames (the "road surveyed but skipped"
-    // symptom).
     const valid = (trk || []).filter(
       (pt) => Array.isArray(pt) && pt.length >= 2 && Number.isFinite(pt[0]) && Number.isFinite(pt[1])
     ) as LonLat[];
-    const pts = valid.length >= 2 ? densifyRun(valid, denseStep) : valid;
-    pts.forEach((pt) => {
+    if (valid.length === 0) return;
+
+    if (valid.length === 1) {
+      const pt = valid[0];
       const key = `${Math.floor(pt[0] / cellDeg)}|${Math.floor(pt[1] / cellDeg)}`;
       const bucket = grid.get(key);
-      if (bucket) bucket.push(pt);
-      else grid.set(key, [pt]);
-    });
+      if (bucket) bucket.push({ pt });
+      else grid.set(key, [{ pt }]);
+      return;
+    }
+
+    for (let i = 0; i < valid.length - 1; i++) {
+      const a = valid[i];
+      const b = valid[i + 1];
+      const segDir = segmentUnitVector(a, b);
+      const segDist = distM(a, b);
+      const pieces = Math.max(1, Math.ceil(segDist / denseStep));
+
+      for (let k = (i === 0 ? 0 : 1); k <= pieces; k++) {
+        const t = k / pieces;
+        const pt: LonLat = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+        const key = `${Math.floor(pt[0] / cellDeg)}|${Math.floor(pt[1] / cellDeg)}`;
+        const cp: CapturePoint = { pt, dir: segDir || undefined };
+        const bucket = grid.get(key);
+        if (bucket) bucket.push(cp);
+        else grid.set(key, [cp]);
+      }
+    }
   });
+
   return { grid, cellDeg };
 }
 
-function nearestCaptureDistM(pt: LonLat, index: CaptureIndex): number {
+export function nearestCaptureDistM(pt: LonLat, index: CaptureIndex): number {
   const cx = Math.floor(pt[0] / index.cellDeg);
   const cy = Math.floor(pt[1] / index.cellDeg);
   let best = Number.POSITIVE_INFINITY;
@@ -360,8 +399,8 @@ function nearestCaptureDistM(pt: LonLat, index: CaptureIndex): number {
     for (let dy = -1; dy <= 1; dy++) {
       const bucket = index.grid.get(`${cx + dx}|${cy + dy}`);
       if (!bucket) continue;
-      for (const p of bucket) {
-        const d = distM(pt, p);
+      for (const cp of bucket) {
+        const d = distM(pt, cp.pt);
         if (d < best) best = d;
       }
     }
@@ -370,20 +409,49 @@ function nearestCaptureDistM(pt: LonLat, index: CaptureIndex): number {
 }
 
 /**
- * Classifies every ~`sampleStepM` segment of each plan run as covered when
- * BOTH its endpoints have a captured panotrack point within `toleranceM`.
- * Contiguous uncovered segments (where no panotrack exists near the road —
- * the stretches the trace paints) are returned in `uncoveredRuns`.
- *
- * `onRunProgress` (when provided) is invoked after each plan run is evaluated
- * with the number of runs completed and the total run count, so a worker/hook
- * can stream progress while the classification runs.
+ * Checks whether a probe point `pt` along a road segment oriented with `roadDir`
+ * is covered by captured panotracks within `toleranceM`.
+ * Directional alignment (|cos(theta)| >= 0.45) is verified so perpendicular
+ * cross-street vehicle trajectories do not bleed coverage into unsurveyed side streets.
+ */
+export function isCaptureCovering(
+  pt: LonLat,
+  roadDir: [number, number] | null,
+  index: CaptureIndex,
+  toleranceM: number
+): boolean {
+  const cx = Math.floor(pt[0] / index.cellDeg);
+  const cy = Math.floor(pt[1] / index.cellDeg);
+
+  for (let dx = -1; dx <= 1; dx++) {
+    for (let dy = -1; dy <= 1; dy++) {
+      const bucket = index.grid.get(`${cx + dx}|${cy + dy}`);
+      if (!bucket) continue;
+      for (const cp of bucket) {
+        const d = distM(pt, cp.pt);
+        if (d <= toleranceM) {
+          if (!roadDir || !cp.dir) return true;
+          // Absolute dot product handles bidirectional travel
+          const alignment = Math.abs(roadDir[0] * cp.dir[0] + roadDir[1] * cp.dir[1]);
+          if (alignment >= 0.45) return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Classifies the segments of each plan run against captured tracks.
+ * Slices the existing plan run polylines into uncovered stretches without
+ * densifying or rebuilding new geometry (no junction welds, no walk-chains),
+ * so the red lines cleanly recolor the exact drawn green plan lines.
  */
 export function computePlanCoverage(
   planRuns: LonLat[][],
   capturedTracks: LonLat[][],
-  toleranceM = 25,
-  sampleStepM = 10,
+  toleranceM = 12,
+  _sampleStepM = 10,
   onRunProgress?: (done: number, total: number) => void
 ): PlanCoverage {
   const index = buildCaptureIndex(capturedTracks, toleranceM);
@@ -396,24 +464,131 @@ export function computePlanCoverage(
   );
   const total = list.length;
   let done = 0;
+
   list.forEach((run) => {
-    const samples = densifyRun(run, sampleStepM);
-    if (samples.length >= 2) {
-      const split = splitRunCoverage(samples, index, toleranceM);
-      planKm += split.runM / 1000;
-      coveredKm += split.covM / 1000;
-      uncoveredRuns.push(...split.uncoveredRuns);
+    // If no captured tracks exist at all, the entire run is uncovered.
+    if (!capturedTracks || capturedTracks.length === 0) {
+      const lenKm = pathLengthLngLatKm(run);
+      planKm += lenKm;
+      uncoveredRuns.push(run.map((c) => [c[0], c[1]] as LonLat));
+      done += 1;
+      onRunProgress?.(done, total);
+      return;
     }
+
+    let runPlanM = 0;
+    let runCovM = 0;
+    let currentSlice: LonLat[] | null = null;
+
+    for (let i = 0; i < run.length - 1; i++) {
+      const a = run[i];
+      const b = run[i + 1];
+      const segLen = distM(a, b);
+      if (segLen <= 0) continue;
+      runPlanM += segLen;
+      const segDir = segmentUnitVector(a, b);
+
+      if (segLen <= toleranceM) {
+        const mid: LonLat = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+        const covMid = isCaptureCovering(mid, segDir, index, toleranceM);
+
+        if (covMid) {
+          runCovM += segLen;
+          if (currentSlice) {
+            if (currentSlice.length >= 2) uncoveredRuns.push(currentSlice);
+            currentSlice = null;
+          }
+        } else {
+          if (currentSlice) {
+            currentSlice.push([b[0], b[1]]);
+          } else {
+            currentSlice = [[a[0], a[1]], [b[0], b[1]]];
+          }
+        }
+      } else {
+        const mid: LonLat = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+        const midCovered = isCaptureCovering(mid, segDir, index, toleranceM);
+
+        if (!midCovered) {
+          // If the midpoint is not captured, the survey vehicle did not drive on
+          // this road segment (any capture near an endpoint is merely junction bleed
+          // from a cross street). The segment is completely unsurveyed.
+          if (currentSlice) {
+            currentSlice.push([b[0], b[1]]);
+          } else {
+            currentSlice = [[a[0], a[1]], [b[0], b[1]]];
+          }
+        } else {
+          // Midpoint is captured: the vehicle drove along this segment.
+          const probeStep = Math.min(25, toleranceM);
+          const steps = Math.max(2, Math.ceil(segLen / probeStep));
+          const cov: boolean[] = [];
+          for (let k = 0; k <= steps; k++) {
+            const t = k / steps;
+            const pt: LonLat = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+            cov.push(isCaptureCovering(pt, segDir, index, toleranceM));
+          }
+
+          const allCovered = cov.every(Boolean);
+          if (allCovered) {
+            runCovM += segLen;
+            if (currentSlice) {
+              if (currentSlice.length >= 2) uncoveredRuns.push(currentSlice);
+              currentSlice = null;
+            }
+          } else {
+            // Partial survey transition along this segment
+            const coveredCount = cov.filter(Boolean).length;
+            runCovM += segLen * (coveredCount / (steps + 1));
+
+            for (let k = 0; k < steps; k++) {
+              if (cov[k] && !cov[k + 1]) {
+                const t = (k + 0.5) / steps;
+                const transPt: LonLat = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+                if (currentSlice && currentSlice.length >= 2) uncoveredRuns.push(currentSlice);
+                currentSlice = [transPt];
+              } else if (!cov[k] && cov[k + 1]) {
+                const t = (k + 0.5) / steps;
+                const transPt: LonLat = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+                if (currentSlice) {
+                  currentSlice.push(transPt);
+                  if (currentSlice.length >= 2) uncoveredRuns.push(currentSlice);
+                  currentSlice = null;
+                }
+              }
+            }
+            if (!cov[steps]) {
+              if (currentSlice) {
+                currentSlice.push([b[0], b[1]]);
+              } else {
+                currentSlice = [[a[0], a[1]], [b[0], b[1]]];
+              }
+            }
+          }
+        }
+      }
+    }
+
+    if (currentSlice && currentSlice.length >= 2) {
+      uncoveredRuns.push(currentSlice);
+    }
+
+    planKm += runPlanM / 1000;
+    coveredKm += runCovM / 1000;
+
     done += 1;
     onRunProgress?.(done, total);
   });
 
   const tracedKm = Math.max(0, planKm - coveredKm);
   const tracedPct = planKm > 0 ? clamp((tracedKm / planKm) * 100, 0, 100) : 0;
+  const coveredPct = planKm > 0 ? clamp((coveredKm / planKm) * 100, 0, 100) : 0;
   return {
     planKm: round2(planKm),
+    coveredKm: round2(coveredKm),
+    coveredPct: round2(coveredPct),
     tracedKm: round2(tracedKm),
-    tracedPct,
+    tracedPct: round2(tracedPct),
     uncoveredRuns
   };
 }
@@ -422,16 +597,21 @@ export function computePlanCoverage(
 export function finalizeSubgridResult(
   plan: SubgridTracePlan,
   coverage: PlanCoverage,
-  thresholdPct: number
+  thresholdPct: number = 95
 ): SubgridTraceResult {
   const hasPlan = plan.planRuns.length > 0 && coverage.planKm > 0.0001;
-  // Semantics are inverted from a "coverage" reading: the trace is complete
-  // when the traced (no-panotrack) portion is at or below the threshold. An
-  // entirely panotrack-saturated plan has zero traced km and is vacuously
-  // complete.
+  const coveredKm = coverage.coveredKm !== undefined
+    ? coverage.coveredKm
+    : Math.max(0, coverage.planKm - coverage.tracedKm);
+  const coveredPct = coverage.coveredPct !== undefined
+    ? coverage.coveredPct
+    : (coverage.planKm > 0 ? clamp((coveredKm / coverage.planKm) * 100, 0, 100) : 0);
+
+  // A subgrid is complete when its covered portion meets or exceeds the threshold (e.g. 95%).
+  // If there are uncovered red lines (coveredPct < thresholdPct), it is INCOMPLETE.
   const status: SubgridTraceStatus = !hasPlan
     ? 'no-plan'
-    : coverage.tracedKm <= 0 || coverage.tracedPct >= thresholdPct
+    : coveredPct >= thresholdPct
       ? 'complete'
       : 'incomplete';
 
@@ -442,6 +622,8 @@ export function finalizeSubgridResult(
     surveyCount: plan.surveys.length,
     capturedKm: round2(plan.capturedKm),
     planKm: round2(coverage.planKm),
+    coveredKm: round2(coveredKm),
+    coveredPct: hasPlan ? Math.round(coveredPct * 10) / 10 : null,
     tracedKm: round2(coverage.tracedKm),
     tracedPct: hasPlan ? Math.round(coverage.tracedPct * 10) / 10 : null,
     uncoveredRuns: hasPlan ? coverage.uncoveredRuns : []
@@ -642,10 +824,11 @@ function classifyCovered(
   toleranceM: number
 ): boolean {
   const mid: LonLat = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+  const dir = segmentUnitVector(a, b);
   return (
-    nearestCaptureDistM(a, index) <= toleranceM &&
-    nearestCaptureDistM(mid, index) <= toleranceM &&
-    nearestCaptureDistM(b, index) <= toleranceM
+    isCaptureCovering(a, dir, index, toleranceM) &&
+    isCaptureCovering(mid, dir, index, toleranceM) &&
+    isCaptureCovering(b, dir, index, toleranceM)
   );
 }
 
@@ -791,7 +974,7 @@ export function buildSubgridWalk(
   subgrid: string,
   planRuns: LonLat[][],
   capturedTracks: LonLat[][],
-  toleranceM = 25,
+  toleranceM = 12,
   sampleStepM = 15,
   bbox?: [number, number, number, number]
 ): SubgridWalk {

@@ -13,6 +13,7 @@ import {
   surveyCoordsFromRun,
   walkSegmentsToRuns,
   type LonLat,
+  type PlanCoverage,
   type SubgridTracePlan,
   type TraceSurvey
 } from '../roadNetworkTrace';
@@ -358,6 +359,43 @@ describe('roadNetworkTrace utility', () => {
       expect(res.uncoveredRuns.length).toBe(0);
       expect(res.tracedPct).toBeLessThanOrEqual(1);
     });
+
+    it('slices the exact input plan vertices without densifying extra points', () => {
+      // 5-vertex polyline, segments 0 and 3 surveyed, segments 1-2 unsurveyed
+      const p0: LonLat = [BASE_LNG, BASE_LAT];
+      const p1: LonLat = [BASE_LNG + 0.001, BASE_LAT];
+      const p2: LonLat = [BASE_LNG + 0.002, BASE_LAT];
+      const p3: LonLat = [BASE_LNG + 0.003, BASE_LAT];
+      const p4: LonLat = [BASE_LNG + 0.004, BASE_LAT];
+      const multiRun: LonLat[] = [p0, p1, p2, p3, p4];
+
+      // Tracks covering p0->p1 and p3->p4
+      const tracks = [
+        denseLine(BASE_LAT, BASE_LNG, BASE_LNG + 0.001, 15),
+        denseLine(BASE_LAT, BASE_LNG + 0.003, BASE_LNG + 0.004, 15)
+      ];
+      const res = computePlanCoverage([multiRun], tracks, 25);
+      // Uncovered slice should be precisely [p1, p2, p3] with exactly 3 vertices, identical to the input line
+      expect(res.uncoveredRuns.length).toBe(1);
+      expect(res.uncoveredRuns[0]).toEqual([p1, p2, p3]);
+    });
+
+    it('does not bleed coverage into perpendicular unsurveyed side streets at junctions', () => {
+      // Side road running North-South, starting at junction with main road
+      const sideRoad: LonLat[] = [
+        [BASE_LNG, BASE_LAT],
+        [BASE_LNG, BASE_LAT + 0.001]
+      ];
+      // Vehicle surveyed ONLY the main road (running East-West through junction)
+      const tracks = [denseLine(BASE_LAT, BASE_LNG - 0.001, BASE_LNG + 0.001, 20)];
+
+      const res = computePlanCoverage([sideRoad], tracks, 12);
+      // The side road should be 100% uncovered (traced)
+      expect(res.tracedPct).toBe(100);
+      expect(res.uncoveredRuns.length).toBe(1);
+      // The uncovered gap line must start precisely at the junction [BASE_LNG, BASE_LAT]
+      expect(res.uncoveredRuns[0][0]).toEqual([BASE_LNG, BASE_LAT]);
+    });
   });
 
   describe('finalizeSubgridResult', () => {
@@ -376,24 +414,57 @@ describe('roadNetworkTrace utility', () => {
       totalTraceM: 500
     };
 
-    it('inverts the threshold: complete only when traced share hits the threshold', () => {
-      const coverage = { planKm: 0.111, tracedKm: 0.106, tracedPct: 95.5, uncoveredRuns: [] as LonLat[][] };
-      expect(finalizeSubgridResult(plan, coverage, 95).status).toBe('complete');
-      expect(finalizeSubgridResult(plan, coverage, 96).status).toBe('incomplete');
-      expect(finalizeSubgridResult(plan, coverage, 96).tracedPct).toBe(95.5);
+    it('marks complete when covered share hits the threshold and incomplete when gaps remain', () => {
+      // 95.5% covered (0.106 km covered, 0.005 km uncovered gaps out of 0.111 km)
+      const highCoverage: PlanCoverage = {
+        planKm: 0.111,
+        coveredKm: 0.106,
+        coveredPct: 95.5,
+        tracedKm: 0.005,
+        tracedPct: 4.5,
+        uncoveredRuns: [] as LonLat[][]
+      };
+      expect(finalizeSubgridResult(plan, highCoverage, 95).status).toBe('complete');
+      expect(finalizeSubgridResult(plan, highCoverage, 96).status).toBe('incomplete');
+      expect(finalizeSubgridResult(plan, highCoverage, 96).coveredPct).toBe(95.5);
+
+      // Low coverage: mostly uncovered red lines (0.106 km gaps out of 0.111 km)
+      const lowCoverage: PlanCoverage = {
+        planKm: 0.111,
+        coveredKm: 0.005,
+        coveredPct: 4.5,
+        tracedKm: 0.106,
+        tracedPct: 95.5,
+        uncoveredRuns: [] as LonLat[][]
+      };
+      expect(finalizeSubgridResult(plan, lowCoverage, 95).status).toBe('incomplete');
     });
 
-    it('treats an entirely panotrack-saturated plan as complete (nothing to trace)', () => {
-      const coverage = { planKm: 0.111, tracedKm: 0, tracedPct: 0, uncoveredRuns: [] as LonLat[][] };
+    it('treats an entirely panotrack-saturated plan as complete (nothing uncovered)', () => {
+      const coverage: PlanCoverage = {
+        planKm: 0.111,
+        coveredKm: 0.111,
+        coveredPct: 100,
+        tracedKm: 0,
+        tracedPct: 0,
+        uncoveredRuns: [] as LonLat[][]
+      };
       expect(finalizeSubgridResult(plan, coverage, 95).status).toBe('complete');
     });
 
     it('marks subgrids without plan geometry as no-plan', () => {
       const empty = { ...plan, planRuns: [] as LonLat[][] };
-      const coverage = { planKm: 0, tracedKm: 0, tracedPct: 0, uncoveredRuns: [] as LonLat[][] };
+      const coverage: PlanCoverage = {
+        planKm: 0,
+        coveredKm: 0,
+        coveredPct: 0,
+        tracedKm: 0,
+        tracedPct: 0,
+        uncoveredRuns: [] as LonLat[][]
+      };
       const res = finalizeSubgridResult(empty, coverage, 95);
       expect(res.status).toBe('no-plan');
-      expect(res.tracedPct).toBeNull();
+      expect(res.coveredPct).toBeNull();
       expect(res.tracedKm).toBe(0);
     });
   });
