@@ -29,6 +29,7 @@ const effectiveWorkerUrl = (typeof import.meta !== 'undefined' && import.meta.en
 maplibregl.setWorkerUrl(effectiveWorkerUrl);
 
 const EMPTY_FC: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] };
+const EMPTY_COVERAGE_RUNS: LonLat[][] = [];
 
 // Catalog layers at/above this feature count (or estimated serialized size)
 // are registered on the map immediately with empty data and fed to MapLibre
@@ -498,7 +499,7 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
   onSelectSubgrid,
   mapInstanceRef,
   show3D = false,
-  coverageRuns = [],
+  coverageRuns = EMPTY_COVERAGE_RUNS,
   showCoverage = true
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -536,6 +537,11 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
   const lastLoadProgressAtRef = useRef(Date.now());
   const mountStartAtRef = useRef(Date.now());
   const cleanPollsRef = useRef(0);
+  // Timestamp of the most recent tile-load failure. A basemap whose tiles keep
+  // erroring (blocked / throttled / dead custom or Google tile source) can never
+  // satisfy areTilesLoaded(), so once a real error has been latched the overlay
+  // concedes the basemap instead of waiting for tiles that will never paint.
+  const lastTileErrorAtRef = useRef(0);
 
   const verifyAndDismiss = useCallback(() => {
     const map = mapRef.current;
@@ -556,7 +562,16 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
     if (!map || !overlayBuiltRef.current) { cleanPollsRef.current = 0; return; }
     if (!map.loaded() || !map.isStyleLoaded()) { cleanPollsRef.current = 0; return; }
     if (map.isMoving() || map.isZooming() || map.isRotating()) { cleanPollsRef.current = 0; return; }
-    if (!map.areTilesLoaded()) { cleanPollsRef.current = 0; return; }
+    // A basemap whose tiles keep erroring must not block the overlay forever.
+    // After a short grace (mount + 8s) with no fresh tile error in the last
+    // 800ms, tile sources are conceded — the "no progress" window below still
+    // prevents dismissing an actively-streaming basemap, because any in-flight
+    // request keeps lastDataLoadAtRef fresh.
+    const toleratedTileErrors =
+      lastTileErrorAtRef.current > 0 &&
+      now - mountStartAtRef.current > 8000 &&
+      now - lastTileErrorAtRef.current > 800;
+    if (!map.areTilesLoaded() && !toleratedTileErrors) { cleanPollsRef.current = 0; return; }
     if (now - lastDataLoadAtRef.current < 650) { cleanPollsRef.current = 0; return; }
 
     let allLoaded = true;
@@ -564,7 +579,16 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
       const style = map.getStyle();
       const styleSources = style?.sources ? Object.keys(style.sources) : [];
       for (const id of styleSources) {
-        if (map.getSource(id) && !map.isSourceLoaded(id)) {
+        const src = map.getSource(id);
+        if (!src) continue;
+        // Geojson/canvas overlay sources (district, roads, captured points) are
+        // always waited on; tile-based basemap sources bow to the error grace.
+        if (src.type === 'raster' || src.type === 'vector') {
+          if (!map.isSourceLoaded(id) && !toleratedTileErrors) {
+            allLoaded = false;
+            break;
+          }
+        } else if (!map.isSourceLoaded(id)) {
           allLoaded = false;
           break;
         }
@@ -605,12 +629,16 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
   const catalogPreviewRef       = useRef<ImportPreview | null | undefined>(catalogPreview);
   const prevCatalogFingerprintRef = useRef<string>('');
   const show3DRef = useRef(show3D);
+  const coverageRunsRef = useRef<LonLat[][]>(coverageRuns);
+  const showCoverageRef = useRef<boolean>(showCoverage ?? true);
 
   catalogLayersRef.current   = catalogLayers;
   systemStylesRef.current    = systemStyles;
   selectedFeatureRef.current = selectedFeature;
   catalogPreviewRef.current  = catalogPreview;
   show3DRef.current          = show3D;
+  coverageRunsRef.current    = coverageRuns;
+  showCoverageRef.current    = showCoverage ?? true;
 
   const buildOverlay = useCallback(() => {
     const map = mapRef.current;
@@ -842,87 +870,106 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
           const rowsHtml = propKeys
             .map(
               (k) =>
-                `<div style="display: flex; justify-content: space-between; gap: 8px; margin-bottom: 2px;">
-                   <span style="color: #94a3b8; text-transform: capitalize;">${k}:</span>
-                   <span style="font-weight: 600; color: #f1f5f9; text-align: right; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${String(props[k])}</span>
+                `<div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px;">
+                   <span style="color: var(--text-muted, #94a3b8); font-size: 10px; text-transform: uppercase; font-weight: 500;">${k}:</span>
+                   <span style="font-weight: 500; font-family: monospace; color: var(--text-primary, #f1f5f9); text-align: right; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${String(props[k])}</span>
                  </div>`
             )
             .join('');
 
-          new maplibregl.Popup({ className: 'custom-panotrack-popup', offset: 8 })
+          if (selectedPopupRef.current) {
+            selectedPopupRef.current.remove();
+          }
+
+          const popup = new maplibregl.Popup({
+            className: 'custom-panotrack-popup',
+            offset: 8,
+            closeButton: true,
+            closeOnClick: true
+          })
             .setLngLat(coords)
             .setHTML(`
-              <div style="font-family: system-ui, sans-serif; font-size: 11px; line-height: 1.4; color: #f1f5f9; background: #0f172a; padding: 7px 10px; border-radius: 8px; border: 1px solid ${color}60; box-shadow: 0 4px 14px rgba(0,0,0,0.55); min-width: 170px;">
-                <div style="display: flex; items: center; justify-content: space-between; gap: 8px; margin-bottom: 5px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 4px;">
-                  <span style="font-weight: 700; color: ${color}; font-size: 12px;">
+              <div style="font-family: system-ui, -apple-system, sans-serif; font-size: 11px; line-height: 1.4; color: var(--text-primary, #f1f5f9); padding: 10px 12px; min-width: 200px; max-width: 280px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 7px; padding-bottom: 5px; border-bottom: 1px solid var(--border-subtle, rgba(255,255,255,0.1)); padding-right: 22px;">
+                  <span style="font-weight: 600; color: var(--text-primary, #f1f5f9); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${catLayer.name.replace(/"/g, '&quot;')}">
                     ${catLayer.name}
                   </span>
-                  <span style="font-size: 9px; font-weight: 700; text-transform: uppercase; padding: 1px 5px; border-radius: 3px; background: ${color}20; color: ${color}; border: 1px solid ${color}40;">
+                  <span style="font-size: 9px; font-weight: 600; text-transform: uppercase; padding: 1px 5px; border-radius: 4px; background: rgba(255,255,255,0.06); color: var(--text-muted, #94a3b8); border: 1px solid var(--border-subtle, rgba(255,255,255,0.1)); flex-shrink: 0;">
                     ${catLayer.geometryType}
                   </span>
                 </div>
-                ${rowsHtml || '<span style="color: #94a3b8;">No attribute table found.</span>'}
-                <div style="color: #64748b; font-size: 9px; margin-top: 4px; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 3px;">
+                <div style="display: flex; flex-direction: column; gap: 3px; margin-bottom: 6px;">
+                  ${rowsHtml || '<span style="color: var(--text-muted, #94a3b8);">No attribute table found.</span>'}
+                </div>
+                <div style="color: var(--text-muted, #64748b); font-size: 9px; font-family: monospace; border-top: 1px solid var(--border-subtle, rgba(255,255,255,0.08)); padding-top: 4px;">
                   ${coords.lat.toFixed(5)}° N, ${coords.lng.toFixed(5)}° E
                 </div>
               </div>
             `)
             .addTo(map);
+
+          selectedPopupRef.current = popup;
         });
       });
     });
 
     // 4. Extracted / Road Plan Lines (Option A / Option B roads)
-    if (roadRuns.length > 0) {
-      const planVisible = showRoadLines && (systemStyles?.roadPlan?.visible !== false);
-      const planColor = systemStyles?.roadPlan?.color || '#10b981';
-      const planOpacity = planVisible ? (systemStyles?.roadPlan?.opacity ?? 0.85) : 0;
-      const planWidth = systemStyles?.roadPlan?.strokeWidth ?? 3.5;
+    //    Always register the source & layer so subsequent updates can call .setData()
+    //    with zero flicker, zero lag, and without tearing down other map layers.
+    const initialRoadsData = roadRuns.length > 0 ? extractLineStringRuns(roadRuns) : EMPTY_FC;
+    const planVisible = showRoadLines && (systemStyles?.roadPlan?.visible !== false);
+    const planColor = systemStyles?.roadPlan?.color || '#10b981';
+    const planOpacity = planVisible ? (systemStyles?.roadPlan?.opacity ?? 0.85) : 0;
+    const planWidth = systemStyles?.roadPlan?.strokeWidth ?? 3.5;
 
-      map.addSource('ra-roads', { type: 'geojson', data: extractLineStringRuns(roadRuns) });
-      addedSourceIdsRef.current.add('ra-roads');
-      map.addLayer({
-        id: 'ra-roads',
-        type: 'line',
-        source: 'ra-roads',
-        layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: {
-          'line-color': planColor,
-          'line-width': planWidth,
-          'line-opacity': planOpacity
-        }
-      });
-      map.setLayoutProperty('ra-roads', 'visibility', planVisible ? 'visible' : 'none');
-    }
+    map.addSource('ra-roads', { type: 'geojson', data: initialRoadsData });
+    addedSourceIdsRef.current.add('ra-roads');
+    map.addLayer({
+      id: 'ra-roads',
+      type: 'line',
+      source: 'ra-roads',
+      layout: {
+        'line-cap': 'round',
+        'line-join': 'round',
+        visibility: planVisible && roadRuns.length > 0 ? 'visible' : 'none'
+      },
+      paint: {
+        'line-color': planColor,
+        'line-width': planWidth,
+        'line-opacity': planOpacity
+      }
+    });
 
     // 4b. Coverage segmentation: plan stretches WITHOUT any panotrack within
-    //     tolerance, drawn in red directly on the plan geometry. Covered roads
-    //     draw nothing extra (the green ra-roads base stays).
-    if (coverageRuns.length > 0 && showCoverage) {
-      map.addSource('ra-coverage', { type: 'geojson', data: coverageLineFc(coverageRuns) });
-      addedSourceIdsRef.current.add('ra-coverage');
-      map.addLayer({
-        id: 'ra-coverage-casing',
-        type: 'line',
-        source: 'ra-coverage',
-        paint: {
-          'line-color': '#0b1220',
-          'line-width': 6.5,
-          'line-opacity': 0.7
-        }
-      });
-      map.addLayer({
-        id: 'ra-coverage-line',
-        type: 'line',
-        source: 'ra-coverage',
-        layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: {
-          'line-color': '#ef4444',
-          'line-width': 3.6,
-          'line-opacity': 0.95
-        }
-      });
-    }
+    //     tolerance, drawn in red directly on the plan geometry. Always register
+    //     the source & layers so subsequent updates can call .setData() with zero
+    //     flicker / teardown.
+    const initialCoverageData = (showCoverageRef.current && coverageRunsRef.current.length > 0)
+      ? coverageLineFc(coverageRunsRef.current)
+      : EMPTY_FC;
+    map.addSource('ra-coverage', { type: 'geojson', data: initialCoverageData });
+    addedSourceIdsRef.current.add('ra-coverage');
+    map.addLayer({
+      id: 'ra-coverage-casing',
+      type: 'line',
+      source: 'ra-coverage',
+      paint: {
+        'line-color': '#0b1220',
+        'line-width': 6.5,
+        'line-opacity': 0.7
+      }
+    });
+    map.addLayer({
+      id: 'ra-coverage-line',
+      type: 'line',
+      source: 'ra-coverage',
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: {
+        'line-color': '#ef4444',
+        'line-width': 3.6,
+        'line-opacity': 0.95
+      }
+    });
 
     // 5. Captured panotrack points (individual survey frames, colored by status).
     if (capturedPoints.length > 0) {
@@ -987,39 +1034,50 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
           ? 'TRANSIT'
           : (p.status || 'ACTIVE');
 
-        new maplibregl.Popup({ className: 'custom-panotrack-popup', offset: 8 })
+        if (selectedPopupRef.current) {
+          selectedPopupRef.current.remove();
+        }
+
+        const popup = new maplibregl.Popup({
+          className: 'custom-panotrack-popup',
+          offset: 8,
+          closeButton: true,
+          closeOnClick: true
+        })
           .setLngLat(coords)
           .setHTML(`
-            <div style="font-family: system-ui, -apple-system, sans-serif; font-size: 11px; line-height: 1.4; color: #f1f5f9; background: #0f172a; padding: 7px 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.15); box-shadow: 0 4px 14px rgba(0,0,0,0.6); min-width: 190px;">
-              <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 3px;">
-                <span style="font-weight: 700; color: #f1f5f9; font-size: 12px; font-family: monospace;">
+            <div style="font-family: system-ui, -apple-system, sans-serif; font-size: 11px; line-height: 1.4; color: var(--text-primary, #f1f5f9); padding: 10px 12px; min-width: 200px; max-width: 280px;">
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; padding-bottom: 5px; border-bottom: 1px solid var(--border-subtle, rgba(255,255,255,0.1)); padding-right: 22px;">
+                <span style="font-weight: 600; color: var(--text-primary, #f1f5f9); font-size: 12px; font-family: monospace;">
                   ${p.subgrid || 'Panotrack Point'}
                 </span>
-                <span style="font-size: 9px; font-weight: 700; text-transform: uppercase; padding: 1.5px 5px; border-radius: 3px; background: rgba(255,255,255,0.08); color: #cbd5e1; border: 1px solid rgba(255,255,255,0.15);">
+                <span style="font-size: 9px; font-weight: 600; text-transform: uppercase; padding: 1px 5px; border-radius: 4px; background: rgba(255,255,255,0.06); color: var(--text-muted, #94a3b8); border: 1px solid var(--border-subtle, rgba(255,255,255,0.1)); flex-shrink: 0;">
                   ${statusLabel}
                 </span>
               </div>
-              ${p.filename ? `<div style="color: #94a3b8; font-family: monospace; font-size: 10px; word-break: break-all; margin-bottom: 3px;">${p.filename}</div>` : ''}
+              ${p.filename ? `<div style="color: var(--text-muted, #94a3b8); font-family: monospace; font-size: 10px; word-break: break-all; margin-bottom: 5px;">${p.filename}</div>` : ''}
 
               ${p.transitNote ? `
-                <div style="margin-top: 4px; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.08); font-size: 10px; color: #cbd5e1;">
-                  <div style="color: #94a3b8; font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 1px;">Transit Note</div>
+                <div style="margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--border-subtle, rgba(255,255,255,0.08)); font-size: 10px; color: var(--text-primary, #cbd5e1);">
+                  <div style="color: var(--text-muted, #94a3b8); font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 1px;">Transit Note</div>
                   <div style="line-height: 1.35;">${p.transitNote}</div>
                 </div>
               ` : ''}
 
               ${p.spatialSubgrid && p.spatialSubgrid !== p.subgrid ? `
-                <div style="margin-top: 3px; font-size: 10px; color: #94a3b8;">
-                  Physical Grid: <span style="color: #f1f5f9; font-family: monospace; font-weight: 600;">${p.spatialSubgrid}</span>
+                <div style="margin-top: 4px; font-size: 10px; color: var(--text-muted, #94a3b8);">
+                  Physical Grid: <span style="color: var(--text-primary, #f1f5f9); font-family: monospace; font-weight: 600;">${p.spatialSubgrid}</span>
                 </div>
               ` : ''}
 
-              <div style="color: #64748b; font-size: 9px; margin-top: 4px; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 3px;">
+              <div style="color: var(--text-muted, #64748b); font-size: 9px; font-family: monospace; margin-top: 5px; border-top: 1px solid var(--border-subtle, rgba(255,255,255,0.08)); padding-top: 4px;">
                 ${Number(coords[1]).toFixed(5)}° N, ${Number(coords[0]).toFixed(5)}° E
               </div>
             </div>
           `)
           .addTo(map);
+
+        selectedPopupRef.current = popup;
       });
     }
 
@@ -1193,9 +1251,35 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
     // 8. Everything (style + boundary + points + roads) is now painted.
     overlayBuiltRef.current = true;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bbox, districtGeojson, dimmedRegionsGeojson, capturedPoints, roadRuns, showRoadLines, coverageRuns, showCoverage]);
-  // catalogLayers, systemStyles, selectedFeature intentionally omitted — they are
-  // read from refs inside the callback and handled by dedicated effects below.
+  }, [bbox, districtGeojson, dimmedRegionsGeojson, capturedPoints]);
+  // catalogLayers, systemStyles, roadRuns, selectedFeature intentionally omitted — they are
+  // read from refs or handled by dedicated fast-path effects below.
+
+  // ── Road plan overlay: update source via setData (zero flicker, zero lag, zero teardown) ──
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !styleLoadedRef.current) return;
+    const roadSrc = map.getSource('ra-roads') as maplibregl.GeoJSONSource | undefined;
+    if (!roadSrc?.setData) return;
+    const planVisible = showRoadLines && (systemStyles?.roadPlan?.visible !== false);
+    const data = roadRuns.length > 0 ? extractLineStringRuns(roadRuns) : EMPTY_FC;
+    roadSrc.setData(data);
+    if (map.getLayer('ra-roads')) {
+      map.setLayoutProperty('ra-roads', 'visibility', planVisible && roadRuns.length > 0 ? 'visible' : 'none');
+    }
+  }, [roadRuns, showRoadLines, systemStyles?.roadPlan?.visible]);
+
+  // ── Coverage overlay: update source via setData (zero flicker, zero teardown) ──
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !styleLoadedRef.current) return;
+    const covSrc = map.getSource('ra-coverage') as maplibregl.GeoJSONSource | undefined;
+    if (!covSrc?.setData) return;
+    const data = (showCoverage && coverageRuns.length > 0)
+      ? coverageLineFc(coverageRuns)
+      : EMPTY_FC;
+    covSrc.setData(data);
+  }, [coverageRuns, showCoverage]);
 
   // ── Selected feature: update the persistent source via setData (zero flash) ──
   useEffect(() => {
@@ -1280,12 +1364,25 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
     if (minLng < -180 || maxLng > 180 || minLat < -90 || maxLat > 90) return;
 
     if (minLng === maxLng && minLat === maxLat) {
-      map.easeTo({ center: [minLng, minLat], zoom: 14 });
+      map.flyTo({ center: [minLng, minLat], zoom: 14, duration: 1600, essential: true });
     } else {
-      map.fitBounds(
-        [[minLng, minLat], [maxLng, maxLat]],
-        { padding: 40, maxZoom: 16 }
-      );
+      const camera = typeof map.cameraForBounds === 'function'
+        ? map.cameraForBounds([[minLng, minLat], [maxLng, maxLat]], { padding: 48, maxZoom: 15.5 })
+        : null;
+      if (camera) {
+        map.flyTo({
+          ...camera,
+          duration: 1800,
+          curve: 1.42,
+          speed: 0.9,
+          essential: true
+        });
+      } else {
+        map.fitBounds(
+          [[minLng, minLat], [maxLng, maxLat]],
+          { padding: 48, maxZoom: 15.5, duration: 1800, essential: true }
+        );
+      }
     }
   }, [focusBbox]);
 
@@ -1336,7 +1433,13 @@ function areStylesEqual(a?: string | StyleSpecification, b?: string | StyleSpeci
       }
     });
     map.on('error', (e) => {
-      // Non-fatal warning for individual missing tiles / network drops
+      // Non-fatal: individual missing tiles / network drops. Latch tile-load
+      // errors so the readiness pass can concede a failing basemap instead of
+      // waiting on tiles that will never paint.
+      const err = e as { tile?: unknown; status?: number };
+      if (err.tile || err.status != null) {
+        lastTileErrorAtRef.current = Date.now();
+      }
       console.warn('[RoadAnalysisMap] MapLibre warning/error:', e);
     });
     return map;

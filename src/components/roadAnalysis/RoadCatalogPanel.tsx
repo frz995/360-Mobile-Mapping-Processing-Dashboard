@@ -23,7 +23,8 @@ import {
   GripHorizontal,
   Folder,
   FolderOpen,
-  CalendarDays
+  CalendarDays,
+  Loader2
 } from 'lucide-react';
 import type { CatalogVectorLayer } from '../../utils/gisImportParser';
 import { CommitSlider } from './CommitSlider';
@@ -71,7 +72,9 @@ export interface RoadCatalogPanelProps {
   onNavigateToImport?: () => void;
   panotrackCount?: number;
   planDistanceKm?: number;
+  planSource?: 'system' | 'manual' | 'extracted';
   activePlanName?: string;
+  catalogPlanLayerId?: string | null;
   activeTableLayer?: CatalogVectorLayer | null;
   onOpenAttributeTable?: (layer: CatalogVectorLayer | null) => void;
 }
@@ -514,7 +517,9 @@ export const RoadCatalogPanel: React.FC<RoadCatalogPanelProps> = ({
   onNavigateToImport,
   panotrackCount = 0,
   planDistanceKm = 0,
+  planSource,
   activePlanName,
+  catalogPlanLayerId,
   activeTableLayer,
   onOpenAttributeTable
 }) => {
@@ -524,6 +529,19 @@ export const RoadCatalogPanel: React.FC<RoadCatalogPanelProps> = ({
   const [expandedSymbologyLayerId, setExpandedSymbologyLayerId] = useState<string | null>(null);
   const [fallbackTableLayer, setFallbackTableLayer] = useState<CatalogVectorLayer | null>(null);
   const [expandedSubgrid, setExpandedSubgrid] = useState<string | null>(null);
+  const [activatingLayerId, setActivatingLayerId] = useState<string | null>(null);
+
+  const handleActivatePlan = useCallback((layer: CatalogVectorLayer) => {
+    if (!onSetAsActivePlan) return;
+    setActivatingLayerId(layer.id);
+    setTimeout(() => {
+      try {
+        onSetAsActivePlan(layer);
+      } finally {
+        setActivatingLayerId(null);
+      }
+    }, 16);
+  }, [onSetAsActivePlan]);
 
   // Build masterlist (subgrid) -> daily records folder tree
   const surveyTree = useMemo(() => {
@@ -919,129 +937,131 @@ export const RoadCatalogPanel: React.FC<RoadCatalogPanelProps> = ({
                 </div>
               </div>
 
-              {/* 3. Road Plan Baseline Lines */}
-              <div className="p-2.5 rounded-lg bg-inner/40 border border-subtle flex flex-col gap-2.5">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        onUpdateSystemStyles((prev) => ({
-                          ...prev,
-                          roadPlan: {
-                            ...prev.roadPlan,
-                            visible: !prev.roadPlan.visible
-                          }
-                        }))
-                      }
-                      className={`p-1 rounded transition-colors ${
-                        systemStyles.roadPlan.visible
-                          ? 'text-sky-400 hover:text-sky-300'
-                          : 'text-text-muted/40 hover:text-text-muted'
-                      }`}
-                      title={systemStyles.roadPlan.visible ? 'Hide road plan' : 'Show road plan'}
-                    >
-                      {systemStyles.roadPlan.visible ? <Eye size={14} /> : <EyeOff size={14} />}
-                    </button>
-                    <span className="text-[10px] font-semibold text-text-base">Road Plan Baseline</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {planDistanceKm > 0 && (
-                      <span className="text-[9px] text-text-muted font-mono">
-                        {planDistanceKm.toFixed(2)} km
-                      </span>
-                    )}
-                    <input
-                      type="color"
-                      value={systemStyles.roadPlan.color}
-                      onChange={(e) =>
-                        onUpdateSystemStyles((prev) => ({
-                          ...prev,
-                          roadPlan: {
-                            ...prev.roadPlan,
-                            color: e.target.value
-                          }
-                        }))
-                      }
-                      className="w-4 h-4 rounded cursor-pointer border-0 bg-transparent p-0"
-                      title="Change road plan color"
-                    />
-                  </div>
-                </div>
-
-                {/* Clean, dedicated rows without colored text boxes */}
-                <div className="flex flex-col gap-2 pt-2 border-t border-subtle/50">
-                  <div className="flex flex-col gap-1">
-                    <div className="flex items-center justify-between text-[9px]">
-                      <span className="text-text-muted font-medium">Plan Opacity</span>
-                      <span className="font-mono text-text-base font-semibold">
-                        {Math.round(systemStyles.roadPlan.opacity * 100)}%
-                      </span>
+              {/* 3. Road Plan Baseline Lines (Only visible when OSM Option A is active) */}
+              {planSource === 'extracted' && (
+                <div className="p-2.5 rounded-lg bg-inner/40 border border-subtle flex flex-col gap-2.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onUpdateSystemStyles((prev) => ({
+                            ...prev,
+                            roadPlan: {
+                              ...prev.roadPlan,
+                              visible: !prev.roadPlan.visible
+                            }
+                          }))
+                        }
+                        className={`p-1 rounded transition-colors ${
+                          systemStyles.roadPlan.visible
+                            ? 'text-sky-400 hover:text-sky-300'
+                            : 'text-text-muted/40 hover:text-text-muted'
+                        }`}
+                        title={systemStyles.roadPlan.visible ? 'Hide road plan' : 'Show road plan'}
+                      >
+                        {systemStyles.roadPlan.visible ? <Eye size={14} /> : <EyeOff size={14} />}
+                      </button>
+                      <span className="text-[10px] font-semibold text-text-base">Road Plan Baseline</span>
                     </div>
-                    <CommitSlider
-                      value={systemStyles.roadPlan.opacity}
-                      min={0}
-                      max={1}
-                      step={0.05}
-                      onPreview={(v) =>
-                        onPreviewSystemStyles?.((prev) => ({
-                          ...prev,
-                          roadPlan: {
-                            ...prev.roadPlan,
-                            opacity: v
-                          }
-                        }))
-                      }
-                      onCommit={(v) =>
-                        onUpdateSystemStyles((prev) => ({
-                          ...prev,
-                          roadPlan: {
-                            ...prev.roadPlan,
-                            opacity: v
-                          }
-                        }))
-                      }
-                      style={getSliderStyle(systemStyles.roadPlan.color || '#10b981')}
-                      className="slider-sm"
-                    />
+                    <div className="flex items-center gap-2">
+                      {planDistanceKm > 0 && (
+                        <span className="text-[9px] text-text-muted font-mono">
+                          {planDistanceKm.toFixed(2)} km
+                        </span>
+                      )}
+                      <input
+                        type="color"
+                        value={systemStyles.roadPlan.color}
+                        onChange={(e) =>
+                          onUpdateSystemStyles((prev) => ({
+                            ...prev,
+                            roadPlan: {
+                              ...prev.roadPlan,
+                              color: e.target.value
+                            }
+                          }))
+                        }
+                        className="w-4 h-4 rounded cursor-pointer border-0 bg-transparent p-0"
+                        title="Change road plan color"
+                      />
+                    </div>
                   </div>
 
-                  <div className="flex flex-col gap-1">
-                    <div className="flex items-center justify-between text-[9px]">
-                      <span className="text-text-muted font-medium">Plan Stroke Width</span>
-                      <span className="font-mono text-text-base font-semibold">
-                        {systemStyles.roadPlan.strokeWidth} px
-                      </span>
+                  {/* Clean, dedicated rows without colored text boxes */}
+                  <div className="flex flex-col gap-2 pt-2 border-t border-subtle/50">
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center justify-between text-[9px]">
+                        <span className="text-text-muted font-medium">Plan Opacity</span>
+                        <span className="font-mono text-text-base font-semibold">
+                          {Math.round(systemStyles.roadPlan.opacity * 100)}%
+                        </span>
+                      </div>
+                      <CommitSlider
+                        value={systemStyles.roadPlan.opacity}
+                        min={0}
+                        max={1}
+                        step={0.05}
+                        onPreview={(v) =>
+                          onPreviewSystemStyles?.((prev) => ({
+                            ...prev,
+                            roadPlan: {
+                              ...prev.roadPlan,
+                              opacity: v
+                            }
+                          }))
+                        }
+                        onCommit={(v) =>
+                          onUpdateSystemStyles((prev) => ({
+                            ...prev,
+                            roadPlan: {
+                              ...prev.roadPlan,
+                              opacity: v
+                            }
+                          }))
+                        }
+                        style={getSliderStyle(systemStyles.roadPlan.color || '#10b981')}
+                        className="slider-sm"
+                      />
                     </div>
-                    <CommitSlider
-                      value={systemStyles.roadPlan.strokeWidth}
-                      min={1}
-                      max={8}
-                      step={0.5}
-                      onPreview={(v) =>
-                        onPreviewSystemStyles?.((prev) => ({
-                          ...prev,
-                          roadPlan: {
-                            ...prev.roadPlan,
-                            strokeWidth: v
-                          }
-                        }))
-                      }
-                      onCommit={(v) =>
-                        onUpdateSystemStyles((prev) => ({
-                          ...prev,
-                          roadPlan: {
-                            ...prev.roadPlan,
-                            strokeWidth: v
-                          }
-                        }))
-                      }
-                      style={getSliderStyle(systemStyles.roadPlan.color || '#10b981')}
-                      className="slider-sm"
-                    />
+
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center justify-between text-[9px]">
+                        <span className="text-text-muted font-medium">Plan Stroke Width</span>
+                        <span className="font-mono text-text-base font-semibold">
+                          {systemStyles.roadPlan.strokeWidth} px
+                        </span>
+                      </div>
+                      <CommitSlider
+                        value={systemStyles.roadPlan.strokeWidth}
+                        min={1}
+                        max={8}
+                        step={0.5}
+                        onPreview={(v) =>
+                          onPreviewSystemStyles?.((prev) => ({
+                            ...prev,
+                            roadPlan: {
+                              ...prev.roadPlan,
+                              strokeWidth: v
+                            }
+                          }))
+                        }
+                        onCommit={(v) =>
+                          onUpdateSystemStyles((prev) => ({
+                            ...prev,
+                            roadPlan: {
+                              ...prev.roadPlan,
+                              strokeWidth: v
+                            }
+                          }))
+                        }
+                        style={getSliderStyle(systemStyles.roadPlan.color || '#10b981')}
+                        className="slider-sm"
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
             </div>
           )}
         </div>
@@ -1194,7 +1214,9 @@ export const RoadCatalogPanel: React.FC<RoadCatalogPanelProps> = ({
         ) : (
           <div className="flex flex-col gap-2.5">
             {catalogLayers.map((layer) => {
-              const isActivePlan = activePlanName === layer.name;
+              const isActivePlan =
+                Boolean(activePlanName) &&
+                (catalogPlanLayerId ? catalogPlanLayerId === layer.id : activePlanName === layer.name);
               const isSymbologyOpen = expandedSymbologyLayerId === layer.id;
               const isTableActive = currentTableLayer?.id === layer.id;
 
@@ -1352,15 +1374,26 @@ export const RoadCatalogPanel: React.FC<RoadCatalogPanelProps> = ({
                         {layer.hasRoadLines && onSetAsActivePlan && (
                           <button
                             type="button"
-                            onClick={() => onSetAsActivePlan(layer)}
+                            disabled={activatingLayerId !== null}
+                            onClick={() => handleActivatePlan(layer)}
                             className={`p-1.5 rounded border transition-colors cursor-pointer ${
                               isActivePlan
-                                ? 'bg-inner border-emerald-500 text-emerald-400 shadow-sm'
+                                ? 'bg-emerald-500/20 border-emerald-500 text-emerald-400 shadow-sm'
                                 : 'bg-inner/60 hover:bg-inner text-text-muted hover:text-emerald-400 border-subtle'
-                            }`}
-                            title={isActivePlan ? 'Currently active road plan' : 'Set as road plan baseline'}
+                            } ${activatingLayerId === layer.id ? 'opacity-80 cursor-wait' : ''}`}
+                            title={
+                              activatingLayerId === layer.id
+                                ? 'Updating road plan baseline…'
+                                : isActivePlan
+                                  ? 'Deactivate road plan baseline (revert to system default)'
+                                  : 'Set as road plan baseline'
+                            }
                           >
-                            <Route size={12} />
+                            {activatingLayerId === layer.id ? (
+                              <Loader2 size={12} className="animate-spin text-sky-400" />
+                            ) : (
+                              <Route size={12} />
+                            )}
                           </button>
                         )}
                       </div>

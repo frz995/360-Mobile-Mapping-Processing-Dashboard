@@ -262,7 +262,12 @@ describe('RoadAnalysisWorkspace state persistence', () => {
         planSource: 'extracted',
         updatedAt: '2026-09-04T09:00:00.000Z'
       });
-      expect(loadRoadAnalysisState('user-cache-4')!.savedToCloud).toBe(true);
+      const cache = loadRoadAnalysisState('user-cache-4')!;
+      expect(cache.savedToCloud).toBe(true);
+      expect(cache.lastLocalEditAt).toBe('2026-09-04T09:00:00.000Z');
+      const localEditAt = cache.lastLocalEditAt ? Date.parse(cache.lastLocalEditAt) : 0;
+      const cloudEditAt = cache.cloudUpdatedAt ? Date.parse(cache.cloudUpdatedAt) : 0;
+      expect(localEditAt > cloudEditAt).toBe(false);
     });
 
     it('persists System Baseline style tweaks and restores them with the unsaved marker', () => {

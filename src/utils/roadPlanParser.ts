@@ -167,6 +167,7 @@ export function extractLineRunsWithIds(
   geojson: any
 ): { runs: Array<Array<[number, number]>>; endpointIds: Array<PlanRunEndpointIds> } {
   if (!geojson) return { runs: [], endpointIds: [] };
+  if (geojson._extracted) return geojson._extracted;
 
   const toRun = (coords: any): Array<[number, number]> =>
     (Array.isArray(coords) ? coords : [])

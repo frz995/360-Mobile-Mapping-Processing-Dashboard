@@ -14,7 +14,8 @@ import {
   ArrowRightLeft,
   Printer,
   Search,
-  Cuboid
+  Cuboid,
+  X
 } from 'lucide-react';
 import type { Map as MaplibreMap } from 'maplibre-gl';
 import { UnderlineTabStrip, StatusDot, type ChromeTab } from './production/chrome';
@@ -47,9 +48,9 @@ import {
   type SubgridMetric,
   type SubgridRelationNotice
 } from '../utils/subgridComparison';
-import { buildTracePlans, computePlanCoverage, finalizeSubgridResult } from '../utils/roadNetworkTrace';
+import { buildTracePlans, finalizeSubgridResult, type SubgridTraceResult, type LonLat } from '../utils/roadNetworkTrace';
 import { useCoverageSegmentation } from '../hooks/useCoverageSegmentation';
-import { useRoadPlanStitcher } from '../hooks/useRoadPlanStitcher';
+import type { RoadPlanStitchInput } from '../hooks/useRoadPlanStitcher';
 import { extractSubgridName } from '../utils/subgrid';
 import {
   saveRoadAnalysisStateToSupabase,
@@ -290,6 +291,7 @@ export function mirrorRoadAnalysisToCache(userKey: string, state: RoadAnalysisSa
         ...state,
         schemaVersion: ROAD_ANALYSIS_CACHE_VERSION,
         savedToCloud: true,
+        lastLocalEditAt: cloudUpdatedAt || null,
         cloudUpdatedAt: cloudUpdatedAt || null,
         updatedAt: cloudUpdatedAt
       })
@@ -378,6 +380,9 @@ function basemapToMapStyle(key?: string, customUrl?: string) {
   }
 }
 
+const EMPTY_COVERAGE_RUNS: LonLat[][] = [];
+const EMPTY_STITCH_INPUT: RoadPlanStitchInput = { runs: [], endpointIds: [] };
+
 export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
   translate = (k) => k,
   onBackToDashboard: _onBackToDashboard,
@@ -448,6 +453,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
   const [selectedTableFeature, setSelectedTableFeature] = useState<any | null>(null);
   const [, setGeometriesLoaded] = useState(() => isDistrictGeometriesLoaded());
   const [selectedSubgridId, setSelectedSubgridId] = useState<string | null>(null);
+  const [showDetailsCard, setShowDetailsCard] = useState<boolean>(true);
   const [subgridSearch, setSubgridSearch] = useState<string>('');
   const [refreshTick, setRefreshTick] = useState(0);
 
@@ -496,7 +502,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
   // replaced the animated Road Network Trace but keeps its semantics: a plan
   // stretch with no panotrack within tolerance stays uncovered, and a subgrid
   // is complete when the uncovered share stays at/below threshold.
-  const TRACE_TOLERANCE_M = 25;
+  const TRACE_TOLERANCE_M = 12;
   const TRACE_THRESHOLD_PCT = 95;
   // Print-preview map instance (owned by RoadAnalysisPrintPanel).
   const printMapRef = useRef<MaplibreMap | null>(null);
@@ -599,7 +605,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
 
   const [showCoverage, setShowCoverage] = useState<boolean>(() => {
     const saved = loadRoadAnalysisState(userKey);
-    return typeof saved?.showCoverage === 'boolean' ? saved.showCoverage : true;
+    return typeof saved?.showCoverage === 'boolean' ? saved.showCoverage : false;
   });
 
   const [mapBasemap, setMapBasemap] = useState<string>(() => {
@@ -614,26 +620,9 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const [hasUnsavedEdits, setHasUnsavedEdits] = useState<boolean>(false);
 
-  // Reflect unsaved-edit state from the local cache whenever it changes.
-  useEffect(() => {
-    const cache = loadRoadAnalysisState(userKey);
-    if (!cache) {
-      setHasUnsavedEdits(false);
-      return;
-    }
-    const localEditAt = cache.lastLocalEditAt ? Date.parse(cache.lastLocalEditAt) : 0;
-    const cloudEditAt = cache.cloudUpdatedAt ? Date.parse(cache.cloudUpdatedAt) : 0;
-    const dirty = cache.savedToCloud === false ||
-      (Number.isFinite(localEditAt) && Number.isFinite(cloudEditAt) && localEditAt > cloudEditAt);
-    setHasUnsavedEdits(!!dirty);
-    // Region, districts, basemap, road-line visibility and active tab all touch
-    // the saved fingerprint, so the banner must re-evaluate when they change.
-  }, [userKey, refreshTick, extractedLines, planSource, manualGeoJson, catalogLayers, systemStyles,
-    selectedStateCode, selectedDistrictIds, mapBasemap, showRoadLines, activeTab]);
-
   const [lastSavedFingerprint, setLastSavedFingerprint] = useState<string | null>(() => {
     const saved = loadRoadAnalysisState(userKey);
-    if (saved) {
+    if (saved && saved.savedToCloud === true) {
       return computeRoadAnalysisFingerprint(
         saved.selectedStateCode || '',
         saved.selectedDistrictIds || [],
@@ -644,6 +633,19 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
         saved.extractedLines || [],
         saved.catalogLayers || [],
         saved.systemStyles
+      );
+    }
+    if (!saved) {
+      return computeRoadAnalysisFingerprint(
+        '',
+        [],
+        'system',
+        defaultBasemapKey,
+        true,
+        null,
+        [],
+        [],
+        undefined
       );
     }
     return null;
@@ -677,6 +679,35 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
 
   // True only when current state strictly matches the last saved/remote state
   const isSaved = lastSavedFingerprint !== null && lastSavedFingerprint === currentFingerprint;
+
+  // Reflect unsaved-edit state:
+  // If the workspace matches the saved fingerprint, there are NO unsaved edits.
+  // Otherwise, if fingerprints differ or the local cache holds unpushed edits,
+  // flag hasUnsavedEdits = true.
+  useEffect(() => {
+    if (isSaved) {
+      setHasUnsavedEdits(false);
+      return;
+    }
+    const cache = loadRoadAnalysisState(userKey);
+    if (!cache) {
+      setHasUnsavedEdits(lastSavedFingerprint !== null && currentFingerprint !== lastSavedFingerprint);
+      return;
+    }
+    const localEditAt = cache.lastLocalEditAt ? Date.parse(cache.lastLocalEditAt) : 0;
+    const cloudEditAt = cache.cloudUpdatedAt ? Date.parse(cache.cloudUpdatedAt) : 0;
+    const dirty =
+      cache.savedToCloud === false ||
+      (Number.isFinite(localEditAt) && Number.isFinite(cloudEditAt) && localEditAt > cloudEditAt) ||
+      (lastSavedFingerprint !== null && currentFingerprint !== lastSavedFingerprint);
+    setHasUnsavedEdits(!!dirty);
+  }, [
+    isSaved,
+    userKey,
+    refreshTick,
+    lastSavedFingerprint,
+    currentFingerprint
+  ]);
 
   // Track the updatedAt of the saved state most recently applied from storage.
   // Used to avoid clobbering a user's newer, in-progress (unsaved) edits —
@@ -757,6 +788,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
       if (!preferLocal && remoteState.catalogPlanLayerId) setCatalogPlanLayerId(remoteState.catalogPlanLayerId);
       if (preferLocal && localCache?.catalogPlanLayerId) setCatalogPlanLayerId(localCache.catalogPlanLayerId);
       setExtractedLines(effectiveExtractedLines);
+      let chosenCatalogLayers: CatalogVectorLayer[] | undefined = undefined;
       if (Array.isArray(remoteState.catalogLayers) || Array.isArray(localCache?.catalogLayers)) {
         const localLayers = Array.isArray(localCache?.catalogLayers) ? localCache.catalogLayers : undefined;
         const remoteLayers = Array.isArray(remoteState.catalogLayers) ? remoteState.catalogLayers : undefined;
@@ -773,6 +805,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
           if (!donor) return l;
           return { ...l, geojson: donor.geojson, geojsonJson: donor.geojsonJson, geometryDropped: false };
         });
+        chosenCatalogLayers = chosen;
         setCatalogLayers(chosen);
       }
       if (remoteState.systemStyles) {
@@ -798,6 +831,15 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
           (preferLocal && localCache?.systemStyles) || remoteState.systemStyles
         )
       );
+
+      if (!preferLocal) {
+        mirrorRoadAnalysisToCache(userKey, {
+          ...remoteState,
+          catalogLayers: chosenCatalogLayers || remoteState.catalogLayers,
+          extractedLines: effectiveExtractedLines
+        });
+        setHasUnsavedEdits(false);
+      }
     }
 
     restoreFromSupabase();
@@ -822,19 +864,25 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
       if (typeof saved.showRoadLines === 'boolean') setShowRoadLines(saved.showRoadLines);
       if (typeof saved.showCoverage === 'boolean') setShowCoverage(saved.showCoverage);
       if (saved.mapBasemap) setMapBasemap(saved.mapBasemap);
-      setLastSavedFingerprint(
-        computeRoadAnalysisFingerprint(
-          saved.selectedStateCode || '',
-          saved.selectedDistrictIds || [],
-          saved.planSource || 'system',
-          saved.mapBasemap || defaultBasemapKey,
-          typeof saved.showRoadLines === 'boolean' ? saved.showRoadLines : true,
-          saved.manualGeoJson || null,
-          saved.extractedLines || [],
-          saved.catalogLayers || [],
-          saved.systemStyles
-        )
-      );
+      if (saved.savedToCloud === true) {
+        setLastSavedFingerprint(
+          computeRoadAnalysisFingerprint(
+            saved.selectedStateCode || '',
+            saved.selectedDistrictIds || [],
+            saved.planSource || 'system',
+            saved.mapBasemap || defaultBasemapKey,
+            typeof saved.showRoadLines === 'boolean' ? saved.showRoadLines : true,
+            saved.manualGeoJson || null,
+            saved.extractedLines || [],
+            saved.catalogLayers || [],
+            saved.systemStyles
+          )
+        );
+        setHasUnsavedEdits(false);
+      } else {
+        setLastSavedFingerprint(null);
+        setHasUnsavedEdits(true);
+      }
     }
   }, [userKey, defaultBasemapKey]);
 
@@ -1062,29 +1110,26 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
     [extractedLines, selectedDistricts]
   );
 
+  const extractedLengthKm = useMemo(() => linesLengthKm(extractedRuns.runs), [extractedRuns]);
+
   const manualRuns = useMemo(
     () =>
       planSource === 'manual'
         ? extractLineRunsWithIds(manualGeoJson)
-        : { runs: [], endpointIds: [] },
+        : EMPTY_STITCH_INPUT,
     [planSource, manualGeoJson]
   );
 
-  const extractedLengthKm = useMemo(() => linesLengthKm(extractedRuns.runs), [extractedRuns]);
-
-  // Runs currently used as the plan (for map rendering and guards). When the
-  // source data carries per-run endpoint node ids (`startNode`/`endNode`) the
-  // stitch joins runs by node identity first, then unifies any remaining
-  // nearby endpoints into a shared node. Large plans are stitched off the UI
-  // thread so OSM ways that were split at junctions / clipped at borders
-  // render as one continuous topology without freezing the page.
   const roadPlanInput = useMemo(() => {
     if (planSource === 'extracted') return extractedRuns;
     if (planSource === 'manual') return manualRuns;
-    return { runs: [], endpointIds: [] };
+    return EMPTY_STITCH_INPUT;
   }, [planSource, extractedRuns, manualRuns]);
 
-  const { runs: activePlanRuns } = useRoadPlanStitcher(roadPlanInput);
+  // Runs currently used as the active road plan (for map rendering, metrics, and coverage).
+  // Kept directly as the exact source line geometry without any geometric stitching,
+  // welding, or snapping, so road geometries remain clean and faithful to the source data.
+  const activePlanRuns = roadPlanInput.runs;
 
   // Plan length is measured PER run (each disconnected road segment summed
   // independently). Flattening the runs into one array and measuring
@@ -1137,44 +1182,65 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
     });
   }, [internalDailyData, catalogLayers, activePlanRuns, roadPlanInput, capturedPoints, activeRegionDistricts]);
 
-  // Static road-coverage segmentation (replaces the animated trace). The plan
-  // network is classified once against panotrack tracks; uncovered stretches
-  // are drawn as static red lines on the map. `system` plans are the dashboard
-  // catalog fallback (nothing to classify), so segmentation is kept idle.
+  // On-demand road-coverage segmentation. Does NOT auto-run on plan open.
+  // Classified on-demand for the active subgrid clicked, or across all subgrids
+  // when "Segment all" is explicitly triggered.
   const coverage = useCoverageSegmentation({
-    planRuns: planSource !== 'system' ? activePlanRuns : [],
     capturedTracks,
-    toleranceM: TRACE_TOLERANCE_M,
-    enabled: showCoverage
+    toleranceM: TRACE_TOLERANCE_M
   });
 
-  // Static per-subgrid COMPLETE / INCOMPLETE verdicts for the Compare cards.
-  const traceVerdicts = useMemo(() => {
-    return tracePlans.map((plan) =>
-      finalizeSubgridResult(
-        plan,
-        computePlanCoverage(plan.planRuns, capturedTracks, TRACE_TOLERANCE_M),
-        TRACE_THRESHOLD_PCT
-      )
-    );
-  }, [tracePlans, capturedTracks]);
+  // Clear coverage when plan source or district selection changes
+  const prevCoverageContextRef = useRef<{ planSource: PlanSource; districtsKey: string; userKey: string }>({
+    planSource,
+    districtsKey: selectedDistrictIds.join(','),
+    userKey
+  });
 
+  useEffect(() => {
+    const districtsKey = selectedDistrictIds.join(',');
+    const prev = prevCoverageContextRef.current;
+    if (prev.planSource !== planSource || prev.districtsKey !== districtsKey || prev.userKey !== userKey) {
+      prevCoverageContextRef.current = { planSource, districtsKey, userKey };
+      coverage.clear();
+    }
+  }, [planSource, selectedDistrictIds, userKey, coverage.clear]);
+
+  // Per-subgrid verdicts populated on-demand as subgrids are segmented.
   const traceVerdictBySubgrid = useMemo(() => {
-    const byKey: Record<string, (typeof traceVerdicts)[number]> = {};
-    traceVerdicts.forEach((v) => {
-      byKey[v.subgrid] = v;
+    const byKey: Record<string, SubgridTraceResult> = {};
+    tracePlans.forEach((plan) => {
+      const cov = coverage.subgridResults[plan.subgrid];
+      if (cov) {
+        byKey[plan.subgrid] = finalizeSubgridResult(plan, cov, TRACE_THRESHOLD_PCT);
+      }
     });
     return byKey;
-  }, [traceVerdicts]);
+  }, [tracePlans, coverage.subgridResults]);
 
-  // Master toggle: header "Coverage" button and per-subgrid "Gaps" buttons both
-  // flip this (persisted alongside the rest of the workspace snapshot).
-  const toggleCoverage = useCallback(() => {
-    const next = !showCoverage;
-    setShowCoverage(next);
-    persistSnapshot({ showCoverage: next });
-    setHasUnsavedEdits(true);
-  }, [persistSnapshot, showCoverage]);
+  const selectedSubgridMetric = useMemo(() => {
+    if (!selectedSubgridId) return null;
+    return subgridMetrics.find((s) => s.subgrid === selectedSubgridId) || null;
+  }, [subgridMetrics, selectedSubgridId]);
+
+  const selectedTraceResult = useMemo(() => {
+    if (!selectedSubgridId) return null;
+    return traceVerdictBySubgrid[selectedSubgridId] || null;
+  }, [traceVerdictBySubgrid, selectedSubgridId]);
+
+
+  const isSegmentAllActive = coverage.activeScope === 'all' && coverage.phase !== 'error';
+
+  // Explicit "Segment all" action across all subgrids with on/off toggle
+  const handleToggleSegmentAll = useCallback(() => {
+    if (isSegmentAllActive || (coverage.phase === 'running' && coverage.activeScope === 'all')) {
+      coverage.clear();
+      return;
+    }
+    if (planSource === 'system' || activePlanRuns.length === 0) return;
+    setShowCoverage(true);
+    coverage.segmentAll(activePlanRuns, tracePlans);
+  }, [isSegmentAllActive, coverage.phase, coverage.activeScope, coverage.clear, planSource, activePlanRuns, tracePlans, coverage.segmentAll]);
 
   const activeSubgridsCount = useMemo(() => {
     return subgridMetrics.filter(
@@ -1295,12 +1361,29 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
     addAuditLog
   ]);
 
-  const handleZoomToSubgrid = useCallback((sg: SubgridMetric) => {
+  const handleFocusSubgrid = useCallback((sg: SubgridMetric) => {
     setSelectedSubgridId(sg.subgrid);
     if (sg.bbox && (sg.bbox[0] !== 0 || sg.bbox[1] !== 0)) {
       setFocusBbox([...sg.bbox]);
     }
   }, []);
+
+  const handleToggleSegmentSubgrid = useCallback((sg: SubgridMetric) => {
+    setSelectedSubgridId(sg.subgrid);
+    const isThisSubgridActive = showCoverage && (
+      (coverage.activeScope === 'subgrid' && coverage.activeSubgridId === sg.subgrid) ||
+      (coverage.activeScope === 'all' && selectedSubgridId === sg.subgrid)
+    );
+    if (isThisSubgridActive) {
+      setShowCoverage(false);
+      return;
+    }
+    const plan = tracePlans.find((p) => p.subgrid === sg.subgrid);
+    if (plan && plan.planRuns.length > 0) {
+      coverage.segmentSubgrid(sg.subgrid, plan.planRuns);
+      setShowCoverage(true);
+    }
+  }, [selectedSubgridId, showCoverage, coverage.activeScope, coverage.activeSubgridId, tracePlans, coverage.segmentSubgrid]);
 
   const handleReassignBatch = useCallback((fromSubgrid: string, toSubgrid: string) => {
     setInternalBatchLogs((prev) =>
@@ -1371,13 +1454,18 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
 
   const handleSelectSubgrid = useCallback((sgId: string) => {
     setSelectedSubgridId(sgId);
+    const plan = tracePlans.find((p) => p.subgrid === sgId);
+    if (plan && plan.planRuns.length > 0) {
+      coverage.segmentSubgrid(sgId, plan.planRuns);
+      setShowCoverage(true);
+    }
     setTimeout(() => {
       const el = document.getElementById(`subgrid-card-${sgId}`);
       if (el) {
         el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       }
     }, 50);
-  }, []);
+  }, [tracePlans, coverage.segmentSubgrid]);
 
   const handleExtract = useCallback(async () => {
     setExtractError('');
@@ -1660,6 +1748,40 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
 
   const handleSetAsActivePlan = useCallback(
     (layer: CatalogVectorLayer) => {
+      // If already active as the manual plan baseline, toggle it off back to system
+      const isCurrentlyActive =
+        planSource === 'manual' &&
+        (catalogPlanLayerId === layer.id || activePlanName === layer.name);
+
+      if (isCurrentlyActive) {
+        setManualGeoJson(null);
+        setPlanSource('system');
+        setActivePlanName('');
+        setCatalogPlanLayerId(null);
+        persistRoadAnalysisCache(userKey, {
+          activeTab,
+          selectedStateCode,
+          selectedDistrictIds,
+          planSource: 'system',
+          mapBasemap,
+          showRoadLines,
+          manualGeoJson: null,
+          extractedLines,
+          catalogLayers,
+          systemStyles,
+          catalogPlanLayerId: null
+        });
+        setHasUnsavedEdits(true);
+        addNotification?.({
+          id: `plan-active-${Date.now()}`,
+          title: 'Road Plan Baseline Deactivated',
+          message: `Reverted road comparison baseline to system default.`,
+          category: 'INFO',
+          read: false
+        });
+        return;
+      }
+
       // Heavy imported layers carry only serialized `geojsonJson` (no `.geojson`).
       // Resolve whichever geometry is present so the promotion works for both.
       const sourceGeoJson =
@@ -1685,7 +1807,8 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
               properties,
               geometry: { type: 'LineString', coordinates: coords }
             };
-          })
+          }),
+        _extracted: { runs, endpointIds }
       };
       if (compactPlan.features.length === 0) return;
       setManualGeoJson(compactPlan);
@@ -1693,20 +1816,23 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
       setShowRoadLines(true);
       setActivePlanName(layer.name);
       setCatalogPlanLayerId(layer.id);
-      persistRoadAnalysisCache(userKey, {
-        activeTab,
-        selectedStateCode,
-        selectedDistrictIds,
-        planSource: 'manual',
-        mapBasemap,
-        showRoadLines: true,
-        manualGeoJson: compactPlan,
-        extractedLines,
-        catalogLayers,
-        systemStyles,
-        catalogPlanLayerId: layer.id
-      });
       setHasUnsavedEdits(true);
+      // Defer serialization off the immediate click frame so the map paints instantly
+      setTimeout(() => {
+        persistRoadAnalysisCache(userKey, {
+          activeTab,
+          selectedStateCode,
+          selectedDistrictIds,
+          planSource: 'manual',
+          mapBasemap,
+          showRoadLines: true,
+          manualGeoJson: compactPlan,
+          extractedLines,
+          catalogLayers,
+          systemStyles,
+          catalogPlanLayerId: layer.id
+        });
+      }, 50);
       addNotification?.({
         id: `plan-active-${Date.now()}`,
         title: 'Active Plan Promoted',
@@ -1721,6 +1847,10 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
       selectedStateCode,
       selectedDistrictIds,
       mapBasemap,
+      showRoadLines,
+      planSource,
+      catalogPlanLayerId,
+      activePlanName,
       extractedLines,
       catalogLayers,
       systemStyles,
@@ -1801,7 +1931,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
         </div>
 
         {/* Unsaved local edits notice */}
-        {hasUnsavedEdits && (
+        {hasUnsavedEdits && !isSaved && (
           <div
             className="px-3 py-2 rounded-lg border flex items-center gap-2 text-[11px] font-medium"
             style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-inner/40)' }}
@@ -2103,7 +2233,9 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                   onNavigateToImport={() => setActiveTab('import')}
                   panotrackCount={capturedPoints.length}
                   planDistanceKm={planDistanceKm}
-                  activePlanName={activePlanName}
+                  planSource={planSource}
+                  activePlanName={planSource === 'manual' ? activePlanName : ''}
+                  catalogPlanLayerId={planSource === 'manual' ? catalogPlanLayerId : null}
                   activeTableLayer={activeTableLayer}
                   onOpenAttributeTable={setActiveTableLayer}
                 />
@@ -2187,64 +2319,87 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
 
                       {/* By Subgrid Comparison (5x5 km) */}
                       <div className="border-t border-divider pt-2 mt-2">
-                        <div className="flex items-center justify-between mb-1.5">
+                        {/* Header: Title and Count */}
+                        <div className="flex items-center justify-between gap-2 mb-2">
                           <div className="text-[9px] uppercase tracking-widest text-text-muted font-bold">
                             By Subgrid Comparison (5×5 km)
                           </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-[10px] text-text-muted font-mono font-medium">
-                              {filteredSubgridMetrics.length}
-                              {filteredSubgridMetrics.length !== subgridMetrics.length ? ` of ${subgridMetrics.length}` : ''}{' '}
-                              subgrid{subgridMetrics.length === 1 ? '' : 's'}
-                            </span>
-                            {activePlanRuns.length > 0 && (
-                              <button
-                                type="button"
-                                onClick={toggleCoverage}
-                                className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono cursor-pointer transition-colors border ${
-                                  showCoverage
-                                    ? 'bg-sky-500/10 border-sky-500/30 text-sky-300'
-                                    : 'bg-inner border-subtle text-text-muted hover:text-sky-300 hover:border-sky-500/30'
-                                }`}
-                                title="Toggle the red coverage-gap overlay: plan roads without panotrack within tolerance are drawn in red, covered roads are left green"
-                              >
-                                <Route size={11} className="shrink-0" />
-                                Cover
-                              </button>
-                            )}
-                          </div>
+                          <span className="text-[10px] text-text-muted font-mono font-medium shrink-0">
+                            {filteredSubgridMetrics.length}
+                            {filteredSubgridMetrics.length !== subgridMetrics.length ? ` of ${subgridMetrics.length}` : ''}{' '}
+                            subgrid{subgridMetrics.length === 1 ? '' : 's'}
+                          </span>
                         </div>
 
-                        {/* Filter pills: All vs Active in Data Management */}
-                        <div className="flex items-center gap-1.5 mb-1.5">
-                          <button
-                            type="button"
-                            onClick={() => setShowActiveOnly(false)}
-                            className={`px-2 py-0.5 rounded text-[10px] font-mono cursor-pointer transition-colors border ${
-                              !showActiveOnly
-                                ? 'bg-inner border-subtle text-text-base font-bold shadow-sm'
-                                : 'bg-transparent border-transparent text-text-muted hover:text-text-base'
-                            }`}
-                          >
-                            All ({subgridMetrics.length})
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setShowActiveOnly(true)}
-                            className={`px-2 py-0.5 rounded text-[10px] font-mono cursor-pointer transition-colors border flex items-center gap-1.5 ${
-                              showActiveOnly
-                                ? 'bg-inner border-subtle text-text-base font-bold shadow-sm ring-1 ring-subtle/50'
-                                : 'bg-transparent border-transparent text-text-muted hover:text-text-base'
-                            }`}
-                            title="Show only subgrids with active data available in Data Management"
-                          >
-                            <span
-                              className={`w-1.5 h-1.5 rounded-full ${
-                                showActiveOnly ? 'bg-sky-400' : 'bg-text-muted/60'
+                        {/* Controls Bar: Filter pills on left, Actions on right */}
+                        <div className="flex items-center justify-between gap-1.5 mb-2">
+                          {/* Filter: All vs Active in Data Management (Text only, no box) */}
+                          <div className="inline-flex items-center gap-3">
+                            <button
+                              type="button"
+                              onClick={() => setShowActiveOnly(false)}
+                              className={`inline-flex items-center gap-1.5 text-[10px] font-mono cursor-pointer transition-colors ${
+                                !showActiveOnly
+                                  ? 'text-sky-400 font-bold'
+                                  : 'text-text-muted hover:text-text-base'
                               }`}
-                            />
-                            Active Dataset ({activeSubgridsCount})
-                          </button>
+                            >
+                              <span
+                                className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                                  !showActiveOnly ? 'bg-sky-400' : 'bg-text-muted/60'
+                                }`}
+                              />
+                              <span>All ({subgridMetrics.length})</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setShowActiveOnly(true)}
+                              className={`inline-flex items-center gap-1.5 text-[10px] font-mono cursor-pointer transition-colors ${
+                                showActiveOnly
+                                  ? 'text-sky-400 font-bold'
+                                  : 'text-text-muted hover:text-text-base'
+                              }`}
+                              title="Show only subgrids with active data available in Data Management"
+                            >
+                              <span
+                                className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                                  showActiveOnly ? 'bg-sky-400' : 'bg-text-muted/60'
+                                }`}
+                              />
+                              <span>Active ({activeSubgridsCount})</span>
+                            </button>
+                          </div>
+
+                          {/* Actions: Segment all (Text button, no box) */}
+                          {activePlanRuns.length > 0 && (
+                            <div className="inline-flex items-center gap-1 shrink-0">
+                              <button
+                                type="button"
+                                onClick={handleToggleSegmentAll}
+                                className={`inline-flex items-center gap-1.5 text-[10px] font-mono cursor-pointer transition-colors ${
+                                  isSegmentAllActive
+                                    ? 'text-sky-400 font-bold'
+                                    : 'text-text-muted hover:text-text-base'
+                                }`}
+                                title={
+                                  isSegmentAllActive
+                                    ? 'Click to turn off segmentation across all subgrids'
+                                    : 'Segment all subgrids in the district against panotrack coverage'
+                                }
+                              >
+                                {(isSegmentAllActive || (coverage.phase === 'running' && coverage.activeScope === 'all')) && (
+                                  <span
+                                    className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                                      coverage.phase === 'running' && coverage.activeScope === 'all'
+                                        ? 'bg-sky-400 animate-pulse'
+                                        : 'bg-sky-400'
+                                    }`}
+                                  />
+                                )}
+                                <span>Segment all</span>
+                              </button>
+                            </div>
+                          )}
                         </div>
 
                         {subgridMetrics.length > 2 && (
@@ -2257,7 +2412,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                           />
                         )}
 
-                        <div className="space-y-2 max-h-[380px] overflow-y-auto pr-0.5">
+                        <div className="divide-y divide-subtle/40 max-h-[380px] overflow-y-auto pr-0.5">
                           {filteredSubgridMetrics.length === 0 ? (
                             <p className="text-[10px] text-text-muted py-1.5">
                               No subgrids found in this area.
@@ -2266,43 +2421,38 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                             filteredSubgridMetrics.map((sg) => {
                               const isSelected = selectedSubgridId === sg.subgrid;
                               const traceResult = traceVerdictBySubgrid[sg.subgrid];
-                              const hasPlan = !!traceResult && traceResult.status !== 'no-plan';
+                              const hasPlan = sg.planKm > 0 || (!!traceResult && traceResult.status !== 'no-plan');
+                              const isSubgridSegmentActive = showCoverage && (
+                                (coverage.activeScope === 'subgrid' && coverage.activeSubgridId === sg.subgrid) ||
+                                (coverage.activeScope === 'all' && isSelected)
+                              );
+                              const isSubgridRunning = coverage.phase === 'running' && (
+                                coverage.activeSubgridId === sg.subgrid || (coverage.activeScope === 'all' && isSelected)
+                              );
                               return (
                                 <div
                                   key={sg.subgrid}
                                   id={`subgrid-card-${sg.subgrid}`}
-                                  className={`p-2.5 rounded-lg border transition-all ${
+                                  onClick={() => handleFocusSubgrid(sg)}
+                                  className={`py-2.5 px-1.5 transition-colors cursor-pointer ${
                                     isSelected
-                                      ? 'bg-inner border-subtle/80 ring-1 ring-subtle'
-                                      : 'bg-inner/40 border-subtle hover:bg-inner/70'
+                                      ? 'bg-sky-500/5 border-l-2 border-sky-400 pl-2'
+                                      : 'hover:bg-white/[0.02]'
                                   }`}
                                 >
-                                  <div className="flex items-center justify-between mb-1.5 pb-1 border-b border-subtle/40">
+                                  <div className="flex items-center justify-between mb-1.5">
                                     <div className="flex items-center gap-1.5 min-w-0">
                                       <span className="font-mono font-bold text-xs text-text-base tracking-wide">
                                         {sg.subgrid}
                                       </span>
-                                      {hasPlan && (
-                                        <span
-                                          className={`px-1.5 py-0.5 rounded border text-[8px] font-mono font-bold tracking-wider shrink-0 ${
-                                            traceResult!.status === 'complete'
-                                              ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-400'
-                                              : 'bg-rose-500/10 border-rose-500/40 text-rose-400'
-                                          }`}
-                                          title={
-                                            traceResult!.status === 'complete'
-                                              ? `Coverage complete — ${traceResult!.tracedPct?.toFixed(1)}% of plan traced`
-                                              : `Coverage incomplete — ${traceResult!.tracedKm.toFixed(2)} km traced (red lines)`
-                                          }
-                                        >
-                                          {traceResult!.status === 'complete' ? 'COMPLETE' : 'INCOMPLETE'}
-                                        </span>
-                                      )}
                                     </div>
                                     <div className="flex items-center gap-2 shrink-0">
                                       <button
                                         type="button"
-                                        onClick={() => handleZoomToSubgrid(sg)}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleFocusSubgrid(sg);
+                                        }}
                                         className="text-[10px] text-text-muted hover:text-text-base cursor-pointer underline decoration-dotted"
                                         title={`Focus map to 5×5 km extent of ${sg.subgrid}`}
                                       >
@@ -2311,19 +2461,29 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                                       {hasPlan && (
                                         <button
                                           type="button"
-                                          onClick={() => {
-                                            if (!showCoverage) toggleCoverage();
-                                            handleZoomToSubgrid(sg);
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleToggleSegmentSubgrid(sg);
                                           }}
-                                          className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono cursor-pointer transition-colors border ${
-                                            showCoverage
-                                              ? 'bg-sky-500/10 border-sky-500/30 text-sky-300'
-                                              : 'bg-inner border-subtle text-text-muted hover:text-sky-300 hover:border-sky-500/30'
+                                          className={`inline-flex items-center gap-1.5 text-[10px] font-mono cursor-pointer transition-colors ${
+                                            isSubgridSegmentActive || isSubgridRunning
+                                              ? 'text-sky-400 font-bold'
+                                              : 'text-text-muted hover:text-text-base'
                                           }`}
-                                          title={`Show the red coverage gaps of ${sg.subgrid} (enables the Coverage overlay and focuses the map)`}
+                                          title={
+                                            isSubgridSegmentActive
+                                              ? `Click to hide coverage gaps of ${sg.subgrid}`
+                                              : `Segment coverage for ${sg.subgrid}`
+                                          }
                                         >
-                                          <Route size={11} className="shrink-0" />
-                                          Gaps
+                                          {(isSubgridSegmentActive || isSubgridRunning) && (
+                                            <span
+                                              className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                                                isSubgridRunning ? 'bg-sky-400 animate-pulse' : 'bg-sky-400'
+                                              }`}
+                                            />
+                                          )}
+                                          <span>{isSubgridRunning ? 'Segmenting…' : isSubgridSegmentActive ? 'Gaps' : 'Segment'}</span>
                                         </button>
                                       )}
                                     </div>
@@ -2577,7 +2737,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                                 type="button"
                                 onClick={() => {
                                   const sgMetric = subgridMetrics.find((s) => s.subgrid === item.originSubgrid || s.subgrid === item.spatialSubgrid);
-                                  if (sgMetric) handleZoomToSubgrid(sgMetric);
+                                  if (sgMetric) handleFocusSubgrid(sgMetric);
                                 }}
                                 className="px-2 py-1 rounded border border-subtle bg-inner hover:bg-inner/80 text-[10px] text-text-muted hover:text-text-base font-mono cursor-pointer transition-colors"
                               >
@@ -2758,6 +2918,239 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                   </button>
                 </div>
 
+                {/* Top-Right Floating Details Card (System Design, No Colored Text Box) */}
+                {showDetailsCard ? (
+                  <div
+                    style={{
+                      backgroundColor: 'var(--bg-card)',
+                      borderColor: 'var(--border-subtle)',
+                      boxShadow: 'var(--card-shadow)',
+                      color: 'var(--text-primary)'
+                    }}
+                    className="absolute top-3 right-3 z-[1000] w-72 rounded-xl border backdrop-blur-md shadow-lg p-3 text-xs flex flex-col gap-2 transition-all animate-in fade-in duration-200"
+                  >
+                    {/* Header */}
+                    <div className="flex items-center justify-between pb-1.5 border-b border-subtle/50">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <Route size={13} className="shrink-0 text-text-muted" />
+                        <span className="font-semibold text-xs text-text-base truncate">
+                          {selectedSubgridMetric ? selectedSubgridMetric.subgrid : 'Road Analysis Details'}
+                        </span>
+                        {selectedSubgridMetric && (
+                          <span className="text-[10px] text-text-muted font-normal">Subgrid</span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        {selectedSubgridMetric && (
+                          <button
+                            type="button"
+                            onClick={() => setSelectedSubgridId(null)}
+                            className="text-[10px] text-text-muted hover:text-text-base cursor-pointer px-1 py-0.5 rounded hover:bg-inner transition-colors"
+                            title="Clear selection and view overview"
+                          >
+                            Overview
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setShowDetailsCard(false)}
+                          className="p-1 rounded text-text-muted hover:text-text-base hover:bg-inner transition-colors cursor-pointer"
+                          title="Minimize details card"
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Body */}
+                    {selectedSubgridMetric ? (
+                      <div className="space-y-1.5 text-[11px]">
+                        <div className="flex items-center justify-between">
+                          <span className="text-text-muted">Status</span>
+                          <span className="font-semibold text-text-base flex items-center gap-1.5">
+                            <span
+                              className={`w-2 h-2 rounded-full ${
+                                selectedTraceResult?.status === 'complete'
+                                  ? 'bg-emerald-400'
+                                  : selectedTraceResult
+                                    ? 'bg-rose-400'
+                                    : 'bg-slate-400'
+                              }`}
+                            />
+                            {selectedTraceResult?.status === 'complete'
+                              ? 'Complete'
+                              : selectedTraceResult
+                                ? 'Incomplete'
+                                : (selectedSubgridMetric.planKm > 0 ? 'Not Analyzed' : 'No Plan')}
+                          </span>
+                        </div>
+
+                        {selectedTraceResult && (
+                          <>
+                            <div className="flex items-center justify-between">
+                              <span className="text-text-muted">Coverage</span>
+                              <span className="font-semibold text-text-base font-mono">
+                                {selectedTraceResult.coveredPct != null
+                                  ? `${selectedTraceResult.coveredPct.toFixed(1)}%`
+                                  : selectedTraceResult.tracedPct != null
+                                    ? `${selectedTraceResult.tracedPct.toFixed(1)}%`
+                                    : '—'}
+                              </span>
+                            </div>
+                            {selectedTraceResult.tracedKm != null && selectedTraceResult.tracedKm > 0 && (
+                              <div className="flex items-center justify-between">
+                                <span className="text-text-muted">Uncovered gaps</span>
+                                <span className="font-semibold text-rose-400 font-mono">
+                                  {selectedTraceResult.tracedKm.toFixed(2)} km
+                                </span>
+                              </div>
+                            )}
+                          </>
+                        )}
+
+                        <div className="flex items-center justify-between">
+                          <span className="text-text-muted">Plan length</span>
+                          <span className="font-semibold text-text-base font-mono">
+                            {selectedSubgridMetric.planKm.toFixed(2)} km
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between">
+                          <span className="text-text-muted">Captured length</span>
+                          <span className="font-semibold text-text-base font-mono">
+                            {selectedSubgridMetric.masterlistKm.toFixed(2)} km
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between">
+                          <span className="text-text-muted">Captured / Plan</span>
+                          <span className="font-semibold text-text-base font-mono">
+                            {selectedSubgridMetric.completionRatio ?? '—'}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between">
+                          <span className="text-text-muted">Remaining to capture</span>
+                          <span className="font-semibold text-text-base font-mono">
+                            {selectedSubgridMetric.remainingKm.toFixed(2)} km
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between">
+                          <span className="text-text-muted">Survey points</span>
+                          <span className="font-semibold text-text-base font-mono">
+                            {selectedSubgridMetric.pointsCount.toLocaleString()}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between">
+                          <span className="text-text-muted">Survey tracks</span>
+                          <span className="font-semibold text-text-base font-mono">
+                            {selectedSubgridMetric.tracksCount.toLocaleString()}
+                          </span>
+                        </div>
+
+                        {/* Actions */}
+                        {selectedSubgridMetric.planKm > 0 && (
+                          <div className="pt-2 border-t border-subtle/40">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (selectedSubgridMetric) {
+                                  handleToggleSegmentSubgrid(selectedSubgridMetric);
+                                }
+                              }}
+                              className={`w-full py-1.5 px-2 rounded-lg border text-[11px] font-medium text-center cursor-pointer transition-colors flex items-center justify-center gap-1.5 ${
+                                showCoverage && selectedTraceResult
+                                  ? 'bg-sky-500/15 border-sky-500/40 text-sky-300'
+                                  : 'bg-inner hover:bg-inner/80 border-subtle text-text-base'
+                              }`}
+                            >
+                              <Route size={12} className="shrink-0" />
+                              <span>{showCoverage && selectedTraceResult ? 'Hide Gaps' : 'Show Gaps'}</span>
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="space-y-1.5 text-[11px]">
+                        <div className="flex items-center justify-between">
+                          <span className="text-text-muted">Region</span>
+                          <span className="font-semibold text-text-base truncate max-w-[140px]" title={selectedDistrictsList.map((d) => d.name).join(', ')}>
+                            {selectedDistrictsList.map((d) => d.name).join(', ') || 'None'}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between">
+                          <span className="text-text-muted">Plan source</span>
+                          <span className="font-semibold text-text-base truncate max-w-[140px]">
+                            {planSource === 'extracted'
+                              ? 'OSM Extracted'
+                              : planSource === 'manual'
+                                ? (activePlanName || 'Manual GeoJSON')
+                                : 'None'}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between">
+                          <span className="text-text-muted">Total plan</span>
+                          <span className="font-semibold text-text-base font-mono">
+                            {planDistanceKm > 0 ? `${planDistanceKm.toFixed(2)} km` : '—'}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between">
+                          <span className="text-text-muted">Total captured</span>
+                          <span className="font-semibold text-text-base font-mono">
+                            {capturedDistanceKm > 0 ? `${capturedDistanceKm.toFixed(2)} km` : '—'}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between">
+                          <span className="text-text-muted">Captured / Plan</span>
+                          <span className="font-semibold text-text-base font-mono">
+                            {ratio ?? '—'}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between">
+                          <span className="text-text-muted">Active subgrids</span>
+                          <span className="font-semibold text-text-base font-mono">
+                            {activeSubgridsCount} / {subgridMetrics.length}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between">
+                          <span className="text-text-muted">Total survey points</span>
+                          <span className="font-semibold text-text-base font-mono">
+                            {capturedPoints.length.toLocaleString()}
+                          </span>
+                        </div>
+
+                        <div className="pt-1.5 border-t border-subtle/40 text-[10px] text-text-muted text-center">
+                          Click any subgrid in the list to inspect its details.
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setShowDetailsCard(true)}
+                    style={{
+                      backgroundColor: 'var(--bg-card)',
+                      borderColor: 'var(--border-subtle)',
+                      boxShadow: 'var(--card-shadow)',
+                      color: 'var(--text-primary)'
+                    }}
+                    className="absolute top-3 right-3 z-[1000] flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border backdrop-blur-md shadow-lg text-[11px] font-semibold cursor-pointer hover:border-sky-400/50 transition-colors"
+                    title="Show Details Card"
+                  >
+                    <Route size={12} className="text-text-muted" />
+                    Details
+                  </button>
+                )}
+
                 <RoadAnalysisMap
                   active
                   showRoadLines={showRoadLines}
@@ -2769,7 +3162,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                   dimmedRegionsGeojson={dimmedRegionsGeojson}
                   capturedPoints={capturedPoints}
                   roadRuns={activePlanRuns}
-                  coverageRuns={showCoverage ? coverage.coverage?.uncoveredRuns ?? [] : []}
+                  coverageRuns={showCoverage && coverage.coverage ? coverage.coverage.uncoveredRuns : EMPTY_COVERAGE_RUNS}
                   catalogLayers={catalogLayers}
                   catalogPreview={importPreview}
                   systemStyles={systemStyles}

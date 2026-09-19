@@ -157,6 +157,24 @@ export function clipLineRunsToBbox(
   const out: Array<Array<[number, number]>> = [];
   for (const coords of runs) {
     if (!coords || coords.length < 2) continue;
+
+    // Fast bounding box reject / accept
+    let rMinX = coords[0][0], rMaxX = coords[0][0], rMinY = coords[0][1], rMaxY = coords[0][1];
+    for (let i = 1; i < coords.length; i++) {
+      const x = coords[i][0], y = coords[i][1];
+      if (x < rMinX) rMinX = x;
+      if (x > rMaxX) rMaxX = x;
+      if (y < rMinY) rMinY = y;
+      if (y > rMaxY) rMaxY = y;
+    }
+    if (rMaxX < minX || rMinX > maxX || rMaxY < minY || rMinY > maxY) {
+      continue;
+    }
+    if (rMinX >= minX && rMaxX <= maxX && rMinY >= minY && rMaxY <= maxY) {
+      if (coords.length >= minRun) out.push(coords.slice());
+      continue;
+    }
+
     let run: Array<[number, number]> = [];
     const flush = () => {
       if (run.length >= minRun) out.push(run.slice());
@@ -244,6 +262,27 @@ export function clipLineRunsToBboxWithIds(
   runs.forEach((coords, ri) => {
     if (!coords || coords.length < 2) return;
     const ids = endpointIds && endpointIds[ri] ? endpointIds[ri] : {};
+
+    // Fast bounding box reject / accept
+    let rMinX = coords[0][0], rMaxX = coords[0][0], rMinY = coords[0][1], rMaxY = coords[0][1];
+    for (let i = 1; i < coords.length; i++) {
+      const x = coords[i][0], y = coords[i][1];
+      if (x < rMinX) rMinX = x;
+      if (x > rMaxX) rMaxX = x;
+      if (y < rMinY) rMinY = y;
+      if (y > rMaxY) rMaxY = y;
+    }
+    if (rMaxX < minX || rMinX > maxX || rMaxY < minY || rMinY > maxY) {
+      return;
+    }
+    if (rMinX >= minX && rMaxX <= maxX && rMinY >= minY && rMaxY <= maxY) {
+      if (coords.length >= minRun) {
+        outRuns.push(coords.slice());
+        outIds.push({ start: ids.start, end: ids.end });
+      }
+      return;
+    }
+
     const origStart = coords[0];
     const origEnd = coords[coords.length - 1];
     let run: Array<[number, number]> = [];

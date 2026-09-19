@@ -550,6 +550,103 @@ select:-webkit-autofill:focus {
   color: #b45309 !important;
 }
 
+/* ============================================================
+   MAPLIBRE GL POPUP SYSTEM DESIGN CARD BOX STYLING
+   ============================================================ */
+.maplibregl-popup {
+  z-index: 1000 !important;
+}
+
+.maplibregl-popup-content {
+  background: var(--bg-card, #0f172a) !important;
+  color: var(--text-primary, #f1f5f9) !important;
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.12)) !important;
+  border-radius: 12px !important;
+  box-shadow: var(--card-shadow, 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5)) !important;
+  padding: 0 !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+  overflow: hidden !important;
+}
+
+.maplibregl-popup-anchor-top .maplibregl-popup-tip,
+.maplibregl-popup-anchor-top-left .maplibregl-popup-tip,
+.maplibregl-popup-anchor-top-right .maplibregl-popup-tip {
+  border-bottom-color: var(--bg-card, #0f172a) !important;
+}
+.maplibregl-popup-anchor-bottom .maplibregl-popup-tip,
+.maplibregl-popup-anchor-bottom-left .maplibregl-popup-tip,
+.maplibregl-popup-anchor-bottom-right .maplibregl-popup-tip {
+  border-top-color: var(--bg-card, #0f172a) !important;
+}
+.maplibregl-popup-anchor-left .maplibregl-popup-tip {
+  border-right-color: var(--bg-card, #0f172a) !important;
+}
+.maplibregl-popup-anchor-right .maplibregl-popup-tip {
+  border-left-color: var(--bg-card, #0f172a) !important;
+}
+
+/* Styled close button that matches system design */
+.maplibregl-popup-close-button {
+  top: 7px !important;
+  right: 7px !important;
+  width: 22px !important;
+  height: 22px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-radius: 6px !important;
+  color: var(--text-muted, #94a3b8) !important;
+  font-size: 15px !important;
+  font-weight: 400 !important;
+  line-height: 1 !important;
+  border: none !important;
+  background: transparent !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease !important;
+  padding: 0 !important;
+  z-index: 20 !important;
+  outline: none !important;
+}
+
+.maplibregl-popup-close-button:hover {
+  background: var(--bg-inner, rgba(255, 255, 255, 0.1)) !important;
+  color: var(--text-primary, #ffffff) !important;
+}
+
+/* Light mode overrides for MapLibre popups */
+.light-mode .maplibregl-popup-content {
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #e2e8f0 !important;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1) !important;
+}
+
+.light-mode .maplibregl-popup-anchor-top .maplibregl-popup-tip,
+.light-mode .maplibregl-popup-anchor-top-left .maplibregl-popup-tip,
+.light-mode .maplibregl-popup-anchor-top-right .maplibregl-popup-tip {
+  border-bottom-color: #ffffff !important;
+}
+.light-mode .maplibregl-popup-anchor-bottom .maplibregl-popup-tip,
+.light-mode .maplibregl-popup-anchor-bottom-left .maplibregl-popup-tip,
+.light-mode .maplibregl-popup-anchor-bottom-right .maplibregl-popup-tip {
+  border-top-color: #ffffff !important;
+}
+.light-mode .maplibregl-popup-anchor-left .maplibregl-popup-tip {
+  border-right-color: #ffffff !important;
+}
+.light-mode .maplibregl-popup-anchor-right .maplibregl-popup-tip {
+  border-left-color: #ffffff !important;
+}
+
+.light-mode .maplibregl-popup-close-button {
+  color: #64748b !important;
+}
+.light-mode .maplibregl-popup-close-button:hover {
+  background: #f1f5f9 !important;
+  color: #0f172a !important;
+}
+
 /* ==========================================================================
    MINIMAL & CLEAN GLOBAL SCROLLBAR SYSTEM
    ========================================================================== */

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   computePlanCoverage,
   type LonLat,
@@ -7,6 +7,7 @@ import {
 import type { CoverageWorkerRequest, CoverageWorkerResponse } from '../workers/coverage.worker';
 
 export type CoveragePhase = 'idle' | 'running' | 'done' | 'error';
+export type CoverageScope = 'none' | 'subgrid' | 'all';
 
 export interface CoverageProgress {
   done: number;
@@ -17,6 +18,12 @@ export interface CoverageSegmentationState {
   phase: CoveragePhase;
   progress: CoverageProgress | null;
   coverage: PlanCoverage | null;
+  activeScope: CoverageScope;
+  activeSubgridId: string | null;
+  subgridResults: Record<string, PlanCoverage>;
+  segmentSubgrid: (subgridId: string, subgridRuns: LonLat[][]) => void;
+  segmentAll: (allRuns: LonLat[][], subgridPlans?: Array<{ subgrid: string; planRuns: LonLat[][] }>) => void;
+  clear: () => void;
 }
 
 /** Plan networks at/below this many runs are classified inline (fast enough
@@ -41,67 +48,133 @@ function getCoverageWorker(): Worker | null {
 }
 
 export interface UseCoverageSegmentationInput {
-  planRuns: LonLat[][];
   capturedTracks: LonLat[][];
   toleranceM: number;
-  enabled: boolean;
 }
 
 /**
- * Off-thread road-plan coverage segmentation. Small networks (and
- * environments without workers: tests, CSP) classify inline so behavior is
- * identical; large networks are posted to the `coverage` worker, which streams
- * run-by-run progress for the map's progress popup. Results are cached per
- * input so toggling the overlay off/on never recomputes.
+ * On-demand road-plan coverage segmentation. Does NOT auto-run on plan open.
+ * Only executes when a specific subgrid is clicked (segmentSubgrid) or when
+ * the user explicitly triggers "Segment all" (segmentAll).
+ * Results are cached per-subgrid so re-selecting a subgrid is instantaneous.
  */
 export function useCoverageSegmentation(
   input: UseCoverageSegmentationInput
 ): CoverageSegmentationState {
-  const { planRuns, capturedTracks, toleranceM, enabled } = input;
+  const { capturedTracks, toleranceM } = input;
 
-  const inputRef = useRef({ planRuns, capturedTracks, toleranceM });
-  inputRef.current = { planRuns, capturedTracks, toleranceM };
+  const inputRef = useRef({ capturedTracks, toleranceM });
+  inputRef.current = { capturedTracks, toleranceM };
 
-  const [state, setState] = useState<CoverageSegmentationState>({
+  const subgridResultsRef = useRef<Record<string, PlanCoverage>>({});
+
+  const [state, setState] = useState<Omit<CoverageSegmentationState, 'segmentSubgrid' | 'segmentAll' | 'clear'>>({
     phase: 'idle',
     progress: null,
-    coverage: null
+    coverage: null,
+    activeScope: 'none',
+    activeSubgridId: null,
+    subgridResults: {}
   });
 
-  /** Last successful result keyed by the exact arrays it was computed from. */
-  const cacheRef = useRef<{
-    runs: LonLat[][];
-    tracks: LonLat[][];
-    coverage: PlanCoverage;
-    progress: CoverageProgress;
-  } | null>(null);
-
-  /** Detaches the active worker request's listeners (started a new one, or
-   *  unmounted). */
+  /** Detaches the active worker request's listeners (started a new one, or unmounted). */
   const cleanupRef = useRef<(() => void) | null>(null);
 
-  const compute = useCallback(() => {
+  const clear = useCallback(() => {
     cleanupRef.current?.();
-    const { planRuns: runs, capturedTracks: tracks, toleranceM: tol } = inputRef.current;
-    if (!Array.isArray(runs) || runs.length === 0) {
-      cacheRef.current = null;
-      setState({ phase: 'idle', progress: null, coverage: null });
+    subgridResultsRef.current = {};
+    setState((prev) => {
+      if (prev.phase === 'idle' && !prev.coverage && Object.keys(prev.subgridResults).length === 0) {
+        return prev;
+      }
+      return {
+        phase: 'idle',
+        progress: null,
+        coverage: null,
+        activeScope: 'none',
+        activeSubgridId: null,
+        subgridResults: {}
+      };
+    });
+  }, []);
+
+  const segmentSubgrid = useCallback((subgridId: string, subgridRuns: LonLat[][]) => {
+    const { capturedTracks: tracks, toleranceM: tol } = inputRef.current;
+    if (subgridResultsRef.current[subgridId]) {
+      const cached = subgridResultsRef.current[subgridId];
+      setState((prev) => ({
+        ...prev,
+        phase: 'done',
+        coverage: cached,
+        activeScope: 'subgrid',
+        activeSubgridId: subgridId
+      }));
       return;
     }
 
-    const progress = {
-      done: runs.length,
-      total: runs.length
+    if (!Array.isArray(subgridRuns) || subgridRuns.length === 0) {
+      const emptyCov: PlanCoverage = { planKm: 0, coveredKm: 0, coveredPct: 0, tracedKm: 0, tracedPct: 0, uncoveredRuns: [] };
+      subgridResultsRef.current = {
+        ...subgridResultsRef.current,
+        [subgridId]: emptyCov
+      };
+      setState((prev) => ({
+        ...prev,
+        phase: 'done',
+        coverage: emptyCov,
+        activeScope: 'subgrid',
+        activeSubgridId: subgridId,
+        subgridResults: subgridResultsRef.current
+      }));
+      return;
+    }
+
+    const cov = computePlanCoverage(subgridRuns, tracks, tol);
+    subgridResultsRef.current = {
+      ...subgridResultsRef.current,
+      [subgridId]: cov
     };
-    const runInline = () => {
-      const coverage = computePlanCoverage(runs, tracks, tol, 10);
-      cacheRef.current = { runs, tracks, coverage, progress };
-      setState({ phase: 'done', progress, coverage });
+    setState((prev) => ({
+      ...prev,
+      phase: 'done',
+      coverage: cov,
+      activeScope: 'subgrid',
+      activeSubgridId: subgridId,
+      subgridResults: subgridResultsRef.current
+    }));
+  }, []);
+
+  const segmentAll = useCallback((allRuns: LonLat[][], subgridPlans?: Array<{ subgrid: string; planRuns: LonLat[][] }>) => {
+    cleanupRef.current?.();
+    const { capturedTracks: tracks, toleranceM: tol } = inputRef.current;
+    if (!Array.isArray(allRuns) || allRuns.length === 0) {
+      return;
+    }
+
+    const onComplete = (coverage: PlanCoverage) => {
+      const newSubgridResults: Record<string, PlanCoverage> = { ...subgridResultsRef.current };
+      if (Array.isArray(subgridPlans)) {
+        subgridPlans.forEach((p) => {
+          if (!newSubgridResults[p.subgrid] && p.planRuns.length > 0) {
+            newSubgridResults[p.subgrid] = computePlanCoverage(p.planRuns, tracks, tol);
+          }
+        });
+      }
+      subgridResultsRef.current = newSubgridResults;
+      setState({
+        phase: 'done',
+        progress: null,
+        coverage,
+        activeScope: 'all',
+        activeSubgridId: null,
+        subgridResults: newSubgridResults
+      });
     };
 
     const worker = getCoverageWorker();
-    if (!worker || runs.length <= INLINE_THRESHOLD_RUNS) {
-      runInline();
+    if (!worker || allRuns.length <= INLINE_THRESHOLD_RUNS) {
+      const coverage = computePlanCoverage(allRuns, tracks, tol);
+      onComplete(coverage);
       return;
     }
 
@@ -111,10 +184,10 @@ export function useCoverageSegmentation(
       worker.removeEventListener('error', onError);
     };
     const onError = () => {
-      // The worker may be wedged — force a fresh one next time and run inline.
       cleanup();
       coverageWorker = null;
-      runInline();
+      const coverage = computePlanCoverage(allRuns, tracks, tol);
+      onComplete(coverage);
     };
     const onMessage = (evt: MessageEvent<CoverageWorkerResponse>) => {
       const data = evt.data;
@@ -123,13 +196,12 @@ export function useCoverageSegmentation(
         setState((prev) => ({ ...prev, progress: { done: data.done, total: data.total } }));
         return;
       }
-      // Final reply (ok or error): the request is finished either way.
       cleanup();
       if (data.status === 'ok') {
-        cacheRef.current = { runs, tracks, coverage: data.coverage, progress };
-        setState({ phase: 'done', progress, coverage: data.coverage });
+        onComplete(data.coverage);
       } else {
-        runInline();
+        const coverage = computePlanCoverage(allRuns, tracks, tol);
+        onComplete(coverage);
       }
     };
 
@@ -137,28 +209,9 @@ export function useCoverageSegmentation(
     worker.addEventListener('error', onError);
     cleanupRef.current = cleanup;
     setState((prev) => ({ ...prev, phase: 'running', progress: null }));
-    const request: CoverageWorkerRequest = { id, planRuns: runs, capturedTracks: tracks, toleranceM: tol };
+    const request: CoverageWorkerRequest = { id, planRuns: allRuns, capturedTracks: tracks, toleranceM: tol };
     worker.postMessage(request);
   }, []);
-
-  useEffect(() => {
-    if (!enabled) {
-      cleanupRef.current?.();
-      setState({ phase: 'idle', progress: null, coverage: null });
-      return;
-    }
-    // Re-showing the overlay with unchanged inputs restores the cached result.
-    const cached = cacheRef.current;
-    if (
-      cached &&
-      cached.runs === planRuns &&
-      cached.tracks === capturedTracks
-    ) {
-      setState({ phase: 'done', progress: cached.progress, coverage: cached.coverage });
-      return;
-    }
-    compute();
-  }, [enabled, planRuns, capturedTracks, compute]);
 
   useEffect(() => {
     return () => {
@@ -167,5 +220,13 @@ export function useCoverageSegmentation(
     };
   }, []);
 
-  return state;
+  return useMemo(
+    () => ({
+      ...state,
+      segmentSubgrid,
+      segmentAll,
+      clear
+    }),
+    [state, segmentSubgrid, segmentAll, clear]
+  );
 }
