@@ -27,7 +27,7 @@ import {
   MALAYSIA_DISTRICTS,
   DISTRICT_STATES,
   districtsToGeoJSON,
-  clipLineStringsToDistricts,
+  clipLineStringsToDistrictsWithIds,
   linesLengthKm,
   ensureDistrictGeometriesLoaded,
   isDistrictGeometriesLoaded,
@@ -37,22 +37,25 @@ import { RoadAnalysisMap } from './roadAnalysis/RoadAnalysisMap';
 import type { RoadTraceApi } from './roadAnalysis/RoadAnalysisMap';
 import { RoadImportPanel, type ImportPreview } from './roadAnalysis/RoadImportPanel';
 import { RoadAnalysisPrintPanel } from './roadAnalysis/RoadAnalysisPrintPanel';
-import { RoadCatalogPanel, RoadAttributeTableDrawer, type SystemLayerStyles } from './roadAnalysis/RoadCatalogPanel';
+import { RoadCatalogPanel, RoadAttributeTableDrawer, resolveLayerFeatures, type SystemLayerStyles } from './roadAnalysis/RoadCatalogPanel';
 import type { CatalogVectorLayer } from '../utils/gisImportParser';
+import {
+  saveCatalogLayerGeometries,
+  loadCatalogLayerGeometries,
+  deleteCatalogLayerGeometry
+} from '../utils/catalogGeometryStore';
 import { getRoadExtractionAdapter, type ExtractedRoadLine } from '../services/roadExtraction';
-import { parseRoadPlanFile, extractLineRuns } from '../utils/roadPlanParser';
+import { parseRoadPlanFile, extractLineRunsWithIds } from '../utils/roadPlanParser';
 import { extractPanotrackPoints, filterPanotrackByDistricts } from '../utils/panotrackExtractor';
 import { pathLengthLngLatKm } from '../utils/geo';
 import {
   computeSubgridMetrics,
-  connectRunsByEndpoints,
-  PLAN_ENDPOINT_SNAP_M,
-  PLAN_TJUNCTION_SNAP_M,
   type SubgridMetric,
   type SubgridRelationNotice
 } from '../utils/subgridComparison';
 import { buildTracePlans } from '../utils/roadNetworkTrace';
 import { useRoadTraceRunner } from '../hooks/useRoadTraceRunner';
+import { useRoadPlanStitcher } from '../hooks/useRoadPlanStitcher';
 import { extractSubgridName } from '../utils/subgrid';
 import {
   saveRoadAnalysisStateToSupabase,
@@ -117,6 +120,9 @@ export interface RoadAnalysisSavedState {
   systemStyles?: SystemLayerStyles;
   planDistanceKm?: number;
   totalSubgrids?: number;
+  /** Catalog layer currently promoted to the Option B plan, if any. Persisted so
+   *  the Plan Source panel can label the plan "Added from data catalog". */
+  catalogPlanLayerId?: string | null;
   /** Cache schema version, bumped whenever the stored shape changes. */
   schemaVersion?: number;
   /** True once this snapshot has been pushed to Supabase. */
@@ -205,16 +211,22 @@ export function persistRoadAnalysisCache(userKey: string, state: RoadAnalysisSav
     };
     // Guard: a full-country GeoJSON snapshot must never be JSON.stringify'd
     // synchronously on the main thread (freeze) or thrown at the localStorage
-    // quota. Oversized catalog geometry is cached without its coordinates.
-    const { layers, dropped, totalBytes } = prepareCatalogLayersForPersistence(merged.catalogLayers);
+    // quota. Oversized catalog geometry is cached WITHOUT its coordinates in
+    // localStorage — but its serialized `geojsonJson` bytes are mirrored to
+    // IndexedDB (large quota, cheap string writes) so the geometry survives a
+    // reload and can be rehydrated back onto the layer at startup.
+    const originalLayers = Array.isArray(merged.catalogLayers) ? merged.catalogLayers : undefined;
+    const { layers, dropped, totalBytes } = prepareCatalogLayersForPersistence(originalLayers);
     if (Array.isArray(merged.catalogLayers)) {
       merged.catalogLayers = layers;
       merged.catalogGeometryDropped = dropped;
     }
+    // Fire-and-forget: never block the paint path on an async DB write.
+    saveCatalogLayerGeometries(userKey, originalLayers).catch(() => {});
     if (dropped) {
       console.warn(
-        `[RoadAnalysis] Catalog geometry (~${(totalBytes / 1024 / 1024).toFixed(1)} MB) exceeds the local cache budget; ` +
-          'geometry was not persisted. The layer still renders until the page reloads — re-import it to restore geometry.'
+        `[RoadAnalysis] Catalog geometry (~${(totalBytes / 1024 / 1024).toFixed(1)} MB) exceeds the localStorage budget; ` +
+          'coordinates were mirrored to IndexedDB and remain available after a reload.'
       );
     }
     localStorage.setItem(
@@ -252,15 +264,18 @@ export function prepareCatalogLayersForPersistence(
   const source = Array.isArray(layers) ? layers : [];
   let totalBytes = 0;
   for (const l of source) {
-    if (!l.geojson) continue; // already stripped or no geometry
-    if (l.geometryBytes !== undefined) totalBytes += l.geometryBytes;
-    else totalBytes += JSON.stringify(l.geojson).length;
+    if (l.geometryBytes !== undefined) {
+      totalBytes += l.geometryBytes;
+      continue;
+    }
+    if (l.geojson) totalBytes += JSON.stringify(l.geojson).length;
+    else if (l.geojsonJson) totalBytes += l.geojsonJson.length * 2;
   }
   if (totalBytes <= CATALOG_GEOMETRY_PERSIST_LIMIT_BYTES) {
     return { layers, totalBytes, dropped: false };
   }
   const stripped = source.map((l) =>
-    l.geojson ? { ...l, geojson: undefined, geometryDropped: true } : l
+    l.geojson || l.geojsonJson ? { ...l, geojson: undefined, geojsonJson: undefined, geometryDropped: true } : l
   );
   return { layers: stripped, totalBytes, dropped: true };
 }
@@ -283,6 +298,9 @@ export function mirrorRoadAnalysisToCache(userKey: string, state: RoadAnalysisSa
         updatedAt: cloudUpdatedAt
       })
     );
+    // Mirror heavy layer bytes to IndexedDB too (the localStorage snapshot above
+    // strips oversized geometry like persistRoadAnalysisCache does).
+    saveCatalogLayerGeometries(userKey, Array.isArray(state.catalogLayers) ? state.catalogLayers : undefined).catch(() => {});
   } catch {
     // ignore quota / serialization errors
   }
@@ -426,6 +444,10 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
   });
   const [focusBbox, setFocusBbox] = useState<[number, number, number, number] | null>(null);
   const [activePlanName, setActivePlanName] = useState<string>('');
+  const [catalogPlanLayerId, setCatalogPlanLayerId] = useState<string | null>(() => {
+    const saved = loadRoadAnalysisState(userKey);
+    return saved?.catalogPlanLayerId || null;
+  });
   const [activeTableLayer, setActiveTableLayer] = useState<CatalogVectorLayer | null>(null);
   const [selectedTableFeature, setSelectedTableFeature] = useState<any | null>(null);
   const [, setGeometriesLoaded] = useState(() => isDistrictGeometriesLoaded());
@@ -439,6 +461,32 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
       setSelectedTableFeature(null);
     }
   }, [catalogLayers, activeTableLayer]);
+
+  // Rehydrate heavy catalog-layer geometry from IndexedDB after a reload. The
+  // localStorage snapshot strips oversized `geojsonJson` (quota + stringify
+  // freeze), so those layers load as `geometryDropped` — this effect pulls the
+  // mirrored bytes back and clears the flag, making reloads render as before.
+  useEffect(() => {
+    let cancelled = false;
+    if (!catalogLayers.some((l) => l.geometryDropped)) return;
+    loadCatalogLayerGeometries(userKey)
+      .then((geometryByLayerId) => {
+        if (cancelled || geometryByLayerId.size === 0) return;
+        setCatalogLayers((prev) => {
+          if (!prev.some((l) => l.geometryDropped)) return prev;
+          return prev.map((l) => {
+            if (!l.geometryDropped) return l;
+            const geojsonJson = geometryByLayerId.get(l.id);
+            if (!geojsonJson) return l;
+            return { ...l, geojsonJson, geometryDropped: false };
+          });
+        });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [catalogLayers, userKey]);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [activeDetailNotice, setActiveDetailNotice] = useState<SubgridRelationNotice | null>(null);
   const [allocationSearch, setAllocationSearch] = useState('');
@@ -709,11 +757,26 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
       if (Array.isArray(remoteState.selectedDistrictIds)) setSelectedDistrictIds(remoteState.selectedDistrictIds);
       if (!preferLocal && remoteState.planSource) setPlanSource(remoteState.planSource);
       if (!preferLocal && remoteState.manualGeoJson !== undefined) setManualGeoJson(remoteState.manualGeoJson);
+      if (!preferLocal && remoteState.catalogPlanLayerId) setCatalogPlanLayerId(remoteState.catalogPlanLayerId);
+      if (preferLocal && localCache?.catalogPlanLayerId) setCatalogPlanLayerId(localCache.catalogPlanLayerId);
       setExtractedLines(effectiveExtractedLines);
-      if (Array.isArray(remoteState.catalogLayers)) {
-        setCatalogLayers(preferLocal && Array.isArray(localCache?.catalogLayers) ? localCache.catalogLayers : remoteState.catalogLayers);
-      } else if (Array.isArray(localCache?.catalogLayers)) {
-        setCatalogLayers(localCache.catalogLayers);
+      if (Array.isArray(remoteState.catalogLayers) || Array.isArray(localCache?.catalogLayers)) {
+        const localLayers = Array.isArray(localCache?.catalogLayers) ? localCache.catalogLayers : undefined;
+        const remoteLayers = Array.isArray(remoteState.catalogLayers) ? remoteState.catalogLayers : undefined;
+        let chosen = preferLocal && localLayers
+          ? localLayers
+          : remoteLayers || localLayers || [];
+        // The local cache strips oversized geometry (`geometryDropped`). When the
+        // cloud snapshot (or a newer local edit) still carries the serialized
+        // bytes, graft them back so a reload restores rendering instead of a
+        // geometry-less catalog row.
+        chosen = chosen.map((l) => {
+          if (l.geojson || l.geojsonJson) return l;
+          const donor = (remoteLayers || []).concat(localLayers || []).find((o) => o.id === l.id && (o.geojsonJson || o.geojson));
+          if (!donor) return l;
+          return { ...l, geojson: donor.geojson, geojsonJson: donor.geojsonJson, geometryDropped: false };
+        });
+        setCatalogLayers(chosen);
       }
       if (remoteState.systemStyles) {
         setSystemStyles(preferLocal && localCache?.systemStyles ? localCache.systemStyles : remoteState.systemStyles);
@@ -754,6 +817,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
       if (Array.isArray(saved.selectedDistrictIds)) setSelectedDistrictIds(saved.selectedDistrictIds);
       if (saved.planSource) setPlanSource(saved.planSource);
       if (saved.manualGeoJson !== undefined) setManualGeoJson(saved.manualGeoJson);
+      if (saved.catalogPlanLayerId) setCatalogPlanLayerId(saved.catalogPlanLayerId);
       if (Array.isArray(saved.extractedLines)) setExtractedLines(saved.extractedLines);
       if (Array.isArray(saved.catalogLayers)) setCatalogLayers(saved.catalogLayers);
       if (saved.systemStyles) setSystemStyles(saved.systemStyles);
@@ -821,6 +885,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
         extractedLines,
         catalogLayers,
         systemStyles,
+        catalogPlanLayerId,
         ...partial
       });
     },
@@ -835,7 +900,8 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
       manualGeoJson,
       extractedLines,
       catalogLayers,
-      systemStyles
+      systemStyles,
+      catalogPlanLayerId
     ]
   );
 
@@ -991,30 +1057,33 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
   const capturedDistanceKm = masterlistTotalKm;
 
   const extractedRuns = useMemo(
-    () => clipLineStringsToDistricts(extractedLines, selectedDistricts),
+    () => clipLineStringsToDistrictsWithIds(extractedLines, selectedDistricts),
     [extractedLines, selectedDistricts]
   );
 
   const manualRuns = useMemo(
-    () => (planSource === 'manual' ? extractLineRuns(manualGeoJson) : []),
+    () =>
+      planSource === 'manual'
+        ? extractLineRunsWithIds(manualGeoJson)
+        : { runs: [], endpointIds: [] },
     [planSource, manualGeoJson]
   );
 
-  const extractedLengthKm = useMemo(() => linesLengthKm(extractedRuns), [extractedRuns]);
+  const extractedLengthKm = useMemo(() => linesLengthKm(extractedRuns.runs), [extractedRuns]);
 
-  // Runs currently used as the plan (for map rendering and guards). Endpoints
-  // within the snap tolerance are stitched into a shared node so OSM ways that
-  // were split at junctions / clipped at borders render as one continuous
-  // topology instead of a row of loose line ends.
-  const activePlanRuns = useMemo(() => {
-    if (planSource === 'extracted') {
-      return connectRunsByEndpoints(extractedRuns, PLAN_ENDPOINT_SNAP_M, PLAN_TJUNCTION_SNAP_M, true);
-    }
-    if (planSource === 'manual') {
-      return connectRunsByEndpoints(manualRuns, PLAN_ENDPOINT_SNAP_M, PLAN_TJUNCTION_SNAP_M, true);
-    }
-    return [];
+  // Runs currently used as the plan (for map rendering and guards). When the
+  // source data carries per-run endpoint node ids (`startNode`/`endNode`) the
+  // stitch joins runs by node identity first, then unifies any remaining
+  // nearby endpoints into a shared node. Large plans are stitched off the UI
+  // thread so OSM ways that were split at junctions / clipped at borders
+  // render as one continuous topology without freezing the page.
+  const roadPlanInput = useMemo(() => {
+    if (planSource === 'extracted') return extractedRuns;
+    if (planSource === 'manual') return manualRuns;
+    return { runs: [], endpointIds: [] };
   }, [planSource, extractedRuns, manualRuns]);
+
+  const { runs: activePlanRuns } = useRoadPlanStitcher(roadPlanInput);
 
   // Plan length is measured PER run (each disconnected road segment summed
   // independently). Flattening the runs into one array and measuring
@@ -1022,7 +1091,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
   // and the start of the next, inflating the plan length enormously.
   const planDistanceKm = useMemo(() => {
     if (planSource === 'extracted') return extractedLengthKm;
-    if (planSource === 'manual') return linesLengthKm(manualRuns);
+    if (planSource === 'manual') return linesLengthKm(manualRuns.runs);
     return 0;
   }, [planSource, extractedLengthKm, manualRuns]);
 
@@ -1165,6 +1234,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
       extractedLines,
       catalogLayers,
       systemStyles,
+      catalogPlanLayerId,
       planDistanceKm: Number(planDistanceKm) || 0,
       totalSubgrids: subgridMetrics.length || 0,
       updatedAt: new Date().toISOString(),
@@ -1231,6 +1301,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
     planDistanceKm,
     subgridMetrics.length,
     userKey,
+    catalogPlanLayerId,
     currentFingerprint,
     addNotification,
     addAuditLog
@@ -1340,11 +1411,19 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
       // immediately, so we only ever store/render/persist the road runs that
       // actually fall inside the region. This keeps the saved payload small
       // enough to persist to Supabase / localStorage reliably.
-      const clippedRuns = clipLineStringsToDistricts(result.lines, selectedDistricts);
-      const clippedLines: ExtractedRoadLine[] = clippedRuns.map((run, i) => ({
+      const clipped = clipLineStringsToDistrictsWithIds(result.lines, selectedDistricts);
+      const clippedLines: ExtractedRoadLine[] = clipped.runs.map((run, i) => ({
         id: `clip-${i}`,
         coordinates: run,
-        highway: 'extracted'
+        highway: 'extracted',
+        startNode:
+          typeof clipped.endpointIds[i]?.start === 'number'
+            ? (clipped.endpointIds[i].start as number)
+            : undefined,
+        endNode:
+          typeof clipped.endpointIds[i]?.end === 'number'
+            ? (clipped.endpointIds[i].end as number)
+            : undefined
       }));
 
       setExtractedLines(clippedLines);
@@ -1358,7 +1437,8 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
         mapBasemap,
         showRoadLines: true,
         manualGeoJson,
-        extractedLines: clippedLines
+        extractedLines: clippedLines,
+        catalogPlanLayerId
       });
       if (clippedLines.length === 0) {
         setExtractError(
@@ -1371,7 +1451,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
     } finally {
       setExtracting(false);
     }
-  }, [regionGeo, selectedDistricts, userKey, activeTab, selectedStateCode, selectedDistrictIds, mapBasemap, manualGeoJson]);
+  }, [regionGeo, selectedDistricts, userKey, activeTab, selectedStateCode, selectedDistrictIds, mapBasemap, manualGeoJson, catalogPlanLayerId]);
 
   const handleRefresh = useCallback(() => {
     setIsRefreshing(true);
@@ -1395,6 +1475,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
         format: result.format.toUpperCase(),
         count: result.featureCount
       });
+      setCatalogPlanLayerId(null);
       setPlanSource('manual');
       setShowRoadLines(true);
       persistRoadAnalysisCache(userKey, {
@@ -1405,7 +1486,8 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
         mapBasemap,
         showRoadLines: true,
         manualGeoJson: result.geojson,
-        extractedLines
+        extractedLines,
+        catalogPlanLayerId: null
       });
     } catch (err: any) {
       setManualError(err?.message || 'Failed to parse file. For Shapefile, please upload a .zip containing .shp, .dbf, and .shx.');
@@ -1430,6 +1512,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
       } else {
         nextManual = null;
         setManualFileMeta(null);
+        setCatalogPlanLayerId(null);
         if (nextPlan === 'manual') nextPlan = 'system';
       }
 
@@ -1445,11 +1528,12 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
         mapBasemap,
         showRoadLines: false,
         manualGeoJson: nextManual,
-        extractedLines: nextExtracted
+        extractedLines: nextExtracted,
+        catalogPlanLayerId: target === 'manual' ? null : catalogPlanLayerId
       });
       setHasUnsavedEdits(true);
     },
-    [userKey, extractedLines, manualGeoJson, planSource, selectedStateCode, selectedDistrictIds, mapBasemap]
+    [userKey, extractedLines, manualGeoJson, planSource, selectedStateCode, selectedDistrictIds, mapBasemap, catalogPlanLayerId]
   );
 
   // Live Original-vs-Clipped overlay while the Import tab reviews an oversized file.
@@ -1473,7 +1557,8 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
           manualGeoJson,
           extractedLines,
           catalogLayers: next,
-          systemStyles
+          systemStyles,
+          catalogPlanLayerId
         });
         return next;
       });
@@ -1500,6 +1585,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
       manualGeoJson,
       extractedLines,
       systemStyles,
+      catalogPlanLayerId,
       addNotification
     ]
   );
@@ -1519,7 +1605,8 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
           manualGeoJson,
           extractedLines,
           catalogLayers: next,
-          systemStyles
+          systemStyles,
+          catalogPlanLayerId
         });
         return next;
       });
@@ -1535,13 +1622,15 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
       showRoadLines,
       manualGeoJson,
       extractedLines,
-      systemStyles
+      systemStyles,
+      catalogPlanLayerId
     ]
   );
 
   const handleRemoveCatalogLayer = useCallback(
     (layerId: string) => {
       setActiveTableLayer((prev) => (prev?.id === layerId ? null : prev));
+      if (catalogPlanLayerId === layerId) setCatalogPlanLayerId(null);
       setCatalogLayers((prev) => {
         const next = prev.filter((l) => l.id !== layerId);
         persistRoadAnalysisCache(userKey, {
@@ -1554,8 +1643,10 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
           manualGeoJson,
           extractedLines,
           catalogLayers: next,
-          systemStyles
+          systemStyles,
+          catalogPlanLayerId: catalogPlanLayerId === layerId ? null : catalogPlanLayerId
         });
+        deleteCatalogLayerGeometry(userKey, layerId).catch(() => {});
         return next;
       });
       setHasUnsavedEdits(true);
@@ -1570,7 +1661,8 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
       showRoadLines,
       manualGeoJson,
       extractedLines,
-      systemStyles
+      systemStyles,
+      catalogPlanLayerId
     ]
   );
 
@@ -1580,11 +1672,39 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
 
   const handleSetAsActivePlan = useCallback(
     (layer: CatalogVectorLayer) => {
-      if (!layer.geojson) return;
-      setManualGeoJson(layer.geojson);
+      // Heavy imported layers carry only serialized `geojsonJson` (no `.geojson`).
+      // Resolve whichever geometry is present so the promotion works for both.
+      const sourceGeoJson =
+        layer.geojson || resolveLayerFeatures(layer)?.geojson;
+      if (!sourceGeoJson) return;
+      // Keep only the LineString runs: the plan rendering + distance math only
+      // need lines, and a compact payload persists within the localStorage budget
+      // instead of re-serializing multi-MB full feature geometry. Start/end node
+      // ids found on the source (OSM node refs / GIS node fields) are kept on
+      // each feature so the identity-based stitching pass survives persistence.
+      const { runs, endpointIds } = extractLineRunsWithIds(sourceGeoJson);
+      const compactPlan = {
+        type: 'FeatureCollection' as const,
+        features: runs
+          .filter((r) => r.length >= 2)
+          .map((coords, i) => {
+            const ids = endpointIds[i] || {};
+            const properties: Record<string, unknown> = {};
+            if (ids.start != null) properties.startNode = ids.start;
+            if (ids.end != null) properties.endNode = ids.end;
+            return {
+              type: 'Feature',
+              properties,
+              geometry: { type: 'LineString', coordinates: coords }
+            };
+          })
+      };
+      if (compactPlan.features.length === 0) return;
+      setManualGeoJson(compactPlan);
       setPlanSource('manual');
       setShowRoadLines(true);
       setActivePlanName(layer.name);
+      setCatalogPlanLayerId(layer.id);
       persistRoadAnalysisCache(userKey, {
         activeTab,
         selectedStateCode,
@@ -1592,10 +1712,11 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
         planSource: 'manual',
         mapBasemap,
         showRoadLines: true,
-        manualGeoJson: layer.geojson,
+        manualGeoJson: compactPlan,
         extractedLines,
         catalogLayers,
-        systemStyles
+        systemStyles,
+        catalogPlanLayerId: layer.id
       });
       setHasUnsavedEdits(true);
       addNotification?.({
@@ -1841,7 +1962,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                           <div className="flex items-center gap-1.5 truncate">
                             <ScanLine size={13} className="shrink-0" />
                             <span className="truncate">
-                              {extractedRuns.length} road segment(s) · {extractedLengthKm.toFixed(2)} km
+                              {extractedRuns.runs.length} road segment(s) · {extractedLengthKm.toFixed(2)} km
                             </span>
                           </div>
                           <div className="flex items-center gap-2 shrink-0">
@@ -1919,7 +2040,11 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                           <div className="flex items-center gap-1.5 truncate">
                             <FileJson size={13} className="shrink-0" />
                             <span className="truncate">
-                              {manualFileMeta ? `${manualFileMeta.filename} (${manualFileMeta.format})` : 'Road-plan LineString loaded'}
+                              {catalogPlanLayerId
+                                ? `Added from data catalog — ${activePlanName || catalogLayers.find((l) => l.id === catalogPlanLayerId)?.name || 'catalog layer'}`
+                                : manualFileMeta
+                                  ? `${manualFileMeta.filename} (${manualFileMeta.format})`
+                                  : 'Road-plan LineString loaded'}
                             </span>
                           </div>
                           <div className="flex items-center gap-1.5 shrink-0">

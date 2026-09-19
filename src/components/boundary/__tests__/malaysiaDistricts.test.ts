@@ -7,6 +7,7 @@ import {
   pointInDistricts,
   groupMalaysiaDistricts,
   clipLineStringsToDistricts,
+  clipLineStringsToDistrictsWithIds,
   linesLengthKm,
   ensureDistrictGeometriesLoaded,
   buildDefaultProjectBoundary
@@ -133,6 +134,43 @@ describe('road line clipping', () => {
     const jb = findDistrictByName('Johor Bahru', 'JHR')!
     const line = { coordinates: [[101.68, 3.13], [101.7, 3.14]] as Array<[number, number]> } // KL, not JB
     expect(clipLineStringsToDistricts([line], [jb])).toEqual([])
+  })
+
+  it('preserves start/end node ids when a fragment keeps the original terminal', () => {
+    const kl = findDistrictByName('W.P. Kuala Lumpur', 'KUL')!
+    const line = {
+      coordinates: [
+        [101.68, 3.13],
+        [101.70, 3.14],
+        [101.72, 3.15],
+        [101.9, 3.3]
+      ] as Array<[number, number]>,
+      startNode: 11,
+      endNode: 22
+    }
+    const { runs, endpointIds } = clipLineStringsToDistrictsWithIds([line], [kl])
+    expect(runs.length).toBe(1)
+    // The run keeps the original start vertex (id 11) but ends at a boundary
+    // cut whose inserted vertex has no node id.
+    expect(endpointIds[0]).toEqual({ start: 11 })
+  })
+
+  it('drops the start id at a boundary cut but keeps the end id at the original terminal', () => {
+    const jb = findDistrictByName('Johor Bahru', 'JHR')!
+    const line = {
+      coordinates: [
+        [103.5, 1.5],
+        [103.83, 1.55],
+        [103.9, 1.6]
+      ] as Array<[number, number]>,
+      startNode: 7,
+      endNode: 8
+    }
+    // First vertex is outside JB: the surviving run starts at the cut vertex
+    // (no id) but still ends at the original terminal, keeping id 8.
+    const { runs, endpointIds } = clipLineStringsToDistrictsWithIds([line], [jb])
+    expect(runs.length).toBe(1)
+    expect(endpointIds[0]).toEqual({ end: 8 })
   })
 
   it('line length grows with distance and drops isolated inside points', () => {

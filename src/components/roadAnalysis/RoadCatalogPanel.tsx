@@ -134,10 +134,33 @@ export function getSliderStyle(color?: string): React.CSSProperties {
 }
 
 /**
+ * Resolves a layer's FeatureCollection for tabular use.
+ *
+ * Layers imported normally keep the parsed `geojson` object. Heavy imports
+ * drop the object and instead carry `geojsonJson` (serialized FeatureCollection
+ * bytes) to keep the structured clone cheap — so parse it lazily here and memoize
+ * the result keyed by the exact serialized string to avoid re-parsing on re-render.
+ */
+const parsedFeatureCache = new Map<string, { geojson: any; features: any[] }>();
+
+export function resolveLayerFeatures(
+  layer: CatalogVectorLayer
+): { geojson: any; features: any[] } | null {
+  if (layer.geojson?.features) return { geojson: layer.geojson, features: layer.geojson.features };
+  if (!layer.geojsonJson) return null;
+  const cached = parsedFeatureCache.get(layer.geojsonJson);
+  if (cached) return cached;
+  const parsed = JSON.parse(layer.geojsonJson);
+  const data = { geojson: parsed, features: parsed.features || [] };
+  parsedFeatureCache.set(layer.geojsonJson, data);
+  return data;
+}
+
+/**
  * Exports layer features and properties to a downloaded CSV file.
  */
 export function exportLayerToCsv(layer: CatalogVectorLayer) {
-  const features = layer.geojson?.features || [];
+  const features = resolveLayerFeatures(layer)?.features || [];
   if (features.length === 0) return;
 
   const colSet = new Set<string>();
@@ -196,14 +219,39 @@ export const RoadAttributeTableDrawer: React.FC<RoadAttributeTableDrawerProps> =
   const [drawerHeight, setDrawerHeight] = useState<number>(310);
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [selectedFeatureIndex, setSelectedFeatureIndex] = useState<number | null>(null);
+  const [resolvedData, setResolvedData] = useState<{ geojson: any; features: any[] } | null>(
+    () => (layer.geojson?.features ? { geojson: layer.geojson, features: layer.geojson.features } : null)
+  );
+
+  // Heavy imports carry `geojsonJson` instead of the parsed `geojson` graph.
+  // Parse it deferred (off the click/paint path) so opening the attribute
+  // drawer never freezes the UI; the result is cached by string so re-renders
+  // and the CSV export reuse it without another parse.
+  useEffect(() => {
+    if (layer.geojson?.features) {
+      setResolvedData({ geojson: layer.geojson, features: layer.geojson.features });
+      return;
+    }
+    if (!layer.geojsonJson || resolvedData) return;
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      const data = resolveLayerFeatures(layer);
+      if (!cancelled) setResolvedData(data);
+    }, 0);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layer]);
 
   useEffect(() => {
-    if (!selectedFeature || !layer.geojson?.features) return;
-    const idx = layer.geojson.features.findIndex(
+    if (!selectedFeature || !resolvedData) return;
+    const idx = resolvedData.features.findIndex(
       (f: any) => f === selectedFeature || (f.id !== undefined && f.id === selectedFeature.id)
     );
     if (idx !== -1) setSelectedFeatureIndex(idx);
-  }, [selectedFeature, layer]);
+  }, [selectedFeature, resolvedData]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -235,10 +283,10 @@ export const RoadAttributeTableDrawer: React.FC<RoadAttributeTableDrawerProps> =
   };
 
   const tableData = useMemo(() => {
-    if (!layer || !layer.geojson?.features) {
-      return { columns: [], features: [], totalCount: 0 };
+    if (!resolvedData || resolvedData.features.length === 0) {
+      return { columns: [], features: [], totalCount: 0, ready: false };
     }
-    const features: any[] = layer.geojson.features;
+    const features: any[] = resolvedData.features;
     const colSet = new Set<string>();
 
     for (let i = 0; i < Math.min(features.length, 100); i++) {
@@ -260,8 +308,8 @@ export const RoadAttributeTableDrawer: React.FC<RoadAttributeTableDrawerProps> =
         })
       : features;
 
-    return { columns, features: filteredFeatures, totalCount: features.length };
-  }, [layer, tableSearchQuery]);
+    return { columns, features: filteredFeatures, totalCount: features.length, ready: true };
+  }, [resolvedData, tableSearchQuery]);
 
   return (
     <div
@@ -348,7 +396,12 @@ export const RoadAttributeTableDrawer: React.FC<RoadAttributeTableDrawerProps> =
       </div>
 
       <div className="flex-1 overflow-auto min-h-0">
-        {tableData.columns.length === 0 ? (
+        {layer.geojsonJson && !resolvedData ? (
+          <div className="p-8 flex flex-col items-center justify-center text-center gap-2" style={{ color: 'var(--text-muted)' }}>
+            <div className="w-6 h-6 rounded-full border-2 border-sky-400 border-t-transparent animate-spin" />
+            <span className="text-xs font-medium">Parsing attributes…</span>
+          </div>
+        ) : tableData.columns.length === 0 ? (
           <div className="p-8 flex flex-col items-center justify-center text-center gap-2" style={{ color: 'var(--text-muted)' }}>
             <Table size={28} className="opacity-40" />
             <span className="text-xs font-medium">No tabular attributes found.</span>

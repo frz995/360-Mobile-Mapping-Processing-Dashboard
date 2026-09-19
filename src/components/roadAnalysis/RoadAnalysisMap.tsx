@@ -76,16 +76,36 @@ const PREVIEW_LAYER_IDS = [
  * source off the critical path, so the first committed frame paints before
  * MapLibre ingests the dataset on its worker + main-thread clone.
  */
+/**
+ * Pushes a large catalog layer's geometry into an already-registered geojson
+ * source off the critical path, so the first committed frame paints before
+ * MapLibre ingests the dataset. When the geometry is heavy we hand MapLibre a
+ * blob URL *string* instead of the raw object: maplibre fetches the blob and
+ * parses the JSON in its own web worker, so the 20k-feature / 39 MB graph is
+ * never structured-cloned on the main thread (which is what froze the page).
+ */
 function scheduleCatalogGeometryLoad(
   map: MaplibreMap,
-  pending: Array<{ srcId: string; geojson: any }>
+  pending: Array<{ srcId: string; geojson: any; geojsonJson?: string }>
 ): void {
+  const blobUrls: string[] = [];
   const flush = () => {
-    for (const { srcId, geojson } of pending) {
+    for (const { srcId, geojson, geojsonJson } of pending) {
       const src = map.getSource(srcId);
       if (src && typeof (src as any).setData === 'function') {
-        (src as any).setData(geojson);
+        // Feed MapLibre a blob URL STRING so its geojson worker fetches + parses
+        // the data off the UI thread — a 39 MB graph here would otherwise be
+        // structured-cloned on main. When the worker already serialized the
+        // dataset (heavy layers carry `geojsonJson`), reuse those bytes as-is
+        // instead of re-stringifying the object on the main thread.
+        const json = geojsonJson ? geojsonJson : JSON.stringify(geojson);
+        const url = URL.createObjectURL(new Blob([json], { type: 'application/geo+json' }));
+        blobUrls.push(url);
+        (src as any).setData(url);
       }
+    }
+    if (blobUrls.length > 0 && typeof window.setTimeout === 'function') {
+      window.setTimeout(() => blobUrls.forEach((u) => URL.revokeObjectURL(u)), 20000);
     }
   };
   if (typeof window.requestIdleCallback === 'function') {
@@ -305,7 +325,12 @@ function computeStructuralFingerprint(layers: CatalogVectorLayer[]): string {
         l.geometryType,
         l.showLabels ? '1' : '0',
         l.strokeStyle || 'solid',
-        l.featureCount
+        l.featureCount,
+        // Geometry availability is structural: a layer rehydrated from IndexedDB
+        // (or the cloud) after a reload arrives with `geojsonJson` filled in, and
+        // must trigger a full rebuild so its source actually gets registered and
+        // fed. Style-only edits never flip this bit.
+        l.geojson || l.geojsonJson ? 'g1' : 'g0'
       ].join(':')
     )
     .join('|');
@@ -912,16 +937,16 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
     }
 
     // 3. User Catalog Vector Layers (rendered below baseline lines so road analysis remains clear)
-    const pendingCatalogGeometry: Array<{ srcId: string; geojson: any }> = [];
+    const pendingCatalogGeometry: Array<{ srcId: string; geojson: any; geojsonJson?: string }> = [];
     catalogLayers.forEach((catLayer) => {
-      if (!catLayer.visible || !catLayer.geojson) return;
+      if (!catLayer.visible || (!catLayer.geojson && !catLayer.geojsonJson)) return;
 
       const srcId = `ra-cat-${catLayer.id}`;
       const heavy =
         (catLayer.featureCount ?? 0) >= HEAVY_CATALOG_FEATURE_COUNT ||
         (catLayer.geometryBytes ?? 0) > HEAVY_CATALOG_BYTES;
       map.addSource(srcId, { type: 'geojson', data: heavy ? EMPTY_FC : catLayer.geojson });
-      if (heavy) pendingCatalogGeometry.push({ srcId, geojson: catLayer.geojson });
+      if (heavy) pendingCatalogGeometry.push({ srcId, geojson: catLayer.geojson, geojsonJson: catLayer.geojsonJson });
       addedSourceIdsRef.current.add(srcId);
       dynamicSourcesRef.current.push(srcId);
 
@@ -1333,10 +1358,14 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
         previewFc.features.length >= HEAVY_CATALOG_FEATURE_COUNT ||
         estimateGeometryBytes(previewFc) > HEAVY_CATALOG_BYTES;
       if (heavy) {
-        pendingCatalogGeometry.push({ srcId: PREVIEW_SRC, geojson: previewFc });
+        pendingCatalogGeometry.push({ srcId: PREVIEW_SRC, geojson: previewFc, geojsonJson: preview?.geojsonJson });
       } else {
         (map.getSource(PREVIEW_SRC) as maplibregl.GeoJSONSource | undefined)?.setData(previewFc);
       }
+    } else if (preview?.geojsonJson) {
+      // Heavyweight original previews arrive as serialized bytes (no object
+      // graph on the UI thread). Feed the blob-URL ingest path directly.
+      pendingCatalogGeometry.push({ srcId: PREVIEW_SRC, geojson: previewFc, geojsonJson: preview.geojsonJson });
     }
 
     // Record catalog structural fingerprint so the catalog effect can decide
@@ -1457,9 +1486,12 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
       return;
     }
 
-    // Style-only change → update paint/layout properties in place (no flash)
+    // Style-only change → update paint/layout properties in place (no flash).
+    // Both `geojson` layers and `geojsonJson`-only layers (heavy imports carry
+    // the geometry as serialized bytes) get live paint updates so color/stroke/
+    // opacity sliders respond instantly instead of waiting for a full rebuild.
     for (const catLayer of catalogLayers) {
-      if (!catLayer.geojson) continue;
+      if (!catLayer.geojson && !catLayer.geojsonJson) continue;
       updateCatalogLayerStyle(map, catLayer, `ra-cat-${catLayer.id}`);
     }
   }, [catalogLayers]);

@@ -46,6 +46,12 @@ export interface CatalogVectorLayer {
   name: string;
   format: GisFormat;
   geojson: any;
+  /** Serialized GeoJSON string for heavy layers too large to cross the
+   *  worker→main boundary as an object graph. When present, the map hands this
+   *  string to MapLibre as a blob URL (parsed in MapLibre's own worker), and
+   *  `geojson` is left undefined so the 39 MB graph is never cloned on the UI
+   *  thread. */
+  geojsonJson?: string;
   color: string;
   fillColor?: string;
   fillOpacity?: number; // 0 to 1 (0 = hollow outline only)
@@ -82,6 +88,11 @@ export interface CatalogVectorLayer {
 
 export interface GisImportResult {
   geojson: any;
+  /** Serialized GeoJSON string. For heavyweight datasets (≳1.5 MB serialized)
+   *  the parse worker replaces the 39 MB object graph with this flat string so
+   *  the structured clone back to the main thread is one copy instead of tens of
+   *  thousands of feature objects; consumers pass it to MapLibre as a blob URL. */
+  geojsonJson?: string;
   format: GisFormat;
   filename: string;
   featureCount: number;
@@ -533,6 +544,50 @@ export function parseCsvToGeoJson(csvText: string): any {
 }
 
 /**
+ * Streams every record from a shapefile source into memory, emitting a
+ * throttled progress label (at most ~8/s) so the UI can show a live feature
+ * counter instead of a static stage while a large .shp/.dbf is decoded.
+ */
+async function readShapefileRecords<R>(
+  source: { read: () => Promise<{ done: boolean; value?: R }> },
+  onProgress?: (stage: string) => void,
+  cooperative = false
+): Promise<R[]> {
+  onProgress?.('Reading shapefile records…');
+  const features: R[] = [];
+  let record = await source.read();
+  let lastEmitAt = Date.now();
+  let seen = 0;
+  while (!record.done) {
+    if (record.value) {
+      features.push(record.value);
+    }
+    seen++;
+    if (seen % 200 === 0) {
+      const now = Date.now();
+      if (now - lastEmitAt > 120) {
+        lastEmitAt = now;
+        onProgress?.(`Reading shapefile records… ${seen.toLocaleString()} features`);
+      }
+    }
+    if (cooperative && seen % 400 === 0) {
+      // Yield to the event loop between record batches so the inline fallback
+      // path (used when a worker is unavailable) lets the browser paint and
+      // service input instead of hard-blocking the UI thread for the whole
+      // decode. The worker path never enables this — no yield overhead there.
+      await new Promise<void>((r) => setTimeout(r, 0));
+    }
+    record = await source.read();
+  }
+  return features;
+}
+
+interface DecodeSpatialFileOptions {
+  /** True on the main-thread inline path: yield periodically so the UI stays responsive. */
+  cooperative?: boolean;
+}
+
+/**
  * Decodes a spatial file into a GeoJSON container (worker-safe for the non-XML
  * formats). XML formats (KML/KMZ/GPX and zipped KML archives) need DOMParser,
  * which Web Workers do not provide, so those always execute inline on the main
@@ -541,7 +596,8 @@ export function parseCsvToGeoJson(csvText: string): any {
 export async function decodeSpatialFile(
   file: File,
   warnings: string[],
-  onProgress?: (stage: string) => void
+  onProgress?: (stage: string) => void,
+  options: DecodeSpatialFileOptions = {}
 ): Promise<DecodedSpatialFile> {
   const lowerName = file.name.toLowerCase();
 
@@ -646,15 +702,7 @@ export async function decodeSpatialFile(
         : undefined;
 
       const source = await shapefile.open(shpBuffer, dbfBuffer);
-      onProgress?.('Reading shapefile records…');
-      const features: any[] = [];
-      let record = await source.read();
-      while (!record.done) {
-        if (record.value) {
-          features.push(record.value);
-        }
-        record = await source.read();
-      }
+      const features = await readShapefileRecords(source, onProgress, options.cooperative);
 
       geojson = {
         type: 'FeatureCollection',
@@ -683,14 +731,7 @@ export async function decodeSpatialFile(
     onProgress?.('Reading shapefile records…');
     const source = await shapefile.open(buffer);
 
-    const features: any[] = [];
-    let record = await source.read();
-    while (!record.done) {
-      if (record.value) {
-        features.push(record.value);
-      }
-      record = await source.read();
-    }
+    const features = await readShapefileRecords(source, onProgress, options.cooperative);
 
     geojson = {
       type: 'FeatureCollection',
@@ -773,7 +814,13 @@ export function buildImportResult(
 // Dispatch: Web Worker for large non-XML formats, inline fallback otherwise
 // ---------------------------------------------------------------------------
 
-const WORKER_PARSE_EXT = /\.(geojson|json|shp|csv)$/i;
+// `.zip` is worker-routed too: shapefile archives unzip + decode fully off the
+// UI thread. Only archives that turn out to hold KML/KMZ bounce back to inline
+// (see parseGisImportFile) because workers have no DOMParser.
+const WORKER_PARSE_EXT = /\.(geojson|json|shp|zip|csv)$/i;
+
+/** Thrown by decodeSpatialFile when a worker tries to parse XML. */
+export const WORKER_XML_UNAVAILABLE_ERROR = 'XML parsing is unavailable in this environment.';
 
 /**
  * Hard ceiling on the RAW uploaded file size. Above this the browser is very
@@ -819,16 +866,30 @@ function getImportWorker(): Worker | null {
   return importWorker;
 }
 
-function parseInline(file: File, onProgress?: (stage: string) => void): Promise<GisImportResult> {
+function parseInline(
+  file: File,
+  onProgress?: (stage: string) => void,
+  onTransport?: (mode: 'worker' | 'inline') => void
+): Promise<GisImportResult> {
+  onTransport?.('inline');
   const warnings: string[] = [];
-  return decodeSpatialFile(file, warnings, onProgress).then(({ geojson, format }) =>
+  return decodeSpatialFile(file, warnings, onProgress, { cooperative: true }).then(({ geojson, format }) =>
     buildImportResult(geojson, format, file.name, warnings, onProgress)
   );
 }
 
-async function parseInWorker(file: File, onProgress?: (stage: string) => void, districtsGeo?: any): Promise<GisImportResult> {
+async function parseInWorker(
+  file: File,
+  onProgress?: (stage: string) => void,
+  districtsGeo?: any,
+  onTransport?: (mode: 'worker' | 'inline') => void
+): Promise<GisImportResult> {
   const worker = getImportWorker();
-  if (!worker) return parseInline(file, onProgress);
+  if (!worker) {
+    if (GIS_IMPORT_DEBUG) console.warn('[gisImport] Web Worker unavailable — parsing on the UI thread.');
+    return parseInline(file, onProgress, onTransport);
+  }
+  onTransport?.('worker');
   const target = worker;
   return new Promise<GisImportResult>((resolve, reject) => {
     const id = ++importWorkerCount;
@@ -868,25 +929,59 @@ async function parseInWorker(file: File, onProgress?: (stage: string) => void, d
  * Universal spatial GIS file parser supporting GeoJSON, KML, KMZ, Shapefile
  * (zip or standalone), GPX, and CSV.
  *
- * Large non-XML datasets (GeoJSON, CSV, standalone Shapefile) are parsed in a
- * dedicated Web Worker so the UI never freezes while the file is decoded —
- * INCLUDING the region-aware clip: when `districtsGeo` is supplied, the worker
- * also performs the bbox gate, the polygon clip, and all clipped statistics
- * (`result.regionClip`) off the UI thread. XML formats (KML/KMZ/GPX and zipped
- * archives) always run inline because DOMParser is not available in workers.
- * Falls back to inline parsing automatically when workers are unavailable
- * (e.g. tests, older browsers, or strict CSP).
+ * Large non-XML datasets (GeoJSON, CSV, Shapefile, and .zip archives that
+ * contain a .shp) are parsed in a dedicated Web Worker so the UI never freezes
+ * while the file is decoded — INCLUDING the region-aware clip: when
+ * `districtsGeo` is supplied, the worker also performs the bbox gate, the
+ * polygon clip, and all clipped statistics (`result.regionClip`) off the UI
+ * thread. XML formats (KML/KMZ/GPX) always run inline because DOMParser is not
+ * available in workers; zipped archives that contain KML/KMZ start in the
+ * worker but fall back to inline automatically when the worker reports the
+ * XML-unavailable error. Inline parsing is also used as a fallback when
+ * workers are unavailable (e.g. tests, older browsers, or strict CSP).
  *
  * `onProgress` receives human-readable stage labels (e.g. "Reading file…",
  * "Extracting archive…") as the import advances, on both the worker and the
  * inline path, so the UI can show live status while a large dataset loads.
  */
+const GIS_IMPORT_DEBUG = typeof import.meta !== 'undefined' && !!import.meta.env?.DEV;
+
 export async function parseGisImportFile(
   file: File,
   onProgress?: (stage: string) => void,
-  districtsGeo?: any
+  districtsGeo?: any,
+  onTransport?: (mode: 'worker' | 'inline') => void
 ): Promise<GisImportResult> {
-  return isWorkerParseSupported(file.name)
-    ? parseInWorker(file, onProgress, districtsGeo)
-    : parseInline(file, onProgress);
+  const t0 = performance.now();
+  if (GIS_IMPORT_DEBUG) {
+    console.info(
+      `[gisImport] start ${file.name} ${(file.size / 1024 / 1024).toFixed(1)} MB ` +
+        (districtsGeo ? '(worker clip=on)' : '(clip=off)')
+    );
+  }
+  if (!isWorkerParseSupported(file.name)) {
+    if (GIS_IMPORT_DEBUG) console.warn(`[gisImport] inline (${file.name} not worker-routable)`);
+    return parseInline(file, onProgress, onTransport);
+  }
+  try {
+    const result = await parseInWorker(file, onProgress, districtsGeo, onTransport);
+    if (GIS_IMPORT_DEBUG) {
+      console.info(
+        `[gisImport] worker ok ${file.name} in ${((performance.now() - t0) / 1000).toFixed(1)}s ` +
+          `${result.featureCount.toLocaleString()} features` +
+          (result.geometryBytes ? ` ${(result.geometryBytes / 1048576).toFixed(1)} MB geojson` : '')
+      );
+    }
+    return result;
+  } catch (err) {
+    // Workers have no DOMParser, so archives that contain KML/KMZ cannot be
+    // decoded off the UI thread. Only those fall back inline — a .zip holding
+    // a .shp parses fully in the worker and never reaches this branch.
+    const message = err instanceof Error ? err.message : String(err ?? '');
+    if (message.includes('XML parsing is unavailable')) {
+      if (GIS_IMPORT_DEBUG) console.warn(`[gisImport] XML-unavailable → inline fallback ${file.name}`);
+      return parseInline(file, onProgress, onTransport);
+    }
+    throw err;
+  }
 }

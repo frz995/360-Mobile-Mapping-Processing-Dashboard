@@ -522,6 +522,147 @@ export const PLAN_BRIDGE_M = 100;
 /** Heading alignment (cos of max deviation) required to bridge a gap. */
 const PLAN_BRIDGE_COS = Math.cos((25 * Math.PI) / 180);
 
+/** Endpoint identifier carried through the plan pipeline (OSM node ref, GIS
+ *  feature node field, or a compact-plan-assigned id). */
+export type PlanEndpointId = string | number | null | undefined;
+
+/** Start/end endpoint identifiers for one road run. */
+export interface PlanRunEndpointIds {
+  start?: PlanEndpointId;
+  end?: PlanEndpointId;
+}
+
+/**
+ * Joins runs that share an endpoint node id into single continuous runs.
+ * Two ways meeting at the same node are the same street split by editors, and
+ * joining by node identity is exact — no coordinate tolerance involved. Nodes
+ * used by more than one pair of ends (junctions, degree >= 3) are left alone;
+ * their runs already share the exact junction coordinate. Endpoint ids left
+ * dangling after a join (e.g. a boundary-clip insertion vertex) are dropped.
+ *
+ * Returns the merged runs plus the recomputed endpoint ids aligned with the
+ * output. Does not mutate the input arrays.
+ */
+export function mergeRunsByIdentity(
+  runs: Array<Array<[number, number]>>,
+  endpointIds?: Array<PlanRunEndpointIds>
+): { runs: Array<Array<[number, number]>>; endpointIds: Array<PlanRunEndpointIds> } {
+  const clean = (runs || []).filter((r) => Array.isArray(r) && r.length >= 2);
+  if (clean.length === 0) return { runs: [], endpointIds: [] };
+  const cleanIds: Array<PlanRunEndpointIds> = [];
+  (runs || []).forEach((r, ri) => {
+    if (!Array.isArray(r) || r.length < 2) return;
+    cleanIds.push(endpointIds?.[ri] ? { ...endpointIds[ri] } : {});
+  });
+  if (!cleanIds.some((ids) => ids.start != null || ids.end != null)) {
+    return { runs: clean.map((r) => r.slice()), endpointIds: cleanIds.map((ids) => ({ ...ids })) };
+  }
+
+  const nodeKeyOf = (id: PlanEndpointId): string => (id == null ? '' : String(id));
+  const atNode = new Map<string, Array<{ li: number; end: 0 | 1 }>>();
+  clean.forEach((_, li) => {
+    ([0, 1] as const).forEach((end) => {
+      const id = end === 0 ? cleanIds[li].start : cleanIds[li].end;
+      if (id == null || id === '') return;
+      const key = nodeKeyOf(id);
+      const list = atNode.get(key);
+      if (list) list.push({ li, end });
+      else atNode.set(key, [{ li, end }]);
+    });
+  });
+
+  // node -> the two (run, end) halves it joins; only degree-2 nodes link.
+  const partner = new Map<string, { li: number; end: 0 | 1 }>();
+  const parent = clean.map((_, i) => i);
+  const find = (x: number): number => {
+    while (parent[x] !== x) {
+      parent[x] = parent[parent[x]];
+      x = parent[x];
+    }
+    return x;
+  };
+  atNode.forEach((list) => {
+    if (list.length !== 2 || list[0].li === list[1].li) return;
+    partner.set(`${list[0].li}|${list[0].end}`, { li: list[1].li, end: list[1].end });
+    partner.set(`${list[1].li}|${list[1].end}`, { li: list[0].li, end: list[0].end });
+    const a = find(list[0].li);
+    const b = find(list[1].li);
+    if (a !== b) parent[a] = b;
+  });
+
+  const groups = new Map<number, number[]>();
+  clean.forEach((_, li) => {
+    const root = find(li);
+    const g = groups.get(root);
+    if (g) g.push(li);
+    else groups.set(root, [li]);
+  });
+
+  const outRuns: Array<Array<[number, number]>> = [];
+  const outIds: Array<PlanRunEndpointIds> = [];
+  groups.forEach((members) => {
+    if (members.length === 1) {
+      const li = members[0];
+      outRuns.push(clean[li].slice());
+      outIds.push({ start: cleanIds[li].start, end: cleanIds[li].end });
+      return;
+    }
+
+    let startLi = members[0];
+    let startEnd: 0 | 1 = 0;
+    let cyclic = true;
+    for (const li of members) {
+      let open: 0 | 1 | -1 = -1;
+      if (!partner.has(`${li}|0`)) open = 0;
+      else if (!partner.has(`${li}|1`)) open = 1;
+      if (open !== -1) {
+        startLi = li;
+        startEnd = open;
+        cyclic = false;
+        break;
+      }
+    }
+
+    const coords: Array<[number, number]> = [];
+    const used = new Set<number>();
+    let cur = startLi;
+    let enterEnd: 0 | 1 = startEnd;
+    let finalRun = startLi;
+    let finalEnd: 0 | 1 = startEnd;
+    while (!used.has(cur)) {
+      used.add(cur);
+      const seq = enterEnd === 0 ? clean[cur] : clean[cur].slice().reverse();
+      if (coords.length === 0) {
+        coords.push(...seq);
+      } else {
+        const tail = coords[coords.length - 1];
+        if (tail[0] !== seq[0][0] || tail[1] !== seq[0][1]) coords.push(seq[0]);
+        for (let i = 1; i < seq.length; i++) coords.push(seq[i]);
+      }
+      const exitEnd: 0 | 1 = enterEnd === 0 ? 1 : 0;
+      finalRun = cur;
+      finalEnd = exitEnd;
+      const nx = partner.get(`${cur}|${exitEnd}`);
+      if (!nx) break;
+      cur = nx.li;
+      enterEnd = nx.end;
+    }
+    if (cyclic && coords.length > 1) {
+      const first = coords[0];
+      const last = coords[coords.length - 1];
+      if (first[0] !== last[0] || first[1] !== last[1]) coords.push([first[0], first[1]]);
+    }
+    if (coords.length >= 2) {
+      outRuns.push(coords);
+      outIds.push({
+        start: startEnd === 0 ? cleanIds[startLi].start : cleanIds[startLi].end,
+        end: finalEnd === 0 ? cleanIds[finalRun].start : cleanIds[finalRun].end
+      });
+    }
+  });
+  return { runs: outRuns, endpointIds: outIds };
+}
+
 /**
  * Splits road runs at any internal vertices that are shared with other road
  * endpoints or junctions. This planarizes the road network into true graph
@@ -573,16 +714,29 @@ export function splitRunsAtJunctions(
  * dangling within `junctionTolM` onto the nearest road segment. When `planarize`
  * is true (default), runs are also split at shared junctions so every junction
  * renders as a real shared node in the topological graph.
+ *
+ * When `endpointIds` is supplied, runs that share a start/end node id are joined
+ * first (exact, identity-based topology — see `mergeRunsByIdentity`); the
+ * geometric passes then only handle genuine gaps and boundary cuts.
  */
 export function connectRunsByEndpoints(
   runs: Array<Array<[number, number]>>,
   endpointTolM: number = PLAN_ENDPOINT_SNAP_M,
   junctionTolM: number = PLAN_TJUNCTION_SNAP_M,
-  planarize: boolean = false
+  planarize: boolean = false,
+  endpointIds?: Array<PlanRunEndpointIds>
 ): Array<Array<[number, number]>> {
-  const out = (runs || [])
-    .filter((r) => Array.isArray(r) && r.length >= 2)
-    .map((r) => r.map((c) => [c[0], c[1]] as [number, number]));
+  const cleaned: Array<Array<[number, number]>> = [];
+  const cleanedIds: Array<PlanRunEndpointIds> = [];
+  (runs || []).forEach((r, ri) => {
+    if (!Array.isArray(r) || r.length < 2) return;
+    cleaned.push(r.map((c) => [c[0], c[1]] as [number, number]));
+    cleanedIds.push(endpointIds?.[ri] ?? {});
+  });
+  let out = cleaned;
+  if (cleanedIds.some((ids) => ids.start != null || ids.end != null)) {
+    out = mergeRunsByIdentity(out, cleanedIds).runs;
+  }
   if (out.length === 0 || !(endpointTolM > 0)) return out;
 
   // ── Step 1: Pairwise, angle-aware endpoint connection (no blind transitive collapse) ──

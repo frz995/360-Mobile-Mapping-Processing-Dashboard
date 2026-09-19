@@ -1,6 +1,7 @@
 import * as toGeoJSON from '@tmcw/togeojson';
 import * as shapefile from 'shapefile';
 import { extractZipFiles } from './zipReader';
+import type { PlanRunEndpointIds } from './subgridComparison';
 
 export interface ParseRoadPlanResult {
   geojson: any;
@@ -96,6 +97,102 @@ export function extractLineRuns(geojson: any): Array<Array<[number, number]>> {
   }
 
   return [];
+}
+
+/** Canonical compact-plan property keys where `extractLineRunsWithIds` stores
+ *  its per-run start/end node ids. Persisted with the plan so the ids survive
+ *  reload and can feed the identity-based stitching pass. */
+// (canonical keys are 'startNode' / 'endNode'; aliases below are also read)
+
+function normalizeNodeId(v: any): string | number | undefined {
+  if (v == null || v === '') return undefined;
+  if (typeof v === 'number' && Number.isFinite(v)) return v;
+  const trimmed = String(v).trim();
+  if (trimmed === '') return undefined;
+  const n = Number(trimmed);
+  if (Number.isFinite(n) && String(n) === trimmed) return n;
+  return trimmed;
+}
+
+function readNodeField(props: any, end: 'start' | 'end'): PlanRunEndpointIds[typeof end] {
+  if (!props || typeof props !== 'object') return undefined;
+  // Compare both sides normalized (case + punctuation stripped) so shapefile
+  // keys like `FNODE_`, `START_NODE` and compact keys like `startNode` match.
+  const norm = (k: string) => k.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const want = new Set(
+    end === 'start'
+      ? ['startnode', 'snode', 'snodeno', 'fnode', 'fromnode']
+      : ['endnode', 'enode', 'enodeno', 'tnode', 'tonode']
+  );
+  for (const key of Object.keys(props)) {
+    if (want.has(norm(key))) {
+      const v = normalizeNodeId(props[key] as any);
+      if (v !== undefined) return v;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Like `extractLineRuns` but also carries every run's start/end endpoint node
+ * ids. Reads the compact-plan canonical keys (`startNode`/`endNode`) plus the
+ * common GIS node field aliases (`fnode`/`tnode`, `fromnode`/`tonode`,
+ * `start_node`/`end_node`, …). Runs whose feature carries no node ids still
+ * come back — they just join geometrically later instead.
+ */
+export function extractLineRunsWithIds(
+  geojson: any
+): { runs: Array<Array<[number, number]>>; endpointIds: Array<PlanRunEndpointIds> } {
+  if (!geojson) return { runs: [], endpointIds: [] };
+
+  const toRun = (coords: any): Array<[number, number]> =>
+    (Array.isArray(coords) ? coords : [])
+      .filter((c: any) => Array.isArray(c) && c.length >= 2)
+      .map((c: any) => [Number(c[0]), Number(c[1])] as [number, number]);
+
+  const collect = (node: any): { runs: Array<Array<[number, number]>>; endpointIds: Array<PlanRunEndpointIds> } => {
+    if (!node) return { runs: [], endpointIds: [] };
+
+    if (node.type === 'Feature' && node.geometry) {
+      return collect({ ...node.geometry, properties: node.properties });
+    }
+
+    if (node.type === 'MultiLineString' && Array.isArray(node.coordinates)) {
+      const runs = node.coordinates
+        .map((line: any) => toRun(line))
+        .filter((r: Array<[number, number]>) => r.length >= 2);
+      return { runs, endpointIds: runs.map(() => ({})) };
+    }
+
+    if (node.type === 'LineString' && Array.isArray(node.coordinates)) {
+      const run = toRun(node.coordinates);
+      if (run.length < 2) return { runs: [], endpointIds: [] };
+      return {
+        runs: [run],
+        endpointIds: [
+          {
+            start: readNodeField((node as any).properties, 'start'),
+            end: readNodeField((node as any).properties, 'end')
+          }
+        ]
+      };
+    }
+
+    if (node.geometry) return collect(node.geometry);
+
+    const children =
+      node.type === 'FeatureCollection' && Array.isArray(node.features) ? node.features : [];
+    const runs: Array<Array<[number, number]>> = [];
+    const endpointIds: Array<PlanRunEndpointIds> = [];
+    for (const child of children) {
+      const sub = collect(child);
+      runs.push(...sub.runs);
+      endpointIds.push(...sub.endpointIds);
+    }
+    return { runs, endpointIds };
+  };
+
+  return collect(geojson);
 }
 
 export function readFileAsText(file: Blob): Promise<string> {

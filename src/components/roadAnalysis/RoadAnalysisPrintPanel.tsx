@@ -148,7 +148,7 @@ function makeLegendRows(
   if (systemStyles?.roadPlan) {
     rows.push({ color: systemStyles.roadPlan.color || '#10b981', label: 'Road plan lines', swatch: 'line' });
   }
-  catalogLayers.filter((l) => l.visible && l.geojson).forEach((l) => {
+  catalogLayers.filter((l) => l.visible && (l.geojson || l.geojsonJson)).forEach((l) => {
     rows.push({ color: l.color || '#38bdf8', label: l.name, swatch: 'line' });
   });
   if (points) {
