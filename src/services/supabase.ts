@@ -2690,6 +2690,7 @@ export interface RoadAnalysisProductionState {
   planSource?: 'system' | 'manual' | 'extracted';
   mapBasemap?: string;
   showRoadLines?: boolean;
+  showCoverage?: boolean;
   manualGeoJson?: any;
   extractedLines?: ExtractedRoadLine[];
   catalogLayers?: any[];

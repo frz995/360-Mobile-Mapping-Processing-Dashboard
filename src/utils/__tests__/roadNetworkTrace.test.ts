@@ -246,36 +246,37 @@ describe('roadNetworkTrace utility', () => {
       [BASE_LNG + 0.001, BASE_LAT]
     ];
 
-    it('reports full coverage with no gaps when captured densely on top', () => {
+    it('reports no traced stretches when captured densely on top', () => {
       const tracks = [denseLine(BASE_LAT, BASE_LNG, BASE_LNG + 0.001, 25)];
       const res = computePlanCoverage([run], tracks, 25);
       expect(res.planKm).toBeCloseTo(0.111, 2);
-      expect(res.coveredPct).toBeGreaterThanOrEqual(99);
+      expect(res.tracedPct).toBeLessThanOrEqual(1);
       expect(res.uncoveredRuns.length).toBe(0);
     });
 
-    it('flags unsurveyed stretches as uncovered gap runs', () => {
+    it('flags unsurveyed stretches as trace (no-panotrack) runs', () => {
       const tracks = [denseLine(BASE_LAT, BASE_LNG, BASE_LNG + 0.0005, 15)];
       const res = computePlanCoverage([run], tracks, 25);
-      expect(res.coveredPct).toBeLessThan(80);
+      expect(res.tracedPct).toBeGreaterThan(20);
+      expect(res.tracedPct).toBeLessThan(80);
       expect(res.uncoveredRuns.length).toBe(1);
       expect(res.uncoveredRuns[0].length).toBeGreaterThanOrEqual(2);
-      expect(res.planKm - res.coveredKm).toBeGreaterThan(0.03);
+      expect(res.tracedKm).toBeGreaterThan(0.03);
     });
 
     it('respects the tolerance distance', () => {
       const offsetLat = BASE_LAT + 0.0003; // ~33 m off the plan
       const tracks = [denseLine(offsetLat, BASE_LNG, BASE_LNG + 0.001, 25)];
-      expect(computePlanCoverage([run], tracks, 25).coveredPct).toBeLessThan(10);
-      expect(computePlanCoverage([run], tracks, 50).coveredPct).toBeGreaterThan(90);
+      expect(computePlanCoverage([run], tracks, 25).tracedPct).toBeGreaterThan(90);
+      expect(computePlanCoverage([run], tracks, 50).tracedPct).toBeLessThan(10);
     });
 
-    it('returns zero coverage without tracks or plan', () => {
-      expect(computePlanCoverage([run], [], 25).coveredPct).toBe(0);
+    it('returns full traced share without tracks or plan', () => {
+      expect(computePlanCoverage([run], [], 25).tracedPct).toBe(100);
       expect(computePlanCoverage([], [denseLine(BASE_LAT, BASE_LNG, BASE_LNG + 0.001, 5)], 25).planKm).toBe(0);
     });
 
-    it('leaves an entire isolated unsurveyed short road as uncovered', () => {
+    it('leaves an entire isolated unsurveyed short road as traced', () => {
       // Short run ~22 meters
       const shortRun: LonLat[] = [
         [BASE_LNG, BASE_LAT],
@@ -283,9 +284,79 @@ describe('roadNetworkTrace utility', () => {
       ];
       // Zero capture tracks
       const res = computePlanCoverage([shortRun], [], 25);
-      expect(res.coveredPct).toBe(0);
+      expect(res.tracedPct).toBe(100);
       expect(res.uncoveredRuns.length).toBe(1);
       expect(res.uncoveredRuns[0].length).toBeGreaterThanOrEqual(2);
+    });
+
+    it('streams per-run progress through the onRunProgress callback', () => {
+      const runs: LonLat[][] = [
+        denseLine(BASE_LAT, BASE_LNG, BASE_LNG + 0.001, 3),
+        denseLine(BASE_LAT, BASE_LNG + 0.002, BASE_LNG + 0.003, 3),
+        denseLine(BASE_LAT, BASE_LNG + 0.004, BASE_LNG + 0.005, 3)
+      ];
+      const steps: Array<[number, number]> = [];
+      computePlanCoverage(runs, [], 25, 10, (done, total) => steps.push([done, total]));
+      expect(steps).toEqual([
+        [1, 3],
+        [2, 3],
+        [3, 3]
+      ]);
+    });
+
+    it('preserves junction-vertex continuity between two runs that share a vertex', () => {
+      // One continuous road interrupted at a junction between runs (as the
+      // plan stitcher produces): west leg, shared vertex, east leg. Both are
+      // entirely uncovered, so the traced segments must stay vertex-joined —
+      // no artificial gap from per-cell clipping.
+      const junction: LonLat = [BASE_LNG + 0.001, BASE_LAT];
+      const west: LonLat[] = [
+        [BASE_LNG, BASE_LAT],
+        junction
+      ];
+      const east: LonLat[] = [
+        junction,
+        [BASE_LNG + 0.002, BASE_LAT]
+      ];
+      const res = computePlanCoverage([west, east], [], 25);
+      expect(res.tracedPct).toBe(100);
+      expect(res.planKm).toBeCloseTo(0.111 + 0.111, 1);
+      expect(res.uncoveredRuns.length).toBe(2);
+      // First run ends exactly at the shared vertex; second run starts there.
+      expect(res.uncoveredRuns[0][res.uncoveredRuns[0].length - 1]).toEqual(junction);
+      expect(res.uncoveredRuns[1][0]).toEqual(junction);
+    });
+
+    it('keeps genuinely disconnected fragments separate across a large gap', () => {
+      const a: LonLat[] = [
+        [BASE_LNG, BASE_LAT],
+        [BASE_LNG + 0.001, BASE_LAT]
+      ];
+      const b: LonLat[] = [
+        [BASE_LNG + 0.02, BASE_LAT],
+        [BASE_LNG + 0.021, BASE_LAT]
+      ];
+      const res = computePlanCoverage([a, b], [], 25);
+      expect(res.uncoveredRuns.length).toBe(2);
+      // ~2 km of un-traced ground stays between the fragments.
+      expect(res.uncoveredRuns[1][0][0]).toBeGreaterThan(
+        res.uncoveredRuns[0][res.uncoveredRuns[0].length - 1][0] + 0.01
+      );
+    });
+
+    it('keeps a captured stretch crossing a hypothetical cell edge fully covered', () => {
+      // ~222 m plan run; the "cell boundary" is imagined mid-run at
+      // BASE_LNG + 0.001. Capture spans the whole run with the same overlap a
+      // single whole-network pass would use — a per-cell clip would split the
+      // run at the boundary and risk tolerance-edge artifacts on either side.
+      const run: LonLat[] = [
+        [BASE_LNG, BASE_LAT],
+        [BASE_LNG + 0.002, BASE_LAT]
+      ];
+      const track = denseLine(BASE_LAT, BASE_LNG - 0.0003, BASE_LNG + 0.0023, 80);
+      const res = computePlanCoverage([run], [track], 25);
+      expect(res.uncoveredRuns.length).toBe(0);
+      expect(res.tracedPct).toBeLessThanOrEqual(1);
     });
   });
 
@@ -305,20 +376,25 @@ describe('roadNetworkTrace utility', () => {
       totalTraceM: 500
     };
 
-    it('applies the completion threshold', () => {
-      const coverage = { planKm: 0.111, coveredKm: 0.106, coveredPct: 95.5, uncoveredRuns: [] as LonLat[][] };
+    it('inverts the threshold: complete only when traced share hits the threshold', () => {
+      const coverage = { planKm: 0.111, tracedKm: 0.106, tracedPct: 95.5, uncoveredRuns: [] as LonLat[][] };
       expect(finalizeSubgridResult(plan, coverage, 95).status).toBe('complete');
       expect(finalizeSubgridResult(plan, coverage, 96).status).toBe('incomplete');
-      expect(finalizeSubgridResult(plan, coverage, 96).coveredPct).toBe(95.5);
+      expect(finalizeSubgridResult(plan, coverage, 96).tracedPct).toBe(95.5);
+    });
+
+    it('treats an entirely panotrack-saturated plan as complete (nothing to trace)', () => {
+      const coverage = { planKm: 0.111, tracedKm: 0, tracedPct: 0, uncoveredRuns: [] as LonLat[][] };
+      expect(finalizeSubgridResult(plan, coverage, 95).status).toBe('complete');
     });
 
     it('marks subgrids without plan geometry as no-plan', () => {
       const empty = { ...plan, planRuns: [] as LonLat[][] };
-      const coverage = { planKm: 0, coveredKm: 0, coveredPct: 0, uncoveredRuns: [] as LonLat[][] };
+      const coverage = { planKm: 0, tracedKm: 0, tracedPct: 0, uncoveredRuns: [] as LonLat[][] };
       const res = finalizeSubgridResult(empty, coverage, 95);
       expect(res.status).toBe('no-plan');
-      expect(res.coveredPct).toBeNull();
-      expect(res.gapKm).toBe(0);
+      expect(res.tracedPct).toBeNull();
+      expect(res.tracedKm).toBe(0);
     });
   });
 

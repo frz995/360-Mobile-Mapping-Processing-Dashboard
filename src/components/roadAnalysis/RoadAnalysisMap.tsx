@@ -9,7 +9,7 @@
 // `showRoadLines` toggle.
 // =====================================================================
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import type { StyleSpecification, Map as MaplibreMap } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
@@ -27,30 +27,6 @@ import type { LonLat } from '../../utils/roadNetworkTrace';
 
 const effectiveWorkerUrl = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_MAPLIBRE_WORKER_URL) || workerUrl;
 maplibregl.setWorkerUrl(effectiveWorkerUrl);
-
-/**
- * Imperative surface used by the Road Network Trace animation. Each setter
- * mutates a dedicated geojson source via setData() (no overlay rebuild, no
- * React re-render per animation frame). Layers are lazily created on first
- * use and re-created automatically if the basemap style swap tore them down.
- */
-export interface RoadTraceApi {
-  /** Flushed immutable unsurveyed plan stretches traced so far (RED layer). */
-  setTraceRuns: (runs: LonLat[][]) => void;
-  /** Flushed immutable panotrack-covered plan stretches (GREEN layer). */
-  setPassed: (runs: LonLat[][]) => void;
-  /** Cheap per-tick layers: the currently-growing partial segments (red/green). */
-  setLiveGap: (runs: LonLat[][]) => void;
-  setLivePassed: (runs: LonLat[][]) => void;
-  /** Dashed connectors jumping between disconnected plan runs. */
-  setConnectors: (links: LonLat[][]) => void;
-  /** Red dashed gap lines along the actual plan road geometry. */
-  setGaps: (runs: LonLat[][]) => void;
-  /** Pulsing head markers — one per concurrent trace walker (null hides all). */
-  setHead: (pts: LonLat[] | null) => void;
-  /** Hide every trace overlay at once. */
-  clearAll: () => void;
-}
 
 const EMPTY_FC: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] };
 
@@ -121,7 +97,7 @@ function scheduleCatalogGeometryLoad(
   }
 }
 
-function traceLineFc(runs: LonLat[][]): GeoJSON.FeatureCollection {
+function coverageLineFc(runs: LonLat[][]): GeoJSON.FeatureCollection {
   return {
     type: 'FeatureCollection',
     features: (runs || [])
@@ -134,23 +110,8 @@ function traceLineFc(runs: LonLat[][]): GeoJSON.FeatureCollection {
   };
 }
 
-/** Trace overlay ids (lazily created, brought to front on every rebuild). */
-const TRACE_SRC = 'ra-trace-src';
-const TRACE_PASSED_SRC = 'ra-trace-passed-src';
-const TRACE_LIVE_SRC = 'ra-trace-live-src';
-const TRACE_LIVE_PASSED_SRC = 'ra-trace-live-passed-src';
-const TRACE_LINK_SRC = 'ra-trace-link-src';
-const TRACE_GAP_SRC = 'ra-trace-gap-src';
-const TRACE_LAYER_IDS = [
-  'ra-trace-passed',
-  'ra-trace-casing',
-  'ra-trace-line',
-  'ra-trace-live-passed',
-  'ra-trace-live-gap',
-  'ra-trace-link',
-  'ra-trace-gap-casing',
-  'ra-trace-gap'
-] as const;
+/** Coverage overlay ids (rebuilt with the base layers, raised above them). */
+const COVERAGE_LAYER_IDS = ['ra-coverage-casing', 'ra-coverage-line'] as const;
 
 export interface RoadAnalysisMapProps {
   bbox?: [number, number, number, number] | null;
@@ -200,8 +161,10 @@ export interface RoadAnalysisMapProps {
    * capture the canvas.
    */
   mapInstanceRef?: React.MutableRefObject<MaplibreMap | null>;
-  /** Imperative trace-animation handle (see RoadTraceApi). */
-  traceApiRef?: React.MutableRefObject<RoadTraceApi | null>;
+  /** Uncovered plan stretches (no panotrack within tolerance) drawn in red. */
+  coverageRuns?: LonLat[][];
+  /** Toggle the red coverage-segmentation overlay. */
+  showCoverage?: boolean;
 }
 
 const DEFAULT_CENTER: [number, number] = [101.9758, 4.2105];
@@ -209,7 +172,7 @@ const DEFAULT_ZOOM = 7;
 const DEFAULT_STYLE = 'https://tiles.openfreemap.org/styles/positron';
 
 /** Base system source ids created by this component. */
-const BASE_SOURCE_IDS = ['ra-dim', 'ra-districts', 'ra-captured', 'ra-roads'] as const;
+const BASE_SOURCE_IDS = ['ra-dim', 'ra-districts', 'ra-captured', 'ra-roads', 'ra-coverage'] as const;
 
 /** Base system layer ids created by this component. */
 const BASE_LAYER_IDS = [
@@ -217,7 +180,9 @@ const BASE_LAYER_IDS = [
   'ra-districts',
   'ra-districts-line',
   'ra-captured',
-  'ra-roads'
+  'ra-roads',
+  'ra-coverage-casing',
+  'ra-coverage-line'
 ] as const;
 
 const BUILDING_LAYER_ID = 'ra-buildings';
@@ -532,8 +497,9 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
   selectedFeature,
   onSelectSubgrid,
   mapInstanceRef,
-  traceApiRef,
-  show3D = false
+  show3D = false,
+  coverageRuns = [],
+  showCoverage = true
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MaplibreMap | null>(null);
@@ -645,233 +611,6 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
   selectedFeatureRef.current = selectedFeature;
   catalogPreviewRef.current  = catalogPreview;
   show3DRef.current          = show3D;
-
-  // ── Road Network Trace: imperative overlay API (zero React churn per frame) ──
-  const headMarkersRef = useRef<maplibregl.Marker[]>([]);
-  const headBoundMapRef = useRef<MaplibreMap | null>(null);
-
-  const ensureTraceSource = useCallback(
-    (map: MaplibreMap, srcId: string, layers: maplibregl.LayerSpecification[]) => {
-      if (!styleLoadedRef.current || map.getSource(srcId)) return;
-      map.addSource(srcId, { type: 'geojson', data: EMPTY_FC });
-      addedSourceIdsRef.current.add(srcId);
-      layers.forEach((layer) => map.addLayer(layer));
-    },
-    []
-  );
-
-  const ensureTraceGroups = useCallback(
-    (map: MaplibreMap) => {
-      ensureTraceSource(map, TRACE_PASSED_SRC, [
-        {
-          id: 'ra-trace-passed',
-          type: 'line',
-          source: TRACE_PASSED_SRC,
-          layout: { 'line-cap': 'round', 'line-join': 'round' },
-          paint: {
-            'line-color': '#10b981',
-            'line-width': 3,
-            'line-opacity': 0.9
-          }
-        }
-      ]);
-      // Cheap per-tick layers for the currently-growing partial segments.
-      ensureTraceSource(map, TRACE_LIVE_SRC, [
-        {
-          id: 'ra-trace-live-gap',
-          type: 'line',
-          source: TRACE_LIVE_SRC,
-          layout: { 'line-cap': 'round', 'line-join': 'round' },
-          paint: {
-            'line-color': '#ef4444',
-            'line-width': 3.6,
-            'line-opacity': 0.95
-          }
-        }
-      ]);
-      ensureTraceSource(map, TRACE_LIVE_PASSED_SRC, [
-        {
-          id: 'ra-trace-live-passed',
-          type: 'line',
-          source: TRACE_LIVE_PASSED_SRC,
-          layout: { 'line-cap': 'round', 'line-join': 'round' },
-          paint: {
-            'line-color': '#10b981',
-            'line-width': 3,
-            'line-opacity': 0.9
-          }
-        }
-      ]);
-      ensureTraceSource(map, TRACE_LINK_SRC, [
-        {
-          id: 'ra-trace-link',
-          type: 'line',
-          source: TRACE_LINK_SRC,
-          paint: {
-            'line-color': '#94a3b8',
-            'line-width': 1.8,
-            'line-opacity': 0.8,
-            'line-dasharray': [1.5, 1.5]
-          }
-        }
-      ]);
-      ensureTraceSource(map, TRACE_GAP_SRC, [
-        {
-          id: 'ra-trace-gap-casing',
-          type: 'line',
-          source: TRACE_GAP_SRC,
-          paint: {
-            'line-color': '#0b1220',
-            'line-width': 6,
-            'line-opacity': 0.55
-          }
-        },
-        {
-          id: 'ra-trace-gap',
-          type: 'line',
-          source: TRACE_GAP_SRC,
-          layout: { 'line-cap': 'round', 'line-join': 'round' },
-          paint: {
-            'line-color': '#ef4444',
-            'line-width': 3.4,
-            'line-opacity': 0.95,
-            'line-dasharray': [2, 1.4]
-          }
-        }
-      ]);
-      ensureTraceSource(map, TRACE_SRC, [
-        {
-          id: 'ra-trace-casing',
-          type: 'line',
-          source: TRACE_SRC,
-          paint: {
-            'line-color': '#0b1220',
-            'line-width': 6.5,
-            'line-opacity': 0.7
-          }
-        },
-        {
-          id: 'ra-trace-line',
-          type: 'line',
-          source: TRACE_SRC,
-          layout: { 'line-cap': 'round', 'line-join': 'round' },
-          paint: {
-            'line-color': '#ef4444',
-            'line-width': 3.6,
-            'line-opacity': 0.95
-          }
-        }
-      ]);
-    },
-    [ensureTraceSource]
-  );
-
-  const setTraceHeadMarker = useCallback((pts: LonLat[] | null) => {
-    const map = mapRef.current;
-    if (!map) return;
-    // A basemap swap destroys the map owning the existing markers.
-    if (headBoundMapRef.current !== map) {
-      headMarkersRef.current.forEach((m) => m.remove());
-      headMarkersRef.current = [];
-      headBoundMapRef.current = map;
-    }
-    if (!pts || pts.length === 0) {
-      headMarkersRef.current.forEach((m) => m.remove());
-      headMarkersRef.current = [];
-      return;
-    }
-    // Only valid finite coordinates may drive a head marker.
-    const valid = pts.filter(
-      (p) => Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1])
-    );
-    if (valid.length === 0) {
-      headMarkersRef.current.forEach((m) => m.remove());
-      headMarkersRef.current = [];
-      return;
-    }
-    // Grow the marker pool as needed. A marker MUST receive its lngLat BEFORE
-    // it is added: MapLibre fires a 'move'/'render' _update on attach, and
-    // smartWrap() throws ("can't access property lng") for a live marker that
-    // was never given a coordinate.
-    while (headMarkersRef.current.length < valid.length) {
-      const i = headMarkersRef.current.length;
-      const el = document.createElement('div');
-      el.className = 'ra-trace-head';
-      const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
-        .setLngLat([valid[i][0], valid[i][1]])
-        .addTo(map);
-      headMarkersRef.current.push(marker);
-    }
-    headMarkersRef.current.forEach((m, i) => {
-      if (i < valid.length) m.setLngLat([valid[i][0], valid[i][1]]);
-    });
-    // Shrink back when fewer walkers are active.
-    if (headMarkersRef.current.length > valid.length) {
-      for (let i = valid.length; i < headMarkersRef.current.length; i++) {
-        headMarkersRef.current[i].remove();
-      }
-      headMarkersRef.current = headMarkersRef.current.slice(0, valid.length);
-    }
-  }, []);
-
-  const traceApi = useMemo<RoadTraceApi>(() => ({
-    setTraceRuns(runs) {
-      const map = mapRef.current;
-      if (!map || !styleLoadedRef.current) return;
-      ensureTraceGroups(map);
-      (map.getSource(TRACE_SRC) as maplibregl.GeoJSONSource | undefined)?.setData(traceLineFc(runs));
-    },
-    setConnectors(links) {
-      const map = mapRef.current;
-      if (!map || !styleLoadedRef.current) return;
-      ensureTraceGroups(map);
-      (map.getSource(TRACE_LINK_SRC) as maplibregl.GeoJSONSource | undefined)?.setData(traceLineFc(links));
-    },
-    setPassed(runs) {
-      const map = mapRef.current;
-      if (!map || !styleLoadedRef.current) return;
-      ensureTraceGroups(map);
-      (map.getSource(TRACE_PASSED_SRC) as maplibregl.GeoJSONSource | undefined)?.setData(traceLineFc(runs));
-    },
-    setLiveGap(runs) {
-      const map = mapRef.current;
-      if (!map || !styleLoadedRef.current) return;
-      ensureTraceGroups(map);
-      (map.getSource(TRACE_LIVE_SRC) as maplibregl.GeoJSONSource | undefined)?.setData(traceLineFc(runs));
-    },
-    setLivePassed(runs) {
-      const map = mapRef.current;
-      if (!map || !styleLoadedRef.current) return;
-      ensureTraceGroups(map);
-      (map.getSource(TRACE_LIVE_PASSED_SRC) as maplibregl.GeoJSONSource | undefined)?.setData(traceLineFc(runs));
-    },
-    setGaps(gapRuns) {
-      const map = mapRef.current;
-      if (!map || !styleLoadedRef.current) return;
-      ensureTraceGroups(map);
-      (map.getSource(TRACE_GAP_SRC) as maplibregl.GeoJSONSource | undefined)?.setData(traceLineFc(gapRuns));
-    },
-    setHead(pts) {
-      setTraceHeadMarker(pts);
-    },
-    clearAll() {
-      const map = mapRef.current;
-      if (!map || !styleLoadedRef.current) return;
-      for (const srcId of [TRACE_SRC, TRACE_PASSED_SRC, TRACE_LIVE_SRC, TRACE_LIVE_PASSED_SRC, TRACE_LINK_SRC, TRACE_GAP_SRC]) {
-        (map.getSource(srcId) as maplibregl.GeoJSONSource | undefined)?.setData(EMPTY_FC);
-      }
-      setTraceHeadMarker(null);
-    }
-  }), [ensureTraceGroups, setTraceHeadMarker]);
-
-  useEffect(() => {
-    if (!traceApiRef) return;
-    traceApiRef.current = traceApi;
-    return () => {
-      if (traceApiRef.current === traceApi) traceApiRef.current = null;
-    };
-  }, [traceApiRef, traceApi]);
-
 
   const buildOverlay = useCallback(() => {
     const map = mapRef.current;
@@ -1156,6 +895,35 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
       map.setLayoutProperty('ra-roads', 'visibility', planVisible ? 'visible' : 'none');
     }
 
+    // 4b. Coverage segmentation: plan stretches WITHOUT any panotrack within
+    //     tolerance, drawn in red directly on the plan geometry. Covered roads
+    //     draw nothing extra (the green ra-roads base stays).
+    if (coverageRuns.length > 0 && showCoverage) {
+      map.addSource('ra-coverage', { type: 'geojson', data: coverageLineFc(coverageRuns) });
+      addedSourceIdsRef.current.add('ra-coverage');
+      map.addLayer({
+        id: 'ra-coverage-casing',
+        type: 'line',
+        source: 'ra-coverage',
+        paint: {
+          'line-color': '#0b1220',
+          'line-width': 6.5,
+          'line-opacity': 0.7
+        }
+      });
+      map.addLayer({
+        id: 'ra-coverage-line',
+        type: 'line',
+        source: 'ra-coverage',
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: {
+          'line-color': '#ef4444',
+          'line-width': 3.6,
+          'line-opacity': 0.95
+        }
+      });
+    }
+
     // 5. Captured panotrack points (individual survey frames, colored by status).
     if (capturedPoints.length > 0) {
       const ptVisible = systemStyles?.capturedPoints?.visible !== false;
@@ -1416,16 +1184,16 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
     //    swap recreates the Map, so the previous fill-extrusion layer is gone).
     applyBuildingLayer(map, show3DRef.current);
 
-    // 7b. Trace overlays (lazily created) survive rebuilds by being re-raised
-    //     above the re-added base layers so the animation stays on top.
-    TRACE_LAYER_IDS.forEach((id) => {
+    // 7b. Coverage overlays (red uncovered lines) are re-raised above the
+    //     re-added base layers so they stay on top of the green road plan.
+    COVERAGE_LAYER_IDS.forEach((id) => {
       if (map.getLayer(id)) map.moveLayer(id);
     });
 
     // 8. Everything (style + boundary + points + roads) is now painted.
     overlayBuiltRef.current = true;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bbox, districtGeojson, dimmedRegionsGeojson, capturedPoints, roadRuns, showRoadLines]);
+  }, [bbox, districtGeojson, dimmedRegionsGeojson, capturedPoints, roadRuns, showRoadLines, coverageRuns, showCoverage]);
   // catalogLayers, systemStyles, selectedFeature intentionally omitted — they are
   // read from refs inside the callback and handled by dedicated effects below.
 
@@ -1589,9 +1357,6 @@ function areStylesEqual(a?: string | StyleSpecification, b?: string | StyleSpeci
         current.remove();
         mapRef.current = null;
         if (mapInstanceRef) mapInstanceRef.current = null;
-        // The head markers belonged to the destroyed map — force lazy recreation.
-        headMarkersRef.current = [];
-        headBoundMapRef.current = null;
       }
       styleLoadedRef.current = false;
     };
@@ -1622,8 +1387,6 @@ function areStylesEqual(a?: string | StyleSpecification, b?: string | StyleSpeci
     prevStyleRef.current = style;
     map.remove();
     mapRef.current = null;
-    headMarkersRef.current = [];
-    headBoundMapRef.current = null;
     styleLoadedRef.current = false;
     overlayBuiltRef.current = false;
     cleanPollsRef.current = 0;
@@ -1713,24 +1476,6 @@ function areStylesEqual(a?: string | StyleSpecification, b?: string | StyleSpeci
       className="absolute inset-0 w-full h-full z-0 bg-slate-950"
       style={{ backgroundColor: 'var(--bg-app, #0f172a)' }}
     >
-      {/* Pulsing head marker for the road network trace animation */}
-      <style>{`
-        .ra-trace-head {
-          width: 14px;
-          height: 14px;
-          border-radius: 9999px;
-          background: #22d3ee;
-          border: 2px solid #ffffff;
-          animation: ra-trace-pulse 1.2s ease-out infinite;
-        }
-        @keyframes ra-trace-pulse {
-          0%   { box-shadow: 0 0 0 2px rgba(34, 211, 238, 0.55); }
-          70%  { box-shadow: 0 0 0 14px rgba(34, 211, 238, 0); }
-          100% { box-shadow: 0 0 0 0 rgba(34, 211, 238, 0); }
-        }
-      `}</style>
-      {/* Map container keeps being populated by MapLibre, but the parent renders
-          it inside a 0-sized wrapper while hidden — so the ref'd div is absolute. */}
       <div ref={containerRef} className="absolute inset-0" />
 
       {/* Loading overlay: shown while the style + OSM points + geometry render */}

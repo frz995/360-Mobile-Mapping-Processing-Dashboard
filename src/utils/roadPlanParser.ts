@@ -130,6 +130,29 @@ function readNodeField(props: any, end: 'start' | 'end'): PlanRunEndpointIds[typ
       if (v !== undefined) return v;
     }
   }
+  // Contains-based fallback for wider GIS exports (e.g. `FNodeID`, `From_Node_1`,
+  // bare `FROM`/`TO`, `nodeA`/`nodeB`). Only reached when the exact aliases
+  // above miss, so canonical keys always win regardless of field order.
+  for (const key of Object.keys(props)) {
+    const k = norm(key);
+    const hit =
+      end === 'start'
+        ? k.includes('fnode') ||
+          k.includes('from') ||
+          (k.includes('node') && k.includes('start')) ||
+          k === 'start' ||
+          k === 'nodea'
+        : k.includes('tnode') ||
+          (k.includes('node') && k.includes('end')) ||
+          (k.includes('to') && !k.includes('from')) ||
+          k === 'end' ||
+          k === 'to' ||
+          k === 'nodeb';
+    if (hit) {
+      const v = normalizeNodeId(props[key] as any);
+      if (v !== undefined) return v;
+    }
+  }
   return undefined;
 }
 

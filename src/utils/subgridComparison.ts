@@ -195,6 +195,107 @@ export function clipLineRunsToBbox(
   return out;
 }
 
+/**
+ * Bbox clip variant that also carries per-fragment endpoint node ids, so the
+ * subgrid trace can re-stitch clipped fragments by node identity. A fragment
+ * keeps its start/end id ONLY when that terminal coordinate survived the clip
+ * untouched — a boundary-cut end is a new intersection vertex with no node id
+ * (mirrors clipLineStringsToDistrictsWithIds).
+ */
+export function clipLineRunsToBboxWithIds(
+  runs: Array<Array<[number, number]>>,
+  endpointIds: Array<PlanRunEndpointIds>,
+  bbox: [number, number, number, number],
+  minRun = 2
+): { runs: Array<Array<[number, number]>>; endpointIds: Array<PlanRunEndpointIds> } {
+  if (!runs || runs.length === 0) return { runs: [], endpointIds: [] };
+  const [minX, minY, maxX, maxY] = bbox;
+  const inside = (p: [number, number]) =>
+    p[0] >= minX && p[0] <= maxX && p[1] >= minY && p[1] <= maxY;
+
+  const crossings = (a: [number, number], b: [number, number]): Array<[number, number]> => {
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    const ts: number[] = [];
+    if (dx !== 0) {
+      for (const x of [minX, maxX]) {
+        const t = (x - a[0]) / dx;
+        if (t > 0 && t < 1) {
+          const y = a[1] + t * dy;
+          if (y >= minY - 1e-12 && y <= maxY + 1e-12) ts.push(t);
+        }
+      }
+    }
+    if (dy !== 0) {
+      for (const y of [minY, maxY]) {
+        const t = (y - a[1]) / dy;
+        if (t > 0 && t < 1) {
+          const x = a[0] + t * dx;
+          if (x >= minX - 1e-12 && x <= maxX + 1e-12) ts.push(t);
+        }
+      }
+    }
+    ts.sort((p, q) => p - q);
+    return ts.map((t) => [a[0] + t * dx, a[1] + t * dy] as [number, number]);
+  };
+
+  const outRuns: Array<Array<[number, number]>> = [];
+  const outIds: Array<PlanRunEndpointIds> = [];
+  runs.forEach((coords, ri) => {
+    if (!coords || coords.length < 2) return;
+    const ids = endpointIds && endpointIds[ri] ? endpointIds[ri] : {};
+    const origStart = coords[0];
+    const origEnd = coords[coords.length - 1];
+    let run: Array<[number, number]> = [];
+    const flush = () => {
+      if (run.length >= minRun) {
+        const first = run[0];
+        const last = run[run.length - 1];
+        const keepStart =
+          ids.start != null && first[0] === origStart[0] && first[1] === origStart[1];
+        const keepEnd =
+          ids.end != null && last[0] === origEnd[0] && last[1] === origEnd[1];
+        outRuns.push(run.slice());
+        outIds.push({
+          start: keepStart ? ids.start : undefined,
+          end: keepEnd ? ids.end : undefined
+        });
+      }
+      run = [];
+    };
+
+    let prev = coords[0];
+    if (inside(prev)) run.push(prev);
+    for (let i = 1; i < coords.length; i++) {
+      const cur = coords[i];
+      const aIn = inside(prev);
+      const bIn = inside(cur);
+      if (aIn && bIn) {
+        run.push(cur);
+      } else if (aIn && !bIn) {
+        const xs = crossings(prev, cur);
+        if (xs.length) run.push(xs[0]);
+        flush();
+      } else if (!aIn && bIn) {
+        flush();
+        const xs = crossings(prev, cur);
+        if (xs.length) run.push(xs[0]);
+        run.push(cur);
+      } else {
+        flush();
+        const xs = crossings(prev, cur);
+        if (xs.length >= 2) {
+          run = [xs[0], xs[1]];
+          flush();
+        }
+      }
+      prev = cur;
+    }
+    flush();
+  });
+  return { runs: outRuns, endpointIds: outIds };
+}
+
 type BBox = [number, number, number, number];
 
 /**
@@ -825,16 +926,25 @@ export function connectRunsByEndpoints(
   // Sort candidate pairs closest first
   candidates.sort((c1, c2) => c1.distM - c2.distM);
 
-  const snappedEndpoints = new Set<number>();
-  candidates.forEach(({ i, j }) => {
-    if (snappedEndpoints.has(i) || snappedEndpoints.has(j)) return;
-    const a = endpoints[i];
-    const b = endpoints[j];
-
+  // Step 1: Cluster-merge every in-tolerance junction endpoint onto a shared
+  // node. The old one-merge-per-endpoint rule consumed only the closest pair,
+  // stranding the 3rd/4th stub a few metres short of the junction — the
+  // "unconnected everywhere" symptom. Clustering (union-find over candidate
+  // pairs) pulls ALL in-tolerance ends at a junction onto one point so every
+  // stub reaches the shared node. Parallel side-by-side pairs stay rejected so
+  // lanes / cul-de-sacs keep their spacing.
+  const parent = endpoints.map((_, i) => i);
+  const findRoot = (x: number): number => {
+    while (parent[x] !== x) {
+      parent[x] = parent[parent[x]];
+      x = parent[x];
+    }
+    return x;
+  };
+  const clusterPair = (a: EndpointInfo, b: EndpointInfo): boolean => {
     // Angle check: prevent collapsing parallel roads / lanes
     const dot = a.outVec[0] * b.outVec[0] + a.outVec[1] * b.outVec[1];
     if (dot > 0.75) {
-      // Both roads are pointing in almost the same direction (e.g. parallel cul-de-sacs or lanes)
       const latRef = (a.pt[1] + b.pt[1]) / 2;
       const kx = 111320 * Math.cos((latRef * Math.PI) / 180);
       const ky = 110574;
@@ -844,30 +954,52 @@ export function connectRunsByEndpoints(
       const dispDot = Math.abs(a.outVec[0] * (dispX / dispMag) + a.outVec[1] * (dispY / dispMag));
       if (dispDot < 0.6) {
         // Displacement is perpendicular to road heading: side-by-side parallel roads
-        return;
+        return false;
       }
     }
+    return true;
+  };
+  candidates.forEach(({ i, j }) => {
+    if (clusterPair(endpoints[i], endpoints[j])) parent[findRoot(i)] = findRoot(j);
+  });
 
-    // Short-run guard: do not collapse short runs (< 25m) to zero length
-    if (a.runLengthM < 25 && a.runIdx === b.runIdx) return;
+  const clusters = new Map<number, number[]>();
+  endpoints.forEach((_, i) => {
+    const root = findRoot(i);
+    const list = clusters.get(root);
+    if (list) list.push(i);
+    else clusters.set(root, [i]);
+  });
 
-    // Anchor snap to longer through-road, or midpoint if similar
+  clusters.forEach((members) => {
+    if (members.length < 2) return;
+    let longest = members[0];
+    members.forEach((m) => {
+      if (endpoints[m].runLengthM > endpoints[longest].runLengthM) longest = m;
+    });
+    const longestLen = endpoints[longest].runLengthM;
+    const dominant = members.every(
+      (m) => m === longest || endpoints[m].runLengthM < longestLen / 2.2
+    );
+    // Anchor to the dominant through-road's endpoint, else the centroid of
+    // the converging stubs (mirrors the old long-road anchor / midpoint rule).
     let targetPt: [number, number];
-    if (a.runLengthM > 2.2 * b.runLengthM) {
-      targetPt = [a.pt[0], a.pt[1]];
-    } else if (b.runLengthM > 2.2 * a.runLengthM) {
-      targetPt = [b.pt[0], b.pt[1]];
+    if (dominant) {
+      targetPt = endpoints[longest].pt;
     } else {
-      targetPt = [(a.pt[0] + b.pt[0]) / 2, (a.pt[1] + b.pt[1]) / 2];
+      let sumX = 0;
+      let sumY = 0;
+      members.forEach((m) => {
+        sumX += endpoints[m].pt[0];
+        sumY += endpoints[m].pt[1];
+      });
+      targetPt = [sumX / members.length, sumY / members.length];
     }
-
-    const runA = out[a.runIdx];
-    runA[a.isStart ? 0 : runA.length - 1] = [targetPt[0], targetPt[1]];
-    const runB = out[b.runIdx];
-    runB[b.isStart ? 0 : runB.length - 1] = [targetPt[0], targetPt[1]];
-
-    snappedEndpoints.add(i);
-    snappedEndpoints.add(j);
+    members.forEach((m) => {
+      const ep = endpoints[m];
+      const run = out[ep.runIdx];
+      run[ep.isStart ? 0 : run.length - 1] = [targetPt[0], targetPt[1]];
+    });
   });
 
   for (let pass = 0; pass < PLAN_REPAIR_MAX_PASSES; pass++) {
@@ -875,6 +1007,7 @@ export function connectRunsByEndpoints(
     const merges = bridgeCollinearGaps(out, PLAN_BRIDGE_M);
     if (snaps === 0 && merges === 0) break;
   }
+  stitchEndpointsToVertices(out, junctionTolM);
   const merged = out.filter((r) => r && r.length >= 2);
   return planarize ? splitRunsAtJunctions(merged) : merged;
 }
@@ -1123,7 +1256,6 @@ function stitchEndpointsOntoRuns(out: Array<Array<[number, number]>>, toleranceM
             // Only allow if the road is approaching the target segment, or is a short lay-by (< 80m)
             if (!bestIsRay) {
               const proj = nearestPointOnSegmentMeters(p, a, b);
-              const projPrev = nearestPointOnSegmentMeters(pNeighbor, a, b);
               const isShortLayBy = run.length <= 3 && Math.hypot(vx, vy) < 80;
               const segMag = Math.hypot(dSegX, dSegY) || 1;
               const ox = (run[run.length - 1][0] - run[0][0]) * kx;
@@ -1131,8 +1263,12 @@ function stitchEndpointsOntoRuns(out: Array<Array<[number, number]>>, toleranceM
               const oMag = Math.hypot(ox, oy) || 1;
               const parallelTarget =
                 Math.abs((dSegX / segMag) * (ox / oMag) + (dSegY / segMag) * (oy / oMag)) >= 0.7;
-              const isApproaching =
-                isShortLayBy || proj.distM < projPrev.distM - 0.5 || !parallelTarget;
+              // Parallel runs never take the orthogonal snap — a side-by-side
+              // road end must not bend a through-road end onto its segment (that
+              // corrupts the main line). Only truly approaching ends (heading
+              // into the segment, not along it) and short lay-bys project here;
+              // parallel ends reaching another node are the vertex weld's job.
+              const isApproaching = isShortLayBy || !parallelTarget;
               if (isApproaching && proj.distM < bestDist) {
                 bestDist = proj.distM;
                 bestRun = cand.run;
@@ -1199,6 +1335,96 @@ function stitchEndpointsOntoRuns(out: Array<Array<[number, number]>>, toleranceM
     }
     out[ri] = rebuilt;
   }
+  return snaps;
+}
+
+/**
+ * Third repair pass: the endpoint→segment projector above only lands a stub on
+ * a segment INTERIOR, so a stub stranding just short of another run's junction
+ * END node keeps a last-mile offset hole and looks "unconnected". This pass
+ * snaps dangling endpoints onto the nearest END vertex of another run — gated
+ * so only approaching ends connect and side-by-side parallel lanes never pinch
+ * together. Interior vertices stay out of scope: touching them is the
+ * segment-projector's job.
+ */
+function stitchEndpointsToVertices(out: Array<Array<[number, number]>>, toleranceM: number): number {
+  if (!(toleranceM > 0) || out.length < 2) return 0;
+  const cellDeg = Math.max(toleranceM / 111000, 1e-5);
+  const vertexGrid = new Map<string, Array<{ run: number; v: number }>>();
+  out.forEach((run, ri) => {
+    if (!run || run.length < 2) return;
+    for (let v = 0; v < run.length; v++) {
+      const pt = run[v];
+      const key = `${Math.floor(pt[0] / cellDeg)}|${Math.floor(pt[1] / cellDeg)}`;
+      const bucket = vertexGrid.get(key);
+      if (bucket) bucket.push({ run: ri, v });
+      else vertexGrid.set(key, [{ run: ri, v }]);
+    }
+  });
+
+  let snaps = 0;
+  out.forEach((run, ri) => {
+    if (!run || run.length < 2) return;
+    const ends: Array<{ idx: number; head: [number, number] | null }> = [
+      { idx: 0, head: endpointHeadingMeters(run, true) },
+      { idx: run.length - 1, head: endpointHeadingMeters(run, false) }
+    ];
+    for (const { idx, head } of ends) {
+      if (!head) continue;
+      const p = run[idx];
+      const gx = Math.floor(p[0] / cellDeg);
+      const gy = Math.floor(p[1] / cellDeg);
+      let bestDist = toleranceM;
+      let bestPt: [number, number] | null = null;
+      const seen = new Set<string>();
+      for (let dx = -1; dx <= 1; dx++) {
+        for (let dy = -1; dy <= 1; dy++) {
+          const bucket = vertexGrid.get(`${gx + dx}|${gy + dy}`);
+          if (!bucket) continue;
+          for (const cand of bucket) {
+            if (cand.run === ri) continue;
+            const qRun = out[cand.run];
+            if (cand.v !== 0 && cand.v !== qRun.length - 1) continue;
+            const sig = `${cand.run}|${cand.v}`;
+            if (seen.has(sig)) continue;
+            seen.add(sig);
+            const q = qRun[cand.v];
+            const d = calculateGeodesicDistanceMeters(p[1], p[0], q[1], q[0]);
+            if (d >= bestDist || d <= 0.05) continue;
+
+            // Only approach-aligned ends connect: the endpoint's outward
+            // heading must point toward the target node (a cul-de-sac end
+            // facing AWAY from a junction stays untouched).
+            const latRef = (p[1] + q[1]) / 2;
+            const kx = 111320 * Math.cos((latRef * Math.PI) / 180);
+            const ky = 110574;
+            const ddx = (q[0] - p[0]) * kx;
+            const ddy = (q[1] - p[1]) * ky;
+            const dmag = Math.hypot(ddx, ddy) || 1;
+            if (head[0] * (ddx / dmag) + head[1] * (ddy / dmag) <= 0.3) continue;
+
+            // Parallel side-by-side rejection: converging lane ends keep their
+            // spacing, only true junction approaches merge.
+            const cHead = endpointHeadingMeters(qRun, cand.v === 0);
+            if (cHead) {
+              const dot = head[0] * cHead[0] + head[1] * cHead[1];
+              if (dot > 0.75) {
+                const dispDot = Math.abs(head[0] * (ddx / dmag) + head[1] * (ddy / dmag));
+                if (dispDot < 0.6) continue;
+              }
+            }
+
+            bestDist = d;
+            bestPt = q;
+          }
+        }
+      }
+      if (bestPt) {
+        run[idx] = [bestPt[0], bestPt[1]];
+        snaps++;
+      }
+    }
+  });
   return snaps;
 }
 
@@ -1314,14 +1540,30 @@ export function getSubgridBbox(
   let centerLng = SUBGRID_COORDINATES[normSg]?.[0];
   let centerLat = SUBGRID_COORDINATES[normSg]?.[1];
 
-  // 3. Average coordinates of points
+  // 3. Center of captured-point bounding box
   if (
     (centerLng === undefined || centerLat === undefined || (centerLng === 0 && centerLat === 0)) &&
     points &&
     points.length > 0
   ) {
-    centerLng = points.reduce((sum, p) => sum + p.lng, 0) / points.length;
-    centerLat = points.reduce((sum, p) => sum + p.lat, 0) / points.length;
+    // The bounding-box midpoint (not the mean) keeps the surveyed extent fully
+    // inside the derived cell: the mean drifts toward outliers, clipping the
+    // real captured geometry out of the 5x5 km box.
+    let minLng = Infinity;
+    let maxLng = -Infinity;
+    let minLat = Infinity;
+    let maxLat = -Infinity;
+    points.forEach((p) => {
+      if (!Number.isFinite(p.lng) || !Number.isFinite(p.lat)) return;
+      if (p.lng < minLng) minLng = p.lng;
+      if (p.lng > maxLng) maxLng = p.lng;
+      if (p.lat < minLat) minLat = p.lat;
+      if (p.lat > maxLat) maxLat = p.lat;
+    });
+    if (minLng !== Infinity) {
+      centerLng = (minLng + maxLng) / 2;
+      centerLat = (minLat + maxLat) / 2;
+    }
   }
 
   // 4. Extrapolation from known grid neighbor if matching N{row}E{col} format
