@@ -26,6 +26,9 @@ export interface ImportPreview {
   mode: 'original' | 'clipped';
   color: string;
   geojson: any;
+  /** Serialized GeoJSON string for heavyweight originals that crossed from the
+   *  parse worker as bytes instead of an object graph (see GisImportResult). */
+  geojsonJson?: string;
   featureCount: number;
   name: string;
   format: string;
@@ -66,6 +69,7 @@ export const RoadImportPanel: React.FC<RoadImportPanelProps> = ({
   const [isDragging, setIsDragging] = useState(false);
   const [phase, setPhase] = useState<ImportPhase>('idle');
   const [processingStage, setProcessingStage] = useState<string | null>(null);
+  const [parseTransport, setParseTransport] = useState<'worker' | 'inline' | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [lastImported, setLastImported] = useState<CatalogVectorLayer | null>(null);
@@ -74,6 +78,10 @@ export const RoadImportPanel: React.FC<RoadImportPanelProps> = ({
     featureCountBefore: number;
     featureCountAfter: number;
   } | null>(null);
+  // When OFF (default) the full uploaded geometry is imported immediately,
+  // matching the speed of a plain GIS viewer. When ON, the dataset is clipped
+  // to the selected district(s) off the main thread (in the parse worker).
+  const [clipToDistrict, setClipToDistrict] = useState(false);
   // Parsed result held while waiting for the clip decision (phase === 'resolve').
   const [pendingParsed, setPendingParsed] = useState<GisImportResult | null>(null);
   // Polygon clip + its statistics computed OFF the main thread (in the parse
@@ -97,16 +105,6 @@ export const RoadImportPanel: React.FC<RoadImportPanelProps> = ({
   const fileSizeFormattedRef = useRef<string>('');
 
   const regionCount = Array.isArray(districtsGeo?.features) ? districtsGeo.features.length : 0;
-
-  const regionLabel = useMemo(() => {
-    if (regionCount === 0) return 'no selected region';
-    const names = (districtsGeo?.features ?? [])
-      .map((f: any) => f?.properties?.NAME ?? f?.properties?.name)
-      .filter(Boolean) as string[];
-    if (names.length === 0) return `${regionCount} selected district(s)`;
-    if (names.length <= 2) return names.join(', ');
-    return `${names.slice(0, 2).join(', ')} +${names.length - 2} more`;
-  }, [districtsGeo, regionCount]);
 
   // Clipped result, re-derived live so changing the Region tab (or its selected
   // district boundary) recomputes exactly what the polygon clip will produce.
@@ -147,6 +145,7 @@ export const RoadImportPanel: React.FC<RoadImportPanelProps> = ({
       mode: previewMode,
       color: PREVIEW_COLORS[previewMode],
       geojson: useClip ? clippedFc : pendingParsed.geojson,
+      geojsonJson: useClip ? undefined : pendingParsed.geojsonJson,
       featureCount: useClip
         ? clippedFeatureCount
         : pendingParsed.featureCount,
@@ -191,6 +190,10 @@ export const RoadImportPanel: React.FC<RoadImportPanelProps> = ({
         name: (result.filename || '').replace(/\.[^/.]+$/, '') || 'Imported layer',
         format: result.format,
         geojson,
+        // Heavy datasets cross from the worker as a flat JSON string; preserve
+        // it on the layer so the map can feed MapLibre a blob URL (its worker
+        // fetches+parses) instead of re-cloning the graph on the UI thread.
+        geojsonJson: result.geojsonJson,
         color,
         opacity: 0.85,
         strokeWidth: stats?.geometryType === 'LineString' || result.geometryType === 'LineString' ? 3.5 : 2,
@@ -232,6 +235,7 @@ export const RoadImportPanel: React.FC<RoadImportPanelProps> = ({
       setErrorMsg(null);
       setWarnings([]);
       setProcessingStage(null);
+      setParseTransport(null);
       setLastImportClipped(null);
       setPendingParsed(null);
       setStagedClip(null);
@@ -241,19 +245,28 @@ export const RoadImportPanel: React.FC<RoadImportPanelProps> = ({
 
       try {
         // The parse worker ALSO performs the bbox gate + polygon clip + clipped
-        // statistics off the UI thread when a region is selected, so large
-        // imports never re-walk the dataset (or clip it) on the main thread.
+        // statistics off the UI thread when a region is selected AND the
+        // clip-to-district option is enabled, so large imports never re-walk
+        // the dataset (or clip it) on the main thread. With the option OFF the
+        // full uploaded dataset is parsed and imported immediately.
         const result: GisImportResult = await parseGisImportFile(
           file,
           (stage) => setProcessingStage(stage),
-          regionCount > 0 ? districtsGeo : undefined
+          clipToDistrict && regionCount > 0 ? districtsGeo : undefined,
+          (mode) => setParseTransport(mode)
         );
 
         if (result.warnings && result.warnings.length > 0) {
           setWarnings(result.warnings);
         }
 
-        if (regionCount > 0) {
+        // Yield one frame so the "read" progress state paints before the
+        // remaining synchronous layer-commit work below, keeping the panel
+        // visibly responsive after a large worker result arrives.
+        setProcessingStage('Import complete — finalising layer…');
+        await new Promise<void>((r) => requestAnimationFrame(() => r()));
+
+        if (clipToDistrict && regionCount > 0) {
           const clip = result.regionClip;
           // Worker path (GeoJSON/CSV/Shapefile): the parse worker already ran
           // the bbox gate + polygon clip + statistics off the UI thread. Its
@@ -325,7 +338,7 @@ export const RoadImportPanel: React.FC<RoadImportPanelProps> = ({
         setPhase(lastImported ? 'imported' : 'idle');
       }
     },
-    [districtsGeo, onPreviewChange, importResult, lastImported]
+    [districtsGeo, onPreviewChange, importResult, lastImported, clipToDistrict]
   );
 
   const handleApplyClipAndImport = useCallback(() => {
@@ -433,6 +446,21 @@ export const RoadImportPanel: React.FC<RoadImportPanelProps> = ({
               <span className="text-[10px] text-text-muted animate-pulse">
                 {processingStage || 'Preparing to read file'}
               </span>
+              <span
+                className={`text-[9px] px-1.5 py-0.5 rounded-full border font-mono ${
+                  parseTransport === 'worker'
+                    ? 'border-sky-500/30 bg-sky-500/10 text-sky-300'
+                    : parseTransport === 'inline'
+                      ? 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+                      : 'border-subtle bg-inner/40 text-text-muted'
+                }`}
+              >
+                {parseTransport === 'worker'
+                  ? 'background thread'
+                  : parseTransport === 'inline'
+                    ? 'main thread'
+                    : 'starting…'}
+              </span>
             </div>
           ) : (
             <div className="flex flex-col items-center gap-1.5 py-1">
@@ -449,6 +477,32 @@ export const RoadImportPanel: React.FC<RoadImportPanelProps> = ({
           )}
         </div>
       </div>
+
+      {/* Clip-to-district opt-in. Default OFF: the full uploaded dataset is
+          imported immediately (geolibre-style speed). ON clips to the selected
+          district(s) off the main thread. */}
+      <label
+        className={`flex items-start gap-2 p-2 rounded-lg border border-subtle bg-inner/40 cursor-pointer ${
+          regionCount === 0 ? 'opacity-50 pointer-events-none' : ''
+        }`}
+      >
+        <input
+          type="checkbox"
+          checked={clipToDistrict}
+          onChange={(e) => setClipToDistrict(e.target.checked)}
+          className="mt-0.5 w-3.5 h-3.5 text-sky-600 bg-inner border-subtle rounded focus:ring-sky-500"
+        />
+        <span className="flex flex-col gap-0.5">
+          <span className="text-[11px] font-semibold text-text-base">
+            Clip to selected district{regionCount === 1 ? '' : 's'}
+          </span>
+          <span className="text-[10px] text-text-muted leading-snug">
+            {regionCount === 0
+              ? 'Select districts on the Region tab to enable clipping.'
+              : 'Trim the imported data to the selected district(s). Leave OFF to import the full file — faster for large or boundary-crossing layers.'}
+          </span>
+        </span>
+      </label>
 
       {/* Region-aware staging card (file held while the user decides on the clip) */}
       {phase === 'resolve' && pendingParsed && (
@@ -469,7 +523,7 @@ export const RoadImportPanel: React.FC<RoadImportPanelProps> = ({
                   </span>
                   <span className="block text-[10px] text-amber-200/90 mt-0.5 leading-relaxed">
                     “{pendingParsed.filename}” spans {pendingParsed.featureCount.toLocaleString()}{' '}
-                    features across an area larger than {regionLabel}. Clipping to the selected
+                    features across an area larger than the selected district(s). Clipping to the selected
                     district(s) keeps only the geometry you are analysing — the map stays fast
                     and nothing outside your working area is imported.
                   </span>
@@ -567,7 +621,7 @@ export const RoadImportPanel: React.FC<RoadImportPanelProps> = ({
             <div className="flex items-center gap-2">
               <CheckCircle2 size={14} className="text-emerald-400 shrink-0" />
               <span className="text-[11px] text-emerald-300 leading-snug">
-                Dataset now fits within {regionLabel} — ready to import.
+                Dataset now fits within the selected district(s) — ready to import.
               </span>
               <button
                 type="button"

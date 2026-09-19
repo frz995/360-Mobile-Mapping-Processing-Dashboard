@@ -18,6 +18,12 @@ import {
 } from '../utils/gisImportParser';
 import { bboxExceedsRegion, clipGeoJsonToRegions } from '../utils/subgridComparison';
 
+/** Heavy datasets cross to the main thread as a serialized JSON string (a single
+ *  flat copy) rather than a 21k-feature object graph (a deep structured clone).
+ *  The main thread hands the string to MapLibre as a blob URL it parses in its
+ *  own worker — the graph is never materialized on the UI thread. */
+const HEAVY_TRANSPORT_BYTES = 1_500_000;
+
 export interface GisImportWorkerRequest {
   id: number;
   file: File;
@@ -34,12 +40,22 @@ const post = (message: GisImportWorkerResponse): void => {
   (self as unknown as { postMessage(message: GisImportWorkerResponse): void }).postMessage(message);
 };
 
+const DBG = typeof import.meta !== 'undefined' && !!import.meta.env?.DEV;
+
 self.onmessage = async (event: MessageEvent<GisImportWorkerRequest>) => {
   const { id, file, districtsGeo } = event.data;
   const emit = (stage: string) => post({ id, status: 'progress', stage });
+  const t0 = performance.now();
+  if (DBG) console.info(`[gisImport.worker] decode start ${file.name} ${(file.size / 1024 / 1024).toFixed(1)} MB`);
   try {
     const warnings: string[] = [];
     const { geojson, format } = await decodeSpatialFile(file, warnings, emit);
+    if (DBG) {
+      console.info(
+        `[gisImport.worker] decoded ${file.name} in ${((performance.now() - t0) / 1000).toFixed(1)}s ` +
+          `${Array.isArray(geojson?.features) ? geojson.features.length : 0} features`
+      );
+    }
     const result = buildImportResult(geojson, format, file.name, warnings, emit);
 
     // Region-aware clip: decide + perform the polygon clip here, off the UI
@@ -66,7 +82,19 @@ self.onmessage = async (event: MessageEvent<GisImportWorkerRequest>) => {
       result.regionClip = null;
     }
 
-    post({ id, status: 'ok', result });
+    const posted: GisImportResult =
+      (result.geometryBytes ?? 0) > HEAVY_TRANSPORT_BYTES
+        ? { ...result, geojson: undefined as any, geojsonJson: JSON.stringify(result.geojson) }
+        : result;
+
+    post({ id, status: 'ok', result: posted });
+    if (DBG) {
+      console.info(
+        `[gisImport.worker] result posted ${file.name} in ${((performance.now() - t0) / 1000).toFixed(1)}s ` +
+          `${result.featureCount.toLocaleString()} features` +
+          (result.geometryBytes ? ` ${(result.geometryBytes / 1048576).toFixed(1)} MB geojson` : '')
+      );
+    }
   } catch (err: any) {
     post({ id, status: 'error', error: err?.message || String(err) });
   }

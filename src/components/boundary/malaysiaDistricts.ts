@@ -9,6 +9,7 @@
 
 import { DISTRICT_METADATA, type DistrictMeta } from './districtMetadata';
 import { pathLengthLngLatKm } from '../../utils/geo';
+import type { PlanRunEndpointIds } from '../../utils/subgridComparison';
 
 export interface MalaysiaDistrict extends DistrictMeta {
   /** Committed boundary geo (FeatureCollection). */
@@ -295,6 +296,58 @@ export function clipLineStringsToDistricts(
     flush();
   }
   return out;
+}
+
+/**
+ * Like `clipLineStringsToDistricts` but also preserves each output run's
+ * start/end node ids whenever the fragment keeps the original line's terminal
+ * coordinate (a boundary cut always inserts a new vertex with an unknown
+ * node id, so those ends come back without an id).
+ */
+export function clipLineStringsToDistrictsWithIds(
+  lines: Array<{ coordinates: Array<[number, number]>; startNode?: number; endNode?: number }>,
+  districts: MalaysiaDistrict[],
+  minRun = 2
+): { runs: Array<Array<[number, number]>>; endpointIds: Array<PlanRunEndpointIds> } {
+  if (!lines || lines.length === 0 || districts.length === 0) {
+    return { runs: [], endpointIds: [] };
+  }
+  const runs: Array<Array<[number, number]>> = [];
+  const endpointIds: Array<PlanRunEndpointIds> = [];
+  for (const line of lines) {
+    const coords = line.coordinates || [];
+    if (coords.length < 2) continue;
+    let run: Array<[number, number]> = [];
+    const flush = () => {
+      if (run.length < minRun) {
+        run = [];
+        return;
+      }
+      const first = run[0];
+      const last = run[run.length - 1];
+      const keepStart =
+        line.startNode != null && first[0] === coords[0][0] && first[1] === coords[0][1];
+      const keepEnd =
+        line.endNode != null &&
+        last[0] === coords[coords.length - 1][0] &&
+        last[1] === coords[coords.length - 1][1];
+      runs.push(run.slice());
+      endpointIds.push({
+        start: keepStart ? line.startNode : undefined,
+        end: keepEnd ? line.endNode : undefined
+      });
+      run = [];
+    };
+    for (const pt of coords) {
+      if (pointInDistricts(pt, districts)) {
+        run.push(pt);
+      } else {
+        flush();
+      }
+    }
+    flush();
+  }
+  return { runs, endpointIds };
 }
 
 /**

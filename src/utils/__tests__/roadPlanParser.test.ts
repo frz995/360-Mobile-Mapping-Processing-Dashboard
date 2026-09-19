@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { extractLineCoords, parseRoadPlanFile } from '../roadPlanParser';
+import { extractLineCoords, extractLineRunsWithIds, parseRoadPlanFile } from '../roadPlanParser';
 
 describe('roadPlanParser', () => {
   describe('extractLineCoords', () => {
@@ -51,6 +51,71 @@ describe('roadPlanParser', () => {
     it('returns empty array for invalid or non-line geometries', () => {
       expect(extractLineCoords(null)).toEqual([]);
       expect(extractLineCoords({ type: 'Point', coordinates: [100, 1] })).toEqual([]);
+    });
+  });
+
+  describe('extractLineRunsWithIds', () => {
+    it('reads canonical startNode/endNode ids from feature properties', () => {
+      const fc = {
+        type: 'FeatureCollection',
+        features: [
+          {
+            type: 'Feature',
+            properties: { startNode: 101, endNode: 202 },
+            geometry: {
+              type: 'LineString',
+              coordinates: [[100.1, 1.1], [100.2, 1.2]]
+            }
+          },
+          {
+            type: 'Feature',
+            properties: { name: 'no ids' },
+            geometry: {
+              type: 'LineString',
+              coordinates: [[100.3, 1.3], [100.4, 1.4]]
+            }
+          }
+        ]
+      };
+      const { runs, endpointIds } = extractLineRunsWithIds(fc);
+      expect(runs).toHaveLength(2);
+      expect(endpointIds[0]).toEqual({ start: 101, end: 202 });
+      expect(endpointIds[1]).toEqual({});
+    });
+
+    it('reads common GIS node field aliases (fnode/tnode)', () => {
+      const feature = {
+        type: 'Feature',
+        properties: { FNODE_: 11, TNODE_: 12 },
+        geometry: { type: 'LineString', coordinates: [[102.0, 2.0], [102.1, 2.1]] }
+      };
+      const { runs, endpointIds } = extractLineRunsWithIds(feature);
+      expect(runs).toHaveLength(1);
+      expect(endpointIds[0]).toEqual({ start: 11, end: 12 });
+    });
+
+    it('carries ids through the compact-plan shape and preserves string ids', () => {
+      const compactPlan = {
+        type: 'FeatureCollection',
+        features: [
+          {
+            type: 'Feature',
+            properties: { startNode: 'n-7', endNode: 9 },
+            geometry: { type: 'LineString', coordinates: [[101.0, 3.0], [101.1, 3.1]] }
+          }
+        ]
+      };
+      const { runs, endpointIds } = extractLineRunsWithIds(compactPlan);
+      expect(runs).toHaveLength(1);
+      expect(endpointIds[0]).toEqual({ start: 'n-7', end: 9 });
+    });
+
+    it('returns empty for null input and non-line geometries', () => {
+      expect(extractLineRunsWithIds(null)).toEqual({ runs: [], endpointIds: [] });
+      expect(extractLineRunsWithIds({ type: 'Point', coordinates: [100, 1] })).toEqual({
+        runs: [],
+        endpointIds: []
+      });
     });
   });
 

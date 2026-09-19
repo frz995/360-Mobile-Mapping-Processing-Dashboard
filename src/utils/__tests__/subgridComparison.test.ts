@@ -12,8 +12,64 @@ import {
   bboxOfFeatureCollection,
   bboxContainsBbox,
   geoJsonExceedsRegion,
-  clipGeoJsonToRegions
+  clipGeoJsonToRegions,
+  mergeRunsByIdentity
 } from '../subgridComparison';
+
+describe('identity-based run merging', () => {
+  it('joins runs that share an endpoint node id into one continuous run', () => {
+    const runs: Array<Array<[number, number]>> = [
+      [[100.0, 3.0], [100.01, 3.0]],
+      [[100.0101, 3.0], [100.02, 3.0]]
+    ];
+    const ids = [{ start: 1, end: 5 }, { start: 5, end: 2 }];
+    const { runs: merged, endpointIds } = mergeRunsByIdentity(runs, ids);
+    expect(merged.length).toBe(1);
+    expect(merged[0].length).toBe(4);
+    expect(merged[0][0]).toEqual([100.0, 3.0]);
+    expect(merged[0][3]).toEqual([100.02, 3.0]);
+    expect(endpointIds[0].start).toBe(1);
+    expect(endpointIds[0].end).toBe(2);
+  });
+
+  it('does not merge runs through a junction node used by three ends', () => {
+    const runs: Array<Array<[number, number]>> = [
+      [[100.0, 3.0], [100.01, 3.0]],
+      [[100.01, 3.0], [100.02, 3.0]],
+      [[100.01, 3.0], [100.01, 3.01]]
+    ];
+    const ids = [
+      { start: 'a', end: 'j' },
+      { start: 'j', end: 'b' },
+      { start: 'j', end: 'c' }
+    ];
+    const { runs: merged } = mergeRunsByIdentity(runs, ids);
+    expect(merged.length).toBe(3);
+  });
+
+  it('keeps runs untouched when no node ids are supplied', () => {
+    const runs: Array<Array<[number, number]>> = [
+      [[100.0, 3.0], [100.01, 3.0]],
+      [[100.02, 3.0], [100.03, 3.0]]
+    ];
+    const { runs: merged } = mergeRunsByIdentity(runs);
+    expect(merged).toHaveLength(2);
+    expect(merged[0]).toEqual(runs[0]);
+  });
+
+  it('joins runs by node id before geometric stitching, even beyond the snap tolerance', () => {
+    // ~111 m apart at lat 3 — beyond the 25 m snap and the 100 m bridge cap.
+    const runs: Array<Array<[number, number]>> = [
+      [[100.0, 3.0], [100.01, 3.0]],
+      [[100.011, 3.0], [100.02, 3.0]]
+    ];
+    const ids = [{ start: 1, end: 77 }, { start: 77, end: 2 }];
+    const stitched = connectRunsByEndpoints(runs, 25, 40, false, ids);
+    expect(stitched.length).toBe(1);
+    expect(stitched[0][0]).toEqual([100.0, 3.0]);
+    expect(stitched[0][stitched[0].length - 1]).toEqual([100.02, 3.0]);
+  });
+});
 
 describe('subgridComparison utility', () => {
   it('correctly detects points inside a bounding box', () => {

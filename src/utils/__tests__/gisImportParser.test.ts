@@ -189,6 +189,57 @@ describe('gisImportParser', () => {
       expect(res.bbox).toEqual([102.1, 3.5, 102.1, 3.5]);
     });
 
+    it('falls back to inline parsing when a zipped archive is KML and the worker cannot parse XML', async () => {
+      const { zipSync } = await import('fflate');
+      const kmlContent = `<?xml version="1.0" encoding="UTF-8"?>
+      <kml xmlns="http://www.opengis.net/kml/2.2">
+        <Document>
+          <Placemark>
+            <name>Zip KML Point</name>
+            <Point><coordinates>102.4,3.6,0</coordinates></Point>
+          </Placemark>
+        </Document>
+      </kml>`;
+      const zipBytes = zipSync({
+        'data.kml': new TextEncoder().encode(kmlContent)
+      });
+      const file = new File([zipBytes], 'roads.zip', { type: 'application/zip' });
+
+      // Workers have no DOMParser. Simulate a worker that fails with the
+      // XML-unavailable error so parseGisImportFile exercises the inline fallback.
+      const prevWorker = (globalThis as any).Worker;
+      (globalThis as any).Worker = class {
+        private listeners: Record<string, Array<(event: any) => void>> = {};
+        addEventListener(type: string, fn: (event: any) => void) {
+          (this.listeners[type] = this.listeners[type] || []).push(fn);
+        }
+        removeEventListener(type: string, fn: (event: any) => void) {
+          this.listeners[type] = (this.listeners[type] || []).filter((f) => f !== fn);
+        }
+        postMessage(data: any) {
+          const { id } = data;
+          queueMicrotask(() => {
+            for (const fn of this.listeners['message'] || []) {
+              fn({
+                data: { id, status: 'error', error: 'XML parsing is unavailable in this environment.' }
+              });
+            }
+            for (const fn of this.listeners['error'] || []) {
+              fn({ message: 'XML parsing is unavailable in this environment.' });
+            }
+          });
+        }
+      };
+      try {
+        const res = await parseGisImportFile(file);
+        expect(res.format).toBe('kml');
+        expect(res.featureCount).toBe(1);
+        expect(res.bbox).toEqual([102.4, 3.6, 102.4, 3.6]);
+      } finally {
+        (globalThis as any).Worker = prevWorker;
+      }
+    });
+
     it('automatically reprojects Web Mercator EPSG:3857 coordinates to WGS84', async () => {
       // Kuala Lumpur in EPSG:3857 meters: ~11319747, 349603
       const webMercatorGeoJson = JSON.stringify({

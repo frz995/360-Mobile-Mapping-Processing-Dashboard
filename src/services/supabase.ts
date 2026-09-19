@@ -2694,6 +2694,7 @@ export interface RoadAnalysisProductionState {
   extractedLines?: ExtractedRoadLine[];
   catalogLayers?: any[];
   systemStyles?: any;
+  catalogPlanLayerId?: string | null;
   planDistanceKm?: number;
   totalSubgrids?: number;
   updatedAt?: string;
