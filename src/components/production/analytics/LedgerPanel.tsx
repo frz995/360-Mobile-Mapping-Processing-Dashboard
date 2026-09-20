@@ -215,7 +215,7 @@ export const LedgerPanel: React.FC<LedgerPanelProps> = ({
               </strong>
             </div>
             <div className="flex justify-between pt-1 border-t border-subtle">
-              <span>Pipeline Quality:</span>{' '}
+              <span>Data Quality:</span>{' '}
               <strong className="text-emerald-400 font-sans">{compliantPercent}% Compliant</strong>
             </div>
           </div>

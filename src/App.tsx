@@ -2222,7 +2222,7 @@ export default function App() {
               <div class="kpi-subtext">Defect Rate: ${(100 - parseFloat(passRateVal)).toFixed(2)}%</div>
             </div>
             <div class="kpi-card">
-              <div class="kpi-label">Pipeline Quality Health</div>
+              <div class="kpi-label">Data Quality Health</div>
               <div class="kpi-value">${passRateVal}%</div>
               <div class="kpi-subtext">Status: QA Benchmark Passed</div>
             </div>

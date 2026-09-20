@@ -2,9 +2,10 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { ArrowRight } from 'lucide-react';
 import { HoverBorderGradient } from '../common/HoverBorderGradient';
+import { GeoSphereFullLogo } from '../common/GeoSphereLogo';
 import { MagneticWrap } from './MagneticWrap';
 import { ScrambleText } from './ScrambleText';
-import { OUTRO_SECTION, VIEWPORT_REVEAL, revealGroup, revealItem } from './showcaseMotion';
+import { OUTRO_SECTION, VIEWPORT_REVEAL, revealGroup, revealItem, wordVariant } from './showcaseMotion';
 import type { SystemModule } from './types';
 
 interface OutroSectionProps {
@@ -30,17 +31,42 @@ export const OutroSection: React.FC<OutroSectionProps> = ({ modules, onLaunch, o
             >
                 <motion.span
                     variants={revealItem}
-                    className="text-[10px] font-mono font-semibold tracking-[0.3em] uppercase text-sky-300/70"
+                    className="text-xs sm:text-sm font-mono font-semibold tracking-[0.25em] uppercase text-sky-300/85"
                 >
                     <ScrambleText text="BUILT AROUND THE MOBILE MAPPING WORKFLOW" />
                 </motion.span>
 
-                <motion.h2
-                    variants={revealItem}
-                    className="mt-4 bg-gradient-to-b from-white via-white to-neutral-400 bg-clip-text text-transparent text-3xl sm:text-5xl xl:text-6xl font-semibold tracking-tight leading-[1.05]"
+                <h2
+                    aria-label="From Survey Capture to Verified Data"
+                    className="mt-4 text-3xl sm:text-5xl xl:text-6xl font-semibold tracking-tight leading-[1.12]"
                 >
-                    From Survey Capture to Verified Data
-                </motion.h2>
+                    <span className="block">
+                        {['From', 'Survey', 'Capture', 'to', 'Verified'].map((w, i) => (
+                            <span key={w} className="inline-block overflow-hidden align-bottom pb-[0.06em] mr-[0.24em] last:mr-0">
+                                <motion.span
+                                    className="inline-block bg-gradient-to-b from-white via-white to-neutral-400 bg-clip-text text-transparent"
+                                    custom={i}
+                                    variants={wordVariant}
+                                >
+                                    {w}
+                                </motion.span>
+                            </span>
+                        ))}
+                    </span>
+                    <span className="block">
+                        {['Data'].map((w, i) => (
+                            <span key={w} className="inline-block overflow-hidden align-bottom pb-[0.06em] mr-[0.24em] last:mr-0">
+                                <motion.span
+                                    className="inline-block bg-gradient-to-b from-white via-white to-neutral-400 bg-clip-text text-transparent"
+                                    custom={i + 5}
+                                    variants={wordVariant}
+                                >
+                                    {w}
+                                </motion.span>
+                            </span>
+                        ))}
+                    </span>
+                </h2>
 
                 <motion.p variants={revealItem} className="mt-4 text-xs sm:text-sm text-neutral-400 max-w-xl leading-relaxed">
                     Everything you need to manage captured data from project setup through
@@ -78,7 +104,7 @@ export const OutroSection: React.FC<OutroSectionProps> = ({ modules, onLaunch, o
                 </motion.div>
 
                 {/* Module quick-jump tiles */}
-                <motion.div variants={revealItem} className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 w-full mt-12">
+                <motion.div variants={revealItem} className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-1.5 sm:gap-2 w-full mt-8 sm:mt-12 max-w-sm sm:max-w-none mx-auto">
                     {modules.map((m, i) => {
                         const Icon = m.icon;
                         return (
@@ -87,23 +113,23 @@ export const OutroSection: React.FC<OutroSectionProps> = ({ modules, onLaunch, o
                                 onClick={() => onJumpTo(i)}
                                 whileHover={{ y: -4 }}
                                 transition={{ type: 'spring', stiffness: 320, damping: 22 }}
-                                className="group flex flex-col items-center gap-2 rounded-xl border border-white/[0.07] bg-white/[0.02] hover:bg-white/[0.05] hover:border-white/25 px-3 py-4 cursor-pointer transition-colors"
+                                className="group flex flex-col items-center justify-center gap-1 sm:gap-2 rounded-lg sm:rounded-xl border border-white/[0.07] bg-white/[0.02] hover:bg-white/[0.05] hover:border-white/25 px-2 py-2.5 sm:px-3 sm:py-4 cursor-pointer transition-colors"
                                 title={m.title}
                             >
                                 {m.iconImage ? (
                                     <img
                                         src={m.iconImage}
                                         alt=""
-                                        className="icon-white w-7 h-7 object-contain group-hover:scale-110 transition-transform"
+                                        className="icon-white w-5 h-5 sm:w-7 sm:h-7 object-contain group-hover:scale-110 transition-transform"
                                         loading="lazy"
                                     />
                                 ) : (
-                                    <Icon className="w-4 h-4 text-neutral-400 group-hover:text-sky-300 transition-colors" />
+                                    <Icon className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-neutral-400 group-hover:text-sky-300 transition-colors" />
                                 )}
-                                <span className="text-[9px] font-medium uppercase tracking-[0.12em] text-neutral-500 group-hover:text-neutral-200 transition-colors leading-tight text-center">
+                                <span className="text-[8px] sm:text-[9px] font-medium uppercase tracking-[0.10em] sm:tracking-[0.12em] text-neutral-400 group-hover:text-neutral-200 transition-colors leading-tight text-center">
                                     {m.title.split('&')[0].trim()}
                                 </span>
-                                <span className="text-[8px] font-mono text-neutral-700">{String(i + 1).padStart(2, '0')}</span>
+                                <span className="text-[7.5px] sm:text-[8px] font-mono text-neutral-600">{String(i + 1).padStart(2, '0')}</span>
                             </motion.button>
                         );
                     })}
@@ -113,7 +139,10 @@ export const OutroSection: React.FC<OutroSectionProps> = ({ modules, onLaunch, o
                     variants={revealItem}
                     className="mt-14 pt-5 border-t border-white/[0.06] w-full flex flex-col sm:flex-row items-center justify-between gap-2 text-[10px] text-neutral-600"
                 >
-                    <span className="font-mono tracking-wider">GEOSPHERE 360° · MOBILE MAPPING DATA MANAGEMENT SYSTEM</span>
+                    <div className="flex items-center gap-2.5 flex-wrap justify-center sm:justify-start">
+                        <GeoSphereFullLogo size={22} colorful className="h-5 sm:h-6 w-auto shrink-0" />
+                        <span className="font-mono tracking-wider">· MOBILE MAPPING DATA MANAGEMENT SYSTEM</span>
+                    </div>
                     <span className="font-mono tracking-wider">POSTGIS · SUPABASE · MAPLIBRE GL · CUDA</span>
                 </motion.div>
             </motion.div>

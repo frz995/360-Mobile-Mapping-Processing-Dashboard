@@ -46,6 +46,7 @@ import { DistrictProjectPopup, type PanotrackPopupData } from './common/District
 import { AmbienceLayer } from './showcase/AmbienceLayer';
 import { HeroSection } from './showcase/HeroSection';
 import { ModuleSection } from './showcase/ModuleSection';
+import { WorkflowSection } from './showcase/WorkflowSection';
 import { OutroSection } from './showcase/OutroSection';
 import { SectionRail } from './showcase/SectionRail';
 import { ModuleTourCards } from './showcase/ModuleTourCards';
@@ -1676,13 +1677,10 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
 
                 {/* Module tour videos — parked at z-5: BEHIND the globe (z-10)
                     and behind the scrolling content (z-20), so the cards read
-                    as parked behind the sphere. While one is hovered on desktop
-                    the layer lifts to z-50 (above header & scrollport) so the
-                    expanded video passes in front of the hero copy. Kept out of
-                    the scrollport so they stay locked to the globe, and revealed
-                    one-by-one after the globe assembles. */}
-                {viewMode === 'modules' && (
-                    <div className={`absolute inset-0 pointer-events-none ${tourHovered ? (isMobile ? 'z-[15]' : 'z-50') : 'z-[5]'}`}>
+                    as parked behind the sphere. Rendered on desktop only so mobile
+                    screens remain clean and unobstructed. */}
+                {viewMode === 'modules' && !isMobile && (
+                    <div className={`absolute inset-0 pointer-events-none ${tourHovered ? 'z-50' : 'z-[5]'}`}>
                         <ModuleTourCards
                             modules={SYSTEM_MODULES}
                             activeSection={activeSection}
@@ -1788,30 +1786,31 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                 </nav>
 
                 {/* Right: View Mode Switcher + Action Buttons */}
-                <div className="flex items-center gap-2 sm:gap-4 shrink-0 z-10">
+                <div className="flex items-center gap-2 xs:gap-2.5 sm:gap-4 shrink-0 z-10">
                     {/* Vertical divider separating module navigation / system links from the 3D Earth view mode switcher */}
                     <div className="h-4 w-px bg-white/10 hidden xl:block" />
 
                     {/* View Mode Switcher: Clean monochromatic text tabs with Google font icons, no box button */}
-                    <div className="flex items-center gap-1.5 sm:gap-4 text-[8px] xs:text-[9px] sm:text-xs">
+                    <div className="flex items-center gap-2 sm:gap-4 text-[10px] sm:text-xs">
                         <button
                             onClick={() => setViewMode('globe')}
-                            className={`py-1 transition-colors cursor-pointer flex items-center gap-0.5 xs:gap-1 sm:gap-1.5 border-b-2 ${viewMode === 'globe'
+                            className={`py-1 transition-colors cursor-pointer flex items-center gap-1 sm:gap-1.5 border-b-2 ${viewMode === 'globe'
                                     ? 'text-white font-semibold border-white'
                                     : 'text-neutral-400 hover:text-white border-transparent'
                                 }`}
                         >
-                            <span className="material-symbols-outlined text-[9px] xs:text-[10px] sm:text-[15px] leading-none">public</span>
-                            <span>3D Earth</span>
+                            <span className="material-symbols-outlined text-[13px] sm:text-[15px] leading-none">public</span>
+                            <span className="hidden xs:inline">3D Earth</span>
+                            <span className="xs:hidden">Earth</span>
                         </button>
                         <button
                             onClick={() => setViewMode('modules')}
-                            className={`py-1 transition-colors cursor-pointer flex items-center gap-0.5 xs:gap-1 sm:gap-1.5 border-b-2 ${viewMode === 'modules'
+                            className={`py-1 transition-colors cursor-pointer flex items-center gap-1 sm:gap-1.5 border-b-2 ${viewMode === 'modules'
                                     ? 'text-white font-semibold border-white'
                                     : 'text-neutral-400 hover:text-white border-transparent'
                                 }`}
                         >
-                            <span className="material-symbols-outlined text-[9px] xs:text-[10px] sm:text-[15px] leading-none">grid_view</span>
+                            <span className="material-symbols-outlined text-[13px] sm:text-[15px] leading-none">grid_view</span>
                             <span>Modules</span>
                         </button>
                     </div>
@@ -1826,10 +1825,10 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                     </button>
                     <button
                         onClick={() => onEnterDashboard && onEnterDashboard(current.id)}
-                        className="text-[10px] sm:text-xs font-medium text-white hover:text-neutral-300 transition-colors cursor-pointer flex items-center gap-1 sm:gap-1.5 py-1"
+                        className="text-[10px] sm:text-xs font-medium text-white hover:text-neutral-300 transition-colors cursor-pointer flex items-center gap-1 sm:gap-1.5 py-1 pl-0.5"
                     >
                         <span className="hidden sm:inline">Launch Workspace</span>
-                        <span className="sm:hidden text-[9px]">Launch</span>
+                        <span className="sm:hidden text-[10px] font-semibold">Launch</span>
                         <ArrowRight className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5 text-neutral-400" />
                     </button>
                 </div>
@@ -2102,6 +2101,8 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                         onEnter={handleLaunchModule}
                     />
                 ))}
+
+                <WorkflowSection onJumpTo={handleModuleChange} />
 
                 <OutroSection
                     modules={SYSTEM_MODULES}

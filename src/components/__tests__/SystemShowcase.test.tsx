@@ -20,7 +20,7 @@ describe('SystemShowcase Component', () => {
   it('renders GeoSphere 360 title, branding, and the first module section', () => {
     render(<SystemShowcase onEnterDashboard={vi.fn()} />);
 
-    expect(screen.getByRole('heading', { level: 1, name: 'Mobile Mapping Data, Managed in One Place' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'Mobile Mapping Data, Manage in One Place' })).toBeInTheDocument();
     expect(screen.getByText('A practical workspace for mobile mapping operations.')).toBeInTheDocument();
     expect(screen.getAllByText(/Mobile Mapping Data Management System/i).length).toBeGreaterThan(0);
     expect(screen.getByRole('heading', { level: 2, name: 'Project Management' })).toBeInTheDocument();

@@ -17,10 +17,11 @@ interface HeroSectionProps {
 }
 
 const wordVariant = {
-    hidden: { y: '115%' },
+    hidden: { y: '115%', opacity: 0 },
     show: (i: number) => ({
         y: '0%',
-        transition: { delay: 0.25 + i * 0.08, duration: 0.85, ease: EASE },
+        opacity: 1,
+        transition: { delay: 0.12 + i * 0.06, duration: 0.75, ease: EASE },
     }),
 };
 
@@ -36,7 +37,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
     return (
         <section
             data-section-idx={HERO_SECTION}
-            className="relative min-h-dvh-safe snap-start flex flex-col items-center justify-center text-center px-4 sm:px-8 py-16 pointer-events-none"
+            className="relative min-h-dvh-safe snap-start flex flex-col items-center justify-center text-center px-2 xs:px-4 sm:px-8 py-16 pointer-events-none"
         >
             {/* Aurora depth field */}
             <div aria-hidden className="absolute inset-0 overflow-hidden pointer-events-none">
@@ -44,36 +45,59 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                 <div className="absolute left-[30%] top-[40%] w-[400px] h-[280px] rounded-full bg-indigo-500/10 blur-[120px] animate-aurora-b" />
             </div>
 
-            {/* Headline — centered, gracefully sized and fitted */}
-            <div className="relative z-10 w-full max-w-xl sm:max-w-2xl md:max-w-3xl lg:max-w-4xl mx-auto px-2">
+            {/* Headline — centered, gracefully sized and fitted with reliable in-view replay */}
+            <motion.div
+                initial="hidden"
+                whileInView="show"
+                viewport={{ once: false, amount: 0.15 }}
+                className="relative z-10 w-full max-w-xl sm:max-w-2xl md:max-w-3xl lg:max-w-4xl mx-auto px-1 sm:px-2"
+            >
                 <h1
-                    aria-label="Mobile Mapping Data, Managed in One Place"
-                    className="text-2xl sm:text-4xl md:text-5xl lg:text-[52px] font-bold tracking-tight bg-gradient-to-b from-white via-white to-white/70 bg-clip-text text-transparent leading-[1.18] sm:leading-[1.15] text-balance"
+                    aria-label="Mobile Mapping Data, Manage in One Place"
+                    className="text-[25px] xs:text-[28px] sm:text-4xl md:text-5xl lg:text-[52px] font-bold tracking-tight text-white leading-[1.16] sm:leading-[1.15]"
                 >
-                    {['Mobile', 'Mapping', 'Data,', 'Managed', 'in', 'One', 'Place'].map((w, i) => (
-                        <span key={w} className="inline-block overflow-hidden align-bottom pb-[0.06em] mr-[0.24em] last:mr-0">
-                            <motion.span
-                                className="inline-block"
-                                custom={i}
-                                variants={wordVariant}
-                                initial="hidden"
-                                animate="show"
-                            >
-                                {w}
-                            </motion.span>
-                        </span>
-                    ))}
+                    <span className="block whitespace-nowrap">
+                        {['Mobile', 'Mapping', 'Data,', 'Manage', 'in'].map((w, i) => (
+                            <span key={w} className="inline-block overflow-hidden align-bottom pb-[0.06em] mr-[0.24em] last:mr-0">
+                                <motion.span
+                                    className="inline-block text-white"
+                                    custom={i}
+                                    variants={wordVariant}
+                                >
+                                    {w}
+                                </motion.span>
+                            </span>
+                        ))}
+                    </span>
+                    <span className="block">
+                        {['One', 'Place'].map((w, i) => (
+                            <span key={w} className="inline-block overflow-hidden align-bottom pb-[0.06em] mr-[0.24em] last:mr-0">
+                                <motion.span
+                                    className="inline-block text-white"
+                                    custom={i + 5}
+                                    variants={wordVariant}
+                                >
+                                    {w}
+                                </motion.span>
+                            </span>
+                        ))}
+                    </span>
                 </h1>
 
                 <motion.p
-                    initial={{ opacity: 0, y: 14 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.5, duration: 0.75, ease: EASE }}
+                    variants={{
+                        hidden: { opacity: 0, y: 14 },
+                        show: {
+                            opacity: 1,
+                            y: 0,
+                            transition: { delay: 0.45, duration: 0.75, ease: EASE },
+                        },
+                    }}
                     className="mt-3 sm:mt-4 text-xs sm:text-sm md:text-base font-medium tracking-wide text-neutral-300/85 max-w-lg sm:max-w-xl mx-auto text-balance"
                 >
                     A practical workspace for mobile mapping operations.
                 </motion.p>
-            </div>
+            </motion.div>
 
             {/* Sparkles emitter line */}
             <motion.div
@@ -114,7 +138,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                     <HoverBorderGradient
                         onClick={onExplorePlatform}
                         containerClassName="group/btn rounded-lg cursor-pointer active:scale-[0.97]"
-                        className="px-4 py-2 sm:px-5 sm:py-2.5 rounded-lg font-medium text-xs sm:text-sm flex items-center justify-center gap-2 text-neutral-100"
+                        className="px-3.5 py-2 sm:px-5 sm:py-2.5 rounded-lg font-medium text-xs sm:text-sm flex items-center justify-center gap-1.5 sm:gap-2 text-neutral-100"
                     >
                         <span>Explore Platform</span>
                         <ArrowRight className="w-3.5 h-3.5 text-neutral-400 group-hover/btn:text-white transition-all group-hover/btn:translate-x-0.5" />
@@ -122,9 +146,9 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                 </MagneticWrap>
                 <button
                     onClick={onExploreEarth}
-                    className="group flex items-center gap-2 rounded-lg border border-white/10 hover:border-white/30 bg-white/[0.03] hover:bg-white/[0.08] px-3.5 py-2 sm:px-4 sm:py-2.5 text-xs font-medium text-neutral-300 hover:text-white transition-all cursor-pointer active:scale-[0.97]"
+                    className="group flex items-center gap-1.5 sm:gap-2 rounded-lg border border-white/10 hover:border-white/30 bg-white/[0.03] hover:bg-white/[0.08] px-3.5 py-2 sm:px-4 sm:py-2.5 text-xs font-medium text-neutral-300 hover:text-white transition-all cursor-pointer active:scale-[0.97]"
                 >
-                    <span className="material-symbols-outlined text-[15px] leading-none text-neutral-400 group-hover:text-sky-300 transition-colors">public</span>
+                    <span className="material-symbols-outlined text-[14px] sm:text-[15px] leading-none text-neutral-400 group-hover:text-sky-300 transition-colors">public</span>
                     <span>Explore 3D Earth</span>
                 </button>
             </motion.div>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Navigation, Camera, Database } from 'lucide-react';
+import { Navigation, Camera, Database, ShieldCheck, ShieldAlert } from 'lucide-react';
 import { Skeleton } from '../common/Skeleton';
 
 export interface DashboardKpiSummaryProps {
@@ -111,11 +111,11 @@ export const DashboardKpiSummary: React.FC<DashboardKpiSummaryProps> = ({
       <div className="bg-card border border-subtle backdrop-blur-md rounded-xl p-3.5 flex flex-col justify-between shadow-sm animate-waterfall stagger-4">
         <div className="flex items-center justify-between">
           <span className="text-xs font-bold text-text-base uppercase tracking-tight">{t('pipelineHealth')}</span>
-          <div className="w-14 h-5">
-            <svg className="w-full h-full text-emerald-400 stroke-current fill-none stroke-2" viewBox="0 0 50 20">
-              <path d="M0,15 L10,12 L20,18 L30,5 L40,10 L50,2" />
-            </svg>
-          </div>
+          {totalDefects > 0 ? (
+            <ShieldAlert size={15} className="text-amber-400 shrink-0" />
+          ) : (
+            <ShieldCheck size={15} className="text-emerald-400 shrink-0" />
+          )}
         </div>
         <div className="my-1">
           {isDataLoading ? (

@@ -1439,6 +1439,19 @@ select:-webkit-autofill:focus {
   user-select: none;
 }
 
+@keyframes flow-slow {
+  from {
+    stroke-dashoffset: 24;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.animate-flow-slow {
+  animation: flow-slow 2.4s linear infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-showcase-marquee,
   .animate-aurora-a,
@@ -1447,6 +1460,7 @@ select:-webkit-autofill:focus {
   .animate-corner-flare-soft,
   .animate-hotspot-ping,
   .animate-scroll-hint,
+  .animate-flow-slow,
   .beam-frame::before {
     animation: none !important;
   }

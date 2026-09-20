@@ -595,6 +595,11 @@ export const ModuleTourCards: React.FC<ModuleTourCardsProps> = ({
     const hoveredMod = hoveredIndex >= 0 ? modules[hoveredIndex] : null;
     const preview = previewSize(viewport.w);
 
+    // On mobile devices, hide floating orbit cards so the 3D globe and Hero text remain completely clean and unobstructed.
+    if (isMobile) {
+        return null;
+    }
+
     // The scene above the scroll story (preview + tip) has to escape BOTH the
     // fixed backdrop's stacking context and the scrollport that overlays it, so
     // it is portaled onto <body> and painted above the whole landing.

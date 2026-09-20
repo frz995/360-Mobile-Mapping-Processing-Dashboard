@@ -25,6 +25,16 @@ export const revealGroup: Variants = {
     show: { transition: { staggerChildren: 0.09, delayChildren: 0.04 } },
 };
 
+/** Staggered word-mask headline reveal (used by Hero, Workflow, Outro headlines). */
+export const wordVariant: Variants = {
+    hidden: { y: '115%', opacity: 0 },
+    show: (i: number) => ({
+        y: '0%',
+        opacity: 1,
+        transition: { delay: 0.12 + i * 0.06, duration: 0.75, ease: EASE },
+    }),
+};
+
 /**
  * Replays the reveal every time a panel enters the viewport — scrolling down
  * or back up always re-runs the animation.
@@ -33,7 +43,8 @@ export const VIEWPORT_REVEAL = { once: false, amount: 0.3 } as const;
 
 /** Section indices used across the scroll story. */
 export const HERO_SECTION = -1;
-export const OUTRO_SECTION = 6;
+export const WORKFLOW_SECTION = 6;
+export const OUTRO_SECTION = 7;
 
 export interface GlobePose {
     x: number;
@@ -58,8 +69,13 @@ export function globePoseFor(
     if (globeMode) return { x: 0, y: 0, scale: 1, opacity: 1 };
     if (section === HERO_SECTION) {
         return isMobile
-            ? { x: 0, y: vh * 0.12, scale: 0.94, opacity: 0.5 }
+            ? { x: 0, y: 0, scale: 1.72, opacity: 0.7 }
             : { x: 0, y: vh * 0.02, scale: 1, opacity: 0.9 };
+    }
+    if (section === WORKFLOW_SECTION) {
+        return isMobile
+            ? { x: 0, y: 0, scale: 0.95, opacity: 0.25 }
+            : { x: 0, y: 0, scale: 1.05, opacity: 0.38 };
     }
     if (section === OUTRO_SECTION) {
         return isMobile
