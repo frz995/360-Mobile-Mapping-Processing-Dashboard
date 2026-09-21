@@ -79,8 +79,8 @@ class AtomicGlobeBoundary extends React.Component<
                 markers={this.props.markers}
                 oceanColor="#0f1318"
                 landFill="#262c34"
-                landStroke="#5b6c80"
-                strokeWidth={1.3}
+                landStroke="#4a5868"
+                strokeWidth={0.85}
                 glowColor="rgba(255, 255, 255, 0.18)"
                 glowIntensity={0.65}
             />
@@ -1663,8 +1663,8 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                                 onPanChange={setGlobePan}
                                 oceanColor="#0f1318"
                                 landFill="#262c34"
-                                landStroke="#5b6c80"
-                                strokeWidth={1.3}
+                                landStroke="#4a5868"
+                                strokeWidth={0.85}
                                 glowColor="rgba(255, 255, 255, 0.18)"
                                 glowIntensity={0.65}
                                 markers={globeMarkers}
