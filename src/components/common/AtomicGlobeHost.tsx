@@ -208,7 +208,7 @@ export function AtomicGlobeHost({
     atmosphere: {
       showAtmosphereRing: tuning.showAtmosphereRing ?? true,
       atmosphereRingColor: tuning.atmosphereRingColor ?? '#E2EEFF',
-      atmosphereRingIntensity: finite(tuning.atmosphereRingIntensity, 0.42),
+      atmosphereRingIntensity: finite(tuning.atmosphereRingIntensity, 0.32),
     },
   };
 
@@ -218,7 +218,7 @@ export function AtomicGlobeHost({
       className={className}
       style={{
         ...style,
-        background: 'radial-gradient(circle at 50% 50%, rgba(56,189,248,0.18) 0%, rgba(14,165,233,0.10) 35%, rgba(30,64,175,0.03) 55%, transparent 70%)',
+        background: 'radial-gradient(circle at 50% 50%, rgba(56,189,248,0.07) 0%, rgba(14,165,233,0.02) 35%, transparent 65%)',
       }}
       onWheel={(e) => {
         if (!enableZoom || !onZoomChange) return;
