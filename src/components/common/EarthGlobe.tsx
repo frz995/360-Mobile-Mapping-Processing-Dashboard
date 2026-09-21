@@ -368,8 +368,8 @@ export const EarthGlobe: React.FC<EarthGlobeProps> = ({
   showLabels = true,
   oceanColor = '#0f1318',
   landFill = '#262c34',
-  landStroke = '#3b434d',
-  strokeWidth = 0.5,
+  landStroke = '#5b6c80',
+  strokeWidth = 1.3,
   glowColor = 'rgba(255, 255, 255, 0.08)',
   glowIntensity = 0.5,
   onZoomIn,
@@ -852,7 +852,14 @@ const handleDoubleClick = () => {
         )}
 
         {/* 1. Base Ocean Disc */}
-        <circle cx={cx} cy={cy} r={radius} fill={`url(#${oceanGradientId})`} />
+        <circle
+          cx={cx}
+          cy={cy}
+          r={radius}
+          fill={`url(#${oceanGradientId})`}
+          stroke="rgba(255, 255, 255, 0.16)"
+          strokeWidth={1.2}
+        />
 
         {/* 2. Clipped Landmasses & Graticule */}
         <g clipPath={`url(#${clipId})`}>
