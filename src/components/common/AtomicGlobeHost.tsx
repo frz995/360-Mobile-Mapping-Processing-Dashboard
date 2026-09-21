@@ -63,6 +63,9 @@ interface AtomicGlobeHostProps {
   arcMode?: 'chain' | 'all';
   arcHeight?: number;
   performanceMode?: 'auto' | 'high' | 'low';
+  showAtmosphereRing?: boolean;
+  atmosphereRingColor?: string;
+  atmosphereRingIntensity?: number;
 }
 
 export function AtomicGlobeHost({
@@ -202,6 +205,11 @@ export function AtomicGlobeHost({
       arcMode: tuning.arcMode ?? 'chain',
       arcHeight: finite(tuning.arcHeight, 0.4),
     },
+    atmosphere: {
+      showAtmosphereRing: tuning.showAtmosphereRing ?? true,
+      atmosphereRingColor: tuning.atmosphereRingColor ?? '#E2EEFF',
+      atmosphereRingIntensity: finite(tuning.atmosphereRingIntensity, 0.42),
+    },
   };
 
   return (
@@ -210,7 +218,7 @@ export function AtomicGlobeHost({
       className={className}
       style={{
         ...style,
-        background: 'radial-gradient(circle at 50% 50%, rgba(96,165,250,0.12) 0%, rgba(96,165,250,0.04) 35%, transparent 65%)',
+        background: 'radial-gradient(circle at 50% 50%, rgba(226,238,255,0.04) 0%, rgba(186,230,253,0.01) 35%, transparent 65%)',
       }}
       onWheel={(e) => {
         if (!enableZoom || !onZoomChange) return;
