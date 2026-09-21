@@ -23,6 +23,12 @@
     --card-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
     --modal-overlay: rgba(8, 10, 13, 0.88);
     --canvas-bg: linear-gradient(180deg, #15181f 0%, #111317 100%);
+    /* Style Widget Defaults */
+    --card-radius: 12px;
+    --ui-gap: 12px;
+    --ui-padding: 14px;
+    --map-cols: 7;
+    --panel-cols: 5;
 }
 
 /* 2. MONOCHROME SLATE (Swiss Engineering & Minimal Pure Contrast) */
@@ -326,5 +332,70 @@ html.showcase-active[data-theme] aside {
     }
     100% {
         transform: translateY(1000%);
+    }
+}
+
+/* ==========================================================================
+   STYLE WIDGET CASCADE — Card Radius, UI Density, Map–Panel Split
+   ========================================================================== */
+
+/* Card Radius: applies to all card-level containers */
+[data-theme] .style-radius,
+[data-theme] .bg-card[class*="rounded"],
+[data-theme] div[class*="rounded-xl"].bg-card,
+[data-theme] div[class*="rounded-2xl"],
+[data-theme] div[class*="rounded-3xl"] {
+    border-radius: var(--card-radius) !important;
+}
+
+/* Surface Style: Flat — panels paint with the system canvas color instead of
+   card chrome, for a clean, modern hairline look. Radius stays under the Card
+   Radius widget's control. */
+[data-theme][data-surface="flat"] .bg-card,
+[data-theme][data-surface="flat"] .style-surface {
+    background-color: var(--bg-app) !important;
+    box-shadow: none !important;
+}
+
+[data-theme][data-surface="flat"] .style-surface-inner {
+    background-color: transparent !important;
+}
+
+/* UI Density: dashboard grid gaps */
+.dashboard-density-grid {
+    gap: var(--ui-gap) !important;
+}
+
+/* UI Density: card padding */
+.dashboard-density-pad {
+    padding: var(--ui-padding) !important;
+}
+
+/* Map–Panel Split: data-attribute driven grid columns */
+@media (min-width: 1024px) {
+    /* Map Focus: 8/4 split */
+    .dashboard-split-grid[data-split="map-focus"] > .map-column {
+        grid-column: span 8;
+    }
+    .dashboard-split-grid[data-split="map-focus"] > .panel-column {
+        grid-column: span 4;
+    }
+
+    /* Balanced (default): 7/5 split */
+    .dashboard-split-grid > .map-column,
+    .dashboard-split-grid[data-split="balanced"] > .map-column {
+        grid-column: span 7;
+    }
+    .dashboard-split-grid > .panel-column,
+    .dashboard-split-grid[data-split="balanced"] > .panel-column {
+        grid-column: span 5;
+    }
+
+    /* Panel Focus: 6/6 split */
+    .dashboard-split-grid[data-split="panel-focus"] > .map-column {
+        grid-column: span 6;
+    }
+    .dashboard-split-grid[data-split="panel-focus"] > .panel-column {
+        grid-column: span 6;
     }
 }

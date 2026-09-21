@@ -31,33 +31,21 @@ export function QualityPanel({ analytics, translate }: QualityPanelProps) {
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Quality Telemetry Strip */}
-      <div className="bg-card border border-subtle rounded-xl px-4 py-2.5 shadow-sm text-xs flex flex-wrap items-center gap-x-4 gap-y-2">
-        <span className="text-[11px] font-bold text-text-muted shrink-0 uppercase tracking-wider">
-          Quality Telemetry:
+      {/* QA summary — boxed telemetry strip removed; keep only the unique values */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] px-1">
+        <span className="text-text-muted">
+          {translate('analyticsQaApproved')}:{' '}
+          <strong className="font-mono font-semibold text-emerald-300">{formatNumber(t.qaApproved)}</strong>
         </span>
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
-          <span>
-            <span className="text-text-muted">{translate('analyticsKpiDefects')}: </span>
-            <strong className="font-semibold text-text-base">{formatNumber(t.defects)}</strong>
-            <span className="text-text-muted text-[10px] ml-1">({formatNumber(100 - t.passRate, 1)}% rate)</span>
-          </span>
-          <span className="text-text-muted">&bull;</span>
-          <span>
-            <span className="text-text-muted">{translate('analyticsKpiQuality')}: </span>
-            <strong className="font-semibold text-text-base">{formatNumber(t.passRate, 1)}%</strong>
-          </span>
-          <span className="text-text-muted">&bull;</span>
-          <span>
-            <span className="text-text-muted">{translate('analyticsQaApproved')}: </span>
-            <strong className="font-semibold text-text-base">{formatNumber(t.qaApproved)}</strong>
-          </span>
-          <span className="text-text-muted">&bull;</span>
-          <span>
-            <span className="text-text-muted">{translate('analyticsQaRejected')}: </span>
-            <strong className="font-semibold text-text-base">{formatNumber(t.qaRejected)}</strong>
-          </span>
-        </div>
+        <span className="text-text-muted">&bull;</span>
+        <span className="text-text-muted">
+          {translate('analyticsQaRejected')}:{' '}
+          <strong className="font-mono font-semibold text-rose-300">{formatNumber(t.qaRejected)}</strong>
+        </span>
+        <span className="text-text-muted">&bull;</span>
+        <span className="text-text-muted">
+          {formatNumber(t.defects)} {translate('analyticsKpiDefects').toLowerCase()} · {formatNumber(t.passRate, 1)}% {translate('analyticsKpiQuality').toLowerCase()}
+        </span>
       </div>
 
       {rows.length === 0 ? (

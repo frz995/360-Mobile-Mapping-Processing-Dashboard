@@ -338,19 +338,30 @@ export function useAppData() {
       if (pid) base.filter = `project_id=eq.${pid}`;
       return base;
     };
+
+    // 750ms debounce prevents high-frequency postgres change bursts from flooding the network with 8-query cascades
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    const triggerDebouncedLiveUpdate = () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        debounceTimer = null;
+        initLiveSupabaseData(true);
+      }, 750);
+    };
+
     const liveChannel = supabase
       .channel(channelName)
       .on('postgres_changes', chanOpts(projectSettings?.panoramasTable || 'panoramas'), () => {
-        initLiveSupabaseData(true);
+        triggerDebouncedLiveUpdate();
       })
       .on('postgres_changes', chanOpts(projectSettings?.qaDefectsTable || 'qa_defects'), () => {
-        initLiveSupabaseData(true);
+        triggerDebouncedLiveUpdate();
       })
       .on('postgres_changes', chanOpts(projectSettings?.qaqcRunsTable || 'qaqc_audit_runs'), () => {
-        initLiveSupabaseData(true);
+        triggerDebouncedLiveUpdate();
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'project_settings' }, () => {
-        initLiveSupabaseData(true);
+        triggerDebouncedLiveUpdate();
       });
 
     try {
@@ -365,6 +376,7 @@ export function useAppData() {
     }, 30000);
 
     return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
       try { supabase.removeChannel(liveChannel); } catch { }
       clearInterval(liveInterval);
     };

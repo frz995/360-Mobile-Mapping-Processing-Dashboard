@@ -3,7 +3,7 @@ import { ClipboardList, RefreshCw, CheckCircle2 } from 'lucide-react';
 import { ContentLoading } from '../../common/ContentLoading';
 import { EmptyState } from '../../common/EmptyState';
 import type { ProductionApiClient } from '../../../services/productionApi';
-import type { DatasetRecord, NasFolderListing } from '../../../types/production';
+import type { DatasetRecord } from '../../../types/production';
 import { extractCanonicalSubgrid } from '../../../utils/datasetLineage';
 import { formatBytes } from './storageCommon';
 
@@ -50,69 +50,70 @@ export const RawRegistryPanel: React.FC<RawRegistryPanelProps> = ({ api, dataset
       })
     );
 
-    // Union of subgrids: folder listing + dataset records.
-    const folderMap: Record<string, NasFolderListing | null> = {};
-    results.forEach(({ top, listing }) => {
-      folderMap[top] = listing;
-    });
+    // Union of subgrids and pre-indexing for O(1) row resolution
     const subgrids = new Set<string>();
-    results.forEach(({ listing }) => {
+
+    // 1. Pre-index dataset counts by canonical subgrid
+    const datasetCountBySg = new Map<string, number>();
+    datasets.forEach((d) => {
+      const clean = extractCanonicalSubgrid(d.subgrid);
+      if (clean) {
+        subgrids.add(clean);
+        datasetCountBySg.set(clean, (datasetCountBySg.get(clean) || 0) + 1);
+      }
+    });
+
+    // 2. Pre-index stage entries by stageKey and canonical subgrid
+    const stageEntryBySg: Record<string, Map<string, any>> = {};
+    results.forEach(({ top, listing }) => {
+      const stageMap = new Map<string, any>();
+      stageEntryBySg[top] = stageMap;
       (listing?.entries || [])
         .filter((e) => e.isDirectory)
         .forEach((e) => {
           const clean = extractCanonicalSubgrid(e.name);
-          if (clean) subgrids.add(clean);
+          if (clean) {
+            subgrids.add(clean);
+            stageMap.set(clean, e);
+          }
         });
-    });
-    datasets.forEach((d) => {
-      const clean = extractCanonicalSubgrid(d.subgrid);
-      if (clean) subgrids.add(clean);
     });
 
     const sorted = Array.from(subgrids).sort();
     const rowsOut: MaturityRow[] = sorted.map((sg) => {
       const row: MaturityRow = {
         subgrid: sg,
-        datasetCount: datasets.filter(
-          (d) => extractCanonicalSubgrid(d.subgrid) === sg
-        ).length,
+        datasetCount: datasetCountBySg.get(sg) || 0,
         stages: []
       };
-      const getCount = (top: string) => {
-        const listing = folderMap[top];
-        const entry = listing?.entries.find(
-          (e) => e.isDirectory && extractCanonicalSubgrid(e.name) === sg
-        );
-        return entry;
-      };
 
-      const raw = getCount('RAW');
+      const raw = stageEntryBySg['RAW']?.get(sg);
       if (raw) {
         row.rawCount = raw.fileCount;
         row.rawBytes = raw.sizeBytes;
         row.stages.push('RAW');
       }
-      const blurred = getCount('BLURRED');
+      const blurred = stageEntryBySg['BLURRED']?.get(sg);
       if (blurred) {
         row.blurredCount = blurred.fileCount;
         row.stages.push('BLURRED');
       }
-      const stitched = getCount('STITCHED');
+      const stitched = stageEntryBySg['STITCHED']?.get(sg);
       if (stitched) {
         row.stitchedCount = stitched.fileCount;
         row.stages.push('STITCHED');
       }
-      const enhanced = getCount('ENHANCED');
+      const enhanced = stageEntryBySg['ENHANCED']?.get(sg);
       if (enhanced) {
         row.enhancedCount = enhanced.fileCount;
         row.stages.push('ENHANCED');
       }
-      const processed = getCount('PROCESSED');
+      const processed = stageEntryBySg['PROCESSED']?.get(sg);
       if (processed) {
         row.processedCount = processed.fileCount;
         row.stages.push('PROCESSED');
       }
-      const deliv = getCount('DELIVERABLES');
+      const deliv = stageEntryBySg['DELIVERABLES']?.get(sg);
       if (deliv) {
         row.deliverableCount = deliv.fileCount;
         row.stages.push('DELIVERABLES');

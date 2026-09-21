@@ -19,7 +19,7 @@ interface WorkflowStage {
  * (rounded-xl, border-white/[0.07], bg-white/[0.02]), with no outer container box,
  * allowing the 3D globe to be clearly visible behind the cards.
  */
-export const WorkflowNodeGraph: React.FC<WorkflowNodeGraphProps> = () => {
+export const WorkflowNodeGraph: React.FC<WorkflowNodeGraphProps> = ({ onJumpToModule }) => {
     const stages: WorkflowStage[] = [
         {
             id: 1,
@@ -94,16 +94,34 @@ export const WorkflowNodeGraph: React.FC<WorkflowNodeGraphProps> = () => {
     ];
 
     const renderCard = (stage: WorkflowStage) => {
+        const isInteractive = typeof onJumpToModule === 'function';
         return (
             <div
                 key={stage.id}
-                className="w-full text-left rounded-xl border border-white/[0.07] bg-white/[0.02] hover:bg-white/[0.04] p-4 sm:p-5 transition-colors flex flex-col justify-between select-none"
+                role={isInteractive ? 'button' : undefined}
+                tabIndex={isInteractive ? 0 : undefined}
+                onClick={() => onJumpToModule?.(stage.moduleIdx)}
+                onKeyDown={(e) => {
+                    if (isInteractive && (e.key === 'Enter' || e.key === ' ')) {
+                        e.preventDefault();
+                        onJumpToModule?.(stage.moduleIdx);
+                    }
+                }}
+                className={`w-full text-left rounded-xl border border-white/[0.07] bg-white/[0.02] hover:bg-white/[0.05] hover:border-white/20 p-4 sm:p-5 transition-all flex flex-col justify-between select-none ${
+                    isInteractive ? 'cursor-pointer active:scale-[0.99] group' : ''
+                }`}
+                title={isInteractive ? `Jump to Module: ${stage.title}` : undefined}
             >
                 {/* Card Header */}
-                <div className="pb-2.5 mb-2.5 border-b border-white/[0.07]">
-                    <span className="font-mono text-xs sm:text-[13px] font-semibold text-neutral-100 block truncate">
+                <div className="pb-2.5 mb-2.5 border-b border-white/[0.07] flex items-center justify-between">
+                    <span className="font-mono text-xs sm:text-[13px] font-semibold text-neutral-100 block truncate group-hover:text-sky-300 transition-colors">
                         {stage.title}
                     </span>
+                    {isInteractive && (
+                        <span className="text-[10px] font-mono text-neutral-500 group-hover:text-sky-400 transition-colors ml-1 shrink-0 opacity-80 group-hover:opacity-100">
+                            Jump &rarr;
+                        </span>
+                    )}
                 </div>
 
                 {/* Card Body / Specification List */}

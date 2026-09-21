@@ -12,7 +12,7 @@ interface WorkflowSectionProps {
  * Dedicated MIT-style Systems Architecture & Data Lifecycle section.
  * Positioned right after Module 6 (Data Management) and before the OutroSection.
  */
-export const WorkflowSection: React.FC<WorkflowSectionProps> = () => {
+export const WorkflowSection: React.FC<WorkflowSectionProps> = ({ onJumpTo }) => {
     return (
         <section
             data-section-idx={WORKFLOW_SECTION}
@@ -54,7 +54,7 @@ export const WorkflowSection: React.FC<WorkflowSectionProps> = () => {
                 </motion.p>
 
                 <motion.div variants={revealItem} className="w-full mt-4">
-                    <WorkflowNodeGraph />
+                    <WorkflowNodeGraph onJumpToModule={onJumpTo} />
                 </motion.div>
             </motion.div>
         </section>

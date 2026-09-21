@@ -101,7 +101,11 @@ export type QaqcWorkerResponse =
 const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 
 function publish(response: QaqcWorkerResponse) {
-  self.postMessage(response, '*');
+  try {
+    (self as unknown as { postMessage(message: QaqcWorkerResponse): void }).postMessage(response);
+  } catch (err) {
+    console.error('Failed to postMessage from QAQC Worker:', err);
+  }
 }
 
 let aborted = false;
@@ -134,196 +138,254 @@ async function runInspection(payload: QaqcWorkerStartPayload): Promise<void> {
       }
       if (aborted) break;
 
-      const currStation = stations[i];
-      const prevStation = i > 0 ? stations[i - 1] : undefined;
-
-      const ptId = currStation.__pointId || currStation.filename || currStation.point_id || `${cleanSubgrid}-${String(i + 1).padStart(4, '0')}.jpg`;
-      const lat = Number(currStation.latitude ?? currStation.lat ?? 0);
-      const lng = Number(currStation.longitude ?? currStation.lng ?? currStation.lon ?? 0);
-
-      let bearing = Number(currStation.bearing ?? currStation.heading ?? 0);
-      if (!bearing && prevStation) {
-        const prevLat = Number(prevStation.latitude ?? prevStation.lat ?? 0);
-        const prevLng = Number(prevStation.longitude ?? prevStation.lng ?? prevStation.lon ?? 0);
-        if (prevLat && prevLng && lat && lng && (prevLat !== lat || prevLng !== lng)) {
-          bearing = calculateForwardBearing(prevLat, prevLng, lat, lng);
-        }
+      // Cooperative yield every 10 frames to ensure worker event loop processes PAUSE/ABORT signals
+      if (i > 0 && i % 10 === 0) {
+        await sleep(0);
       }
 
-      const imgUrl = currStation.__imageUrl || currStation.image_url || ptId;
+      try {
+        const currStation = stations[i];
+        if (!currStation) continue;
+        const prevStation = i > 0 ? stations[i - 1] : undefined;
 
-      const currentLiveCheck: LiveCheckStatus = {
-        blur: { active: config.checkBlur, status: config.checkBlur ? 'checking' : 'skipped' },
-        obstruction: { active: config.checkObstruction, status: config.checkObstruction ? 'checking' : 'skipped' },
-        gps: { active: config.checkGps, status: config.checkGps ? 'checking' : 'skipped' }
-      };
+        const ptId = currStation.__pointId || currStation.filename || currStation.point_id || `${cleanSubgrid}-${String(i + 1).padStart(4, '0')}.jpg`;
+        const lat = Number(currStation.latitude ?? currStation.lat ?? 0);
+        const lng = Number(currStation.longitude ?? currStation.lng ?? currStation.lon ?? 0);
 
-      // 1. Geodesic GPS Distance & Jump Check
-      let isBadGps = false;
-      let gpsReason = '';
-      let stepDist = 0;
-
-      if (config.checkGps) {
-        const hasValidCoords = lat !== 0 && lng !== 0 && !isNaN(lat) && !isNaN(lng);
-        if (!hasValidCoords) {
-          isBadGps = true;
-          gpsReason = 'Missing or zero GPS coordinates';
-        } else if (prevStation) {
+        let bearing = Number(currStation.bearing ?? currStation.heading ?? 0);
+        if (!bearing && prevStation) {
           const prevLat = Number(prevStation.latitude ?? prevStation.lat ?? 0);
           const prevLng = Number(prevStation.longitude ?? prevStation.lng ?? prevStation.lon ?? 0);
-          if (prevLat && prevLng) {
-            stepDist = calculateGeodesicDistanceMeters(prevLat, prevLng, lat, lng);
-            if (stepDist > gpsMaxJumpDistance) {
-              isBadGps = true;
-              gpsReason = `GPS Jump Detected (${stepDist.toFixed(1)}m > ${gpsMaxJumpDistance}m)`;
-            }
+          if (prevLat && prevLng && lat && lng && (prevLat !== lat || prevLng !== lng)) {
+            bearing = calculateForwardBearing(prevLat, prevLng, lat, lng);
           }
         }
 
-        currentLiveCheck.gps = {
-          active: true,
-          status: isBadGps ? 'flagged' : 'passed',
-          detail: isBadGps ? gpsReason : `${stepDist.toFixed(1)}m step`
+        const imgUrl = currStation.__imageUrl || currStation.image_url || ptId;
+
+        const currentLiveCheck: LiveCheckStatus = {
+          blur: { active: config.checkBlur, status: config.checkBlur ? 'checking' : 'skipped' },
+          obstruction: { active: config.checkObstruction, status: config.checkObstruction ? 'checking' : 'skipped' },
+          gps: { active: config.checkGps, status: config.checkGps ? 'checking' : 'skipped' }
         };
-      }
 
-      // 2. Directional Multi-Quadrant Blur & Obstruction Check (Single Fast Pass)
-      let isBlur = false;
-      let isObstruction = false;
-      let isSkippedImg = false;
-      let blurDetail = '';
-      let obstructionDetail = '';
-      let blurVariance = 50.0;
-      let avgBrightness = 128.0;
+        // 1. Geodesic GPS Distance & Jump Check
+        let isBadGps = false;
+        let gpsReason = '';
+        let stepDist = 0;
 
-      if ((config.checkBlur || config.checkObstruction) && imgUrl) {
-        const analysis = await analyzeImageSharpness(imgUrl, blurThreshold, deliverableModel, {
-          timeoutMs: 4000,
-          darkThreshold,
-          glareThreshold
-        });
+        if (config.checkGps) {
+          const hasValidCoords = lat !== 0 && lng !== 0 && !isNaN(lat) && !isNaN(lng);
+          if (!hasValidCoords) {
+            isBadGps = true;
+            gpsReason = 'Missing or zero GPS coordinates';
+          } else if (prevStation) {
+            const prevLat = Number(prevStation.latitude ?? prevStation.lat ?? 0);
+            const prevLng = Number(prevStation.longitude ?? prevStation.lng ?? prevStation.lon ?? 0);
+            if (prevLat && prevLng) {
+              stepDist = calculateGeodesicDistanceMeters(prevLat, prevLng, lat, lng);
+              if (stepDist > gpsMaxJumpDistance) {
+                isBadGps = true;
+                gpsReason = `GPS Jump Detected (${stepDist.toFixed(1)}m > ${gpsMaxJumpDistance}m)`;
+              }
+            }
+          }
 
-        if (analysis.status === 'skipped') {
-          isSkippedImg = true;
-          blurVariance = 0;
-          currentLiveCheck.blur = {
+          currentLiveCheck.gps = {
             active: true,
-            status: 'skipped',
-            detail: `SKIPPED (${analysis.reason || 'Timeout'})`
+            status: isBadGps ? 'flagged' : 'passed',
+            detail: isBadGps ? gpsReason : `${stepDist.toFixed(1)}m step`
           };
-          currentLiveCheck.obstruction = {
-            active: true,
-            status: 'skipped',
-            detail: `SKIPPED (${analysis.reason || 'Timeout'})`
-          };
-        } else {
-          if (config.checkBlur) {
-            isBlur = analysis.isBlurry;
-            blurVariance = analysis.minScore;
-            if (isBlur) {
-              blurDetail = analysis.reason || `Blurry Frame in ${analysis.worstSector} sector (Sharpness score ${blurVariance.toFixed(1)} below threshold ${blurThreshold.toFixed(1)})`;
-            } else if (blurVariance < 55.0) {
-              blurDetail = `Sharp ${blurVariance.toFixed(1)} (Marginal)`;
+        }
+
+        // 2. Directional Multi-Quadrant Blur & Obstruction Check (Single Fast Pass)
+        let isBlur = false;
+        let isObstruction = false;
+        let isSkippedImg = false;
+        let blurDetail = '';
+        let obstructionDetail = '';
+        let blurVariance = 50.0;
+        let avgBrightness = 128.0;
+
+        if ((config.checkBlur || config.checkObstruction) && imgUrl) {
+          try {
+            const analysis = await analyzeImageSharpness(imgUrl, blurThreshold, deliverableModel, {
+              timeoutMs: 4000,
+              darkThreshold,
+              glareThreshold
+            });
+
+            if (analysis.status === 'skipped') {
+              isSkippedImg = true;
+              blurVariance = 0;
+              currentLiveCheck.blur = {
+                active: config.checkBlur,
+                status: 'skipped',
+                detail: `SKIPPED (${analysis.reason || 'Timeout'})`
+              };
+              currentLiveCheck.obstruction = {
+                active: config.checkObstruction,
+                status: 'skipped',
+                detail: `SKIPPED (${analysis.reason || 'Timeout'})`
+              };
             } else {
-              blurDetail = `Sharp ${blurVariance.toFixed(1)}`;
-            }
-            currentLiveCheck.blur = {
-              active: true,
-              status: isBlur ? 'flagged' : 'passed',
-              detail: blurDetail
-            };
-          }
+              if (config.checkBlur) {
+                isBlur = analysis.isBlurry;
+                blurVariance = analysis.minScore;
+                if (isBlur) {
+                  blurDetail = analysis.reason || `Blurry Frame in ${analysis.worstSector} sector (Sharpness score ${blurVariance.toFixed(1)} below threshold ${blurThreshold.toFixed(1)})`;
+                } else if (blurVariance < 55.0) {
+                  blurDetail = `Sharp ${blurVariance.toFixed(1)} (Marginal)`;
+                } else {
+                  blurDetail = `Sharp ${blurVariance.toFixed(1)}`;
+                }
+                currentLiveCheck.blur = {
+                  active: true,
+                  status: isBlur ? 'flagged' : 'passed',
+                  detail: blurDetail
+                };
+              }
 
-          if (config.checkObstruction) {
-            isObstruction = analysis.isObstruction;
-            avgBrightness = analysis.avgBrightness;
-            obstructionDetail = isObstruction ? (analysis.obstructionReason || `Luma ${avgBrightness.toFixed(1)}`) : `Luma ${avgBrightness.toFixed(1)}`;
+              if (config.checkObstruction) {
+                isObstruction = analysis.isObstruction;
+                avgBrightness = analysis.avgBrightness;
+                obstructionDetail = isObstruction ? (analysis.obstructionReason || `Luma ${avgBrightness.toFixed(1)}`) : `Luma ${avgBrightness.toFixed(1)}`;
+                currentLiveCheck.obstruction = {
+                  active: true,
+                  status: isObstruction ? 'flagged' : 'passed',
+                  detail: obstructionDetail
+                };
+              }
+            }
+          } catch (analysisErr) {
+            isSkippedImg = true;
+            const skipReason = (analysisErr as Error)?.message || 'Analysis error';
+            currentLiveCheck.blur = {
+              active: config.checkBlur,
+              status: 'skipped',
+              detail: `SKIPPED (${skipReason})`
+            };
             currentLiveCheck.obstruction = {
-              active: true,
-              status: isObstruction ? 'flagged' : 'passed',
-              detail: obstructionDetail
+              active: config.checkObstruction,
+              status: 'skipped',
+              detail: `SKIPPED (${skipReason})`
             };
           }
         }
-      }
 
-      // 3. Defect Aggregation & Recording
-      const hasDefect = isBadGps || isBlur || isObstruction;
-      let defectType = '';
-      let defectRecord: QADefectRecord | undefined;
+        // 3. Defect Aggregation & Recording
+        const hasDefect = isBadGps || isBlur || isObstruction;
+        let defectType = '';
+        let defectRecord: QADefectRecord | undefined;
 
-      if (hasDefect) {
-        const reasonsList: string[] = [];
-        if (isBadGps) reasonsList.push('Bad GPS Signal');
-        if (isBlur) reasonsList.push('Blurry Frame');
-        if (isObstruction) reasonsList.push('Lens Obstruction');
-        defectType = reasonsList.join(' + ');
+        if (hasDefect) {
+          const reasonsList: string[] = [];
+          if (isBadGps) reasonsList.push('Bad GPS Signal');
+          if (isBlur) reasonsList.push('Blurry Frame');
+          if (isObstruction) reasonsList.push('Lens Obstruction');
+          defectType = reasonsList.join(' + ');
 
-        defectRecord = {
-          subgrid: cleanSubgrid,
-          point_id: ptId,
-          frame_index: i + 1,
-          defect_flags: {
-            blur: isBlur,
-            obstruction: isObstruction,
-            badGps: isBadGps,
-            blurVariance,
-            avgBrightness,
-            stepDistanceMeters: stepDist,
-            deliverableModel,
-            reasons: [gpsReason, blurDetail, obstructionDetail].filter(Boolean)
-          },
-          defect_type: defectType,
-          pic,
-          image_url: imgUrl,
-          lat: lat || undefined,
-          lng: lng || undefined,
-          bearing: bearing || undefined,
-          created_at: new Date().toISOString()
+          defectRecord = {
+            subgrid: cleanSubgrid,
+            point_id: ptId,
+            frame_index: i + 1,
+            defect_flags: {
+              blur: isBlur,
+              obstruction: isObstruction,
+              badGps: isBadGps,
+              blurVariance,
+              avgBrightness,
+              stepDistanceMeters: stepDist,
+              deliverableModel,
+              reasons: [gpsReason, blurDetail, obstructionDetail].filter(Boolean)
+            },
+            defect_type: defectType,
+            pic,
+            image_url: imgUrl,
+            lat: lat || undefined,
+            lng: lng || undefined,
+            bearing: bearing || undefined,
+            created_at: new Date().toISOString()
+          };
+
+          accumulatedDefects.push(defectRecord);
+        }
+
+        // 4. Inspection History Record
+        const nodeStatus: 'flagged' | 'skipped' | 'passed' = hasDefect ? 'flagged' : (isSkippedImg ? 'skipped' : 'passed');
+        const stationRecord: StationInspectionRecord = {
+          index: i + 1,
+          pointId: ptId,
+          lat,
+          lng,
+          bearing,
+          stepDistance: stepDist,
+          thumbnailUrl: imgUrl,
+          status: nodeStatus,
+          blurVariance,
+          avgBrightness,
+          isBadGps,
+          isBlur,
+          isObstruction,
+          defectType: hasDefect ? defectType : undefined,
+          deliverableModel,
+          reasons: [gpsReason, blurDetail, obstructionDetail].filter(Boolean),
+          timestamp: new Date().toLocaleTimeString()
         };
 
-        accumulatedDefects.push(defectRecord);
+        accumulatedHistory.push(stationRecord);
+
+        publish({
+          type: 'STATION',
+          index: i,
+          total,
+          pointId: ptId,
+          lat,
+          lng,
+          bearing,
+          stepDistance: stepDist,
+          thumbnailUrl: imgUrl,
+          liveCheckStatus: currentLiveCheck,
+          defect: defectRecord,
+          stationRecord,
+          defectCount: accumulatedDefects.length
+        });
+      } catch (stationErr) {
+        const errorMsg = (stationErr as Error)?.message || 'Station analysis error';
+        console.warn(`[QAQC Worker] Station ${i + 1} inspection error:`, errorMsg);
+        const fallbackId = stations[i]?.__pointId || stations[i]?.filename || `${cleanSubgrid}-${String(i + 1).padStart(4, '0')}.jpg`;
+        const fallbackRecord: StationInspectionRecord = {
+          index: i + 1,
+          pointId: fallbackId,
+          lat: Number(stations[i]?.latitude ?? stations[i]?.lat ?? 0),
+          lng: Number(stations[i]?.longitude ?? stations[i]?.lng ?? stations[i]?.lon ?? 0),
+          bearing: Number(stations[i]?.bearing ?? stations[i]?.heading ?? 0),
+          stepDistance: 0,
+          thumbnailUrl: stations[i]?.__imageUrl || stations[i]?.image_url || '',
+          status: 'skipped',
+          reasons: [errorMsg],
+          timestamp: new Date().toLocaleTimeString()
+        };
+        accumulatedHistory.push(fallbackRecord);
+        publish({
+          type: 'STATION',
+          index: i,
+          total,
+          pointId: fallbackId,
+          lat: fallbackRecord.lat,
+          lng: fallbackRecord.lng,
+          bearing: fallbackRecord.bearing,
+          stepDistance: 0,
+          thumbnailUrl: fallbackRecord.thumbnailUrl,
+          liveCheckStatus: {
+            blur: { active: config.checkBlur, status: 'skipped', detail: errorMsg },
+            obstruction: { active: config.checkObstruction, status: 'skipped', detail: errorMsg },
+            gps: { active: config.checkGps, status: 'skipped', detail: errorMsg }
+          },
+          stationRecord: fallbackRecord,
+          defectCount: accumulatedDefects.length
+        });
       }
-
-      // 4. Inspection History Record
-      const nodeStatus: 'flagged' | 'skipped' | 'passed' = hasDefect ? 'flagged' : (isSkippedImg ? 'skipped' : 'passed');
-      const stationRecord: StationInspectionRecord = {
-        index: i + 1,
-        pointId: ptId,
-        lat,
-        lng,
-        bearing,
-        stepDistance: stepDist,
-        thumbnailUrl: imgUrl,
-        status: nodeStatus,
-        blurVariance,
-        avgBrightness,
-        isBadGps,
-        isBlur,
-        isObstruction,
-        defectType: hasDefect ? defectType : undefined,
-        deliverableModel,
-        reasons: [gpsReason, blurDetail, obstructionDetail].filter(Boolean),
-        timestamp: new Date().toLocaleTimeString()
-      };
-
-      accumulatedHistory.push(stationRecord);
-
-      publish({
-        type: 'STATION',
-        index: i,
-        total,
-        pointId: ptId,
-        lat,
-        lng,
-        bearing,
-        stepDistance: stepDist,
-        thumbnailUrl: imgUrl,
-        liveCheckStatus: currentLiveCheck,
-        defect: defectRecord,
-        stationRecord,
-        defectCount: accumulatedDefects.length
-      });
     }
 
     if (!aborted) {

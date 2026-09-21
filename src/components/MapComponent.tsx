@@ -457,7 +457,14 @@ export const MapComponent = ({
   useEffect(() => {
     const handler = (e: MessageEvent) => {
       // Security: only accept messages from the configured WebGIS iframe origin or same origin
-      const allowedOrigin = (import.meta.env.VITE_MAP_URL || '').replace(/\/+$/, '');
+      let allowedOrigin = '';
+      try {
+        if (import.meta.env.VITE_MAP_URL) {
+          allowedOrigin = new URL(import.meta.env.VITE_MAP_URL, window.location.origin).origin;
+        }
+      } catch {
+        allowedOrigin = (import.meta.env.VITE_MAP_URL || '').replace(/\/+$/, '');
+      }
       if (allowedOrigin && e.origin !== allowedOrigin && e.origin !== window.location.origin) {
         return;
       }

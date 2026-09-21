@@ -56,10 +56,22 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
   }
 }
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <ErrorBoundary>
-      <App />
-    </ErrorBoundary>
-  </React.StrictMode>,
-)
+const rootEl = document.getElementById('root')!;
+
+if (window.location.pathname.startsWith('/share/')) {
+  import('./share/SharedMapPage').then(({ SharedMapPage }) => {
+    ReactDOM.createRoot(rootEl).render(
+      <React.StrictMode>
+        <SharedMapPage />
+      </React.StrictMode>,
+    );
+  });
+} else {
+  ReactDOM.createRoot(rootEl).render(
+    <React.StrictMode>
+      <ErrorBoundary>
+        <App />
+      </ErrorBoundary>
+    </React.StrictMode>,
+  );
+}

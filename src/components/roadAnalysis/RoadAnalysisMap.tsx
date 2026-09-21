@@ -180,6 +180,8 @@ const BASE_LAYER_IDS = [
   'ra-dim',
   'ra-districts',
   'ra-districts-line',
+  'ra-captured-clusters',
+  'ra-captured-cluster-count',
   'ra-captured',
   'ra-roads',
   'ra-coverage-casing',
@@ -479,6 +481,10 @@ function applySystemStyles(
     const cp = ss?.capturedPoints;
     map.setPaintProperty('ra-captured', 'circle-opacity', cp?.visible !== false ? (cp?.opacity ?? 0.95) : 0);
     if (cp?.pointRadius) map.setPaintProperty('ra-captured', 'circle-radius', cp.pointRadius);
+  }
+  if (map.getLayer('ra-captured-clusters')) {
+    const cp = ss?.capturedPoints;
+    map.setPaintProperty('ra-captured-clusters', 'circle-opacity', cp?.visible !== false ? (cp?.opacity ?? 0.95) : 0);
   }
 }
 
@@ -979,13 +985,62 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
 
       map.addSource('ra-captured', {
         type: 'geojson',
-        data: extractPointCollection(capturedPoints, catalogLayersRef.current)
+        data: extractPointCollection(capturedPoints, catalogLayersRef.current),
+        cluster: true,
+        clusterMaxZoom: 13,
+        clusterRadius: 50
       });
       addedSourceIdsRef.current.add('ra-captured');
+
+      // Cluster bubbles (zoom < 14)
+      map.addLayer({
+        id: 'ra-captured-clusters',
+        type: 'circle',
+        source: 'ra-captured',
+        filter: ['has', 'point_count'],
+        paint: {
+          'circle-color': [
+            'step',
+            ['get', 'point_count'],
+            '#0284c7',
+            20, '#0369a1',
+            100, '#0f172a'
+          ],
+          'circle-radius': [
+            'step',
+            ['get', 'point_count'],
+            16,
+            20, 22,
+            100, 28
+          ],
+          'circle-stroke-color': '#ffffff',
+          'circle-stroke-width': 2,
+          'circle-opacity': ptOpacity
+        }
+      });
+
+      // Cluster count number
+      map.addLayer({
+        id: 'ra-captured-cluster-count',
+        type: 'symbol',
+        source: 'ra-captured',
+        filter: ['has', 'point_count'],
+        layout: {
+          'text-field': '{point_count_abbreviated}',
+          'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+          'text-size': 12
+        },
+        paint: {
+          'text-color': '#ffffff'
+        }
+      });
+
+      // Individual unclustered points (zoom >= 14 or single nodes)
       map.addLayer({
         id: 'ra-captured',
         type: 'circle',
         source: 'ra-captured',
+        filter: ['!', ['has', 'point_count']],
         paint: {
           'circle-radius': ptRadius
             ? ptRadius
@@ -1002,6 +1057,28 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
           'circle-stroke-width': 1,
           'circle-opacity': ptOpacity
         }
+      });
+
+      // Cluster click: smooth expansion zoom
+      map.on('click', 'ra-captured-clusters', (e) => {
+        const features = map.queryRenderedFeatures(e.point, { layers: ['ra-captured-clusters'] });
+        const clusterId = features[0]?.properties?.cluster_id;
+        const source = map.getSource('ra-captured') as any;
+        if (source && typeof source.getClusterExpansionZoom === 'function') {
+          source.getClusterExpansionZoom(clusterId, (err: any, zoom: number) => {
+            if (err) return;
+            map.easeTo({
+              center: (features[0].geometry as any).coordinates,
+              zoom
+            });
+          });
+        }
+      });
+      map.on('mouseenter', 'ra-captured-clusters', () => {
+        map.getCanvas().style.cursor = 'pointer';
+      });
+      map.on('mouseleave', 'ra-captured-clusters', () => {
+        map.getCanvas().style.cursor = '';
       });
 
       // Pointer cursor on hover

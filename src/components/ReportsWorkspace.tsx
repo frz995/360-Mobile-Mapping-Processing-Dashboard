@@ -135,53 +135,9 @@ export const ReportsWorkspace: React.FC<ReportsWorkspaceProps> = ({
           </div>
 
           <div key={activeTab} className="p-4 sm:p-5 flex flex-col gap-4 min-h-0 overflow-y-auto animate-panel-enter">
-            {/* Reports Telemetry Strip */}
-            <div className="bg-inner/40 border border-subtle rounded-xl px-4 py-2.5 shadow-sm text-xs flex flex-wrap items-center gap-x-4 gap-y-2">
-              <span className="text-[11px] font-bold text-text-muted shrink-0 uppercase tracking-wider">
-                Reports Telemetry:
-              </span>
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
-                <span>
-                  <span className="text-text-muted">{translate('reportsKpiSubgrids')}: </span>
-                  <strong className="font-semibold text-text-base">{analytics.totals.subgrids}</strong>
-                </span>
-                <span className="text-text-muted">&bull;</span>
-                <span>
-                  <span className="text-text-muted">{translate('reportsKpiPublished')}: </span>
-                  <strong className="font-semibold text-text-base">{analytics.totals.published}</strong>
-                </span>
-                <span className="text-text-muted">&bull;</span>
-                <span>
-                  <span className="text-text-muted">{translate('reportsKpiStaged')}: </span>
-                  <strong className="font-semibold text-text-base">{analytics.totals.staged}</strong>
-                </span>
-                <span className="text-text-muted">&bull;</span>
-                <span>
-                  <span className="text-text-muted">{translate('reportsKpiKm')}: </span>
-                  <strong className="font-semibold text-text-base">{analytics.totals.km.toFixed(2)} km</strong>
-                </span>
-                <span className="text-text-muted">&bull;</span>
-                <span>
-                  <span className="text-text-muted">{translate('reportsKpiPoi')}: </span>
-                  <strong className="font-semibold text-text-base">{analytics.totals.poi.toLocaleString()}</strong>
-                </span>
-                <span className="text-text-muted">&bull;</span>
-                <span>
-                  <span className="text-text-muted">{translate('reportsKpiDefects')}: </span>
-                  <strong className="font-semibold text-text-base">{analytics.totals.defects.toLocaleString()}</strong>
-                </span>
-                <span className="text-text-muted">&bull;</span>
-                <span>
-                  <span className="text-text-muted">{translate('reportsKpiPassRate')}: </span>
-                  <strong className="font-semibold text-text-base">{analytics.totals.passRate.toFixed(1)}%</strong>
-                </span>
-              </div>
-            </div>
-
             {/* Active report panel */}
             {activeTab === 'executive' && (
               <ReportActionCard
-                icon={<FileText size={20} />}
                 title={translate('reportsExecTitle')}
                 desc={translate('reportsExecDesc')}
                 onGenerate={() => generate(() => buildExecutiveReportHtml(analytics))}
@@ -191,7 +147,6 @@ export const ReportsWorkspace: React.FC<ReportsWorkspaceProps> = ({
             )}
             {activeTab === 'daily' && (
               <ReportActionCard
-                icon={<CalendarClock size={20} />}
                 title={translate('reportsDailyTitle')}
                 desc={translate('reportsDailyDesc')}
                 onGenerate={() => generate(() => buildDailyReportHtml(dailyData))}
@@ -201,7 +156,6 @@ export const ReportsWorkspace: React.FC<ReportsWorkspaceProps> = ({
             )}
             {activeTab === 'subgrid' && (
               <ReportActionCard
-                icon={<Layers size={20} />}
                 title={translate('reportsSubgridTitle')}
                 desc={translate('reportsSubgridDesc')}
                 onGenerate={() => generate(() => buildSubgridReportHtml(analytics))}
@@ -211,7 +165,6 @@ export const ReportsWorkspace: React.FC<ReportsWorkspaceProps> = ({
             )}
             {activeTab === 'qa' && (
               <ReportActionCard
-                icon={<ShieldCheck size={20} />}
                 title={translate('reportsQaTitle')}
                 desc={translate('reportsQaDesc')}
                 onGenerate={() => generate(() => buildQaReportHtml({ jobs, analytics }))}
@@ -221,7 +174,6 @@ export const ReportsWorkspace: React.FC<ReportsWorkspaceProps> = ({
             )}
             {activeTab === 'lineage' && (
               <ReportActionCard
-                icon={<GitBranch size={20} />}
                 title={translate('reportsLineageTitle')}
                 desc={translate('reportsLineageDesc')}
                 onGenerate={() => generate(() => buildLineageReportHtml({ datasets, jobs }))}
@@ -237,14 +189,12 @@ export const ReportsWorkspace: React.FC<ReportsWorkspaceProps> = ({
 };
 
 function ReportActionCard({
-  icon,
   title,
   desc,
   onGenerate,
   disabled,
   translate
 }: {
-  icon: React.ReactNode;
   title: string;
   desc: string;
   onGenerate: () => void;
@@ -254,7 +204,6 @@ function ReportActionCard({
   return (
     <div className="bg-card border border-subtle rounded-xl p-5 flex flex-col xl:flex-row xl:items-center gap-4 xl:justify-between">
       <div className="flex items-start gap-4 min-w-0">
-        <div className="p-3 bg-inner rounded-2xl border border-subtle text-sky-400 shrink-0">{icon}</div>
         <div className="min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <h3 className="text-sm font-bold text-text-base">{title}</h3>

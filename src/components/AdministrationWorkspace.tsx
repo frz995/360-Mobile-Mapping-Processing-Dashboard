@@ -27,7 +27,9 @@ import {
   fetchDeletionRequestsFromSupabase,
   updateDeletionRequestStatusInSupabase,
   fetchUserAccountsFromSupabase,
+  getCachedUserAccounts,
   saveUserAccountToSupabase,
+  deleteUserAccountFromSupabase,
   deleteFromSupabase,
   fetchProjectSettingsFromSupabase,
   saveProjectSettingsToSupabase
@@ -66,8 +68,27 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
   }, [activeTab]);
   const [_refreshing, setRefreshing] = useState(false);
 
-  // User Management State
-  const [users, setUsers] = useState<UserAccount[]>([]);
+  // User Management State with instant client cache fallback
+  const [users, setUsers] = useState<UserAccount[]>(() => {
+    const cached = getCachedUserAccounts();
+    if (cached && cached.length > 0) return cached;
+    if (authSession?.user?.email) {
+      const email = authSession.user.email;
+      const name = authSession.user.user_metadata?.full_name || authSession.user.user_metadata?.name || email.split('@')[0];
+      const role = authSession.user.user_metadata?.role || (authSession.role === 'admin' ? 'Administrator' : 'Viewer');
+      return [{
+        id: authSession.user.id || `usr-${Date.now()}`,
+        name,
+        email,
+        role: role as UserRole,
+        status: 'Active',
+        lastLogin: 'Active now',
+        createdAt: new Date().toLocaleDateString('en-GB')
+      }];
+    }
+    return [];
+  });
+  const [isLoadingUsers, setIsLoadingUsers] = useState(() => users.length === 0);
   const [userSearch, setUserSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState<string>('ALL');
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
@@ -82,6 +103,7 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
 
   // Approvals State
   const [deletionRequests, setDeletionRequests] = useState<DeletionApprovalRequest[]>([]);
+  const [isLoadingApprovals, setIsLoadingApprovals] = useState(true);
   const [approvalFilter, setApprovalFilter] = useState<'ALL' | 'Pending' | 'Approved' | 'Rejected'>('ALL');
   const [rejectModalReqId, setRejectModalReqId] = useState<string | null>(null);
   const [rejectionReasonInput, setRejectionReasonInput] = useState('');
@@ -136,18 +158,35 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
     });
   };
 
-  const loadData = async () => {
+  const loadData = async (triggerMapRefresh = false) => {
     setRefreshing(true);
+    setIsLoadingUsers(true);
+
+    // 1. Fetch user accounts decoupled from other requests for maximum responsiveness
+    fetchUserAccountsFromSupabase(authSession)
+      .then((fetchedUsers) => {
+        if (fetchedUsers && fetchedUsers.length > 0) {
+          setUsers(fetchedUsers);
+        }
+      })
+      .catch((err) => {
+        console.warn('Error loading user accounts in Administration workspace:', err);
+      })
+      .finally(() => {
+        setIsLoadingUsers(false);
+      });
+
+    // 2. Concurrently fetch governance settings and deletion approvals
+    setIsLoadingApprovals(true);
     try {
-      const [fetchedUsers, fetchedRequests, fetchedSettings] = await Promise.all([
-        fetchUserAccountsFromSupabase(authSession),
+      const tasks: Promise<any>[] = [
         fetchDeletionRequestsFromSupabase(),
-        fetchProjectSettingsFromSupabase(),
-        onRefreshData?.()
-      ]);
-      if (fetchedUsers) {
-        setUsers(fetchedUsers);
+        fetchProjectSettingsFromSupabase()
+      ];
+      if (triggerMapRefresh && onRefreshData) {
+        tasks.push(Promise.resolve().then(() => onRefreshData()));
       }
+      const [fetchedRequests, fetchedSettings] = await Promise.all(tasks);
       if (fetchedRequests) {
         setDeletionRequests(fetchedRequests);
       }
@@ -157,6 +196,7 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
     } catch {
       // ignore
     } finally {
+      setIsLoadingApprovals(false);
       setRefreshing(false);
     }
   };
@@ -183,6 +223,11 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
 
   // User Actions
   const handleToggleUserStatus = (userId: string) => {
+    const targetUser = users.find((u) => u.id === userId);
+    if (targetUser && targetUser.email.toLowerCase().trim() === currentAuthEmail && currentAuthEmail !== '') {
+      showToast('Cannot disable your own active administrator account.');
+      return;
+    }
     const updated = users.map((u) => {
       if (u.id === userId) {
         const nextStatus = u.status === 'Active' ? ('Disabled' as const) : ('Active' as const);
@@ -192,7 +237,6 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
     });
     setUsers(updated);
     saveUserAccountToSupabase(updated);
-    const targetUser = users.find((u) => u.id === userId);
     addAuditLog?.('SECURITY', `User Account ${targetUser?.status === 'Active' ? 'Disabled' : 'Enabled'}`, `Updated status for ${targetUser?.name} (${targetUser?.email})`, 'info');
     showToast(`User ${targetUser?.name} status updated.`);
   };
@@ -219,7 +263,7 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
     setRoleChangeModal(null);
   };
 
-  const handleDeleteUser = (userId: string) => {
+  const handleDeleteUser = async (userId: string) => {
     const targetUser = users.find((u) => u.id === userId);
     if (targetUser && targetUser.email.toLowerCase().trim() === currentAuthEmail && currentAuthEmail !== '') {
       showToast('Cannot delete active administrator session.');
@@ -229,6 +273,10 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
     const updated = users.filter((u) => u.id !== userId);
     setUsers(updated);
     saveUserAccountToSupabase(updated);
+    const cloudDeleted = await deleteUserAccountFromSupabase(userId, targetUser?.email);
+    if (!cloudDeleted) {
+      console.warn(`Cloud deletion notice: ${targetUser?.email} removed locally and from settings snapshot.`);
+    }
     addAuditLog?.('DELETE', 'User Deleted', `Administrator removed user account ${targetUser?.name} (${targetUser?.email})`, 'info');
     showToast(`User ${targetUser?.name} removed from directory.`);
   };
@@ -357,7 +405,7 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
         showToast('Role permissions matrix saved and synced to Production WebGIS.');
         addAuditLog?.('SECURITY', 'Role Permissions Updated', 'Matrix settings saved to Supabase project_settings', 'success');
       } else {
-        showToast('Failed to persist permissions to Supabase.');
+        showToast('Failed to persist permissions to Supabase (check project_settings table permissions).');
       }
     } catch (err: any) {
       showToast('Error saving permissions: ' + err.message);
@@ -377,7 +425,11 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
       key: 'users',
       icon: <Users size={14} />,
       label: 'User Management',
-      badge: countBadge(users.length)
+      badge: isLoadingUsers && users.length === 0 ? (
+        <span className="w-1.5 h-1.5 rounded-full bg-sky-400 ml-0.5 animate-pulse" title="Loading users..." />
+      ) : (
+        countBadge(users.length)
+      )
     },
     {
       key: 'roles',
@@ -391,7 +443,9 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
       key: 'approvals',
       icon: <CheckSquare size={14} />,
       label: 'Approvals',
-      badge: pendingApprovalsCount > 0 ? (
+      badge: isLoadingApprovals && deletionRequests.length === 0 ? (
+        <span className="w-1.5 h-1.5 rounded-full bg-amber-400 ml-0.5 animate-pulse" title="Loading approvals..." />
+      ) : pendingApprovalsCount > 0 ? (
         <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 ml-0.5 font-bold">
           {pendingApprovalsCount}
         </span>
@@ -457,14 +511,26 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
                   Manage accounts, assign operational roles, and revoke platform access.
                 </p>
               </div>
-              {isAdmin && (
+              <div className="flex items-center gap-2">
                 <button
-                  onClick={() => setIsAddUserModalOpen(true)}
-                  className="px-3.5 py-2 bg-sky-500 hover:bg-sky-400 text-slate-950 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-sm transition-all"
+                  type="button"
+                  onClick={() => loadData(true)}
+                  disabled={isLoadingUsers || _refreshing}
+                  className="px-2.5 py-1.5 rounded-lg text-xs font-medium border border-subtle bg-inner hover:bg-card text-text-muted hover:text-text-base flex items-center gap-1.5 transition-colors disabled:opacity-50 cursor-pointer"
+                  title="Refresh user directory and permissions"
                 >
-                  <Plus size={13} /> Add User
+                  <RefreshCw size={12} className={isLoadingUsers || _refreshing ? 'animate-spin text-sky-400' : ''} />
+                  <span>Refresh</span>
                 </button>
-              )}
+                {isAdmin && (
+                  <button
+                    onClick={() => setIsAddUserModalOpen(true)}
+                    className="px-3.5 py-2 bg-sky-500 hover:bg-sky-400 text-slate-950 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-sm transition-all"
+                  >
+                    <Plus size={13} /> Add User
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
@@ -505,7 +571,21 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-subtle/80">
-                  {filteredUsers.length === 0 ? (
+                  {isLoadingUsers && users.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-10 text-center text-text-muted">
+                        <div className="flex flex-col items-center justify-center gap-2">
+                          <RefreshCw size={22} className="animate-spin text-sky-400" />
+                          <p className="text-xs font-semibold text-text-base">
+                            Loading registered users from database...
+                          </p>
+                          <p className="text-[11px] text-text-muted">
+                            Syncing user directory and RBAC security credentials
+                          </p>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : filteredUsers.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="px-4 py-10 text-center text-text-muted">
                         <div className="flex flex-col items-center justify-center gap-2">
@@ -847,7 +927,16 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-subtle/80">
-                  {filteredApprovals.length === 0 ? (
+                  {isLoadingApprovals && deletionRequests.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="px-4 py-8 text-center text-text-muted">
+                        <div className="flex flex-col items-center justify-center gap-2">
+                          <RefreshCw size={20} className="animate-spin text-amber-400" />
+                          <p className="text-xs font-semibold text-text-base">Loading deletion approval requests...</p>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : filteredApprovals.length === 0 ? (
                     <tr>
                       <td colSpan={8} className="px-4 py-8 text-center text-text-muted">
                         No deletion approval requests in this filter.

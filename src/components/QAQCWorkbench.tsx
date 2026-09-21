@@ -41,6 +41,7 @@ import { PhotoSphereViewerComponent, type PhotoSphereViewerHandle } from './Phot
 import { usePanoramaViewer } from '../hooks/usePanoramaViewer';
 import { isGpuAccelerationSupported, getGpuHardwareName } from '../utils/qaqcAnalyzer';
 import { QAQCThresholdStudioView } from './QAQCThresholdStudioModal';
+import { InspectorDrawer, type DrawerWidthMode } from './common/InspectorDrawer';
 import { extractSubgridName } from '../utils/subgrid';
 import { DEFAULT_BASEMAP } from '../config/defaults';
 import {
@@ -215,6 +216,8 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
   const [workbenchTab, setWorkbenchTab] = useState<'console' | 'thresholds' | 'audit'>(() => {
     return savedState?.workbenchTab || 'console';
   });
+  const [thresholdsDrawerWidth, setThresholdsDrawerWidth] = useState<DrawerWidthMode>('expanded');
+  const [auditDrawerWidth, setAuditDrawerWidth] = useState<DrawerWidthMode>('expanded');
   const [mobileConsoleTab, setMobileConsoleTab] = useState<'canvas' | 'targets' | 'telemetry'>('canvas');
   const [auditLogFilter, setAuditLogFilter] = useState<'all' | 'flagged' | 'passed'>('all');
   const [auditSearchQuery, setAuditSearchQuery] = useState<string>('');
@@ -1527,7 +1530,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
 
             <button
               type="button"
-              onClick={() => setWorkbenchTab('thresholds')}
+              onClick={() => setWorkbenchTab(prev => prev === 'thresholds' ? 'console' : 'thresholds')}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${workbenchTab === 'thresholds'
                 ? 'bg-card text-text-base shadow-sm border border-subtle'
                 : 'text-text-muted hover:text-text-base'
@@ -1539,7 +1542,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
 
             <button
               type="button"
-              onClick={() => setWorkbenchTab('audit')}
+              onClick={() => setWorkbenchTab(prev => prev === 'audit' ? 'console' : 'audit')}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${workbenchTab === 'audit'
                 ? 'bg-card text-text-base shadow-sm border border-subtle'
                 : 'text-text-muted hover:text-text-base'
@@ -1594,9 +1597,8 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
         </div>
       </header>
 
-      {/* 2. BODY CONTENT */}
-      {workbenchTab === 'console' && (
-        <div className="flex-1 p-2 sm:p-3 gap-2 sm:gap-3 flex flex-col lg:flex-row overflow-hidden bg-app min-h-0">
+      {/* 2. BODY CONTENT (Always Mounted Dual-Viewport Console Canvas) */}
+      <div className="flex-1 p-2 sm:p-3 gap-2 sm:gap-3 flex flex-col lg:flex-row overflow-hidden bg-app min-h-0 relative">
           <div className="flex lg:hidden items-center justify-between p-1 rounded-xl bg-card border border-subtle shrink-0 shadow-sm gap-1">
             <button
               type="button"
@@ -2538,304 +2540,330 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
             </div>
           </aside>
         </div>
-      )}
 
-      {/* 2B. THRESHOLD CALIBRATION STUDIO VIEW */}
-      {workbenchTab === 'thresholds' && (
+      {/* 2B. THRESHOLD CALIBRATION STUDIO DRAWER */}
+      <InspectorDrawer
+        isOpen={workbenchTab === 'thresholds'}
+        onClose={() => setWorkbenchTab('console')}
+        title="Quality Thresholds Studio"
+        subtitle="Interactive calibration of Blur, Obstruction, and GPS Telemetry"
+        badge={
+          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-sans text-text-muted bg-inner border border-subtle">
+            {(localThresholds.deliverableModel || projectSettings?.deliverableModel || 'masked_car') === 'generative_fill' ? 'Generative (80% ROI)' : 'Masked (52% ROI)'}
+          </span>
+        }
+        mode="docked"
+        widthMode={thresholdsDrawerWidth}
+        onWidthModeChange={setThresholdsDrawerWidth}
+        allowWidthToggle={true}
+        bodyClassName="p-0 flex flex-col h-full min-h-0 overflow-hidden"
+        zIndex={60}
+      >
         <QAQCThresholdStudioView
           thresholds={localThresholds}
           setThresholds={setLocalThresholds}
           onSave={handleSaveThresholds}
           onResetDefaults={handleResetThresholds}
         />
-      )}
+      </InspectorDrawer>
 
-      {/* 2C. AUDIT SUMMARY VIEW */}
-      {workbenchTab === 'audit' && (() => {
-        const targetSub = (activeRunningSubgrid || selectedSubgrid || '').toUpperCase().trim();
-        const activeItem = filteredTargetList.find(t => t.subgrid.toUpperCase().trim() === targetSub);
-        const cachedAuditRecord = auditCache[`${targetSub}_${activeItem?.runId || 'default'}`] || auditCache[`${targetSub}_default`];
+      {/* 2C. AUDIT SUMMARY DRAWER */}
+      <InspectorDrawer
+        isOpen={workbenchTab === 'audit'}
+        onClose={() => setWorkbenchTab('console')}
+        title="QA/QC Audit Run Report"
+        subtitle={`Subgrid: ${(activeRunningSubgrid || selectedSubgrid || 'GENERAL').toUpperCase().trim()} • ${effectiveHistory.length} Stations Inspected`}
+        badge={
+          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-sans text-text-muted bg-inner border border-subtle">
+            {isCompleted ? 'Completed' : isRunning ? 'In Progress' : 'Loaded Profile'}
+          </span>
+        }
+        headerActions={
+          <button
+            onClick={handleExportCSV}
+            className="px-3 py-1.5 bg-card hover:bg-inner text-text-base border border-subtle text-xs font-medium rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95 shrink-0"
+            title="Export CSV Report"
+          >
+            <Download size={13} />
+            <span>Export CSV</span>
+          </button>
+        }
+        mode="docked"
+        widthMode={auditDrawerWidth}
+        onWidthModeChange={setAuditDrawerWidth}
+        allowWidthToggle={true}
+        bodyClassName="p-3 sm:p-5 overflow-y-auto space-y-4"
+        zIndex={60}
+      >
+        {(() => {
+          const targetSub = (activeRunningSubgrid || selectedSubgrid || '').toUpperCase().trim();
+          const activeItem = filteredTargetList.find(t => t.subgrid.toUpperCase().trim() === targetSub);
+          const cachedAuditRecord = auditCache[`${targetSub}_${activeItem?.runId || 'default'}`] || auditCache[`${targetSub}_default`];
 
-        const currentSubgrid = targetSub || 'GENERAL';
-        const currentDate = surveyDate || activeItem?.date || (cachedAuditRecord as any)?.surveyDate || (cachedAuditRecord ? new Date(cachedAuditRecord.completedAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }));
-        const currentPic = activeRunningPic || inspectorPic || activeItem?.pic || cachedAuditRecord?.pic || 'Operator';
-        const currentEquipment = (activeItem?.raw?.captureEquipment || activeItem?.raw?.equipment || (projectSettings as any)?.captureEquipment || 'MMS 360 Survey Sensor');
-        const currentDistance = activeItem?.raw?.kmProcessed ? `${activeItem.raw.kmProcessed.toFixed(1)} km` : (cachedAuditRecord as any)?.trajectoryDistance ? `${(cachedAuditRecord as any).trajectoryDistance.toFixed(1)} km` : '—';
-        const currentRunId = activeItem?.runId || cachedAuditRecord?.runId || 'RUN-AUDIT-ACTIVE';
-        const currentModel = (localThresholds.deliverableModel || projectSettings?.deliverableModel || 'masked_car') === 'generative_fill' ? 'Generative Fill (Full 80% ROI)' : 'Vehicle Nadir Mask (Top 52% ROI)';
+          const currentSubgrid = targetSub || 'GENERAL';
+          const currentDate = surveyDate || activeItem?.date || (cachedAuditRecord as any)?.surveyDate || (cachedAuditRecord ? new Date(cachedAuditRecord.completedAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }));
+          const currentPic = activeRunningPic || inspectorPic || activeItem?.pic || cachedAuditRecord?.pic || 'Operator';
+          const currentEquipment = (activeItem?.raw?.captureEquipment || activeItem?.raw?.equipment || (projectSettings as any)?.captureEquipment || 'MMS 360 Survey Sensor');
+          const currentDistance = activeItem?.raw?.kmProcessed ? `${activeItem.raw.kmProcessed.toFixed(1)} km` : (cachedAuditRecord as any)?.trajectoryDistance ? `${(cachedAuditRecord as any).trajectoryDistance.toFixed(1)} km` : '—';
+          const currentModel = (localThresholds.deliverableModel || projectSettings?.deliverableModel || 'masked_car') === 'generative_fill' ? 'Generative Fill (Full 80% ROI)' : 'Vehicle Nadir Mask (Top 52% ROI)';
 
-        const passedCount = Math.max(0, effectiveHistory.length - effectiveDefectsList.length);
+          const passedCount = Math.max(0, effectiveHistory.length - effectiveDefectsList.length);
 
-        const filteredAuditHistory = effectiveHistory.filter(item => {
-          if (auditLogFilter === 'flagged' && item.status !== 'flagged') return false;
-          if (auditLogFilter === 'passed' && item.status === 'flagged') return false;
-          if (auditSearchQuery.trim()) {
-            const q = auditSearchQuery.toLowerCase();
-            const matchId = (item.pointId || '').toLowerCase().includes(q);
-            const matchReason = item.reasons ? item.reasons.some((r: string) => r.toLowerCase().includes(q)) : false;
-            if (!matchId && !matchReason) return false;
-          }
-          return true;
-        });
+          const filteredAuditHistory = effectiveHistory.filter(item => {
+            if (auditLogFilter === 'flagged' && item.status !== 'flagged') return false;
+            if (auditLogFilter === 'passed' && item.status === 'flagged') return false;
+            if (auditSearchQuery.trim()) {
+              const q = auditSearchQuery.toLowerCase();
+              const matchId = (item.pointId || '').toLowerCase().includes(q);
+              const matchReason = item.reasons ? item.reasons.some((r: string) => r.toLowerCase().includes(q)) : false;
+              if (!matchId && !matchReason) return false;
+            }
+            return true;
+          });
 
-        return (
-          <div className="flex-1 flex flex-col p-3 sm:p-6 bg-app overflow-y-auto space-y-4 sm:space-y-6 max-w-7xl mx-auto w-full">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-4 rounded-2xl bg-card border border-subtle shadow-sm">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="p-2 rounded-xl bg-inner text-text-base border border-subtle shrink-0">
-                  <FileSpreadsheet size={18} />
-                </div>
-                <div className="min-w-0">
-                  <h3 className="font-bold text-sm text-text-base truncate flex items-center gap-2">
-                    <span>QA/QC Audit Run History & Technical Details</span>
-                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-sans text-text-muted bg-inner border border-subtle">
-                      {isCompleted ? 'Completed' : isRunning ? 'In Progress' : 'Loaded Profile'}
+          return (
+            <div className="flex-1 flex flex-col space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="p-3.5 bg-card border border-subtle rounded-xl space-y-2.5 shadow-sm">
+                  <div className="flex items-center justify-between border-b border-subtle pb-2">
+                    <span className="text-xs font-bold text-text-base uppercase tracking-wider flex items-center gap-1.5">
+                      <MapPin size={13} className="text-text-muted" />
+                      Survey Dataset
                     </span>
-                  </h3>
-                  <p className="text-[11px] text-text-muted mt-0.5 truncate">
-                    Comprehensive quality assurance diagnostics, operator sign-off, and hardware sensor telemetry.
-                  </p>
+                    <span className="font-sans text-[10px] text-text-muted">Subgrid ID</span>
+                  </div>
+                  <div className="space-y-1.5 text-xs">
+                    <div className="flex justify-between items-center">
+                      <span className="text-text-muted">Target Subgrid:</span>
+                      <span className="font-bold text-text-base font-sans">{currentSubgrid}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-text-muted">Survey Date:</span>
+                      <span className="text-text-base flex items-center gap-1 font-sans text-[11px]">
+                        <Calendar size={12} className="text-text-muted" />
+                        {currentDate}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-text-muted">Distance:</span>
+                      <span className="font-medium text-text-base font-sans text-[11px]">{currentDistance}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-text-muted">Station Count:</span>
+                      <span className="font-sans text-text-base font-semibold">{effectiveHistory.length} Frames</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-3.5 bg-card border border-subtle rounded-xl space-y-2.5 shadow-sm">
+                  <div className="flex items-center justify-between border-b border-subtle pb-2">
+                    <span className="text-xs font-bold text-text-base uppercase tracking-wider flex items-center gap-1.5">
+                      <User size={13} className="text-text-muted" />
+                      Operator
+                    </span>
+                    <span className="font-sans text-[10px] text-text-muted">PIC Sign-Off</span>
+                  </div>
+                  <div className="space-y-1.5 text-xs">
+                    <div className="flex justify-between items-center">
+                      <span className="text-text-muted">PIC:</span>
+                      <span className="font-medium text-text-base bg-inner px-2 py-0.5 rounded-lg border border-subtle text-[11px]">
+                        {currentPic}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-text-muted">Device:</span>
+                      <span className="text-text-base flex items-center gap-1 text-[11px]">
+                        <Camera size={12} className="text-text-muted shrink-0" />
+                        <span className="truncate">{currentEquipment}</span>
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-text-muted">Audit Completed:</span>
+                      <span className="text-text-base flex items-center gap-1 font-sans text-[11px]">
+                        <Clock size={12} className="text-text-muted" />
+                        {cachedAuditRecord?.completedAt || (isCompleted ? 'Just now' : isRunning ? 'In Progress' : '—')}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-3.5 bg-card border border-subtle rounded-xl space-y-2.5 shadow-sm">
+                  <div className="flex items-center justify-between border-b border-subtle pb-2">
+                    <span className="text-xs font-bold text-text-base uppercase tracking-wider flex items-center gap-1.5">
+                      <SlidersHorizontal size={13} className="text-text-muted" />
+                      Active Thresholds
+                    </span>
+                    <span className="font-sans text-[10px] text-text-muted">Profile</span>
+                  </div>
+                  <div className="space-y-1.5 text-xs">
+                    <div className="flex justify-between items-center">
+                      <span className="text-text-muted">Model:</span>
+                      <span className="font-medium text-text-base text-[11px] truncate max-w-[130px]" title={currentModel}>
+                        {currentModel}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-text-muted">Blur Cutoff:</span>
+                      <span className="font-sans font-medium text-text-base">{localThresholds.blurVarianceThreshold ?? 68.0} / 100</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-text-muted">Max GPS Step:</span>
+                      <span className="font-sans font-medium text-text-base">{localThresholds.gpsMaxJumpDistanceMeters ?? 50.0}m</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-text-muted">Obstruction:</span>
+                      <span className="font-sans font-medium text-text-base">{localThresholds.obstructionMinBrightness ?? 15.0} lux</span>
+                    </div>
+                  </div>
                 </div>
               </div>
-              <div className="flex items-center gap-2 w-full sm:w-auto">
-                <button
-                  onClick={handleExportCSV}
-                  className="flex-1 sm:flex-initial px-3.5 py-2 bg-card hover:bg-inner text-text-base border border-subtle text-xs font-medium rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-sm active:scale-95 shrink-0"
-                >
-                  <Download size={13} />
-                  <span>Export CSV Report</span>
-                </button>
+
+              <div className="bg-card border border-subtle rounded-2xl overflow-hidden shadow-sm flex flex-col">
+                <div className="px-4 py-3 border-b border-subtle bg-inner flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <span className="font-bold text-xs text-text-base uppercase tracking-wider flex items-center gap-1.5">
+                      <Activity size={14} className="text-text-muted" />
+                      Station Diagnostics ({effectiveHistory.length})
+                    </span>
+
+                    <div className="flex items-center bg-card border border-subtle rounded-xl p-0.5 text-xs">
+                      <button
+                        onClick={() => setAuditLogFilter('all')}
+                        className={`px-3 py-1 rounded-lg font-medium transition-colors cursor-pointer ${auditLogFilter === 'all' ? 'bg-inner text-text-base font-semibold' : 'text-text-muted hover:text-text-base'}`}
+                      >
+                        All ({effectiveHistory.length})
+                      </button>
+                      <button
+                        onClick={() => setAuditLogFilter('flagged')}
+                        className={`px-3 py-1 rounded-lg font-medium transition-colors cursor-pointer flex items-center gap-1.5 ${auditLogFilter === 'flagged' ? 'bg-inner text-text-base font-semibold' : 'text-text-muted hover:text-text-base'}`}
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
+                        Defects ({effectiveDefectsList.length})
+                      </button>
+                      <button
+                        onClick={() => setAuditLogFilter('passed')}
+                        className={`px-3 py-1 rounded-lg font-medium transition-colors cursor-pointer flex items-center gap-1.5 ${auditLogFilter === 'passed' ? 'bg-inner text-text-base font-semibold' : 'text-text-muted hover:text-text-base'}`}
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                        Passed ({passedCount})
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="relative min-w-[200px]">
+                    <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
+                    <input
+                      type="text"
+                      value={auditSearchQuery}
+                      onChange={(e) => setAuditSearchQuery(e.target.value)}
+                      placeholder="Search filename / reason..."
+                      className="w-full pl-8 pr-3 py-1.5 bg-card border border-subtle rounded-xl text-xs text-text-base placeholder-text-muted focus:outline-none focus:border-subtle transition-colors font-sans"
+                    />
+                  </div>
+                </div>
+
+                <div className="max-h-[500px] overflow-x-auto overflow-y-auto">
+                  {filteredAuditHistory.length === 0 ? (
+                    <div className="p-12 text-center text-xs text-text-muted flex flex-col items-center justify-center gap-2">
+                      <Activity size={24} className="text-text-muted" />
+                      <span>No station records matching the current filter.</span>
+                    </div>
+                  ) : (
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead className="sticky top-0 bg-inner border-b border-subtle z-10">
+                        <tr className="text-[10px] font-bold text-text-muted uppercase tracking-wider">
+                          <th className="px-3.5 py-2.5 whitespace-nowrap">Station</th>
+                          <th className="px-3.5 py-2.5 whitespace-nowrap">Point ID / File</th>
+                          <th className="px-3.5 py-2.5 whitespace-nowrap">Time</th>
+                          <th className="px-3.5 py-2.5 whitespace-nowrap">Coordinates</th>
+                          <th className="px-3.5 py-2.5 whitespace-nowrap">Score</th>
+                          <th className="px-3.5 py-2.5 whitespace-nowrap">Status</th>
+                          <th className="px-3.5 py-2.5 whitespace-nowrap">Diagnostic Details</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-subtle">
+                        {filteredAuditHistory.map((item) => {
+                          const isFlagged = item.status === 'flagged';
+                          const timeStr = item.timestamp ? (item.timestamp.includes(',') ? item.timestamp.split(',').pop()?.trim() : item.timestamp) : '—';
+                          const isSelectedRow = selectedStationIndex === item.index;
+                          return (
+                            <tr
+                              key={`${item.pointId}-${item.index}`}
+                              onClick={() => {
+                                setSelectedStationIndex(item.index);
+                                if (item.lat && item.lng && mapIframeRef.current?.contentWindow) {
+                                  try {
+                                    mapIframeRef.current.contentWindow.postMessage({
+                                      type: 'MAP_POINT_SELECTED',
+                                      point: {
+                                        filename: item.pointId,
+                                        image_url: item.thumbnailUrl,
+                                        subgrid: currentSubgrid,
+                                        lat: item.lat,
+                                        lon: item.lng,
+                                        lng: item.lng,
+                                        bearing: item.bearing || 0
+                                      },
+                                      zoom: 18
+                                    }, '*');
+                                    mapIframeRef.current.contentWindow.postMessage({
+                                      type: 'SET_CAMERA_HEADING',
+                                      bearing: item.bearing || 0,
+                                      heading: item.bearing || 0
+                                    }, '*');
+                                  } catch (_) { }
+                                }
+                              }}
+                              className={`transition-colors cursor-pointer ${
+                                isSelectedRow
+                                  ? 'bg-sky-950/40 border-l-2 border-sky-400'
+                                  : 'hover:bg-inner/40'
+                              }`}
+                            >
+                              <td className="px-3.5 py-2.5 whitespace-nowrap">
+                                <div className="flex items-center gap-1.5 font-sans font-medium text-text-base">
+                                  <span className={`w-1.5 h-1.5 rounded-full ${isFlagged ? 'bg-rose-400' : 'bg-slate-500'} shrink-0`} />
+                                  <span>#{item.index}</span>
+                                </div>
+                              </td>
+                              <td className="px-3.5 py-2.5 font-sans font-medium text-text-base whitespace-nowrap">
+                                {item.pointId}
+                              </td>
+                              <td className="px-3.5 py-2.5 text-text-muted whitespace-nowrap font-sans text-[11px]">
+                                {timeStr}
+                              </td>
+                              <td className="px-3.5 py-2.5 font-sans text-text-muted text-[11px] whitespace-nowrap">
+                                {item.lat.toFixed(4)}°, {item.lng.toFixed(4)}°
+                              </td>
+                              <td className="px-3.5 py-2.5 font-sans font-medium text-text-base whitespace-nowrap text-[11px]">
+                                {item.blurVariance !== undefined ? item.blurVariance.toFixed(1) : '—'}
+                              </td>
+                              <td className="px-3.5 py-2.5 whitespace-nowrap">
+                                {isFlagged ? (
+                                  <span className="px-2.5 py-0.5 rounded-full bg-inner border border-subtle text-rose-400 font-semibold text-[10px] inline-flex items-center gap-1 font-sans">
+                                    {item.defectType || 'Defect'}
+                                  </span>
+                                ) : (
+                                  <span className="px-2.5 py-0.5 rounded-full bg-inner border border-subtle text-emerald-400 font-medium text-[10px] inline-flex items-center gap-1 font-sans">
+                                    PASSED
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-3.5 py-2.5 text-text-muted text-[11px] max-w-xs truncate">
+                                {item.reasons && item.reasons.length > 0 ? item.reasons.join('; ') : '—'}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
               </div>
             </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div className="p-3.5 bg-card border border-subtle rounded-xl space-y-2.5 shadow-sm">
-                <div className="flex items-center justify-between border-b border-subtle pb-2">
-                  <span className="text-xs font-bold text-text-base uppercase tracking-wider flex items-center gap-1.5">
-                    <MapPin size={13} className="text-text-muted" />
-                    Survey Dataset
-                  </span>
-                  <span className="font-sans text-[10px] text-text-muted">Subgrid ID</span>
-                </div>
-                <div className="space-y-1.5 text-xs">
-                  <div className="flex justify-between items-center">
-                    <span className="text-text-muted">Target Subgrid:</span>
-                    <span className="font-bold text-text-base font-sans">{currentSubgrid}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-text-muted">Survey Date:</span>
-                    <span className="text-text-base flex items-center gap-1 font-sans text-[11px]">
-                      <Calendar size={12} className="text-text-muted" />
-                      {currentDate}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-text-muted">Trajectory Distance:</span>
-                    <span className="font-medium text-text-base font-sans text-[11px]">{currentDistance}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-text-muted">Station Count:</span>
-                    <span className="font-sans text-text-base font-semibold">{effectiveHistory.length} Frames</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-3.5 bg-card border border-subtle rounded-xl space-y-2.5 shadow-sm">
-                <div className="flex items-center justify-between border-b border-subtle pb-2">
-                  <span className="text-xs font-bold text-text-base uppercase tracking-wider flex items-center gap-1.5">
-                    <User size={13} className="text-text-muted" />
-                    Operator & Equipment
-                  </span>
-                  <span className="font-sans text-[10px] text-text-muted">PIC Sign-Off</span>
-                </div>
-                <div className="space-y-1.5 text-xs">
-                  <div className="flex justify-between items-center">
-                    <span className="text-text-muted">Person In Charge (PIC):</span>
-                    <span className="font-medium text-text-base bg-inner px-2 py-0.5 rounded-lg border border-subtle text-[11px]">
-                      {currentPic}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-text-muted">Capture Device:</span>
-                    <span className="text-text-base flex items-center gap-1">
-                      <Camera size={12} className="text-text-muted" />
-                      {currentEquipment}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-text-muted">Audit Completed:</span>
-                    <span className="text-text-base flex items-center gap-1 font-sans text-[11px]">
-                      <Clock size={12} className="text-text-muted" />
-                      {cachedAuditRecord?.completedAt || (isCompleted ? 'Just now' : isRunning ? 'In Progress' : '—')}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-text-muted">Inspection Run ID:</span>
-                    <span className="font-sans text-[10px] text-text-muted truncate max-w-[140px]" title={currentRunId}>
-                      {currentRunId}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-3.5 bg-card border border-subtle rounded-xl space-y-2.5 shadow-sm">
-                <div className="flex items-center justify-between border-b border-subtle pb-2">
-                  <span className="text-xs font-bold text-text-base uppercase tracking-wider flex items-center gap-1.5">
-                    <SlidersHorizontal size={13} className="text-text-muted" />
-                    Active Thresholds
-                  </span>
-                  <span className="font-sans text-[10px] text-text-muted">Profile</span>
-                </div>
-                <div className="space-y-1.5 text-xs">
-                  <div className="flex justify-between items-center">
-                    <span className="text-text-muted">Deliverable Model:</span>
-                    <span className="font-medium text-text-base text-[11px] truncate max-w-[150px]" title={currentModel}>
-                      {currentModel}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-text-muted">Blur Cutoff:</span>
-                    <span className="font-sans font-medium text-text-base">{localThresholds.blurVarianceThreshold ?? 68.0} / 100</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-text-muted">Max GPS Step:</span>
-                    <span className="font-sans font-medium text-text-base">{localThresholds.gpsMaxJumpDistanceMeters ?? 50.0}m</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-text-muted">Obstruction Brightness:</span>
-                    <span className="font-sans font-medium text-text-base">{localThresholds.obstructionMinBrightness ?? 15.0} lux</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-card border border-subtle rounded-2xl overflow-hidden shadow-sm flex flex-col">
-              <div className="px-4 py-3 border-b border-subtle bg-inner flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-                <div className="flex items-center gap-3 flex-wrap">
-                  <span className="font-bold text-xs text-text-base uppercase tracking-wider flex items-center gap-1.5">
-                    <Activity size={14} className="text-text-muted" />
-                    Station Diagnostics Log ({effectiveHistory.length})
-                  </span>
-
-                  <div className="flex items-center bg-card border border-subtle rounded-xl p-0.5 text-xs">
-                    <button
-                      onClick={() => setAuditLogFilter('all')}
-                      className={`px-3 py-1 rounded-lg font-medium transition-colors cursor-pointer ${auditLogFilter === 'all' ? 'bg-inner text-text-base font-semibold' : 'text-text-muted hover:text-text-base'
-                        }`}
-                    >
-                      All ({effectiveHistory.length})
-                    </button>
-                    <button
-                      onClick={() => setAuditLogFilter('flagged')}
-                      className={`px-3 py-1 rounded-lg font-medium transition-colors cursor-pointer flex items-center gap-1.5 ${auditLogFilter === 'flagged' ? 'bg-inner text-text-base font-semibold' : 'text-text-muted hover:text-text-base'
-                        }`}
-                    >
-                      <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
-                      Defects ({effectiveDefectsList.length})
-                    </button>
-                    <button
-                      onClick={() => setAuditLogFilter('passed')}
-                      className={`px-3 py-1 rounded-lg font-medium transition-colors cursor-pointer flex items-center gap-1.5 ${auditLogFilter === 'passed' ? 'bg-inner text-text-base font-semibold' : 'text-text-muted hover:text-text-base'
-                        }`}
-                    >
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                      Passed ({passedCount})
-                    </button>
-                  </div>
-                </div>
-
-                <div className="relative min-w-[200px]">
-                  <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
-                  <input
-                    type="text"
-                    value={auditSearchQuery}
-                    onChange={(e) => setAuditSearchQuery(e.target.value)}
-                    placeholder="Search filename / reason..."
-                    className="w-full pl-8 pr-3 py-1.5 bg-card border border-subtle rounded-xl text-xs text-text-base placeholder-text-muted focus:outline-none focus:border-subtle transition-colors font-sans"
-                  />
-                </div>
-              </div>
-
-              <div className="max-h-[500px] overflow-x-auto overflow-y-auto">
-                {filteredAuditHistory.length === 0 ? (
-                  <div className="p-12 text-center text-xs text-text-muted flex flex-col items-center justify-center gap-2">
-                    <Activity size={24} className="text-text-muted" />
-                    <span>No station records matching the current filter.</span>
-                  </div>
-                ) : (
-                  <table className="w-full text-left text-xs border-collapse">
-                    <thead className="sticky top-0 bg-inner border-b border-subtle z-10">
-                      <tr className="text-[10px] font-bold text-text-muted uppercase tracking-wider">
-                        <th className="px-3.5 py-2.5 whitespace-nowrap">Station</th>
-                        <th className="px-3.5 py-2.5 whitespace-nowrap">Subgrid</th>
-                        <th className="px-3.5 py-2.5 whitespace-nowrap">Point ID / File</th>
-                        <th className="px-3.5 py-2.5 whitespace-nowrap">Date</th>
-                        <th className="px-3.5 py-2.5 whitespace-nowrap">Time</th>
-                        <th className="px-3.5 py-2.5 whitespace-nowrap">Coordinates</th>
-                        <th className="px-3.5 py-2.5 whitespace-nowrap">Score</th>
-                        <th className="px-3.5 py-2.5 whitespace-nowrap">Status</th>
-                        <th className="px-3.5 py-2.5 whitespace-nowrap">Diagnostic Details</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-subtle">
-                      {filteredAuditHistory.map((item) => {
-                        const isFlagged = item.status === 'flagged';
-                        const timeStr = item.timestamp ? (item.timestamp.includes(',') ? item.timestamp.split(',').pop()?.trim() : item.timestamp) : '—';
-                        const itemSubgrid = extractSubgridName(item.pointId) || currentSubgrid;
-                        return (
-                          <tr
-                            key={`${item.pointId}-${item.index}`}
-                            className="hover:bg-inner/40 transition-colors"
-                          >
-                            <td className="px-3.5 py-2.5 whitespace-nowrap">
-                              <div className="flex items-center gap-1.5 font-sans font-medium text-text-base">
-                                <span className={`w-1.5 h-1.5 rounded-full ${isFlagged ? 'bg-rose-400' : 'bg-slate-500'} shrink-0`} />
-                                <span>#{item.index}</span>
-                              </div>
-                            </td>
-                            <td className="px-3.5 py-2.5 font-sans font-bold text-text-base whitespace-nowrap">
-                              {itemSubgrid}
-                            </td>
-                            <td className="px-3.5 py-2.5 font-sans font-medium text-text-base whitespace-nowrap">
-                              {item.pointId}
-                            </td>
-                            <td className="px-3.5 py-2.5 text-text-muted whitespace-nowrap font-sans text-[11px]">
-                              {currentDate}
-                            </td>
-                            <td className="px-3.5 py-2.5 text-text-muted whitespace-nowrap font-sans text-[11px]">
-                              {timeStr}
-                            </td>
-                            <td className="px-3.5 py-2.5 font-sans text-text-muted text-[11px] whitespace-nowrap">
-                              {item.lat.toFixed(4)}°, {item.lng.toFixed(4)}°
-                            </td>
-                            <td className="px-3.5 py-2.5 font-sans font-medium text-text-base whitespace-nowrap text-[11px]">
-                              {item.blurVariance !== undefined ? item.blurVariance.toFixed(1) : '—'}
-                            </td>
-                            <td className="px-3.5 py-2.5 whitespace-nowrap">
-                              {isFlagged ? (
-                                <span className="px-2.5 py-0.5 rounded-full bg-inner border border-subtle text-rose-400 font-semibold text-[10px] inline-flex items-center gap-1 font-sans">
-                                  {item.defectType || 'Defect'}
-                                </span>
-                              ) : (
-                                <span className="px-2.5 py-0.5 rounded-full bg-inner border border-subtle text-emerald-400 font-medium text-[10px] inline-flex items-center gap-1 font-sans">
-                                  PASSED
-                                </span>
-                              )}
-                            </td>
-                            <td className="px-3.5 py-2.5 text-text-muted text-[11px] max-w-xs truncate">
-                              {item.reasons && item.reasons.length > 0 ? item.reasons.join('; ') : '—'}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+          );
+        })()}
+      </InspectorDrawer>
     </div>
   );
 };

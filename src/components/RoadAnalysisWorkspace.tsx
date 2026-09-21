@@ -13,6 +13,7 @@ import {
   GitCompare,
   ArrowRightLeft,
   Printer,
+  Share2,
   Search,
   Cuboid,
   X
@@ -32,6 +33,8 @@ import {
 import { RoadAnalysisMap } from './roadAnalysis/RoadAnalysisMap';
 import { RoadImportPanel, type ImportPreview } from './roadAnalysis/RoadImportPanel';
 import { RoadAnalysisPrintPanel } from './roadAnalysis/RoadAnalysisPrintPanel';
+import { ShareMapDialog } from '../share/ShareMapDialog';
+import { buildRoadSnapshot } from '../utils/mapShares';
 import { RoadCatalogPanel, RoadAttributeTableDrawer, resolveLayerFeatures, type SystemLayerStyles } from './roadAnalysis/RoadCatalogPanel';
 import type { CatalogVectorLayer } from '../utils/gisImportParser';
 import {
@@ -404,39 +407,40 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
     return 'ofm-positron';
   }, [projectSettings?.defaultBasemap, projectSettings?.defaultBasemapStyle]);
 
+  // Read saved offline snapshot ONCE on mount, avoiding 12 redundant JSON.parse calls of large GeoJSON payloads
+  const initialSavedStateRef = useRef<RoadAnalysisSavedState | null>(null);
+  if (initialSavedStateRef.current === null) {
+    initialSavedStateRef.current = loadRoadAnalysisState(userKey);
+  }
+  const initialSaved = initialSavedStateRef.current;
+
   const [activeTab, setActiveTab] = useState<RoadTab>(() => {
     return 'catalog';
   });
 
   const [selectedStateCode, setSelectedStateCode] = useState<string>(() => {
-    const saved = loadRoadAnalysisState(userKey);
-    return saved?.selectedStateCode || '';
+    return initialSaved?.selectedStateCode || '';
   });
 
   const [selectedDistrictIds, setSelectedDistrictIds] = useState<string[]>(() => {
-    const saved = loadRoadAnalysisState(userKey);
-    return Array.isArray(saved?.selectedDistrictIds) ? saved.selectedDistrictIds : [];
+    return Array.isArray(initialSaved?.selectedDistrictIds) ? initialSaved.selectedDistrictIds : [];
   });
 
   const [planSource, setPlanSource] = useState<PlanSource>(() => {
-    const saved = loadRoadAnalysisState(userKey);
-    return saved?.planSource || 'system';
+    return initialSaved?.planSource || 'system';
   });
 
   const [manualGeoJson, setManualGeoJson] = useState<any>(() => {
-    const saved = loadRoadAnalysisState(userKey);
-    return saved?.manualGeoJson || null;
+    return initialSaved?.manualGeoJson || null;
   });
 
   const [manualError, setManualError] = useState<string>('');
   const [catalogLayers, setCatalogLayers] = useState<CatalogVectorLayer[]>(() => {
-    const saved = loadRoadAnalysisState(userKey);
-    return Array.isArray(saved?.catalogLayers) ? saved.catalogLayers : [];
+    return Array.isArray(initialSaved?.catalogLayers) ? initialSaved.catalogLayers : [];
   });
   const [systemStyles, setSystemStyles] = useState<SystemLayerStyles>(() => {
-    const saved = loadRoadAnalysisState(userKey);
     return (
-      saved?.systemStyles || {
+      initialSaved?.systemStyles || {
         districtBoundary: { visible: true, color: '#000000', opacity: 1, strokeWidth: 2.5 },
         capturedPoints: { visible: true, opacity: 0.95, pointRadius: 5 },
         roadPlan: { visible: true, color: '#10b981', opacity: 0.85, strokeWidth: 3.5 }
@@ -446,8 +450,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
   const [focusBbox, setFocusBbox] = useState<[number, number, number, number] | null>(null);
   const [activePlanName, setActivePlanName] = useState<string>('');
   const [catalogPlanLayerId, setCatalogPlanLayerId] = useState<string | null>(() => {
-    const saved = loadRoadAnalysisState(userKey);
-    return saved?.catalogPlanLayerId || null;
+    return initialSaved?.catalogPlanLayerId || null;
   });
   const [activeTableLayer, setActiveTableLayer] = useState<CatalogVectorLayer | null>(null);
   const [selectedTableFeature, setSelectedTableFeature] = useState<any | null>(null);
@@ -456,6 +459,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
   const [showDetailsCard, setShowDetailsCard] = useState<boolean>(true);
   const [subgridSearch, setSubgridSearch] = useState<string>('');
   const [refreshTick, setRefreshTick] = useState(0);
+  const [shareOpen, setShareOpen] = useState(false);
 
   useEffect(() => {
     if (activeTableLayer && !catalogLayers.some((l) => l.id === activeTableLayer.id)) {
@@ -591,26 +595,22 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
   }, [refreshTick, projectSettings]);
 
   const [extractedLines, setExtractedLines] = useState<ExtractedRoadLine[]>(() => {
-    const saved = loadRoadAnalysisState(userKey);
-    return Array.isArray(saved?.extractedLines) ? saved.extractedLines : [];
+    return Array.isArray(initialSaved?.extractedLines) ? initialSaved.extractedLines : [];
   });
 
   const [extracting, setExtracting] = useState(false);
   const [extractError, setExtractError] = useState<string>('');
 
   const [showRoadLines, setShowRoadLines] = useState<boolean>(() => {
-    const saved = loadRoadAnalysisState(userKey);
-    return typeof saved?.showRoadLines === 'boolean' ? saved.showRoadLines : true;
+    return typeof initialSaved?.showRoadLines === 'boolean' ? initialSaved.showRoadLines : true;
   });
 
   const [showCoverage, setShowCoverage] = useState<boolean>(() => {
-    const saved = loadRoadAnalysisState(userKey);
-    return typeof saved?.showCoverage === 'boolean' ? saved.showCoverage : false;
+    return typeof initialSaved?.showCoverage === 'boolean' ? initialSaved.showCoverage : false;
   });
 
   const [mapBasemap, setMapBasemap] = useState<string>(() => {
-    const saved = loadRoadAnalysisState(userKey);
-    if (saved?.mapBasemap) return saved.mapBasemap;
+    if (initialSaved?.mapBasemap) return initialSaved.mapBasemap;
     return defaultBasemapKey;
   });
 
@@ -621,21 +621,20 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
   const [hasUnsavedEdits, setHasUnsavedEdits] = useState<boolean>(false);
 
   const [lastSavedFingerprint, setLastSavedFingerprint] = useState<string | null>(() => {
-    const saved = loadRoadAnalysisState(userKey);
-    if (saved && saved.savedToCloud === true) {
+    if (initialSaved && initialSaved.savedToCloud === true) {
       return computeRoadAnalysisFingerprint(
-        saved.selectedStateCode || '',
-        saved.selectedDistrictIds || [],
-        saved.planSource || 'system',
-        saved.mapBasemap || defaultBasemapKey,
-        typeof saved.showRoadLines === 'boolean' ? saved.showRoadLines : true,
-        saved.manualGeoJson || null,
-        saved.extractedLines || [],
-        saved.catalogLayers || [],
-        saved.systemStyles
+        initialSaved.selectedStateCode || '',
+        initialSaved.selectedDistrictIds || [],
+        initialSaved.planSource || 'system',
+        initialSaved.mapBasemap || defaultBasemapKey,
+        typeof initialSaved.showRoadLines === 'boolean' ? initialSaved.showRoadLines : true,
+        initialSaved.manualGeoJson || null,
+        initialSaved.extractedLines || [],
+        initialSaved.catalogLayers || [],
+        initialSaved.systemStyles
       );
     }
-    if (!saved) {
+    if (!initialSaved) {
       return computeRoadAnalysisFingerprint(
         '',
         [],
@@ -1890,6 +1889,17 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                 Saved {lastSavedAt}
               </span>
             )}
+            {!isGuestUser && (
+              <button
+                type="button"
+                onClick={() => setShareOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-inner border border-subtle text-[11px] font-semibold text-text-base hover:text-sky-400 transition-colors cursor-pointer shrink-0"
+                title="Create a public read-only share link for this road analysis map"
+              >
+                <Share2 size={13} />
+                <span>Share Map</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={handleSaveState}
@@ -1929,6 +1939,21 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
             </button>
           </div>
         </div>
+
+        <ShareMapDialog
+          open={shareOpen}
+          kind="road"
+          defaultTitle={`${projectSettings?.projectName || 'GeoSphere 360'} — Road Analysis Map`}
+          buildSnapshot={() => {
+            if (extractedLines.length === 0) {
+              throw new Error('Nothing to share yet — extract road lines (or Save State) before creating the link.');
+            }
+            return buildRoadSnapshot(extractedLines, { planName: activePlanName, projectSettings });
+          }}
+          basemap={defaultBasemapKey}
+          createdBy={authSession?.user?.id || null}
+          onClose={() => setShareOpen(false)}
+        />
 
         {/* Unsaved local edits notice */}
         {hasUnsavedEdits && !isSaved && (

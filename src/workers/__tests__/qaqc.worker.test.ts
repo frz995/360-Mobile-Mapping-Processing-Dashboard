@@ -75,7 +75,11 @@ describe('qaqc.worker message flow', () => {
 
   beforeEach(async () => {
     messages = []
-    postMessageMock = vi.fn((msg: AnyMessage) => {
+    postMessageMock = vi.fn((msg: AnyMessage, ...args: any[]) => {
+      // In real browsers, passing a string like '*' as the 2nd argument to a DedicatedWorker's postMessage throws a TypeError
+      if (args.length > 0 && typeof args[0] === 'string') {
+        throw new TypeError("Failed to execute 'postMessage' on 'DedicatedWorkerGlobalScope': The 2nd argument is not an array of Transferable objects.")
+      }
       messages.push(msg)
     })
     // jsdom's `self === window`; reassign postMessage to capture worker output.
@@ -124,10 +128,10 @@ describe('qaqc.worker message flow', () => {
 
     const complete = messages.find((m) => m.type === 'COMPLETE')
     expect(complete).toBeTruthy()
-    expect(complete!.totalInspected).toBe(3)
-    expect(complete!.subgrid).toBe('BLOCK-A')
-    expect(complete!.runId).toBe('run-1')
-    expect(complete!.history.length).toBe(3)
+    expect(complete?.totalInspected).toBe(3)
+    expect(complete?.subgrid).toBe('BLOCK-A')
+    expect(complete?.runId).toBe('run-1')
+    expect(complete?.history?.length).toBe(3)
   })
 
   it('flags a GPS jump as a defect between consecutive stations', async () => {
@@ -212,5 +216,34 @@ describe('qaqc.worker message flow', () => {
 
     expect(messages.some((m) => m.type === 'COMPLETE')).toBe(false)
     expect(messages.some((m) => m.type === 'ABORTED')).toBe(true)
+  })
+
+  it('recovers from image analysis exceptions on a station and completes the batch', async () => {
+    controllable.analyzeImageSharpness.mockRejectedValueOnce(new Error('Network decode error'))
+
+    send({
+      type: 'START',
+      payload: {
+        subgrid: 'resilient',
+        runId: null,
+        pic: 'test-pic',
+        config: makeConfig({ checkGps: false, checkBlur: true }),
+        thresholds: makeThresholds(),
+        stations: [
+          { lat: 10.0, lng: 20.0, __pointId: 'station1.jpg', __imageUrl: 'station1.jpg' }
+        ]
+      }
+    })
+
+    await new Promise((r) => setTimeout(r, 20))
+
+    const stations = messages.filter((m) => m.type === 'STATION')
+    expect(stations.length).toBe(1)
+    expect(stations[0].liveCheckStatus.blur.status).toBe('skipped')
+    expect(stations[0].liveCheckStatus.blur.detail).toContain('Network decode error')
+
+    const complete = messages.find((m) => m.type === 'COMPLETE')
+    expect(complete).toBeTruthy()
+    expect(complete?.totalInspected).toBe(1)
   })
 })

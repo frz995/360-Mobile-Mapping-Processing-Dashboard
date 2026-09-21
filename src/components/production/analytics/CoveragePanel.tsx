@@ -26,7 +26,11 @@ const DARK_TOOLTIP = {
 
 export function CoveragePanel({ analytics, translate }: CoveragePanelProps) {
   const rows = [...analytics.perSubgrid].sort((a, b) => b.coveragePct - a.coveragePct);
-  const chartData = rows.map((r) => ({ name: r.subgrid, pct: r.coveragePct }));
+  // Cap chart display to top 24 subgrids to avoid heavy SVG overdraw and illegible text bars when projects have 100+ subgrids
+  const isTruncated = rows.length > 24;
+  const chartRows = isTruncated ? rows.slice(0, 24) : rows;
+  const chartData = chartRows.map((r) => ({ name: r.subgrid, pct: r.coveragePct }));
+  const xAxisInterval = chartRows.length > 16 ? 'preserveStartEnd' : 0;
 
   return (
     <div className="flex flex-col gap-4">
@@ -46,19 +50,27 @@ export function CoveragePanel({ analytics, translate }: CoveragePanelProps) {
       </div>
 
       {rows.length > 0 && (
-        <ResponsiveContainer width="100%" height={220}>
-          <BarChart data={chartData} margin={{ top: 6, right: 12, left: -18, bottom: 0 }}>
-            <CartesianGrid stroke="#1e293b" strokeDasharray="3 3" />
-            <XAxis dataKey="name" tick={{ fill: '#94a3b8', fontSize: 9 }} stroke="#334155" interval={0} angle={-32} height={56} />
-            <YAxis domain={[0, 100]} tick={{ fill: '#94a3b8', fontSize: 10 }} stroke="#334155" />
-            <Tooltip {...DARK_TOOLTIP} />
-            <Bar dataKey="pct" radius={[4, 4, 0, 0]}>
-              {chartData.map((d, i) => (
-                <Cell key={i} fill={d.pct >= 100 ? '#10b981' : d.pct >= 80 ? '#38bdf8' : '#f59e0b'} />
-              ))}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
+        <div className="space-y-1">
+          {isTruncated && (
+            <div className="text-[10px] text-text-muted flex items-center justify-between px-1">
+              <span>Showing top 24 subgrids by coverage</span>
+              <span>Full dataset ({rows.length} subgrids) in table below</span>
+            </div>
+          )}
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={chartData} margin={{ top: 6, right: 12, left: -18, bottom: 0 }}>
+              <CartesianGrid stroke="#1e293b" strokeDasharray="3 3" />
+              <XAxis dataKey="name" tick={{ fill: '#94a3b8', fontSize: 9 }} stroke="#334155" interval={xAxisInterval} angle={-32} height={56} />
+              <YAxis domain={[0, 100]} tick={{ fill: '#94a3b8', fontSize: 10 }} stroke="#334155" />
+              <Tooltip {...DARK_TOOLTIP} />
+              <Bar dataKey="pct" radius={[4, 4, 0, 0]}>
+                {chartData.map((d, i) => (
+                  <Cell key={i} fill={d.pct >= 100 ? '#10b981' : d.pct >= 80 ? '#38bdf8' : '#f59e0b'} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
       )}
 
       <div className="overflow-auto max-h-[440px] border border-subtle rounded-xl">

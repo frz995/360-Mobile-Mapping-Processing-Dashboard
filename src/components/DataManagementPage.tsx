@@ -6,14 +6,11 @@ import {
   CheckCircle2,
   Clock,
   Camera,
-  Navigation,
-  Save,
   Trash2,
   Edit2,
   Upload,
   X,
-  Folder,
-  ChevronDown,
+    ChevronDown,
   ChevronRight,
   ChevronLeft,
   FileText,
@@ -21,8 +18,7 @@ import {
   Search,
   Database,
   ShieldAlert,
-  Lock,
-  Layers,
+    Layers,
   Filter,
   Globe,
   ClipboardList,
@@ -31,8 +27,7 @@ import {
   Download,
   ExternalLink,
   Loader2,
-  Info,
-  Map as MapIcon,
+    Map as MapIcon,
   MousePointer2,
   RotateCcw
 } from 'lucide-react';
@@ -74,14 +69,21 @@ import {
   getPOICount,
   getImagesProcessedCount,
   formatDisplayDate,
-  toISODateString,
   reconcileBatchLogs
 } from '../utils/dashboardData';
 import { getItemId } from '../utils/items';
 import type { PanoramaItem, DailyTimeSeries, BatchLog, NotificationItem, AuditLogItem } from '../types/dashboard';
-import type { Layer as CatalogLayer, Folder as CatalogFolder } from '../types/catalog';
-type Layer = CatalogLayer;
-type Folder = CatalogFolder;
+import {
+  findItem,
+  updateItem,
+  removeItemFromTree,
+  addItemToFolder,
+  getFlatFolderList,
+  type Layer,
+  type FolderType as Folder
+} from './dataManagement/CatalogItem';
+import { DataForm, GRIDS } from './dataManagement/DataForm';
+import { SafeDeleteModal } from './dataManagement/SafeDeleteModal';
 
 // Calculate Haversine distance in KM between two GPS coordinates
 function calculateHaversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -110,227 +112,34 @@ function calculatePanoramaTrackKm(panoramas?: PanoramaItem[]): number {
 return Math.round(totalKm * 100) / 100;
 }
 
-// Find item in tree by id
-function findItem(items: (Layer | Folder)[], id: string): (Layer | Folder) | null {
-  if (!Array.isArray(items)) return null;
-  for (const item of items) {
-    if (!item) continue;
-    if (item.id === id) return item;
-    if (item.type === 'folder' && Array.isArray(item.children)) {
-      const found = findItem(item.children, id);
-      if (found) return found;
-    }
-  }
-  return null;
-}
-
-// Update item in tree
-function updateItem(items: (Layer | Folder)[], id: string, updater: (item: Layer | Folder) => Layer | Folder): (Layer | Folder)[] {
-  if (!Array.isArray(items)) return [];
-  return items.map(item => {
-    if (!item) return item;
-    if (item.id === id) {
-      return updater(item);
-    }
-    if (item.type === 'folder' && Array.isArray(item.children)) {
-      return { ...item, children: updateItem(item.children, id, updater) };
-    }
-    return item;
-  });
-}
-
-// Delete item from tree
-function removeItemFromTree(items: (Layer | Folder)[], id: string): (Layer | Folder)[] {
-  if (!Array.isArray(items)) return [];
-  return items.filter(item => {
-    if (!item) return false;
-    if (item.id === id) return false;
-    if (item.type === 'folder' && Array.isArray(item.children)) {
-      item.children = removeItemFromTree(item.children, id);
-    }
-    return true;
-  });
-}
-
-// Add item to folder (or root if folderId is null)
-function addItemToFolder(items: (Layer | Folder)[], itemToAdd: Layer | Folder, folderId: string | null): (Layer | Folder)[] {
-  if (!Array.isArray(items)) return [itemToAdd];
-  if (!folderId) {
-    return [...items, itemToAdd];
-  }
-  return items.map(item => {
-    if (!item) return item;
-    if (item.type === 'folder') {
-      const children = Array.isArray(item.children) ? item.children : [];
-      if (item.id === folderId) {
-        return { ...item, children: [...children, itemToAdd] };
-      }
-      return { ...item, children: addItemToFolder(children, itemToAdd, folderId) };
-    }
-    return item;
-  });
-}
-
-// Get flat list of folders with their paths
-function getFlatFolderList(items: (Layer | Folder)[], path: string = ''): Array<{ id: string; name: string; path: string }> {
-  if (!Array.isArray(items)) return [];
-  let folders: Array<{ id: string; name: string; path: string }> = [];
-  for (const item of items) {
-    if (!item) continue;
-    if (item.type === 'folder') {
-      const currentPath = path ? `${path} / ${item.name}` : item.name;
-      folders.push({ id: item.id, name: item.name, path: currentPath });
-      if (Array.isArray(item.children)) {
-        folders = [...folders, ...getFlatFolderList(item.children, currentPath)];
-      }
-    }
-  }
-  return folders;
-}
-
 // ==============================================
 // Data Management Page Component
 // ==============================================
 
-// Component to render catalog items (layers or folders)
-const CatalogItem = ({
-  item,
-  depth = 0,
-  catalog,
-  onToggleFolder,
-  onToggleLayer,
-  onEdit,
-  onDelete,
-  onMove
-}: {
-  item: Layer | Folder;
-  depth?: number;
-  catalog: 'staged' | 'saved';
-  onToggleFolder: (id: string) => void;
-  onToggleLayer: (id: string) => void;
-  onEdit: (item: Layer | Folder) => void;
-  onDelete: (id: string) => void;
-  onMove: (item: Layer | Folder, catalog: 'staged' | 'saved') => void;
-}) => {
-  if (item.type === 'folder') {
-    return (
-      <div>
-        <div
-          className="bg-inner border border-subtle rounded-lg p-4"
-          style={{ marginLeft: `${depth * 16}px` }}
-        >
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-3 cursor-pointer" onClick={() => onToggleFolder(item.id)}>
-              {item.expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-              <Folder size={16} className="text-amber-500" />
-              <span className="text-text-base font-medium truncate max-w-[120px]">
-                {item.name}
-              </span>
-            </div>
-            <div className="flex items-center gap-1">
-              <button
-                onClick={(e) => { e.stopPropagation(); onMove(item, catalog); }}
-                className="text-text-muted hover:text-emerald-400 transition-colors p-1"
-                title="Move"
-              >
-                <Navigation size={14} />
-              </button>
-              <button
-                onClick={(e) => { e.stopPropagation(); onEdit(item); }}
-                className="text-text-muted hover:text-sky-400 transition-colors p-1"
-                title="Edit"
-              >
-                <Edit2 size={14} />
-              </button>
-              <button
-                onClick={(e) => { e.stopPropagation(); onDelete(item.id); }}
-                className="text-text-muted hover:text-red-400 transition-colors p-1"
-                title="Delete"
-              >
-                <Trash2 size={14} />
-              </button>
-            </div>
-          </div>
-          <p className="text-xs text-text-muted">
-            Created: {new Date(item.createdAt).toLocaleString()}
-          </p>
-        </div>
-        {item.expanded && Array.isArray(item.children) && (
-          <div className="mt-2 space-y-2">
-            {item.children.map(child => child && (
-              <CatalogItem
-                key={child.id}
-                item={child}
-                depth={depth + 1}
-                catalog={catalog}
-                onToggleFolder={onToggleFolder}
-                onToggleLayer={onToggleLayer}
-                onEdit={onEdit}
-                onDelete={onDelete}
-                onMove={onMove}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  } else {
-    return (
-      <div
-        className="bg-inner border border-subtle rounded-lg p-4"
-        style={{ marginLeft: `${depth * 16}px` }}
-      >
-        <div className="flex items-center justify-between mb-2">
-          <label className="flex items-center gap-3 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={item.visible}
-              onChange={() => onToggleLayer(item.id)}
-              className="w-4 h-4 text-sky-600 bg-inner border-subtle rounded focus:ring-sky-500"
-            />
-            <div className="flex items-center gap-2">
-              <div
-                className="w-3 h-3 rounded-full"
-                style={{ backgroundColor: item.color }}
-              />
-              <span className="text-text-base font-medium truncate max-w-[120px]">
-                {item.name}
-              </span>
-            </div>
-          </label>
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => onMove(item, catalog)}
-              className="text-text-muted hover:text-emerald-400 transition-colors p-1"
-              title="Move"
-            >
-              <Navigation size={14} />
-            </button>
-            <button
-              onClick={() => onEdit(item)}
-              className="text-text-muted hover:text-sky-400 transition-colors p-1"
-              title="Edit"
-            >
-              <Edit2 size={14} />
-            </button>
-            <button
-              onClick={() => onDelete(item.id)}
-              className="text-text-muted hover:text-red-400 transition-colors p-1"
-              title="Delete"
-            >
-              <Trash2 size={14} />
-            </button>
-          </div>
-        </div>
-        <p className="text-xs text-text-muted">
-          Uploaded: {new Date(item.uploadedAt).toLocaleString()}
-        </p>
-      </div>
-    );
-  }
-};
+export interface DataManagementPageProps {
+  dailyData: DailyTimeSeries[];
+  setDailyData: (data: DailyTimeSeries[]) => void;
+  batchLogs: BatchLog[];
+  setBatchLogs: (data: BatchLog[]) => void;
+  layerCatalog: (Layer | Folder)[];
+  setLayerCatalog: (data: (Layer | Folder)[]) => void;
+  onBackToDashboard: () => void;
+  mapRefreshKey?: number;
+  onRefreshMap?: () => void;
+  authSession?: any;
+  onSignOut?: () => void;
+  addNotification?: (item: Omit<NotificationItem, 'id' | 'timestamp' | 'read'>) => void;
+  addAuditLog?: (type: AuditLogItem['type'], title: string, details: string, status?: AuditLogItem['status']) => void;
+  isGuestUser?: boolean;
+  projectSettings?: any;
+  qaSubgridRecords?: Record<string, { flags: { blurry: boolean; obstruction: boolean; badGps: boolean }; answer: 'yes' | 'no' | null; isLocked: boolean }>;
+  translate?: (key: string) => string;
+  initialTab?: 'batches' | 'daily' | 'datasets' | 'recovery';
+  initialSearch?: string;
+  canHandleApprovals?: boolean;
+}
 
-export const DataManagementPage = ({
+export const DataManagementPage: React.FC<DataManagementPageProps> = ({
   dailyData,
   setDailyData,
   batchLogs,
@@ -351,27 +160,6 @@ export const DataManagementPage = ({
   initialTab,
   initialSearch,
   canHandleApprovals
-}: {
-  dailyData: DailyTimeSeries[],
-  setDailyData: (data: DailyTimeSeries[]) => void,
-  batchLogs: BatchLog[],
-  setBatchLogs: (data: BatchLog[]) => void,
-  layerCatalog: (Layer | Folder)[],
-  setLayerCatalog: (data: (Layer | Folder)[]) => void,
-  onBackToDashboard: () => void,
-  mapRefreshKey?: number,
-  onRefreshMap?: () => void,
-  authSession?: any,
-  onSignOut?: () => void,
-  addNotification?: (item: Omit<NotificationItem, 'id' | 'timestamp' | 'read'>) => void,
-  addAuditLog?: (type: AuditLogItem['type'], title: string, details: string, status?: AuditLogItem['status']) => void,
-  isGuestUser?: boolean,
-  projectSettings?: any,
-  qaSubgridRecords?: Record<string, { flags: { blurry: boolean; obstruction: boolean; badGps: boolean }; answer: 'yes' | 'no' | null; isLocked: boolean }>,
-  translate?: (key: string) => string,
-  initialTab?: 'batches' | 'daily' | 'datasets' | 'recovery',
-  initialSearch?: string,
-  canHandleApprovals?: boolean
 }) => {
   const tf = translate || ((key: string) => key);
   type DataTab = 'batches' | 'daily' | 'datasets' | 'recovery';
@@ -384,6 +172,7 @@ export const DataManagementPage = ({
   }, [initialTab]);
 
   const refreshRecycleBinCount = useCallback(async () => {
+
     try {
       const items = await fetchRecycleBinFromSupabase();
       setRecycleBinCount(items.length);
@@ -2609,9 +2398,7 @@ export const DataManagementPage = ({
     return (extractSubgridName(raw) || 'SUBGRID').toUpperCase().trim();
   })();
 
-  const impactTotals = impactData?.totals;
-  const hasSevereImpact = !!(impactData && (impactData.hasPublished || impactData.hasDeliverables || impactData.hasLinkedJobs || impactData.hasOrphanRisk));
-  const willRequireApproval = approvalGateActive && resolveWholeTargets().length > 0;
+    const willRequireApproval = approvalGateActive && resolveWholeTargets().length > 0;
 
   const DATA_TABS: ChromeTab<string>[] = useMemo(() => [
     {
@@ -4578,247 +4365,31 @@ export const DataManagementPage = ({
       )}
 
       {/* ===== Admin Security Delete Confirmation Modal ===== */}
-      {isDeleteModalOpen && deleteTarget && (
-        <div className="fixed inset-0 bg-app backdrop-blur-md flex items-center justify-center p-4 z-[1200] animate-fadeIn">
-          <div className="bg-app border border-subtle rounded-2xl max-w-2xl w-full shadow-2xl overflow-hidden transform transition-all max-h-[92vh] flex flex-col">
-            {/* Modal Header */}
-            <div className="bg-app border-b border-subtle p-5 flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-inner border border-subtle flex items-center justify-center text-text-base">
-                  <ShieldAlert size={20} />
-                </div>
-                <div>
-                  <h3 className="text-base font-semibold text-text-base flex items-center gap-2">
-                    {willRequireApproval ? 'Deletion Request' : 'Admin Security Verification'}
-                  </h3>
-                  <p className="text-xs text-text-muted font-medium">
-                    {willRequireApproval ? 'Admin Authorization Required to Submit Deletion' : 'Permanent Database Deletion Authorization'}
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => {
-                  setIsDeleteModalOpen(false);
-                  setDeleteTarget(null);
-                  setDeleteError(null);
-                  setDeleteConfirmText('');
-                }}
-                className="text-text-muted hover:text-text-base p-1 rounded-lg hover:bg-inner transition-colors"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            {/* Modal Body */}
-            <div className="p-6 space-y-5 overflow-y-auto min-h-0">
-              {/* Impact Preview */}
-              <div>
-                <div className="font-semibold text-text-base mb-2 flex items-center gap-1.5 text-xs uppercase tracking-wide">
-                  <Database size={14} className="text-sky-400" />
-                  {tf('dataImpactPreview')}
-                </div>
-
-                {isComputingImpact ? (
-                  <div className="flex items-center gap-2 text-[11px] text-text-muted py-6 justify-center">
-                    <Loader2 size={14} className="animate-spin text-sky-400" /> {tf('dataImpactComputing')}
-                  </div>
-                ) : impactData && impactTotals ? (
-                  <div className="space-y-3">
-                    {/* KPI grid */}
-                    <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                      {[
-                        { label: tf('dataImpactSubgrids'), value: String(impactTotals.subgrids), tone: 'text-sky-300' },
-                        { label: tf('dataImpactRuns'), value: String(impactTotals.runs), tone: 'text-text-base' },
-                        { label: tf('dataImpactPoi'), value: String(impactTotals.poi), tone: 'text-text-base' },
-                        { label: tf('dataImpactFrames'), value: String(impactTotals.frames), tone: 'text-text-base' },
-                        { label: tf('dataImpactKm'), value: `${impactTotals.km.toLocaleString()} km`, tone: 'text-text-base' },
-                        { label: tf('dataImpactDefects'), value: String(impactTotals.defects), tone: impactTotals.defects > 0 ? 'text-amber-300' : 'text-text-base' },
-                        { label: tf('dataImpactPublished'), value: String(impactTotals.published), tone: impactTotals.published > 0 ? 'text-rose-300' : 'text-text-base' },
-                        { label: tf('dataImpactJobs'), value: String(impactTotals.jobs), tone: impactTotals.jobs > 0 ? 'text-amber-300' : 'text-text-base' }
-                      ].map((c) => (
-                        <div key={c.label} className="bg-inner border border-subtle rounded-lg px-2.5 py-2">
-                          <div className={`text-sm font-bold leading-none ${c.tone}`}>{c.value}</div>
-                          <div className="text-[9px] uppercase tracking-wider text-text-muted mt-1 truncate" title={c.label}>{c.label}</div>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Per-subgrid breakdown */}
-                    {impactData.rows.length > 0 && (
-                      <div className="overflow-x-auto rounded-lg border border-subtle max-h-[220px] overflow-y-auto">
-                        <table className="w-full text-left text-[10px]">
-                          <thead className="bg-inner text-text-muted border-b border-subtle sticky top-0">
-                            <tr>
-                              <th className="px-2.5 py-2">{tf('dataRegistryColSubgrid')}</th>
-                              <th className="px-2.5 py-2 text-right">{tf('dataImpactRuns')}</th>
-                              <th className="px-2.5 py-2 text-right">{tf('dataImpactPoi')}</th>
-                              <th className="px-2.5 py-2 text-right">{tf('dataImpactFrames')}</th>
-                              <th className="px-2.5 py-2 text-right">{tf('dataImpactKm')}</th>
-                              <th className="px-2.5 py-2 text-right">{tf('dataImpactDefects')}</th>
-                              <th className="px-2.5 py-2 text-right">{tf('dataImpactQa')}</th>
-                              <th className="px-2.5 py-2 text-right">{tf('dataImpactStaging')}</th>
-                              <th className="px-2.5 py-2 text-right">{tf('dataImpactPublished')}</th>
-                              <th className="px-2.5 py-2 text-right">{tf('dataImpactDatasets')}</th>
-                              <th className="px-2.5 py-2 text-right">{tf('dataImpactDeliverables')}</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {impactData.rows.map((r) => (
-                              <tr key={r.subgrid} className="border-t border-subtle">
-                                <td className="px-2.5 py-1.5 font-sans text-sky-300 font-semibold">{r.subgrid}</td>
-                                <td className="px-2.5 py-1.5 text-right text-text-muted">{r.runs}</td>
-                                <td className="px-2.5 py-1.5 text-right text-text-muted">{r.poi}</td>
-                                <td className="px-2.5 py-1.5 text-right text-text-muted">{r.frames}</td>
-                                <td className="px-2.5 py-1.5 text-right text-text-muted">{r.km}</td>
-                                <td className="px-2.5 py-1.5 text-right text-text-muted">{r.defects}</td>
-                                <td className="px-2.5 py-1.5 text-right text-text-muted">{r.qa}</td>
-                                <td className="px-2.5 py-1.5 text-right text-text-muted">{r.staging}</td>
-                                <td className="px-2.5 py-1.5 text-right text-rose-300 font-semibold">{r.published}</td>
-                                <td className="px-2.5 py-1.5 text-right text-amber-300 font-semibold">{r.datasets}</td>
-                                <td className="px-2.5 py-1.5 text-right text-rose-300 font-semibold">{r.deliverables}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-
-                    {/* Dependent-data warnings */}
-                    {hasSevereImpact ? (
-                      <div className="p-3 bg-red-950/40 border border-red-800/60 rounded-xl">
-                        <div className="flex items-center gap-1.5 text-xs font-bold text-red-300 uppercase tracking-wide mb-1.5">
-                          <AlertTriangle size={13} className="text-red-400" />
-                          {tf('dataImpactDependents')}
-                        </div>
-                        <ul className="text-[11px] text-red-200 space-y-1 list-disc list-inside">
-                          {impactData.warnings.map((w, i) => (
-                            <li key={i}>{w}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    ) : impactData.warnings.length > 0 ? (
-                      <div className="p-3 bg-amber-950/30 border border-amber-700/40 rounded-xl">
-                        <ul className="text-[11px] text-amber-200 space-y-1 list-disc list-inside">
-                          {impactData.warnings.map((w, i) => (
-                            <li key={i}>{w}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    ) : null}
-                  </div>
-                ) : null}
-              </div>
-
-              {/* Security Warning (unchanged semantics) */}
-              <div className="bg-app border border-subtle rounded-xl p-4 text-xs text-text-base leading-relaxed">
-                <div className="font-semibold text-text-base mb-1.5 flex items-center gap-1.5 text-xs uppercase tracking-wide">
-                  <AlertTriangle size={14} className={willRequireApproval ? 'text-amber-400' : 'text-red-400'} />
-                  {willRequireApproval ? 'Security Warning: Admin Approval Required' : 'Security Warning: Permanent Deletion'}
-                </div>
-                {willRequireApproval ? (
-                  <>This action will <strong className="text-amber-400 font-medium">submit the deletion for Administrator approval</strong>. No database records are removed until an Administrator reviews and approves it in Administration → Approvals. Partial point selections are not part of this request and still delete immediately.</>
-                ) : (
-                  <>This data will be <strong className="text-red-400 font-medium">permanently removed</strong> from the database. This action cannot be reversed.</>
-                )}
-                {deleteMode === 'bulk' && (
-                  <div className="mt-3 p-3 bg-app rounded-lg border border-subtle font-sans text-text-base text-xs space-y-1.5">
-                    <div className="flex justify-between items-center"><span className="text-text-muted">Target Selection:</span> <strong className="text-text-base font-sans font-semibold">Bulk Delete</strong></div>
-                    <div className="flex justify-between items-center"><span className="text-text-muted">Records Selected:</span> <span className="text-red-400 font-bold">{selectedRowIds.size} records</span></div>
-                  </div>
-                )}
-                {deleteMode === 'spatial' && (
-                  <div className="mt-3 p-3 bg-app rounded-lg border border-subtle font-sans text-text-base text-xs space-y-1.5">
-                    <div className="flex justify-between items-center"><span className="text-text-muted">Target Selection:</span> <strong className="text-text-base font-sans font-semibold">Map Spatial Selection</strong></div>
-                    <div className="flex justify-between items-center"><span className="text-text-muted">Subgrids Selected:</span> <span className="text-red-400 font-bold">{spatialSubgrids.length} subgrids</span></div>
-                  </div>
-                )}
-              </div>
-
-              {/* Explicit Confirmation Input */}
-              <div>
-                <label className="block text-xs font-medium text-text-base mb-2 flex items-center gap-1.5">
-                  <Info size={14} className="text-text-muted" />
-                  {tf('dataConfirmPhrase')}
-                </label>
-                <input
-                  type="text"
-                  value={deleteConfirmText}
-                  onChange={(e) => {
-                    setDeleteConfirmText(e.target.value);
-                    if (deleteError) setDeleteError(null);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') confirmDelete();
-                  }}
-                  placeholder={expectedDeletePhrase}
-                  autoCapitalize="characters"
-                  spellCheck={false}
-                  className="w-full bg-app border border-subtle focus:border-rose-500/70 rounded-xl px-4 py-2.5 text-sm font-sans text-text-base placeholder-text-muted focus:outline-none transition-all shadow-inner uppercase"
-                />
-                <p className="text-[10px] text-text-muted mt-1.5">
-                  {willRequireApproval
-                    ? <>Type the exact code below to prove you authorize submitting this deletion request for Administrator review: <strong className="text-text-base font-sans">{expectedDeletePhrase}</strong></>
-                    : <>{tf('dataConfirmInstruction')} <strong className="text-text-base font-sans">{expectedDeletePhrase}</strong></>}
-                </p>
-              </div>
-
-              {/* Admin Authorization Input */}
-              <div>
-                <label className="block text-xs font-medium text-text-base mb-2 flex items-center gap-1.5">
-                  <Lock size={14} className="text-text-muted" />
-                  Enter User Auth Password to Confirm Deletion:
-                </label>
-                <div className="relative">
-                  <input
-                    type="password"
-                    value={adminPasscode}
-                    onChange={(e) => {
-                      setAdminPasscode(e.target.value);
-                      if (deleteError) setDeleteError(null);
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') confirmDelete();
-                    }}
-                    placeholder="Enter account password"
-                    className="w-full bg-app border border-subtle focus:border-subtle rounded-xl px-4 py-2.5 text-sm text-text-base placeholder-text-muted focus:outline-none transition-all shadow-inner"
-                  />
-                </div>
-              </div>
-
-              {/* Error Box */}
-              {deleteError && (
-                <div className="p-3 bg-red-950/40 border border-red-800/60 rounded-xl flex items-start gap-2.5 text-xs text-red-300 font-medium">
-                  <AlertTriangle size={16} className="text-red-400 shrink-0 mt-0.5" />
-                  <span>{deleteError}</span>
-                </div>
-              )}
-            </div>
-
-            {/* Modal Footer */}
-            <div className="p-4 bg-app border-t border-subtle flex items-center justify-end gap-3 shrink-0">
-              <button
-                onClick={() => {
-                  setIsDeleteModalOpen(false);
-                  setDeleteTarget(null);
-                  setDeleteError(null);
-                  setDeleteConfirmText('');
-                }}
-                className="px-4 py-2 rounded-xl text-xs font-medium text-text-base hover:text-text-base bg-inner hover:bg-inner border border-subtle transition-all cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmDelete}
-                disabled={isComputingImpact || !impactData || deleteConfirmText.trim().toUpperCase() !== expectedDeletePhrase.toUpperCase() || !adminPasscode.trim()}
-                className="px-5 py-2.5 rounded-xl text-xs font-semibold text-text-base bg-red-600/90 hover:bg-red-600 border border-red-500/30 transition-all shadow-md flex items-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                <Trash2 size={14} />
-                {willRequireApproval ? 'Authorize & Submit Deletion' : 'Authorize & Delete Permanently'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <SafeDeleteModal
+        isOpen={isDeleteModalOpen}
+        deleteTarget={deleteTarget}
+        deleteMode={deleteMode}
+        impactData={impactData}
+        isComputingImpact={isComputingImpact}
+        willRequireApproval={willRequireApproval}
+        expectedDeletePhrase={expectedDeletePhrase}
+        selectedRowCount={selectedRowIds.size}
+        spatialSubgridCount={spatialSubgrids.length}
+        deleteConfirmText={deleteConfirmText}
+        setDeleteConfirmText={setDeleteConfirmText}
+        adminPasscode={adminPasscode}
+        setAdminPasscode={setAdminPasscode}
+        deleteError={deleteError}
+        setDeleteError={setDeleteError}
+        onConfirm={confirmDelete}
+        onClose={() => {
+          setIsDeleteModalOpen(false);
+          setDeleteTarget(null);
+          setDeleteError(null);
+          setDeleteConfirmText('');
+        }}
+        translate={tf}
+      />
 
       {/* Data Selection & Point Inspector Modal */}
       <DataSelectionListModal
@@ -4889,267 +4460,5 @@ export const DataManagementPage = ({
         onRestoreItem={handleRestoreRecycleBinItem}
       />
     </>
-  );
-};
-
-// ==============================================
-// Data Form Component
-// ==============================================
-
-
-const GRIDS = Array.from({ length: 12 }, (_, i) => (i + 1).toString());
-
-const DataForm = ({
-  initialData,
-  dataType,
-  activeAuthUserName,
-  onSave,
-  onCancel
-}: {
-  initialData: BatchLog | DailyTimeSeries | null,
-  dataType: 'batches' | 'daily',
-  activeAuthUserName?: string,
-  onSave: (data: any) => void,
-  onCancel: () => void
-}) => {
-  const [formData, setFormData] = useState<any>(
-    initialData ||
-    (dataType === 'batches'
-      ? { date: new Date().toISOString().slice(0, 10), grid: '1', subgrid: '', imageFilename: '', images: 0, defects: 0, kmProcessed: 0, status: 'Ongoing' as const, captureEquipment: 'MMS', pic: 'Admin' }
-      : {
-        date: '',
-        grid: '1',
-        subgrid: '',
-        kmProcessed: 0,
-        imagesProcessed: 0,
-        defectCount: 0,
-        imagesDefected: 0,
-        captureEquipment: 'MMS',
-        pic: activeAuthUserName || 'Operator',
-        publishToUSVPRO: 'in process' as const,
-        action: ''
-      }
-    )
-  );
-
-
-
-  return (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        const count = dataType === 'batches' ? (formData.images || 0) : (formData.imagesProcessed || 0);
-        const finalKm = formData.kmProcessed > 0 ? formData.kmProcessed : Math.round((count * 0.005) * 100) / 100;
-        onSave({ ...formData, kmProcessed: Math.round(finalKm * 100) / 100 });
-      }}
-      className="space-y-3 text-xs"
-    >
-      {dataType === 'batches' ? (
-        <>
-          <div>
-            <label className="block text-xs font-semibold text-text-base mb-1">Date</label>
-            <input
-              type="date"
-              value={toISODateString(formData.date)}
-              onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-              className="w-full bg-app border border-subtle rounded-lg px-3 py-1.5 text-xs text-text-base focus:outline-none focus:border-subtle"
-              required
-            />
-          </div>
-
-          {/* System Calculated Metrics Panel */}
-          <div className="bg-app border border-subtle rounded-xl p-3 space-y-2">
-            <div className="flex items-center justify-between text-[10px] font-bold text-text-muted uppercase tracking-wider border-b border-subtle pb-1.5">
-              <span>System Metrics</span>
-              <span className="text-[9px] text-text-muted bg-inner border border-subtle px-1.5 py-0.5 rounded font-normal">System Generated</span>
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
-              <div className="bg-app p-2 rounded-lg border border-subtle">
-                <span className="text-[10px] text-text-muted block font-medium">Grid / Subgrid</span>
-                <strong className="text-text-base font-semibold">{formData.grid || '—'} / {formData.subgrid || '—'}</strong>
-              </div>
-              <div className="bg-app p-2 rounded-lg border border-subtle">
-                <span className="text-[10px] text-text-muted block font-medium">POI Count</span>
-                <strong className="text-text-base font-semibold">{formData.poiCount ?? 0}</strong>
-              </div>
-              <div className="bg-app p-2 rounded-lg border border-subtle">
-                <span className="text-[10px] text-text-muted block font-medium">Images</span>
-                <strong className="text-text-base font-semibold">{formData.images ?? 0} frames</strong>
-              </div>
-              <div className="bg-app p-2 rounded-lg border border-subtle">
-                <span className="text-[10px] text-text-muted block font-medium">Distance</span>
-                <strong className="text-text-base font-semibold">{formData.kmProcessed ?? 0} km</strong>
-              </div>
-              <div className="bg-app p-2 rounded-lg border border-subtle">
-                <span className="text-[10px] text-text-muted block font-medium">Defects</span>
-                <strong className="text-text-base font-semibold">{formData.defects ?? 0}</strong>
-              </div>
-              <div className="bg-app p-2 rounded-lg border border-subtle truncate">
-                <span className="text-[10px] text-text-muted block font-medium">First Image</span>
-                <strong className="text-text-base font-sans text-[11px] truncate block" title={formData.imageFilename}>{formData.imageFilename || '—'}</strong>
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-text-base mb-1">Capture Equipment</label>
-            <div className="flex items-center gap-2">
-              {(['MMS', 'Backpack', 'Drone'] as const).map(eq => (
-                <button
-                  key={eq}
-                  type="button"
-                  onClick={() => setFormData({ ...formData, captureEquipment: eq })}
-                  className={`flex-1 py-1.5 px-3 rounded-lg font-medium text-xs border transition-all cursor-pointer ${formData.captureEquipment === eq
-                    ? 'bg-inner border-subtle text-text-base shadow-sm font-semibold'
-                    : 'bg-app border-subtle text-text-muted hover:text-text-base'
-                    }`}
-                >
-                  {eq}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-text-base mb-1">PIC (Person In Charge)</label>
-            <input
-              type="text"
-              value={formData.pic || ''}
-              onChange={(e) => setFormData({ ...formData, pic: e.target.value })}
-              placeholder="Enter PIC Name"
-              className="w-full bg-app border border-subtle rounded-lg px-3 py-1.5 text-xs text-text-base focus:outline-none focus:border-subtle"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-text-base mb-1">Status</label>
-            <select
-              value={formData.status}
-              onChange={(e) => setFormData({ ...formData, status: e.target.value as 'Complete' | 'Ongoing' })}
-              className="w-full bg-app border border-subtle rounded-lg px-3 py-1.5 text-xs text-text-base focus:outline-none focus:border-subtle"
-              required
-            >
-              <option value="Ongoing">Ongoing</option>
-              <option value="Complete">Complete</option>
-            </select>
-          </div>
-        </>
-      ) : (
-        <>
-          <div>
-            <label className="block text-xs font-semibold text-text-base mb-1">Date</label>
-            <input
-              type="date"
-              value={toISODateString(formData.date)}
-              onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-              className="w-full bg-app border border-subtle rounded-lg px-3 py-1.5 text-xs text-text-base focus:outline-none focus:border-subtle"
-              required
-            />
-          </div>
-
-          {/* System Calculated Metrics Panel */}
-          <div className="bg-app border border-subtle rounded-xl p-3 space-y-2">
-            <div className="flex items-center justify-between text-[10px] font-bold text-text-muted uppercase tracking-wider border-b border-subtle pb-1.5">
-              <span>System Metrics</span>
-              <span className="text-[9px] text-text-muted bg-inner border border-subtle px-1.5 py-0.5 rounded font-normal">System Generated</span>
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
-              <div className="bg-app p-2 rounded-lg border border-subtle">
-                <span className="text-[10px] text-text-muted block font-medium">Grid / Subgrid</span>
-                <strong className="text-text-base font-semibold">{formData.grid || '—'} / {formData.subgrid || '—'}</strong>
-              </div>
-              <div className="bg-app p-2 rounded-lg border border-subtle">
-                <span className="text-[10px] text-text-muted block font-medium">Images Processed</span>
-                <strong className="text-text-base font-semibold">{formData.imagesProcessed ?? 0} frames</strong>
-              </div>
-              <div className="bg-app p-2 rounded-lg border border-subtle">
-                <span className="text-[10px] text-text-muted block font-medium">Distance</span>
-                <strong className="text-text-base font-semibold">{formData.kmProcessed ?? 0} km</strong>
-              </div>
-              <div className="bg-app p-2 rounded-lg border border-subtle col-span-2 sm:col-span-3">
-                <span className="text-[10px] text-text-muted block font-medium">Defects</span>
-                <strong className="text-text-base font-semibold">{formData.imagesDefected ?? 0}</strong>
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-text-base mb-1">Capture Equipment</label>
-            <div className="flex items-center gap-2">
-              {(['MMS', 'Backpack', 'Drone'] as const).map(eq => (
-                <button
-                  key={eq}
-                  type="button"
-                  onClick={() => setFormData({ ...formData, captureEquipment: eq })}
-                  className={`flex-1 py-1.5 px-3 rounded-lg font-medium text-xs border transition-all cursor-pointer ${formData.captureEquipment === eq
-                    ? 'bg-inner border-subtle text-text-base shadow-sm font-semibold'
-                    : 'bg-app border-subtle text-text-muted hover:text-text-base'
-                    }`}
-                >
-                  {eq}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-text-base mb-1">PIC (Person In Charge)</label>
-            <input
-              type="text"
-              value={formData.pic || ''}
-              onChange={(e) => setFormData({ ...formData, pic: e.target.value })}
-              placeholder="Enter PIC Name"
-              className="w-full bg-app border border-subtle rounded-lg px-3 py-1.5 text-xs text-text-base focus:outline-none focus:border-subtle"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-text-base mb-1">Publish to WEBGIS</label>
-            <select
-              value={formData.publishToWebGIS || 'in process'}
-              onChange={(e) => {
-                const val = e.target.value as 'yes' | 'need to recheck' | 'no' | 'in process';
-                setFormData({
-                  ...formData,
-                  publishToWebGIS: val,
-                  publishToUSVPRO: val,
-                  isSyncedWithSupabase: val === 'yes'
-                });
-              }}
-              className="w-full bg-app border border-subtle rounded-lg px-3 py-1.5 text-xs text-text-base focus:outline-none focus:border-subtle"
-              required
-            >
-              <option value="yes">yes</option>
-              <option value="need to recheck">need to recheck</option>
-              <option value="no">no</option>
-              <option value="in process">in process</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-text-base mb-1">Status (Database Sync)</label>
-            <input
-              disabled
-              type="text"
-              value={formData.publishToWebGIS === 'yes' ? 'published in database' : 'ready to publish'}
-              className="w-full bg-app border border-subtle rounded-lg px-3 py-1.5 text-xs text-text-muted cursor-not-allowed"
-            />
-            <p className="text-[10px] text-text-muted mt-0.5">Status is updated automatically when syncing or publishing to database.</p>
-          </div>
-        </>
-      )}
-
-      <div className="flex justify-end gap-2.5 pt-3 border-t border-subtle">
-        <button
-          type="button"
-          onClick={onCancel}
-          className="px-4 py-1.5 bg-inner hover:bg-inner text-text-base rounded-lg font-medium text-xs transition-all cursor-pointer border border-subtle"
-        >
-          Cancel
-        </button>
-        <button
-          type="submit"
-          className="flex items-center gap-1.5 px-4 py-1.5 bg-inner hover:bg-inner text-text-base rounded-lg font-medium text-xs transition-all cursor-pointer shadow-sm border border-subtle active:scale-95"
-        >
-          <Save size={14} />
-          Save Changes
-        </button>
-      </div>
-    </form>
   );
 };

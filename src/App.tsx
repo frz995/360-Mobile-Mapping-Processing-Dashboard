@@ -7,32 +7,22 @@ import {
   AlertTriangle,
   CheckCircle,
   Activity,
-  Clock,
-  Camera,
+    Camera,
   Edit2,
   X,
   Folder,
-  ChevronRight,
-  FileText,
+    FileText,
   RefreshCw,
   Database,
   User,
-  LogOut,
-  Map as MapIcon,
-  ShieldCheck,
+      ShieldCheck,
   Maximize2,
   Filter,
-  ClipboardList,
-  History,
-  Calendar,
-  HelpCircle,
-  ExternalLink,
-  Loader2,
+            Loader2,
   Play,
   StopCircle,
   ArrowLeft,
-  Menu
-} from 'lucide-react';
+  } from 'lucide-react';
 import { supabase, fetchSupabaseData, fetchProjectSettingsFromSupabase, updateDefectStatusInSupabase, saveQaAuditRunToSupabase, saveAuditLogToSupabase, saveNotificationToSupabase, saveProjectSettingsToSupabase, resolvePanoramaUrl, resolvePanoramaConfigUrl, getDatabaseTableMapping, SUBGRID_COORDINATES, saveProcessingJobToSupabase, pruneBloatedUserMetadata, fetchDeletionRequestsFromSupabase, configureSupabaseBackend } from './services/supabase';
 import type { ExtendedProjectSettings, QAQCAuditRunRecord } from './types/admin';
 import { MapComponent } from './components/MapComponent';
@@ -71,14 +61,6 @@ import {
 
 const AdminSettingsView = React.lazy(() => import('./components/AdminSettingsView').then(m => ({ default: m.AdminSettingsView })));
 const OperationalActionCenter = React.lazy(() => import('./components/OperationalActionCenter').then(m => ({ default: m.OperationalActionCenter })));
-const ImageProductionWorkspace = React.lazy(() => import('./components/ImageProductionWorkspace').then(m => ({ default: m.ImageProductionWorkspace })));
-const NASStorageWorkspace = React.lazy(() => import('./components/NASStorageWorkspace').then(m => ({ default: m.NASStorageWorkspace })));
-const ProcessingCenterWorkspace = React.lazy(() => import('./components/ProcessingCenterWorkspace').then(m => ({ default: m.ProcessingCenterWorkspace })));
-const LineageWorkspace = React.lazy(() => import('./components/LineageWorkspace').then(m => ({ default: m.LineageWorkspace })));
-const AnalyticsWorkspace = React.lazy(() => import('./components/AnalyticsWorkspace').then(m => ({ default: m.AnalyticsWorkspace })));
-const ReportsWorkspace = React.lazy(() => import('./components/ReportsWorkspace').then(m => ({ default: m.ReportsWorkspace })));
-const AdministrationWorkspace = React.lazy(() => import('./components/AdministrationWorkspace').then(m => ({ default: m.AdministrationWorkspace })));
-const RoadAnalysisWorkspace = React.lazy(() => import('./components/RoadAnalysisWorkspace'));
 const ProjectWorkspace = React.lazy(() => import('./components/ProjectWorkspace').then(m => ({ default: m.ProjectWorkspace })));
 const QAQCWorkbench = React.lazy(() => import('./components/QAQCWorkbench').then(m => ({ default: m.QAQCWorkbench })));
 import { useQAQCWorker, type StationNode } from './hooks/useQAQCWorker';
@@ -87,12 +69,14 @@ import './themes.css';
 import { SystemShowcase } from './components/SystemShowcase';
 import { DailyHandoverModal } from './components/DailyHandoverModal';
 import { SubgridImagesListModal } from './components/SubgridImagesListModal';
-import { NotificationPopover } from './components/NotificationPopover';
 import { WorkspaceSidebarNav } from './components/WorkspaceSidebarNav';
+import { AppTourGuide } from './components/onboarding/AppTourGuide';
+import { HelpGuideModal } from './components/onboarding/HelpGuideModal';
+import { AppHeader } from './components/navigation/AppHeader';
+import { WorkspaceRouter } from './components/navigation/WorkspaceRouter';
 import { AboutPlatformModal } from './components/modals/AboutPlatformModal';
 import { DashboardKpiSummary } from './components/dashboard/DashboardKpiSummary';
 import { DashboardBatchTable } from './components/dashboard/DashboardBatchTable';
-import { WorkspacePlaceholder, getWorkspaceDefinition } from './workspaces';
 import { parseWorkspace, pushWorkspace, replaceWorkspace, subscribeWorkspace, isExplicitRoute } from './utils/urlRouter';
 import type { WorkspaceKey } from './utils/urlRouter';
 import {
@@ -128,85 +112,17 @@ import { formatBatchIdDisplay, getPOICount, getImagesProcessedCount, parseFlexib
 export { formatBatchIdDisplay, getPOICount, getImagesProcessedCount, parseFlexibleDate, formatDisplayDate, toISODateString, calculateSubgridDistanceKm, createBatchLogFromSupabaseOrDummy, reconcileBatchLogs };
 import { getItemId } from './utils/items';
 export { getItemId };
+import { openPrintableReport } from './utils/reportDocuments';
+import { buildExecutivePdfHtml } from './components/reports/reportPdf';
+import { Share2 } from 'lucide-react';
+import { ShareMapDialog } from './share/ShareMapDialog';
+import { buildWebgisSnapshot } from './utils/mapShares';
 
 // ==============================================
 // Initial State (Populated dynamically from Supabase)
 // ==============================================
 
-const TOUR_STEPS = [
-  {
-    step: 1,
-    title: '1. Executive KPI Summary Cards',
-    desc: 'Real-time monitoring of total trajectory distance (KM), 360° panorama frame counts, active survey subgrids, and overall defect SLA pass rates.',
-    highlight: 'Top executive summary cards'
-  },
-  {
-    step: 2,
-    title: '2. Interactive WebGIS Map & Layer Controls',
-    desc: 'Spatial trajectory inspection on Leaflet. Click any subgrid to filter frames. Toggle subgrid bounding boxes, trajectory lines, and high-voltage grid overlays.',
-    highlight: 'Interactive WebGIS Map canvas'
-  },
-  {
-    step: 3,
-    title: '3. 360° Equirectangular StreetView Inspector',
-    desc: 'High-definition 360° camera inspection. Step along trajectory points, review automated defect flags, and complete YES/NO QA verification questionnaires.',
-    highlight: '360° Panorama StreetView panel'
-  },
-  {
-    step: 4,
-    title: '4. Daily Survey Progress & Supabase DB Control',
-    desc: 'Filter daily survey passes by column (Date, PIC, Subgrid), perform passcode-protected record edits or deletions, and publish live records to Supabase PostgreSQL.',
-    highlight: 'Daily progress data table'
-  },
-  {
-    step: 5,
-    title: '5. Audit Trail Logs & Real-Time Notifications',
-    desc: 'Inspect chronological system activity logs (create, edit, delete, publish, error) with date-range filters, and monitor live database publish notifications.',
-    highlight: 'Header Audit Log & Notification controls'
-  },
-  {
-    step: 6,
-    title: '6. Navigation Sidebar Panel Overview',
-    desc: 'The central navigation bar provides fast access to all operational canvases, database management tools, system settings, and interactive help controls.',
-    highlight: 'Navigation sidebar strip'
-  },
-  {
-    step: 7,
-    title: '7. Main Dashboard Canvas Switcher',
-    desc: 'Click this button to return instantly to the primary WebGIS view, featuring spatial trajectory maps, 360° StreetView inspectors, and daily progress metrics.',
-    highlight: 'Main Dashboard nav button'
-  },
-  {
-    step: 8,
-    title: '8. PostGIS Data Management & Layer Catalog',
-    desc: 'Access the dedicated PostGIS Data Management canvas to inspect raw trajectory tables, import survey CSVs, and configure subgrid masterlists.',
-    highlight: 'Data Management nav button'
-  },
-  {
-    step: 9,
-    title: '9. Instant Map & Trajectory Cache Refresh',
-    desc: 'Triggers an instant cache purge and re-sync with Supabase PostgreSQL, reloading all trajectory polylines, panorama nodes, and subgrid boundaries.',
-    highlight: 'Refresh Map nav button'
-  },
-  {
-    step: 10,
-    title: '10. Project & Database Settings',
-    desc: 'Open Section 7 & Section 8 settings to configure Masterlist subgrid deduplication rules, daily survey run preservation policies, and QA defect SLA benchmarks.',
-    highlight: 'Project Settings nav button'
-  },
-  {
-    step: 11,
-    title: '11. About Dashboard & System Specifications',
-    desc: 'View comprehensive system specs, including PostGIS mapping engines, Supabase PostgreSQL database architecture, coordinate reference systems (EPSG:4326, 3857, 3375), and versioning.',
-    highlight: 'About Dashboard nav button'
-  },
-  {
-    step: 12,
-    title: '12. Expandable Navigation Panel & Fluid Micro-Animations',
-    desc: 'Click the bottom chevron toggle to expand or collapse the navigation sidebar with silky-smooth cubic-bezier transitions, label sliding animations, and glowing fluid active dots.',
-    highlight: 'Expand / Collapse panel toggle button'
-  }
-];
+// TOUR_STEPS extracted to AppTourGuide
 
 // ==============================================
 // Main Application Component
@@ -591,6 +507,23 @@ export default function App() {
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', currentTheme);
 
+    // Restore style widget custom properties from localStorage
+    const radiusMap: Record<string, string> = { sharp: '4px', default: '12px', rounded: '16px', pill: '24px' };
+    const densityGapMap: Record<string, string> = { compact: '8px', default: '12px', spacious: '16px' };
+    const densityPadMap: Record<string, string> = { compact: '10px', default: '14px', spacious: '18px' };
+    const r = localStorage.getItem('app_style_radius') || 'default';
+    const d = localStorage.getItem('app_style_density') || 'default';
+    const s = localStorage.getItem('app_style_split') || 'balanced';
+    const su = localStorage.getItem('app_style_surface') || 'card';
+    const root = document.documentElement;
+    root.style.setProperty('--card-radius', radiusMap[r] || '12px');
+    root.style.setProperty('--ui-gap', densityGapMap[d] || '12px');
+    root.style.setProperty('--ui-padding', densityPadMap[d] || '14px');
+    root.setAttribute('data-surface', su);
+    // Apply data-split attribute for map-panel split
+    const splitGrid = document.querySelector('.dashboard-split-grid');
+    if (splitGrid) splitGrid.setAttribute('data-split', s);
+
     const handleThemeEvent = (e: any) => {
       if (e.detail) {
         setCurrentTheme(e.detail);
@@ -604,8 +537,21 @@ export default function App() {
       }
     };
 
+    // Listen for style widget changes from Theme System Engine
+    const handleStyleEvent = (e: any) => {
+      if (e.detail) {
+        const { split } = e.detail;
+        const sg = document.querySelector('.dashboard-split-grid');
+        if (sg && split) sg.setAttribute('data-split', split);
+      }
+    };
+
     window.addEventListener('app-theme-changed', handleThemeEvent);
-    return () => window.removeEventListener('app-theme-changed', handleThemeEvent);
+    window.addEventListener('app-style-changed', handleStyleEvent);
+    return () => {
+      window.removeEventListener('app-theme-changed', handleThemeEvent);
+      window.removeEventListener('app-style-changed', handleStyleEvent);
+    };
   }, [currentTheme, markOnboarded]);
 
 
@@ -1553,7 +1499,7 @@ export default function App() {
   const [auditFilterTab, setAuditFilterTab] = useState<'ALL' | 'EDIT' | 'DELETE' | 'CREATE' | 'PUBLISH' | 'ERROR'>('ALL');
   const [auditDateFilter, setAuditDateFilter] = useState<string>('');
   const [isHelpGuideOpen, setIsHelpGuideOpen] = useState(false);
-  const [helpGuideTab, setHelpGuideTab] = useState<'map' | 'panorama' | 'data' | 'audit' | 'shortcuts'>('map');
+  const [helpGuideInitialTab, setHelpGuideInitialTab] = useState<'map' | 'panorama' | 'data' | 'audit' | 'shortcuts'>('map');
   const [tourStep, setTourStep] = useState<number | null>(null);
   const [settingsSaveToast, setSettingsSaveToast] = useState<{ show: boolean; message: string } | null>(null);
   const [tourFirstRunOpen, setTourFirstRunOpen] = useState(false);
@@ -1562,7 +1508,7 @@ export default function App() {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === '?') {
         e.preventDefault();
-        setHelpGuideTab('shortcuts');
+        setHelpGuideInitialTab('shortcuts');
         setTourStep(null);
         setIsHelpGuideOpen(true);
       } else if (e.key === 'Escape') {
@@ -1825,622 +1771,19 @@ export default function App() {
     return new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
   }, [dailyData, batchLogs, auditLogs, selectedSubgridFilter]);
 
+  const [shareMapOpen, setShareMapOpen] = useState(false);
+
   const generateExecutivePdfReport = () => {
-    const printWindow = window.open('', '_blank', 'width=1000,height=1100');
-    if (!printWindow) return;
-
-    // Use activeBatchLogs (reconciled live data matching dashboard operation)
-    const reportBatches = activeBatchLogs;
-
-    const totalPoiCount = reportBatches.reduce((acc, b) => acc + getPOICount(b), 0);
-    const totalPanoramasCount = reportBatches.reduce((acc, b) => acc + getImagesProcessedCount(b), 0);
-    const totalKmVal = Math.round(reportBatches.reduce((acc, b) => acc + (b.kmProcessed || 0), 0) * 100) / 100;
-    const totalDefectsCount = reportBatches.reduce((acc, b) => acc + (b.defects || 0), 0);
-    const subgridsCount = reportBatches.length;
-    const publishedCount = reportBatches.filter(b => b.isSyncedWithSupabase || b.status === 'Complete').length;
-    const stagedCount = Math.max(0, subgridsCount - publishedCount);
-
-    const passRateVal = totalPoiCount > 0
-      ? (((totalPoiCount - totalDefectsCount) / totalPoiCount) * 100).toFixed(1)
-      : '100.0';
-
-    const targetKmVal = Number(projectSettings?.targetKm) || (totalKmVal > 0 ? totalKmVal : 0);
-    const targetImagesVal = Number(projectSettings?.targetImages) || (totalPanoramasCount > 0 ? totalPanoramasCount : 0);
-    const targetProgressPct = targetKmVal > 0 ? Math.min(100, (totalKmVal / targetKmVal) * 100).toFixed(1) : '0.0';
-
-    const now = new Date();
-    const reportDate = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' }) + ' • ' + now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-    const documentRefNo = `GEO-MMS-EXEC-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${Math.floor(1000 + Math.random() * 9000)}`;
-    const operatorUser = authSession?.user?.email ? authSession.user.email : 'GIS Engineer';
-
-    const html = `
-      <!DOCTYPE html>
-      <html lang="en">
-        <head>
-          <meta charset="UTF-8">
-          <title>GeoSphere 360 - Executive Progress & Quality Audit Report</title>
-          <style>
-            @page {
-              size: A4 portrait;
-              margin: 12mm 15mm 15mm 15mm;
-            }
-            * { box-sizing: border-box; }
-            body {
-              font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-              color: #0f172a;
-              background: #ffffff;
-              margin: 0;
-              padding: 24px;
-              font-size: 11px;
-              line-height: 1.5;
-              -webkit-print-color-adjust: exact;
-              print-color-adjust: exact;
-            }
-            
-            /* Print action toolbar for screen preview */
-            .action-bar {
-              display: flex;
-              justify-content: space-between;
-              align-items: center;
-              background: #0f172a;
-              color: #ffffff;
-              padding: 12px 20px;
-              margin: -24px -24px 24px -24px;
-              border-bottom: 1px solid #334155;
-            }
-            .action-bar-title {
-              font-weight: 700;
-              font-size: 13px;
-              letter-spacing: 0.5px;
-            }
-            .print-btn {
-              background: #ffffff;
-              color: #0f172a;
-              border: none;
-              padding: 7px 16px;
-              font-size: 11px;
-              font-weight: 700;
-              border-radius: 4px;
-              cursor: pointer;
-              text-transform: uppercase;
-              letter-spacing: 0.5px;
-            }
-            .print-btn:hover { background: #e2e8f0; }
-
-            /* Header Section */
-            .doc-header {
-              display: flex;
-              justify-content: space-between;
-              align-items: flex-start;
-              border-bottom: 2px solid #0f172a;
-              padding-bottom: 14px;
-              margin-bottom: 20px;
-            }
-            .org-title {
-              font-size: 10px;
-              font-weight: 800;
-              letter-spacing: 1.5px;
-              color: #475569;
-              text-transform: uppercase;
-              margin-bottom: 2px;
-            }
-            .main-title {
-              font-size: 20px;
-              font-weight: 800;
-              color: #0f172a;
-              margin: 0 0 4px 0;
-              letter-spacing: -0.3px;
-            }
-            .sub-title {
-              font-size: 12px;
-              font-weight: 600;
-              color: #334155;
-            }
-            .doc-meta-box {
-              background: #f8fafc;
-              border: 1px solid #cbd5e1;
-              border-radius: 4px;
-              padding: 8px 12px;
-              font-size: 10px;
-              min-width: 240px;
-            }
-            .meta-row {
-              display: flex;
-              justify-content: space-between;
-              padding: 2px 0;
-              border-bottom: 1px dashed #e2e8f0;
-            }
-            .meta-row:last-child { border-bottom: none; }
-            .meta-label { font-weight: 600; color: #64748b; }
-            .meta-val { font-weight: 700; color: #0f172a; font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-
-            /* Narrative Box */
-            .section-title {
-              font-size: 12px;
-              font-weight: 800;
-              text-transform: uppercase;
-              letter-spacing: 0.8px;
-              color: #0f172a;
-              border-bottom: 1px solid #0f172a;
-              padding-bottom: 4px;
-              margin: 22px 0 10px 0;
-            }
-            .narrative-box {
-              background: #f8fafc;
-              border-left: 3px solid #0f172a;
-              border-top: 1px solid #e2e8f0;
-              border-right: 1px solid #e2e8f0;
-              border-bottom: 1px solid #e2e8f0;
-              padding: 10px 14px;
-              font-size: 11px;
-              color: #334155;
-              text-align: justify;
-              line-height: 1.6;
-              margin-bottom: 18px;
-            }
-
-            /* KPI Grid */
-            .kpi-grid {
-              display: grid;
-              grid-template-columns: repeat(3, 1fr);
-              gap: 10px;
-              margin-bottom: 20px;
-              page-break-inside: avoid;
-            }
-            .kpi-card {
-              background: #ffffff;
-              border: 1px solid #cbd5e1;
-              border-radius: 4px;
-              padding: 10px 12px;
-            }
-            .kpi-label {
-              font-size: 9.5px;
-              font-weight: 700;
-              text-transform: uppercase;
-              letter-spacing: 0.5px;
-              color: #64748b;
-              margin-bottom: 4px;
-            }
-            .kpi-value {
-              font-size: 18px;
-              font-weight: 800;
-              color: #0f172a;
-              font-variant-numeric: tabular-nums;
-              line-height: 1.2;
-            }
-            .kpi-subtext {
-              font-size: 9.5px;
-              color: #475569;
-              margin-top: 3px;
-              font-weight: 500;
-            }
-
-            /* Tables */
-            table {
-              width: 100%;
-              border-collapse: collapse;
-              margin-bottom: 18px;
-              font-size: 10.5px;
-              page-break-inside: auto;
-            }
-            tr { page-break-inside: avoid; page-break-after: auto; }
-            th {
-              background: #0f172a;
-              color: #ffffff;
-              padding: 7px 10px;
-              text-align: left;
-              font-size: 9.5px;
-              font-weight: 700;
-              text-transform: uppercase;
-              letter-spacing: 0.5px;
-              border: 1px solid #0f172a;
-            }
-            td {
-              border: 1px solid #e2e8f0;
-              padding: 7px 10px;
-              color: #1e293b;
-              vertical-align: middle;
-            }
-            tr:nth-child(even) td { background: #f8fafc; }
-            
-            .text-center { text-align: center; }
-            .text-right { text-align: right; }
-            .font-sans { font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-            
-            /* Status Badges - Monochrome & Professional */
-            .badge {
-              display: inline-block;
-              padding: 2px 7px;
-              border-radius: 3px;
-              font-size: 9px;
-              font-weight: 700;
-              text-transform: uppercase;
-              letter-spacing: 0.3px;
-              white-space: nowrap;
-            }
-            .badge-complete {
-              background: #f1f5f9;
-              color: #0f172a;
-              border: 1px solid #475569;
-            }
-            .badge-defect {
-              background: #0f172a;
-              color: #ffffff;
-              border: 1px solid #0f172a;
-            }
-            .badge-neutral {
-              background: #f8fafc;
-              color: #475569;
-              border: 1px solid #cbd5e1;
-            }
-
-            /* 2-Column Specs Layout */
-            .specs-grid {
-              display: grid;
-              grid-template-columns: repeat(2, 1fr);
-              gap: 12px;
-              margin-bottom: 20px;
-              page-break-inside: avoid;
-            }
-            .spec-card {
-              border: 1px solid #cbd5e1;
-              border-radius: 4px;
-              background: #f8fafc;
-              padding: 10px 12px;
-            }
-            .spec-row {
-              display: flex;
-              justify-content: space-between;
-              padding: 3px 0;
-              border-bottom: 1px solid #e2e8f0;
-              font-size: 10px;
-            }
-            .spec-row:last-child { border-bottom: none; }
-            .spec-key { color: #64748b; font-weight: 600; }
-            .spec-val { color: #0f172a; font-weight: 700; }
-
-            /* Sign-off Section */
-            .signoff-section {
-              margin-top: 30px;
-              page-break-inside: avoid;
-            }
-            .signoff-grid {
-              display: grid;
-              grid-template-columns: repeat(3, 1fr);
-              gap: 15px;
-              margin-top: 15px;
-            }
-            .signoff-box {
-              border: 1px solid #cbd5e1;
-              border-radius: 4px;
-              padding: 12px;
-              background: #ffffff;
-            }
-            .signoff-role {
-              font-size: 9.5px;
-              font-weight: 800;
-              text-transform: uppercase;
-              color: #0f172a;
-              border-bottom: 1px solid #cbd5e1;
-              padding-bottom: 4px;
-              margin-bottom: 10px;
-              letter-spacing: 0.5px;
-            }
-            .signoff-line {
-              border-bottom: 1px solid #0f172a;
-              height: 35px;
-              margin-bottom: 10px;
-            }
-            .signoff-meta {
-              font-size: 9.5px;
-              color: #475569;
-              line-height: 1.4;
-            }
-
-            /* Footer */
-            .doc-footer {
-              border-top: 1px solid #cbd5e1;
-              padding-top: 10px;
-              margin-top: 30px;
-              display: flex;
-              justify-content: space-between;
-              align-items: center;
-              font-size: 9px;
-              color: #64748b;
-              page-break-inside: avoid;
-            }
-
-            @media print {
-              .action-bar { display: none !important; }
-              body { padding: 0; background: #ffffff; }
-            }
-          </style>
-        </head>
-        <body>
-          <div class="action-bar no-print">
-            <div class="action-bar-title">EXECUTIVE PDF REPORT PREVIEW</div>
-            <button class="print-btn" onclick="window.print()">PRINT / SAVE AS PDF</button>
-          </div>
-
-          <!-- DOCUMENT HEADER -->
-          <div class="doc-header">
-            <div>
-              <div class="org-title">GEOSPHERE 360 • SPATIAL ASSET OPERATIONS</div>
-              <h1 class="main-title">GeoSphere 360 Operations Hub</h1>
-              <div class="sub-title">Executive Mobile Survey Progress & Quality Control Audit Report</div>
-            </div>
-            <div class="doc-meta-box">
-              <div class="meta-row">
-                <span class="meta-label">DOCUMENT REF:</span>
-                <span class="meta-val">${documentRefNo}</span>
-              </div>
-              <div class="meta-row">
-                <span class="meta-label">DATE & TIME:</span>
-                <span class="meta-val">${reportDate}</span>
-              </div>
-              <div class="meta-row">
-                <span class="meta-label">CLASSIFICATION:</span>
-                <span class="meta-val">CONFIDENTIAL</span>
-              </div>
-              <div class="meta-row">
-                <span class="meta-label">CONTRACT CODE:</span>
-                <span class="meta-val">${projectSettings?.contractCode || 'MMS-2026-TNB-01'}</span>
-              </div>
-              <div class="meta-row">
-                <span class="meta-label">SYSTEM STATUS:</span>
-                <span class="meta-val">OPERATIONAL</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- EXECUTIVE NARRATIVE -->
-          <div class="narrative-box">
-            <strong>EXECUTIVE OVERVIEW & SYNTHESIS:</strong> This official report presents the validated progress, technical performance, and quality assurance auditing metrics for the ongoing Low Voltage (LV) Asset Mapping initiative under contract <strong>${projectSettings?.contractCode || 'MMS-2026-TNB-01'}</strong>. As of <strong>${reportDate}</strong>, spatial data acquisition teams have mapped a total cumulative trajectory of <strong>${totalKmVal.toFixed(2)} km</strong> across <strong>${subgridsCount} active subgrids</strong>, capturing <strong>${totalPoiCount.toLocaleString()} POI points</strong> and <strong>${totalPanoramasCount.toLocaleString()} verified 360° panorama frames</strong>. Automated feature detection and manual quality control reviews confirm an overall <strong>pipeline quality health rating of ${passRateVal}%</strong>. A total of <strong>${totalDefectsCount} defect anomalies</strong> (blurry lens frames, sun flare/obstructions, or GPS drift spikes) have been logged and reconciled. All verified spatial geometries are synchronized with the enterprise Supabase PostGIS vector database layer.
-          </div>
-
-          <!-- KEY PERFORMANCE INDICATORS -->
-          <div class="section-title">I. Key Performance Indicators (KPI Summary)</div>
-          <div class="kpi-grid">
-            <div class="kpi-card">
-              <div class="kpi-label">Subgrids Processed</div>
-              <div class="kpi-value">${subgridsCount} Units</div>
-              <div class="kpi-subtext">${publishedCount} Published • ${stagedCount} Staged</div>
-            </div>
-            <div class="kpi-card">
-              <div class="kpi-label">Survey Trajectory</div>
-              <div class="kpi-value">${totalKmVal.toFixed(2)} km</div>
-              <div class="kpi-subtext">${targetProgressPct}% of Target (${targetKmVal} km)</div>
-            </div>
-            <div class="kpi-card">
-              <div class="kpi-label">Total 360° Panoramas</div>
-              <div class="kpi-value">${totalPanoramasCount.toLocaleString()} Frames</div>
-              <div class="kpi-subtext">Target: ${targetImagesVal.toLocaleString()} Frames</div>
-            </div>
-            <div class="kpi-card">
-              <div class="kpi-label">QA Defects Flagged</div>
-              <div class="kpi-value">${totalDefectsCount} Anomaly Frames</div>
-              <div class="kpi-subtext">Defect Rate: ${(100 - parseFloat(passRateVal)).toFixed(2)}%</div>
-            </div>
-            <div class="kpi-card">
-              <div class="kpi-label">Data Quality Health</div>
-              <div class="kpi-value">${passRateVal}%</div>
-              <div class="kpi-subtext">Status: QA Benchmark Passed</div>
-            </div>
-            <div class="kpi-card">
-              <div class="kpi-label">PostGIS Database Storage</div>
-              <div class="kpi-value">SYNCHRONIZED</div>
-              <div class="kpi-subtext">Sync Frequency: Every ${projectSettings?.dbAutoSyncSec || 60}s</div>
-            </div>
-          </div>
-
-          <!-- SUBGRID PROCESSING BREAKDOWN -->
-          <div class="section-title">II. Subgrid Processing & Production Breakdown</div>
-          <table>
-            <thead>
-              <tr>
-                <th>Grid / Subgrid ID</th>
-                <th>Capture Equipment</th>
-                <th class="text-right">POI Count</th>
-                <th class="text-right">Verified Frames</th>
-                <th class="text-right">Distance (km)</th>
-                <th class="text-center">Verification Status</th>
-                <th class="text-center">QA Defects</th>
-                <th>PIC (Engineer)</th>
-                <th class="text-center">Database Sync</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${reportBatches.map(b => {
-      const subName = (extractSubgridName(b.subgrid || b.imageFilename) || b.subgrid || '').toUpperCase().trim();
-      const gridVal = b.grid || '1';
-      const eq = b.captureEquipment || 'MMS';
-      const poiVal = getPOICount(b);
-      const imgCount = getImagesProcessedCount(b);
-      const km = (b.kmProcessed || 0).toFixed(2);
-      const defectNum = b.defects || 0;
-      const picName = b.pic || '';
-      const isSynced = b.isSyncedWithSupabase || b.status === 'Complete';
-      return `
-                  <tr>
-                    <td><strong class="font-sans">Grid ${gridVal} / ${subName}</strong></td>
-                    <td>${eq}</td>
-                    <td class="text-right font-sans">${poiVal.toLocaleString()}</td>
-                    <td class="text-right font-sans">${imgCount.toLocaleString()} frames</td>
-                    <td class="text-right font-sans">${km} km</td>
-                    <td class="text-center">
-                      <span class="badge ${isSynced ? 'badge-complete' : 'badge-neutral'}">
-                        ${isSynced ? 'VERIFIED & PUBLISHED' : 'NOT PUBLISHED'}
-                      </span>
-                    </td>
-                    <td class="text-center">
-                      ${defectNum > 0
-          ? `<span class="badge badge-defect">${defectNum} FLAG${defectNum > 1 ? 'S' : ''}</span>`
-          : `<span style="color:#64748b; font-size:9px;">0 (CLEAN)</span>`}
-                    </td>
-                    <td>${picName}</td>
-                    <td class="text-center font-sans" style="font-size:9.5px;">${isSynced ? 'SUPABASE LIVE' : 'LOCAL DRAFT'}</td>
-                  </tr>
-                `;
-    }).join('')}
-            </tbody>
-          </table>
-
-          <!-- QA & DEFECT AUDIT ANALYSIS -->
-          <div class="section-title">III. Quality Assurance & Defect Audit Breakdown</div>
-          <table>
-            <thead>
-              <tr>
-                <th>Subgrid Audit Unit</th>
-                <th>Blurry Frames</th>
-                <th>Lens Obstruction</th>
-                <th>GPS Drift / Bad Coords</th>
-                <th>QA Questionnaire Approval</th>
-                <th class="text-center">Audit Risk Assessment</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${reportBatches.map(b => {
-      const sgKey = (extractSubgridName(b.subgrid || b.imageFilename) || b.subgrid || '').toUpperCase().trim();
-      const qaRec = qaSubgridRecords[sgKey] || qaSubgridRecords[b.imageFilename?.toUpperCase().trim() || ''] || null;
-      const flags = qaRec?.flags || { blurry: false, obstruction: false, badGps: false };
-      const isConfirmedDefect = qaRec?.answer === 'yes' || (b.defects || 0) > 0;
-      return `
-                  <tr>
-                    <td><strong class="font-sans">${sgKey}</strong></td>
-                    <td class="font-sans">${flags.blurry ? 'FLAGGED (Yes)' : 'PASS (Clean)'}</td>
-                    <td class="font-sans">${flags.obstruction ? 'FLAGGED (Yes)' : 'PASS (Clean)'}</td>
-                    <td class="font-sans">${flags.badGps ? 'FLAGGED (Yes)' : 'PASS (Clean)'}</td>
-                    <td class="font-sans">${qaRec?.isLocked ? (qaRec.answer === 'yes' ? 'DEFECT CONFIRMED' : 'APPROVED (PASSED)') : 'PENDING REVIEW'}</td>
-                    <td class="text-center">
-                      <span class="badge ${isConfirmedDefect ? 'badge-defect' : 'badge-complete'}">
-                        ${isConfirmedDefect ? 'AUDIT ACTION' : 'LOW RISK'}
-                      </span>
-                    </td>
-                  </tr>
-                `;
-    }).join('')}
-            </tbody>
-          </table>
-
-          <!-- TECHNICAL SPECIFICATIONS & CONFIGURATION -->
-          <div class="section-title">IV. GIS Technical Infrastructure & System Configuration</div>
-          <div class="specs-grid">
-            <div class="spec-card">
-              <div class="spec-row">
-                <span class="spec-key">Coordinate Reference System (CRS):</span>
-                <span class="spec-val">EPSG:4326 (WGS 84 / Ellipsoidal)</span>
-              </div>
-              <div class="spec-row">
-                <span class="spec-key">Panorama Resolution / Sensor:</span>
-                <span class="spec-val">${projectSettings?.cameraResolution || '8K 360° Equirectangular'}</span>
-              </div>
-              <div class="spec-row">
-                <span class="spec-key">Primary Image Repository Path:</span>
-                <span class="spec-val font-sans">${projectSettings?.imageStoragePath || '/MMS_PIC/'}</span>
-              </div>
-            </div>
-            <div class="spec-card">
-              <div class="spec-row">
-                <span class="spec-key">Production Spatial Database:</span>
-                <span class="spec-val">Supabase PostGIS Cloud Instance</span>
-              </div>
-              <div class="spec-row">
-                <span class="spec-key">Deliverable Image Processing Model:</span>
-                <span class="spec-val">${projectSettings?.deliverableModel === 'generative_fill' ? 'Generative Clean Fill (Full 80% ROI)' : 'Masked Vehicle (Top 52% ROI)'}</span>
-              </div>
-              <div class="spec-row">
-                <span class="spec-key">GPS Accuracy Tolerance Threshold:</span>
-                <span class="spec-val">≤ ${projectSettings?.minGpsAccuracyM || 1.0} meters</span>
-              </div>
-              <div class="spec-row">
-                <span class="spec-key">AI Defect Feature Matching Sensitivity:</span>
-                <span class="spec-val">${projectSettings?.aiDefectThresholdPercent || 85}% Threshold</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- RECENT AUDIT TRAIL -->
-          <div class="section-title">V. System Operations & Audit Trail Summary</div>
-          <table>
-            <thead>
-              <tr>
-                <th style="width: 140px;">Timestamp</th>
-                <th style="width: 80px;" class="text-center">Event Type</th>
-                <th>Operation & Action Details</th>
-                <th style="width: 120px;">Operator / Role</th>
-                <th style="width: 70px;" class="text-center">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${auditLogs.slice(0, 5).map(log => `
-                <tr>
-                  <td class="font-sans" style="font-size:9.5px;">${log.timestamp}</td>
-                  <td class="text-center"><span class="badge badge-neutral">${log.type}</span></td>
-                  <td><strong>${log.title}</strong> — <span style="color:#475569;">${log.details}</span></td>
-                  <td>${log.user}</td>
-                  <td class="text-center font-sans" style="font-size:9.5px; font-weight:700;">${log.status.toUpperCase()}</td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
-
-          <!-- EXECUTIVE GOVERNANCE & SIGN-OFF -->
-          <div class="signoff-section">
-            <div class="section-title">VI. Formal Verification, Governance & Executive Sign-off</div>
-            <div class="signoff-grid">
-              <div class="signoff-box">
-                <div class="signoff-role">PREPARED BY (GIS ENGINEER)</div>
-                <div class="signoff-line"></div>
-                <div class="signoff-meta">
-                  <strong>Name:</strong> ${projectSettings?.engineerName || operatorUser}<br>
-                  <strong>Title:</strong> ${projectSettings?.engineerTitle || 'Lead GIS Operations Engineer'}<br>
-                  <strong>Date:</strong> ${reportDate}
-                </div>
-              </div>
-              <div class="signoff-box">
-                <div class="signoff-role">VERIFIED BY (QA LEAD)</div>
-                <div class="signoff-line"></div>
-                <div class="signoff-meta">
-                  <strong>Name:</strong> ${projectSettings?.qaLeadName || 'Senior Quality Auditor'}<br>
-                  <strong>Title:</strong> ${projectSettings?.qaLeadTitle || 'QA/QC Verification Specialist'}<br>
-                  <strong>Date:</strong> ${reportDate}
-                </div>
-              </div>
-              <div class="signoff-box">
-                <div class="signoff-role">APPROVED BY (PROJECT DIRECTOR)</div>
-                <div class="signoff-line"></div>
-                <div class="signoff-meta">
-                  <strong>Name:</strong> ${projectSettings?.projectDirector || projectSettings?.contractorName || 'Project Director'}<br>
-                  <strong>Title:</strong> ${projectSettings?.directorTitle || 'Project Director / Manager'}<br>
-                  <strong>Date:</strong> ${reportDate}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- DOCUMENT FOOTER -->
-          <div class="doc-footer">
-            <div>
-              <strong>GEOSPHERE 360 OPERATIONS HUB</strong> • Mobile Mapping & Spatial Asset Operations
-            </div>
-            <div>
-              STRICTLY CONFIDENTIAL • Page 1 of 1 • Generated via Executive Processing Dashboard
-            </div>
-          </div>
-
-          <script>
-            window.onload = function() {
-              setTimeout(function() {
-                window.print();
-              }, 500);
-            };
-          </script>
-        </body>
-      </html>
-    `;
-
-    printWindow.document.write(html);
-    printWindow.document.close();
+    openPrintableReport(
+      'GeoSphere 360 - Executive Progress & Quality Audit Report',
+      buildExecutivePdfHtml({
+        batches: activeBatchLogs,
+        auditLogs,
+        qaSubgridRecords,
+        projectSettings: projectSettings || {},
+        operatorUser: authSession?.user?.email ? authSession.user.email : 'GIS Engineer'
+      })
+    );
   };
 
   // Flag tracking whether a map location/point track has been clicked
@@ -3524,226 +2867,40 @@ export default function App() {
       )}
 
       {/* TOP GLOBAL NAVBAR */}
-      <header className="min-h-14 py-2 sm:py-0 px-3 sm:px-4 bg-card border-b border-subtle flex items-center justify-between shrink-0 z-20 gap-2">
-        <div className="flex items-center gap-1.5 min-w-0">
-          <button
-            type="button"
-            onClick={() => setMobileNavOpen((prev) => !prev)}
-            aria-label="Open navigation menu"
-            aria-expanded={mobileNavOpen}
-            className="md:hidden p-2 -ml-1 rounded-lg text-text-muted hover:text-text-base hover:bg-inner transition-colors cursor-pointer shrink-0"
-          >
-            <Menu size={20} />
-          </button>
-          <div className="flex flex-col select-none min-w-0">
-            <h1 className="text-sm sm:text-base md:text-lg font-bold text-text-base tracking-tight font-sans leading-tight truncate">
-              {t('appTitle')}
-            </h1>
-            <span className="text-[10px] sm:text-[11px] text-text-muted font-normal tracking-normal mt-0.5 hidden sm:inline truncate">
-              Spatial Trajectory Processing &amp; Quality Assurance Pipeline
-            </span>
-            <span className="text-[9px] text-text-muted font-normal tracking-normal mt-0.5 sm:hidden truncate">
-              Spatial Pipeline
-            </span>
-          </div>
-        </div>
-
-        {/* Top Right Controls */}
-        <div className={`flex items-center gap-1.5 sm:gap-3 text-text-muted relative shrink-0 transition-all duration-300 ${tourStep === 5 ? 'ring-2 ring-sky-400/90 shadow-[0_0_35px_rgba(56,189,248,0.4)] z-30 relative bg-app px-2 py-1 rounded-xl' : tourStep !== null ? 'opacity-30 blur-[1.5px] pointer-events-none' : ''
-          }`}>
-          {/* LIVE WEBGIS LINK (Symbol only, points to VITE_MAP_URL) */}
-          <a
-            href={import.meta.env.VITE_MAP_URL || ''}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="p-1.5 hover:text-sky-400 transition-colors cursor-pointer relative flex items-center justify-center text-text-muted hover:text-sky-400"
-            title="Open Live WebGIS"
-            aria-label="Open Live WebGIS"
-          >
-            <ExternalLink size={18} />
-          </a>
-
-          {/* DAILY OPERATIONS BRIEFING ICON */}
-          <button
-            onClick={() => setIsHandoverModalOpen(true)}
-            className="p-1.5 hover:text-sky-400 transition-colors cursor-pointer relative"
-            title="Daily Operations Briefing"
-          >
-            <Clock size={18} />
-          </button>
-
-          {/* HELP & USER GUIDE ICON (Interactive Tour & Webmap Manual) */}
-          <button
-            onClick={() => {
-              setIsHelpGuideOpen(true);
-              setIsNotifOpen(false);
-              setIsAuditLogOpen(false);
-            }}
-            className="p-1.5 hover:text-sky-400 transition-colors cursor-pointer relative"
-            title="Help & User Guide (Interactive WebMap Tour & Manual)"
-          >
-            <HelpCircle size={18} />
-          </button>
-
-          {/* BATCH AUDIT LOGS ICON (Tracks User Edits, Deletes, Creates, Modifies, Errors) */}
-          <div className="relative">
-            <button
-              onClick={() => {
-                const nextState = !isAuditLogOpen;
-                setIsAuditLogOpen(nextState);
-                if (nextState) {
-                  markAuditLogsAsRead();
-                }
-                setIsNotifOpen(false);
-              }}
-              className={`p-1.5 transition-colors cursor-pointer relative ${isAuditLogOpen ? 'text-sky-400 bg-inner rounded-lg border border-subtle' : 'hover:text-text-base'
-                }`}
-              title="Batch & System Audit Logs (Track user edits, creates, deletes, errors)"
-            >
-              <ClipboardList size={18} />
-              {unreadAuditCount > 0 && (
-                <span className="absolute -top-1 -right-1.5 px-1 py-0.2 min-w-[15px] h-[15px] rounded-full bg-red-500 text-text-base text-[9px] font-bold flex items-center justify-center shadow-md">
-                  {unreadAuditCount}
-                </span>
-              )}
-            </button>
-
-            {/* BATCH AUDIT LOGS POPOVER */}
-            {isAuditLogOpen && (
-              <div className="absolute right-0 top-10 w-96 max-w-[90vw] bg-card border border-subtle rounded-xl shadow-2xl z-50 overflow-hidden text-text-base animate-in fade-in duration-150 backdrop-blur-md">
-                <div className="p-3 bg-card border-b border-subtle flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 shrink-0">
-                    <History size={15} className="text-sky-400" />
-                    <span className="text-xs font-semibold uppercase tracking-wider text-text-base">
-                      Audit Logs
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {/* Date Track-Back Filter */}
-                    <div className="flex items-center gap-1 bg-card border border-subtle rounded px-2 py-0.5 text-[10px]">
-                      <Calendar size={11} className="text-sky-400 shrink-0" />
-                      <select
-                        value={auditDateFilter}
-                        onChange={(e) => setAuditDateFilter(e.target.value)}
-                        className="bg-transparent text-text-base text-[10px] focus:outline-none cursor-pointer"
-                        title="Filter audit logs by track-back date"
-                      >
-                        <option value="" className="bg-card">All Dates</option>
-                        {availableAuditDates.map(date => (
-                          <option key={date} value={date} className="bg-card">{date}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <button
-                      onClick={() => setIsAuditLogOpen(false)}
-                      className="text-text-muted hover:text-text-base p-0.5 cursor-pointer shrink-0"
-                    >
-                      <X size={14} />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Filter Tabs */}
-                <div className="px-3 py-1.5 bg-card border-b border-subtle flex items-center gap-1 overflow-x-auto text-[10px]">
-                  {(['ALL', 'EDIT', 'DELETE', 'CREATE', 'PUBLISH', 'ERROR'] as const).map(tab => (
-                    <button
-                      key={tab}
-                      onClick={() => setAuditFilterTab(tab)}
-                      className={`px-2 py-0.5 rounded font-medium transition-all cursor-pointer whitespace-nowrap border ${auditFilterTab === tab
-                        ? 'bg-card text-text-base border-subtle'
-                        : 'text-text-muted border-transparent hover:text-text-base hover:bg-inner'
-                        }`}
-                    >
-                      {tab}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Audit Logs List */}
-                <div className="max-h-80 overflow-y-auto divide-y divide-[rgba(255,255,255,0.06)] p-1">
-                  {auditLogs.filter(item => {
-                    if (auditFilterTab !== 'ALL' && item.type !== auditFilterTab) return false;
-                    if (auditDateFilter && !item.timestamp.toLowerCase().includes(auditDateFilter.toLowerCase())) return false;
-                    return true;
-                  }).length > 0 ? (
-                    auditLogs
-                      .filter(item => {
-                        if (auditFilterTab !== 'ALL' && item.type !== auditFilterTab) return false;
-                        if (auditDateFilter && !item.timestamp.toLowerCase().includes(auditDateFilter.toLowerCase())) return false;
-                        return true;
-                      })
-                      .map(log => {
-                        const badgeColor =
-                          log.type === 'CREATE' ? 'bg-inner text-sky-300 border-subtle' :
-                            log.type === 'EDIT' ? 'bg-inner text-text-base border-subtle' :
-                              log.type === 'DELETE' ? 'bg-inner text-rose-300 border-subtle' :
-                                log.type === 'PUBLISH' ? 'bg-sky-950/60 text-sky-300 border-sky-800/60' :
-                                  log.type === 'ERROR' ? 'bg-rose-950/60 text-rose-300 border-rose-900/60' :
-                                    'bg-inner text-text-base border-subtle';
-
-                        return (
-                          <div key={log.id} className="p-2.5 hover:bg-inner transition-colors rounded-lg space-y-1">
-                            <div className="flex items-center justify-between text-[10px]">
-                              <span className={`px-1.5 py-0.2 rounded font-semibold uppercase border ${badgeColor}`}>
-                                {log.type}
-                              </span>
-                              <span className="text-text-muted text-[10px]">{log.timestamp}</span>
-                            </div>
-                            <div className="text-xs font-medium text-text-base">{log.title}</div>
-                            <div className="text-[11px] text-text-muted">{log.details}</div>
-                            <div className="text-[9px] text-text-muted text-right">User: <span className="text-text-base font-medium">{log.user}</span></div>
-                          </div>
-                        );
-                      })
-                  ) : (
-                    <div className="p-8 text-center text-text-muted text-xs">
-                      No audit log records found for filter "{auditFilterTab}"{auditDateFilter ? ` on date ${auditDateFilter}` : ''}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* NOTIFICATIONS ICON (Publish Progress & Pending Tasks) */}
-          <NotificationPopover
-            isOpen={isNotifOpen}
-            notifications={notifications}
-            unreadCount={unreadNotifCount}
-            setNotifications={setNotifications}
-            onToggleOpen={() => {
-              const nextState = !isNotifOpen;
-              setIsNotifOpen(nextState);
-              if (nextState) {
-                markNotificationsAsRead();
-              }
-              setIsAuditLogOpen(false);
-            }}
-            onClose={() => setIsNotifOpen(false)}
-            clearAll={clearNotifications}
-          />
-          <div className="flex items-center gap-2 pl-2 border-l border-subtle">
-
-            {/* User Avatar Initial */}
-            <div className={`w-7 h-7 rounded-full border flex items-center justify-center text-xs font-bold ${isGuestUser ? 'bg-amber-900/40 border-amber-700 text-amber-400' : 'bg-inner border-subtle text-sky-400'
-              }`} title={`Logged in as ${authSession?.user?.email || (isGuestUser ? 'Guest' : 'User')}`}>
-              {isGuestUser ? 'G' : (authSession?.user?.email?.charAt(0).toUpperCase() || authSession?.user?.user_metadata?.full_name?.charAt(0).toUpperCase() || 'U')}
-            </div>
-            {isGuestUser && (
-              <span className="text-[10px] font-semibold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded-md">
-                Guest
-              </span>
-            )}
-            <button
-              onClick={handleSignOut}
-              className="p-1 hover:text-red-400 transition-colors"
-              title="Sign Out"
-            >
-              <LogOut size={16} />
-            </button>
-          </div>
-        </div>
-      </header>
+      <AppHeader
+        title={t('appTitle')}
+        mobileNavOpen={mobileNavOpen}
+        onToggleMobileNav={() => setMobileNavOpen((prev) => !prev)}
+        tourStep={tourStep}
+        liveWebgisUrl={import.meta.env.VITE_MAP_URL}
+        onOpenBriefing={() => setIsHandoverModalOpen(true)}
+        onOpenHelpGuide={() => {
+          setHelpGuideInitialTab('map');
+          setIsHelpGuideOpen(true);
+          setIsNotifOpen(false);
+          setIsAuditLogOpen(false);
+        }}
+        isAuditLogOpen={isAuditLogOpen}
+        setIsAuditLogOpen={setIsAuditLogOpen}
+        unreadAuditCount={unreadAuditCount}
+        markAuditLogsAsRead={markAuditLogsAsRead}
+        auditFilterTab={auditFilterTab}
+        setAuditFilterTab={setAuditFilterTab}
+        auditDateFilter={auditDateFilter}
+        setAuditDateFilter={setAuditDateFilter}
+        availableAuditDates={availableAuditDates}
+        auditLogs={auditLogs}
+        isNotifOpen={isNotifOpen}
+        setIsNotifOpen={setIsNotifOpen}
+        notifications={notifications}
+        unreadNotifCount={unreadNotifCount}
+        setNotifications={setNotifications}
+        markNotificationsAsRead={markNotificationsAsRead}
+        clearNotifications={clearNotifications}
+        authSession={authSession}
+        isGuestUser={isGuestUser}
+        onSignOut={handleSignOut}
+      />
 
       {/* MAIN APP BODY WITH LEFT ICON SIDEBAR + CONTENT AREA */}
       <div className="flex-1 flex overflow-hidden">
@@ -3796,7 +2953,7 @@ export default function App() {
             }`}
             aria-hidden={currentPage !== 'dashboard'}
           >
-            <div key="dashboard-canvas" className="flex flex-col gap-3 md:flex-1 md:min-h-0 md:overflow-hidden animate-workspace-focus">
+            <div key="dashboard-canvas" className="flex flex-col gap-3 md:flex-1 md:min-h-0 md:overflow-hidden animate-workspace-focus dashboard-density-grid">
               {/* TOP ROW: EXECUTIVE KPI SUMMARY (4 Cards) */}
               <DashboardKpiSummary
                 tourStep={tourStep}
@@ -3854,10 +3011,10 @@ export default function App() {
               />
 
               {/* MIDDLE & BOTTOM GRID: LEFT (COVERAGE MAP) & RIGHT (CONTROL + INSPECTOR) */}
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 lg:flex-1 lg:min-h-0 lg:overflow-hidden">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 lg:flex-1 lg:min-h-0 lg:overflow-hidden dashboard-split-grid dashboard-density-grid">
 
                 {/* LEFT COLUMN: INTERACTIVE COVERAGE MAP (7 Cols) */}
-                <div className={`col-span-1 lg:col-span-7 min-h-[340px] sm:min-h-[440px] lg:min-h-0 bg-card border border-subtle backdrop-blur-md rounded-xl flex flex-col overflow-hidden relative transition-all duration-300 ${tourStep === 2 ? 'ring-2 ring-sky-400/90 shadow-[0_0_35px_rgba(56,189,248,0.4)] z-30 relative scale-[1.002]' : tourStep !== null ? 'opacity-30 blur-[1.5px] pointer-events-none' : ''
+                <div className={`col-span-1 lg:col-span-7 map-column min-h-[340px] sm:min-h-[440px] lg:min-h-0 bg-card border border-subtle backdrop-blur-md rounded-xl flex flex-col overflow-hidden relative transition-all duration-300 ${tourStep === 2 ? 'ring-2 ring-sky-400/90 shadow-[0_0_35px_rgba(56,189,248,0.4)] z-30 relative scale-[1.002]' : tourStep !== null ? 'opacity-30 blur-[1.5px] pointer-events-none' : ''
                   }`}>
                   {/* Header */}
                   <div className="p-2 sm:p-3 border-b border-subtle flex flex-row flex-wrap items-center justify-between gap-1.5 sm:gap-2 shrink-0 bg-card min-w-0">
@@ -3894,6 +3051,16 @@ export default function App() {
                         <Maximize2 size={12} className="shrink-0" />
                         <span>{isDrawingBBox ? 'CLEAR BBOX' : 'BBOX FILTER'}</span>
                       </button>
+                      {!isGuestUser && (
+                        <button
+                          onClick={() => setShareMapOpen(true)}
+                          className="px-2 sm:px-3 py-1 bg-card hover:bg-inner text-text-base border border-subtle text-[10px] sm:text-[11px] font-medium rounded-lg transition-all uppercase tracking-tight cursor-pointer flex items-center justify-center gap-1.5 shadow-sm active:scale-95 whitespace-nowrap"
+                          title="Create a public read-only share link for this survey map"
+                        >
+                          <Share2 size={12} className="shrink-0" />
+                          <span>SHARE MAP</span>
+                        </button>
+                      )}
                     </div>
                   </div>
 
@@ -4164,11 +3331,20 @@ export default function App() {
                       defectsList={allKnownDefects}
                       iframeRefCb={(el) => { inspectionMapIframeRef.current = el; }}
                     />
+                    <ShareMapDialog
+                      open={shareMapOpen}
+                      kind="webgis"
+                      defaultTitle={`${projectSettings?.projectName || 'GeoSphere 360'} — Survey Map`}
+                      buildSnapshot={() => buildWebgisSnapshot(dailyData, projectSettings)}
+                      basemap={projectSettings?.defaultBasemap || 'ofm-positron'}
+                      createdBy={authSession?.user?.id || null}
+                      onClose={() => setShareMapOpen(false)}
+                    />
                   </div>
                 </div>
 
                 {/* RIGHT COLUMN: PROCESSING CONTROL & 360 QA INSPECTOR (5 Cols) */}
-                <div className="col-span-1 lg:col-span-5 flex flex-col gap-3 min-h-[420px] sm:min-h-[520px] lg:min-h-0">
+                <div className="col-span-1 lg:col-span-5 panel-column flex flex-col gap-3 min-h-[420px] sm:min-h-[520px] lg:min-h-0">
 
                   {/* TOP RIGHT PANEL: WEBGIS DATABASE & ADMIN */}
                   <div className={`flex-none lg:flex-1 bg-card border border-subtle backdrop-blur-md rounded-xl flex flex-col overflow-hidden transition-all duration-700 ${focusedSection === 'processing'
@@ -4922,118 +4098,25 @@ export default function App() {
                 />
               </div>
             </div>
-          ) : currentPage === 'production' ? (
-            <ImageProductionWorkspace
-              key="workspace-production"
+          ) : null}
+            <WorkspaceRouter
+              currentPage={currentPage}
               projectSettings={projectSettings}
               setProjectSettings={setProjectSettings}
               authSession={authSession}
               isGuestUser={isGuestUser}
               addNotification={addNotification}
               addAuditLog={addAuditLog}
-              onBackToDashboard={() => goToWorkspace('dashboard')}
+              goToWorkspace={goToWorkspace}
               translate={t}
-            />
-          ) : currentPage === 'storage' ? (
-            <NASStorageWorkspace
-              key="workspace-storage"
-              projectSettings={projectSettings}
-              setProjectSettings={setProjectSettings}
-              authSession={authSession}
-              isGuestUser={isGuestUser}
-              addNotification={addNotification}
-              addAuditLog={addAuditLog}
-              onBackToDashboard={() => goToWorkspace('dashboard')}
-              translate={t}
-              initialFocusPath={storageFocusPath ?? undefined}
-            />
-          ) : currentPage === 'processing' ? (
-            <ProcessingCenterWorkspace
-              key="workspace-processing"
-              projectSettings={projectSettings}
-              setProjectSettings={setProjectSettings}
-              authSession={authSession}
-              isGuestUser={isGuestUser}
-              addNotification={addNotification}
-              addAuditLog={addAuditLog}
-              onBackToDashboard={() => goToWorkspace('dashboard')}
-              translate={t}
-              onOpenStoragePath={openStorageAtPath}
-            />
-          ) : currentPage === 'lineage' ? (
-            <LineageWorkspace
-              key="workspace-lineage"
-              projectSettings={projectSettings}
-              setProjectSettings={setProjectSettings}
-              authSession={authSession}
-              isGuestUser={isGuestUser}
-              addNotification={addNotification}
-              addAuditLog={addAuditLog}
-              onBackToDashboard={() => goToWorkspace('dashboard')}
-              translate={t}
-            />
-          ) : currentPage === 'analytics' ? (
-            <AnalyticsWorkspace
-              key="workspace-analytics"
-              projectSettings={projectSettings}
-              setProjectSettings={setProjectSettings}
-              authSession={authSession}
-              isGuestUser={isGuestUser}
-              addNotification={addNotification}
-              addAuditLog={addAuditLog}
-              onBackToDashboard={() => goToWorkspace('dashboard')}
-              translate={t}
-              batchLogs={activeBatchLogs}
+              storageFocusPath={storageFocusPath}
+              openStorageAtPath={openStorageAtPath}
+              activeBatchLogs={activeBatchLogs}
               dailyData={dailyData}
-              onRefreshData={handleRefreshMap}
-            />
-          ) : currentPage === 'reports' ? (
-            <ReportsWorkspace
-              key="workspace-reports"
-              projectSettings={projectSettings}
-              setProjectSettings={setProjectSettings}
-              authSession={authSession}
-              isGuestUser={isGuestUser}
-              addNotification={addNotification}
-              addAuditLog={addAuditLog}
-              onBackToDashboard={() => goToWorkspace('dashboard')}
-              translate={t}
-              batchLogs={activeBatchLogs}
-              dailyData={dailyData}
-              onRefreshData={handleRefreshMap}
-            />
-          ) : currentPage === 'administration' ? (
-            <AdministrationWorkspace
-              key="workspace-administration"
-              authSession={authSession}
-              isGuestUser={isGuestUser}
-              addNotification={addNotification}
-              addAuditLog={addAuditLog}
-              onBackToDashboard={() => goToWorkspace('dashboard')}
-              translate={t}
+              handleRefreshMap={handleRefreshMap}
               auditLogs={auditLogs}
-              onRefreshData={handleRefreshMap}
+              allKnownDefects={allKnownDefects}
             />
-          ) : currentPage === 'roadAnalysis' ? (
-            <RoadAnalysisWorkspace
-              key="workspace-road-analysis"
-              projectSettings={projectSettings}
-              batchLogs={activeBatchLogs}
-              dailyData={dailyData}
-              defectsList={allKnownDefects}
-              onRefreshData={handleRefreshMap}
-              translate={t}
-              onBackToDashboard={() => goToWorkspace('dashboard')}
-              authSession={authSession}
-              isGuestUser={isGuestUser}
-              addNotification={addNotification}
-              addAuditLog={addAuditLog}
-            />
-          ) : currentPage === 'dashboard' ? null : (
-            <div key={`workspace-${currentPage}`} className="flex flex-col md:flex-1 md:min-h-0 md:overflow-hidden animate-panel-enter">
-              <WorkspacePlaceholder workspace={getWorkspaceDefinition(currentPage)} translate={t} />
-            </div>
-          )}
           </React.Suspense>
           </WorkspaceErrorBoundary>
         </main>
@@ -5044,338 +4127,29 @@ export default function App() {
           onClose={() => setImagesListModal(null)}
         />
 
-        {/* ========================================================= */}
-        {/* FIRST-RUN ONBOARDING NUDGE (auto-suggested once, dismissible) */}
-        {/* ========================================================= */}
-        {tourFirstRunOpen && tourStep === null && !isHelpGuideOpen && (
-          <div className="fixed bottom-6 right-6 z-[99998] w-[340px] max-w-[calc(100vw-2rem)] bg-card border border-subtle rounded-2xl shadow-2xl p-4 text-text-base backdrop-blur-xl animate-in fade-in slide-in-from-bottom-4 duration-200">
-            <div className="flex items-start justify-between gap-3 mb-2.5">
-              <div className="flex items-center gap-2">
-                <span className="flex items-center justify-center w-7 h-7 rounded-lg bg-sky-500/15 text-sky-400">
-                  <MapIcon style={{ width: 14, height: 14 }} />
-                </span>
-                <h4 className="text-xs font-bold text-text-base tracking-wide">
-                  New here? Take the interactive tour
-                </h4>
-              </div>
-              <button
-                onClick={() => { setTourFirstRunOpen(false); try { localStorage.setItem('tourFirstRunSeen', '1'); } catch { /* ignore */ } }}
-                className="text-text-muted hover:text-text-base p-1 rounded-lg hover:bg-inner transition-colors cursor-pointer"
-                title="Dismiss onboarding"
-              >
-                <X size={14} />
-              </button>
-            </div>
-            <p className="text-[11px] text-text-muted leading-relaxed mb-3">
-              A short guided spotlight walks through the Dashboard KPIs, WebGIS map, 360° inspector and data tools.
-            </p>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => {
-                  setTourFirstRunOpen(false);
-                  setTourStep(1);
-                  try { localStorage.setItem('tourFirstRunSeen', '1'); } catch { /* ignore */ }
-                }}
-                className="flex-1 px-3 py-1.5 bg-sky-500/15 hover:bg-sky-500/25 text-sky-400 border border-subtle text-xs font-semibold rounded-lg transition-all cursor-pointer"
-              >
-                Start Tour
-              </button>
-              <button
-                onClick={() => { setTourFirstRunOpen(false); try { localStorage.setItem('tourFirstRunSeen', '1'); } catch { /* ignore */ } }}
-                className="px-3 py-1.5 bg-inner hover:bg-inner text-text-muted hover:text-text-base border border-subtle text-xs font-medium rounded-lg transition-all cursor-pointer"
-              >
-                Not now
-              </button>
-            </div>
-          </div>
-        )}
+                <AppTourGuide
+          tourStep={tourStep}
+          setTourStep={setTourStep}
+          tourFirstRunOpen={tourFirstRunOpen}
+          onDismissFirstRun={() => {
+            setTourFirstRunOpen(false);
+            try { localStorage.setItem('tourFirstRunSeen', '1'); } catch { /* ignore */ }
+          }}
+          onStartTour={() => {
+            setTourFirstRunOpen(false);
+            setTourStep(1);
+            try { localStorage.setItem('tourFirstRunSeen', '1'); } catch { /* ignore */ }
+          }}
+          isHelpGuideOpen={isHelpGuideOpen}
+        />
 
-        {/* ========================================================= */}
-        {/* INTERACTIVE GUIDED TOUR FLOATING TOOLTIP OVERLAY */}
-        {/* ========================================================= */}
-        {
-          tourStep !== null && (
-            <div className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[90vw] max-w-lg bg-card border border-subtle rounded-2xl shadow-2xl z-[99999] p-4 text-text-base backdrop-blur-xl animate-in fade-in slide-in-from-bottom-4 duration-200">
-              <div className="flex items-center justify-between border-b border-subtle pb-2 mb-3">
-                <div className="flex items-center gap-2">
-                  <span className="bg-inner text-text-base border border-subtle text-[10px] font-sans font-bold px-2 py-0.5 rounded-md uppercase tracking-wider">
-                    Step {tourStep} of {TOUR_STEPS.length}
-                  </span>
-                  <h3 className="text-xs font-bold text-text-base tracking-wide">
-                    {TOUR_STEPS[tourStep - 1].title}
-                  </h3>
-                </div>
-                <button
-                  onClick={() => setTourStep(null)}
-                  className="text-text-muted hover:text-text-base p-1 rounded-lg hover:bg-inner transition-colors cursor-pointer"
-                  title="End Guided Tour"
-                >
-                  <X size={16} />
-                </button>
-              </div>
+        <HelpGuideModal
+          isOpen={isHelpGuideOpen}
+          onClose={() => setIsHelpGuideOpen(false)}
+          onStartTour={() => setTourStep(1)}
+          initialTab={helpGuideInitialTab}
+        />
 
-              <p className="text-xs text-text-base leading-relaxed mb-4">
-                {TOUR_STEPS[tourStep - 1].desc}
-              </p>
-
-              {/* Step Dots Indicator */}
-              <div className="flex items-center justify-center gap-1.5 mb-3">
-                {TOUR_STEPS.map((s) => (
-                  <button
-                    key={s.step}
-                    onClick={() => setTourStep(s.step)}
-                    className={`h-1.5 rounded-full transition-all cursor-pointer ${tourStep === s.step ? 'w-5 bg-slate-200' : 'w-1.5 bg-inner hover:bg-slate-500'
-                      }`}
-                    title={`Go to step ${s.step}: ${s.title}`}
-                  />
-                ))}
-              </div>
-
-              <div className="flex items-center justify-between pt-2 border-t border-subtle">
-                <span className="text-[10px] text-text-muted font-sans">
-                  Focus: <strong className="text-text-base">{TOUR_STEPS[tourStep - 1].highlight}</strong>
-                </span>
-
-                <div className="flex items-center gap-2">
-                  {tourStep > 1 && (
-                    <button
-                      onClick={() => setTourStep(tourStep - 1)}
-                      className="px-3 py-1 bg-inner hover:bg-inner text-text-base border border-subtle text-xs font-medium rounded-lg transition-all cursor-pointer"
-                    >
-                      Previous
-                    </button>
-                  )}
-                  {tourStep < TOUR_STEPS.length ? (
-                    <button
-                      onClick={() => setTourStep(tourStep + 1)}
-                      className="px-3.5 py-1 bg-inner hover:bg-inner text-text-base border border-subtle text-xs font-medium rounded-lg transition-all cursor-pointer flex items-center gap-1 shadow-sm"
-                    >
-                      Next Step <ChevronRight size={14} />
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => setTourStep(null)}
-                      className="px-3.5 py-1 bg-inner hover:bg-inner text-emerald-400 border border-subtle text-xs font-semibold rounded-lg transition-all cursor-pointer shadow-sm"
-                    >
-                      Complete Tour ✓
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          )
-        }
-
-        {/* ========================================================= */}
-        {/* HELP & USER GUIDE MODAL (Clean Minimalist Enterprise Design) */}
-        {/* ========================================================= */}
-        {
-          isHelpGuideOpen && (
-            <div className="fixed inset-0 bg-app backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-150">
-              <div className="bg-card border border-subtle rounded-xl w-full max-w-3xl max-h-[85vh] shadow-2xl flex flex-col overflow-hidden text-text-base">
-
-                {/* Modal Header */}
-                <div className="p-4 bg-card border-b border-subtle flex items-center justify-between">
-                  <div>
-                    <h2 className="text-sm font-bold text-text-base tracking-tight">
-                      User Guide & System Manual
-                    </h2>
-                    <p className="text-[11px] text-text-muted mt-0.5">
-                      360° WebGIS Mobile Mapping Operations Manual
-                    </p>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => {
-                        setIsHelpGuideOpen(false);
-                        setTourStep(1);
-                      }}
-                      className="px-3 py-1.5 bg-card hover:bg-inner text-text-base hover:text-text-base border border-subtle text-xs font-semibold rounded-lg transition-all cursor-pointer"
-                      title="Start guided step-by-step tour"
-                    >
-                      Start Interactive Tour
-                    </button>
-                    <button
-                      onClick={() => setIsHelpGuideOpen(false)}
-                      className="text-text-muted hover:text-text-base p-1 cursor-pointer"
-                    >
-                      <X size={16} />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Modal Navigation Tabs (Clean text, no emojis or icons) */}
-                <div className="px-4 py-2 bg-card border-b border-subtle flex items-center gap-1.5 overflow-x-auto text-xs">
-                  {[
-                    { id: 'map', label: 'Interactive Map' },
-                    { id: 'panorama', label: '360° Street View' },
-                    { id: 'data', label: 'Daily Progress & DB' },
-                    { id: 'audit', label: 'Notifications & Audit' },
-                    { id: 'shortcuts', label: 'Keyboard Shortcuts' }
-                  ].map(tab => (
-                    <button
-                      key={tab.id}
-                      onClick={() => setHelpGuideTab(tab.id as any)}
-                      className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer whitespace-nowrap border font-medium ${helpGuideTab === tab.id
-                        ? 'bg-card text-text-base border-subtle'
-                        : 'text-text-muted border-transparent hover:text-text-base hover:bg-inner'
-                        }`}
-                    >
-                      {tab.label}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Modal Body Content (Clean neat boxes, no lightbulb/book icons) */}
-                <div className="p-5 overflow-y-auto space-y-3 flex-1 text-xs text-text-base leading-relaxed">
-                  {helpGuideTab === 'map' && (
-                    <div className="space-y-3">
-                      <div className="bg-card p-3.5 rounded-lg border border-subtle space-y-1">
-                        <h4 className="font-semibold text-text-base text-xs">1. Subgrid Selection &amp; Key Normalization</h4>
-                        <p className="text-text-muted">
-                          Clicking any subgrid on the map or inside the control table isolates all trajectory points for that region. Subgrid keys are automatically normalized (<code className="bg-inner px-1 py-0.5 rounded text-text-base font-sans text-[10px]">XX-YY &rarr; XXYY</code>) across CSV imports and database queries.
-                        </p>
-                      </div>
-
-                      <div className="bg-card p-3.5 rounded-lg border border-subtle space-y-1">
-                        <h4 className="font-semibold text-text-base text-xs">2. Date Filter Behavior</h4>
-                        <p className="text-text-muted">
-                          Selecting a capture date filters trajectory frames associated with that specific survey run while preserving concurrent subgrid boundary geometry and vector layer overlays.
-                        </p>
-                      </div>
-
-                      <div className="bg-card p-3.5 rounded-lg border border-subtle space-y-1">
-                        <h4 className="font-semibold text-text-base text-xs">3. WebGIS Layer Controls &amp; Base Maps</h4>
-                        <p className="text-text-muted">
-                          Use the map layer panel to toggle subgrid bounding boxes, trajectory polyline features, 360° panorama capture nodes, and high-voltage electrical grid lines.
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
-                  {helpGuideTab === 'panorama' && (
-                    <div className="space-y-3">
-                      <div className="bg-card p-3.5 rounded-lg border border-subtle space-y-1">
-                        <h4 className="font-semibold text-text-base text-xs">1. Equirectangular 360° VR Camera Controls</h4>
-                        <p className="text-text-muted">
-                          Click and drag inside the 360° viewer to rotate pitch and yaw. Use the step controls or keyboard arrow keys to navigate forward/backward along vehicle trajectory frames.
-                        </p>
-                      </div>
-
-                      <div className="bg-card p-3.5 rounded-lg border border-subtle space-y-1">
-                        <h4 className="font-semibold text-text-base text-xs">2. Defect Inspection &amp; QA Benchmark Verification</h4>
-                        <p className="text-text-muted">
-                          Frames with flagged defects (<code className="bg-inner px-1 py-0.5 rounded text-text-base font-sans text-[10px]">Blurry Frame, Lens Obstruction, GPS Offset</code>) display automated defect questionnaires. Operator YES/NO validations immediately update defect status in Supabase.
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
-                  {helpGuideTab === 'data' && (
-                    <div className="space-y-3">
-                      <div className="bg-card p-3.5 rounded-lg border border-subtle space-y-1">
-                        <h4 className="font-semibold text-text-base text-xs">1. Masterlist Trajectories vs Preserved Daily Passes</h4>
-                        <p className="text-text-muted">
-                          Toggle between <strong>Masterlist Aggregated Trajectories</strong> (consolidates subgrid survey distance &amp; POIs) and <strong>Preserved Daily Survey Runs</strong> (retains unique survey dates &amp; PIC operator history).
-                        </p>
-                      </div>
-
-                      <div className="bg-card p-3.5 rounded-lg border border-subtle space-y-1">
-                        <h4 className="font-semibold text-text-base text-xs">2. Passcode-Protected Admin Edits &amp; Deletions</h4>
-                        <p className="text-text-muted">
-                          Table records can be edited or deleted. Record deletions require security passcode verification to prevent unauthorized data loss and ensure audit trail integrity.
-                        </p>
-                      </div>
-
-                      <div className="bg-card p-3.5 rounded-lg border border-subtle space-y-1">
-                        <h4 className="font-semibold text-text-base text-xs">3. Real-Time Supabase PostgreSQL Sync</h4>
-                        <p className="text-text-muted">
-                          Click <strong>Publish All to Database</strong> to synchronize processed subgrid trajectories directly to Supabase production tables with live notifications.
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
-                  {helpGuideTab === 'audit' && (
-                    <div className="space-y-3">
-                      <div className="bg-card p-3.5 rounded-lg border border-subtle space-y-1">
-                        <h4 className="font-semibold text-text-base text-xs">1. Chronological Activity Audit Logs</h4>
-                        <p className="text-text-muted">
-                          Click the audit log icon in top header to view logged user actions (create, edit, delete, publish, error) with date track-back filtering and user signatures.
-                        </p>
-                      </div>
-
-                      <div className="bg-card p-3.5 rounded-lg border border-subtle space-y-1">
-                        <h4 className="font-semibold text-text-base text-xs">2. Real-Time Publish Notifications</h4>
-                        <p className="text-text-muted">
-                          The notification bell alerts you whenever survey runs or masterlists are published to Supabase, showing total items updated and timestamp.
-                        </p>
-                      </div>
-
-                      <div className="bg-card p-3.5 rounded-lg border border-subtle space-y-1">
-                        <h4 className="font-semibold text-text-base text-xs">3. Executive Client PDF Deliverable Generator</h4>
-                        <p className="text-text-muted">
-                          Export one-click PDF QA summary reports containing subgrid defect pass rates, total surveyed kilometers, and client SLA verification sign-offs.
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
-                  {helpGuideTab === 'shortcuts' && (
-                    <div className="space-y-1.5">
-                      {[
-                        { keys: ['?'], action: 'Open this keyboard shortcuts / help guide' },
-                        { keys: ['Esc'], action: 'Close any open modal, dialog or help guide' },
-                        { keys: ['Tab'], action: 'Move focus between panels, toolbars and tables' },
-                        { keys: ['↑ ↓'], action: 'Navigate rows within the active data table' },
-                        { keys: ['← →'], action: 'Step forward / backward through 360° trajectory frames' },
-                        { keys: ['Enter'], action: 'Confirm the focused action or selection' },
-                        { keys: ['Space'], action: 'Toggle selection / check the focused checkbox' }
-                      ].map((row, idx) => (
-                        <div key={idx} className="flex items-center gap-3 bg-card p-3 rounded-lg border border-subtle">
-                          <div className="flex flex-wrap gap-1.5 shrink-0">
-                            {row.keys.map(k => (
-                              <kbd key={k} className="px-2 py-1 bg-inner border border-subtle rounded-md font-mono text-[10px] text-text-base shadow-sm">{k}</kbd>
-                            ))}
-                          </div>
-                          <span className="text-text-muted">{row.action}</span>
-                        </div>
-                      ))}
-                      <p className="pt-1 text-[11px] text-text-muted">
-                        Press <kbd className="px-1.5 py-0.5 bg-inner border border-subtle rounded font-mono text-[10px]">?</kbd> from the main dashboard to reopen this guide at any time.
-                      </p>
-                    </div>
-                  )}
-                </div>
-
-                {/* Modal Footer */}
-                <div className="p-4 bg-card border-t border-subtle flex items-center justify-between">
-                  <button
-                    onClick={() => {
-                      setIsHelpGuideOpen(false);
-                      goToWorkspace('data');
-                    }}
-                    className="px-3.5 py-2 bg-card hover:bg-inner text-text-base hover:text-text-base border border-subtle text-xs font-semibold rounded-lg transition-all cursor-pointer"
-                    title="Open Layer Catalog & Data Management Page"
-                  >
-                    Open Layer Catalog & Data Management Page
-                  </button>
-
-                  <button
-                    onClick={() => setIsHelpGuideOpen(false)}
-                    className="px-4 py-2 bg-card hover:bg-inner text-text-base text-xs font-semibold rounded-lg transition-all cursor-pointer"
-                  >
-                    Close Manual
-                  </button>
-                </div>
-
-              </div>
-            </div>
-          )
-        }
-
-        {/* ========================================================= */}
         {/* ABOUT DASHBOARD MODAL (Monochromatic Executive System Breakdown) */}
         {/* ========================================================= */}
         <AboutPlatformModal

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     Palette,
     Check,
@@ -10,7 +10,11 @@ import {
     Layers,
     Activity,
     Search,
-    Maximize2
+    Maximize2,
+    RectangleHorizontal,
+    LayoutGrid,
+    LayoutTemplate,
+    Columns3
 } from 'lucide-react';
 
 export type ThemeKey =
@@ -166,77 +170,18 @@ export interface ThemeCanvasProps {
     projectSettings?: any;
 }
 
-// Leaflet Map Component
-const LiveLeafletMapContainer: React.FC<{
-    tileUrl: string;
-    points?: [number, number][];
-    projectSettings?: any;
-}> = ({ tileUrl, points = [], projectSettings }) => {
-    const containerRef = useRef<HTMLDivElement>(null);
-    const mapRef = useRef<any>(null);
-    const tileLayerRef = useRef<any>(null);
-    const polylineRef = useRef<any>(null);
-    const markersRef = useRef<any[]>([]);
-
-    useEffect(() => {
-        if (!containerRef.current) return;
-        const L = (window as any).L;
-
-        if (L && !mapRef.current) {
-            const defaultCenter: [number, number] = projectSettings?.defaultCenter && Array.isArray(projectSettings.defaultCenter)
-                ? [projectSettings.defaultCenter[0], projectSettings.defaultCenter[1]]
-                : [4.2105, 101.9758]; // Neutral regional centroid
-
-            const map = L.map(containerRef.current, {
-                center: defaultCenter,
-                zoom: points.length > 0 ? 14 : 7,
-                zoomControl: false,
-                attributionControl: false
-            });
-
-            const layer = L.tileLayer(tileUrl, { maxZoom: 19 }).addTo(map);
-            tileLayerRef.current = layer;
-
-            if (points.length > 0) {
-                const poly = L.polyline(points, {
-                    color: '#f59e0b',
-                    weight: 3.5,
-                    opacity: 0.9,
-                    dashArray: '4, 4'
-                }).addTo(map);
-                polylineRef.current = poly;
-
-                const markers = points.slice(0, 100).map(pt => {
-                    return L.circleMarker(pt, {
-                        radius: 4,
-                        fillColor: '#f59e0b',
-                        color: '#ffffff',
-                        weight: 1,
-                        fillOpacity: 1
-                    }).addTo(map);
-                });
-                markersRef.current = markers;
-
-                try {
-                    const bounds = L.latLngBounds(points);
-                    if (bounds.isValid()) {
-                        map.fitBounds(bounds, { padding: [20, 20], maxZoom: 16 });
-                    }
-                } catch (_) { }
-            }
-
-            mapRef.current = map;
-        }
-    }, [points, projectSettings]);
-
-    useEffect(() => {
-        if (tileLayerRef.current) {
-            tileLayerRef.current.setUrl(tileUrl);
-        }
-    }, [tileUrl]);
-
-    return <div ref={containerRef} className="absolute inset-0 w-full h-full z-0" />;
-};
+const DotOption: React.FC<{ label: string; selected: boolean; onSelect: () => void }> = ({ label, selected, onSelect }) => (
+    <button type="button" onClick={onSelect} className="group flex items-center gap-1.5 cursor-pointer">
+        <span className={`w-3 h-3 rounded-full border flex items-center justify-center transition-colors ${
+            selected ? 'bg-accent border-accent' : 'border-subtle group-hover:border-slate-500'
+        }`}>
+            {selected && <Check className="w-2 h-2 text-app" strokeWidth={4} />}
+        </span>
+        <span className={`text-[10px] transition-colors ${selected ? 'font-medium text-text-base' : 'text-text-muted group-hover:text-text-base'}`}>
+            {label}
+        </span>
+    </button>
+);
 
 export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
     cardBg = 'bg-card',
@@ -248,10 +193,68 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
     const [activeTheme, setActiveTheme] = useState<ThemeKey>('graphite');
     const [isSavedBanner, setIsSavedBanner] = useState(false);
 
+    // ── Style Widget State ──
+    type RadiusKey = 'sharp' | 'default' | 'rounded' | 'pill';
+    type DensityKey = 'compact' | 'default' | 'spacious';
+    type SplitKey = 'map-focus' | 'balanced' | 'panel-focus';
+    type SurfaceKey = 'card' | 'flat';
+
+    const SURFACE_OPTIONS: { key: SurfaceKey; label: string }[] = [
+        { key: 'card', label: 'Card' },
+        { key: 'flat', label: 'Flat' }
+    ];
+
+    const RADIUS_OPTIONS: { key: RadiusKey; label: string; value: string }[] = [
+        { key: 'sharp',   label: 'Sharp',   value: '4px' },
+        { key: 'default', label: 'Default', value: '12px' },
+        { key: 'rounded', label: 'Rounded', value: '16px' },
+        { key: 'pill',    label: 'Pill',    value: '24px' }
+    ];
+    const DENSITY_OPTIONS: { key: DensityKey; label: string; gap: string; padding: string }[] = [
+        { key: 'compact',  label: 'Compact',   gap: '8px',  padding: '10px' },
+        { key: 'default',  label: 'Default',   gap: '12px', padding: '14px' },
+        { key: 'spacious', label: 'Spacious',  gap: '16px', padding: '18px' }
+    ];
+    const SPLIT_OPTIONS: { key: SplitKey; label: string; mapCols: string; panelCols: string }[] = [
+        { key: 'map-focus',   label: 'Map Focus',    mapCols: '8', panelCols: '4' },
+        { key: 'balanced',    label: 'Balanced',     mapCols: '7', panelCols: '5' },
+        { key: 'panel-focus', label: 'Panel Focus',  mapCols: '6', panelCols: '6' }
+    ];
+
+    const [cardRadius, setCardRadius] = useState<RadiusKey>('default');
+    const [uiDensity, setUiDensity] = useState<DensityKey>('default');
+    const [mapSplit, setMapSplit]   = useState<SplitKey>('balanced');
+    const [surfaceStyle, setSurfaceStyle] = useState<SurfaceKey>('card');
+
+    // Apply CSS custom properties to :root for global cascade
+    const applyStyleWidgets = (radius: RadiusKey, density: DensityKey, split: SplitKey, surface: SurfaceKey) => {
+        const root = document.documentElement;
+        const r = RADIUS_OPTIONS.find(o => o.key === radius) || RADIUS_OPTIONS[1];
+        const d = DENSITY_OPTIONS.find(o => o.key === density) || DENSITY_OPTIONS[1];
+        const s = SPLIT_OPTIONS.find(o => o.key === split) || SPLIT_OPTIONS[1];
+        root.style.setProperty('--card-radius', r.value);
+        root.style.setProperty('--ui-gap', d.gap);
+        root.style.setProperty('--ui-padding', d.padding);
+        root.style.setProperty('--map-cols', s.mapCols);
+        root.style.setProperty('--panel-cols', s.panelCols);
+        root.setAttribute('data-surface', surface);
+    };
+
     useEffect(() => {
         const saved = (localStorage.getItem('app_dashboard_theme') as ThemeKey) || 'graphite';
         setActiveTheme(saved);
         setStagedTheme(saved);
+
+        // Restore style widget state
+        const savedRadius = (localStorage.getItem('app_style_radius') as RadiusKey) || 'default';
+        const savedDensity = (localStorage.getItem('app_style_density') as DensityKey) || 'default';
+        const savedSplit = (localStorage.getItem('app_style_split') as SplitKey) || 'balanced';
+        const savedSurface = (localStorage.getItem('app_style_surface') as SurfaceKey) || 'card';
+        setCardRadius(savedRadius);
+        setUiDensity(savedDensity);
+        setMapSplit(savedSplit);
+        setSurfaceStyle(savedSurface);
+        applyStyleWidgets(savedRadius, savedDensity, savedSplit, savedSurface);
     }, []);
 
     const handleSelectPreset = (id: ThemeKey) => {
@@ -264,9 +267,18 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
         document.documentElement.setAttribute('data-theme', stagedTheme);
         try {
             localStorage.setItem('app_dashboard_theme', stagedTheme);
+            // Persist style widgets
+            localStorage.setItem('app_style_radius', cardRadius);
+            localStorage.setItem('app_style_density', uiDensity);
+            localStorage.setItem('app_style_split', mapSplit);
+            localStorage.setItem('app_style_surface', surfaceStyle);
         } catch { }
 
+        applyStyleWidgets(cardRadius, uiDensity, mapSplit, surfaceStyle);
         window.dispatchEvent(new CustomEvent('app-theme-changed', { detail: stagedTheme }));
+        window.dispatchEvent(new CustomEvent('app-style-changed', {
+            detail: { radius: cardRadius, density: uiDensity, split: mapSplit, surface: surfaceStyle }
+        }));
 
         setIsSavedBanner(true);
         setTimeout(() => setIsSavedBanner(false), 3500);
@@ -274,9 +286,28 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
 
     const handleResetToCurrent = () => {
         setStagedTheme(activeTheme);
+        // Reset style widgets to saved
+        const savedRadius = (localStorage.getItem('app_style_radius') as RadiusKey) || 'default';
+        const savedDensity = (localStorage.getItem('app_style_density') as DensityKey) || 'default';
+        const savedSplit = (localStorage.getItem('app_style_split') as SplitKey) || 'balanced';
+        const savedSurface = (localStorage.getItem('app_style_surface') as SurfaceKey) || 'card';
+        setCardRadius(savedRadius);
+        setUiDensity(savedDensity);
+        setMapSplit(savedSplit);
+        setSurfaceStyle(savedSurface);
     };
 
+    const isStyleDirty =
+        cardRadius !== ((localStorage.getItem('app_style_radius') as RadiusKey) || 'default') ||
+        uiDensity !== ((localStorage.getItem('app_style_density') as DensityKey) || 'default') ||
+        mapSplit !== ((localStorage.getItem('app_style_split') as SplitKey) || 'balanced') ||
+        surfaceStyle !== ((localStorage.getItem('app_style_surface') as SurfaceKey) || 'card');
+
     const stagedObj = THEME_PRESETS.find((t) => t.id === stagedTheme) || THEME_PRESETS[0];
+
+    // Staged style-widget tokens — previewed live inside the sandbox before Apply
+    const stagedRadiusValue = RADIUS_OPTIONS.find(o => o.key === cardRadius)?.value || '12px';
+    const stagedDensity = DENSITY_OPTIONS.find(o => o.key === uiDensity) || DENSITY_OPTIONS[1];
 
     const totalDistance = dailyData.reduce((acc, item) => acc + (Number(item.kmProcessed || item.distance) || 0), 0);
     const totalFrames = dailyData.reduce((acc, item) => acc + (Number(item.availableImagesCount || item.panoramas?.length || item.imagesProcessed || item.images) || 0), 0);
@@ -287,20 +318,6 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
     const qualitySlaPercent = totalFrames > 0
         ? Math.max(0, ((totalFrames - totalDefects) / totalFrames) * 100).toFixed(1)
         : '100.0';
-
-    const validMapPoints: [number, number][] = React.useMemo(() => {
-        const pts: [number, number][] = [];
-        (dailyData || []).forEach((d: any) => {
-            (d.panoramas || d.points || []).forEach((p: any) => {
-                const lat = p.latitude ?? p.lat;
-                const lng = p.longitude ?? p.lon ?? p.lng;
-                if (typeof lat === 'number' && typeof lng === 'number' && !isNaN(lat) && !isNaN(lng) && (lat !== 0 || lng !== 0)) {
-                    pts.push([lat, lng]);
-                }
-            });
-        });
-        return pts;
-    }, [dailyData]);
 
     return (
         <div className="space-y-5">
@@ -335,9 +352,10 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                     )}
                     <button
                         onClick={handleApplyTheme}
-                        disabled={stagedTheme === activeTheme && !isSavedBanner}
-                        className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${stagedTheme !== activeTheme
-                            ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-sm cursor-pointer'
+                        disabled={(stagedTheme === activeTheme && !isStyleDirty) && !isSavedBanner}
+                        style={stagedTheme !== activeTheme || isStyleDirty ? { backgroundColor: 'var(--accent)', color: 'var(--bg-app)' } : undefined}
+                        className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${stagedTheme !== activeTheme || isStyleDirty
+                            ? 'opacity-95 hover:opacity-100 shadow-sm cursor-pointer'
                             : 'bg-inner text-text-muted cursor-not-allowed border border-subtle'
                             }`}
                     >
@@ -358,7 +376,7 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                         </div>
                         <button
                             onClick={handleResetToCurrent}
-                            disabled={stagedTheme === activeTheme}
+                            disabled={stagedTheme === activeTheme && !isStyleDirty}
                             className="text-[11px] text-text-muted hover:text-text-base disabled:opacity-30 flex items-center gap-1 transition-colors cursor-pointer"
                         >
                             <RotateCcw className="w-2.5 h-2.5" />
@@ -366,7 +384,7 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                         </button>
                     </div>
 
-                    <div className="space-y-2">
+                    <div className="rounded-lg border border-subtle divide-y divide-[var(--divider)] overflow-hidden">
                         {THEME_PRESETS.map((preset) => {
                             const isStaged = stagedTheme === preset.id;
                             const isCurrentlyActive = activeTheme === preset.id;
@@ -375,65 +393,98 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                                 <div
                                     key={preset.id}
                                     onClick={() => handleSelectPreset(preset.id)}
-                                    className={`p-3 rounded-lg border transition-all cursor-pointer ${isStaged
-                                        ? 'border-blue-500 bg-inner shadow-sm ring-1 ring-blue-500/40'
-                                        : 'border-subtle bg-card hover:border-slate-500'
+                                    className={`flex items-center gap-2.5 px-3 py-2.5 transition-colors cursor-pointer ${isStaged ? 'bg-inner' : 'hover:bg-inner/60'
                                         }`}
                                 >
-                                    <div className="flex items-start justify-between gap-3">
-                                        <div className="flex items-start gap-2.5">
-                                            <div
-                                                className="w-5 h-5 rounded border mt-0.5 shrink-0 flex items-center justify-center"
-                                                style={{
-                                                    backgroundColor: preset.bgCard,
-                                                    borderColor: isStaged ? preset.accent : preset.borderSubtle
-                                                }}
-                                            >
-                                                <span
-                                                    className="w-2 h-2 rounded-full"
-                                                    style={{ backgroundColor: preset.accent }}
-                                                />
-                                            </div>
-
-                                            <div>
-                                                <div className="flex items-center gap-2">
-                                                    <h4 className="text-xs font-semibold text-text-base">{preset.name}</h4>
-                                                    <span
-                                                        className="text-[9px] px-1.5 py-0.2 rounded font-sans border"
-                                                        style={{
-                                                            backgroundColor: preset.accentBg,
-                                                            color: preset.accent,
-                                                            borderColor: `${preset.accent}30`
-                                                        }}
-                                                    >
-                                                        {preset.badge}
-                                                    </span>
-                                                    {isCurrentlyActive && (
-                                                        <span className="text-[9px] text-emerald-400 font-medium font-sans">
-                                                            (Active)
-                                                        </span>
-                                                    )}
-                                                </div>
-                                                <p className="text-[11px] text-text-muted mt-1 leading-relaxed">{preset.tagline}</p>
-                                            </div>
-                                        </div>
-
-                                        {isStaged && (
-                                            <span
-                                                className="text-[9px] px-1.5 py-0.5 rounded border font-medium shrink-0"
-                                                style={{
-                                                    backgroundColor: preset.accentBg,
-                                                    color: preset.accent,
-                                                    borderColor: `${preset.accent}40`
-                                                }}
-                                            >
-                                                Previewing
-                                            </span>
+                                    <span
+                                        className="w-3.5 h-3.5 rounded-full border flex items-center justify-center shrink-0 transition-colors"
+                                        style={{
+                                            borderColor: isStaged ? preset.accent : preset.borderSubtle,
+                                            backgroundColor: isStaged ? preset.accent : 'transparent'
+                                        }}
+                                    >
+                                        {isStaged ? (
+                                            <Check className="w-2.5 h-2.5" strokeWidth={4} style={{ color: preset.bgApp }} />
+                                        ) : (
+                                            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: preset.accent }} />
                                         )}
-                                    </div>
+                                    </span>
+
+                                    <h4 className={`text-xs truncate ${isStaged ? 'font-semibold text-text-base' : 'font-medium text-text-muted'}`}>
+                                        {preset.name}
+                                    </h4>
+
+                                    <span className="ml-auto flex items-center gap-2 shrink-0">
+                                        {isCurrentlyActive && !isStaged && (
+                                            <span className="text-[9px] text-emerald-400 font-medium">Active</span>
+                                        )}
+                                        {isStaged && !isCurrentlyActive && (
+                                            <span className="text-[9px] text-text-muted">Previewing</span>
+                                        )}
+                                    </span>
                                 </div>
                             );
                         })}
+                    </div>
+
+                    {/* ── Style Widgets ── */}
+                    <div className="mt-4 pt-3 border-t border-subtle space-y-3">
+                        <div className="text-[11px] font-semibold text-text-muted uppercase tracking-wider flex items-center gap-1.5 px-1">
+                            <Sliders className="w-3 h-3 text-text-muted" />
+                            Style Overrides
+                        </div>
+
+                        {/* Widget 1: Surface Style */}
+                        <div className="px-1 space-y-1.5">
+                            <div className="flex items-center gap-2">
+                                <LayoutTemplate className="w-3.5 h-3.5 text-text-muted" />
+                                <span className="text-[11px] font-semibold text-text-base">Surface Style</span>
+                            </div>
+                            <div className="flex items-center flex-wrap gap-x-3.5 gap-y-1">
+                                {SURFACE_OPTIONS.map((opt) => (
+                                    <DotOption key={opt.key} label={opt.label} selected={surfaceStyle === opt.key} onSelect={() => setSurfaceStyle(opt.key)} />
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Widget 2: Card Radius */}
+                        <div className="px-1 pt-3 border-t border-subtle space-y-1.5">
+                            <div className="flex items-center gap-2">
+                                <RectangleHorizontal className="w-3.5 h-3.5 text-text-muted" />
+                                <span className="text-[11px] font-semibold text-text-base">Card Radius</span>
+                            </div>
+                            <div className="flex items-center flex-wrap gap-x-3.5 gap-y-1">
+                                {RADIUS_OPTIONS.map((opt) => (
+                                    <DotOption key={opt.key} label={opt.label} selected={cardRadius === opt.key} onSelect={() => setCardRadius(opt.key)} />
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Widget 3: UI Density */}
+                        <div className="px-1 pt-3 border-t border-subtle space-y-1.5">
+                            <div className="flex items-center gap-2">
+                                <LayoutGrid className="w-3.5 h-3.5 text-text-muted" />
+                                <span className="text-[11px] font-semibold text-text-base">UI Density</span>
+                            </div>
+                            <div className="flex items-center flex-wrap gap-x-3.5 gap-y-1">
+                                {DENSITY_OPTIONS.map((opt) => (
+                                    <DotOption key={opt.key} label={opt.label} selected={uiDensity === opt.key} onSelect={() => setUiDensity(opt.key)} />
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Widget 4: Map–Panel Split */}
+                        <div className="px-1 pt-3 border-t border-subtle space-y-1.5">
+                            <div className="flex items-center gap-2">
+                                <Columns3 className="w-3.5 h-3.5 text-text-muted" />
+                                <span className="text-[11px] font-semibold text-text-base">Map–Panel Split</span>
+                            </div>
+                            <div className="flex items-center flex-wrap gap-x-3.5 gap-y-1">
+                                {SPLIT_OPTIONS.map((opt) => (
+                                    <DotOption key={opt.key} label={opt.label} selected={mapSplit === opt.key} onSelect={() => setMapSplit(opt.key)} />
+                                ))}
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -442,34 +493,28 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                     <div className="flex items-center justify-between px-1">
                         <div className="text-[11px] font-semibold text-text-muted uppercase tracking-wider flex items-center gap-1.5">
                             <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: stagedObj.accent }} />
-                            Live Dashboard Preview
+                            Dashboard Preview
                         </div>
-                        <span
-                            className="text-[10px] px-2 py-0.5 rounded border font-sans"
-                            style={{
-                                backgroundColor: stagedObj.accentBg,
-                                color: stagedObj.accent,
-                                borderColor: `${stagedObj.accent}30`
-                            }}
-                        >
-                            Theme: {stagedObj.name}
-                        </span>
                     </div>
 
                     {/* Staged Sandbox Container */}
                     <div
                         data-theme={stagedTheme}
+                        data-surface={surfaceStyle}
                         className="p-3.5 rounded-xl border transition-all duration-200 space-y-3 shadow-sm"
                         style={{
                             backgroundColor: stagedObj.bgApp,
                             borderColor: stagedObj.borderSubtle,
-                            color: stagedObj.textPrimary
-                        }}
+                            color: stagedObj.textPrimary,
+                            '--card-radius': stagedRadiusValue,
+                            '--ui-gap': stagedDensity.gap,
+                            '--ui-padding': stagedDensity.padding
+                        } as React.CSSProperties}
                     >
-                    <div className="space-y-4">
+                    <div className="dashboard-density-grid flex flex-col">
                         {/* 1. Header Bar Simulation */}
                         <div
-                            className="p-3.5 rounded-xl border flex items-center justify-between"
+                            className="p-3.5 rounded-xl border flex items-center justify-between style-radius style-surface dashboard-density-pad"
                             style={{
                                 backgroundColor: stagedObj.bgCard,
                                 borderColor: stagedObj.borderSubtle
@@ -491,25 +536,12 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                                     </span>
                                 </div>
                             </div>
-
-                            <div className="flex items-center gap-2">
-                                <span
-                                    className="px-2 py-0.5 rounded text-[10px] font-sans font-bold"
-                                    style={{
-                                        backgroundColor: stagedObj.accentBg,
-                                        color: stagedObj.accent,
-                                        border: `1px solid ${stagedObj.accent}40`
-                                    }}
-                                >
-                                    {stagedObj.badge.toUpperCase()}
-                                </span>
-                            </div>
                         </div>
 
                         {/* 2. Mini KPI Cards Row */}
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                        <div className="dashboard-density-grid grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                             <div
-                                className="p-2.5 rounded-lg border flex flex-col justify-between"
+                                className="p-2.5 rounded-lg border flex flex-col justify-between style-radius style-surface dashboard-density-pad"
                                 style={{
                                     backgroundColor: stagedObj.bgCard,
                                     borderColor: stagedObj.borderSubtle
@@ -528,7 +560,7 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                             </div>
 
                             <div
-                                className="p-2.5 rounded-lg border flex flex-col justify-between"
+                                className="p-2.5 rounded-lg border flex flex-col justify-between style-radius style-surface dashboard-density-pad"
                                 style={{
                                     backgroundColor: stagedObj.bgCard,
                                     borderColor: stagedObj.borderSubtle
@@ -547,7 +579,7 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                             </div>
 
                             <div
-                                className="p-2.5 rounded-lg border flex flex-col justify-between"
+                                className="p-2.5 rounded-lg border flex flex-col justify-between style-radius style-surface dashboard-density-pad"
                                 style={{
                                     backgroundColor: stagedObj.bgCard,
                                     borderColor: stagedObj.borderSubtle
@@ -566,7 +598,7 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                             </div>
 
                             <div
-                                className="p-2.5 rounded-lg border flex flex-col justify-between"
+                                className="p-2.5 rounded-lg border flex flex-col justify-between style-radius style-surface dashboard-density-pad"
                                 style={{
                                     backgroundColor: stagedObj.bgCard,
                                     borderColor: stagedObj.borderSubtle
@@ -586,16 +618,16 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                         </div>
 
                         {/* 3. Map & Data Columns */}
-                        <div className="grid grid-cols-12 gap-2.5">
+                        <div data-split={mapSplit} className="dashboard-split-grid dashboard-density-grid grid grid-cols-12 gap-2.5">
                             {/* Live Leaflet Map */}
                             <div
-                                className="col-span-12 lg:col-span-7 h-80 rounded-lg border relative overflow-hidden flex flex-col justify-between"
+                                className="map-column col-span-12 lg:col-span-7 h-80 rounded-lg border relative overflow-hidden flex flex-col justify-between style-radius style-surface"
                                 style={{
                                     backgroundColor: stagedObj.bgCard,
                                     borderColor: stagedObj.borderSubtle
                                 }}
                             >
-                                <LiveLeafletMapContainer tileUrl={stagedObj.mapTileUrl} points={validMapPoints} projectSettings={projectSettings} />
+                                <div className="absolute inset-0" style={{ backgroundColor: stagedObj.innerCard }} />
 
                                 {/* Map Floating Bar */}
                                 <div className="p-2.5 flex items-center justify-between z-10 pointer-events-none">
@@ -642,16 +674,16 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                             </div>
 
                             {/* Processing Control & 360 QA */}
-                            <div className="col-span-12 lg:col-span-5 flex flex-col gap-2">
+                            <div className="panel-column col-span-12 lg:col-span-5 flex flex-col gap-2 dashboard-density-grid">
                                 {/* Table */}
                                 <div
-                                    className="p-2.5 rounded-lg border flex-1 flex flex-col justify-between"
+                                    className="p-2.5 rounded-lg border flex-1 flex flex-col min-h-0 style-radius style-surface dashboard-density-pad"
                                     style={{
                                         backgroundColor: stagedObj.bgCard,
                                         borderColor: stagedObj.borderSubtle
                                     }}
                                 >
-                                    <div>
+                                    <div className="flex-1 flex flex-col min-h-0">
                                         <div className="flex items-center justify-between pb-1.5 border-b" style={{ borderColor: stagedObj.borderSubtle }}>
                                             <span className="text-[9px] font-semibold uppercase tracking-wider" style={{ color: stagedObj.textPrimary }}>
                                                 Processing Admin
@@ -661,14 +693,14 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                                             </span>
                                         </div>
 
-                                        <div className="space-y-1 my-1 text-[8px]">
+                                        <div className="flex-1 min-h-0 overflow-hidden flex flex-col gap-1 justify-evenly my-1 text-[8px]">
                                             {batchLogs.length > 0 ? (
-                                                batchLogs.slice(0, 3).map((row: any, idx: number) => {
+                                                batchLogs.slice(0, 6).map((row: any, idx: number) => {
                                                     const frameCount = row.availableImagesCount ?? row.panoramas?.length ?? row.images ?? 0;
                                                     return (
                                                         <div
                                                             key={row.id || idx}
-                                                            className="flex items-center justify-between p-1.5 rounded"
+                                                            className="flex items-center justify-between p-1.5 rounded style-surface-inner"
                                                             style={{
                                                                 backgroundColor: stagedObj.innerCard
                                                             }}
@@ -680,7 +712,7 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                                                     );
                                                 })
                                             ) : (
-                                                <div className="p-2 text-center text-text-muted text-[8px]">
+                                                <div className="flex-1 flex items-center justify-center text-text-muted text-[8px]">
                                                     No batches registered
                                                 </div>
                                             )}
@@ -695,7 +727,7 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
 
                                 {/* 360 QA Box */}
                                 <div
-                                    className="p-2.5 rounded-lg border flex items-center justify-between"
+                                    className="p-2.5 rounded-lg border flex items-center justify-between style-radius style-surface dashboard-density-pad"
                                     style={{
                                         backgroundColor: stagedObj.bgCard,
                                         borderColor: stagedObj.borderSubtle

@@ -464,6 +464,10 @@ export function useQAQCWorker() {
       setWorkerState(prev => ({ ...prev, isRunning: false, isAborted: true }));
     };
 
+    worker.onmessageerror = (err) => {
+      console.error('QA/QC Worker message deserialization error:', err);
+    };
+
     worker.onmessage = (evt: MessageEvent<QaqcWorkerResponse>) => {
       const msg = evt.data;
 

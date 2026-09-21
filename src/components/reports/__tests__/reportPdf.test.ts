@@ -59,27 +59,31 @@ const baseInput: ExecutivePdfReportInput = {
 }
 
 describe('buildExecutivePdfHtml', () => {
-  it('returns a string containing the html document wrapper', () => {
+  it('returns a string containing the audit-document shell', () => {
     const html = buildExecutivePdfHtml(baseInput)
     expect(typeof html).toBe('string')
     expect(html).toContain('<!DOCTYPE html>')
-    expect(html).toContain('EXECUTIVE PDF REPORT PREVIEW')
+    expect(html).toContain('Table of Contents')
+    expect(html).toContain('Print / Save PDF')
     expect(html).toContain('GEO-MMS-EXEC-')
+    expect(html).toContain('window.print()')
   })
 
   it('renders deterministic aggregate math (km, subgrid counts, contract, operator)', () => {
     const html = buildExecutivePdfHtml(baseInput)
     expect(html).toContain('30.50 km')
-    expect(html).toContain('2 Units')
+    expect(html).toContain('Subgrids processed')
     expect(html).toContain('MMS-2026-TNB-01')
     expect(html).toContain('gis.engineer@x.com')
-    expect(html).toContain('10.00 km')
-    expect(html).toContain('20.50 km')
+    expect(html).toContain('10.00')
+    expect(html).toContain('20.50')
   })
 
-  it('renders per-batch verification status badges', () => {
+  it('renders plain-text verification states without badges or KPI card stacks', () => {
     const html = buildExecutivePdfHtml(baseInput)
-    expect(html).toContain('VERIFIED & PUBLISHED')
-    expect(html).toContain('STAGED IN PROCESS')
+    expect(html).toContain('Verified &amp; Published')
+    expect(html).toContain('Staged in Process')
+    expect(html).not.toContain('kpi-grid')
+    expect(html).not.toContain('badge-')
   })
 })

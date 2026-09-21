@@ -17,13 +17,22 @@ import {
   ExternalLink,
   ZoomIn,
   ZoomOut,
-  RotateCcw
+  RotateCcw,
+  Layers
 } from 'lucide-react';
-import { QADefectRecord, ExtendedProjectSettings } from '../types/admin';
-import { fetchQADefectsForSubgrid, resolveQADefectInSupabase, resolvePanoramaUrl } from '../services/supabase';
-import { useDialogEscape } from './common/dialog';
+import type { QADefectRecord, ExtendedProjectSettings } from '../types/admin';
+import {
+  fetchQADefectsForSubgrid,
+  resolveQADefectInSupabase,
+  resolvePanoramaUrl
+} from '../services/supabase';
+import {
+  InspectorDrawer,
+  type DrawerWidthMode,
+  type DrawerDisplayMode
+} from './common/InspectorDrawer';
 
-interface DefectsGalleryModalProps {
+export interface DefectsGalleryModalProps {
   isOpen: boolean;
   subgrid: string;
   mode?: 'master' | 'daily';
@@ -40,8 +49,14 @@ interface DefectsGalleryModalProps {
     lat?: number;
     lng?: number;
     bearing?: number;
+    keepOpen?: boolean;
   }) => void;
   onDefectResolved?: (pointId: string, remainingActiveCount: number) => void;
+
+  /** Initial drawer display mode ('docked' non-blocking or 'modal' darkened overlay) */
+  initialDisplayMode?: DrawerDisplayMode;
+  /** Initial width mode ('compact', 'expanded', or 'fullscreen') */
+  initialWidthMode?: DrawerWidthMode;
 }
 
 type DefectFilterCategory = 'all' | 'blur' | 'obstruction' | 'gps';
@@ -58,21 +73,26 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
   fallbackDefects,
   onClose,
   onJumpTo360,
-  onDefectResolved
+  onDefectResolved,
+  initialDisplayMode = 'docked',
+  initialWidthMode = 'expanded'
 }) => {
   const [defects, setDefects] = useState<QADefectRecord[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [filterCategory, setFilterCategory] = useState<DefectFilterCategory>('all');
   const [showResolved, setShowResolved] = useState<boolean>(false);
   const [resolvingPointId, setResolvingPointId] = useState<string | null>(null);
+  const [activePointId, setActivePointId] = useState<string | null>(null);
   const [lightboxDefect, setLightboxDefect] = useState<QADefectRecord | null>(null);
   const [lightboxZoom, setLightboxZoom] = useState<number>(1);
 
+  // Inspector Drawer state
+  const [widthMode, setWidthMode] = useState<DrawerWidthMode>(initialWidthMode);
+  const [displayMode, setDisplayMode] = useState<DrawerDisplayMode>(initialDisplayMode);
+
   const cleanSubgrid = (subgrid || '').toUpperCase().trim();
 
-  useDialogEscape(onClose, isOpen);
-
-  // Load defects from Supabase on modal open or subgrid change
+  // Load defects from Supabase on drawer open or subgrid change
   useEffect(() => {
     if (!isOpen || !cleanSubgrid) return;
 
@@ -80,63 +100,65 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
     let isMounted = true;
     setIsLoading(true);
 
-    fetchQADefectsForSubgrid(cleanSubgrid).then((data) => {
-      if (isMounted) {
-        if (data && data.length > 0) {
-          setDefects(data);
-        } else if (Array.isArray(fallbackDefects) && fallbackDefects.length > 0) {
-          const relevant = fallbackDefects
-            .filter((d: any) => (d.subgrid || '').toUpperCase().trim() === cleanSubgrid)
-            .map((d: any, idx: number) => ({
-              id: d.id || `fb-${idx}`,
-              subgrid: d.subgrid || cleanSubgrid,
-              point_id: d.point_id || d.filename || `${cleanSubgrid}-${String(idx + 1).padStart(4, '0')}.jpg`,
-              frame_index: d.frame_index || (idx + 1),
-              defect_flags: typeof d.defect_flags === 'object' ? d.defect_flags : { blur: true },
-              defect_type: d.defect_type || 'QA Defect',
-              pic: d.pic || 'Inspector',
-              image_url: d.image_url,
-              lat: d.lat ?? d.latitude,
-              lng: d.lng ?? d.lon ?? d.longitude,
-              bearing: d.bearing,
-              is_resolved: Boolean(d.is_resolved),
-              resolved_at: d.resolved_at,
-              created_at: d.created_at || new Date().toISOString()
-            }));
-          setDefects(relevant);
-        } else {
-          setDefects([]);
+    fetchQADefectsForSubgrid(cleanSubgrid)
+      .then((data) => {
+        if (isMounted) {
+          if (data && data.length > 0) {
+            setDefects(data);
+          } else if (Array.isArray(fallbackDefects) && fallbackDefects.length > 0) {
+            const relevant = fallbackDefects
+              .filter((d: any) => (d.subgrid || '').toUpperCase().trim() === cleanSubgrid)
+              .map((d: any, idx: number) => ({
+                id: d.id || `fb-${idx}`,
+                subgrid: d.subgrid || cleanSubgrid,
+                point_id: d.point_id || d.filename || `${cleanSubgrid}-${String(idx + 1).padStart(4, '0')}.jpg`,
+                frame_index: d.frame_index || (idx + 1),
+                defect_flags: typeof d.defect_flags === 'object' ? d.defect_flags : { blur: true },
+                defect_type: d.defect_type || 'QA Defect',
+                pic: d.pic || 'Inspector',
+                image_url: d.image_url,
+                lat: d.lat ?? d.latitude,
+                lng: d.lng ?? d.lon ?? d.longitude,
+                bearing: d.bearing,
+                is_resolved: Boolean(d.is_resolved),
+                resolved_at: d.resolved_at,
+                created_at: d.created_at || new Date().toISOString()
+              }));
+            setDefects(relevant);
+          } else {
+            setDefects([]);
+          }
+          setIsLoading(false);
         }
-        setIsLoading(false);
-      }
-    }).catch(() => {
-      if (isMounted) {
-        if (Array.isArray(fallbackDefects) && fallbackDefects.length > 0) {
-          const relevant = fallbackDefects
-            .filter((d: any) => (d.subgrid || '').toUpperCase().trim() === cleanSubgrid)
-            .map((d: any, idx: number) => ({
-              id: d.id || `fb-${idx}`,
-              subgrid: d.subgrid || cleanSubgrid,
-              point_id: d.point_id || d.filename || `${cleanSubgrid}-${String(idx + 1).padStart(4, '0')}.jpg`,
-              frame_index: d.frame_index || (idx + 1),
-              defect_flags: typeof d.defect_flags === 'object' ? d.defect_flags : { blur: true },
-              defect_type: d.defect_type || 'QA Defect',
-              pic: d.pic || 'Inspector',
-              image_url: d.image_url,
-              lat: d.lat ?? d.latitude,
-              lng: d.lng ?? d.lon ?? d.longitude,
-              bearing: d.bearing,
-              is_resolved: Boolean(d.is_resolved),
-              resolved_at: d.resolved_at,
-              created_at: d.created_at || new Date().toISOString()
-            }));
-          setDefects(relevant);
-        } else {
-          setDefects([]);
+      })
+      .catch(() => {
+        if (isMounted) {
+          if (Array.isArray(fallbackDefects) && fallbackDefects.length > 0) {
+            const relevant = fallbackDefects
+              .filter((d: any) => (d.subgrid || '').toUpperCase().trim() === cleanSubgrid)
+              .map((d: any, idx: number) => ({
+                id: d.id || `fb-${idx}`,
+                subgrid: d.subgrid || cleanSubgrid,
+                point_id: d.point_id || d.filename || `${cleanSubgrid}-${String(idx + 1).padStart(4, '0')}.jpg`,
+                frame_index: d.frame_index || (idx + 1),
+                defect_flags: typeof d.defect_flags === 'object' ? d.defect_flags : { blur: true },
+                defect_type: d.defect_type || 'QA Defect',
+                pic: d.pic || 'Inspector',
+                image_url: d.image_url,
+                lat: d.lat ?? d.latitude,
+                lng: d.lng ?? d.lon ?? d.longitude,
+                bearing: d.bearing,
+                is_resolved: Boolean(d.is_resolved),
+                resolved_at: d.resolved_at,
+                created_at: d.created_at || new Date().toISOString()
+              }));
+            setDefects(relevant);
+          } else {
+            setDefects([]);
+          }
+          setIsLoading(false);
         }
-        setIsLoading(false);
-      }
-    });
+      });
 
     return () => {
       isMounted = false;
@@ -183,7 +205,7 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
 
     if (success) {
       const nowStr = new Date().toISOString();
-      const updated = defects.map(d => d.point_id === defect.point_id ? { ...d, is_resolved: true, resolved_at: nowStr } : d);
+      const updated = defects.map(d => (d.point_id === defect.point_id ? { ...d, is_resolved: true, resolved_at: nowStr } : d));
       setDefects(updated);
 
       const remainingActive = updated.filter(d => !d.is_resolved).length;
@@ -194,151 +216,187 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
     setResolvingPointId(null);
   };
 
-  // Handle Jump to 360 View
-  const handleJump = (defect: QADefectRecord) => {
+  // Handle Jump to 360 View & Map sync
+  const handleJump = (defect: QADefectRecord, keepOpen = true) => {
     const ptId = defect.point_id;
+    setActivePointId(ptId);
     const imgUrl = defect.image_url || resolvePanoramaUrl(ptId, projectSettings);
     onJumpTo360({
       pointId: ptId,
       imageUrl: imgUrl,
       lat: defect.lat,
       lng: defect.lng,
-      bearing: defect.bearing
+      bearing: defect.bearing,
+      keepOpen
     });
-    onClose();
+    if (!keepOpen) {
+      onClose();
+    }
   };
 
-  if (!isOpen) return null;
+  // Keyboard navigation through filtered defect items
+  const handleNavigateNext = () => {
+    if (filteredDefects.length === 0) return;
+    const currentIndex = filteredDefects.findIndex(d => d.point_id === activePointId);
+    const nextIndex = currentIndex < 0 ? 0 : (currentIndex + 1) % filteredDefects.length;
+    const nextDefect = filteredDefects[nextIndex];
+    if (nextDefect) {
+      handleJump(nextDefect, true);
+    }
+  };
+
+  const handleNavigatePrev = () => {
+    if (filteredDefects.length === 0) return;
+    const currentIndex = filteredDefects.findIndex(d => d.point_id === activePointId);
+    const prevIndex = currentIndex <= 0 ? filteredDefects.length - 1 : currentIndex - 1;
+    const prevDefect = filteredDefects[prevIndex];
+    if (prevDefect) {
+      handleJump(prevDefect, true);
+    }
+  };
+
+  const drawerTitle = mode === 'daily' ? 'Daily Batch QC Audit' : 'Acquisition QC Inspector';
+  const drawerSubtitle = `${cleanSubgrid} ${surveyDate ? `• ${surveyDate}` : ''} ${totalPoi ? `• ${totalPoi} POI` : ''}`;
+
+  const drawerBadge = activeCount > 0 ? (
+    <span className="px-2 py-0.5 rounded-md text-[11px] font-sans font-medium bg-rose-500/15 text-rose-300 border border-rose-500/30 flex items-center gap-1">
+      <AlertTriangle size={11} className="text-rose-400" />
+      {activeCount} Flagged
+    </span>
+  ) : (
+    <span className="px-2 py-0.5 rounded-md text-[11px] font-sans font-medium bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+      <CheckCircle size={11} className="text-emerald-400" />
+      0 Defects
+    </span>
+  );
+
+  const headerActions = (
+    <button
+      type="button"
+      onClick={() => setDisplayMode(prev => (prev === 'docked' ? 'modal' : 'docked'))}
+      className={`hidden sm:inline-flex p-1.5 rounded-lg border transition-colors cursor-pointer text-xs font-medium ${
+        displayMode === 'docked'
+          ? 'bg-inner text-text-muted hover:text-text-base border-subtle'
+          : 'bg-sky-500/20 text-sky-300 border-sky-500/30'
+      }`}
+      title={displayMode === 'docked' ? 'Switch to Focused Modal Mode' : 'Switch to Docked (Non-blocking) Side Panel'}
+    >
+      <Layers size={14} />
+    </button>
+  );
+
+  const footer = (
+    <div className="flex items-center justify-between text-xs text-text-muted">
+      <div>
+        Showing <span className="font-semibold text-text-base">{filteredDefects.length}</span> of{' '}
+        <span className="font-semibold text-text-base">{displayDefects.length}</span> anomalies
+      </div>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onClose}
+          className="px-3.5 py-1.5 bg-inner hover:bg-card text-text-base rounded-lg text-xs font-medium border border-subtle transition-colors cursor-pointer"
+        >
+          Close Inspector
+        </button>
+      </div>
+    </div>
+  );
+
+  const cardGridClass =
+    widthMode === 'compact'
+      ? 'grid grid-cols-1 gap-3'
+      : widthMode === 'expanded'
+      ? 'grid grid-cols-1 sm:grid-cols-2 gap-3.5'
+      : 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4';
 
   return (
-    <div role="dialog" aria-modal="true" aria-label="Acquisition QC Review" className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="relative w-full max-w-5xl h-[94vh] sm:h-[88vh] bg-card border border-subtle rounded-2xl shadow-2xl flex flex-col overflow-hidden text-text-base">
-        
-        {/* HEADER BAR */}
-        <div className="px-4 sm:px-6 py-3.5 border-b border-subtle bg-inner flex items-center justify-between shrink-0 gap-2">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-9 h-9 rounded-xl bg-inner/80 border border-subtle flex items-center justify-center text-text-base shrink-0">
-              <AlertTriangle size={18} />
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-sm sm:text-base font-semibold tracking-tight text-text-base truncate">
-                  {mode === 'daily' ? 'Daily Batch Acquisition QC Review' : 'Masterlist Acquisition QC Review'}
-                </h2>
-                <span className="px-2 py-0.5 rounded-md text-[11px] font-sans font-semibold bg-blue-500/15 text-blue-300 border border-blue-500/30 shrink-0">
-                  {cleanSubgrid}
-                </span>
-                {mode === 'daily' ? (
-                  <span className="px-2 py-0.5 rounded-md text-[11px] font-sans font-medium bg-sky-500/15 text-sky-300 border border-sky-500/30 shrink-0">
-                    Daily {surveyDate ? `• ${surveyDate}` : ''}
-                  </span>
-                ) : (
-                  <span className="px-2 py-0.5 rounded-md text-[11px] font-sans font-medium bg-amber-500/15 text-amber-300 border border-amber-500/30 shrink-0">
-                    Master Subgrid
-                  </span>
-                )}
-                {totalPoi !== undefined && totalPoi > 0 && (
-                  <span className="px-2 py-0.5 rounded-md text-[11px] font-sans bg-inner text-text-base border border-subtle shrink-0">
-                    {totalPoi} POI
-                  </span>
-                )}
-                {activeCount > 0 ? (
-                  <span className="px-2 py-0.5 rounded-md text-[11px] font-medium bg-rose-500/15 text-rose-300 border border-rose-500/30 shrink-0">
-                    {activeCount} Flagged
-                    {totalPoi && totalPoi > 0 ? ` (${Math.round((activeCount / totalPoi) * 100)}%)` : ''}
-                  </span>
-                ) : (
-                  <span className="px-2 py-0.5 rounded-md text-[11px] font-medium bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 shrink-0">
-                    0 Defects
-                  </span>
-                )}
-              </div>
-              <p className="text-[11px] text-text-muted truncate hidden xs:block mt-0.5">
-                {mode === 'daily'
-                  ? `Reviewing anomalies specifically for daily survey run ${surveyDate || cleanSubgrid}.`
-                  : `Reviewing cumulative anomalies across all survey runs for subgrid ${cleanSubgrid}.`}
-              </p>
-            </div>
-          </div>
-
-          <button
-            onClick={onClose}
-            className="p-1.5 hover:bg-inner rounded-lg text-text-muted hover:text-text-base transition-colors cursor-pointer shrink-0"
-            aria-label="Close Defect Gallery Modal"
-          >
-            <X size={18} />
-          </button>
-        </div>
-
+    <>
+      <InspectorDrawer
+        isOpen={isOpen}
+        onClose={onClose}
+        title={drawerTitle}
+        subtitle={drawerSubtitle}
+        badge={drawerBadge}
+        headerActions={headerActions}
+        footer={footer}
+        mode={displayMode}
+        widthMode={widthMode}
+        onWidthModeChange={setWidthMode}
+        onNavigateNext={handleNavigateNext}
+        onNavigatePrev={handleNavigatePrev}
+        ariaLabel="Defects Spatial Inspector Drawer"
+        bodyClassName="flex flex-col"
+      >
         {/* CONTROLS & FILTER CHIPS */}
-        <div className="px-4 sm:px-6 py-2.5 border-b border-subtle bg-inner flex flex-wrap items-center justify-between gap-2 shrink-0">
+        <div className="px-4 sm:px-5 py-2.5 border-b border-subtle bg-inner/80 flex flex-wrap items-center justify-between gap-2 shrink-0 sticky top-0 z-10 backdrop-blur-md">
           <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar w-full sm:w-auto pb-1 sm:pb-0">
-            <span className="text-xs font-medium text-text-muted flex items-center gap-1 mr-1 shrink-0">
+            <span className="text-[11px] font-medium text-text-muted flex items-center gap-1 mr-1 shrink-0">
               <Filter size={12} />
               Filter:
             </span>
             <button
               onClick={() => setFilterCategory('all')}
-              className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                 filterCategory === 'all'
-                  ? 'bg-inner text-text-base border border-subtle shadow-sm'
-                  : 'bg-app/60 hover:bg-inner text-text-muted border border-subtle'
+                  ? 'bg-inner text-text-base border border-subtle shadow-sm font-semibold'
+                  : 'bg-app/50 hover:bg-inner text-text-muted border border-subtle/70'
               }`}
             >
               All ({displayDefects.length})
             </button>
             <button
               onClick={() => setFilterCategory('blur')}
-              className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
+              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer flex items-center gap-1 whitespace-nowrap shrink-0 ${
                 filterCategory === 'blur'
-                  ? 'bg-inner text-text-base border border-subtle shadow-sm'
-                  : 'bg-app/60 hover:bg-inner text-text-muted border border-subtle'
+                  ? 'bg-inner text-text-base border border-subtle shadow-sm font-semibold'
+                  : 'bg-app/50 hover:bg-inner text-text-muted border border-subtle/70'
               }`}
             >
-              <Camera size={12} />
+              <Camera size={11} />
               Blurry ({blurCount})
             </button>
             <button
               onClick={() => setFilterCategory('obstruction')}
-              className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
+              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer flex items-center gap-1 whitespace-nowrap shrink-0 ${
                 filterCategory === 'obstruction'
-                  ? 'bg-inner text-text-base border border-subtle shadow-sm'
-                  : 'bg-app/60 hover:bg-inner text-text-muted border border-subtle'
+                  ? 'bg-inner text-text-base border border-subtle shadow-sm font-semibold'
+                  : 'bg-app/50 hover:bg-inner text-text-muted border border-subtle/70'
               }`}
             >
-              <Sun size={12} />
+              <Sun size={11} />
               Obstruction ({obstructionCount})
             </button>
             <button
               onClick={() => setFilterCategory('gps')}
-              className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
+              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer flex items-center gap-1 whitespace-nowrap shrink-0 ${
                 filterCategory === 'gps'
-                  ? 'bg-inner text-text-base border border-subtle shadow-sm'
-                  : 'bg-app/60 hover:bg-inner text-text-muted border border-subtle'
+                  ? 'bg-inner text-text-base border border-subtle shadow-sm font-semibold'
+                  : 'bg-app/50 hover:bg-inner text-text-muted border border-subtle/70'
               }`}
             >
-              <Navigation size={12} />
+              <Navigation size={11} />
               GPS ({gpsCount})
             </button>
           </div>
 
-          <label className="flex items-center gap-2 text-xs font-medium text-text-muted cursor-pointer hover:text-text-base transition-colors shrink-0">
+          <label className="flex items-center gap-1.5 text-xs font-medium text-text-muted cursor-pointer hover:text-text-base transition-colors shrink-0">
             <input
               type="checkbox"
               checked={showResolved}
               onChange={(e) => setShowResolved(e.target.checked)}
               className="rounded bg-inner border-subtle text-text-muted focus:ring-0 cursor-pointer"
             />
-            <span>Show Resolved ({resolvedCount})</span>
+            <span>Resolved ({resolvedCount})</span>
           </label>
         </div>
 
-        {/* DEFECT CARDS GRID BODY */}
-        <div className="flex-1 p-4 sm:p-6 overflow-y-auto min-h-0 bg-inner/60">
+        {/* DEFECT CARDS GRID */}
+        <div className="flex-1 p-4 sm:p-5 overflow-y-auto min-h-0 bg-inner/30">
           {isLoading ? (
-            <div aria-hidden="true" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 animate-pulse">
+            <div aria-hidden="true" className={cardGridClass}>
               {Array.from({ length: 6 }).map((_, i) => (
-                <div key={i} className="bg-card border border-subtle rounded-xl p-3 space-y-2.5">
+                <div key={i} className="bg-card border border-subtle rounded-xl p-3 space-y-2.5 animate-pulse">
                   <div className="h-28 rounded-lg bg-inner border border-subtle/60" />
                   <div className="h-3 w-1/2 rounded bg-inner border border-subtle/60" />
                   <div className="h-3 w-1/3 rounded bg-inner border border-subtle/60" />
@@ -346,39 +404,42 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
               ))}
             </div>
           ) : filteredDefects.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center gap-3 text-center p-8">
+            <div className="h-full flex flex-col items-center justify-center gap-3 text-center p-8 min-h-[300px]">
               <div className="w-12 h-12 rounded-xl bg-inner/80 border border-subtle flex items-center justify-center text-text-muted mb-1">
                 <ShieldCheck size={24} />
               </div>
               <h3 className="text-sm font-semibold text-text-base">No Defects Found in this View</h3>
-              <p className="text-xs text-text-muted max-w-md">
+              <p className="text-xs text-text-muted max-w-sm">
                 {displayDefects.length === 0
                   ? `Subgrid ${cleanSubgrid} has 0 recorded defects or has passed automated inspection clean.`
                   : 'All recorded anomalies for this filter category have been resolved or filtered out.'}
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className={cardGridClass}>
               {filteredDefects.map((defect) => {
                 const ptId = defect.point_id;
                 const imgUrl = defect.image_url || resolvePanoramaUrl(ptId, projectSettings);
                 const isResolved = Boolean(defect.is_resolved);
+                const isActive = activePointId === ptId;
                 const flags = defect.defect_flags || {};
 
                 return (
                   <div
                     key={defect.id || `${defect.subgrid}-${defect.point_id}`}
-                    className={`bg-card border rounded-xl overflow-hidden shadow-sm flex flex-col justify-between transition-all duration-200 hover:border-subtle ${
-                      isResolved
-                        ? 'border-subtle/60 opacity-60'
-                        : 'border-subtle'
+                    onClick={() => handleJump(defect, true)}
+                    className={`bg-card border rounded-xl overflow-hidden shadow-sm flex flex-col justify-between transition-all duration-200 cursor-pointer ${
+                      isActive
+                        ? 'border-sky-400 ring-2 ring-sky-400/40 bg-sky-950/20 shadow-md shadow-sky-500/10'
+                        : isResolved
+                        ? 'border-subtle/60 opacity-65 hover:border-subtle hover:opacity-90'
+                        : 'border-subtle hover:border-sky-500/50 hover:shadow-md'
                     }`}
                   >
-                    {/* CARD TOP: THUMBNAIL & CROP PREVIEW */}
-                    <div 
-                      onClick={() => setLightboxDefect(defect)}
-                      className="relative aspect-[16/9] w-full bg-zinc-950 overflow-hidden group cursor-pointer"
-                      title="Click to View Full Resolution Image"
+                    {/* CARD TOP: THUMBNAIL */}
+                    <div
+                      className="relative aspect-[16/9] w-full bg-zinc-950 overflow-hidden group"
+                      title="Click card to inspect on Map & 360 viewer"
                     >
                       <img
                         src={imgUrl}
@@ -396,6 +457,11 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
                         <span className="px-2 py-0.5 rounded text-[10px] font-sans font-medium bg-black/80 backdrop-blur-md text-slate-100 border border-white/10 shadow">
                           #{defect.frame_index || 1}
                         </span>
+                        {isActive && (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-sky-500 text-slate-950 font-bold backdrop-blur-md flex items-center gap-1 shadow animate-pulse">
+                            Active
+                          </span>
+                        )}
                         {isResolved ? (
                           <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-emerald-950/80 text-emerald-300 backdrop-blur-md flex items-center gap-1 shadow border border-emerald-800/50">
                             <CheckCircle size={10} className="text-emerald-400" />
@@ -410,12 +476,18 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
                       </div>
 
                       {/* Zoom Lightbox Trigger */}
-                      <div
-                        className="absolute top-2.5 right-2.5 p-1.5 rounded-md bg-black/70 group-hover:bg-black/90 text-slate-300 group-hover:text-white backdrop-blur-md transition-opacity shadow border border-white/10 flex items-center gap-1 text-[11px]"
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setLightboxDefect(defect);
+                        }}
+                        className="absolute top-2.5 right-2.5 p-1.5 rounded-md bg-black/70 hover:bg-black/90 text-slate-300 hover:text-white backdrop-blur-md transition-all shadow border border-white/10 flex items-center gap-1 text-[11px] cursor-pointer"
+                        title="View Full Resolution Image"
                       >
                         <Maximize2 size={12} />
-                        <span className="text-[10px] hidden sm:inline font-medium">View Full</span>
-                      </div>
+                        <span className="text-[10px] hidden sm:inline font-medium">Full</span>
+                      </button>
 
                       {/* Bottom Overlay Info */}
                       <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent p-2.5 pt-6 flex items-center justify-between text-[11px] text-slate-300">
@@ -448,12 +520,12 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
                           {flags.badGps && (
                             <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-inner text-text-base border border-subtle flex items-center gap-1">
                               <Navigation size={10} className="text-text-muted" />
-                              GPS Drift {flags.stepDistanceMeters !== undefined ? `(${Number(flags.stepDistanceMeters).toFixed(1)}m)` : ''}
+                              Bad GPS
                             </span>
                           )}
                           {!flags.blur && !flags.obstruction && !flags.badGps && (
                             <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-inner text-text-base border border-subtle">
-                              {defect.defect_type || 'QA Anomaly'}
+                              {defect.defect_type || 'Anomaly'}
                             </span>
                           )}
                         </div>
@@ -488,17 +560,29 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
                       {/* CARD ACTIONS */}
                       <div className="pt-2 border-t border-subtle/80 flex items-center justify-between gap-2">
                         <button
-                          onClick={() => handleJump(defect)}
-                          className="flex-1 py-1.5 px-2 bg-inner hover:bg-card text-text-base border border-subtle rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-                          title="Jump to 360 Panorama Viewer"
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleJump(defect, true);
+                          }}
+                          className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer border ${
+                            isActive
+                              ? 'bg-sky-500 text-slate-950 font-bold border-sky-400'
+                              : 'bg-inner hover:bg-card text-text-base border-subtle'
+                          }`}
+                          title="Center Map and Load 360 Viewer on this Defect"
                         >
-                          <Eye size={12} className="text-text-muted" />
-                          <span>Jump to 360</span>
+                          <Eye size={12} className={isActive ? 'text-slate-950' : 'text-text-muted'} />
+                          <span>{isActive ? 'Inspecting' : 'Inspect 360'}</span>
                         </button>
 
                         {!isResolved ? (
                           <button
-                            onClick={() => handleResolveDefect(defect)}
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleResolveDefect(defect);
+                            }}
                             disabled={resolvingPointId === defect.point_id}
                             className="py-1.5 px-2.5 bg-inner/60 hover:bg-inner text-text-muted hover:text-text-base border border-subtle/80 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
                             title="Mark Defect as Resolved / Dismissed"
@@ -512,7 +596,7 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
                           </button>
                         ) : (
                           <div className="text-[11px] font-medium text-text-base flex items-center gap-1 px-2 py-1 bg-inner rounded-lg border border-subtle">
-                            <CheckCircle size={11} className="text-text-muted" />
+                            <CheckCircle size={11} className="text-emerald-400" />
                             <span>Resolved</span>
                           </div>
                         )}
@@ -524,24 +608,9 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
             </div>
           )}
         </div>
+      </InspectorDrawer>
 
-        {/* FOOTER SUMMARY */}
-        <div className="px-6 py-3 border-t border-subtle bg-inner flex items-center justify-between text-xs text-text-muted shrink-0">
-          <div>
-            Showing <span className="font-semibold text-text-base">{filteredDefects.length}</span> of{' '}
-            <span className="font-semibold text-text-base">{displayDefects.length}</span> total defect records
-          </div>
-          <button
-            onClick={onClose}
-            className="px-4 py-1.5 bg-inner hover:bg-card text-text-base rounded-lg text-xs font-medium border border-subtle transition-colors cursor-pointer"
-          >
-            Close Gallery
-          </button>
-        </div>
-
-      </div>
-
-      {/* TRUE TOP-LEVEL FULLSCREEN HIGH-RES LIGHTBOX VIEWER */}
+      {/* TOP-LEVEL FULLSCREEN HIGH-RES LIGHTBOX VIEWER */}
       {lightboxDefect && (() => {
         const ptId = lightboxDefect.point_id;
         const fullImgUrl = lightboxDefect.image_url || resolvePanoramaUrl(ptId, projectSettings);
@@ -584,12 +653,11 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
 
               {/* ZOOM & ACTION BUTTONS */}
               <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-                {/* Zoom Controls */}
                 <div className="flex items-center bg-inner/90 rounded-lg border border-subtle p-0.5 mr-1">
                   <button
                     onClick={() => setLightboxZoom(prev => Math.max(0.5, Math.round((prev - 0.25) * 100) / 100))}
                     className="p-1 text-text-muted hover:text-white rounded hover:bg-card transition-colors cursor-pointer"
-                    title="Zoom Out (or scroll down)"
+                    title="Zoom Out"
                     disabled={lightboxZoom <= 0.5}
                   >
                     <ZoomOut size={13} />
@@ -600,7 +668,7 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
                   <button
                     onClick={() => setLightboxZoom(prev => Math.min(5, Math.round((prev + 0.25) * 100) / 100))}
                     className="p-1 text-text-muted hover:text-white rounded hover:bg-card transition-colors cursor-pointer"
-                    title="Zoom In (or scroll up)"
+                    title="Zoom In"
                     disabled={lightboxZoom >= 5}
                   >
                     <ZoomIn size={13} />
@@ -609,7 +677,7 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
                     <button
                       onClick={() => setLightboxZoom(1)}
                       className="p-1 text-text-muted hover:text-white rounded hover:bg-card transition-colors cursor-pointer ml-0.5"
-                      title="Reset Zoom (Fit)"
+                      title="Reset Zoom"
                     >
                       <RotateCcw size={12} />
                     </button>
@@ -629,14 +697,14 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
 
                 <button
                   onClick={() => {
-                    handleJump(lightboxDefect);
+                    handleJump(lightboxDefect, true);
                     setLightboxDefect(null);
                   }}
                   className="px-2.5 py-1.5 rounded-lg bg-inner hover:bg-card text-text-base text-xs font-medium border border-subtle flex items-center gap-1.5 transition-colors cursor-pointer"
-                  title="Jump to 360 Panorama Viewer"
+                  title="Inspect on 360 Viewer and Map"
                 >
                   <Eye size={13} />
-                  <span className="hidden sm:inline">Jump to 360</span>
+                  <span className="hidden sm:inline">Inspect 360</span>
                 </button>
 
                 <button
@@ -653,14 +721,14 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
             </div>
 
             {/* IMAGE CONTAINER */}
-            <div 
+            <div
               onClick={() => {
                 setLightboxDefect(null);
                 setLightboxZoom(1);
               }}
               className="flex-1 w-full h-full flex items-center justify-center min-h-0 overflow-auto my-2 p-2 cursor-zoom-out"
             >
-              <div 
+              <div
                 onClick={(e) => e.stopPropagation()}
                 className="flex items-center justify-center max-w-full max-h-full transition-transform duration-150 ease-out cursor-default"
                 style={{
@@ -715,8 +783,9 @@ export const DefectsGalleryModal: React.FC<DefectsGalleryModalProps> = ({
           </div>
         );
       })()}
-    </div>
+    </>
   );
 };
 
+export const DefectsInspectorDrawer = DefectsGalleryModal;
 export default DefectsGalleryModal;
