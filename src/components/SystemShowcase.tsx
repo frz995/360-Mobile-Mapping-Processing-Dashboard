@@ -1557,33 +1557,33 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                         {/* Outer ambient aura */}
                         <div
                             className={`w-[min(115vw,880px)] h-[min(115vw,880px)] rounded-full blur-[100px] transition-all duration-700 ${
-                                showDistrictPopup ? 'opacity-15' : showAtomicGlobe ? 'opacity-30' : 'opacity-45'
+                                showDistrictPopup ? 'opacity-15' : showAtomicGlobe ? 'opacity-40' : 'opacity-45'
                             }`}
                             style={{
                                 background: showAtomicGlobe
-                                    ? 'radial-gradient(circle, rgba(226, 238, 255, 0.11) 0%, rgba(186, 230, 253, 0.04) 38%, transparent 70%)'
+                                    ? 'radial-gradient(circle, rgba(14, 165, 233, 0.22) 0%, rgba(30, 64, 175, 0.12) 40%, transparent 70%)'
                                     : 'radial-gradient(circle, rgba(56, 189, 248, 0.18) 0%, rgba(30, 64, 175, 0.12) 38%, rgba(15, 23, 42, 0) 70%)',
                             }}
                         />
                         {/* Core ethereal rim glow */}
                         <div
                             className={`absolute w-[min(85vw,640px)] h-[min(85vw,640px)] rounded-full blur-[65px] transition-all duration-700 ${
-                                showDistrictPopup ? 'opacity-20' : showAtomicGlobe ? 'opacity-40' : 'opacity-65'
+                                showDistrictPopup ? 'opacity-20' : showAtomicGlobe ? 'opacity-55' : 'opacity-65'
                             }`}
                             style={{
                                 background: showAtomicGlobe
-                                    ? 'radial-gradient(circle, rgba(226, 238, 255, 0.17) 0%, rgba(186, 230, 253, 0.07) 35%, transparent 65%)'
+                                    ? 'radial-gradient(circle, rgba(56, 189, 248, 0.32) 0%, rgba(14, 165, 233, 0.20) 36%, rgba(30, 64, 175, 0.08) 60%, transparent 70%)'
                                     : 'radial-gradient(circle, rgba(147, 197, 253, 0.24) 0%, rgba(56, 189, 248, 0.14) 35%, rgba(14, 165, 233, 0) 65%)',
                             }}
                         />
                         {/* Subtle inner highlight center bloom */}
                         <div
                             className={`absolute w-[min(50vw,400px)] h-[min(50vw,400px)] rounded-full blur-[45px] transition-all duration-700 ${
-                                showDistrictPopup ? 'opacity-10' : showAtomicGlobe ? 'opacity-22' : 'opacity-40'
+                                showDistrictPopup ? 'opacity-10' : showAtomicGlobe ? 'opacity-45' : 'opacity-40'
                             }`}
                             style={{
                                 background: showAtomicGlobe
-                                    ? 'radial-gradient(circle, rgba(240, 246, 255, 0.14) 0%, rgba(186, 230, 253, 0.03) 50%, transparent 70%)'
+                                    ? 'radial-gradient(circle, rgba(56, 189, 248, 0.45) 0%, rgba(14, 165, 233, 0.25) 45%, rgba(30, 64, 175, 0.08) 70%, transparent 80%)'
                                     : 'radial-gradient(circle, rgba(224, 242, 254, 0.20) 0%, rgba(56, 189, 248, 0.06) 50%, transparent 70%)',
                             }}
                         />

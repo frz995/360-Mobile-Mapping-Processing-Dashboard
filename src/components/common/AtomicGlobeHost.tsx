@@ -218,7 +218,7 @@ export function AtomicGlobeHost({
       className={className}
       style={{
         ...style,
-        background: 'radial-gradient(circle at 50% 50%, rgba(226,238,255,0.04) 0%, rgba(186,230,253,0.01) 35%, transparent 65%)',
+        background: 'radial-gradient(circle at 50% 50%, rgba(56,189,248,0.18) 0%, rgba(14,165,233,0.10) 35%, rgba(30,64,175,0.03) 55%, transparent 70%)',
       }}
       onWheel={(e) => {
         if (!enableZoom || !onZoomChange) return;
