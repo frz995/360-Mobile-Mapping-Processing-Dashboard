@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Check, Copy, Globe2, KeyRound, Loader2, X } from 'lucide-react';
 import { GeoSphereIcon } from '../components/common/GeoSphereLogo';
+import { supabase } from '../services/api/client';
 import {
   createShare,
   type ShareKind,
@@ -74,6 +75,8 @@ export function ShareMapDialog({ open, kind, defaultTitle, buildSnapshot, basema
     setBusy(true);
     setError('');
     try {
+      const { data: sessionData } = await supabase.auth.getSession().catch(() => ({ data: { session: null } }));
+      const effectiveCreatedBy = createdBy || sessionData?.session?.user?.id || null;
       const snapshot = await buildSnapshot();
       const { url } = await createShare({
         kind,
@@ -82,7 +85,7 @@ export function ShareMapDialog({ open, kind, defaultTitle, buildSnapshot, basema
         basemap,
         password: usePassword ? password.trim() : null,
         expiresDays: Number(expiresDays) > 0 ? Number(expiresDays) : null,
-        createdBy
+        createdBy: effectiveCreatedBy
       });
       setShareUrl(url);
     } catch (err) {

@@ -3356,7 +3356,7 @@ export default function App() {
                     <div className="p-2.5 sm:p-3 border-b border-subtle flex flex-wrap items-center justify-between gap-2 shrink-0 bg-card">
                       <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
                         <span className="text-xs font-bold uppercase tracking-wider text-text-base flex items-center gap-1.5 sm:gap-2">
-                          <Database size={14} className="text-sky-400 shrink-0" />
+                          <Database size={14} className="text-text-base shrink-0" />
                           <span>{t('processingControlTitle')}</span>
                         </span>
                         <div className="flex bg-inner border border-subtle rounded-lg p-0.5 text-[10px]">

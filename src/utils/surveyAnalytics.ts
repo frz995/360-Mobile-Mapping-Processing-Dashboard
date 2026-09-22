@@ -187,6 +187,11 @@ export function computeSurveyAnalytics(input: SurveyAnalyticsInput): SurveyAnaly
   const daily = (input.daily || []).filter(Boolean);
   const aggregates = input.aggregates || [];
   const qaBySubgrid = input.qaBySubgrid || {};
+  // Sum of the per-subgrid plan map. Road Analysis writes an entry per
+  // surveyed subgrid even when no plan geometry was clipped to the cell, so a
+  // zero-filled map must not be treated as "$0 km to capture". Only when the
+  // map carries real plan distances (sum > 0) are per-subgrid values trusted.
+  const subgridPlanTotal = Object.values(input.subgridPlanKm || {}).reduce((sum, v) => sum + (Number(v) || 0), 0);
   const effectiveTargetKm = Number(input.roadPlanKm) > 0 ? Number(input.roadPlanKm) : (Number(input.targetKm) || 0);
   const targetKm = effectiveTargetKm;
   const targetImages = Number(input.targetImages) || 0;
@@ -298,19 +303,28 @@ export function computeSurveyAnalytics(input: SurveyAnalyticsInput): SurveyAnaly
     if (hasRoadPlanSource) {
       acc.hasPlanSource = true;
       const explicitPlan = input.subgridPlanKm?.[acc.subgrid];
-      if (typeof explicitPlan === 'number' && !isNaN(explicitPlan)) {
+      if (typeof explicitPlan === 'number' && !isNaN(explicitPlan) && (explicitPlan > 0 || subgridPlanTotal > 0)) {
         acc.planKm = Math.round(explicitPlan * 100) / 100;
       } else if (typeof input.roadPlanKm === 'number' && input.roadPlanKm > 0 && bySubgrid.size === 1) {
         acc.planKm = Math.round(input.roadPlanKm * 100) / 100;
       } else {
-        acc.planKm = 0;
+        // No per-subgrid plan attribution (global plan loaded but no subgrid
+        // plan distances computed). Reporting 0 here would falsely claim the
+        // cell is fully covered, so leave the plan/remaining unknown.
+        acc.planKm = null;
       }
       sumPlanKm += (acc.planKm || 0);
-      acc.remainingKm = Math.max(0, Math.round(((acc.planKm || 0) - acc.km) * 100) / 100);
-      acc.actualCoveragePct = (acc.planKm || 0) > 0
-        ? Math.min(100, Math.round((acc.km / (acc.planKm || 1)) * 100))
-        : (acc.km > 0 ? 100 : 0);
-      acc.coveragePct = acc.actualCoveragePct;
+      if (typeof acc.planKm === 'number') {
+        acc.remainingKm = Math.max(0, Math.round(((acc.planKm || 0) - acc.km) * 100) / 100);
+        acc.actualCoveragePct = (acc.planKm || 0) > 0
+          ? Math.min(100, Math.round((acc.km / (acc.planKm || 1)) * 100))
+          : (acc.km > 0 ? 100 : 0);
+        acc.coveragePct = acc.actualCoveragePct;
+      } else {
+        acc.remainingKm = null;
+        acc.actualCoveragePct = null;
+        acc.coveragePct = 0;
+      }
     } else {
       acc.hasPlanSource = false;
       acc.planKm = null;

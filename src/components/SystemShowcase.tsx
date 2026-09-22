@@ -46,6 +46,7 @@ import { DistrictProjectPopup, type PanotrackPopupData } from './common/District
 import { AmbienceLayer } from './showcase/AmbienceLayer';
 import { HeroSection } from './showcase/HeroSection';
 import { ModuleSection } from './showcase/ModuleSection';
+import { InterModuleConnectors } from './showcase/InterModuleConnectors';
 import { WorkflowSection } from './showcase/WorkflowSection';
 import { OutroSection } from './showcase/OutroSection';
 import { SectionRail } from './showcase/SectionRail';
@@ -139,6 +140,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
     // Scroll story plumbing — the scroll port drives section tracking, the
     // header progress hairline, and the backdrop globe choreography.
     const scrollRef = useRef<HTMLDivElement>(null);
+    const modulesContainerRef = useRef<HTMLDivElement>(null);
     const { scrollY, scrollYProgress } = useScroll({ container: scrollRef });
     // Live Lenis instance (see creation effect below) — shared by the smooth
     // wheel glide and programmatic section navigation.
@@ -2111,15 +2113,21 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                     onExploreEarth={() => setViewMode('globe')}
                 />
 
-                {SYSTEM_MODULES.map((mod, i) => (
-                    <ModuleSection
-                        key={mod.id}
-                        mod={mod}
-                        index={i}
-                        total={SYSTEM_MODULES.length}
-                        onEnter={handleLaunchModule}
+                <div ref={modulesContainerRef} className="relative w-full">
+                    <InterModuleConnectors
+                        totalModules={SYSTEM_MODULES.length}
+                        containerRef={modulesContainerRef}
                     />
-                ))}
+                    {SYSTEM_MODULES.map((mod, i) => (
+                        <ModuleSection
+                            key={mod.id}
+                            mod={mod}
+                            index={i}
+                            total={SYSTEM_MODULES.length}
+                            onEnter={handleLaunchModule}
+                        />
+                    ))}
+                </div>
 
                 <WorkflowSection onJumpTo={handleModuleChange} />
 

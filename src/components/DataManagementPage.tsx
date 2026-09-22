@@ -720,18 +720,25 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
     if (mode === 'bulk') {
       const set = new Set<string>();
       selectedRowIds.forEach((id) => {
-        const d = dailyData.find((x) => getItemId(x) === id) || draftDailyData.find((x) => getItemId(x) === id);
-        const b = batchLogs.find((x) => getItemId(x) === id);
-        const raw = d?.subgrid || b?.subgrid || b?.imageFilename;
-        if (raw) {
-          const sg = (extractSubgridName(raw) || raw || '').toUpperCase().trim();
-          if (sg) set.add(sg);
+        if (dataTab === 'daily') {
+          const d = dailyData.find((x) => getItemId(x) === id) || draftDailyData.find((x) => getItemId(x) === id);
+          if (d?.subgrid) {
+            const sg = (extractSubgridName(d.subgrid) || d.subgrid).toUpperCase().trim();
+            if (sg) set.add(sg);
+          }
+        } else {
+          const b = batchLogs.find((x) => getItemId(x) === id);
+          const raw = b?.subgrid || b?.imageFilename;
+          if (raw) {
+            const sg = (extractSubgridName(raw) || raw).toUpperCase().trim();
+            if (sg) set.add(sg);
+          }
         }
       });
       return Array.from(set).filter(Boolean);
     }
     return spatialSubgrids;
-  }, [deleteTarget, selectedRowIds, dailyData, draftDailyData, batchLogs, spatialSubgrids]);
+  }, [deleteTarget, selectedRowIds, dailyData, draftDailyData, batchLogs, spatialSubgrids, dataTab]);
 
   const computeImpactForMode = useCallback(async (mode: DeletionMode, targetOverride?: BatchLog | DailyTimeSeries | null) => {
     const subgrids = resolveDeleteSubgrids(mode, targetOverride);
@@ -759,11 +766,14 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
       stagingAggregates: stg,
       datasets: ds,
       jobs: js,
-      fallbackRecord: effectiveTarget && typeof effectiveTarget !== 'string' ? effectiveTarget : undefined
+      fallbackRecord: effectiveTarget && typeof effectiveTarget !== 'string' ? effectiveTarget : undefined,
+      targetRecord: effectiveTarget && typeof effectiveTarget !== 'string' ? effectiveTarget : undefined,
+      sourceTab: dataTab,
+      selectedIds: selectedRowIds
     });
     setImpactData(impact);
     setIsComputingImpact(false);
-  }, [resolveDeleteSubgrids, deleteTarget, registryDatasets, registryJobs, registryStaging, loadRegistryData, dailyData, draftDailyData, batchLogs, qaSubgridRecords]);
+  }, [resolveDeleteSubgrids, deleteTarget, registryDatasets, registryJobs, registryStaging, loadRegistryData, dailyData, draftDailyData, batchLogs, qaSubgridRecords, dataTab, selectedRowIds]);
 
   const openDeleteModalForMode = useCallback((mode: DeletionMode, targetOverride?: BatchLog | DailyTimeSeries | null) => {
     setDeleteMode(mode);
@@ -2353,8 +2363,19 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
       if (!hasRemainingDailyRows) {
         const updatedBatches = batchLogs.filter(b => (extractSubgridName(b.subgrid || b.imageFilename || '') || '').toUpperCase().trim() !== normSub);
         setBatchLogs(updatedBatches);
+        try {
+          await deleteFromStagingSupabase(normSub || subgridName);
+          await deleteFromSupabase(normSub || subgridName);
+        } catch (err) {
+          console.warn('Background delete error:', err);
+        }
       } else {
-        setBatchLogs(reconcileBatchLogs(updatedDaily, batchLogs));
+        const reconciled = reconcileBatchLogs(updatedDaily, batchLogs);
+        setBatchLogs(reconciled);
+        const matchingBatch = reconciled.find(b => (extractSubgridName(b.subgrid || b.imageFilename || '') || '').toUpperCase().trim() === normSub);
+        if (matchingBatch) {
+          publishToSupabase(matchingBatch).catch(err => console.warn('Background re-publish after daily delete error:', err));
+        }
       }
       setIsDailyDirty(true);
     } else {
@@ -2367,15 +2388,13 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
       setDailyData(updatedDaily);
       setDraftDailyData(updatedDraft);
       setIsDailyDirty(true);
-    }
 
-
-
-    try {
-      await deleteFromStagingSupabase(normSub || subgridName);
-      await deleteFromSupabase(normSub || subgridName);
-    } catch (err) {
-      console.warn('Background delete error:', err);
+      try {
+        await deleteFromStagingSupabase(normSub || subgridName);
+        await deleteFromSupabase(normSub || subgridName);
+      } catch (err) {
+        console.warn('Background delete error:', err);
+      }
     }
 
     if (onRefreshMap) onRefreshMap();
@@ -4380,6 +4399,7 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
           setDeleteConfirmText('');
         }}
         translate={tf}
+        sourceTab={dataTab}
       />
 
       {/* Data Selection & Point Inspector Modal */}

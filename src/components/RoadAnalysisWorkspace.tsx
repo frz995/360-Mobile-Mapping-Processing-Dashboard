@@ -19,6 +19,8 @@ import {
   X
 } from 'lucide-react';
 import type { Map as MaplibreMap } from 'maplibre-gl';
+import { RoadAnalysis3DStudio } from './roadAnalysis/RoadAnalysis3DStudio';
+import { type LightingPreset, type ColorThemePreset } from '../utils/map3DLighting';
 import { UnderlineTabStrip, StatusDot, type ChromeTab } from './production/chrome';
 import {
   MALAYSIA_DISTRICTS,
@@ -34,7 +36,7 @@ import { RoadAnalysisMap } from './roadAnalysis/RoadAnalysisMap';
 import { RoadImportPanel, type ImportPreview } from './roadAnalysis/RoadImportPanel';
 import { RoadAnalysisPrintPanel } from './roadAnalysis/RoadAnalysisPrintPanel';
 import { ShareMapDialog } from '../share/ShareMapDialog';
-import { buildRoadSnapshot } from '../utils/mapShares';
+import { buildRoadSnapshot, buildShareSegments } from '../utils/mapShares';
 import { RoadCatalogPanel, RoadAttributeTableDrawer, resolveLayerFeatures, type SystemLayerStyles } from './roadAnalysis/RoadCatalogPanel';
 import type { CatalogVectorLayer } from '../utils/gisImportParser';
 import {
@@ -66,6 +68,7 @@ import type { AuditLogItem } from '../types/dashboard';
 
 export interface RoadAnalysisWorkspaceProps {
   projectSettings?: any;
+  setProjectSettings?: React.Dispatch<React.SetStateAction<any>>;
   batchLogs?: any[];
   dailyData?: any[];
   defectsList?: any[];
@@ -391,6 +394,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
   translate = (k) => k,
   onBackToDashboard: _onBackToDashboard,
   projectSettings,
+  setProjectSettings,
   batchLogs = [],
   dailyData = [],
   defectsList = [],
@@ -616,6 +620,14 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
   });
 
   const [show3D, setShow3D] = useState<boolean>(false);
+  const [show3DStudio, setShow3DStudio] = useState<boolean>(false);
+  const [lightingPreset, setLightingPreset] = useState<LightingPreset>('day');
+  const [colorTheme, setColorTheme] = useState<ColorThemePreset>('default');
+  const [heightScale, setHeightScale] = useState<number>(1.0);
+  const [currentPitch, setCurrentPitch] = useState<number>(0);
+  const [isOrbiting, setIsOrbiting] = useState<boolean>(false);
+  const [showLabels, setShowLabels] = useState<boolean>(true);
+  const [atmosphereTint, setAtmosphereTint] = useState<boolean>(true);
 
   const [isSaving, setIsSaving] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
@@ -1276,6 +1288,15 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
     setIsSaving(true);
 
     const userEmail = authSession?.user?.email || (isGuestUser ? 'guest@example.com' : 'authenticated-user');
+
+    // Strip heavy geometry from the Supabase payload. The full GeoJSON
+    // (e.g. 21k-feature road plan ~35 MB) must never travel over the
+    // network or be embedded in project_settings — it freezes the main
+    // thread during serialization, takes 15-30s to upload, and blows
+    // the Supabase row-size limit. Lean metadata (~15 KB) is saved to
+    // the cloud; full geometry bytes go to IndexedDB only.
+    const { layers: leanCatalogLayers } = prepareCatalogLayersForPersistence(catalogLayers);
+
     const statePayload: RoadAnalysisProductionState = {
       activeTab,
       selectedStateCode,
@@ -1286,7 +1307,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
       showCoverage,
       manualGeoJson,
       extractedLines,
-      catalogLayers,
+      catalogLayers: leanCatalogLayers,
       systemStyles,
       catalogPlanLayerId,
       planDistanceKm: Number(planDistanceKm) || 0,
@@ -1297,7 +1318,10 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
       projectId: getActiveProjectId() || undefined
     };
 
-    // 1. Primary: Save to Supabase Cloud Database (Auth Metadata & project_settings)
+    // Persist full geometry to IndexedDB (fire-and-forget, never blocks save).
+    saveCatalogLayerGeometries(userKey, catalogLayers).catch(() => {});
+
+    // 1. Primary: Save lean state to Supabase Cloud Database
     const result = await saveRoadAnalysisStateToSupabase(statePayload, {
       id: authSession?.user?.id,
       email: authSession?.user?.email
@@ -1310,6 +1334,14 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
       //    marked as synced so the cache is a faithful mirror of the DB.
       const savedAt = result.updatedAt || statePayload.updatedAt || new Date().toISOString();
       mirrorRoadAnalysisToCache(userKey, { ...statePayload, updatedAt: savedAt });
+
+      // 3. Update in-memory projectSettings so AnalyticsWorkspace (and any
+      //    other consumer of projectSettings.roadAnalysisState) immediately
+      //    sees the saved road plan without requiring a page reload.
+      setProjectSettings?.((prev: any) => ({
+        ...prev,
+        roadAnalysisState: { ...statePayload, updatedAt: savedAt }
+      }));
 
       setHasUnsavedEdits(false);
       setLastSavedFingerprint(currentFingerprint);
@@ -1358,6 +1390,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
     userKey,
     catalogPlanLayerId,
     currentFingerprint,
+    setProjectSettings,
     addNotification,
     addAuditLog
   ]);
@@ -1947,9 +1980,14 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
           kind="road"
           defaultTitle={`${projectSettings?.projectName || 'GeoSphere 360'} — Road Analysis Map`}
           buildSnapshot={() => {
-            const hasLines = extractedLines && extractedLines.length > 0;
+            const hasCatalogRoads = (catalogLayers || []).some(
+              (cl) => cl.visible !== false && cl.geometryType !== 'Point'
+            );
+
+            const hasLines = (planSource === 'extracted' && extractedLines && extractedLines.length > 0)
+              || (!hasCatalogRoads && activePlanRuns && activePlanRuns.length > 0);
             const hasPoints = capturedPoints && capturedPoints.length > 0;
-            const hasTracks = (capturedTracks && capturedTracks.length > 0) || (activePlanRuns && activePlanRuns.length > 0);
+            const hasTracks = capturedTracks && capturedTracks.length > 0;
             const hasCatalog = catalogLayers && catalogLayers.length > 0;
 
             if (!hasLines && !hasPoints && !hasTracks && !hasCatalog) {
@@ -1960,11 +1998,28 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
               ? activeRegionDistricts.map((d) => d.name).join(', ')
               : undefined;
 
-            return buildRoadSnapshot(extractedLines, {
+            // Only pass standalone lines if the user explicitly extracted from OSM,
+            // or if there are no imported catalog road layers. If the road plan is already
+            // imported into catalogLayers (e.g. Segamat_Tangkak_Road_Plan), do NOT duplicate it into lines.
+            const effectiveLines = (planSource === 'extracted' && extractedLines && extractedLines.length > 0)
+              ? extractedLines
+              : (!hasCatalogRoads && activePlanRuns && activePlanRuns.length > 0)
+                ? activePlanRuns.map((run, i) => ({
+                    coordinates: run.map((p) => [p[1], p[0]] as [number, number]),
+                    name: `Road Plan Run ${i + 1}`
+                  }))
+                : [];
+
+            const totalFeaturesOrLines = effectiveLines.length > 0
+              ? effectiveLines.length
+              : (catalogLayers || []).reduce((acc, l) => acc + (l.featureCount || 0), 0);
+
+            return buildRoadSnapshot(effectiveLines, {
               planName: activePlanName || (regionLabel ? `Region: ${regionLabel}` : undefined),
               projectSettings,
               capturedPoints,
-              capturedTracks: capturedTracks.length > 0 ? capturedTracks : activePlanRuns,
+              catalogLayers,
+              segments: buildShareSegments(internalDailyData || [], projectSettings),
               stats: {
                 subgrids: activeSubgridsCount || (capturedPoints.length > 0 ? new Set(capturedPoints.map((p) => p.subgrid).filter(Boolean)).size : 0),
                 km: Number(capturedDistanceKm?.toFixed(2)) || extractedLengthKm || 0,
@@ -1972,12 +2027,12 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                 frames: 0,
                 defects: panotrackCounts.defect,
                 passRate: panotrackCounts.total > 0 ? Math.round((panotrackCounts.published / panotrackCounts.total) * 100) : 100,
-                lines: extractedLines.length
+                lines: totalFeaturesOrLines
               },
               bbox: regionGeo?.bbox
             });
           }}
-          basemap={defaultBasemapKey}
+          basemap={mapBasemap || defaultBasemapKey}
           createdBy={authSession?.user?.id || null}
           onClose={() => setShareOpen(false)}
         />
@@ -2948,6 +3003,9 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                     onClick={() => {
                       if (show3D) {
                         setShow3D(false);
+                        setShow3DStudio(false);
+                        setIsOrbiting(false);
+                        setCurrentPitch(0);
                       } else {
                         if (!mapBasemap.startsWith('ofm-')) {
                           setMapBasemap('ofm-positron');
@@ -2955,6 +3013,8 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                           setHasUnsavedEdits(true);
                         }
                         setShow3D(true);
+                        setShow3DStudio(true);
+                        setCurrentPitch(60);
                       }
                     }}
                     style={{
@@ -2968,6 +3028,22 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                     <Cuboid size={13} className="shrink-0" />
                     {show3D ? '3D' : '2D'}
                   </button>
+
+                  {show3D && (
+                    <button
+                      type="button"
+                      onClick={() => setShow3DStudio((s) => !s)}
+                      style={{
+                        backgroundColor: show3DStudio ? 'rgba(56, 189, 248, 0.22)' : 'var(--bg-inner)',
+                        borderColor: show3DStudio ? 'rgba(56, 189, 248, 0.5)' : 'var(--border-subtle)',
+                        color: show3DStudio ? 'var(--sky, #38bdf8)' : 'var(--text-muted)'
+                      }}
+                      className="flex items-center px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-all cursor-pointer hover:border-sky-400/50"
+                      title="Toggle 3D Map Studio (Lighting & Color Themes)"
+                    >
+                      Studio
+                    </button>
+                  )}
                 </div>
 
                 {/* Top-Right Floating Details Card (System Design, No Colored Text Box) */}
@@ -3203,11 +3279,58 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                   </button>
                 )}
 
+                {/* 3D Map Studio: dynamic lighting & color themes */}
+                {show3D && show3DStudio && (
+                  <RoadAnalysis3DStudio
+                    show3D={show3D}
+                    onToggle3D={(active) => {
+                      setShow3D(active);
+                      if (!active) {
+                        setShow3DStudio(false);
+                        setIsOrbiting(false);
+                        setCurrentPitch(0);
+                      }
+                    }}
+                    lightingPreset={lightingPreset}
+                    onSelectLighting={(p) => setLightingPreset(p)}
+                    colorTheme={colorTheme}
+                    onSelectTheme={(t) => setColorTheme(t)}
+                    heightScale={heightScale}
+                    onChangeHeightScale={(s) => setHeightScale(s)}
+                    currentPitch={currentPitch}
+                    onSetPitch={(pitch) => {
+                      setCurrentPitch(pitch);
+                      if (liveMapRef.current) {
+                        liveMapRef.current.easeTo({ pitch, duration: 1000 });
+                      }
+                    }}
+                    isOrbiting={isOrbiting}
+                    onToggleOrbit={() => setIsOrbiting((o) => !o)}
+                    onResetBearing={() => {
+                      if (liveMapRef.current) {
+                        liveMapRef.current.easeTo({ bearing: 0, duration: 800 });
+                      }
+                    }}
+                    showLabels={showLabels}
+                    onToggleLabels={(visible) => setShowLabels(visible)}
+                    atmosphereTint={atmosphereTint}
+                    onToggleAtmosphereTint={(tint) => setAtmosphereTint(tint)}
+                    onClose={() => setShow3DStudio(false)}
+                  />
+                )}
+
                 <RoadAnalysisMap
                   active
                   showRoadLines={showRoadLines}
                   showCoverage={showCoverage}
                   show3D={show3D}
+                  lightingPreset={lightingPreset}
+                  colorTheme={colorTheme}
+                  heightScale={heightScale}
+                  isOrbiting={isOrbiting}
+                  showLabels={showLabels}
+                  atmosphereTint={atmosphereTint}
+                  onPitchChange={(p) => setCurrentPitch(p)}
                   style={mapStyle}
                   bbox={regionGeo?.bbox ?? null}
                   districtGeojson={regionGeo?.geojson}

@@ -43,14 +43,22 @@ export const ModuleSection: React.FC<ModuleSectionProps> = ({ mod, index, total,
             <div className="relative w-full max-w-[1400px] mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-center">
                 {/* Screenshot coverflow */}
                 <motion.div
-                    variants={revealItem}
+                    id={`module-gallery-${index}`}
+                    variants={{
+                        hidden: { opacity: 0, filter: 'blur(7px)' },
+                        show: {
+                            opacity: 1,
+                            filter: 'blur(0px)',
+                            transition: { duration: 0.85, ease: EASE }
+                        }
+                    }}
                     initial="hidden"
                     whileInView="show"
                     viewport={VIEWPORT_REVEAL}
                     className={`order-1 w-full ${textFirst ? 'lg:order-2 lg:col-start-7 lg:col-span-6' : 'lg:order-1 lg:col-start-1 lg:col-span-6'
                         }`}
                 >
-                    <CoverflowGallery moduleId={mod.id} images={mod.images} hotspots={mod.hotspots} />
+                    <CoverflowGallery index={index} moduleId={mod.id} images={mod.images} hotspots={mod.hotspots} />
                 </motion.div>
 
                 {/* Narrative */}
@@ -97,7 +105,7 @@ export const ModuleSection: React.FC<ModuleSectionProps> = ({ mod, index, total,
 
                     {/* Title block */}
                     <motion.div variants={revealItem} className="space-y-2.5">
-                        <h2 className="bg-gradient-to-b from-white via-white to-neutral-400 bg-clip-text text-transparent text-2xl sm:text-3xl xl:text-[2.6rem] font-semibold tracking-tight leading-[1.08]">
+                        <h2 className="inline-block bg-gradient-to-b from-white via-white to-neutral-400 bg-clip-text text-transparent text-2xl sm:text-3xl xl:text-[2.6rem] font-semibold tracking-tight leading-[1.18] pb-2 -mb-2">
                             {mod.title}
                         </h2>
                         <p className="text-[11px] sm:text-xs font-medium uppercase tracking-[0.14em] text-neutral-500">
@@ -108,21 +116,19 @@ export const ModuleSection: React.FC<ModuleSectionProps> = ({ mod, index, total,
                         </p>
                     </motion.div>
 
-                    {/* Metric + specs */}
-                    <motion.div variants={revealItem} className="space-y-2">
-                        <div className="inline-flex items-baseline gap-2.5 rounded-xl border border-white/[0.07] bg-white/[0.02] px-4 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-                            <span className="text-[9px] uppercase tracking-[0.18em] text-neutral-500">{mod.metricLabel}</span>
-                            <span className="text-sm font-semibold text-white tabular-nums">{mod.metricValue}</span>
-                        </div>
-                        <dl className="grid gap-x-6 border-t border-white/[0.06]">
-                            {mod.specs.map((s) => (
-                                <div key={s.label} className="flex items-center justify-between gap-3 py-1.5 border-b border-white/[0.04]">
-                                    <dt className="text-[10px] text-neutral-500 shrink-0">{s.label}</dt>
-                                    <dd className="text-[10px] font-medium text-neutral-300 text-right truncate">{s.value}</dd>
-                                </div>
-                            ))}
-                        </dl>
-                    </motion.div>
+                    {/* Specs */}
+                    {mod.specs.length > 0 && (
+                        <motion.div variants={revealItem} className="space-y-2">
+                            <dl className="grid gap-x-6 border-t border-white/[0.06]">
+                                {mod.specs.map((s) => (
+                                    <div key={s.label} className="flex items-center justify-between gap-3 py-1.5 border-b border-white/[0.04]">
+                                        <dt className="text-[10px] text-neutral-500 shrink-0">{s.label}</dt>
+                                        <dd className="text-[10px] font-medium text-neutral-300 text-right truncate">{s.value}</dd>
+                                    </div>
+                                ))}
+                            </dl>
+                        </motion.div>
+                    )}
 
                     {/* Workflow timeline */}
                     {mod.workflow.length > 0 && (

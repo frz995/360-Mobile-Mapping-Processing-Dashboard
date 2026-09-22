@@ -2,11 +2,12 @@
 // Public map shares — token links for read-only viewing of the WebGIS
 // survey map and the Road Analysis lines. A share stores a compact,
 // simplified snapshot of the published state at creation time plus an
-// optional password (SHA-256 digest only). The public viewer lives on
-// the /share/<token> route and reads rows anonymously via RLS.
+// optional password (SHA-256 digest only). The viewer lives on the
+// /share/<token> route and requires a signed-in user (auth-only RLS).
 // =====================================================================
 
 import { supabase } from '../services/api/client';
+import { resolvePanoramaUrl, resolvePanoramaConfigUrl, type StorageResolveSettings } from '../services/storageUrls';
 import { getActiveProjectId } from '../services/projectContext';
 import { getPOICount, getImagesProcessedCount } from './dashboardData';
 import { extractSubgridName } from './subgrid';
@@ -35,11 +36,38 @@ export interface ShareSegment {
   date?: string;
   pic?: string;
   status: 'published' | 'in-process';
+  /** Flat equirectangular 360° panorama URL for this subgrid (for the corner PiP viewer). */
+  panoramaUrl?: string;
+  /** Multi-res cubemap tiles config URL (only when the storage strategy is tiled). */
+  configUrl?: string;
+  /**
+   * Source reference for the representative panorama. Kept alongside the baked
+   * URL so the viewer can re-resolve imagery at view time through a single seam
+   * (`resolveSegmentPanorama`) — the hook a deployment can point at a signed,
+   * expiring storage endpoint without changing the share page.
+   */
+  panoramaRef?: { filename: string; subgrid?: string };
 }
 
 export interface ShareLine {
   coords: Array<[number, number]>;
   name?: string;
+}
+
+export interface ShareCatalogLayer {
+  id: string;
+  name: string;
+  color: string;
+  fillColor?: string;
+  fillOpacity?: number;
+  opacity: number;
+  strokeWidth: number;
+  strokeStyle?: 'solid' | 'dashed' | 'dotted';
+  pointRadius?: number;
+  pointStrokeColor?: string;
+  geometryType: 'LineString' | 'Polygon' | 'Point' | 'Mixed';
+  featureCount: number;
+  geojson: any;
 }
 
 export interface ShareSnapshot {
@@ -50,6 +78,14 @@ export interface ShareSnapshot {
   tracks?: ShareTrack[];
   segments?: ShareSegment[];
   lines?: ShareLine[];
+  catalogLayers?: ShareCatalogLayer[];
+  /**
+   * Frozen storage-resolution prefs captured at share creation. Allows the
+   * viewer to resolve panorama URLs (and later signed/tokenized media) from the
+   * source filename at view time instead of trusting a baked, potentially stale
+   * absolute URL.
+   */
+  storage?: StorageResolveSettings;
   stats: {
     subgrids: number;
     km: number;
@@ -80,8 +116,30 @@ export interface MapShare {
   view_count: number;
 }
 
-const SHARE_POINTS_CAP = 15000;
-const SHARE_COORD_PRECISION = 5;
+const SHARE_POINTS_CAP = 25000;
+const SHARE_CATALOG_FEATURE_CAP = 150000;
+const SHARE_COORD_PRECISION = 6;
+
+/** Subset of project settings the URL resolvers need; nothing else leaks into a share. */
+const STORAGE_SETTINGS_KEYS: Array<keyof StorageResolveSettings> = [
+  'storageProvider', 'imageStorageStrategy',
+  'r2Domain', 'r2PublicUrl', 'r2PublicDomain', 'customCdnUrl', 'customStorageUrl', 'cloudStorageBaseUrl',
+  'supabaseUrl', 'supabaseBucket', 'multiResTilePattern', 'tilePathPattern', 'multiResFallbackPattern',
+  'singleImagePathPattern', 'imageFormatPattern', 'imageStoragePath', 'manifestEnabled', 'manifestPath',
+  's3Bucket', 's3Region', 'gcsBucket', 'azureAccount', 'azureContainer', 'wasabiBucket', 'wasabiRegion',
+  'nasServerUrl', 'productionApiUrl'
+];
+
+/** Copies only the storage-resolution settings into a share snapshot (frozen at creation time). */
+export function pickStorageResolveSettings(ps?: Record<string, unknown> | null): StorageResolveSettings | undefined {
+  if (!ps) return undefined;
+  const out: Record<string, unknown> = {};
+  for (const key of STORAGE_SETTINGS_KEYS) {
+    const v = ps[key];
+    if (v !== undefined && v !== null && v !== '') out[key] = v;
+  }
+  return Object.keys(out).length > 0 ? (out as StorageResolveSettings) : undefined;
+}
 
 function roundCoord(v: number): number {
   return Math.round(v * 10 ** SHARE_COORD_PRECISION) / 10 ** SHARE_COORD_PRECISION;
@@ -219,10 +277,54 @@ function zoomForBbox(bbox: [number, number, number, number]): number {
 
 const FALLBACK_CENTER: [number, number] = [3.139, 101.6869];
 
+/** Builds per-subgrid survey detail rows from the shared daily survey ledger. */
+export function buildShareSegments(dailyData: any[], projectSettings?: StorageResolveSettings): ShareSegment[] {
+  const segments: ShareSegment[] = [];
+  for (const item of dailyData || []) {
+    const rawSg = item.subgrid || item.imageFilename || '';
+    const sg = (extractSubgridName(rawSg) || rawSg || '').toUpperCase().trim();
+    const isPublished = item.publishToWebGIS === 'yes' || item.publishToWebGIS === 'Yes'
+      || item.publishToUSVPRO === 'yes' || Boolean(item.isSyncedWithSupabase) || item.status === 'Complete' || item.isFromSupabase === true;
+    const km = Number(item.kmProcessed) || 0;
+
+    // Resolve a representative 360° panorama for this subgrid so the shared
+    // viewer's corner PiP can render imagery without needing storage config.
+    const firstPan = (item.panoramas && item.panoramas[0]) || (item.points && item.points[0]) || {};
+    const rawFn = firstPan.filename || firstPan.image_url || firstPan.point_id || '';
+    const cleanFn = String(rawFn || '').split('/').pop() || rawFn;
+    let panoramaUrl: string | undefined;
+    let configUrl: string | undefined;
+    if (cleanFn) {
+      const url = resolvePanoramaUrl(cleanFn, projectSettings, { subgrid: sg || cleanFn });
+      if (url) {
+        panoramaUrl = url;
+        // Only meaningful when the storage strategy is tiled (multi-res).
+        if ((projectSettings?.imageStorageStrategy || '') !== 'single_equirectangular') {
+          configUrl = resolvePanoramaConfigUrl(cleanFn, projectSettings, sg || cleanFn) || undefined;
+        }
+      }
+    }
+
+    segments.push({
+      subgrid: sg || '—',
+      km: Math.round(km * 100) / 100,
+      poi: getPOICount(item),
+      frames: getImagesProcessedCount(item),
+      defects: Number(item.defects) || 0,
+      date: typeof item.date === 'string' ? item.date.slice(0, 10) : undefined,
+      pic: item.pic || undefined,
+      status: isPublished ? 'published' : 'in-process',
+      ...(cleanFn ? { panoramaRef: { filename: cleanFn, subgrid: sg || cleanFn } } : {}),
+      ...(panoramaUrl ? { panoramaUrl, ...(configUrl ? { configUrl } : {}) } : {})
+    });
+  }
+  return segments;
+}
+
 export function buildWebgisSnapshot(dailyData: any[], projectSettings?: any): ShareSnapshot {
   const points: SharePoint[] = [];
   const tracks: ShareTrack[] = [];
-  const segments: ShareSegment[] = [];
+  const segments = buildShareSegments(dailyData, projectSettings);
   const allCoords: Array<[number, number]> = [];
   const uniqueSubgrids = new Set<string>();
 
@@ -262,17 +364,6 @@ export function buildWebgisSnapshot(dailyData: any[], projectSettings?: any): Sh
       allCoords.push([rLat, rLng]);
     }
     if (trackCoords.length > 1) tracks.push({ subgrid: sg || '—', coords: trackCoords });
-
-    segments.push({
-      subgrid: sg || '—',
-      km: Math.round(km * 100) / 100,
-      poi,
-      frames,
-      defects,
-      date: typeof item.date === 'string' ? item.date.slice(0, 10) : undefined,
-      pic: item.pic || undefined,
-      status: isPublished ? 'published' : 'in-process'
-    });
   }
 
   const b = boundsOf(allCoords);
@@ -285,7 +376,7 @@ export function buildWebgisSnapshot(dailyData: any[], projectSettings?: any): Sh
     passRate: totalPoi > 0 ? Math.max(0, ((totalPoi - totalDefects) / totalPoi) * 100) : 100
   };
 
-  return {
+  const snap = {
     center: b ? b.center : (Array.isArray(projectSettings?.defaultCenter) ? [Number(projectSettings.defaultCenter[0]), Number(projectSettings.defaultCenter[1])] : FALLBACK_CENTER),
     zoom: b ? zoomForBbox(b.bbox) : 11,
     bbox: b?.bbox,
@@ -293,9 +384,54 @@ export function buildWebgisSnapshot(dailyData: any[], projectSettings?: any): Sh
     tracks,
     segments,
     stats,
+    storage: pickStorageResolveSettings(projectSettings),
     projectName: projectSettings?.projectName || undefined,
     contractCode: projectSettings?.contractCode || undefined
-  };
+  } as ShareSnapshot;
+  return snap;
+}
+
+export interface ShareCatalogLayerInput {
+  id?: string;
+  name?: string;
+  color?: string;
+  fillColor?: string;
+  fillOpacity?: number;
+  opacity?: number;
+  strokeWidth?: number;
+  strokeStyle?: 'solid' | 'dashed' | 'dotted';
+  pointRadius?: number;
+  pointStrokeColor?: string;
+  geometryType?: string;
+  visible?: boolean;
+  geojson?: any;
+  geojsonJson?: string;
+}
+
+/** Rounds every coordinate pair and caps feature count so huge imports stay portable. */
+export function serializeCatalogGeometry(layer?: ShareCatalogLayerInput | null): any | null {
+  if (!layer) return null;
+  if (layer.visible === false) return null;
+  let geo = layer.geojson;
+  if (!geo && layer.geojsonJson) {
+    try { geo = JSON.parse(layer.geojsonJson); } catch { geo = null; }
+  }
+  if (!geo || !Array.isArray(geo.features) || geo.features.length === 0) return null;
+  const capped = geo.features.slice(0, SHARE_CATALOG_FEATURE_CAP);
+  const clone = { type: 'FeatureCollection', features: capped };
+  for (const f of clone.features) {
+    if (f?.geometry?.coordinates) {
+      f.geometry = { ...f.geometry, coordinates: roundGeometryCoords(f.geometry.coordinates) };
+    }
+  }
+  return clone;
+}
+
+function roundGeometryCoords(coords: any): any {
+  if (typeof coords?.[0] === 'number') {
+    return [roundCoord(coords[0]), roundCoord(coords[1])];
+  }
+  return Array.isArray(coords) ? coords.map(roundGeometryCoords) : coords;
 }
 
 export interface BuildRoadSnapshotOptions {
@@ -310,6 +446,8 @@ export interface BuildRoadSnapshotOptions {
     color?: string;
   }>;
   capturedTracks?: Array<Array<[number, number]> | { coords: Array<[number, number]>; subgrid?: string }>;
+  catalogLayers?: ShareCatalogLayerInput[];
+  segments?: ShareSegment[];
   stats?: Partial<ShareSnapshot['stats']>;
   bbox?: [number, number, number, number] | null;
 }
@@ -386,6 +524,30 @@ export function buildRoadSnapshot(
     }
   }
 
+  // 4. User-imported catalog GIS layers (serialized, size-capped/rounded)
+  const catalogLayers: ShareCatalogLayer[] = [];
+  if (Array.isArray(opts?.catalogLayers)) {
+    for (const layer of opts.catalogLayers) {
+      const geo = serializeCatalogGeometry(layer);
+      if (!geo) continue;
+      catalogLayers.push({
+        id: String(layer?.id ?? `import-${catalogLayers.length + 1}`),
+        name: String(layer?.name || 'Imported layer'),
+        color: layer?.color || '#38bdf8',
+        fillColor: layer?.fillColor,
+        fillOpacity: layer?.fillOpacity,
+        opacity: typeof layer?.opacity === 'number' ? Math.max(0, Math.min(1, layer.opacity)) : 0.8,
+        strokeWidth: typeof layer?.strokeWidth === 'number' ? Math.max(1, Math.min(10, layer.strokeWidth)) : 3,
+        strokeStyle: layer?.strokeStyle,
+        pointRadius: layer?.pointRadius,
+        pointStrokeColor: layer?.pointStrokeColor,
+        geometryType: (layer?.geometryType as ShareCatalogLayer['geometryType']) || 'Mixed',
+        featureCount: geo.features.length,
+        geojson: geo
+      });
+    }
+  }
+
   const b = boundsOf(allCoords);
 
   // Normalize bbox if passed from district boundary
@@ -427,6 +589,8 @@ export function buildRoadSnapshot(
     lines,
     points: points.length > 0 ? points : undefined,
     tracks: tracks.length > 0 ? tracks : undefined,
+    segments: opts?.segments?.length ? opts.segments : undefined,
+    catalogLayers: catalogLayers.length > 0 ? catalogLayers : undefined,
     stats: {
       subgrids: effectiveSubgrids,
       km: effectiveKm,
@@ -438,8 +602,44 @@ export function buildRoadSnapshot(
     },
     projectName: opts?.projectSettings?.projectName || undefined,
     contractCode: opts?.projectSettings?.contractCode || undefined,
-    planName: opts?.planName || undefined
+    planName: opts?.planName || undefined,
+    storage: pickStorageResolveSettings(opts?.projectSettings)
   };
+}
+
+// ---------------------------------------------------------------------
+// Imagery resolution seam
+// ---------------------------------------------------------------------
+// Forward-looking, single place that turns a share segment's representative
+// panorama into URLs consumed by the corner 360 viewer. Today it prefers the
+// source reference + frozen storage prefs (so URLs are never baked-and-stale).
+// A deployment that wants truly signed, expiring, revocable media should swap
+// the `storage` resolution below for a call to a backend endpoint
+// (e.g. `GET /api/share-media/:token/:filename?subgrid=`) returning a short-lived
+// presigned URL — the share page and viewer never need to change.
+
+export interface ResolvedPanoramaMedia {
+  panoramaUrl?: string;
+  configUrl?: string;
+}
+
+export function resolveSegmentPanorama(
+  segment?: ShareSegment | null,
+  storage?: StorageResolveSettings
+): ResolvedPanoramaMedia {
+  if (!segment) return {};
+  const ref = segment.panoramaRef;
+  if (ref?.filename && storage) {
+    const panoramaUrl = resolvePanoramaUrl(ref.filename, storage, { subgrid: ref.subgrid || undefined });
+    if (panoramaUrl) {
+      const multiRes = (storage.imageStorageStrategy || '') !== 'single_equirectangular';
+      const configUrl = multiRes
+        ? resolvePanoramaConfigUrl(ref.filename, storage, ref.subgrid || ref.filename) || undefined
+        : undefined;
+      return { panoramaUrl, configUrl };
+    }
+  }
+  return { panoramaUrl: segment.panoramaUrl, configUrl: segment.configUrl };
 }
 
 // ---------------------------------------------------------------------
@@ -460,6 +660,8 @@ export function sharePublicUrl(token: string): string {
   return `${window.location.origin}/share/${token}`;
 }
 
+const LOCAL_SHARE_PREFIX = 'gs-share:';
+
 export async function createShare(input: CreateShareInput): Promise<{ share: MapShare; url: string }> {
   const token = generateShareToken();
   const passwordHash = input.password ? await hashSharePassword(input.password) : null;
@@ -467,35 +669,89 @@ export async function createShare(input: CreateShareInput): Promise<{ share: Map
     ? new Date(Date.now() + input.expiresDays * 24 * 60 * 60 * 1000).toISOString()
     : null;
 
-  const { data, error } = await supabase
-    .from('map_shares')
-    .insert({
-      token,
-      kind: input.kind,
-      title: input.title || 'Shared Map',
-      project_id: getActiveProjectId(),
-      snapshot: input.snapshot,
-      basemap: input.basemap || 'ofm-positron',
-      password_hash: passwordHash,
-      created_by: input.createdBy || null,
-      expires_at: expiresAt
-    })
-    .select()
-    .single();
+  const fallbackShare: MapShare = {
+    id: `local-${token}`,
+    token,
+    kind: input.kind,
+    title: input.title || 'Shared Map',
+    project_id: getActiveProjectId(),
+    snapshot: input.snapshot,
+    basemap: input.basemap || 'ofm-positron',
+    password_hash: passwordHash,
+    created_by: input.createdBy || null,
+    created_at: new Date().toISOString(),
+    expires_at: expiresAt,
+    revoked_at: null,
+    view_count: 0
+  };
 
-  if (error) throw new Error(error.message || 'Failed to create share');
-  const share = data as MapShare;
-  return { share, url: sharePublicUrl(share.token) };
+  try {
+    localStorage.setItem(LOCAL_SHARE_PREFIX + token, JSON.stringify(fallbackShare));
+  } catch { /* storage quota exceeded or disabled */ }
+
+  try {
+    const { data, error } = await supabase
+      .from('map_shares')
+      .insert({
+        token,
+        kind: input.kind,
+        title: input.title || 'Shared Map',
+        project_id: getActiveProjectId(),
+        snapshot: input.snapshot,
+        basemap: input.basemap || 'ofm-positron',
+        password_hash: passwordHash,
+        created_by: input.createdBy || null,
+        expires_at: expiresAt
+      })
+      .select()
+      .single();
+
+    if (!error && data) {
+      const share = data as MapShare;
+      try {
+        localStorage.setItem(LOCAL_SHARE_PREFIX + token, JSON.stringify(share));
+      } catch { /* ignore */ }
+      return { share, url: sharePublicUrl(share.token) };
+    }
+  } catch (err) {
+    console.warn('[mapShares] Supabase cloud insert failed, using local mirror:', err);
+  }
+
+  return { share: fallbackShare, url: sharePublicUrl(fallbackShare.token) };
 }
 
 export async function fetchShareByToken(token: string): Promise<MapShare | null> {
-  const { data, error } = await supabase
-    .from('map_shares')
-    .select('id, token, kind, title, project_id, snapshot, basemap, password_hash, created_by, created_at, expires_at, revoked_at, view_count')
-    .eq('token', token)
-    .maybeSingle();
-  if (error || !data) return null;
-  return data as MapShare;
+  try {
+    const { data, error } = await supabase
+      .from('map_shares')
+      .select('id, token, kind, title, project_id, snapshot, basemap, password_hash, created_by, created_at, expires_at, revoked_at, view_count')
+      .eq('token', token)
+      .maybeSingle();
+    if (!error && data) {
+      const s = data as MapShare;
+      try { localStorage.setItem(LOCAL_SHARE_PREFIX + token, JSON.stringify(s)); } catch { /* ignore */ }
+      return s;
+    }
+  } catch {
+    // Supabase network / offline fallback
+  }
+
+  // Fallback to local storage mirror
+  try {
+    const raw = localStorage.getItem(LOCAL_SHARE_PREFIX + token);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && parsed.token === token) {
+        if (parsed.expires_at && new Date(parsed.expires_at).getTime() < Date.now()) {
+          return null; // Expired
+        }
+        if (parsed.revoked_at) return null; // Revoked
+        return parsed as MapShare;
+      }
+    }
+  } catch { /* parse error */ }
+
+  return null;
 }
 
 export async function touchShare(token: string): Promise<void> {

@@ -79,16 +79,23 @@ function isWritten(userKey: string, layerId: string): boolean {
  */
 export async function saveCatalogLayerGeometries(
   userKey: string,
-  layers: Array<{ id: string; geojsonJson?: string }> | undefined
+  layers: Array<{ id: string; geojsonJson?: string; geojson?: any }> | undefined
 ): Promise<void> {
-  const list = Array.isArray(layers) ? layers.filter((l) => typeof l.geojsonJson === 'string' && l.geojsonJson.length > 0) : [];
+  const list = Array.isArray(layers) ? layers : [];
   const seen = new Set<string>();
   const writes: GeometryRecord[] = [];
   const now = new Date().toISOString();
 
   for (const layer of list) {
-    const geojsonJson = layer.geojsonJson;
-    if (!geojsonJson) continue;
+    let geojsonJson = layer.geojsonJson;
+    if (!geojsonJson && layer.geojson) {
+      try {
+        geojsonJson = JSON.stringify(layer.geojson);
+      } catch {
+        geojsonJson = undefined;
+      }
+    }
+    if (!geojsonJson || typeof geojsonJson !== 'string' || geojsonJson.length === 0) continue;
     const key = storeKey(userKey, layer.id);
     seen.add(key);
     if (isWritten(userKey, layer.id)) continue;

@@ -2,9 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { restoreWorkspaceTab, persistWorkspaceTab } from '../utils/workspaceLocation';
 import {
   BarChart3,
-  Route,
   Layers,
-  Radar,
   ShieldCheck,
   History
 } from 'lucide-react';
@@ -17,9 +15,8 @@ import { ANALYTICS_TAB_LABELS } from './production/analytics/analyticsCommon';
 import { UnderlineTabStrip, type ChromeTab } from './production/chrome';
 import { OverviewPanel } from './production/analytics/OverviewPanel';
 import { LedgerPanel } from './production/analytics/LedgerPanel';
-import { DistancePanel } from './production/analytics/DistancePanel';
 import { CoveragePanel } from './production/analytics/CoveragePanel';
-import { DensityPanel } from './production/analytics/DensityPanel';
+
 import { QualityPanel } from './production/analytics/QualityPanel';
 
 export interface AnalyticsWorkspaceProps {
@@ -36,14 +33,13 @@ export interface AnalyticsWorkspaceProps {
   onRefreshData?: () => void;
 }
 
-type AnalyticsTab = 'overview' | 'ledger' | 'distance' | 'coverage' | 'density' | 'quality';
+type AnalyticsTab = 'overview' | 'ledger' | 'coverage' | 'quality';
 
 const TABS: ChromeTab<AnalyticsTab>[] = [
   { key: 'overview', icon: <BarChart3 size={14} /> },
   { key: 'ledger', icon: <History size={14} /> },
-  { key: 'distance', icon: <Route size={14} /> },
   { key: 'coverage', icon: <Layers size={14} /> },
-  { key: 'density', icon: <Radar size={14} /> },
+  
   { key: 'quality', icon: <ShieldCheck size={14} /> }
 ];
 
@@ -57,8 +53,10 @@ export const AnalyticsWorkspace: React.FC<AnalyticsWorkspaceProps> = ({
   onRefreshData: _onRefreshData
 }) => {
   const [activeTab, setActiveTab] = useState<AnalyticsTab>(() => {
-    const analyticsTabs = ['overview', 'ledger', 'distance', 'coverage', 'density', 'quality'] as const;
-    return restoreWorkspaceTab<typeof analyticsTabs[number]>('analytics', analyticsTabs) ?? 'overview';
+    // Legacy 'distance' persisted tabs redirect to the merged coverage view.
+    const analyticsTabs = ['overview', 'ledger', 'distance', 'coverage', 'quality'] as const;
+    const restored = restoreWorkspaceTab<typeof analyticsTabs[number]>('analytics', analyticsTabs);
+    return restored === 'distance' ? 'coverage' : restored ?? 'overview';
   });
   useEffect(() => {
     persistWorkspaceTab('analytics', activeTab);
@@ -130,13 +128,24 @@ export const AnalyticsWorkspace: React.FC<AnalyticsWorkspaceProps> = ({
     const hasManual = Boolean(roadAnalysisConfig.manualGeoJson?.features?.length);
     const hasCatalogPlan = Boolean(roadAnalysisConfig.catalogPlanLayerId);
     const hasSubgridPlan = Boolean(roadAnalysisConfig.subgridPlanKm && Object.values(roadAnalysisConfig.subgridPlanKm).some((v: any) => Number(v) > 0));
-    return planKm > 0 || hasExtracted || hasManual || hasCatalogPlan || hasSubgridPlan;
+    // Also detect catalog layers that contain road lines (imported road plan layers
+    // that may not have been explicitly promoted via the plan icon).
+    const hasCatalogRoadLayer = Array.isArray(roadAnalysisConfig.catalogLayers) &&
+      roadAnalysisConfig.catalogLayers.some((l: any) => l.hasRoadLines || (l.totalDistanceKm && Number(l.totalDistanceKm) > 0));
+    return planKm > 0 || hasExtracted || hasManual || hasCatalogPlan || hasSubgridPlan || hasCatalogRoadLayer;
   }, [roadAnalysisConfig]);
 
   const roadPlanKm = useMemo(() => {
     if (hasRoadPlanSource) {
       const planKm = Number(roadAnalysisConfig?.planDistanceKm);
       if (planKm > 0) return planKm;
+      // Fallback: derive from catalog road layer's totalDistanceKm
+      if (Array.isArray(roadAnalysisConfig?.catalogLayers)) {
+        for (const l of roadAnalysisConfig.catalogLayers) {
+          const dist = Number(l.totalDistanceKm);
+          if (dist > 0) return dist;
+        }
+      }
     }
     return Number(projectSettings?.targetKm) || 0;
   }, [hasRoadPlanSource, roadAnalysisConfig, projectSettings]);
@@ -222,9 +231,7 @@ export const AnalyticsWorkspace: React.FC<AnalyticsWorkspaceProps> = ({
                 translate={translate}
               />
             )}
-            {activeTab === 'distance' && <DistancePanel analytics={analytics} translate={translate} />}
             {activeTab === 'coverage' && <CoveragePanel analytics={analytics} translate={translate} />}
-            {activeTab === 'density' && <DensityPanel analytics={analytics} translate={translate} />}
             {activeTab === 'quality' && <QualityPanel analytics={analytics} translate={translate} />}
           </div>
         </div>

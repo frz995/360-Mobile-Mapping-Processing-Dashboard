@@ -24,6 +24,16 @@ import { resolveSpatialSubgrid } from '../../utils/subgridComparison';
 import { extractSubgridName } from '../../utils/subgrid';
 import { minMaxOf } from '../../utils/arrayBounds';
 import type { LonLat } from '../../utils/roadNetworkTrace';
+import {
+  type LightingPreset,
+  type ColorThemePreset,
+  applyLightingToMap,
+  applyAtmosphereTintToMap,
+  toggleMapLabelsVisibility,
+  findFirstSymbolLayerId,
+  buildBuildingColorExpression,
+  buildBuildingHeightExpression
+} from '../../utils/map3DLighting';
 
 const effectiveWorkerUrl = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_MAPLIBRE_WORKER_URL) || workerUrl;
 maplibregl.setWorkerUrl(effectiveWorkerUrl);
@@ -156,6 +166,16 @@ export interface RoadAnalysisMapProps {
   onSelectSubgrid?: (subgrid: string) => void;
   /** Enable 3D building extrusion mode (requires pitch > 0 + vector basemap). */
   show3D?: boolean;
+  /** Active 3D lighting preset ('dawn' | 'day' | 'dusk' | 'night'). */
+  lightingPreset?: LightingPreset;
+  /** Active 3D building color theme ('default' | 'faded' | 'mono' | 'ocean' | 'warm' | 'vivid'). */
+  colorTheme?: ColorThemePreset;
+  /** Building height scale multiplier (e.g. 1.0, 1.5, 2.0). */
+  heightScale?: number;
+  /** Cinematic camera orbit active. */
+  isOrbiting?: boolean;
+  /** Callback notifying parent of current pitch changes. */
+  onPitchChange?: (pitch: number) => void;
   /**
    * Optional ref filled with the live MapLibre map instance so parent
    * workspace panels (e.g. Print) can read the current camera/extent or
@@ -166,6 +186,10 @@ export interface RoadAnalysisMapProps {
   coverageRuns?: LonLat[][];
   /** Toggle the red coverage-segmentation overlay. */
   showCoverage?: boolean;
+  /** Toggle visibility of basemap place names, street names, and POIs. Defaults to true. */
+  showLabels?: boolean;
+  /** Toggle atmospheric ground tinting for Dawn/Dusk/Night lighting. Defaults to true. */
+  atmosphereTint?: boolean;
 }
 
 const DEFAULT_CENTER: [number, number] = [101.9758, 4.2105];
@@ -361,48 +385,57 @@ function styleHasVectorBuildings(map: MaplibreMap): boolean {
   } catch { return false; }
 }
 
-/** Toggle the3D building fill-extrusion layer on/off. */
+/** Toggle or update the 3D building fill-extrusion layer on/off. */
 function applyBuildingLayer(
   map: MaplibreMap,
-  show3D: boolean
+  show3D: boolean,
+  colorTheme: ColorThemePreset = 'default',
+  heightScale: number = 1.0
 ): void {
   const hasSource = styleHasVectorBuildings(map);
-  const layerExists = map.getLayer(BUILDING_LAYER_ID);
+  const layerExists = Boolean(map.getLayer(BUILDING_LAYER_ID));
 
-  if (show3D && hasSource && !layerExists) {
-    map.addLayer({
-      id: BUILDING_LAYER_ID,
-      type: 'fill-extrusion',
-      source: 'openmaptiles',
-      'source-layer': 'building',
-      minzoom: 14,
-      paint: {
-        'fill-extrusion-color': [
-          'interpolate', ['linear'], ['coalesce', ['get', 'render_height'], 0],
-          0,   '#c8d6e5',
-          10,  '#a0b4c8',
-          30,  '#7f9ab5',
-          60,  '#5d7f9e',
-          100, '#3d6588'
-        ],
-        'fill-extrusion-height': [
-          'coalesce',
-          ['get', 'render_height'],
-          ['get', 'height'],
-          10
-        ],
-        'fill-extrusion-base': [
-          'coalesce',
-          ['get', 'render_min_height'],
-          ['get', 'min_height'],
-          0
-        ],
-        'fill-extrusion-opacity': 0.72
-      }
-    });
+  if (show3D && hasSource) {
+    const colorExpr = buildBuildingColorExpression(colorTheme);
+    const heightExpr = buildBuildingHeightExpression(heightScale);
+
+    if (!layerExists) {
+      // Find the first symbol layer (place names, street labels, POIs)
+      // so 3D buildings sit BENEATH them, allowing labels to float over rooftops.
+      const firstSymbolId = findFirstSymbolLayerId(map);
+      map.addLayer({
+        id: BUILDING_LAYER_ID,
+        type: 'fill-extrusion',
+        source: 'openmaptiles',
+        'source-layer': 'building',
+        minzoom: 14,
+        paint: {
+          'fill-extrusion-color': colorExpr as any,
+          'fill-extrusion-height': heightExpr as any,
+          'fill-extrusion-base': [
+            'coalesce',
+            ['get', 'render_min_height'],
+            ['get', 'min_height'],
+            0
+          ],
+          'fill-extrusion-opacity': 0.80
+        }
+      }, firstSymbolId);
+    } else {
+      map.setPaintProperty(BUILDING_LAYER_ID, 'fill-extrusion-color', colorExpr as any);
+      map.setPaintProperty(BUILDING_LAYER_ID, 'fill-extrusion-height', heightExpr as any);
+    }
   } else if ((!show3D || !hasSource) && layerExists) {
     map.removeLayer(BUILDING_LAYER_ID);
   }
+}
+
+/** Updates atmospheric basemap ground tint positioned below 3D buildings. */
+function applyGroundAtmosphere(map: MaplibreMap, preset: LightingPreset, enabled: boolean): void {
+  const beforeLayerId = map.getLayer(BUILDING_LAYER_ID)
+    ? BUILDING_LAYER_ID
+    : findFirstSymbolLayerId(map);
+  applyAtmosphereTintToMap(map, preset, enabled, beforeLayerId);
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -505,8 +538,15 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
   onSelectSubgrid,
   mapInstanceRef,
   show3D = false,
+  lightingPreset = 'day',
+  colorTheme = 'default',
+  heightScale = 1.0,
+  isOrbiting = false,
+  onPitchChange,
   coverageRuns = EMPTY_COVERAGE_RUNS,
-  showCoverage = true
+  showCoverage = true,
+  showLabels = true,
+  atmosphereTint = true
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MaplibreMap | null>(null);
@@ -635,16 +675,28 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
   const catalogPreviewRef       = useRef<ImportPreview | null | undefined>(catalogPreview);
   const prevCatalogFingerprintRef = useRef<string>('');
   const show3DRef = useRef(show3D);
+  const lightingPresetRef = useRef<LightingPreset>(lightingPreset);
+  const colorThemeRef     = useRef<ColorThemePreset>(colorTheme);
+  const heightScaleRef    = useRef<number>(heightScale);
+  const onPitchChangeRef  = useRef(onPitchChange);
   const coverageRunsRef = useRef<LonLat[][]>(coverageRuns);
   const showCoverageRef = useRef<boolean>(showCoverage ?? true);
+  const showLabelsRef   = useRef<boolean>(showLabels ?? true);
+  const atmosphereTintRef = useRef<boolean>(atmosphereTint ?? true);
 
   catalogLayersRef.current   = catalogLayers;
   systemStylesRef.current    = systemStyles;
   selectedFeatureRef.current = selectedFeature;
   catalogPreviewRef.current  = catalogPreview;
   show3DRef.current          = show3D;
+  lightingPresetRef.current  = lightingPreset;
+  colorThemeRef.current      = colorTheme;
+  heightScaleRef.current     = heightScale;
+  onPitchChangeRef.current   = onPitchChange;
   coverageRunsRef.current    = coverageRuns;
   showCoverageRef.current    = showCoverage ?? true;
+  showLabelsRef.current      = showLabels ?? true;
+  atmosphereTintRef.current  = atmosphereTint ?? true;
 
   const buildOverlay = useCallback(() => {
     const map = mapRef.current;
@@ -718,7 +770,21 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
       const heavy =
         (catLayer.featureCount ?? 0) >= HEAVY_CATALOG_FEATURE_COUNT ||
         (catLayer.geometryBytes ?? 0) > HEAVY_CATALOG_BYTES;
-      map.addSource(srcId, { type: 'geojson', data: heavy ? EMPTY_FC : catLayer.geojson });
+
+      // Determine initial data for the source. When geometry was rehydrated from
+      // IndexedDB (reload path), only `geojsonJson` is set — `geojson` is undefined.
+      // For non-heavy layers we parse the string immediately so the map renders;
+      // heavy layers defer through the blob-URL idle-time loader.
+      let initialData: any = EMPTY_FC;
+      if (heavy) {
+        // Will be loaded via scheduleCatalogGeometryLoad below
+        initialData = EMPTY_FC;
+      } else if (catLayer.geojson) {
+        initialData = catLayer.geojson;
+      } else if (catLayer.geojsonJson) {
+        try { initialData = JSON.parse(catLayer.geojsonJson); } catch { initialData = EMPTY_FC; }
+      }
+      map.addSource(srcId, { type: 'geojson', data: initialData });
       if (heavy) pendingCatalogGeometry.push({ srcId, geojson: catLayer.geojson, geojsonJson: catLayer.geojsonJson });
       addedSourceIdsRef.current.add(srcId);
       dynamicSourcesRef.current.push(srcId);
@@ -1315,9 +1381,11 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
       scheduleCatalogGeometryLoad(map, pendingCatalogGeometry);
     }
 
-    // 7. Re-apply the3D building layer whenever the basemap is rebuilt (a style
-    //    swap recreates the Map, so the previous fill-extrusion layer is gone).
-    applyBuildingLayer(map, show3DRef.current);
+    // 7. Re-apply 3D buildings, ground atmosphere tint, lighting, and label visibility
+    applyBuildingLayer(map, show3DRef.current, colorThemeRef.current, heightScaleRef.current);
+    applyLightingToMap(map, lightingPresetRef.current);
+    applyGroundAtmosphere(map, lightingPresetRef.current, atmosphereTintRef.current);
+    toggleMapLabelsVisibility(map, showLabelsRef.current);
 
     // 7b. Coverage overlays (red uncovered lines) are re-raised above the
     //     re-added base layers so they stay on top of the green road plan.
@@ -1486,9 +1554,15 @@ function areStylesEqual(a?: string | StyleSpecification, b?: string | StyleSpeci
     });
     mapRef.current = map;
     if (mapInstanceRef) mapInstanceRef.current = map;
+    map.on('pitch', () => {
+      onPitchChangeRef.current?.(map.getPitch());
+    });
     map.on('load', () => {
       styleLoadedRef.current = true;
       lastLoadProgressAtRef.current = Date.now();
+      applyLightingToMap(map, lightingPresetRef.current);
+      applyGroundAtmosphere(map, lightingPresetRef.current, atmosphereTintRef.current);
+      toggleMapLabelsVisibility(map, showLabelsRef.current);
       buildOverlayRef.current?.();
     });
     // Every tile/data request arrival or start is latched — the polling
@@ -1622,12 +1696,49 @@ function areStylesEqual(a?: string | StyleSpecification, b?: string | StyleSpeci
     }
   }, [active]);
 
-  // ── 3D Buildings: add/remove fill-extrusion layer on toggle ──
+  // ── 3D Buildings: add/remove or update fill-extrusion layer on toggle, theme, or scale change ──
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !styleLoadedRef.current) return;
-    applyBuildingLayer(map, show3D);
-  }, [show3D]);
+    applyBuildingLayer(map, show3D, colorTheme, heightScale);
+  }, [show3D, colorTheme, heightScale]);
+
+  // ── Dynamic 3D Lighting & Ground Atmosphere Tint ──
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !styleLoadedRef.current) return;
+    applyLightingToMap(map, lightingPreset);
+    applyGroundAtmosphere(map, lightingPreset, atmosphereTint);
+  }, [lightingPreset, atmosphereTint]);
+
+  // ── Place Labels & POIs Visibility ──
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !styleLoadedRef.current) return;
+    toggleMapLabelsVisibility(map, showLabels);
+  }, [showLabels]);
+
+  // ── Cinematic Camera Orbit ──
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !isOrbiting) return;
+    let animFrame: number;
+    let lastTime = performance.now();
+    const orbitSpeed = 4.0; // degrees per second
+
+    const orbitLoop = (now: number) => {
+      const dt = (now - lastTime) / 1000;
+      lastTime = now;
+      const nextBearing = (map.getBearing() + orbitSpeed * dt) % 360;
+      map.setBearing(nextBearing);
+      animFrame = requestAnimationFrame(orbitLoop);
+    };
+    animFrame = requestAnimationFrame(orbitLoop);
+
+    return () => {
+      cancelAnimationFrame(animFrame);
+    };
+  }, [isOrbiting]);
 
   // ── 2D↔3D Camera FLIGHT: swoop down to / up from the 3D surface view ──
   useEffect(() => {

@@ -178,6 +178,7 @@ export const WorkspaceRouter = ({
       <RoadAnalysisWorkspace
         key="workspace-road-analysis"
         projectSettings={projectSettings}
+        setProjectSettings={setProjectSettings}
         batchLogs={activeBatchLogs}
         dailyData={dailyData}
         defectsList={allKnownDefects}

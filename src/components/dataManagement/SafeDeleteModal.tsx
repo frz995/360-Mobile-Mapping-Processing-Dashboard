@@ -30,6 +30,7 @@ export interface SafeDeleteModalProps {
   onConfirm: () => void;
   onClose: () => void;
   translate?: (key: string) => string;
+  sourceTab?: string;
 }
 
 export const SafeDeleteModal = ({
@@ -50,7 +51,8 @@ export const SafeDeleteModal = ({
   setDeleteError,
   onConfirm,
   onClose,
-  translate
+  translate,
+  sourceTab
 }: SafeDeleteModalProps) => {
   if (!isOpen || !deleteTarget) return null;
 
@@ -205,10 +207,42 @@ export const SafeDeleteModal = ({
             ) : (
               <>This data will be <strong className="text-rose-400 font-medium">permanently removed</strong> from the database. This action cannot be reversed.</>
             )}
+            {deleteMode === 'single' && deleteTarget && typeof deleteTarget === 'object' && (
+              <div className="mt-3 p-3 bg-card rounded-lg border border-subtle text-xs space-y-1.5">
+                <div className="flex justify-between items-center">
+                  <span className="text-text-muted">Target Layer:</span>
+                  <strong className="text-text-base font-semibold">
+                    {(sourceTab === 'daily' || !('imageFilename' in deleteTarget))
+                      ? 'Daily Data (Child Survey Run)'
+                      : 'Masterlist Data (Parent Batch)'}
+                  </strong>
+                </div>
+                {deleteTarget.date && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-text-muted">Survey Date:</span>
+                    <span className="font-mono text-text-base">{deleteTarget.date}</span>
+                  </div>
+                )}
+                {('captureEquipment' in deleteTarget && deleteTarget.captureEquipment) && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-text-muted">Capture Equipment:</span>
+                    <span className="text-text-base">{deleteTarget.captureEquipment}</span>
+                  </div>
+                )}
+              </div>
+            )}
             {deleteMode === 'bulk' && (
               <div className="mt-3 p-3 bg-card rounded-lg border border-subtle text-xs space-y-1.5">
-                <div className="flex justify-between items-center"><span className="text-text-muted">Target Selection:</span> <strong className="text-text-base font-semibold">Bulk Delete</strong></div>
-                <div className="flex justify-between items-center"><span className="text-text-muted">Records Selected:</span> <span className="text-rose-400 font-bold">{selectedRowCount} records</span></div>
+                <div className="flex justify-between items-center">
+                  <span className="text-text-muted">Target Source:</span>
+                  <strong className="text-text-base font-semibold">
+                    {sourceTab === 'daily' ? 'Daily Data (Child Survey Runs)' : 'Masterlist Data (Parent Batches)'}
+                  </strong>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-text-muted">Records Selected:</span>
+                  <span className="text-rose-400 font-bold">{selectedRowCount} records</span>
+                </div>
               </div>
             )}
             {deleteMode === 'spatial' && (

@@ -86,4 +86,53 @@ describe('computeSurveyAnalytics - Road Plan & Actual Coverage', () => {
     // Actual Coverage: 0.63 / 1.0 = 63%
     expect(n94.actualCoveragePct).toBe(63);
   });
+
+  it('does not report a false 0 km remaining when a global road plan exists but per-subgrid plans are missing', () => {
+    const analytics = computeSurveyAnalytics({
+      batches: sampleBatches,
+      hasRoadPlanSource: true,
+      roadPlanKm: 100
+    });
+
+    // Campaign totals still use the global road plan.
+    expect(analytics.totals.hasRoadPlanSource).toBe(true);
+    expect(analytics.totals.totalPlanKm).toBe(100);
+    expect(analytics.totals.totalRemainingKm).toBe(100 - 3.37);
+
+    // Without per-subgrid plan attribution, rows must NOT claim 0 km remaining.
+    for (const sg of analytics.perSubgrid) {
+      expect(sg.hasPlanSource).toBe(true);
+      expect(sg.planKm).toBeNull();
+      expect(sg.remainingKm).toBeNull();
+      expect(sg.actualCoveragePct).toBeNull();
+    }
+  });
+
+  it('does not report a false 0 km remaining when the saved subgrid plan map is present but zero-filled', () => {
+    // Road Analysis writes a subgridPlanKm entry per surveyed subgrid even
+    // when no plan geometry was clipped to the cell (e.g. imported catalog /
+    // system road plan). The values are all 0, so per-subgrid remaining must
+    // be unknown, not "0 km".
+    const analytics = computeSurveyAnalytics({
+      batches: sampleBatches,
+      hasRoadPlanSource: true,
+      roadPlanKm: 4868.54,
+      subgridPlanKm: {
+        'N93E70': 0,
+        'N94E70': 0,
+        'N94E71': 0
+      }
+    });
+
+    expect(analytics.totals.hasRoadPlanSource).toBe(true);
+    expect(analytics.totals.totalPlanKm).toBe(4868.54);
+    expect(analytics.totals.totalRemainingKm).toBeGreaterThan(0);
+
+    for (const sg of analytics.perSubgrid) {
+      expect(sg.hasPlanSource).toBe(true);
+      expect(sg.planKm).toBeNull();
+      expect(sg.remainingKm).toBeNull();
+      expect(sg.actualCoveragePct).toBeNull();
+    }
+  });
 });

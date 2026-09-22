@@ -128,4 +128,108 @@ describe('computeDeletionImpact', () => {
     expect(r.rows).toHaveLength(1)
     expect(r.totals.poi).toBe(5)
   })
+
+  it('isolates single child Daily run counts when deleting from Daily list', () => {
+    // 3 daily runs for N93E70: 100 frames/0.3km, 14 frames/0.0km, 50 frames/2.4km (Sum = 164 frames, 2.7km)
+    const dailyRuns = [
+      { id: 'run-1', subgrid: 'N93E70', date: '2026-03-01', poiCount: 100, availableImagesCount: 100, kmProcessed: 0.3, publishToWebGIS: 'no' },
+      { id: 'run-2', subgrid: 'N93E70', date: '2026-03-02', poiCount: 14, availableImagesCount: 14, kmProcessed: 0.0, publishToWebGIS: 'yes' },
+      { id: 'run-3', subgrid: 'N93E70', date: '2026-03-03', poiCount: 50, availableImagesCount: 50, kmProcessed: 2.4, publishToWebGIS: 'no' }
+    ]
+    const masterlistBatch = {
+      id: 'batch-1',
+      subgrid: 'N93E70',
+      imageFilename: 'N93E70-0001.jpg',
+      poiCount: 164,
+      availableImagesCount: 164,
+      kmProcessed: 2.7,
+      runsCount: 3,
+      status: 'Ongoing'
+    }
+
+    // Deleting run-1 (child) from Daily list: must show ONLY 100 frames, 0.3 km, 1 run
+    const dailyImpact = computeDeletionImpact({
+      mode: 'single',
+      subgrids: ['N93E70'],
+      dailyData: dailyRuns,
+      batchLogs: [masterlistBatch],
+      targetRecord: dailyRuns[0],
+      sourceTab: 'daily'
+    })
+
+    expect(dailyImpact.rows).toHaveLength(1)
+    expect(dailyImpact.rows[0].subgrid).toBe('N93E70')
+    expect(dailyImpact.rows[0].runs).toBe(1)
+    expect(dailyImpact.rows[0].batch).toBe(0)
+    expect(dailyImpact.rows[0].poi).toBe(100)
+    expect(dailyImpact.rows[0].frames).toBe(100)
+    expect(dailyImpact.rows[0].km).toBe(0.3)
+    expect(dailyImpact.rows[0].published).toBe(0)
+    expect(dailyImpact.totals.poi).toBe(100)
+    expect(dailyImpact.totals.km).toBe(0.3)
+    expect(dailyImpact.totals.runs).toBe(1)
+    expect(dailyImpact.warnings.some((w) => w.includes('2 other run(s) remain'))).toBe(true)
+
+    // Deleting masterlistBatch (parent) from Masterlist: must show 164 frames, 2.7 km, 3 runs
+    const masterImpact = computeDeletionImpact({
+      mode: 'single',
+      subgrids: ['N93E70'],
+      dailyData: dailyRuns,
+      batchLogs: [masterlistBatch],
+      targetRecord: masterlistBatch,
+      sourceTab: 'batches'
+    })
+
+    expect(masterImpact.rows).toHaveLength(1)
+    expect(masterImpact.rows[0].subgrid).toBe('N93E70')
+    expect(masterImpact.rows[0].runs).toBe(3)
+    expect(masterImpact.rows[0].batch).toBe(1)
+    expect(masterImpact.rows[0].poi).toBe(164)
+    expect(masterImpact.rows[0].frames).toBe(164)
+    expect(masterImpact.rows[0].km).toBe(2.7)
+    expect(masterImpact.totals.poi).toBe(164)
+    expect(masterImpact.totals.km).toBe(2.7)
+    expect(masterImpact.totals.runs).toBe(3)
+  })
+
+  it('aggregates only selected records in bulk mode for Daily list and Masterlist', () => {
+    const dailyRuns = [
+      { id: 'run-1', subgrid: 'N93E70', poiCount: 100, availableImagesCount: 100, kmProcessed: 0.3 },
+      { id: 'run-2', subgrid: 'N93E70', poiCount: 14, availableImagesCount: 14, kmProcessed: 0.0 },
+      { id: 'run-3', subgrid: 'N94E70', poiCount: 30, availableImagesCount: 30, kmProcessed: 0.5 }
+    ]
+    const batches = [
+      { id: 'batch-1', subgrid: 'N93E70', imageFilename: 'N93E70-0001.jpg', poiCount: 114, kmProcessed: 0.3, runsCount: 2 },
+      { id: 'batch-2', subgrid: 'N94E70', imageFilename: 'N94E70-0001.jpg', poiCount: 30, kmProcessed: 0.5, runsCount: 1 }
+    ]
+
+    // Bulk delete selecting only run-1 and run-2 on daily list
+    const bulkDaily = computeDeletionImpact({
+      mode: 'bulk',
+      subgrids: ['N93E70'],
+      dailyData: dailyRuns,
+      batchLogs: batches,
+      sourceTab: 'daily',
+      selectedIds: new Set(['run-1', 'run-2'])
+    })
+
+    expect(bulkDaily.totals.runs).toBe(2)
+    expect(bulkDaily.totals.poi).toBe(114)
+    expect(bulkDaily.totals.km).toBe(0.3)
+
+    // Bulk delete selecting only batch-2 on masterlist
+    const bulkMaster = computeDeletionImpact({
+      mode: 'bulk',
+      subgrids: ['N94E70'],
+      dailyData: dailyRuns,
+      batchLogs: batches,
+      sourceTab: 'batches',
+      selectedIds: new Set(['batch-2'])
+    })
+
+    expect(bulkMaster.totals.runs).toBe(1)
+    expect(bulkMaster.totals.poi).toBe(30)
+    expect(bulkMaster.totals.km).toBe(0.5)
+  })
 })
+

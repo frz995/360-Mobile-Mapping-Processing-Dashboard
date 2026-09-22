@@ -3,15 +3,38 @@ import { render, screen, waitFor } from '@testing-library/react';
 import { SharedMapPage } from '../SharedMapPage';
 import * as mapShares from '../../utils/mapShares';
 
+// Hoisted supabase mock so the auth gate resolves an authenticated session.
+const { supabaseMock } = vi.hoisted(() => {
+  const supabaseMock = {
+    auth: {
+      getSession: vi.fn(),
+      onAuthStateChange: vi.fn(),
+      signInWithPassword: vi.fn()
+    },
+    from: vi.fn(),
+    rpc: vi.fn()
+  };
+  return { supabaseMock };
+});
+
+vi.mock('../../services/api/client', () => ({
+  supabase: supabaseMock
+}));
+
 // Mock maplibre-gl to prevent canvas/webgl errors in jsdom
 vi.mock('maplibre-gl', () => {
   const MapMock = vi.fn().mockImplementation(() => ({
     addControl: vi.fn(),
     on: vi.fn(),
     remove: vi.fn(),
+    resize: vi.fn(),
+    easeTo: vi.fn(),
     getCanvas: vi.fn().mockReturnValue({ style: {} }),
     addSource: vi.fn(),
     addLayer: vi.fn(),
+    getLayer: vi.fn(),
+    getSource: vi.fn().mockReturnValue({ getClusterExpansionZoom: vi.fn(), setData: vi.fn() }),
+    queryRenderedFeatures: vi.fn().mockReturnValue([]),
     fitBounds: vi.fn()
   }));
 
@@ -33,6 +56,44 @@ vi.mock('maplibre-gl', () => {
 describe('SharedMapPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    supabaseMock.auth.getSession.mockResolvedValue({ data: { session: { user: { id: 'u1' } } }, error: null });
+    supabaseMock.auth.onAuthStateChange.mockReturnValue({ data: { subscription: { unsubscribe: vi.fn() } } });
+    supabaseMock.auth.signInWithPassword.mockResolvedValue({ data: { session: { user: { id: 'u1' } }, error: null } });
+    supabaseMock.rpc.mockResolvedValue({ data: null, error: null });
+  });
+
+  it('allows public access without authentication when no session exists', async () => {
+    delete (window as any).location;
+    window.location = new URL('http://localhost:5173/share/publicunauthedtoken123') as any;
+    supabaseMock.auth.getSession.mockResolvedValue({ data: { session: null }, error: null });
+
+    vi.spyOn(mapShares, 'fetchShareByToken').mockResolvedValue({
+      id: 's-public',
+      token: 'publicunauthedtoken123',
+      kind: 'webgis',
+      title: 'Public Open Map',
+      project_id: null,
+      snapshot: {
+        center: [3.139, 101.6869],
+        zoom: 11,
+        stats: { subgrids: 1, km: 5, poi: 10, frames: 10, defects: 0, passRate: 100 }
+      },
+      basemap: 'ofm-positron',
+      password_hash: null,
+      created_by: null,
+      created_at: new Date().toISOString(),
+      expires_at: null,
+      revoked_at: null,
+      view_count: 0
+    });
+
+    render(<SharedMapPage />);
+
+    await waitFor(() => {
+      expect(screen.queryByText(/Sign in to view this shared map/i)).not.toBeInTheDocument();
+      expect(screen.getAllByText(/Public Open Map/i).length).toBeGreaterThan(0);
+      expect(screen.getByText(/Read-only share/i)).toBeInTheDocument();
+    });
   });
 
   it('renders "link no longer available" when no token is present in the URL', async () => {
@@ -195,10 +256,51 @@ describe('SharedMapPage', () => {
       expect(screen.getAllByText('Mobile Mapping - DevTest_v1 — Road Analysis Map').length).toBeGreaterThan(0);
       expect(screen.getByText(/Published survey/i)).toBeInTheDocument();
       expect(screen.getByText(/Staging survey/i)).toBeInTheDocument();
+      expect(screen.getByText(/Defect panorama/i)).toBeInTheDocument();
       expect(screen.getByText('273')).toBeInTheDocument();
       expect(screen.getByText(/survey points/i)).toBeInTheDocument();
       expect(screen.getByText(/subgrids/i)).toBeInTheDocument();
       expect(screen.getByText(/Region: Segamat, Tangkak/i)).toBeInTheDocument();
+    });
+  });
+
+  it('renders legend entries for imported catalog layers on a road share', async () => {
+    delete (window as any).location;
+    window.location = new URL('http://localhost:5173/share/roadcataloglayer123') as any;
+
+    vi.spyOn(mapShares, 'fetchShareByToken').mockResolvedValue({
+      id: 's5',
+      token: 'roadcataloglayer123',
+      kind: 'road',
+      title: 'Road Map With Imported Layers',
+      project_id: null,
+      snapshot: {
+        center: [2.5, 102.8],
+        zoom: 11,
+        lines: [{ coords: [[2.5, 102.8], [2.51, 102.81]] }],
+        catalogLayers: [
+          { id: 'cat-1', name: 'School Zones', color: '#ff00aa', opacity: 0.8, strokeWidth: 3, geometryType: 'Mixed', featureCount: 1, geojson: { type: 'FeatureCollection', features: [] } },
+          { id: 'cat-2', name: 'Drainage Points', color: '#38bdf8', opacity: 0.8, strokeWidth: 3, geometryType: 'Point', featureCount: 4, geojson: { type: 'FeatureCollection', features: [] } }
+        ],
+        stats: { subgrids: 0, km: 1.2, poi: 0, frames: 0, defects: 0, passRate: 100, lines: 1 }
+      },
+      basemap: 'ofm-positron',
+      password_hash: null,
+      created_by: null,
+      created_at: new Date().toISOString(),
+      expires_at: null,
+      revoked_at: null,
+      view_count: 1
+    });
+
+    render(<SharedMapPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Road Map With Imported Layers')).toBeInTheDocument();
+      expect(screen.getByText('Imported layers')).toBeInTheDocument();
+      expect(screen.getByText('School Zones')).toBeInTheDocument();
+      expect(screen.getByText('Drainage Points')).toBeInTheDocument();
+      expect(screen.getByText('Extracted road trace')).toBeInTheDocument();
     });
   });
 });

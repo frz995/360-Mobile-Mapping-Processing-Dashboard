@@ -8,10 +8,10 @@ import {
   Tooltip,
   Cell
 } from 'recharts';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Download } from 'lucide-react';
 import type { SurveyAnalytics } from '../../../utils/surveyAnalytics';
 import type { TranslateFn } from '../common';
-import { formatNumber, publishTone } from './analyticsCommon';
+import { downloadCsv, formatNumber, publishTone } from './analyticsCommon';
 
 interface CoveragePanelProps {
   analytics: SurveyAnalytics;
@@ -26,18 +26,49 @@ const DARK_TOOLTIP = {
 
 export function CoveragePanel({ analytics, translate }: CoveragePanelProps) {
   const rows = [...analytics.perSubgrid].sort((a, b) => (b.actualCoveragePct ?? 0) - (a.actualCoveragePct ?? 0));
+  // Subgrids without a per-subgrid plan attribution have no coverage % — exclude from the chart.
+  const chartableRows = rows.filter((r) => typeof r.actualCoveragePct === 'number');
   // Cap chart display to top 24 subgrids to avoid heavy SVG overdraw and illegible text bars when projects have 100+ subgrids
-  const isTruncated = rows.length > 24;
-  const chartRows = isTruncated ? rows.slice(0, 24) : rows;
+  const isTruncated = chartableRows.length > 24;
+  const chartRows = isTruncated ? chartableRows.slice(0, 24) : chartableRows;
   const chartData = chartRows.map((r) => ({
     name: r.subgrid,
-    pct: r.actualCoveragePct ?? 0,
+    pct: r.actualCoveragePct as number,
     hasPlan: r.hasPlanSource
   }));
   const xAxisInterval = chartRows.length > 16 ? 'preserveStartEnd' : 0;
 
+  const handleExport = () => {
+    downloadCsv('analytics-distance-coverage.csv', [
+      ['Grid', 'Subgrid', 'Current capture (km)', 'Road plan (km)', 'Remaining to capture (km)', 'Actual Coverage (%)', 'POI', 'Runs', 'Status', 'PIC'],
+      ...rows.map((r) => [
+        r.grid || '1',
+        r.subgrid,
+        Math.round(r.km * 100) / 100,
+        r.hasPlanSource && typeof r.planKm === 'number' ? Math.round(r.planKm * 100) / 100 : (analytics.totals.hasRoadPlanSource ? '—' : 'No existing road plan source'),
+        r.hasPlanSource && typeof r.remainingKm === 'number' ? Math.round(r.remainingKm * 100) / 100 : '—',
+        r.hasPlanSource && typeof r.actualCoveragePct === 'number' ? `${r.actualCoveragePct}%` : '—',
+        r.poi,
+        r.runsCount,
+        translate(`analyticsState_${r.publishState}`),
+        r.pic || '—'
+      ])
+    ]);
+  };
+
   return (
     <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <h3 className="text-[11px] font-bold uppercase tracking-wider text-text-muted">
+          {translate('analyticsDistanceBySubgrid')}
+        </h3>
+        <button
+          onClick={handleExport}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-inner border border-subtle text-sky-300 text-[10px] font-bold uppercase tracking-wider cursor-pointer hover:border-sky-500/40"
+        >
+          <Download size={12} /> CSV
+        </button>
+      </div>
       {/* Actual Coverage Campaign Metrics */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         <div className="bg-inner border border-subtle rounded-xl p-3">
@@ -127,6 +158,8 @@ export function CoveragePanel({ analytics, translate }: CoveragePanelProps) {
               <th className="px-3 py-2 text-right">Road plan (in km)</th>
               <th className="px-3 py-2 text-right">Remaining to capture</th>
               <th className="px-3 py-2 text-right">Actual Coverage (%)</th>
+              <th className="px-3 py-2 text-right">{translate('analyticsColPoi')}</th>
+              <th className="px-3 py-2 text-right">{translate('analyticsColRuns')}</th>
               <th className="px-3 py-2 text-center">Status</th>
               <th className="px-3 py-2 text-center">PIC</th>
             </tr>
@@ -142,6 +175,8 @@ export function CoveragePanel({ analytics, translate }: CoveragePanelProps) {
                 <td className="px-3 py-2 text-right font-sans">
                   {r.hasPlanSource && r.planKm !== null && r.planKm !== undefined ? (
                     <span className="text-text-base">{formatNumber(r.planKm, 2)} km</span>
+                  ) : analytics.totals.hasRoadPlanSource ? (
+                    <span className="text-text-muted">—</span>
                   ) : (
                     <span className="text-[10px] text-amber-300/80 italic">No existing road plan source</span>
                   )}
@@ -164,6 +199,8 @@ export function CoveragePanel({ analytics, translate }: CoveragePanelProps) {
                     <span className="text-text-muted">—</span>
                   )}
                 </td>
+                <td className="px-3 py-2 text-right font-sans">{formatNumber(r.poi)}</td>
+                <td className="px-3 py-2 text-right">{r.runsCount}</td>
                 <td className="px-3 py-2 text-center">
                   <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${publishTone(r.publishState)}`}>
                     {translate(`analyticsState_${r.publishState}`)}

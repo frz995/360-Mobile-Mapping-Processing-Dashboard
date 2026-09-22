@@ -9,7 +9,6 @@ export type { TranslateFn };
 export const ANALYTICS_TAB_LABELS: Record<string, string> = {
   overview: 'analyticsTabOverview',
   ledger: 'analyticsTabLedger',
-  distance: 'analyticsTabDistance',
   coverage: 'analyticsTabCoverage',
   density: 'analyticsTabDensity',
   quality: 'analyticsTabQuality'

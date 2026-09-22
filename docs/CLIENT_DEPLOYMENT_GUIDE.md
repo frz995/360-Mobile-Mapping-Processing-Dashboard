@@ -86,6 +86,7 @@ The system operates across three coordinated tiers:
    0016_per_project_isolation.sql
    0017_project_delete_cascade.sql
    0018_map_shares.sql
+   0019_map_shares_auth_only.sql
    ```
 
 3. **Verify Security Policies**:
@@ -168,6 +169,11 @@ The system operates across three coordinated tiers:
 
    # Backend GPU Worker API endpoint
    VITE_PRODUCTION_API_URL=http://<worker-ip-or-hostname>:8787
+
+   # Optional: render share links against the LIVE WebGIS map application instead
+   # of the reconstructed snapshot map. Off by default — only enable once the map
+   # app implements the read-only share scope (see "Step 4: Share-Map Production Notes").
+   # VITE_SHARE_LIVE_MODE=1
    ```
 
 3. **Compile the Production Bundle**:
@@ -191,6 +197,57 @@ The system operates across three coordinated tiers:
      }
      ```
    * **Vercel / Cloudflare Pages**: Connect your Git repository and set the build command to `npm run build` and publish directory to `dist`.
+
+---
+
+## Step 4: Share-Map Production Notes
+
+Share links are **read-only, revocable, expiring documents**. Access control is enforced by
+`0018_map_shares.sql` / `0019_map_shares_auth_only.sql` (actors must hold a valid app session, and
+row-level security hides shares that are revoked or past their expiry). A share is an immutable
+**snapshot** of points, tracks, lines, stats, and survey segments captured at creation time.
+
+### Panorama imagery: references, not baked URLs
+
+Each snapshot today carries the representative 360° panorama URL for a subgrid (`panoramaUrl`) plus a
+**source reference** (`panoramaRef: { filename, subgrid }`) and the **frozen storage-resolution prefs**
+used at creation time (`snapshot.storage` — only the storage keys, nothing else leaks). The reader
+resolves imagery through a single seam, `resolveSegmentPanorama(segment, snapshot.storage)`
+(`src/utils/mapShares.ts`), so:
+
+* URLs are re-derived from the source filename at view time instead of trusting a stale absolute path;
+* a deployment can later swap in a **signed-media pipeline without touching the share page or viewer**.
+
+### Optional: signed, expiring media endpoint
+
+For strictly private imagery, front the storage with a backend endpoint that returns a short-lived
+presigned URL and point `resolveSegmentPanorama` at it:
+
+```text
+GET /api/share-media/:token/:filename?subgrid=<optional>
+→ 200 { "url": "https://.../presigned?X-Amz-Expires=300" }   (or a 302 redirect)
+```
+
+The endpoint should validate the share token, the actor's session, password if any, and expiry/revoke
+state — reusing the same `map_shares` checks. Self-signed or hardcoded absolute URLs are not
+recommended for confidential survey imagery.
+
+### Optional: live map reference (`VITE_SHARE_LIVE_MODE=1`)
+
+Setting `VITE_SHARE_LIVE_MODE=1` embeds the **live WebGIS map application** at `VITE_MAP_URL`
+(`?embed=true&preview=true&noSonar=1&share=<token>&basemap=<...>`) instead of the reconstructed
+snapshot map. The embedded app must implement the read-only, token-scoped contract:
+
+* honor `share=<token>` by scoping to the snapshot. To open the share from the live map instead,
+  use the share document and diff/apply the snapshot layers over the scene;
+* respond to the parent's postMessages:
+  * `{ type: 'SHARE_FOCUS', subgrid }` → move the map/focus to that subgrid;
+* emit postMessages to the parent:
+  * `{ type: 'SHARE_FOCUS_SEGMENT', subgrid }` when the user taps a station (drives the 360° corner viewer);
+  * `{ type: 'SHARE_COORDS', coords: { lat, lng } | null }` for the cursor readout.
+
+Until the map application implements that protocol, keep `VITE_SHARE_LIVE_MODE` unset — the snapshot
+renderer remains the supported default.
 
 ---
 

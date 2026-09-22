@@ -1,6 +1,25 @@
 import React from 'react';
-import { Navigation, Camera, Database, ShieldCheck, ShieldAlert } from 'lucide-react';
+import { ShieldCheck, ShieldAlert } from 'lucide-react';
 import { Skeleton } from '../common/Skeleton';
+
+// Monochrome PNGs from public/icon dashboard, tinted via CSS mask fill so they
+// follow the sky accent without becoming multicolor.
+const MaskedIcon = ({ src }: { src: string }) => (
+  <span
+    aria-hidden
+    className="inline-block w-[15px] h-[15px] bg-white shrink-0"
+    style={{
+      WebkitMaskImage: `url("${src}")`,
+      maskImage: `url("${src}")`,
+      WebkitMaskRepeat: 'no-repeat',
+      maskRepeat: 'no-repeat',
+      WebkitMaskPosition: 'center',
+      maskPosition: 'center',
+      WebkitMaskSize: 'contain',
+      maskSize: 'contain'
+    }}
+  />
+);
 
 export interface DashboardKpiSummaryProps {
   tourStep: number | null;
@@ -45,7 +64,7 @@ export const DashboardKpiSummary: React.FC<DashboardKpiSummaryProps> = ({
       <div className="bg-card border border-subtle backdrop-blur-md rounded-xl p-3.5 flex flex-col justify-between shadow-sm animate-waterfall stagger-1">
         <div className="flex items-center justify-between">
           <span className="text-xs font-bold text-text-base uppercase tracking-tight">{t('totalDistance')}</span>
-          <Navigation size={15} className="text-sky-400 shrink-0" />
+          <MaskedIcon src="/icon%20dashboard/Map_Distance.png" />
         </div>
         <div className="my-1 flex items-baseline gap-2">
           {isDataLoading ? (
@@ -66,7 +85,7 @@ export const DashboardKpiSummary: React.FC<DashboardKpiSummaryProps> = ({
       <div className="bg-card border border-subtle backdrop-blur-md rounded-xl p-3.5 flex flex-col justify-between shadow-sm animate-waterfall stagger-2">
         <div className="flex items-center justify-between">
           <span className="text-xs font-bold text-text-base uppercase tracking-tight">{t('processedPanoramas')}</span>
-          <Camera size={15} className="text-sky-400 shrink-0" />
+          <MaskedIcon src="/icon%20dashboard/processed_panoramas.png" />
         </div>
         <div className="my-1">
           {isDataLoading ? (
@@ -84,7 +103,7 @@ export const DashboardKpiSummary: React.FC<DashboardKpiSummaryProps> = ({
       <div className="bg-card border border-subtle backdrop-blur-md rounded-xl p-3.5 flex flex-col justify-between shadow-sm animate-waterfall stagger-3">
         <div className="flex items-center justify-between">
           <span className="text-xs font-bold text-text-base uppercase tracking-tight">{t('activeJobs')}</span>
-          <Database size={15} className="text-sky-400 shrink-0" />
+          <MaskedIcon src="/icon%20dashboard/Job_processing.png" />
         </div>
         <div className="my-1 flex items-baseline gap-2 flex-wrap">
           {isDataLoading ? (

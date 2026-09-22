@@ -1,34 +1,55 @@
 import { extractSubgridName } from './subgrid';
+import { getItemId } from './items';
 
 // =====================================================================
 // Safe Data Deletion impact preview — computed fully on the client from
 // metadata already present in the Data Management workspace.
+// Supports hierarchical Parent (Masterlist batch) vs Child (Daily run)
+// distinction so deletion impact matches the exact active layer.
 // =====================================================================
 
 export type DeletionMode = 'single' | 'bulk' | 'spatial';
 
 export interface DailyTimeSeriesLike {
+  id?: string;
+  _id?: string;
+  runId?: string;
   subgrid?: string;
   grid?: string;
+  date?: string;
   kmProcessed?: number;
   imagesProcessed?: number;
   availableImagesCount?: number;
+  availableFilenames?: string[];
   poiCount?: number;
   defectCount?: number;
+  imagesDefected?: number;
+  captureEquipment?: string;
   publishToWebGIS?: string;
   isSyncedWithSupabase?: boolean;
+  panoramas?: any[];
 }
 
 export interface BatchLogLike {
+  id?: string;
+  _id?: string;
   subgrid?: string;
+  grid?: string;
+  date?: string;
   imageFilename?: string;
   images?: number;
   availableImagesCount?: number;
+  availableFilenames?: string[];
   poiCount?: number;
   defects?: number;
+  defectCount?: number;
   kmProcessed?: number;
   publishToWebGIS?: string;
   isSyncedWithSupabase?: boolean;
+  status?: string;
+  runsCount?: number;
+  publishedRunsCount?: number;
+  panoramas?: any[];
 }
 
 export interface DatasetRecordLike {
@@ -104,6 +125,21 @@ export interface DeletionImpact {
   hasOrphanRisk: boolean;
 }
 
+export interface ComputeDeletionImpactParams {
+  mode: DeletionMode;
+  subgrids: string[];
+  dailyData: DailyTimeSeriesLike[];
+  batchLogs: BatchLogLike[];
+  qaRecords?: Record<string, unknown>;
+  stagingAggregates?: StagingAggregateLike[];
+  datasets?: DatasetRecordLike[];
+  jobs?: ProcessingJobLike[];
+  fallbackRecord?: DailyTimeSeriesLike | BatchLogLike;
+  targetRecord?: DailyTimeSeriesLike | BatchLogLike | null;
+  sourceTab?: 'batches' | 'daily' | 'datasets' | 'recovery' | string;
+  selectedIds?: Set<string>;
+}
+
 function normSub(value?: string): string {
   return (value || '').trim().toUpperCase();
 }
@@ -121,17 +157,41 @@ function matchesSubgrid(value: string | undefined, targetSg: string): boolean {
   return false;
 }
 
-export function computeDeletionImpact(params: {
-  mode: DeletionMode;
-  subgrids: string[];
-  dailyData: DailyTimeSeriesLike[];
-  batchLogs: BatchLogLike[];
-  qaRecords?: Record<string, unknown>;
-  stagingAggregates?: StagingAggregateLike[];
-  datasets?: DatasetRecordLike[];
-  jobs?: ProcessingJobLike[];
-  fallbackRecord?: DailyTimeSeriesLike | BatchLogLike;
-}): DeletionImpact {
+export function extractPoiCount(item?: any): number {
+  if (!item) return 0;
+  if (typeof item.poiCount === 'number' && item.poiCount >= 0) {
+    return item.poiCount;
+  }
+  if (Array.isArray(item.panoramas) && item.panoramas.length > 0) {
+    return item.panoramas.length;
+  }
+  if (typeof item.imagesProcessed === 'number' && item.imagesProcessed >= 0) {
+    return item.imagesProcessed;
+  }
+  if (typeof item.images === 'number' && item.images >= 0) {
+    return item.images;
+  }
+  if (typeof item.availableImagesCount === 'number' && item.availableImagesCount >= 0) {
+    return item.availableImagesCount;
+  }
+  return 0;
+}
+
+export function extractFramesCount(item?: any): number {
+  if (!item) return 0;
+  if (typeof item.availableImagesCount === 'number' && item.availableImagesCount >= 0) {
+    return item.availableImagesCount;
+  }
+  if (typeof item.imagesProcessed === 'number' && item.imagesProcessed >= 0) {
+    return item.imagesProcessed;
+  }
+  if (typeof item.images === 'number' && item.images >= 0) {
+    return item.images;
+  }
+  return extractPoiCount(item);
+}
+
+export function computeDeletionImpact(params: ComputeDeletionImpactParams): DeletionImpact {
   const {
     mode,
     subgrids,
@@ -141,7 +201,10 @@ export function computeDeletionImpact(params: {
     stagingAggregates = [],
     datasets = [],
     jobs = [],
-    fallbackRecord
+    fallbackRecord,
+    targetRecord,
+    sourceTab,
+    selectedIds
   } = params;
 
   const target = new Set(subgrids.map(normSub));
@@ -202,6 +265,386 @@ export function computeDeletionImpact(params: {
 
   const warnings: string[] = [];
 
+  // =========================================================================
+  // 1. SINGLE RECORD DELETION: Isolate Child (Daily Run) vs Parent (Masterlist)
+  // =========================================================================
+  const effectiveTarget = targetRecord !== undefined && targetRecord !== null ? targetRecord : fallbackRecord;
+  if (mode === 'single' && effectiveTarget) {
+    const isDaily = sourceTab === 'daily' || (!('imageFilename' in effectiveTarget) && sourceTab !== 'batches');
+
+    if (isDaily) {
+      // ---------------------------------------------------------------------
+      // CHILD: Daily Survey Run single deletion
+      // ---------------------------------------------------------------------
+      const rawSg = ('subgrid' in effectiveTarget && effectiveTarget.subgrid) ? effectiveTarget.subgrid : 'RECORD';
+      const sg = (extractSubgridName(rawSg) || rawSg || 'RECORD').toUpperCase().trim();
+      const poi = extractPoiCount(effectiveTarget);
+      const frames = extractFramesCount(effectiveTarget);
+      const km = Math.round((Number(effectiveTarget.kmProcessed) || 0) * 100) / 100;
+      const defects = Number(
+        ('defectCount' in effectiveTarget ? effectiveTarget.defectCount : 0) ||
+        ('imagesDefected' in (effectiveTarget as any) ? (effectiveTarget as any).imagesDefected : 0) ||
+        ('defects' in (effectiveTarget as any) ? (effectiveTarget as any).defects : 0) ||
+        0
+      );
+      const isPub = effectiveTarget.publishToWebGIS === 'yes' || Boolean(effectiveTarget.isSyncedWithSupabase);
+      const published = isPub ? 1 : 0;
+
+      const targetId = getItemId(effectiveTarget);
+      const remainingRuns = dailyData.filter(
+        (d) => matchesSubgrid(d.subgrid, sg) && (targetId ? getItemId(d) !== targetId : d !== effectiveTarget)
+      );
+
+      const ds = datasetsFor(sg);
+      const deliverables = ds.filter((d) => d.dataset_type === 'DELIVERABLE');
+      const js = jobsFor(sg);
+
+      if (remainingRuns.length > 0) {
+        warnings.push(
+          `${sg}: Deleting 1 child daily run (${poi} frames, ${km} km). ${remainingRuns.length} other run(s) remain active for this subgrid.`
+        );
+      } else {
+        warnings.push(
+          `${sg}: Deleting the only daily run for this subgrid. The subgrid will be completely removed.`
+        );
+        if (deliverables.length > 0) {
+          warnings.push(
+            `${sg}: deleting this survey data leaves ${deliverables.length} DELIVERABLE dataset(s) orphaned — ${deliverables.map((d) => d.name || '—').join(', ')}.`
+          );
+        }
+        if (js.length > 0) {
+          warnings.push(
+            `${sg}: ${js.length} processing job(s) reference this data — ${js.map((j) => j.name || j.job_type || '—').join(', ')}.`
+          );
+        }
+      }
+
+      if (isPub) {
+        warnings.push(`${sg}: this daily record is marked as published to WebGIS / synchronised to the database.`);
+      }
+
+      const row: ImpactRow = {
+        subgrid: sg,
+        runs: 1,
+        batch: 0,
+        poi,
+        frames,
+        km,
+        defects,
+        published,
+        staging: remainingRuns.length === 0 ? stagingFor(sg) : 0,
+        qa: remainingRuns.length === 0 ? qaFor(sg) : 0,
+        datasets: remainingRuns.length === 0 ? ds.length : 0,
+        deliverables: remainingRuns.length === 0 ? deliverables.length : 0,
+        jobs: remainingRuns.length === 0 ? js.length : 0,
+        relatedNames: remainingRuns.length === 0 ? ds.map((d) => d.name || '—') : [],
+        deliverableNames: remainingRuns.length === 0 ? deliverables.map((d) => d.name || '—') : [],
+        jobNames: remainingRuns.length === 0 ? js.map((j) => j.name || j.job_type || '—') : []
+      };
+
+      rows.push(row);
+      totals.subgrids = 1;
+      totals.runs = 1;
+      totals.batch = 0;
+      totals.poi = poi;
+      totals.frames = frames;
+      totals.km = km;
+      totals.defects = defects;
+      totals.published = published;
+      totals.staging = row.staging;
+      totals.qa = row.qa;
+      totals.datasets = row.datasets;
+      totals.deliverables = row.deliverables;
+      totals.jobs = row.jobs;
+
+      return {
+        mode,
+        rows,
+        totals,
+        warnings,
+        hasPublished: totals.published > 0,
+        hasDeliverables: totals.deliverables > 0,
+        hasLinkedJobs: totals.jobs > 0,
+        hasOrphanRisk: totals.staging > 0
+      };
+    } else {
+      // ---------------------------------------------------------------------
+      // PARENT: Masterlist Batch Log single deletion
+      // ---------------------------------------------------------------------
+      const rawSg = ('subgrid' in effectiveTarget && effectiveTarget.subgrid)
+        ? effectiveTarget.subgrid
+        : ('imageFilename' in effectiveTarget ? (effectiveTarget as BatchLogLike).imageFilename : 'RECORD');
+      const sg = (extractSubgridName(rawSg) || rawSg || 'RECORD').toUpperCase().trim();
+      const poi = extractPoiCount(effectiveTarget);
+      const frames = extractFramesCount(effectiveTarget);
+      const km = Math.round((Number(effectiveTarget.kmProcessed) || 0) * 100) / 100;
+      const defects = Number(
+        ('defects' in effectiveTarget ? effectiveTarget.defects : 0) ||
+        ('defectCount' in (effectiveTarget as any) ? (effectiveTarget as any).defectCount : 0) ||
+        0
+      );
+
+      const linkedRuns = dailyFor(sg);
+      const runs = (typeof (effectiveTarget as BatchLogLike).runsCount === 'number' && (effectiveTarget as BatchLogLike).runsCount! > 0)
+        ? (effectiveTarget as BatchLogLike).runsCount!
+        : (linkedRuns.length > 0 ? linkedRuns.length : 1);
+
+      const isPub = effectiveTarget.publishToWebGIS === 'yes' ||
+        Boolean(effectiveTarget.isSyncedWithSupabase) ||
+        (effectiveTarget as any).status === 'Complete';
+      const pubRunsCount = linkedRuns.filter((r) => r.publishToWebGIS === 'yes' || r.isSyncedWithSupabase).length;
+      const published = isPub ? (pubRunsCount > 0 ? pubRunsCount : 1) : pubRunsCount;
+
+      const ds = datasetsFor(sg);
+      const deliverables = ds.filter((d) => d.dataset_type === 'DELIVERABLE');
+      const js = jobsFor(sg);
+
+      if (published > 0) {
+        warnings.push(
+          `${sg}: ${published} record(s) are published to WebGIS / synchronised to the database. Re-publishing after deletion would be required.`
+        );
+      }
+      if (deliverables.length > 0) {
+        warnings.push(
+          `${sg}: deleting this masterlist batch leaves ${deliverables.length} DELIVERABLE dataset(s) orphaned — ${deliverables.map((d) => d.name || '—').join(', ')}.`
+        );
+      }
+      if (js.length > 0) {
+        warnings.push(
+          `${sg}: ${js.length} processing job(s) reference this data — ${js.map((j) => j.name || j.job_type || '—').join(', ')}.`
+        );
+      }
+      if (stagingFor(sg) > 0) {
+        warnings.push(
+          `${sg}: ${stagingFor(sg)} RAW capture frame(s) remain in staging and are NOT removed by this action.`
+        );
+      }
+
+      const row: ImpactRow = {
+        subgrid: sg,
+        runs,
+        batch: 1,
+        poi,
+        frames,
+        km,
+        defects,
+        published,
+        staging: stagingFor(sg),
+        qa: qaFor(sg),
+        datasets: ds.length,
+        deliverables: deliverables.length,
+        jobs: js.length,
+        relatedNames: ds.map((d) => d.name || '—'),
+        deliverableNames: deliverables.map((d) => d.name || '—'),
+        jobNames: js.map((j) => j.name || j.job_type || '—')
+      };
+
+      rows.push(row);
+      totals.subgrids = 1;
+      totals.runs = runs;
+      totals.batch = 1;
+      totals.poi = poi;
+      totals.frames = frames;
+      totals.km = km;
+      totals.defects = defects;
+      totals.published = published;
+      totals.staging = row.staging;
+      totals.qa = row.qa;
+      totals.datasets = row.datasets;
+      totals.deliverables = row.deliverables;
+      totals.jobs = row.jobs;
+
+      return {
+        mode,
+        rows,
+        totals,
+        warnings,
+        hasPublished: totals.published > 0,
+        hasDeliverables: totals.deliverables > 0,
+        hasLinkedJobs: totals.jobs > 0,
+        hasOrphanRisk: totals.staging > 0
+      };
+    }
+  }
+
+  // =========================================================================
+  // 2. BULK SELECTION DELETION: Isolate Child (Daily) vs Parent (Masterlist)
+  // =========================================================================
+  if (mode === 'bulk' && selectedIds && selectedIds.size > 0) {
+    if (sourceTab === 'daily') {
+      const selectedRuns = dailyData.filter((d) => selectedIds.has(getItemId(d)));
+      const subgridGroups = new Map<string, DailyTimeSeriesLike[]>();
+      selectedRuns.forEach((d) => {
+        const raw = d.subgrid || 'RECORD';
+        const sg = (extractSubgridName(raw) || raw).toUpperCase().trim();
+        const list = subgridGroups.get(sg) || [];
+        list.push(d);
+        subgridGroups.set(sg, list);
+      });
+
+      Array.from(subgridGroups.keys()).sort().forEach((sg) => {
+        const runsInGroup = subgridGroups.get(sg) || [];
+        const poi = runsInGroup.reduce((s, r) => s + extractPoiCount(r), 0);
+        const frames = runsInGroup.reduce((s, r) => s + extractFramesCount(r), 0);
+        const km = Math.round(runsInGroup.reduce((s, r) => s + (Number(r.kmProcessed) || 0), 0) * 100) / 100;
+        const defects = runsInGroup.reduce((s, r) => s + Number(r.defectCount ?? (r as any).imagesDefected ?? 0), 0);
+        const published = runsInGroup.filter((r) => r.publishToWebGIS === 'yes' || r.isSyncedWithSupabase).length;
+
+        const allRunsForSg = dailyFor(sg);
+        const remainingCount = allRunsForSg.length - runsInGroup.length;
+        const isCompleteSubgridPurge = remainingCount <= 0;
+
+        const ds = datasetsFor(sg);
+        const deliverables = ds.filter((d) => d.dataset_type === 'DELIVERABLE');
+        const js = jobsFor(sg);
+
+        if (remainingCount > 0) {
+          warnings.push(
+            `${sg}: Deleting ${runsInGroup.length} child daily run(s). ${remainingCount} other run(s) remain active for this subgrid.`
+          );
+        } else {
+          warnings.push(
+            `${sg}: All daily runs selected for deletion. The subgrid will be completely removed.`
+          );
+          if (deliverables.length > 0) {
+            warnings.push(
+              `${sg}: deleting this survey data leaves ${deliverables.length} DELIVERABLE dataset(s) orphaned — ${deliverables.map((d) => d.name || '—').join(', ')}.`
+            );
+          }
+        }
+        if (published > 0) {
+          warnings.push(`${sg}: ${published} selected daily record(s) are marked as published.`);
+        }
+
+        const row: ImpactRow = {
+          subgrid: sg,
+          runs: runsInGroup.length,
+          batch: 0,
+          poi,
+          frames,
+          km,
+          defects,
+          published,
+          staging: isCompleteSubgridPurge ? stagingFor(sg) : 0,
+          qa: isCompleteSubgridPurge ? qaFor(sg) : 0,
+          datasets: isCompleteSubgridPurge ? ds.length : 0,
+          deliverables: isCompleteSubgridPurge ? deliverables.length : 0,
+          jobs: isCompleteSubgridPurge ? js.length : 0,
+          relatedNames: isCompleteSubgridPurge ? ds.map((d) => d.name || '—') : [],
+          deliverableNames: isCompleteSubgridPurge ? deliverables.map((d) => d.name || '—') : [],
+          jobNames: isCompleteSubgridPurge ? js.map((j) => j.name || j.job_type || '—') : []
+        };
+
+        rows.push(row);
+        totals.subgrids += 1;
+        totals.runs += row.runs;
+        totals.batch += row.batch;
+        totals.poi += row.poi;
+        totals.frames += row.frames;
+        totals.km += row.km;
+        totals.defects += row.defects;
+        totals.published += row.published;
+        totals.staging += row.staging;
+        totals.qa += row.qa;
+        totals.datasets += row.datasets;
+        totals.deliverables += row.deliverables;
+        totals.jobs += row.jobs;
+      });
+
+      return {
+        mode,
+        rows,
+        totals,
+        warnings,
+        hasPublished: totals.published > 0,
+        hasDeliverables: totals.deliverables > 0,
+        hasLinkedJobs: totals.jobs > 0,
+        hasOrphanRisk: totals.staging > 0
+      };
+    } else if (sourceTab === 'batches') {
+      const selectedBatches = batchLogs.filter((b) => selectedIds.has(getItemId(b)));
+
+      selectedBatches.forEach((b) => {
+        const raw = b.subgrid || b.imageFilename || 'RECORD';
+        const sg = (extractSubgridName(raw) || raw).toUpperCase().trim();
+        const poi = extractPoiCount(b);
+        const frames = extractFramesCount(b);
+        const km = Math.round((Number(b.kmProcessed) || 0) * 100) / 100;
+        const defects = Number(b.defects ?? (b as any).defectCount ?? 0);
+
+        const linkedRuns = dailyFor(sg);
+        const runs = (typeof b.runsCount === 'number' && b.runsCount > 0)
+          ? b.runsCount
+          : (linkedRuns.length > 0 ? linkedRuns.length : 1);
+
+        const isPub = b.publishToWebGIS === 'yes' || b.isSyncedWithSupabase || b.status === 'Complete';
+        const pubRuns = linkedRuns.filter((r) => r.publishToWebGIS === 'yes' || r.isSyncedWithSupabase).length;
+        const published = isPub ? (pubRuns > 0 ? pubRuns : 1) : pubRuns;
+
+        const ds = datasetsFor(sg);
+        const deliverables = ds.filter((d) => d.dataset_type === 'DELIVERABLE');
+        const js = jobsFor(sg);
+
+        if (published > 0) {
+          warnings.push(`${sg}: ${published} record(s) are published to WebGIS.`);
+        }
+        if (deliverables.length > 0) {
+          warnings.push(
+            `${sg}: deleting this masterlist batch leaves ${deliverables.length} DELIVERABLE dataset(s) orphaned — ${deliverables.map((d) => d.name || '—').join(', ')}.`
+          );
+        }
+
+        const row: ImpactRow = {
+          subgrid: sg,
+          runs,
+          batch: 1,
+          poi,
+          frames,
+          km,
+          defects,
+          published,
+          staging: stagingFor(sg),
+          qa: qaFor(sg),
+          datasets: ds.length,
+          deliverables: deliverables.length,
+          jobs: js.length,
+          relatedNames: ds.map((d) => d.name || '—'),
+          deliverableNames: deliverables.map((d) => d.name || '—'),
+          jobNames: js.map((j) => j.name || j.job_type || '—')
+        };
+
+        rows.push(row);
+        totals.subgrids += 1;
+        totals.runs += row.runs;
+        totals.batch += row.batch;
+        totals.poi += row.poi;
+        totals.frames += row.frames;
+        totals.km += row.km;
+        totals.defects += row.defects;
+        totals.published += row.published;
+        totals.staging += row.staging;
+        totals.qa += row.qa;
+        totals.datasets += row.datasets;
+        totals.deliverables += row.deliverables;
+        totals.jobs += row.jobs;
+      });
+
+      return {
+        mode,
+        rows,
+        totals,
+        warnings,
+        hasPublished: totals.published > 0,
+        hasDeliverables: totals.deliverables > 0,
+        hasLinkedJobs: totals.jobs > 0,
+        hasOrphanRisk: totals.staging > 0
+      };
+    }
+  }
+
+  // =========================================================================
+  // 3. SPATIAL OR GENERAL SUBGRID AGGREGATION FALLBACK
+  // =========================================================================
   Array.from(target)
     .sort()
     .forEach((sg) => {
@@ -211,29 +654,49 @@ export function computeDeletionImpact(params: {
       const js = jobsFor(sg);
       const deliverables = ds.filter((d) => d.dataset_type === 'DELIVERABLE');
 
-      const runsPoi = runs.reduce((s, r) => s + (r.poiCount || 0), 0);
-      const batchesPoi = batches.reduce((s, b) => s + (b.poiCount || 0), 0);
-      const poi = Math.max(runsPoi, batchesPoi);
+      let poi = 0;
+      let frames = 0;
+      let km = 0;
+      let defects = 0;
+      let published = 0;
 
-      const runsFrames = runs.reduce((s, r) => s + (r.availableImagesCount ?? r.imagesProcessed ?? 0), 0);
-      const batchesFrames = batches.reduce((s, b) => s + (b.availableImagesCount ?? b.images ?? 0), 0);
-      const frames = Math.max(runsFrames, batchesFrames);
+      if (sourceTab === 'daily') {
+        poi = runs.reduce((s, r) => s + extractPoiCount(r), 0);
+        frames = runs.reduce((s, r) => s + extractFramesCount(r), 0);
+        km = runs.reduce((s, r) => s + (r.kmProcessed || 0), 0);
+        defects = runs.reduce((s, r) => s + (r.defectCount || 0), 0);
+        published = runs.filter((r) => r.publishToWebGIS === 'yes' || r.isSyncedWithSupabase).length;
+      } else if (sourceTab === 'batches') {
+        poi = batches.reduce((s, b) => s + extractPoiCount(b), 0);
+        frames = batches.reduce((s, b) => s + extractFramesCount(b), 0);
+        km = batches.reduce((s, b) => s + (b.kmProcessed || 0), 0);
+        defects = batches.reduce((s, b) => s + (b.defects || 0), 0);
+        published = batches.filter((b) => b.publishToWebGIS === 'yes' || b.isSyncedWithSupabase).length;
+      } else {
+        const runsPoi = runs.reduce((s, r) => s + extractPoiCount(r), 0);
+        const batchesPoi = batches.reduce((s, b) => s + extractPoiCount(b), 0);
+        poi = Math.max(runsPoi, batchesPoi);
 
-      const runsKm = runs.reduce((s, r) => s + (r.kmProcessed || 0), 0);
-      const batchesKm = batches.reduce((s, b) => s + (b.kmProcessed || 0), 0);
-      const km = Math.max(runsKm, batchesKm);
+        const runsFrames = runs.reduce((s, r) => s + extractFramesCount(r), 0);
+        const batchesFrames = batches.reduce((s, b) => s + extractFramesCount(b), 0);
+        frames = Math.max(runsFrames, batchesFrames);
 
-      const runsDefects = runs.reduce((s, r) => s + (r.defectCount || 0), 0);
-      const batchesDefects = batches.reduce((s, b) => s + (b.defects || 0), 0);
-      const defects = Math.max(runsDefects, batchesDefects);
+        const runsKm = runs.reduce((s, r) => s + (r.kmProcessed || 0), 0);
+        const batchesKm = batches.reduce((s, b) => s + (b.kmProcessed || 0), 0);
+        km = Math.max(runsKm, batchesKm);
 
-      const runsPublished = runs.filter(
-        (r) => r.publishToWebGIS === 'yes' || r.isSyncedWithSupabase
-      ).length;
-      const batchesPublished = batches.filter(
-        (b) => b.publishToWebGIS === 'yes' || b.isSyncedWithSupabase
-      ).length;
-      const published = Math.max(runsPublished, batchesPublished);
+        const runsDefects = runs.reduce((s, r) => s + (r.defectCount || 0), 0);
+        const batchesDefects = batches.reduce((s, b) => s + (b.defects || 0), 0);
+        defects = Math.max(runsDefects, batchesDefects);
+
+        const runsPublished = runs.filter(
+          (r) => r.publishToWebGIS === 'yes' || r.isSyncedWithSupabase
+        ).length;
+        const batchesPublished = batches.filter(
+          (b) => b.publishToWebGIS === 'yes' || b.isSyncedWithSupabase
+        ).length;
+        published = Math.max(runsPublished, batchesPublished);
+      }
 
       const row: ImpactRow = {
         subgrid: sg,
@@ -291,14 +754,13 @@ export function computeDeletionImpact(params: {
       }
     });
 
-  // Fallback single record metric extraction if array lookups yielded 0 rows but a fallback record was supplied
   if (rows.length === 0 && fallbackRecord) {
     const rawSg = ('subgrid' in fallbackRecord && fallbackRecord.subgrid)
       ? fallbackRecord.subgrid
       : ('imageFilename' in fallbackRecord ? (fallbackRecord as BatchLogLike).imageFilename : 'RECORD');
     const sg = (extractSubgridName(rawSg) || rawSg || 'RECORD').toUpperCase().trim();
-    const poi = fallbackRecord.poiCount || fallbackRecord.availableImagesCount || (fallbackRecord as any).imagesProcessed || (fallbackRecord as any).images || 0;
-    const frames = fallbackRecord.availableImagesCount || (fallbackRecord as any).imagesProcessed || (fallbackRecord as any).images || poi;
+    const poi = extractPoiCount(fallbackRecord);
+    const frames = extractFramesCount(fallbackRecord);
     const km = fallbackRecord.kmProcessed || 0;
     const defects = (('defectCount' in fallbackRecord && typeof (fallbackRecord as any).defectCount === 'number')
       ? (fallbackRecord as any).defectCount

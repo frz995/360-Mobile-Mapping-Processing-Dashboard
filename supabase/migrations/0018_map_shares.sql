@@ -44,6 +44,14 @@ create index if not exists idx_map_shares_created_by on public.map_shares (creat
 
 alter table public.map_shares enable row level security;
 
+-- Base grants for the Supabase API roles. RLS policies below enforce the
+-- actual row-level rules; without these grants the roles cannot touch the
+-- table at all ("permission denied for table map_shares").
+grant usage on schema public to anon, authenticated, service_role;
+grant all on table public.map_shares to anon;
+grant all on table public.map_shares to authenticated;
+grant all on table public.map_shares to service_role;
+
 drop policy if exists "map_shares_public_read" on public.map_shares;
 create policy "map_shares_public_read" on public.map_shares
   for select
