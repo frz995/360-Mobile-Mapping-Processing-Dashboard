@@ -115,4 +115,34 @@ describe('snapshot builders', () => {
     expect(road.stats.km).toBeGreaterThan(0);
     expect(road.planName).toBe('Plan A');
   });
+
+  it('builds a road snapshot with captured survey points, tracks, and region stats when lines are empty', () => {
+    const road = buildRoadSnapshot([], {
+      planName: 'Region: Segamat, Tangkak',
+      capturedPoints: [
+        { lat: 2.505, lng: 102.81, subgrid: 'SG01', status: 'published', isPublished: true },
+        { lat: 2.506, lng: 102.82, subgrid: 'SG01', status: 'staging' },
+        { lat: 2.507, lng: 102.83, subgrid: 'SG02', status: 'defect', color: '#ef4444' }
+      ],
+      capturedTracks: [
+        [[102.81, 2.505], [102.82, 2.506], [102.83, 2.507]]
+      ],
+      stats: {
+        km: 3.37,
+        subgrids: 3,
+        poi: 273,
+        lines: 0
+      },
+      bbox: [102.7, 2.4, 103.0, 2.6]
+    });
+
+    expect(road.points?.length).toBe(3);
+    expect(road.tracks?.length).toBe(1);
+    expect(road.stats.km).toBe(3.37);
+    expect(road.stats.subgrids).toBe(3);
+    expect(road.stats.poi).toBe(273);
+    expect(road.planName).toBe('Region: Segamat, Tangkak');
+    expect(road.center[0]).toBeCloseTo(2.5, 1);
+    expect(road.center[1]).toBeCloseTo(102.8, 1);
+  });
 });

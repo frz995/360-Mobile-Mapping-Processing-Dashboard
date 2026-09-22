@@ -119,6 +119,7 @@ export interface RoadAnalysisSavedState {
   catalogLayers?: CatalogVectorLayer[];
   systemStyles?: SystemLayerStyles;
   planDistanceKm?: number;
+  subgridPlanKm?: Record<string, number>;
   totalSubgrids?: number;
   /** Catalog layer currently promoted to the Option B plan, if any. Persisted so
    *  the Plan Source panel can label the plan "Added from data catalog". */
@@ -1289,6 +1290,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
       systemStyles,
       catalogPlanLayerId,
       planDistanceKm: Number(planDistanceKm) || 0,
+      subgridPlanKm: Object.fromEntries(subgridMetrics.map((m) => [m.subgrid, m.planKm])),
       totalSubgrids: subgridMetrics.length || 0,
       updatedAt: new Date().toISOString(),
       updatedBy: userEmail,
@@ -1945,10 +1947,35 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
           kind="road"
           defaultTitle={`${projectSettings?.projectName || 'GeoSphere 360'} — Road Analysis Map`}
           buildSnapshot={() => {
-            if (extractedLines.length === 0) {
-              throw new Error('Nothing to share yet — extract road lines (or Save State) before creating the link.');
+            const hasLines = extractedLines && extractedLines.length > 0;
+            const hasPoints = capturedPoints && capturedPoints.length > 0;
+            const hasTracks = (capturedTracks && capturedTracks.length > 0) || (activePlanRuns && activePlanRuns.length > 0);
+            const hasCatalog = catalogLayers && catalogLayers.length > 0;
+
+            if (!hasLines && !hasPoints && !hasTracks && !hasCatalog) {
+              throw new Error('No road data or survey points to share yet. Select a region with survey data or extract road lines.');
             }
-            return buildRoadSnapshot(extractedLines, { planName: activePlanName, projectSettings });
+
+            const regionLabel = activeRegionDistricts.length > 0
+              ? activeRegionDistricts.map((d) => d.name).join(', ')
+              : undefined;
+
+            return buildRoadSnapshot(extractedLines, {
+              planName: activePlanName || (regionLabel ? `Region: ${regionLabel}` : undefined),
+              projectSettings,
+              capturedPoints,
+              capturedTracks: capturedTracks.length > 0 ? capturedTracks : activePlanRuns,
+              stats: {
+                subgrids: activeSubgridsCount || (capturedPoints.length > 0 ? new Set(capturedPoints.map((p) => p.subgrid).filter(Boolean)).size : 0),
+                km: Number(capturedDistanceKm?.toFixed(2)) || extractedLengthKm || 0,
+                poi: capturedPoints.length,
+                frames: 0,
+                defects: panotrackCounts.defect,
+                passRate: panotrackCounts.total > 0 ? Math.round((panotrackCounts.published / panotrackCounts.total) * 100) : 100,
+                lines: extractedLines.length
+              },
+              bbox: regionGeo?.bbox
+            });
           }}
           basemap={defaultBasemapKey}
           createdBy={authSession?.user?.id || null}

@@ -483,7 +483,7 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
             Administration &amp; Governance
           </h2>
           <p className="text-xs text-text-muted mt-0.5 leading-relaxed">
-            Security, RBAC user access control, data deletion approvals, and audit trail
+            Manage user access, deletion approvals, and security audit logs.
           </p>
         </div>
 

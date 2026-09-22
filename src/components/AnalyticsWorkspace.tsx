@@ -104,11 +104,11 @@ export const AnalyticsWorkspace: React.FC<AnalyticsWorkspaceProps> = ({
     return set.size > 0 ? set : undefined;
   }, [batchLogs, dailyData, stagingRows, projectSettings]);
 
-  const roadPlanKm = useMemo(() => {
-    // 1. Direct plan distance from roadAnalysisState in projectSettings
-    const fromSettings = Number(projectSettings?.roadAnalysisState?.planDistanceKm);
-    if (fromSettings > 0) return fromSettings;
-
+  const roadAnalysisConfig = useMemo(() => {
+    // 1. Direct from projectSettings
+    if (projectSettings?.roadAnalysisState) {
+      return projectSettings.roadAnalysisState;
+    }
     // 2. From cached road analysis state in localStorage
     try {
       const keys = Object.keys(localStorage).filter((k) => k.startsWith('geosphere_road_analysis_state_'));
@@ -116,21 +116,45 @@ export const AnalyticsWorkspace: React.FC<AnalyticsWorkspaceProps> = ({
         const raw = localStorage.getItem(k);
         if (raw) {
           const parsed = JSON.parse(raw);
-          const cachedPlanKm = Number(parsed?.planDistanceKm);
-          if (cachedPlanKm > 0) return cachedPlanKm;
+          if (parsed) return parsed;
         }
       }
     } catch { }
-
-    return Number(projectSettings?.targetKm) || 0;
+    return null;
   }, [projectSettings]);
 
+  const hasRoadPlanSource = useMemo(() => {
+    if (!roadAnalysisConfig) return false;
+    const planKm = Number(roadAnalysisConfig.planDistanceKm);
+    const hasExtracted = Array.isArray(roadAnalysisConfig.extractedLines) && roadAnalysisConfig.extractedLines.length > 0;
+    const hasManual = Boolean(roadAnalysisConfig.manualGeoJson?.features?.length);
+    const hasCatalogPlan = Boolean(roadAnalysisConfig.catalogPlanLayerId);
+    const hasSubgridPlan = Boolean(roadAnalysisConfig.subgridPlanKm && Object.values(roadAnalysisConfig.subgridPlanKm).some((v: any) => Number(v) > 0));
+    return planKm > 0 || hasExtracted || hasManual || hasCatalogPlan || hasSubgridPlan;
+  }, [roadAnalysisConfig]);
+
+  const roadPlanKm = useMemo(() => {
+    if (hasRoadPlanSource) {
+      const planKm = Number(roadAnalysisConfig?.planDistanceKm);
+      if (planKm > 0) return planKm;
+    }
+    return Number(projectSettings?.targetKm) || 0;
+  }, [hasRoadPlanSource, roadAnalysisConfig, projectSettings]);
+
+  const subgridPlanKm = useMemo(() => {
+    if (!hasRoadPlanSource || !roadAnalysisConfig) return undefined;
+    if (roadAnalysisConfig.subgridPlanKm && typeof roadAnalysisConfig.subgridPlanKm === 'object') {
+      return roadAnalysisConfig.subgridPlanKm as Record<string, number>;
+    }
+    return undefined;
+  }, [hasRoadPlanSource, roadAnalysisConfig]);
+
   const totalProjectSubgrids = useMemo(() => {
-    const fromState = Number(projectSettings?.roadAnalysisState?.totalSubgrids);
+    const fromState = Number(roadAnalysisConfig?.totalSubgrids);
     if (fromState > 0) return fromState;
     if (boundarySubgrids && boundarySubgrids.size > 0) return boundarySubgrids.size;
     return undefined;
-  }, [projectSettings, boundarySubgrids]);
+  }, [roadAnalysisConfig, boundarySubgrids]);
 
   const analytics: SurveyAnalytics = useMemo(
     () =>
@@ -142,6 +166,8 @@ export const AnalyticsWorkspace: React.FC<AnalyticsWorkspaceProps> = ({
         targetKm: Number(projectSettings?.targetKm) || 0,
         targetImages: Number(projectSettings?.targetImages) || 0,
         roadPlanKm,
+        subgridPlanKm,
+        hasRoadPlanSource,
         totalProjectSubgrids,
         boundarySubgrids
       }),
@@ -153,6 +179,8 @@ export const AnalyticsWorkspace: React.FC<AnalyticsWorkspaceProps> = ({
       projectSettings?.targetKm,
       projectSettings?.targetImages,
       roadPlanKm,
+      subgridPlanKm,
+      hasRoadPlanSource,
       totalProjectSubgrids,
       boundarySubgrids
     ]

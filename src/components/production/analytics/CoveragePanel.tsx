@@ -25,73 +25,145 @@ const DARK_TOOLTIP = {
 };
 
 export function CoveragePanel({ analytics, translate }: CoveragePanelProps) {
-  const rows = [...analytics.perSubgrid].sort((a, b) => b.coveragePct - a.coveragePct);
+  const rows = [...analytics.perSubgrid].sort((a, b) => (b.actualCoveragePct ?? 0) - (a.actualCoveragePct ?? 0));
   // Cap chart display to top 24 subgrids to avoid heavy SVG overdraw and illegible text bars when projects have 100+ subgrids
   const isTruncated = rows.length > 24;
   const chartRows = isTruncated ? rows.slice(0, 24) : rows;
-  const chartData = chartRows.map((r) => ({ name: r.subgrid, pct: r.coveragePct }));
+  const chartData = chartRows.map((r) => ({
+    name: r.subgrid,
+    pct: r.actualCoveragePct ?? 0,
+    hasPlan: r.hasPlanSource
+  }));
   const xAxisInterval = chartRows.length > 16 ? 'preserveStartEnd' : 0;
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="grid grid-cols-3 gap-2">
+      {/* Actual Coverage Campaign Metrics */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         <div className="bg-inner border border-subtle rounded-xl p-3">
-          <div className="text-[9px] font-bold uppercase tracking-wider text-text-muted">{translate('analyticsColPublished')}</div>
-          <div className="text-sm font-bold text-emerald-300">{formatNumber(analytics.totals.published)}</div>
+          <div className="text-[9px] font-bold uppercase tracking-wider text-text-muted">Total Road Plan</div>
+          <div className="text-sm font-bold text-sky-300 font-sans">
+            {analytics.totals.hasRoadPlanSource ? (
+              `${formatNumber(analytics.totals.totalPlanKm, 2)} km`
+            ) : (
+              <span className="text-[11px] text-amber-300/80 font-normal italic">No plan source</span>
+            )}
+          </div>
         </div>
         <div className="bg-inner border border-subtle rounded-xl p-3">
-          <div className="text-[9px] font-bold uppercase tracking-wider text-text-muted">{translate('analyticsColStaged')}</div>
-          <div className="text-sm font-bold text-sky-300">{formatNumber(analytics.totals.staged)}</div>
+          <div className="text-[9px] font-bold uppercase tracking-wider text-text-muted">Current Capture</div>
+          <div className="text-sm font-bold text-text-base font-sans">
+            {formatNumber(analytics.totals.km, 2)} km
+          </div>
         </div>
         <div className="bg-inner border border-subtle rounded-xl p-3">
-          <div className="text-[9px] font-bold uppercase tracking-wider text-text-muted">{translate('analyticsColPartial')}</div>
-          <div className="text-sm font-bold text-amber-300">{formatNumber(analytics.totals.partial)}</div>
+          <div className="text-[9px] font-bold uppercase tracking-wider text-text-muted">Remaining to Capture</div>
+          <div className="text-sm font-bold font-sans">
+            {analytics.totals.hasRoadPlanSource ? (
+              <span className={analytics.totals.totalRemainingKm > 0 ? 'text-amber-300' : 'text-emerald-300'}>
+                {formatNumber(analytics.totals.totalRemainingKm, 2)} km
+              </span>
+            ) : (
+              <span className="text-text-muted">—</span>
+            )}
+          </div>
+        </div>
+        <div className="bg-inner border border-subtle rounded-xl p-3">
+          <div className="text-[9px] font-bold uppercase tracking-wider text-text-muted">Actual Coverage</div>
+          <div className="text-sm font-bold font-sans">
+            {analytics.totals.hasRoadPlanSource && analytics.totals.actualCoveragePct !== null ? (
+              <span className={analytics.totals.actualCoveragePct >= 100 ? 'text-emerald-300' : analytics.totals.actualCoveragePct >= 80 ? 'text-sky-300' : 'text-amber-300'}>
+                {analytics.totals.actualCoveragePct}%
+              </span>
+            ) : (
+              <span className="text-text-muted">—</span>
+            )}
+          </div>
         </div>
       </div>
 
-      {rows.length > 0 && (
-        <div className="space-y-1">
-          {isTruncated && (
-            <div className="text-[10px] text-text-muted flex items-center justify-between px-1">
-              <span>Showing top 24 subgrids by coverage</span>
-              <span>Full dataset ({rows.length} subgrids) in table below</span>
-            </div>
-          )}
-          <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={chartData} margin={{ top: 6, right: 12, left: -18, bottom: 0 }}>
-              <CartesianGrid stroke="#1e293b" strokeDasharray="3 3" />
-              <XAxis dataKey="name" tick={{ fill: '#94a3b8', fontSize: 9 }} stroke="#334155" interval={xAxisInterval} angle={-32} height={56} />
-              <YAxis domain={[0, 100]} tick={{ fill: '#94a3b8', fontSize: 10 }} stroke="#334155" />
-              <Tooltip {...DARK_TOOLTIP} />
-              <Bar dataKey="pct" radius={[4, 4, 0, 0]}>
-                {chartData.map((d, i) => (
-                  <Cell key={i} fill={d.pct >= 100 ? '#10b981' : d.pct >= 80 ? '#38bdf8' : '#f59e0b'} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+      {!analytics.totals.hasRoadPlanSource ? (
+        <div className="px-4 py-3 bg-inner/60 border border-amber-500/30 rounded-xl text-center">
+          <p className="text-[11px] text-amber-300 font-medium">
+            No existing road plan source detected.
+          </p>
+          <p className="text-[10px] text-text-muted mt-0.5">
+            Upload a road GeoJSON or extract road network in the Road Analysis workspace to measure actual survey coverage % against your road plan.
+          </p>
         </div>
+      ) : (
+        rows.length > 0 && (
+          <div className="space-y-1">
+            {isTruncated && (
+              <div className="text-[10px] text-text-muted flex items-center justify-between px-1">
+                <span>Showing top 24 subgrids by actual coverage (current vs road plan)</span>
+                <span>Full dataset ({rows.length} subgrids) in table below</span>
+              </div>
+            )}
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={chartData} margin={{ top: 6, right: 12, left: -18, bottom: 0 }}>
+                <CartesianGrid stroke="#1e293b" strokeDasharray="3 3" />
+                <XAxis dataKey="name" tick={{ fill: '#94a3b8', fontSize: 9 }} stroke="#334155" interval={xAxisInterval} angle={-32} height={56} />
+                <YAxis domain={[0, 100]} tick={{ fill: '#94a3b8', fontSize: 10 }} stroke="#334155" unit="%" />
+                <Tooltip {...DARK_TOOLTIP} formatter={(value: any) => [`${value}%`, 'Actual Coverage']} />
+                <Bar dataKey="pct" name="Actual Coverage" radius={[4, 4, 0, 0]}>
+                  {chartData.map((d, i) => (
+                    <Cell key={i} fill={d.pct >= 100 ? '#10b981' : d.pct >= 80 ? '#38bdf8' : '#f59e0b'} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )
       )}
 
       <div className="overflow-auto max-h-[440px] border border-subtle rounded-xl">
         <table className="w-full text-left text-[11px]">
           <thead className="sticky top-0 bg-card z-10">
             <tr className="border-b border-subtle text-[9px] uppercase tracking-wider text-text-muted">
-              <th className="px-3 py-2">{translate('analyticsColSubgrid')}</th>
-              <th className="px-3 py-2 text-right">{translate('analyticsColPoi')}</th>
-              <th className="px-3 py-2 text-right">{translate('analyticsColFrames')}</th>
-              <th className="px-3 py-2 text-right">{translate('analyticsColCoverage')}</th>
-              <th className="px-3 py-2 text-center">{translate('analyticsColState')}</th>
-              <th className="px-3 py-2 text-center">{translate('analyticsColDelivery')}</th>
+              <th className="px-3 py-2">Grid</th>
+              <th className="px-3 py-2">Subgrid</th>
+              <th className="px-3 py-2 text-right">Current capture</th>
+              <th className="px-3 py-2 text-right">Road plan (in km)</th>
+              <th className="px-3 py-2 text-right">Remaining to capture</th>
+              <th className="px-3 py-2 text-right">Actual Coverage (%)</th>
+              <th className="px-3 py-2 text-center">Status</th>
+              <th className="px-3 py-2 text-center">PIC</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((r) => (
               <tr key={r.subgrid} className="border-b border-subtle hover:bg-inner/40 transition-colors">
+                <td className="px-3 py-2 font-mono text-text-muted">{r.grid || '1'}</td>
                 <td className="px-3 py-2 font-bold text-sky-300">{r.subgrid}</td>
-                <td className="px-3 py-2 text-right font-sans">{formatNumber(r.poi)}</td>
-                <td className="px-3 py-2 text-right font-sans">{formatNumber(r.frames)}</td>
-                <td className="px-3 py-2 text-right font-sans">{formatNumber(r.coveragePct, 0)}%</td>
+                <td className="px-3 py-2 text-right font-sans font-medium text-text-base">
+                  {formatNumber(r.km, 2)} km
+                </td>
+                <td className="px-3 py-2 text-right font-sans">
+                  {r.hasPlanSource && r.planKm !== null && r.planKm !== undefined ? (
+                    <span className="text-text-base">{formatNumber(r.planKm, 2)} km</span>
+                  ) : (
+                    <span className="text-[10px] text-amber-300/80 italic">No existing road plan source</span>
+                  )}
+                </td>
+                <td className="px-3 py-2 text-right font-sans">
+                  {r.hasPlanSource && r.remainingKm !== null && r.remainingKm !== undefined ? (
+                    <span className={r.remainingKm > 0 ? 'text-amber-300' : 'text-emerald-300'}>
+                      {formatNumber(r.remainingKm, 2)} km
+                    </span>
+                  ) : (
+                    <span className="text-text-muted">—</span>
+                  )}
+                </td>
+                <td className="px-3 py-2 text-right font-sans">
+                  {r.hasPlanSource && typeof r.actualCoveragePct === 'number' ? (
+                    <span className={`font-bold ${r.actualCoveragePct >= 100 ? 'text-emerald-300' : r.actualCoveragePct >= 80 ? 'text-sky-300' : 'text-amber-300'}`}>
+                      {r.actualCoveragePct}%
+                    </span>
+                  ) : (
+                    <span className="text-text-muted">—</span>
+                  )}
+                </td>
                 <td className="px-3 py-2 text-center">
                   <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${publishTone(r.publishState)}`}>
                     {translate(`analyticsState_${r.publishState}`)}

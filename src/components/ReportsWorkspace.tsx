@@ -100,9 +100,11 @@ export const ReportsWorkspace: React.FC<ReportsWorkspaceProps> = ({
         targetKm: Number(projectSettings?.targetKm) || 0,
         targetImages: Number(projectSettings?.targetImages) || 0,
         roadPlanKm: Number(projectSettings?.roadAnalysisState?.planDistanceKm) || undefined,
+        subgridPlanKm: projectSettings?.roadAnalysisState?.subgridPlanKm,
+        hasRoadPlanSource: Boolean(Number(projectSettings?.roadAnalysisState?.planDistanceKm) > 0 || projectSettings?.roadAnalysisState?.subgridPlanKm),
         boundarySubgrids
       }),
-    [batchLogs, dailyData, stagingRows, projectSettings?.targetKm, projectSettings?.targetImages, projectSettings?.roadAnalysisState?.planDistanceKm, boundarySubgrids]
+    [batchLogs, dailyData, stagingRows, projectSettings?.targetKm, projectSettings?.targetImages, projectSettings?.roadAnalysisState, boundarySubgrids]
   );
 
   const generate = (builder: () => string) => {

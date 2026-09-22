@@ -85,7 +85,7 @@ export const NASStorageWorkspace: React.FC<NASStorageWorkspaceProps> = ({
             NAS Storage Manager
           </h2>
           <p className="text-xs text-text-muted mt-0.5 leading-relaxed">
-            NAS connectivity, capacity, folder browsing and RAW/produced dataset indexing. Metadata in Supabase only — image bytes never leave the NAS.
+            Monitor storage capacity, folder browsing, and dataset indexing.
           </p>
         </div>
 

@@ -58,14 +58,40 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
 
 const rootEl = document.getElementById('root')!;
 
-if (window.location.pathname.startsWith('/share/')) {
-  import('./share/SharedMapPage').then(({ SharedMapPage }) => {
-    ReactDOM.createRoot(rootEl).render(
-      <React.StrictMode>
-        <SharedMapPage />
-      </React.StrictMode>,
-    );
-  });
+const isShareRoute =
+  window.location.pathname.startsWith('/share/') ||
+  window.location.pathname === '/share' ||
+  window.location.hash.startsWith('#/share/') ||
+  window.location.hash === '#/share';
+
+if (isShareRoute) {
+  import('./share/SharedMapPage')
+    .then(({ SharedMapPage }) => {
+      ReactDOM.createRoot(rootEl).render(
+        <React.StrictMode>
+          <ErrorBoundary>
+            <SharedMapPage />
+          </ErrorBoundary>
+        </React.StrictMode>,
+      );
+    })
+    .catch((err) => {
+      console.error('[SharedMapPage] Failed to load module:', err);
+      ReactDOM.createRoot(rootEl).render(
+        <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0f172a', color: '#e2e8f0', fontFamily: 'sans-serif' }}>
+          <div style={{ textAlign: 'center', maxWidth: '400px', padding: '2rem' }}>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 'bold', marginBottom: '0.5rem' }}>Failed to load map viewer</h2>
+            <p style={{ fontSize: '0.875rem', color: '#94a3b8', marginBottom: '1rem' }}>Please check your network connection and reload the page.</p>
+            <button
+              onClick={() => window.location.reload()}
+              style={{ padding: '0.5rem 1rem', background: '#0284c7', color: '#fff', border: 'none', borderRadius: '0.375rem', cursor: 'pointer', fontWeight: '600' }}
+            >
+              Reload Page
+            </button>
+          </div>
+        </div>
+      );
+    });
 } else {
   ReactDOM.createRoot(rootEl).render(
     <React.StrictMode>
@@ -75,3 +101,4 @@ if (window.location.pathname.startsWith('/share/')) {
     </React.StrictMode>,
   );
 }
+

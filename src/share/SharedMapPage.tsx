@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
+import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import { AlertTriangle, Compass, Eye, MapPinned } from 'lucide-react';
 import { GeoSphereIcon } from '../components/common/GeoSphereLogo';
 import {
@@ -14,10 +15,18 @@ import {
 } from '../utils/mapShares';
 import { SharePasswordGate } from './SharePasswordGate';
 
+const effectiveWorkerUrl = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_MAPLIBRE_WORKER_URL) || workerUrl;
+if (typeof (maplibregl as any).setWorkerUrl === 'function') {
+  (maplibregl as any).setWorkerUrl(effectiveWorkerUrl);
+}
+
 const BASEMAPS: Record<string, { label: string; url: string }> = {
   'ofm-positron': { label: 'Positron', url: 'https://tiles.openfreemap.org/styles/positron' },
   'ofm-bright': { label: 'Bright', url: 'https://tiles.openfreemap.org/styles/bright' },
-  'ofm-liberty': { label: 'Liberty', url: 'https://tiles.openfreemap.org/styles/liberty' }
+  'ofm-liberty': { label: 'Liberty', url: 'https://tiles.openfreemap.org/styles/liberty' },
+  'ofm-dark': { label: 'Dark', url: 'https://tiles.openfreemap.org/styles/positron' },
+  'dark': { label: 'Dark', url: 'https://tiles.openfreemap.org/styles/positron' },
+  'light': { label: 'Light', url: 'https://tiles.openfreemap.org/styles/positron' }
 };
 
 const COLOR_PUBLISHED = '#1d4ed8';
@@ -26,6 +35,21 @@ const COLOR_ROAD = '#047857';
 
 function styleUrlFor(basemap: string): string {
   return (BASEMAPS[basemap] || BASEMAPS['ofm-positron']).url;
+}
+
+function safeCenter(c?: [number, number] | number[] | null): [number, number] {
+  if (!Array.isArray(c) || c.length < 2) return [101.9758, 4.2105]; // [lng, lat] for Malaysia
+  const [a, b] = c;
+  if (!isFinite(a) || !isFinite(b)) return [101.9758, 4.2105];
+  // If a is lat (~1..85) and b is lng (~90..180 for Malaysia/Asia), flip them to [lng, lat]
+  if (Math.abs(a) <= 85 && Math.abs(b) > 85) {
+    return [b, a];
+  }
+  // If a is lng (> 85) and b is lat (<= 85), it's already [lng, lat]
+  if (Math.abs(a) > 85 && Math.abs(b) <= 85) {
+    return [a, b];
+  }
+  return [a, Math.max(-85, Math.min(85, b))];
 }
 
 function featureCollection(coordsLists: Array<Array<[number, number]>>, props: Record<string, unknown>[]) {
@@ -50,10 +74,13 @@ function pointCollection(points: Array<{ lat: number; lng: number }>, props: Rec
   };
 }
 
-function segmentPopupHtml(share: MapShare, subgrid: string): string {
+function segmentPopupHtml(share: MapShare, subgrid: string, pointStatus?: string): string {
   const seg = (share.snapshot.segments || []).find((s) => s.subgrid === subgrid);
   const row = (k: string, v: string) =>
     `<tr><td style="color:#64748b;padding:2px 10px 2px 0">${k}</td><td style="text-align:right;font-weight:700;color:#0f172a">${v}</td></tr>`;
+  const displayStatus = seg
+    ? (seg.status === 'published' ? 'Published' : 'In process')
+    : (pointStatus ? (pointStatus.charAt(0).toUpperCase() + pointStatus.slice(1)) : 'Published');
   return `<div style="font-family:Arial,Helvetica,sans-serif;min-width:190px">
     <div style="font-weight:800;font-size:13px;color:#0f172a;border-bottom:1px solid #e2e8f0;padding-bottom:5px;margin-bottom:5px">${subgrid || 'Capture station'}</div>
     <table style="border-collapse:collapse;font-size:11px;width:100%">
@@ -62,10 +89,13 @@ function segmentPopupHtml(share: MapShare, subgrid: string): string {
         ${row('POI points', seg.poi.toLocaleString())}
         ${row('Panoramas', seg.frames.toLocaleString())}
         ${row('Defect flags', String(seg.defects))}
-        ${row('Status', seg.status === 'published' ? 'Published' : 'In process')}
+        ${row('Status', displayStatus)}
         ${seg.date ? row('Survey date', seg.date) : ''}
         ${seg.pic ? row('PIC', seg.pic) : ''}
-      ` : '<tr><td style="color:#64748b">Station point</td></tr>'}
+      ` : `
+        ${row('Status', displayStatus)}
+        <tr><td colspan="2" style="color:#64748b;font-size:10px;padding-top:4px">Panotrack survey station</td></tr>
+      `}
     </table>
   </div>`;
 }
@@ -92,40 +122,53 @@ function lineLengthKm(coords: Array<[number, number]>): number {
   return total;
 }
 
-interface ShareMapProps {
-  share: MapShare;
-  onCoords: (pos: { lat: number; lng: number } | null) => void;
-}
-
-function ShareMap({ share, onCoords }: ShareMapProps) {
+function ShareMap({ share, onCoords }: { share: MapShare; onCoords: (c: { lat: number; lng: number } | null) => void }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const [basemap, setBasemap] = useState<string>(BASEMAPS[share.basemap] ? share.basemap : 'ofm-positron');
 
   useEffect(() => {
     if (!containerRef.current) return;
-    const snap = share.snapshot;
-    const hasData = (snap.points?.length || snap.lines?.length) ? true : false;
-    if (!hasData) return;
+    const snap = share?.snapshot || ({} as any);
+    const center = safeCenter(snap.center);
 
-    const map = new maplibregl.Map({
-      container: containerRef.current,
-      style: styleUrlFor(basemap),
-      center: snap.center,
-      zoom: snap.zoom,
-      attributionControl: { compact: true }
-    });
-    map.addControl(new maplibregl.NavigationControl({ showCompass: true }), 'top-right');
-    map.on('load', () => {
+    let map: maplibregl.Map;
+    try {
+      map = new maplibregl.Map({
+        container: containerRef.current,
+        style: styleUrlFor(basemap),
+        center,
+        zoom: typeof snap.zoom === 'number' && isFinite(snap.zoom) ? snap.zoom : 10,
+        attributionControl: { compact: true }
+      });
+    } catch (err) {
+      console.error('[SharedMapPage] Map constructor error:', err);
+      return;
+    }
+
+    if (map && typeof map.addControl === 'function') {
       try {
-        if (share.kind === 'road') {
-          const lines = (snap.lines || []).filter((l) => l.coords.length > 1);
+        const NavControl = maplibregl.NavigationControl;
+        if (NavControl) {
+          map.addControl(new NavControl({ showCompass: true }), 'top-right');
+        }
+      } catch { /* ignore nav control in tests */ }
+    }
+
+    if (map && typeof map.on === 'function') {
+      map.on('load', () => {
+        try {
+          const lines = (snap.lines || []).filter((l: any) => l && Array.isArray(l.coords) && l.coords.length > 1);
+          const tracks = (snap.tracks || []).filter((t: any) => t && Array.isArray(t.coords) && t.coords.length > 1);
+          const pts = (snap.points || []).filter((p: any) => p && isFinite(p.lat) && isFinite(p.lng));
+
+          // 1. Road lines (from extracted network or road plans)
           if (lines.length) {
             map.addSource('roads', {
               type: 'geojson',
               data: featureCollection(
-                lines.map((l) => l.coords),
-                lines.map((l) => ({ name: l.name || '', km: lineLengthKm(l.coords) }))
+                lines.map((l: any) => l.coords),
+                lines.map((l: any) => ({ name: l.name || '', km: lineLengthKm(l.coords) }))
               )
             });
             map.addLayer({
@@ -144,39 +187,53 @@ function ShareMap({ share, onCoords }: ShareMapProps) {
                 .setHTML(roadPopupHtml(String(f.properties?.name || ''), Number(f.properties?.km || 0)))
                 .addTo(map);
             });
-            map.on('mouseenter', 'roads-line', () => (map.getCanvas().style.cursor = 'pointer'));
-            map.on('mouseleave', 'roads-line', () => (map.getCanvas().style.cursor = ''));
-          }
-        } else {
-          const tracks = (snap.tracks || []).filter((t) => t.coords.length > 1);
-          const publishedTracks = tracks.filter((t) => (t.coords.length && (snap.points || []).some((p) => p.subgrid === t.subgrid && p.status === 'published')));
-          const inProcessTracks = tracks.filter((t) => !publishedTracks.includes(t));
-          const addTracks = (id: string, list: typeof tracks, color: string, dash?: boolean) => {
-            if (!list.length) return;
-            map.addSource(id, {
-              type: 'geojson',
-              data: featureCollection(list.map((t) => t.coords), list.map((t) => ({ subgrid: t.subgrid })))
+            map.on('mouseenter', 'roads-line', () => {
+              if (map.getCanvas()) map.getCanvas().style.cursor = 'pointer';
             });
-            map.addLayer({
-              id: `${id}-line`, type: 'line', source: id,
-              paint: { 'line-color': color, 'line-width': 2.2, 'line-opacity': 0.85 },
-              layout: dash ? { 'line-dasharray': [2, 2] } : {}
-            } as maplibregl.LayerSpecification);
-          };
-          addTracks('tracks-published', publishedTracks, COLOR_PUBLISHED);
-          addTracks('tracks-inprocess', inProcessTracks, COLOR_INPROCESS, true);
+            map.on('mouseleave', 'roads-line', () => {
+              if (map.getCanvas()) map.getCanvas().style.cursor = '';
+            });
+          }
 
-          const pts = snap.points || [];
+          // 2. Survey tracks / runs
+          if (tracks.length) {
+            const publishedTracks = tracks.filter((t: any) => (t.coords.length && pts.some((p: any) => p.subgrid === t.subgrid && (p.status === 'published' || p.isPublished))));
+            const inProcessTracks = tracks.filter((t: any) => !publishedTracks.includes(t));
+            const addTracks = (id: string, list: typeof tracks, color: string, dash?: boolean) => {
+              if (!list.length) return;
+              map.addSource(id, {
+                type: 'geojson',
+                data: featureCollection(list.map((t: any) => t.coords), list.map((t: any) => ({ subgrid: t.subgrid })))
+              });
+              map.addLayer({
+                id: `${id}-line`, type: 'line', source: id,
+                paint: { 'line-color': color, 'line-width': 2.2, 'line-opacity': 0.85 },
+                layout: dash ? { 'line-dasharray': [2, 2] } : {}
+              } as maplibregl.LayerSpecification);
+            };
+            addTracks('tracks-published', publishedTracks.length ? publishedTracks : tracks, COLOR_PUBLISHED);
+            if (publishedTracks.length) addTracks('tracks-inprocess', inProcessTracks, COLOR_INPROCESS, true);
+          }
+
+          // 3. Panotrack stations / survey points
           if (pts.length) {
             map.addSource('stations', {
               type: 'geojson',
-              data: pointCollection(pts, pts.map((p) => ({ subgrid: p.subgrid || '', status: p.status || 'published' })))
+              data: pointCollection(pts, pts.map((p: any) => ({ subgrid: p.subgrid || '', status: p.status || 'published' })))
             });
             map.addLayer({
               id: 'stations-circle', type: 'circle', source: 'stations',
               paint: {
-                'circle-radius': 3.2,
-                'circle-color': ['match', ['get', 'status'], 'published', COLOR_PUBLISHED, COLOR_INPROCESS],
+                'circle-radius': 3.4,
+                'circle-color': [
+                  'match',
+                  ['get', 'status'],
+                  'published', '#10b981',
+                  'defect', '#ef4444',
+                  'staging', '#f59e0b',
+                  'in-process', '#f59e0b',
+                  '#10b981'
+                ],
                 'circle-stroke-color': '#ffffff',
                 'circle-stroke-width': 1
               }
@@ -186,26 +243,50 @@ function ShareMap({ share, onCoords }: ShareMapProps) {
               if (!f) return;
               new maplibregl.Popup({ closeButton: false, offset: 10 })
                 .setLngLat(e.lngLat.toArray() as [number, number])
-                .setHTML(segmentPopupHtml(share, String(f.properties?.subgrid || '')))
+                .setHTML(segmentPopupHtml(share, String(f.properties?.subgrid || ''), String(f.properties?.status || '')))
                 .addTo(map);
             });
-            map.on('mouseenter', 'stations-circle', () => (map.getCanvas().style.cursor = 'pointer'));
-            map.on('mouseleave', 'stations-circle', () => (map.getCanvas().style.cursor = ''));
+            map.on('mouseenter', 'stations-circle', () => {
+              if (map.getCanvas()) map.getCanvas().style.cursor = 'pointer';
+            });
+            map.on('mouseleave', 'stations-circle', () => {
+              if (map.getCanvas()) map.getCanvas().style.cursor = '';
+            });
           }
-        }
 
-        if (snap.bbox) {
-          const [minLat, minLng, maxLat, maxLng] = snap.bbox;
-          map.fitBounds([[minLng, minLat], [maxLng, maxLat]], { padding: { top: 90, bottom: 110, left: 20, right: 20 }, duration: 0 });
+          // 4. Safe bounding box zoom
+          if (Array.isArray(snap.bbox) && snap.bbox.length === 4) {
+            const [c0, c1, c2, c3] = snap.bbox;
+            if (isFinite(c0) && isFinite(c1) && isFinite(c2) && isFinite(c3)) {
+              let minLng: number, minLat: number, maxLng: number, maxLat: number;
+              if (c0 > c1) {
+                minLng = c0; minLat = c1; maxLng = c2; maxLat = c3;
+              } else {
+                minLat = c0; minLng = c1; maxLat = c2; maxLng = c3;
+              }
+              map.fitBounds([[minLng, minLat], [maxLng, maxLat]], {
+                padding: { top: 90, bottom: 110, left: 20, right: 20 },
+                duration: 0
+              });
+            }
+          }
+        } catch (err) {
+          console.warn('[SharedMapPage] MapLayer load notice:', err);
         }
-      } catch {
-        // style layers are additive; never break the basemap on failure
-      }
-    });
-    map.on('mousemove', (e: maplibregl.MapMouseEvent) => onCoords({ lat: e.lngLat.lat, lng: e.lngLat.lng }));
-    map.on('mouseout', () => onCoords(null));
+      });
+
+      map.on('mousemove', (e: maplibregl.MapMouseEvent) => {
+        if (e?.lngLat) onCoords({ lat: e.lngLat.lat, lng: e.lngLat.lng });
+      });
+      map.on('mouseout', () => onCoords(null));
+    }
     mapRef.current = map;
-    return () => { map.remove(); mapRef.current = null; };
+    return () => {
+      try {
+        map.remove();
+      } catch { /* ignore */ }
+      mapRef.current = null;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [share, basemap]);
 
@@ -230,7 +311,7 @@ function ShareMap({ share, onCoords }: ShareMapProps) {
 }
 
 function LegendCard({ share }: { share: MapShare }) {
-  const st = share.snapshot.stats;
+  const st = share?.snapshot?.stats || { subgrids: 0, km: 0, poi: 0, frames: 0, defects: 0, passRate: 100, lines: 0 };
   const sw = (color: string, dashed?: boolean) => (
     <span className="inline-block w-4 h-[3px] rounded" style={{ background: dashed ? `repeating-linear-gradient(90deg, ${color} 0 4px, transparent 4px 7px)` : color }} />
   );
@@ -241,10 +322,27 @@ function LegendCard({ share }: { share: MapShare }) {
       </div>
       {share.kind === 'road' ? (
         <div className="space-y-1.5 text-[11px] text-slate-700">
-          <div className="flex items-center gap-2">{sw(COLOR_ROAD)} Extracted road trace</div>
-          <div className="pt-1.5 border-t border-slate-100 text-[11px] text-slate-600">
-            <strong className="text-slate-900">{st.lines ?? 0}</strong> lines · <strong className="text-slate-900">{st.km.toFixed(2)} km</strong> traced
-            {share.snapshot.planName ? <><br/><span className="text-slate-500">Plan: {share.snapshot.planName}</span></> : null}
+          {(st.lines ?? 0) > 0 && (
+            <div className="flex items-center gap-2">{sw(COLOR_ROAD)} Extracted road trace</div>
+          )}
+          {(st.poi > 0 || (share.snapshot?.points && share.snapshot.points.length > 0)) && (
+            <>
+              <div className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full" style={{ background: '#10b981' }} /> Published survey</div>
+              <div className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full" style={{ background: '#f59e0b' }} /> Staging survey</div>
+              {(st.defects ?? 0) > 0 && (
+                <div className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full" style={{ background: '#ef4444' }} /> Defect</div>
+              )}
+            </>
+          )}
+          {share.snapshot?.tracks && share.snapshot.tracks.length > 0 && (
+            <div className="flex items-center gap-2">{sw(COLOR_PUBLISHED)} Captured survey run</div>
+          )}
+          <div className="pt-1.5 border-t border-slate-100 text-[11px] text-slate-600 leading-relaxed">
+            {(st.lines ?? 0) > 0 && <><strong className="text-slate-900">{st.lines}</strong> lines · </>}
+            <strong className="text-slate-900">{typeof st.km === 'number' ? st.km.toFixed(2) : '0.00'} km</strong>
+            {(st.poi ?? 0) > 0 && <> · <strong className="text-slate-900">{st.poi.toLocaleString()}</strong> survey points</>}
+            {(st.subgrids ?? 0) > 0 && <> · <strong className="text-slate-900">{st.subgrids}</strong> subgrids</>}
+            {share.snapshot?.planName ? <><br/><span className="text-slate-500">{share.snapshot.planName}</span></> : null}
           </div>
         </div>
       ) : (
@@ -254,8 +352,8 @@ function LegendCard({ share }: { share: MapShare }) {
           <div className="flex items-center gap-2">{sw(COLOR_PUBLISHED)} Panotrack (published)</div>
           <div className="flex items-center gap-2">{sw(COLOR_INPROCESS, true)} Panotrack (in process)</div>
           <div className="pt-1.5 border-t border-slate-100 text-[11px] text-slate-600 leading-relaxed">
-            <strong className="text-slate-900">{st.subgrids}</strong> subgrids · <strong className="text-slate-900">{st.km.toFixed(2)} km</strong> · <strong className="text-slate-900">{st.poi.toLocaleString()}</strong> POIs
-            <br /><strong className="text-slate-900">{st.frames.toLocaleString()}</strong> panoramas · QA pass <strong className="text-slate-900">{st.passRate.toFixed(1)}%</strong>
+            <strong className="text-slate-900">{st.subgrids}</strong> subgrids · <strong className="text-slate-900">{typeof st.km === 'number' ? st.km.toFixed(2) : '0.00'} km</strong> · <strong className="text-slate-900">{(st.poi || 0).toLocaleString()}</strong> POIs
+            <br /><strong className="text-slate-900">{(st.frames || 0).toLocaleString()}</strong> panoramas · QA pass <strong className="text-slate-900">{typeof st.passRate === 'number' ? st.passRate.toFixed(1) : '100'}%</strong>
           </div>
         </div>
       )}
@@ -283,7 +381,9 @@ function StatusCard({ icon, title, message }: { icon: React.ReactNode; title: st
 }
 
 export function SharedMapPage() {
-  const token = useMemo(() => parseShareToken(window.location.pathname), []);
+  const token = useMemo(() => {
+    return parseShareToken(window.location.pathname) || parseShareToken(window.location.hash);
+  }, []);
   const [share, setShare] = useState<MapShare | null>(null);
   const [loading, setLoading] = useState(true);
   const [unlocked, setUnlocked] = useState(false);
@@ -292,19 +392,27 @@ export function SharedMapPage() {
   useEffect(() => {
     if (!token) { setLoading(false); return; }
     let cancelled = false;
-    fetchShareByToken(token).then(async (s) => {
-      if (cancelled) return;
-      setShare(s);
-      setLoading(false);
-      if (!s) return;
-      if (!s.password_hash) {
-        setUnlocked(true);
-      } else {
-        const saved = recallShareUnlock(token);
-        if (saved && (await verifySharePassword(s, saved))) setUnlocked(true);
-      }
-      touchShare(token);
-    });
+    fetchShareByToken(token)
+      .then(async (s) => {
+        if (cancelled) return;
+        setShare(s);
+        setLoading(false);
+        if (!s) return;
+        if (!s.password_hash) {
+          setUnlocked(true);
+        } else {
+          const saved = recallShareUnlock(token);
+          if (saved && (await verifySharePassword(s, saved))) setUnlocked(true);
+        }
+        touchShare(token);
+      })
+      .catch((err) => {
+        console.error('[SharedMapPage] fetchShareByToken error:', err);
+        if (!cancelled) {
+          setShare(null);
+          setLoading(false);
+        }
+      });
     return () => { cancelled = true; };
   }, [token]);
 
@@ -345,7 +453,8 @@ export function SharedMapPage() {
     );
   }
 
-  const st = share.snapshot.stats;
+  const st = share?.snapshot?.stats || { subgrids: 0, km: 0, poi: 0, frames: 0, defects: 0, passRate: 100, lines: 0 };
+  const hasKm = typeof st.km === 'number' && st.km > 0;
   return (
     <div className="fixed inset-0 flex flex-col bg-white font-[Arial,Helvetica,sans-serif]">
       <header className="h-[52px] shrink-0 bg-white border-b border-slate-200 flex items-center justify-between px-4 z-20">
@@ -356,7 +465,7 @@ export function SharedMapPage() {
           <div className="min-w-0">
             <div className="text-[12.5px] font-bold text-slate-900 truncate">{share.title}</div>
             <div className="text-[9.5px] text-slate-500 uppercase tracking-wide truncate">
-              {share.kind === 'road' ? 'Road Analysis' : 'WebGIS Survey'}{st.km ? ` · ${st.km.toFixed(2)} km` : ''}{share.snapshot.contractCode ? ` · ${share.snapshot.contractCode}` : ''}
+              {share.kind === 'road' ? 'Road Analysis' : 'WebGIS Survey'}{hasKm ? ` · ${st.km.toFixed(2)} km` : ''}{share.snapshot?.contractCode ? ` · ${share.snapshot.contractCode}` : ''}
             </div>
           </div>
         </div>

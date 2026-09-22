@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   getAuthStorageUserKey,
   getRoadAnalysisStorageKey,
@@ -108,7 +108,19 @@ describe('RoadAnalysisWorkspace state persistence', () => {
 
   describe('Supabase cloud persistence functions', () => {
     it('executes saveRoadAnalysisStateToSupabase safely with auth context', async () => {
-      const { saveRoadAnalysisStateToSupabase } = await import('../../../services/supabase');
+      const { saveRoadAnalysisStateToSupabase, supabase } = await import('../../../services/supabase');
+      const fromSpy = vi.spyOn(supabase, 'from').mockReturnValue({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null })
+          })
+        }),
+        upsert: vi.fn().mockResolvedValue({ error: null }),
+        insert: vi.fn().mockResolvedValue({ error: null })
+      } as any);
+
+      const rpcSpy = vi.spyOn(supabase, 'rpc').mockResolvedValue({ data: { success: true }, error: null } as any);
+
       const statePayload = {
         activeTab: 'region' as const,
         selectedStateCode: 'JHR',
@@ -124,12 +136,23 @@ describe('RoadAnalysisWorkspace state persistence', () => {
       });
 
       expect(typeof res.success).toBe('boolean');
+      fromSpy.mockRestore();
+      rpcSpy.mockRestore();
     });
 
     it('executes fetchRoadAnalysisStateFromSupabase safely', async () => {
-      const { fetchRoadAnalysisStateFromSupabase } = await import('../../../services/supabase');
+      const { fetchRoadAnalysisStateFromSupabase, supabase } = await import('../../../services/supabase');
+      const fromSpy = vi.spyOn(supabase, 'from').mockReturnValue({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null })
+          })
+        })
+      } as any);
+
       const state = await fetchRoadAnalysisStateFromSupabase();
       expect(state === null || typeof state === 'object').toBe(true);
+      fromSpy.mockRestore();
     });
   });
 

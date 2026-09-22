@@ -15,14 +15,22 @@ describe('Project Data Isolation', () => {
     localStorage.clear();
     setActiveProjectId(null);
     vi.restoreAllMocks();
-    if (typeof (supabase as any)?.from !== 'function') {
-      (supabase as any).from = () => ({
-        select: vi.fn(),
-        insert: vi.fn(),
-        update: vi.fn(),
-        delete: vi.fn()
-      });
-    }
+    vi.spyOn(supabase, 'from').mockReturnValue({
+      select: vi.fn().mockReturnValue({
+        eq: vi.fn().mockReturnValue({
+          order: vi.fn().mockReturnValue({
+            limit: vi.fn().mockResolvedValue({ data: [], error: null })
+          })
+        })
+      }),
+      insert: vi.fn().mockReturnValue({
+        select: vi.fn().mockReturnValue({
+          single: vi.fn().mockResolvedValue({ data: null, error: null })
+        })
+      }),
+      update: vi.fn().mockResolvedValue({ data: [], error: null }),
+      delete: vi.fn().mockResolvedValue({ data: [], error: null })
+    } as any);
   });
 
   it('attaches project_id to saved audit logs when active project is set', async () => {

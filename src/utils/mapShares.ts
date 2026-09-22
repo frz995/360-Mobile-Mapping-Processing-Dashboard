@@ -17,7 +17,8 @@ export interface SharePoint {
   lat: number;
   lng: number;
   subgrid?: string;
-  status?: 'published' | 'in-process';
+  status?: 'published' | 'staging' | 'in-process' | 'defect';
+  color?: string;
 }
 
 export interface ShareTrack {
@@ -297,14 +298,33 @@ export function buildWebgisSnapshot(dailyData: any[], projectSettings?: any): Sh
   };
 }
 
+export interface BuildRoadSnapshotOptions {
+  planName?: string;
+  projectSettings?: any;
+  capturedPoints?: Array<{
+    lat?: number;
+    lng?: number;
+    subgrid?: string;
+    status?: string;
+    isPublished?: boolean;
+    color?: string;
+  }>;
+  capturedTracks?: Array<Array<[number, number]> | { coords: Array<[number, number]>; subgrid?: string }>;
+  stats?: Partial<ShareSnapshot['stats']>;
+  bbox?: [number, number, number, number] | null;
+}
+
 export function buildRoadSnapshot(
   extractedLines: Array<{ coordinates: Array<[number, number]>; highway?: string; name?: string; id?: string }>,
-  opts?: { planName?: string; projectSettings?: any }
+  opts?: BuildRoadSnapshotOptions
 ): ShareSnapshot {
   const lines: ShareLine[] = [];
+  const points: SharePoint[] = [];
+  const tracks: ShareTrack[] = [];
   const allCoords: Array<[number, number]> = [];
   let totalKm = 0;
 
+  // 1. Extracted road lines
   for (const l of extractedLines || []) {
     const coords = (l.coordinates || [])
       .map(([lat, lng]) => [roundCoord(lat), roundCoord(lng)] as [number, number])
@@ -315,13 +335,107 @@ export function buildRoadSnapshot(
     totalKm += lineDistanceKm(coords);
   }
 
+  // 2. Captured survey tracks/runs
+  if (Array.isArray(opts?.capturedTracks)) {
+    opts.capturedTracks.forEach((trk, idx) => {
+      const rawCoords = Array.isArray(trk) ? trk : trk?.coords;
+      const sg = !Array.isArray(trk) && trk?.subgrid ? trk.subgrid : `Run ${idx + 1}`;
+      if (!Array.isArray(rawCoords) || rawCoords.length < 2) return;
+      const coords: Array<[number, number]> = rawCoords
+        .map(([c0, c1]) => {
+          const lat = c0 >= -90 && c0 <= 90 && c1 > 90 ? c0 : c1;
+          const lng = c0 > 90 ? c0 : c1;
+          return [roundCoord(lat), roundCoord(lng)] as [number, number];
+        })
+        .filter(([lat, lng]) => isFinite(lat) && isFinite(lng));
+
+      if (coords.length > 1) {
+        tracks.push({ subgrid: sg, coords });
+        allCoords.push(...coords);
+        if (lines.length === 0) {
+          totalKm += lineDistanceKm(coords);
+        }
+      }
+    });
+  }
+
+  // 3. Captured panotrack survey points
+  if (Array.isArray(opts?.capturedPoints)) {
+    for (const p of opts.capturedPoints) {
+      const rawLat = Number(p.lat);
+      const rawLng = Number(p.lng);
+      if (!isFinite(rawLat) || !isFinite(rawLng) || (rawLat === 0 && rawLng === 0)) continue;
+      const rLat = roundCoord(rawLat);
+      const rLng = roundCoord(rawLng);
+
+      let status: 'published' | 'staging' | 'defect' = 'staging';
+      if (p.color === '#ef4444' || p.status === 'defect') {
+        status = 'defect';
+      } else if (p.color === '#10b981' || p.isPublished || p.status === 'published') {
+        status = 'published';
+      }
+
+      points.push({
+        lat: rLat,
+        lng: rLng,
+        subgrid: p.subgrid || undefined,
+        status,
+        color: p.color
+      });
+      allCoords.push([rLat, rLng]);
+    }
+  }
+
   const b = boundsOf(allCoords);
+
+  // Normalize bbox if passed from district boundary
+  let bbox = b?.bbox;
+  if (opts?.bbox && Array.isArray(opts.bbox) && opts.bbox.length === 4) {
+    const [c0, c1, c2, c3] = opts.bbox;
+    if (c0 > c1) {
+      // Input is [minLng, minLat, maxLng, maxLat] -> normalize to [minLat, minLng, maxLat, maxLng]
+      bbox = [c1, c0, c3, c2];
+    } else {
+      bbox = [c0, c1, c2, c3];
+    }
+  }
+
+  const effectiveKm = typeof opts?.stats?.km === 'number'
+    ? opts.stats.km
+    : Math.round(totalKm * 100) / 100;
+
+  const effectivePoi = typeof opts?.stats?.poi === 'number'
+    ? opts.stats.poi
+    : points.length;
+
+  const effectiveSubgrids = typeof opts?.stats?.subgrids === 'number'
+    ? opts.stats.subgrids
+    : (points.length > 0 ? new Set(points.map((p) => p.subgrid).filter(Boolean)).size : 0);
+
+  const effectiveDefects = typeof opts?.stats?.defects === 'number'
+    ? opts.stats.defects
+    : points.filter((p) => p.status === 'defect').length;
+
+  const effectivePassRate = typeof opts?.stats?.passRate === 'number'
+    ? opts.stats.passRate
+    : (effectivePoi > 0 ? Math.max(0, Math.round(((effectivePoi - effectiveDefects) / effectivePoi) * 100)) : 100);
+
   return {
-    center: b ? b.center : FALLBACK_CENTER,
-    zoom: b ? zoomForBbox(b.bbox) : 11,
-    bbox: b?.bbox,
+    center: b ? b.center : (bbox ? [(bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2] : FALLBACK_CENTER),
+    zoom: bbox ? zoomForBbox(bbox) : (b ? zoomForBbox(b.bbox) : 11),
+    bbox,
     lines,
-    stats: { subgrids: 0, km: Math.round(totalKm * 100) / 100, poi: 0, frames: 0, defects: 0, passRate: 100, lines: lines.length },
+    points: points.length > 0 ? points : undefined,
+    tracks: tracks.length > 0 ? tracks : undefined,
+    stats: {
+      subgrids: effectiveSubgrids,
+      km: effectiveKm,
+      poi: effectivePoi,
+      frames: opts?.stats?.frames ?? 0,
+      defects: effectiveDefects,
+      passRate: effectivePassRate,
+      lines: lines.length
+    },
     projectName: opts?.projectSettings?.projectName || undefined,
     contractCode: opts?.projectSettings?.contractCode || undefined,
     planName: opts?.planName || undefined
@@ -404,7 +518,9 @@ export function recallShareUnlock(token: string): string | null {
   try { return sessionStorage.getItem(UNLOCK_PREFIX + token); } catch { return null; }
 }
 
-export function parseShareToken(pathname: string): string | null {
-  const m = pathname.match(/^\/share\/([A-Za-z0-9_-]{6,80})/);
+export function parseShareToken(pathOrHash: string): string | null {
+  if (!pathOrHash) return null;
+  const clean = pathOrHash.replace(/^#\/?/, '').trim();
+  const m = clean.match(/^(?:share\/|\/share\/)([A-Za-z0-9_-]{6,80})/i);
   return m ? m[1] : null;
 }

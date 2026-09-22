@@ -135,7 +135,7 @@ export const ImageProductionWorkspace: React.FC<ImageProductionWorkspaceProps> =
             Production Workspace
           </h2>
           <p className="text-xs text-text-muted mt-0.5 leading-relaxed">
-            Internal production pipeline (not the public WebGIS view). RAW → stitch/blur → enhance + generative-fill mask removal → acceptance QA → deliverable pack. Metadata in Supabase; all image bytes on NAS; nothing modified in place.
+            Manage image processing workflows, automated enhancements, and quality acceptance.
           </p>
         </div>
 

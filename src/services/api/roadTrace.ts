@@ -16,6 +16,7 @@ export interface RoadAnalysisProductionState {
   systemStyles?: any;
   catalogPlanLayerId?: string | null;
   planDistanceKm?: number;
+  subgridPlanKm?: Record<string, number>;
   totalSubgrids?: number;
   updatedAt?: string;
   updatedBy?: string;

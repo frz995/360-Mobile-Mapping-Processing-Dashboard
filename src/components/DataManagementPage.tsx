@@ -275,7 +275,7 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
   const handleBulkDelete = () => {
     if (selectedRowIds.size === 0) return;
     setDeleteTarget('BULK_SELECTION' as any);
-    openDeleteModalForMode('bulk');
+    openDeleteModalForMode('bulk', 'BULK_SELECTION' as any);
   };
 
   const handleBulkExportCsv = () => {
@@ -707,30 +707,35 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
     }
   }, [mapSubgridFilter, subgridPoints]);
 
-  const resolveDeleteSubgrids = useCallback((mode: DeletionMode): string[] => {
+  const resolveDeleteSubgrids = useCallback((mode: DeletionMode, targetOverride?: BatchLog | DailyTimeSeries | null): string[] => {
+    const effectiveTarget = targetOverride !== undefined ? targetOverride : deleteTarget;
     if (mode === 'single') {
-      if (!deleteTarget || typeof deleteTarget === 'string') return [];
-      const raw = ('subgrid' in deleteTarget && deleteTarget.subgrid)
-        ? deleteTarget.subgrid
-        : ('imageFilename' in deleteTarget ? (deleteTarget as BatchLog).imageFilename : '');
-      const sg = (extractSubgridName(raw) || '').toUpperCase().trim();
+      if (!effectiveTarget || typeof effectiveTarget === 'string') return [];
+      const raw = ('subgrid' in effectiveTarget && effectiveTarget.subgrid)
+        ? effectiveTarget.subgrid
+        : ('imageFilename' in effectiveTarget ? (effectiveTarget as BatchLog).imageFilename : '');
+      const sg = (extractSubgridName(raw) || raw || '').toUpperCase().trim();
       return sg ? [sg] : [];
     }
     if (mode === 'bulk') {
       const set = new Set<string>();
       selectedRowIds.forEach((id) => {
-        const d = dailyData.find((x) => getItemId(x) === id);
+        const d = dailyData.find((x) => getItemId(x) === id) || draftDailyData.find((x) => getItemId(x) === id);
         const b = batchLogs.find((x) => getItemId(x) === id);
         const raw = d?.subgrid || b?.subgrid || b?.imageFilename;
-        if (raw) set.add((extractSubgridName(raw) || '').toUpperCase().trim());
+        if (raw) {
+          const sg = (extractSubgridName(raw) || raw || '').toUpperCase().trim();
+          if (sg) set.add(sg);
+        }
       });
       return Array.from(set).filter(Boolean);
     }
     return spatialSubgrids;
-  }, [deleteTarget, selectedRowIds, dailyData, batchLogs, spatialSubgrids]);
+  }, [deleteTarget, selectedRowIds, dailyData, draftDailyData, batchLogs, spatialSubgrids]);
 
-  const computeImpactForMode = useCallback(async (mode: DeletionMode) => {
-    const subgrids = resolveDeleteSubgrids(mode);
+  const computeImpactForMode = useCallback(async (mode: DeletionMode, targetOverride?: BatchLog | DailyTimeSeries | null) => {
+    const subgrids = resolveDeleteSubgrids(mode, targetOverride);
+    const effectiveTarget = targetOverride !== undefined ? targetOverride : deleteTarget;
     setIsComputingImpact(true);
     let ds = registryDatasets;
     let js = registryJobs;
@@ -748,25 +753,26 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
     const impact = computeDeletionImpact({
       mode,
       subgrids,
-      dailyData,
-      batchLogs,
+      dailyData: draftDailyData && draftDailyData.length > 0 ? draftDailyData : dailyData,
+      batchLogs: batchLogs,
       qaRecords: qaSubgridRecords,
       stagingAggregates: stg,
       datasets: ds,
-      jobs: js
+      jobs: js,
+      fallbackRecord: effectiveTarget && typeof effectiveTarget !== 'string' ? effectiveTarget : undefined
     });
     setImpactData(impact);
     setIsComputingImpact(false);
-  }, [resolveDeleteSubgrids, registryDatasets, registryJobs, registryStaging, loadRegistryData, dailyData, batchLogs, qaSubgridRecords]);
+  }, [resolveDeleteSubgrids, deleteTarget, registryDatasets, registryJobs, registryStaging, loadRegistryData, dailyData, draftDailyData, batchLogs, qaSubgridRecords]);
 
-  const openDeleteModalForMode = useCallback((mode: DeletionMode) => {
+  const openDeleteModalForMode = useCallback((mode: DeletionMode, targetOverride?: BatchLog | DailyTimeSeries | null) => {
     setDeleteMode(mode);
     setDeleteConfirmText('');
     setAdminPasscode('');
     setDeleteError(null);
     setImpactData(null);
     setIsDeleteModalOpen(true);
-    computeImpactForMode(mode);
+    computeImpactForMode(mode, targetOverride);
   }, [computeImpactForMode]);
 
   const openDeleteModeToggle = useCallback(() => {
@@ -1605,7 +1611,7 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
 
   const initiateDelete = (item: BatchLog | DailyTimeSeries) => {
     setDeleteTarget(item);
-    openDeleteModalForMode('single');
+    openDeleteModalForMode('single', item);
   };
 
   const handleConfirmSpatialDelete = async () => {
@@ -2453,10 +2459,10 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
           {/* Header */}
           <div className="px-1">
             <h2 className="text-base font-bold text-text-base tracking-wide">
-              PostgreSQL / PostGIS Data Management
+              Data Management
             </h2>
             <p className="text-xs text-text-muted mt-0.5 leading-relaxed">
-              Inspect, query, filter, edit, and publish subgrid trajectories and GIS vector layers to production database
+              Manage survey records, subgrid trajectories, and spatial vector datasets.
             </p>
           </div>
 
@@ -3247,23 +3253,8 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
                                     <ExternalLink size={11} className="shrink-0 text-text-muted" />
                                   </button>
                                 </td>
-                                <td className="px-4 py-3.5 whitespace-nowrap">
-                                  <select
-                                    value={daily.captureEquipment || 'MMS'}
-                                    onChange={(e) => {
-                                      const val = e.target.value;
-                                      const updated = draftDailyData.map(d => getItemId(d) === getItemId(daily) ? { ...d, captureEquipment: val } : d);
-                                      setDraftDailyData(updated);
-                                      setDailyData(updated);
-                                      setBatchLogs(reconcileBatchLogs(updated, batchLogs));
-                                    }}
-                                    className="bg-card border border-subtle hover:border-slate-600 rounded-lg px-2.5 py-1 text-xs font-semibold text-text-base focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer"
-                                  >
-                                    <option value="MMS" className="bg-card text-text-base">MMS</option>
-                                    <option value="Backpack" className="bg-card text-text-base">Backpack</option>
-                                    <option value="Drone" className="bg-card text-text-base">Drone</option>
-                                    <option value="Handheld" className="bg-card text-text-base">Handheld</option>
-                                  </select>
+                                <td className="px-4 py-3.5 text-xs text-text-base font-medium whitespace-nowrap">
+                                  {daily.captureEquipment || 'MMS'}
                                 </td>
                                 <td className="px-4 py-3.5 text-xs text-text-base font-medium whitespace-nowrap">
                                   {daily.imagesDefected || daily.defectCount || 0}

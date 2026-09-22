@@ -144,7 +144,7 @@ export const ProcessingCenterWorkspace: React.FC<ProcessingCenterWorkspaceProps>
             Processing Center
           </h2>
           <p className="text-xs text-text-muted mt-0.5 leading-relaxed">
-            Central job operations: NAS GPU Worker (ENHANCE/MASK), external-PC handoff (STITCH/BLUR/REPORT/EXPORT job types), acceptance QA decisions and live worker/system monitoring. Metadata in Supabase only.
+            Centralized job operations, automated processing workflows, and system monitoring.
           </p>
         </div>
 

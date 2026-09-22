@@ -1,3 +1,5 @@
+import { extractSubgridName } from './subgrid';
+
 // =====================================================================
 // Safe Data Deletion impact preview — computed fully on the client from
 // metadata already present in the Data Management workspace.
@@ -106,8 +108,17 @@ function normSub(value?: string): string {
   return (value || '').trim().toUpperCase();
 }
 
-function sgOf(value?: string): string {
-  return normSub(value);
+function matchesSubgrid(value: string | undefined, targetSg: string): boolean {
+  if (!value || !targetSg) return false;
+  const vNorm = normSub(value);
+  const tNorm = normSub(targetSg);
+  if (vNorm === tNorm) return true;
+  const vExt = extractSubgridName(value).toUpperCase().trim();
+  const tExt = extractSubgridName(targetSg).toUpperCase().trim();
+  if (vExt && tExt && vExt === tExt) return true;
+  if (vExt && vExt === tNorm) return true;
+  if (tExt && vNorm === tExt) return true;
+  return false;
 }
 
 export function computeDeletionImpact(params: {
@@ -119,6 +130,7 @@ export function computeDeletionImpact(params: {
   stagingAggregates?: StagingAggregateLike[];
   datasets?: DatasetRecordLike[];
   jobs?: ProcessingJobLike[];
+  fallbackRecord?: DailyTimeSeriesLike | BatchLogLike;
 }): DeletionImpact {
   const {
     mode,
@@ -128,20 +140,21 @@ export function computeDeletionImpact(params: {
     qaRecords,
     stagingAggregates = [],
     datasets = [],
-    jobs = []
+    jobs = [],
+    fallbackRecord
   } = params;
 
   const target = new Set(subgrids.map(normSub));
 
   const dailyFor = (sg: string) =>
-    dailyData.filter((d) => sgOf(d.subgrid) === sg);
+    dailyData.filter((d) => matchesSubgrid(d.subgrid, sg));
   const batchFor = (sg: string) =>
     batchLogs.filter(
-      (b) => sgOf(b.subgrid) || sgOf(b.imageFilename) === sg
+      (b) => matchesSubgrid(b.subgrid, sg) || matchesSubgrid(b.imageFilename, sg)
     );
 
   const datasetsFor = (sg: string) =>
-    datasets.filter((d) => sgOf(d.subgrid) === sg);
+    datasets.filter((d) => matchesSubgrid(d.subgrid, sg));
 
   const diskIdsFor = (sg: string) => {
     const ids = new Set<string>();
@@ -152,7 +165,7 @@ export function computeDeletionImpact(params: {
   const jobsFor = (sg: string) => {
     const ids = diskIdsFor(sg);
     return jobs.filter((j) => {
-      if (sgOf(j.subgrid) === sg) return true;
+      if (matchesSubgrid(j.subgrid, sg)) return true;
       if (j.source_dataset_id && ids.has(j.source_dataset_id)) return true;
       if (j.output_dataset_id && ids.has(j.output_dataset_id)) return true;
       return false;
@@ -160,13 +173,13 @@ export function computeDeletionImpact(params: {
   };
 
   const stagingFor = (sg: string) =>
-    stagingAggregates.filter((a) => sgOf(a.subgrid) === sg).reduce((s, a) => s + (a.frames || 0), 0);
+    stagingAggregates.filter((a) => matchesSubgrid(a.subgrid, sg)).reduce((s, a) => s + (a.frames || 0), 0);
 
   const qaFor = (sg: string) => {
     if (!qaRecords) return 0;
     return Object.keys(qaRecords).filter((k) => {
       const key = normSub(k);
-      return key === sg || key.startsWith(sg) || key.endsWith(sg);
+      return matchesSubgrid(k, sg) || key.startsWith(normSub(sg)) || key.endsWith(normSub(sg));
     }).length;
   };
 
@@ -198,20 +211,29 @@ export function computeDeletionImpact(params: {
       const js = jobsFor(sg);
       const deliverables = ds.filter((d) => d.dataset_type === 'DELIVERABLE');
 
-      const poi = runs.reduce((s, r) => s + (r.poiCount || 0), 0) +
-        batches.reduce((s, b) => s + (b.poiCount || 0), 0);
-      const frames = runs.reduce((s, r) => s + (r.availableImagesCount ?? r.imagesProcessed ?? 0), 0) +
-        batches.reduce((s, b) => s + (b.availableImagesCount ?? b.images ?? 0), 0);
-      const km = runs.reduce((s, r) => s + (r.kmProcessed || 0), 0) +
-        batches.reduce((s, b) => s + (b.kmProcessed || 0), 0);
-      const defects = runs.reduce((s, r) => s + (r.defectCount || 0), 0) +
-        batches.reduce((s, b) => s + (b.defects || 0), 0);
-      const published = runs.filter(
+      const runsPoi = runs.reduce((s, r) => s + (r.poiCount || 0), 0);
+      const batchesPoi = batches.reduce((s, b) => s + (b.poiCount || 0), 0);
+      const poi = Math.max(runsPoi, batchesPoi);
+
+      const runsFrames = runs.reduce((s, r) => s + (r.availableImagesCount ?? r.imagesProcessed ?? 0), 0);
+      const batchesFrames = batches.reduce((s, b) => s + (b.availableImagesCount ?? b.images ?? 0), 0);
+      const frames = Math.max(runsFrames, batchesFrames);
+
+      const runsKm = runs.reduce((s, r) => s + (r.kmProcessed || 0), 0);
+      const batchesKm = batches.reduce((s, b) => s + (b.kmProcessed || 0), 0);
+      const km = Math.max(runsKm, batchesKm);
+
+      const runsDefects = runs.reduce((s, r) => s + (r.defectCount || 0), 0);
+      const batchesDefects = batches.reduce((s, b) => s + (b.defects || 0), 0);
+      const defects = Math.max(runsDefects, batchesDefects);
+
+      const runsPublished = runs.filter(
         (r) => r.publishToWebGIS === 'yes' || r.isSyncedWithSupabase
-      ).length +
-      batches.filter(
+      ).length;
+      const batchesPublished = batches.filter(
         (b) => b.publishToWebGIS === 'yes' || b.isSyncedWithSupabase
       ).length;
+      const published = Math.max(runsPublished, batchesPublished);
 
       const row: ImpactRow = {
         subgrid: sg,
@@ -268,6 +290,52 @@ export function computeDeletionImpact(params: {
         );
       }
     });
+
+  // Fallback single record metric extraction if array lookups yielded 0 rows but a fallback record was supplied
+  if (rows.length === 0 && fallbackRecord) {
+    const rawSg = ('subgrid' in fallbackRecord && fallbackRecord.subgrid)
+      ? fallbackRecord.subgrid
+      : ('imageFilename' in fallbackRecord ? (fallbackRecord as BatchLogLike).imageFilename : 'RECORD');
+    const sg = (extractSubgridName(rawSg) || rawSg || 'RECORD').toUpperCase().trim();
+    const poi = fallbackRecord.poiCount || fallbackRecord.availableImagesCount || (fallbackRecord as any).imagesProcessed || (fallbackRecord as any).images || 0;
+    const frames = fallbackRecord.availableImagesCount || (fallbackRecord as any).imagesProcessed || (fallbackRecord as any).images || poi;
+    const km = fallbackRecord.kmProcessed || 0;
+    const defects = (('defectCount' in fallbackRecord && typeof (fallbackRecord as any).defectCount === 'number')
+      ? (fallbackRecord as any).defectCount
+      : (('defects' in fallbackRecord && typeof (fallbackRecord as any).defects === 'number') ? (fallbackRecord as any).defects : 0)) || 0;
+    const isPub = fallbackRecord.publishToWebGIS === 'yes' || fallbackRecord.isSyncedWithSupabase;
+
+    const row: ImpactRow = {
+      subgrid: sg,
+      runs: 'grid' in fallbackRecord ? 1 : 0,
+      batch: 'imageFilename' in fallbackRecord ? 1 : 0,
+      poi,
+      frames,
+      km: Math.round(km * 100) / 100,
+      defects,
+      published: isPub ? 1 : 0,
+      staging: 0,
+      qa: 0,
+      datasets: 0,
+      deliverables: 0,
+      jobs: 0,
+      relatedNames: [],
+      deliverableNames: [],
+      jobNames: []
+    };
+    rows.push(row);
+    totals.subgrids = 1;
+    totals.runs = row.runs;
+    totals.batch = row.batch;
+    totals.poi = poi;
+    totals.frames = frames;
+    totals.km = row.km;
+    totals.defects = defects;
+    totals.published = isPub ? 1 : 0;
+    if (isPub) {
+      warnings.push(`${sg}: this record is published to WebGIS / synchronised to the database.`);
+    }
+  }
 
   const hasPublished = totals.published > 0;
   const hasDeliverables = totals.deliverables > 0;

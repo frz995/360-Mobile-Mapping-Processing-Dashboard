@@ -34,8 +34,17 @@ export function DistancePanel({ analytics, translate }: DistancePanelProps) {
 
   const handleExport = () => {
     downloadCsv('analytics-distance.csv', [
-      ['Subgrid', 'Grid', 'Distance (km)', 'POI', 'Frames', 'Density POI/km', 'Density Frames/km', 'Runs'],
-      ...rows.map((r) => [r.subgrid, r.grid, Math.round(r.km * 100) / 100, r.poi, r.frames, Math.round(r.densityPoi * 100) / 100, Math.round(r.densityFrames * 100) / 100, r.runsCount])
+      ['Grid', 'Subgrid', 'Current capture (km)', 'Road plan (km)', 'Remaining to capture (km)', 'Actual Coverage (%)', 'POI', 'Runs'],
+      ...rows.map((r) => [
+        r.grid || '1',
+        r.subgrid,
+        Math.round(r.km * 100) / 100,
+        r.hasPlanSource && typeof r.planKm === 'number' ? Math.round(r.planKm * 100) / 100 : 'No existing road plan source',
+        r.hasPlanSource && typeof r.remainingKm === 'number' ? Math.round(r.remainingKm * 100) / 100 : '—',
+        r.hasPlanSource && typeof r.actualCoveragePct === 'number' ? `${r.actualCoveragePct}%` : '—',
+        r.poi,
+        r.runsCount
+      ])
     ]);
   };
 
@@ -63,7 +72,7 @@ export function DistancePanel({ analytics, translate }: DistancePanelProps) {
           <XAxis dataKey="name" tick={{ fill: '#94a3b8', fontSize: 9 }} stroke="#334155" interval={0} angle={-32} height={56} />
           <YAxis tick={{ fill: '#94a3b8', fontSize: 10 }} stroke="#334155" />
           <Tooltip {...DARK_TOOLTIP} />
-          <Bar dataKey="km" radius={[4, 4, 0, 0]}>
+          <Bar dataKey="km" name="Current capture (km)" radius={[4, 4, 0, 0]}>
             {chartData.map((_d, i) => (
               <Cell key={i} fill={i === 0 ? '#38bdf8' : '#1d4ed8'} />
             ))}
@@ -75,26 +84,50 @@ export function DistancePanel({ analytics, translate }: DistancePanelProps) {
         <table className="w-full text-left text-[11px]">
           <thead className="sticky top-0 bg-card z-10">
             <tr className="border-b border-subtle text-[9px] uppercase tracking-wider text-text-muted">
-              <th className="px-3 py-2">Rank</th>
+              <th className="px-3 py-2">Grid</th>
               <th className="px-3 py-2">Subgrid</th>
-              <th className="px-3 py-2 text-right">Distance (km)</th>
+              <th className="px-3 py-2 text-right">Current capture</th>
+              <th className="px-3 py-2 text-right">Road plan (in km)</th>
+              <th className="px-3 py-2 text-right">Remaining to capture</th>
+              <th className="px-3 py-2 text-right">Actual Coverage</th>
               <th className="px-3 py-2 text-right">POI</th>
-              <th className="px-3 py-2 text-right">{translate('analyticsColFrames')}</th>
-              <th className="px-3 py-2 text-right">POI/km</th>
-              <th className="px-3 py-2 text-right">Frames/km</th>
               <th className="px-3 py-2 text-right">{translate('analyticsColRuns')}</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((r, i) => (
+            {rows.map((r) => (
               <tr key={r.subgrid} className="border-b border-subtle hover:bg-inner/40 transition-colors">
-                <td className="px-3 py-2 text-text-muted">{i + 1}</td>
+                <td className="px-3 py-2 font-mono text-text-muted">{r.grid || '1'}</td>
                 <td className="px-3 py-2 font-bold text-sky-300">{r.subgrid}</td>
-                <td className="px-3 py-2 text-right font-sans">{formatNumber(r.km, 2)}</td>
+                <td className="px-3 py-2 text-right font-sans font-medium text-text-base">
+                  {formatNumber(r.km, 2)} km
+                </td>
+                <td className="px-3 py-2 text-right font-sans">
+                  {r.hasPlanSource && r.planKm !== null && r.planKm !== undefined ? (
+                    <span className="text-text-base">{formatNumber(r.planKm, 2)} km</span>
+                  ) : (
+                    <span className="text-[10px] text-amber-300/80 italic">No existing road plan source</span>
+                  )}
+                </td>
+                <td className="px-3 py-2 text-right font-sans">
+                  {r.hasPlanSource && r.remainingKm !== null && r.remainingKm !== undefined ? (
+                    <span className={r.remainingKm > 0 ? 'text-amber-300' : 'text-emerald-300'}>
+                      {formatNumber(r.remainingKm, 2)} km
+                    </span>
+                  ) : (
+                    <span className="text-text-muted">—</span>
+                  )}
+                </td>
+                <td className="px-3 py-2 text-right font-sans">
+                  {r.hasPlanSource && typeof r.actualCoveragePct === 'number' ? (
+                    <span className={`font-bold ${r.actualCoveragePct >= 100 ? 'text-emerald-300' : r.actualCoveragePct >= 80 ? 'text-sky-300' : 'text-amber-300'}`}>
+                      {r.actualCoveragePct}%
+                    </span>
+                  ) : (
+                    <span className="text-text-muted">—</span>
+                  )}
+                </td>
                 <td className="px-3 py-2 text-right font-sans">{formatNumber(r.poi)}</td>
-                <td className="px-3 py-2 text-right font-sans">{formatNumber(r.frames)}</td>
-                <td className="px-3 py-2 text-right font-sans">{formatNumber(r.densityPoi, 1)}</td>
-                <td className="px-3 py-2 text-right font-sans">{formatNumber(r.densityFrames, 1)}</td>
                 <td className="px-3 py-2 text-right">{r.runsCount}</td>
               </tr>
             ))}

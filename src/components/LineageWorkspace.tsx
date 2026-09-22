@@ -118,7 +118,7 @@ export const LineageWorkspace: React.FC<LineageWorkspaceProps> = ({
             Data Lineage
           </h2>
           <p className="text-xs text-text-muted mt-0.5 leading-relaxed">
-            Layered trace from RAW capture through processing jobs, acceptance QA decisions and publication. Metadata only — image bytes never leave the NAS.
+            Trace data history from raw capture through processing, quality acceptance, and publication.
           </p>
         </div>
 

@@ -71,6 +71,10 @@ export interface SubgridAnalytics {
   runsCount: number;
   captureEquipment?: string;
   pic?: string;
+  planKm?: number | null;
+  remainingKm?: number | null;
+  hasPlanSource?: boolean;
+  actualCoveragePct?: number | null;
 }
 
 export interface DailySeriesPoint {
@@ -102,6 +106,10 @@ export interface SurveyAnalytics {
     qaRejected: number;
     captureFrames: number;
     masterlistFrames: number;
+    hasRoadPlanSource: boolean;
+    totalPlanKm: number;
+    totalRemainingKm: number;
+    actualCoveragePct: number | null;
   };
   perSubgrid: SubgridAnalytics[];
   dailySeries: DailySeriesPoint[];
@@ -151,6 +159,8 @@ export interface SurveyAnalyticsInput {
   targetKm?: number;
   targetImages?: number;
   roadPlanKm?: number;
+  subgridPlanKm?: Record<string, number>;
+  hasRoadPlanSource?: boolean;
   totalProjectSubgrids?: number;
   /** Optional subgrid allow-list (from the project geographic boundary). */
   boundarySubgrids?: Set<string>;
@@ -180,6 +190,11 @@ export function computeSurveyAnalytics(input: SurveyAnalyticsInput): SurveyAnaly
   const effectiveTargetKm = Number(input.roadPlanKm) > 0 ? Number(input.roadPlanKm) : (Number(input.targetKm) || 0);
   const targetKm = effectiveTargetKm;
   const targetImages = Number(input.targetImages) || 0;
+  const hasRoadPlanSource = input.hasRoadPlanSource === true ||
+    (input.hasRoadPlanSource !== false && (
+      (typeof input.roadPlanKm === 'number' && input.roadPlanKm > 0) ||
+      (input.subgridPlanKm !== undefined && Object.values(input.subgridPlanKm).some((v) => Number(v) > 0))
+    ));
 
   // Merge batch + daily rows per subgrid (batch values take precedence).
   const bySubgrid = new Map<string, SubgridAnalytics>();
@@ -203,7 +218,11 @@ export function computeSurveyAnalytics(input: SurveyAnalyticsInput): SurveyAnaly
       qaApproved: 0,
       qaRejected: 0,
       captureFrames: 0,
-      runsCount: 0
+      runsCount: 0,
+      planKm: null,
+      remainingKm: null,
+      hasPlanSource: false,
+      actualCoveragePct: null
     };
     bySubgrid.set(sg, created);
     return created;
@@ -262,6 +281,7 @@ export function computeSurveyAnalytics(input: SurveyAnalyticsInput): SurveyAnaly
   let published = 0;
   let staged = 0;
   let partial = 0;
+  let sumPlanKm = 0;
 
   aggregates.forEach((a) => {
     const acc = bySubgrid.get(a.subgrid);
@@ -275,7 +295,30 @@ export function computeSurveyAnalytics(input: SurveyAnalyticsInput): SurveyAnaly
   });
 
   bySubgrid.forEach((acc) => {
-    acc.coveragePct = acc.poi > 0 ? Math.min(100, Math.round((acc.frames / acc.poi) * 100)) : acc.frames > 0 ? 100 : 0;
+    if (hasRoadPlanSource) {
+      acc.hasPlanSource = true;
+      const explicitPlan = input.subgridPlanKm?.[acc.subgrid];
+      if (typeof explicitPlan === 'number' && !isNaN(explicitPlan)) {
+        acc.planKm = Math.round(explicitPlan * 100) / 100;
+      } else if (typeof input.roadPlanKm === 'number' && input.roadPlanKm > 0 && bySubgrid.size === 1) {
+        acc.planKm = Math.round(input.roadPlanKm * 100) / 100;
+      } else {
+        acc.planKm = 0;
+      }
+      sumPlanKm += (acc.planKm || 0);
+      acc.remainingKm = Math.max(0, Math.round(((acc.planKm || 0) - acc.km) * 100) / 100);
+      acc.actualCoveragePct = (acc.planKm || 0) > 0
+        ? Math.min(100, Math.round((acc.km / (acc.planKm || 1)) * 100))
+        : (acc.km > 0 ? 100 : 0);
+      acc.coveragePct = acc.actualCoveragePct;
+    } else {
+      acc.hasPlanSource = false;
+      acc.planKm = null;
+      acc.remainingKm = null;
+      acc.actualCoveragePct = null;
+      acc.coveragePct = 0;
+    }
+
     acc.densityPoi = acc.km > 0 ? acc.poi / acc.km : 0;
     acc.densityFrames = acc.km > 0 ? acc.frames / acc.km : 0;
     acc.defectsPerKm = acc.km > 0 ? acc.defects / acc.km : 0;
@@ -353,6 +396,16 @@ export function computeSurveyAnalytics(input: SurveyAnalyticsInput): SurveyAnaly
   const passRate = totalPoi > 0 ? Math.round(((totalPoi - totalDefects) / totalPoi) * 100) : 100;
   const totalProjectSubgrids = Number(input.totalProjectSubgrids) > 0 ? Number(input.totalProjectSubgrids) : perSubgrid.length;
 
+  const totalPlanKm = hasRoadPlanSource
+    ? (sumPlanKm > 0 ? Math.round(sumPlanKm * 100) / 100 : (Number(input.roadPlanKm) > 0 ? Math.round(Number(input.roadPlanKm) * 100) / 100 : 0))
+    : 0;
+  const totalRemainingKm = hasRoadPlanSource
+    ? Math.max(0, Math.round((totalPlanKm - totalKm) * 100) / 100)
+    : 0;
+  const actualCoveragePct = hasRoadPlanSource && totalPlanKm > 0
+    ? Math.min(100, Math.round((totalKm / totalPlanKm) * 100))
+    : (hasRoadPlanSource && totalKm > 0 ? 100 : null);
+
   return {
     totals: {
       km: Math.round(totalKm * 100) / 100,
@@ -376,7 +429,11 @@ export function computeSurveyAnalytics(input: SurveyAnalyticsInput): SurveyAnaly
       targetProgressImagesPct: targetImages > 0 ? Math.min(100, (totalFrames / targetImages) * 100) : 0,
       qaApproved: totalQaApproved,
       qaRejected: totalQaRejected,
-      captureFrames: totalCaptureFrames
+      captureFrames: totalCaptureFrames,
+      hasRoadPlanSource,
+      totalPlanKm,
+      totalRemainingKm,
+      actualCoveragePct
     },
     perSubgrid,
     dailySeries,
