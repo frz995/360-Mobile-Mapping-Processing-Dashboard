@@ -54,10 +54,12 @@ describe('RoadAnalysis3DStudio Component', () => {
     expect(defaultProps.onSelectTheme).toHaveBeenCalledWith('warm');
   });
 
-  it('calls onSetPitch when a pitch button is clicked', () => {
+  it('calls onSetPitch when a pitch button is clicked and does not include 75° Sky', () => {
     render(<RoadAnalysis3DStudio {...defaultProps} />);
-    const skylineBtn = screen.getByText('75° Sky');
-    fireEvent.click(skylineBtn);
-    expect(defaultProps.onSetPitch).toHaveBeenCalledWith(75);
+    expect(screen.queryByText('75° Sky')).not.toBeInTheDocument();
+
+    const swoopBtn = screen.getByText('45°');
+    fireEvent.click(swoopBtn);
+    expect(defaultProps.onSetPitch).toHaveBeenCalledWith(45);
   });
 });
