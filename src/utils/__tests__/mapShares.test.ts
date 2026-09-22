@@ -205,7 +205,7 @@ describe('snapshot builders', () => {
     const road = buildRoadSnapshot([], {
       catalogLayers: [{ id: 'huge', name: 'Huge', geometryType: 'Point', geojson: { type: 'FeatureCollection', features } }]
     });
-    expect(road.catalogLayers?.[0]?.featureCount).toBeLessThanOrEqual(150000);
+    expect(road.catalogLayers?.[0]?.featureCount).toBeLessThanOrEqual(25000);
   });
 });
 

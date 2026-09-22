@@ -75,9 +75,14 @@ export function ShareMapDialog({ open, kind, defaultTitle, buildSnapshot, basema
     setBusy(true);
     setError('');
     try {
-      const { data: sessionData } = await supabase.auth.getSession().catch(() => ({ data: { session: null } }));
-      const effectiveCreatedBy = createdBy || sessionData?.session?.user?.id || null;
-      const snapshot = await buildSnapshot();
+      // Run session fetch and snapshot build in parallel — they are independent
+      const [sessionResult, snapshot] = await Promise.all([
+        supabase.auth.getSession().catch(() => ({ data: { session: null } })),
+        Promise.resolve().then(() => buildSnapshot())
+      ]);
+      const effectiveCreatedBy = createdBy
+        || (sessionResult && 'data' in sessionResult ? (sessionResult.data as { session?: { user?: { id?: string } } | null })?.session?.user?.id : null)
+        || null;
       const { url } = await createShare({
         kind,
         title: title.trim() || defaultTitle,

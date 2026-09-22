@@ -117,7 +117,7 @@ export interface MapShare {
 }
 
 const SHARE_POINTS_CAP = 25000;
-const SHARE_CATALOG_FEATURE_CAP = 150000;
+const SHARE_CATALOG_FEATURE_CAP = 25000;
 const SHARE_COORD_PRECISION = 6;
 
 /** Subset of project settings the URL resolvers need; nothing else leaks into a share. */
@@ -669,6 +669,39 @@ export async function createShare(input: CreateShareInput): Promise<{ share: Map
     ? new Date(Date.now() + input.expiresDays * 24 * 60 * 60 * 1000).toISOString()
     : null;
 
+  const shareRow = {
+    token,
+    kind: input.kind,
+    title: input.title || 'Shared Map',
+    project_id: getActiveProjectId(),
+    snapshot: input.snapshot,
+    basemap: input.basemap || 'ofm-positron',
+    password_hash: passwordHash,
+    created_by: input.createdBy || null,
+    expires_at: expiresAt
+  };
+
+  try {
+    const { data, error } = await supabase
+      .from('map_shares')
+      .insert(shareRow)
+      .select()
+      .single();
+
+    if (!error && data) {
+      const share = data as MapShare;
+      // Cache locally only after successful insert — avoids double-serializing
+      // multi-MB snapshot JSON before the network call.
+      try {
+        localStorage.setItem(LOCAL_SHARE_PREFIX + token, JSON.stringify(share));
+      } catch { /* storage quota exceeded */ }
+      return { share, url: sharePublicUrl(share.token) };
+    }
+  } catch (err) {
+    console.warn('[mapShares] Supabase cloud insert failed, using local mirror:', err);
+  }
+
+  // Offline / Supabase failure: build a local-only share fallback
   const fallbackShare: MapShare = {
     id: `local-${token}`,
     token,
@@ -688,34 +721,6 @@ export async function createShare(input: CreateShareInput): Promise<{ share: Map
   try {
     localStorage.setItem(LOCAL_SHARE_PREFIX + token, JSON.stringify(fallbackShare));
   } catch { /* storage quota exceeded or disabled */ }
-
-  try {
-    const { data, error } = await supabase
-      .from('map_shares')
-      .insert({
-        token,
-        kind: input.kind,
-        title: input.title || 'Shared Map',
-        project_id: getActiveProjectId(),
-        snapshot: input.snapshot,
-        basemap: input.basemap || 'ofm-positron',
-        password_hash: passwordHash,
-        created_by: input.createdBy || null,
-        expires_at: expiresAt
-      })
-      .select()
-      .single();
-
-    if (!error && data) {
-      const share = data as MapShare;
-      try {
-        localStorage.setItem(LOCAL_SHARE_PREFIX + token, JSON.stringify(share));
-      } catch { /* ignore */ }
-      return { share, url: sharePublicUrl(share.token) };
-    }
-  } catch (err) {
-    console.warn('[mapShares] Supabase cloud insert failed, using local mirror:', err);
-  }
 
   return { share: fallbackShare, url: sharePublicUrl(fallbackShare.token) };
 }
