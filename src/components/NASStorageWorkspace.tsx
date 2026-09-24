@@ -118,6 +118,7 @@ export const NASStorageWorkspace: React.FC<NASStorageWorkspaceProps> = ({
                 isGuestUser={isGuestUser}
                 onAddNotification={addNotification}
                 onAddAuditLog={addAuditLog}
+                onDatasetChanged={refreshDatasets}
                 userLabel={userLabel}
                 initialPath={initialFocusPath}
               />
@@ -140,6 +141,10 @@ export const NASStorageWorkspace: React.FC<NASStorageWorkspaceProps> = ({
               <IndexPanel
                 datasets={datasets}
                 translate={translate}
+                onChanged={refreshDatasets}
+                onAddNotification={addNotification}
+                onAddAuditLog={addAuditLog}
+                isGuestUser={isGuestUser}
               />
             )}
           </div>

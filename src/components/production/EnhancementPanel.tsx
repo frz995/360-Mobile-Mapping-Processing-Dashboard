@@ -25,7 +25,7 @@ import {
   renderEnhancedCanvas
 } from '../../utils/imageEnhancement';
 import { extractCanonicalSubgrid } from '../../utils/datasetLineage';
-import { productionNasUrlFor } from './common';
+import { pipelineOutputFolder, pickFirstNasImage, productionNasUrlFor } from './common';
 import { Surface } from './chrome';
 
 export interface EnhancementPanelProps {
@@ -67,6 +67,8 @@ export const EnhancementPanel: React.FC<EnhancementPanelProps> = ({
   const [exporting, setExporting] = useState(false);
   const [queuing, setQueuing] = useState(false);
   const [copiedPreset, setCopiedPreset] = useState(false);
+  const [outputFolder, setOutputFolder] = useState('');
+  const userTypedSample = useRef(false);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const is4PcMode = (projectSettings?.processingEngineMode || 'multi_pc_workstations') === 'multi_pc_workstations';
@@ -78,6 +80,40 @@ export const EnhancementPanel: React.FC<EnhancementPanelProps> = ({
     selected?.source_folder || '',
     sampleName || (canonicalSg ? `${canonicalSg}-00001.jpg` : '')
   );
+
+  // Default output lands in the ENHANCE stage folder; the operator can
+  // override it before queuing the batch.
+  const derivedOutputFolder = pipelineOutputFolder(
+    'ENHANCE',
+    selected?.source_folder,
+    `04_Enhanced/${(selected?.subgrid || selected?.name || '').replace(/[^\w\- ]+/g, '').trim()}`
+  );
+
+  useEffect(() => {
+    setOutputFolder(derivedOutputFolder);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDatasetId, selected?.id]);
+
+  // Auto-pick the first real image under the source folder so the preview
+  // shows something immediately (default name guesses often miss — real
+  // frames are `N93E70-0001.jpg` not `N93E70-00001.jpg`). Handles deep
+  // container folders via pickFirstNasImage.
+  useEffect(() => {
+    let alive = true;
+    setSampleName('');
+    if (!selectedDatasetId || !api || userTypedSample.current) return;
+    const sel = datasets.find((d) => d.id === selectedDatasetId);
+    if (!sel || !sel.source_folder) return;
+    pickFirstNasImage(api, sel.source_folder)
+      .then((rel) => {
+        if (alive && rel) setSampleName(rel);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDatasetId]);
 
   // Reset processed result when inputs change.
   useEffect(() => {
@@ -165,13 +201,24 @@ Sharpness Amount: ${Math.round(params.sharpness * 0.8)}`;
       });
       return;
     }
+    const src = (selected.source_folder || '').trim().replace(/^\/+|\/+$/g, '');
+    if (src.startsWith('04_Enhanced/') || src.startsWith('05_Final/')) {
+      onAddNotification?.({
+        title: 'ENHANCE Source Blocked',
+        message: `Enhancement reads pre-enhance frames (03_Stitching/…), never its own or downstream output. Selected: ${selected.source_folder || selected.name}.`,
+        category: 'ERROR',
+        read: false
+      });
+      return;
+    }
     setQueuing(true);
+    const output_folder = (outputFolder || '').trim().replace(/^\/+|\/+$/g, '') || derivedOutputFolder;
     const job: ProcessingJobRecord = {
       job_type: 'ENHANCE',
       name: `Enhance • ${selected.subgrid || selected.name}`,
       source_dataset_id: selected.id || null,
       source_folder: selected.source_folder,
-      output_folder: selected.output_folder || 'enhanced',
+      output_folder,
       subgrid: selected.subgrid,
       provider: is4PcMode ? 'PC 3 — Lightroom Station' : 'NAS GPU Worker',
       software_version: is4PcMode
@@ -191,23 +238,36 @@ Sharpness Amount: ${Math.round(params.sharpness * 0.8)}`;
       }
     };
     const saved = await saveProcessingJobToSupabase(job);
-    if (saved?.id) {
-      const res = await api.submitJob(saved);
+    const res = saved ? await api.submitJob(saved) : null;
+    setQueuing(false);
+    if (!saved || !res || res.ok === false) {
       onAddNotification?.({
-        title: 'ENHANCE Job Queued',
-        message: `${saved.name} — ${is4PcMode ? 'Registered for PC 3 handoff' : res.message}`,
-        category: 'PENDING',
+        title: 'ENHANCE Queue Failed',
+        message: res?.message || 'Job could not be saved or submitted — check your connection and permissions.',
+        category: 'ERROR',
         read: false
       });
       onAddAuditLog?.(
-        'CREATE',
-        `ENHANCE Job Queued: ${saved.name}`,
-        `${userLabel} queued batch enhancement with ${JSON.stringify(params)} via ${job.provider}.`,
-        'info'
+        'ERROR',
+        'ENHANCE Batch Failed',
+        `${userLabel} queue attempt rejected: ${res?.message || 'save failed'}.`,
+        'failed'
       );
-      onRefreshJobs();
+      return;
     }
-    setQueuing(false);
+    onAddNotification?.({
+      title: 'ENHANCE Job Queued',
+      message: `${saved.name} → ${output_folder} — ${is4PcMode ? 'registered for PC 3 handoff' : res.message}`,
+      category: 'PENDING',
+      read: false
+    });
+    onAddAuditLog?.(
+      'CREATE',
+      `ENHANCE Job Queued: ${saved.name}`,
+      `${userLabel} queued batch enhancement with ${JSON.stringify(params)} → ${output_folder} via ${job.provider}.`,
+      'info'
+    );
+    onRefreshJobs();
   };
 
   const sliderValue = (key: keyof EnhancementParams) => params[key];
@@ -225,7 +285,7 @@ Sharpness Amount: ${Math.round(params.sharpness * 0.8)}`;
             </span>
           </div>
           <span className="text-[10px] font-sans text-text-muted shrink-0">
-            Input: /BLURRED/ &rarr; Output: /ENHANCED/
+            Input: 03_Stitching/ &rarr; Output: 04_Enhanced/
           </span>
         </div>
       )}
@@ -240,7 +300,10 @@ Sharpness Amount: ${Math.round(params.sharpness * 0.8)}`;
             <select
               className="w-full bg-inner border border-subtle rounded-lg px-3 py-2 text-xs text-text-base outline-none focus:border-sky-500/60"
               value={selectedDatasetId}
-              onChange={(e) => setSelectedDatasetId(e.target.value)}
+              onChange={(e) => {
+                userTypedSample.current = false;
+                setSelectedDatasetId(e.target.value);
+              }}
             >
               <option value="">— register a dataset first —</option>
               {datasets.map((d) => (
@@ -258,11 +321,29 @@ Sharpness Amount: ${Math.round(params.sharpness * 0.8)}`;
               className="w-full bg-inner border border-subtle rounded-lg px-3 py-2 text-xs text-text-base outline-none focus:border-sky-500/60 font-sans"
               placeholder="N93E70-00001.jpg"
               value={sampleName}
-              onChange={(e) => setSampleName(e.target.value)}
+              onChange={(e) => {
+                userTypedSample.current = true;
+                setSampleName(e.target.value);
+              }}
             />
           </div>
           <div className="text-[10px] text-text-muted font-sans break-all bg-inner border border-subtle rounded-lg px-3 py-2">
             {sourceUrl || '—'}
+          </div>
+          <div>
+            <label className="text-[10px] uppercase tracking-wider text-text-muted font-semibold">
+              Output Folder
+            </label>
+            <input
+              className="w-full bg-inner border border-subtle rounded-lg px-3 py-2 text-xs text-text-base outline-none focus:border-sky-500/60 font-mono"
+              placeholder={derivedOutputFolder || '04_Enhanced/{rest}…'}
+              value={outputFolder}
+              disabled={isGuestUser}
+              onChange={(e) => setOutputFolder(e.target.value)}
+            />
+            <p className="text-[10px] text-text-muted mt-1">
+              {outputFolder.trim() ? `Batch output → ${outputFolder} (NAS-relative)` : `Default: ${derivedOutputFolder} — type to override.`}
+            </p>
           </div>
 
           <div className="flex flex-col gap-3">

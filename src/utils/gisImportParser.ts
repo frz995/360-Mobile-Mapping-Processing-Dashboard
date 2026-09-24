@@ -84,6 +84,10 @@ export interface CatalogVectorLayer {
   // True when the layer's geometry was too large to persist in the local cache
   // (the on-screen copy keeps rendering from memory until the page reloads).
   geometryDropped?: boolean;
+  // Object path inside the Supabase Storage road-geometry bucket where the
+  // serialized `geojsonJson` bytes were backed up (heavy layers only), so a
+  // cloud restore on another browser/device can re-download the geometry.
+  geometryStoragePath?: string;
 }
 
 export interface GisImportResult {

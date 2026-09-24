@@ -748,4 +748,73 @@ describe('region-aware import extent helpers', () => {
   });
 });
 
+describe('geojsonJson-only catalog grid layers', () => {
+  // Rehydrated / heavy-import layers carry only the serialized FeatureCollection,
+  // never the parsed `geojson` object. Every grid scan (subgrid enumeration,
+  // bbox lookup, spatial resolution) must still see their cells.
+  const gridJson = JSON.stringify({
+    type: 'FeatureCollection',
+    features: [
+      {
+        type: 'Feature',
+        properties: { ID: 2030, GRID: '4', NAME: 'N102E73', STATE: 'JOHOR' },
+        geometry: {
+          type: 'Polygon',
+          coordinates: [[[102.0, 2.0], [102.045, 2.0], [102.045, 2.045], [102.0, 2.045], [102.0, 2.0]]]
+        }
+      },
+      {
+        type: 'Feature',
+        properties: { ID: 2031, GRID: '4', NAME: 'N102E74', STATE: 'JOHOR' },
+        geometry: {
+          type: 'Polygon',
+          coordinates: [[[102.045, 2.0], [102.09, 2.0], [102.09, 2.045], [102.045, 2.045], [102.045, 2.0]]]
+        }
+      }
+    ]
+  });
+  const gridLayer = { id: 'grid-json', name: 'Grid_5km', geojsonJson: gridJson, featureCount: 2 };
+
+  it('enumerates every grid cell of a serialized-only layer into the metrics list', () => {
+    const metrics = computeSubgridMetrics([], [], [], [], 0, [gridLayer]);
+    const names = metrics.map((m) => m.subgrid).sort();
+    expect(names).toEqual(['N102E73', 'N102E74']);
+    // Each cell must carry the real polygon bbox so row-click focus zooms to
+    // the exact GIS cell, not a derived fallback box.
+    const sg73 = metrics.find((m) => m.subgrid === 'N102E73');
+    expect(sg73!.bbox[0]).toBeCloseTo(102.0, 6);
+    expect(sg73!.bbox[2]).toBeCloseTo(102.045, 6);
+  });
+
+  it('does not leak non-grid property values (numeric IDs, street names) as subgrids', () => {
+    const roadLayer = {
+      id: 'road-json',
+      name: 'RoadPlan',
+      geojsonJson: JSON.stringify({
+        type: 'FeatureCollection',
+        features: [
+          { type: 'Feature', properties: { ID: 21123, NAME: 'Jln Bukit Gambir' }, geometry: { type: 'LineString', coordinates: [[102.1, 2.1], [102.2, 2.2]] } }
+        ]
+      }),
+      featureCount: 1
+    };
+    const metrics = computeSubgridMetrics([], [], [], [], 0, [roadLayer]);
+    expect(metrics).toHaveLength(0);
+  });
+
+  it('resolves spatial subgrid of a point inside a serialized-only grid polygon', () => {
+    expect(resolveSpatialSubgrid([102.02, 2.02], [gridLayer])).toBe('N102E73');
+    expect(resolveSpatialSubgrid([102.06, 2.02], [gridLayer])).toBe('N102E74');
+    expect(resolveSpatialSubgrid([105, 5], [gridLayer])).toBeNull();
+  });
+
+  it('derives the subgrid bbox from the serialized-only layer polygon', () => {
+    const bbox = getSubgridBbox('N102E73', [], [gridLayer]);
+    expect(bbox[0]).toBeCloseTo(102.0, 6);
+    expect(bbox[1]).toBeCloseTo(2.0, 6);
+    expect(bbox[2]).toBeCloseTo(102.045, 6);
+    expect(bbox[3]).toBeCloseTo(2.045, 6);
+  });
+});
+
 

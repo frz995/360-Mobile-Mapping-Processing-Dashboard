@@ -207,4 +207,20 @@ describe('DataManagementPage smoke', () => {
     await waitFor(() => expect(hardDelete).toHaveBeenCalled())
     expect(submitTicket).not.toHaveBeenCalled()
   })
+
+  it('renders POI column header in both Masterlist and Daily tables', () => {
+    // 1. Daily Tab
+    const { unmount } = renderPage({ dailyData: [dailyFixture()], initialTab: 'daily' })
+    const dailyPoiHeader = screen.getByRole('columnheader', { name: 'POI' })
+    expect(dailyPoiHeader).toBeInTheDocument()
+    expect(screen.queryByRole('columnheader', { name: 'Frames' })).toBeNull()
+    unmount()
+
+    // 2. Masterlist Tab (batches)
+    renderPage({ batchLogs: [batchFixture()], initialTab: 'batches' })
+    const masterPoiHeader = screen.getByRole('columnheader', { name: 'POI' })
+    expect(masterPoiHeader).toBeInTheDocument()
+    expect(screen.queryByRole('columnheader', { name: 'Frames' })).toBeNull()
+  })
 })
+

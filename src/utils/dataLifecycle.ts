@@ -54,7 +54,7 @@ export const LIFECYCLE_STAGES: Record<LifecycleStageKey, LifecycleStageMeta> = {
     label: '2. In Workstation Pipeline',
     shortLabel: 'IN PROGRESS',
     description: 'Actively processing through 4 workstation stations (Stitch, Blur, Enhance, Mask).',
-    storageLocation: 'NAS: /STITCHED, /BLURRED, /ENHANCED',
+    storageLocation: 'NAS: 02_Blurring/, 03_Stitching/, 04_Enhanced/',
     color: {
       bg: 'bg-orange-500/10',
       text: 'text-orange-400',
@@ -69,7 +69,7 @@ export const LIFECYCLE_STAGES: Record<LifecycleStageKey, LifecycleStageMeta> = {
     label: '3. Final Processed (Pending QA)',
     shortLabel: 'PROCESSED',
     description: 'Station 4 (Masking) finished. Ready for inspection in QA Consult.',
-    storageLocation: 'NAS: /MASKED/{subgrid}/ or /PROCESSED/{subgrid}/',
+    storageLocation: 'NAS: 05_Final/{subgrid}/',
     color: {
       bg: 'bg-blue-500/10',
       text: 'text-blue-400',

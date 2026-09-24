@@ -44,11 +44,17 @@ import {
   loadCatalogLayerGeometries,
   deleteCatalogLayerGeometry
 } from '../utils/catalogGeometryStore';
+import {
+  uploadCatalogLayerGeometry,
+  downloadCatalogLayerGeometry,
+  forgetUploadedLayerPath
+} from '../services/roadAnalysisGeometry';
 import { getRoadExtractionAdapter, type ExtractedRoadLine } from '../services/roadExtraction';
 import { parseRoadPlanFile, extractLineRunsWithIds } from '../utils/roadPlanParser';
 import { extractPanotrackPoints, filterPanotrackByDistricts } from '../utils/panotrackExtractor';
 import { pathLengthLngLatKm } from '../utils/geo';
 import {
+  clipLineRunsToBbox,
   computeSubgridMetrics,
   type SubgridMetric,
   type SubgridRelationNotice
@@ -65,6 +71,25 @@ import {
 } from '../services/supabase';
 import { getActiveProjectId } from '../services/projectContext';
 import type { AuditLogItem } from '../types/dashboard';
+
+/** Smallest [minLng, minLat, maxLng, maxLat] box covering the given runs, or null when there is nothing to frame. */
+function runsToBbox(runs: Array<Array<[number, number]>>): [number, number, number, number] | null {
+  let minLng = Infinity;
+  let minLat = Infinity;
+  let maxLng = -Infinity;
+  let maxLat = -Infinity;
+  (runs || []).forEach((r) =>
+    (r || []).forEach(([lng, lat]) => {
+      if (!Number.isFinite(lng) || !Number.isFinite(lat)) return;
+      if (lng < minLng) minLng = lng;
+      if (lng > maxLng) maxLng = lng;
+      if (lat < minLat) minLat = lat;
+      if (lat > maxLat) maxLat = lat;
+    })
+  );
+  if (minLng === Infinity || (minLng === maxLng && minLat === maxLat)) return null;
+  return [minLng, minLat, maxLng, maxLat];
+}
 
 export interface RoadAnalysisWorkspaceProps {
   projectSettings?: any;
@@ -285,6 +310,43 @@ export function prepareCatalogLayersForPersistence(
 }
 
 /**
+ * Build the lean catalog-layer list sent to the cloud. Geometry within the
+ * persistence budget stays inline; oversized geometry is uploaded to Supabase
+ * Storage first and replaced with a `geometryStoragePath` pointer (plus
+ * `geometryDropped: true`), so a restore on any browser/device can re-download
+ * the bytes instead of losing the layer. If the upload is unavailable (bucket
+ * not provisioned), the layer degrades to the legacy stripped form so the save
+ * still works and the local IndexedDB copy remains the backup.
+ */
+export async function prepareCatalogLayersForCloudPersistence(
+  layers: CatalogVectorLayer[] | undefined
+): Promise<CatalogVectorLayer[]> {
+  const source = Array.isArray(layers) ? layers : [];
+  const out: CatalogVectorLayer[] = [];
+  for (const layer of source) {
+    let bytes = layer.geometryBytes;
+    if (bytes === undefined) {
+      if (layer.geojson) bytes = JSON.stringify(layer.geojson).length;
+      else if (layer.geojsonJson) bytes = layer.geojsonJson.length * 2;
+      else bytes = 0;
+    }
+    if (bytes <= CATALOG_GEOMETRY_PERSIST_LIMIT_BYTES) {
+      out.push(layer);
+      continue;
+    }
+    const path = await uploadCatalogLayerGeometry(layer);
+    out.push({
+      ...layer,
+      geojson: undefined,
+      geojsonJson: undefined,
+      geometryDropped: true,
+      ...(path ? { geometryStoragePath: path } : {})
+    });
+  }
+  return out;
+}
+
+/**
  * Mirrors a successfully cloud-saved snapshot back into the local cache so the
  * cache becomes an exact, synced mirror of the DB (marked `savedToCloud: true`)
  * rather than a competing source of truth.
@@ -303,9 +365,12 @@ export function mirrorRoadAnalysisToCache(userKey: string, state: RoadAnalysisSa
         updatedAt: cloudUpdatedAt
       })
     );
-    // Mirror heavy layer bytes to IndexedDB too (the localStorage snapshot above
-    // strips oversized geometry like persistRoadAnalysisCache does).
-    saveCatalogLayerGeometries(userKey, Array.isArray(state.catalogLayers) ? state.catalogLayers : undefined).catch(() => {});
+    // NOTE: does NOT touch IndexedDB. The mirror only ever carries the LEAN cloud
+    // snapshot (oversized geometry stripped, `geometryDropped`), and feeding those
+    // stripped layers back into saveCatalogLayerGeometries would make its cleanup
+    // cursor delete every stored geometry record for this user. The full bytes are
+    // written to IndexedDB by the explicit save (before the RPC) and by every
+    // persistRoadAnalysisCache edit, which always pass the complete in-memory set.
   } catch {
     // ignore quota / serialization errors
   }
@@ -473,27 +538,40 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
     }
   }, [catalogLayers, activeTableLayer]);
 
-  // Rehydrate heavy catalog-layer geometry from IndexedDB after a reload. The
-  // localStorage snapshot strips oversized `geojsonJson` (quota + stringify
-  // freeze), so those layers load as `geometryDropped` — this effect pulls the
-  // mirrored bytes back and clears the flag, making reloads render as before.
+  // Rehydrate heavy catalog-layer geometry after a reload. The localStorage
+  // snapshot strips oversized `geojsonJson` (quota + stringify freeze), so those
+  // layers load as `geometryDropped`. This effect pulls the bytes back — from the
+  // device-local IndexedDB mirror first, then from Supabase Storage via the
+  // layer's `geometryStoragePath` when a cloud save backed the geometry up (this
+  // is what keeps heavy layers alive after a cloud restore on ANOTHER device) —
+  // and clears the flag, making reloads render as before. Freshly fetched bytes
+  // are written back into IndexedDB so the next reload bypasses Storage.
   useEffect(() => {
     let cancelled = false;
-    if (!catalogLayers.some((l) => l.geometryDropped)) return;
-    loadCatalogLayerGeometries(userKey)
-      .then((geometryByLayerId) => {
-        if (cancelled || geometryByLayerId.size === 0) return;
-        setCatalogLayers((prev) => {
-          if (!prev.some((l) => l.geometryDropped)) return prev;
-          return prev.map((l) => {
-            if (!l.geometryDropped) return l;
-            const geojsonJson = geometryByLayerId.get(l.id);
-            if (!geojsonJson) return l;
-            return { ...l, geojsonJson, geometryDropped: false };
-          });
-        });
-      })
-      .catch(() => {});
+    if (!Array.isArray(catalogLayers) || !catalogLayers.some((l) => l.geometryDropped)) return;
+    (async () => {
+      const localBytes = await loadCatalogLayerGeometries(userKey);
+      const merged = new globalThis.Map<string, string>(localBytes);
+      for (const layer of catalogLayers) {
+        if (!layer.geometryDropped || merged.has(layer.id) || !layer.geometryStoragePath) continue;
+        const remoteJson = await downloadCatalogLayerGeometry(layer.geometryStoragePath);
+        if (cancelled) return;
+        if (remoteJson) merged.set(layer.id, remoteJson);
+      }
+      if (cancelled || merged.size === 0) return;
+      const hydrated = catalogLayers.map((l) => {
+        if (!l.geometryDropped) return l;
+        const geojsonJson = merged.get(l.id);
+        if (!geojsonJson) return l;
+        return { ...l, geojsonJson, geometryDropped: false };
+      });
+      if (hydrated.every((l, i) => l === catalogLayers[i])) return;
+      // `.map` above only allocates for layers whose bytes were found; the
+      // identity check proves at least one dropped layer was healed, so persist
+      // the refreshed set into IndexedDB too.
+      saveCatalogLayerGeometries(userKey, hydrated).catch(() => {});
+      setCatalogLayers(hydrated);
+    })();
     return () => {
       cancelled = true;
     };
@@ -1294,8 +1372,9 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
     // network or be embedded in project_settings — it freezes the main
     // thread during serialization, takes 15-30s to upload, and blows
     // the Supabase row-size limit. Lean metadata (~15 KB) is saved to
-    // the cloud; full geometry bytes go to IndexedDB only.
-    const { layers: leanCatalogLayers } = prepareCatalogLayersForPersistence(catalogLayers);
+    // the cloud; oversized geometry is uploaded to Supabase Storage and
+    // referenced by `geometryStoragePath` so it survives on any device.
+    const leanCatalogLayers = await prepareCatalogLayersForCloudPersistence(catalogLayers);
 
     const statePayload: RoadAnalysisProductionState = {
       activeTab,
@@ -1412,12 +1491,24 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
       setShowCoverage(false);
       return;
     }
+    const hasCellBbox = Array.isArray(sg.bbox) && sg.bbox.length === 4 && (sg.bbox[0] !== 0 || sg.bbox[1] !== 0);
     const plan = tracePlans.find((p) => p.subgrid === sg.subgrid);
-    if (plan && plan.planRuns.length > 0) {
-      coverage.segmentSubgrid(sg.subgrid, plan.planRuns);
+    // Segment strictly within the 5×5 km subgrid cell so the red/green
+    // coverage stays clipped to the same bounds the metrics and focus use.
+    const cellSegments = hasCellBbox
+      ? clipLineRunsToBbox(activePlanRuns, sg.bbox)
+      : (plan?.planRuns || []);
+    if (cellSegments.length > 0) {
+      coverage.segmentSubgrid(sg.subgrid, cellSegments);
       setShowCoverage(true);
     }
-  }, [selectedSubgridId, showCoverage, coverage.activeScope, coverage.activeSubgridId, tracePlans, coverage.segmentSubgrid]);
+    // Focus the camera on the subgrid cell itself, not on surrounding data.
+    // Falls back to the drawn segment bounds when the cell bbox is unknown.
+    const focusBox = hasCellBbox ? sg.bbox : (runsToBbox(cellSegments) || runsToBbox(plan?.planRuns || []));
+    if (focusBox) {
+      setFocusBbox([...focusBox]);
+    }
+  }, [selectedSubgridId, showCoverage, coverage.activeScope, coverage.activeSubgridId, tracePlans, coverage.segmentSubgrid, activePlanRuns]);
 
   const handleReassignBatch = useCallback((fromSubgrid: string, toSubgrid: string) => {
     setInternalBatchLogs((prev) =>
@@ -1493,13 +1584,21 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
       coverage.segmentSubgrid(sgId, plan.planRuns);
       setShowCoverage(true);
     }
+    // Clicking a survey point also focuses the camera on its subgrid cell.
+    const metric = subgridMetrics.find((m) => m.subgrid === sgId);
+    const cellBbox = metric?.bbox && metric.bbox.length === 4 && (metric.bbox[0] !== 0 || metric.bbox[1] !== 0)
+      ? metric.bbox
+      : null;
+    if (cellBbox) {
+      setFocusBbox([...cellBbox]);
+    }
     setTimeout(() => {
       const el = document.getElementById(`subgrid-card-${sgId}`);
       if (el) {
         el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       }
     }, 50);
-  }, [tracePlans, coverage.segmentSubgrid]);
+  }, [tracePlans, coverage.segmentSubgrid, subgridMetrics]);
 
   const handleExtract = useCallback(async () => {
     setExtractError('');
@@ -1757,6 +1856,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
           catalogPlanLayerId: catalogPlanLayerId === layerId ? null : catalogPlanLayerId
         });
         deleteCatalogLayerGeometry(userKey, layerId).catch(() => {});
+        forgetUploadedLayerPath(layerId);
         return next;
       });
       setHasUnsavedEdits(true);

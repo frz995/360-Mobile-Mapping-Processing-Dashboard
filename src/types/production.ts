@@ -246,8 +246,8 @@ export const DEFAULT_4_WORKSTATIONS: WorkstationStationConfig[] = [
     ipAddress: '192.168.1.101',
     software: 'Privacy Keeper / Face & Plate Blur',
     defaultOperator: 'Multi-PC',
-    sourceFolderTemplate: '/RAW/{subgrid}/',
-    outputFolderTemplate: '/BLURRED/{subgrid}/',
+    sourceFolderTemplate: '/00_Raw_data/{subgrid}/',
+    outputFolderTemplate: '/02_Blurring/{subgrid}/',
     description: 'Detects and blurs pedestrian faces and license plates on the raw frames before stitching.',
     enabled: true
   },
@@ -258,8 +258,8 @@ export const DEFAULT_4_WORKSTATIONS: WorkstationStationConfig[] = [
     ipAddress: '192.168.1.102',
     software: 'Creator 6 / PTGui / Insta360 Stitcher',
     defaultOperator: 'Multi-PC',
-    sourceFolderTemplate: '/BLURRED/{subgrid}/',
-    outputFolderTemplate: '/STITCHED/{subgrid}/',
+    sourceFolderTemplate: '/02_Blurring/{subgrid}/',
+    outputFolderTemplate: '/03_Stitching/{subgrid}/',
     description: 'Stitches the blurred six-camera frames into 360° equirectangular panoramas.',
     enabled: true
   },
@@ -270,8 +270,8 @@ export const DEFAULT_4_WORKSTATIONS: WorkstationStationConfig[] = [
     ipAddress: '192.168.1.103',
     software: 'Adobe Lightroom Classic / Camera RAW',
     defaultOperator: 'Multi-PC',
-    sourceFolderTemplate: '/STITCHED/{subgrid}/',
-    outputFolderTemplate: '/ENHANCED/{subgrid}/',
+    sourceFolderTemplate: '/03_Stitching/{subgrid}/',
+    outputFolderTemplate: '/04_Enhanced/{subgrid}/',
     description: 'Applies bulk color grading, shadow recovery, clarity, and sharpness presets.',
     enabled: true
   },
@@ -282,8 +282,8 @@ export const DEFAULT_4_WORKSTATIONS: WorkstationStationConfig[] = [
     ipAddress: '192.168.1.104',
     software: 'Adobe Photoshop (Batch Actions)',
     defaultOperator: 'Multi-PC',
-    sourceFolderTemplate: '/ENHANCED/{subgrid}/',
-    outputFolderTemplate: '/PROCESSED/{subgrid}/',
+    sourceFolderTemplate: '/04_Enhanced/{subgrid}/',
+    outputFolderTemplate: '/05_Final/{subgrid}/',
     description: 'Applies circular nadir hood mask or generative inpaint to remove the vehicle, plus watermark.',
     enabled: true
   }

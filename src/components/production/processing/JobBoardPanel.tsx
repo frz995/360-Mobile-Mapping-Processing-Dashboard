@@ -158,24 +158,32 @@ export const JobBoardPanel: React.FC<JobBoardPanelProps> = ({
             setMessage({ ok: false, text: res.message });
           }
         } else if (isExternalJobType(job.job_type)) {
-          await updateProcessingJobStatusInSupabase(job.id, {
+          const requeued = await updateProcessingJobStatusInSupabase(job.id, {
             status: 'QUEUED',
             progress: 0,
             completed_items: 0,
             error_count: 0,
             current_item: ''
           });
-          await updateProcessingJobHandoffInSupabase(job.id, { externalStatus: 'awaiting_submit' });
-          notify(`External Job Queued`, `${job.name || job.job_type} queued — ready for operator execution.`, 'SYSTEM', 'info');
+          if (!requeued) {
+            setMessage({ ok: false, text: 'Cannot resume — job has already finished.' });
+          } else {
+            await updateProcessingJobHandoffInSupabase(job.id, { externalStatus: 'awaiting_submit' });
+            notify(`External Job Queued`, `${job.name || job.job_type} queued — ready for operator execution.`, 'SYSTEM', 'info');
+          }
         } else {
           await updateProcessingJobStatusInSupabase(job.id, { status: 'QUEUED', progress: 0 });
           notify(`Job Resumed`, `${job.name || job.job_type} queued for execution.`, 'SYSTEM', 'info');
         }
       } else if (type === 'CANCEL') {
         if (isWorkerJobType(job.job_type)) await api.cancelJob(job.id);
-        else await updateProcessingJobStatusInSupabase(job.id, { status: 'CANCELLED' });
-        notify('Job Cancelled', `Cancelled execution for ${job.name || job.id}.`, 'SYSTEM', 'warning');
-        onAddAuditLog?.('EDIT', 'Job Cancelled', `${job.name || job.id} cancelled by ${userLabel}.`, 'warning');
+        const marked = await updateProcessingJobStatusInSupabase(job.id, { status: 'CANCELLED' });
+        if (marked) {
+          notify('Job Cancelled', `Cancelled execution for ${job.name || job.id}.`, 'SYSTEM', 'warning');
+          onAddAuditLog?.('EDIT', 'Job Cancelled', `${job.name || job.id} cancelled by ${userLabel}.`, 'warning');
+        } else {
+          setMessage({ ok: false, text: 'Could not mark job CANCELLED.' });
+        }
       } else if (type === 'DELETE') {
         await deleteProcessingJobFromSupabase(job.id);
         notify('Job Deleted', `Deleted job record ${job.name || job.id}.`, 'SYSTEM', 'warning');
@@ -245,6 +253,10 @@ export const JobBoardPanel: React.FC<JobBoardPanelProps> = ({
       onAddAuditLog?.('WARN', 'Import Overridden', `${job.name || job.id} imported despite validation issues: ${v.issues.join('; ')}`, 'warning');
     }
 
+    const outFolder = (job.output_folder || '')
+      .trim()
+      .replace(/\\/g, '/')
+      .replace(/^\/+|\/+$/g, '');
     const dataset = await saveDatasetToSupabase({
       dataset_type: 'PROCESSED',
       pipeline_stage: stageFromJobType(job.job_type),
@@ -252,8 +264,8 @@ export const JobBoardPanel: React.FC<JobBoardPanelProps> = ({
       subgrid: job.subgrid,
       provider: job.provider,
       software_version: job.software_version,
-      source_folder: job.source_folder,
-      output_folder: job.output_folder,
+      source_folder: outFolder,
+      output_folder: outFolder,
       storage_provider: 'nas_local',
       file_count: fileCount,
       size_bytes: sizeBytes,

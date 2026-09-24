@@ -111,7 +111,7 @@ export const ImageProductionWorkspace: React.FC<ImageProductionWorkspaceProps> =
   useEffect(() => {
     if (!pollStopRef.current) {
       pollStopRef.current = startJobPolling({
-        intervalMs: Math.max(2000, projectSettings?.dbAutoSyncSec || 5) * 1000,
+        intervalMs: Math.max(2000, (projectSettings?.dbAutoSyncSec || 5) * 1000),
         fetchJobs: fetchProcessingJobsFromSupabase,
         onUpdate: setJobs
       });

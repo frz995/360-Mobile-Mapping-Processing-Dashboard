@@ -71,7 +71,7 @@ export const DashboardBatchTable: React.FC<DashboardBatchTableProps> = ({
               <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-text-muted whitespace-nowrap">{t('batchId')}</th>
               <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-text-muted whitespace-nowrap">{t('grid')}</th>
               <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-text-muted whitespace-nowrap">{t('subgrid')}</th>
-              <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-text-muted whitespace-nowrap">{t('frames')}</th>
+              <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-text-muted whitespace-nowrap">{t('poi') || t('frames') || 'POI'}</th>
               <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-text-muted whitespace-nowrap">{t('distance')}</th>
               <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-text-muted whitespace-nowrap">{t('images')}</th>
               <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-text-muted whitespace-nowrap">{t('defectsTable')}</th>
@@ -290,6 +290,7 @@ export const DashboardBatchTable: React.FC<DashboardBatchTableProps> = ({
               <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-text-muted whitespace-nowrap">Date</th>
               <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-text-muted whitespace-nowrap">Grid</th>
               <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-text-muted whitespace-nowrap">Subgrid</th>
+              <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-text-muted whitespace-nowrap">{t('poi') || 'POI'}</th>
               <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-text-muted whitespace-nowrap">Distance</th>
               <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-text-muted whitespace-nowrap">Images</th>
               <th className="px-3.5 py-3 font-semibold text-[10px] uppercase tracking-wider text-text-muted whitespace-nowrap">Defects</th>
@@ -301,7 +302,7 @@ export const DashboardBatchTable: React.FC<DashboardBatchTableProps> = ({
           <tbody className="divide-y divide-[rgba(255,255,255,0.06)]">
             {isDataLoading ? (
               <tr>
-                <td colSpan={9} className="py-6 lg:py-12 text-center text-text-muted">
+                <td colSpan={10} className="py-6 lg:py-12 text-center text-text-muted">
                   <div className="flex flex-col items-center justify-center gap-2">
                     <Loader2 size={22} className="animate-spin text-sky-400" />
                     <span className="text-xs font-semibold text-text-base">Loading daily progress...</span>
@@ -310,7 +311,7 @@ export const DashboardBatchTable: React.FC<DashboardBatchTableProps> = ({
               </tr>
             ) : dailyData.length === 0 ? (
               <tr>
-                <td colSpan={9} className="py-6 lg:py-10 text-center text-text-muted">
+                <td colSpan={10} className="py-6 lg:py-10 text-center text-text-muted">
                   <div className="flex flex-col items-center justify-center gap-2">
                     <Calendar size={28} className="text-text-muted" />
                     <span className="text-xs font-semibold text-text-base">No daily records yet</span>
@@ -378,6 +379,7 @@ export const DashboardBatchTable: React.FC<DashboardBatchTableProps> = ({
                     </td>
                     <td className="px-3.5 py-3.5 font-medium text-text-base whitespace-nowrap">{log.grid}</td>
                     <td className="px-3.5 py-3.5 font-semibold text-text-base whitespace-nowrap">{dailySubgrid}</td>
+                    <td className="px-3.5 py-3.5 font-sans text-xs text-text-base font-semibold whitespace-nowrap">{getPOICount(log).toLocaleString()}</td>
                     <td className="px-3.5 py-3.5 text-text-base whitespace-nowrap">{log.kmProcessed.toFixed(1)} km</td>
                     <td className="px-3.5 py-3.5 whitespace-nowrap">
                       <button

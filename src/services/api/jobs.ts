@@ -3,6 +3,75 @@ import type { ExternalJobStatus, ProcessingJobRecord, ProcessingJobStatus } from
 
 const PROCESSING_JOBS_TABLE = 'processing_jobs';
 
+/** Statuses that mean a job is still actively processing. */
+const RUNNING_JOB_STATUSES = new Set(['QUEUED', 'IN_PROGRESS', 'PENDING', 'PAUSED']);
+
+/** Statuses that mean a job has finished and must never be flipped back to active. */
+const TERMINAL_JOB_STATUSES = new Set([
+  'COMPLETED',
+  'FAILED',
+  'CANCELLED',
+  'IMPORTED',
+  'APPROVED',
+  'REJECTED'
+]);
+
+/** Active (non-terminal) statuses a terminal job must not be re-entered into. */
+const ACTIVE_JOB_STATUSES = new Set([
+  'QUEUED',
+  'IN_PROGRESS',
+  'PENDING',
+  'PAUSED',
+  'QA_PENDING',
+  'REVIEW_REQUIRED'
+]);
+
+export interface DatasetScopeForJobCheck {
+  id?: string | null;
+  source_folder?: string | null;
+  output_folder?: string | null;
+  subgrid?: string | null;
+}
+
+export interface RunningJobInfo {
+  id: string;
+  job_type: string;
+  status: string;
+  name: string;
+}
+
+/** Find processing jobs still running that relate to a dataset row —
+ * linked by `source_dataset_id` / `output_dataset_id`, the exact source or
+ * output folder, or a shared subgrid. Used to block dataset deletion while
+ * a related batch is in flight. */
+export async function findRunningJobsForDataset(
+  scope: DatasetScopeForJobCheck
+): Promise<RunningJobInfo[]> {
+  const jobs = await fetchProcessingJobsFromSupabase();
+  const src = (scope.source_folder || '').replace(/\/+$/, '');
+  const out = (scope.output_folder || '').replace(/\/+$/, '');
+  const sg = scope.subgrid || '';
+  return jobs
+    .filter((j) => {
+      const status = (j.status || '').toUpperCase();
+      if (!RUNNING_JOB_STATUSES.has(status)) return false;
+      const jSrc = (j.source_folder || '').replace(/\/+$/, '');
+      const jOut = (j.output_folder || '').replace(/\/+$/, '');
+      return (
+        (!!scope.id && (j.source_dataset_id === scope.id || j.output_dataset_id === scope.id)) ||
+        (!!src && (jSrc === src || jOut === src)) ||
+        (!!out && (jSrc === out || jOut === out)) ||
+        (!!sg && !!j.subgrid && j.subgrid === sg)
+      );
+    })
+    .map((j) => ({
+      id: j.id || '',
+      job_type: j.job_type || 'PROCESSING',
+      status: j.status || 'IN_PROGRESS',
+      name: j.name || j.job_type || 'batch'
+    }));
+}
+
 function getJobStorageKey(): string {
   const pid = getServiceProjectId();
   return pid ? `geosphere_processing_jobs_${pid}` : 'geosphere_processing_jobs';
@@ -65,7 +134,7 @@ export async function fetchProcessingJobsFromSupabase(): Promise<ProcessingJobRe
         } else {
           const locTime = new Date(loc.updated_at || loc.created_at || 0).getTime();
           const remTime = new Date(remote.updated_at || remote.created_at || 0).getTime();
-          if (locTime >= remTime || loc.status === 'COMPLETED' || loc.status === 'IN_PROGRESS') {
+          if (locTime > remTime) {
             map.set(loc.id, { ...remote, ...loc });
           }
         }
@@ -142,6 +211,31 @@ export async function updateProcessingJobStatusInSupabase(
 ): Promise<boolean> {
   const current = getLocalJobs();
   const idx = current.findIndex((j) => j.id === id);
+  const localPrevStatus: ProcessingJobStatus | undefined = idx >= 0 ? current[idx].status : undefined;
+
+  // Guard: never flip a job that has already finished back into an active state
+  // (e.g. Pause/Resume on a COMPLETED row silently creating "QUEUED at 100%" zombies).
+  if (fields.status && ACTIVE_JOB_STATUSES.has(fields.status)) {
+    let prevStatus = localPrevStatus;
+    if (!prevStatus) {
+      try {
+        let q = supabase.from(PROCESSING_JOBS_TABLE).select('status').eq('id', id).limit(1);
+        const pid = getServiceProjectId();
+        if (pid) q = q.eq('project_id', pid);
+        const { data } = await q;
+        prevStatus = ((data as Array<{ status?: string }> | null)?.[0]?.status || undefined) as ProcessingJobStatus | undefined;
+      } catch {
+        prevStatus = undefined;
+      }
+    }
+    if (TERMINAL_JOB_STATUSES.has((prevStatus || '').toUpperCase())) {
+      console.warn(
+        `updateProcessingJobStatusInSupabase: refusing to flip terminal job ${id} (${prevStatus}) -> ${fields.status}`
+      );
+      return false;
+    }
+  }
+
   if (idx >= 0) {
     current[idx] = { ...current[idx], ...fields, updated_at: new Date().toISOString() };
     setLocalJobs(current);

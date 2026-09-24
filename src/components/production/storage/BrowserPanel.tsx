@@ -10,10 +10,11 @@ import {
   Loader2,
   Eye,
   FolderPlus,
+  CheckCircle2,
   Home
 } from 'lucide-react';
 import type { ProductionApiClient } from '../../../services/productionApi';
-import { saveDatasetToSupabase } from '../../../services/supabase';
+import { fetchDatasetsFromSupabase, saveDatasetToSupabase } from '../../../services/supabase';
 import type { NasFolderEntry, NasFolderListing } from '../../../types/production';
 import { formatBytes, guessSubgridFromPath } from './storageCommon';
 
@@ -24,6 +25,7 @@ export interface BrowserPanelProps {
   isGuestUser?: boolean;
   onAddNotification?: (item: any) => void;
   onAddAuditLog?: (type: any, title: string, details: string, status?: any) => void;
+  onDatasetChanged?: () => void;
   userLabel: string;
   initialPath?: string;
 }
@@ -35,12 +37,17 @@ function isPreviewable(name: string): boolean {
   return PREVIEW_EXT.has('.' + lower.split('.').pop());
 }
 
+function normalizeFolderPath(p?: string): string {
+  return (p || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+}
+
 export const BrowserPanel: React.FC<BrowserPanelProps> = ({
   api,
   projectSettings,
   isGuestUser,
   onAddNotification,
   onAddAuditLog,
+  onDatasetChanged,
   userLabel,
   initialPath
 }) => {
@@ -56,6 +63,26 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<NasFolderEntry | null>(null);
   const [registering, setRegistering] = useState(false);
+  const [registeredPaths, setRegisteredPaths] = useState<Set<string>>(new Set());
+
+  // Folders that have already been registered as datasets (by source_folder)
+  // so the "Register as Dataset" action is not shown twice for the same path.
+  const refreshRegisteredPaths = useCallback(async () => {
+    try {
+      const datasets = await fetchDatasetsFromSupabase();
+      setRegisteredPaths(new Set(
+        (datasets || [])
+          .map((d: any) => normalizeFolderPath(d?.source_folder))
+          .filter(Boolean)
+      ));
+    } catch (_) {
+      // Non-fatal: registry just stays empty until the next refresh.
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshRegisteredPaths();
+  }, [refreshRegisteredPaths]);
 
   const currentPath = stack.join('/');
 
@@ -129,7 +156,9 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
       metadata: { source: 'folder-register', path: entry.path, intakeTier: isRawPath ? 'RAW' : 'PROCESSED' }
     });
     setRegistering(false);
+    onDatasetChanged?.();
     if (dataset) {
+      refreshRegisteredPaths();
       onAddNotification?.({ title: `Dataset registered`, message: `${entry.name} [${dataset.dataset_type}] (${subgrid || 'no subgrid'}) indexed from ${entry.path}.`, category: 'SYSTEM' });
       onAddAuditLog?.('CREATE', `Dataset ${entry.name}`, `Registered ${dataset.dataset_type} from ${entry.path} (${entry.fileCount || 0} files)`, 'COMPLETED');
     } else {
@@ -293,16 +322,27 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
               <div className="text-[11px] text-text-muted mt-2 font-mono">
                 {selected.fileCount?.toLocaleString?.() || selected.fileCount || 0} files · {formatBytes(selected.sizeBytes)}
               </div>
-              {!isGuestUser && (
-                <button
-                  onClick={() => handleRegister(selected)}
-                  disabled={registering}
-                  className="mt-3 w-full flex items-center justify-center gap-1.5 px-3.5 py-2 bg-sky-500 hover:bg-sky-400 text-slate-950 text-xs font-bold rounded-lg transition-colors cursor-pointer disabled:opacity-50 shadow-sm"
-                >
-                  {registering ? <Loader2 size={12} className="animate-spin" /> : <FolderPlus size={12} />}
-                  <span>Register as Dataset</span>
-                </button>
-              )}
+              {!isGuestUser && (() => {
+                const isRegistered = registeredPaths.has(normalizeFolderPath(selected.path));
+                if (isRegistered) {
+                  return (
+                    <div className="mt-3 w-full flex items-center justify-center gap-1.5 px-3.5 py-2 bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-bold rounded-lg">
+                      <CheckCircle2 size={12} />
+                      <span>Registered as Dataset</span>
+                    </div>
+                  );
+                }
+                return (
+                  <button
+                    onClick={() => handleRegister(selected)}
+                    disabled={registering}
+                    className="mt-3 w-full flex items-center justify-center gap-1.5 px-3.5 py-2 bg-sky-500 hover:bg-sky-400 text-slate-950 text-xs font-bold rounded-lg transition-colors cursor-pointer disabled:opacity-50 shadow-sm"
+                  >
+                    {registering ? <Loader2 size={12} className="animate-spin" /> : <FolderPlus size={12} />}
+                    <span>Register as Dataset</span>
+                  </button>
+                );
+              })()}
               {isGuestUser && (
                 <p className="text-[10px] text-amber-300 mt-2">Guest read-only: registration disabled.</p>
               )}

@@ -26,8 +26,11 @@ if (typeof (maplibregl as any).setWorkerUrl === 'function') {
 
 type BasemapStyle = string | maplibregl.StyleSpecification;
 
+const OFM_GLYPHS = 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf';
+
 const googleHybridStyle: maplibregl.StyleSpecification = {
   version: 8,
+  glyphs: OFM_GLYPHS,
   sources: {
     google: {
       type: 'raster',
@@ -41,6 +44,7 @@ const googleHybridStyle: maplibregl.StyleSpecification = {
 
 const esriStyle: maplibregl.StyleSpecification = {
   version: 8,
+  glyphs: OFM_GLYPHS,
   sources: {
     esri: {
       type: 'raster',
@@ -202,22 +206,32 @@ function panotrackCardHtml(
   `;
 }
 
-// Mounts popup content as real DOM with a clean circular close button
-function buildPopupEl(popup: maplibregl.Popup, bodyHtml: string): HTMLElement {
-  const el = document.createElement('div');
-  el.style.cssText = 'position:relative;margin:0;padding:0;background:transparent;';
-  el.innerHTML = bodyHtml;
-  const close = document.createElement('button');
-  close.type = 'button';
-  close.setAttribute('aria-label', 'Close');
-  close.style.cssText =
-    'position:absolute;top:12px;right:12px;width:20px;height:20px;border:none;border-radius:50%;background:#f1f5f9;color:#64748b;font-size:10px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;transition:background 0.15s,color 0.15s;';
-  close.innerHTML = '&#10005;';
-  close.onmouseenter = () => { close.style.background = '#e2e8f0'; close.style.color = '#0f172a'; };
-  close.onmouseleave = () => { close.style.background = '#f1f5f9'; close.style.color = '#64748b'; };
-  close.addEventListener('click', () => popup.remove());
-  el.appendChild(close);
-  return el;
+// Pinned Panotrack station card shown at the upper-left of the map when a
+// station is clicked, instead of a popup anchored to the clicked point.
+function StationInfoCard({
+  share,
+  station,
+  onClose
+}: {
+  share: MapShare;
+  station: { subgrid: string; status: string; coords: [number, number] };
+  onClose: () => void;
+}) {
+  return (
+    <div className="absolute top-12 left-3 z-10">
+      <div className="relative">
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close station info"
+          className="absolute top-[12px] right-[12px] z-10 w-5 h-5 rounded-full bg-slate-100 text-slate-600 text-[10px] font-bold flex items-center justify-center hover:bg-slate-200 hover:text-slate-900 cursor-pointer"
+        >
+          &#10005;
+        </button>
+        <div dangerouslySetInnerHTML={{ __html: panotrackCardHtml(share, station.subgrid, station.status, station.coords) }} />
+      </div>
+    </div>
+  );
 }
 
 /**
@@ -314,6 +328,7 @@ function ShareMap({
   const [basemap, setBasemap] = useState<string>(() =>
     LEGACY_BASEMAP_ALIASES[share.basemap] || (BASEMAPS[share.basemap] ? share.basemap : 'ofm-positron')
   );
+  const [selectedStation, setSelectedStation] = useState<{ subgrid: string; status: string; coords: [number, number] } | null>(null);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -346,15 +361,6 @@ function ShareMap({
     if (map && typeof map.on === 'function') {
       map.on('load', () => {
         try {
-          let activePopup: maplibregl.Popup | null = null;
-          const displayPopup = (p: maplibregl.Popup) => {
-            if (activePopup) {
-              try { activePopup.remove(); } catch { /* ignore */ }
-            }
-            activePopup = p;
-            p.addTo(map);
-          };
-
           const lines = (snap.lines || []).filter((l: any) => l && Array.isArray(l.coords) && l.coords.length > 1);
           const pts = (snap.points || []).filter((p: any) => p && isFinite(p.lat) && isFinite(p.lng));
 
@@ -425,7 +431,9 @@ function ShareMap({
               filter: ['has', 'point_count'],
               layout: {
                 'text-field': '{point_count_abbreviated}',
-                'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+                // OpenFreeMap's glyph endpoint serves only the Noto Sans family —
+                // requesting "Open Sans Bold" 404s and the count silently drops out.
+                'text-font': ['Noto Sans Bold'],
                 'text-size': 12
               },
               paint: {
@@ -490,10 +498,7 @@ function ShareMap({
               const coords = e.lngLat.toArray() as [number, number];
               const subgrid = String(f.properties?.subgrid || '');
               const status = String(f.properties?.status || '');
-              const popup = new maplibregl.Popup({ closeButton: false, maxWidth: '280px', offset: 12 })
-                .setLngLat(coords);
-              popup.setDOMContent(buildPopupEl(popup, panotrackCardHtml(share, subgrid, status, coords)));
-              displayPopup(popup);
+              setSelectedStation({ subgrid, status, coords });
               if (onSelectSubgrid) onSelectSubgrid(subgrid, coords);
             });
             map.on('mouseenter', 'stations-circle', () => {
@@ -548,16 +553,13 @@ function ShareMap({
             }
           });
 
-          // Dismiss active popup when clicking on empty map space
+          // Dismiss selected station card when clicking on empty map space
           map.on('click', (e: maplibregl.MapMouseEvent) => {
             const features = (typeof map.queryRenderedFeatures === 'function')
               ? map.queryRenderedFeatures(e.point, { layers: ['stations-circle', 'stations-clusters'] })
               : [];
             if (!features || features.length === 0) {
-              if (activePopup) {
-                try { activePopup.remove(); } catch { /* ignore */ }
-                activePopup = null;
-              }
+              setSelectedStation(null);
             }
           });
 
@@ -602,6 +604,15 @@ function ShareMap({
             } catch (err) {
               console.warn('[SharedMapPage] Catalog layer render notice:', err);
             }
+          });
+
+          // 3b. Point cluster overlay re-raised above all other layers
+          //     (roads, heading cone, imported catalog polygons/fills).
+          //     moveLayer raises each id to the TOP in list order, so the
+          //     count text must come LAST — otherwise the opaque bubble is
+          //     re-raised over the number and the cluster count disappears.
+          ['stations-circle', 'stations-clusters', 'stations-cluster-count'].forEach((id) => {
+            if (map.getLayer(id)) map.moveLayer(id);
           });
 
           // 4. Safe bounding box zoom
@@ -729,6 +740,13 @@ function ShareMap({
           </button>
         ))}
       </div>
+      {selectedStation && (
+        <StationInfoCard
+          share={share}
+          station={selectedStation}
+          onClose={() => setSelectedStation(null)}
+        />
+      )}
     </div>
   );
 }

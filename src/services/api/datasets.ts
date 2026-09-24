@@ -1453,8 +1453,6 @@ export async function checkDatasetDuplicates(subgrid: string, folderPath?: strin
 }
 
 export async function deleteDatasetFromSupabase(id: string): Promise<boolean> {
-  const current = getLocalDatasets().filter((d) => d.id !== id);
-  setLocalDatasets(current);
   try {
     let query = supabase.from(DATASETS_TABLE).delete().eq('id', id);
     const pid = getServiceProjectId();
@@ -1462,11 +1460,13 @@ export async function deleteDatasetFromSupabase(id: string): Promise<boolean> {
     const { error } = await query;
     if (error) {
       console.warn('deleteDatasetFromSupabase:', error.message);
-      return true;
+      return false;
     }
+    const current = getLocalDatasets().filter((d) => d.id !== id);
+    setLocalDatasets(current);
     return true;
   } catch (err) {
     console.warn('deleteDatasetFromSupabase catch:', err);
-    return true;
+    return false;
   }
 }

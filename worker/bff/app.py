@@ -94,7 +94,7 @@ def _verify_supabase_token(token: str) -> dict:
         raise HTTPException(status_code=401, detail="Missing Authorization token.")
     resp = requests.get(
         f"{SUPABASE_URL}/auth/v1/user",
-        headers={"Authorization": f"Bearer {token}", "apikey": token},
+        headers={"Authorization": f"Bearer {token}", "apikey": SERVICE_ROLE_KEY},
         timeout=10,
     )
     if resp.status_code != 200:

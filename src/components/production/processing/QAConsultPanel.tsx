@@ -78,12 +78,36 @@ export const QAConsultPanel: React.FC<QAConsultPanelProps> = ({
   }, [pending, selJobId]);
 
   const selected = pending.find((j) => j.id === selJobId) || null;
+  const normPath = (p?: string) => (p || '').trim().replace(/^\/+|\/+$/g, '').toLowerCase();
   const selDataset = selected?.subgrid
-    ? datasets.find(
-        (d) =>
-          d.dataset_type === 'PROCESSED' &&
-          extractCanonicalSubgrid(d.subgrid) === extractCanonicalSubgrid(selected!.subgrid)
-      )
+    ? (() => {
+        const sg = extractCanonicalSubgrid(selected!.subgrid);
+        const outPath = normPath(selected!.output_folder);
+        const processed = datasets.filter(
+          (d) => d.dataset_type === 'PROCESSED' && !d.superseded_by
+        );
+        const bySubgrid = processed.filter(
+          (d) => extractCanonicalSubgrid(d.subgrid) === sg
+        );
+        if (!outPath) return bySubgrid[0] || null;
+        const exact = bySubgrid.find(
+          (d) => normPath(d.source_folder) === outPath
+        );
+        if (exact) return exact;
+        const prefix = bySubgrid.find(
+          (d) =>
+            !!normPath(d.source_folder) &&
+            outPath.startsWith(normPath(d.source_folder).replace(/\/+$/, ''))
+        );
+        if (prefix) return prefix;
+        const stageKey = (jobType: string): string | undefined =>
+          ({ BLUR: 'BLUR', STITCH: 'STITCH', ENHANCE: 'ENHANCE', MASK: 'MASK', QAQC: 'QAQC' })[jobType as 'BLUR'];
+        const byStage = bySubgrid.find(
+          (d) => d.pipeline_stage === stageKey(selected!.job_type)
+        );
+        if (byStage) return byStage;
+        return bySubgrid[0] || null;
+      })()
     : null;
 
   const canonicalSg = extractCanonicalSubgrid(selected?.subgrid);

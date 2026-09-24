@@ -96,6 +96,11 @@ export const SubgridLifecyclePanel: React.FC<SubgridLifecyclePanelProps> = ({
         .filter((j) => norm(j.subgrid) === sg)
         .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
 
+      const maskJob = sgJobs.find((j) => j.job_type === 'MASK');
+      const maskStageDataset = sgDatasets.find(
+        (d) => d.pipeline_stage === 'MASK' && !d.superseded_by
+      );
+
       const stationJobs: Record<string, StationCellState> = {};
       const stationStatusByType = (jobType: string): StationCellState => {
         const latest = sgJobs.find((j) => j.job_type === jobType);
@@ -141,7 +146,11 @@ export const SubgridLifecyclePanel: React.FC<SubgridLifecyclePanelProps> = ({
           raw?.file_count ||
           sgJobs.reduce((acc, j) => acc + (j.total_items || 0), 0),
         processed,
-        processedFrames: processed?.file_count || 0,
+        processedFrames:
+          (maskJob && (maskJob.completed_items || maskJob.total_items || maskStageDataset?.file_count)) ||
+          maskStageDataset?.file_count ||
+          processed?.file_count ||
+          0,
         deliverable,
         stationJobs,
         qaDecision,
@@ -188,7 +197,8 @@ export const SubgridLifecyclePanel: React.FC<SubgridLifecyclePanelProps> = ({
           {cell.external && cell.external !== 'none' ? ' · ' + cell.external.replace('_', ' ') : ''}
         </span>
         {folderCell(
-          ws ? resolveTemplate(ws.outputFolderTemplate, sg) : `/${jobType}/${sg}/`,
+          cell.job?.output_folder?.trim() ||
+            (ws ? resolveTemplate(ws.outputFolderTemplate, sg) : `/${jobType}/${sg}/`),
           (p) => onExplorePath?.(p)
         )}
         {statusChip(cell.status, eta ? ` ~${eta}` : undefined)}
@@ -285,7 +295,7 @@ export const SubgridLifecyclePanel: React.FC<SubgridLifecyclePanelProps> = ({
                   <td className="px-3 py-2.5">
                     <div className="flex flex-col gap-1">
                       {renderStation(row.subgrid, 'MASK')}
-                      {row.processed ? (
+                      {row.processedFrames > 0 ? (
                         <span className="text-[10px] text-text-muted">
                           {row.processedFrames.toLocaleString()} frames registered
                         </span>

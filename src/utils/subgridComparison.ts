@@ -79,6 +79,43 @@ export function isPointInPolygonGeometry(pt: [number, number], geometry: any): b
 }
 
 /**
+ * Catalog layers keep the parsed FeatureCollection in `geojson`, but heavy
+ * imports and IndexedDB/cloud rehydration carry only the serialized
+ * `geojsonJson` (the object graph is dropped to keep clones cheap). Every
+ * catalog scan must therefore go through this accessor, otherwise grid cells
+ * of restored layers are invisible: the subgrid list shrinks to the few codes
+ * that appear in panotrack data, and cell bboxes fall back to derived boxes
+ * that do not match the real GIS grid squares.
+ *
+ * Parsing is guarded by serialized size (multi-MB road plans are never needed
+ * for grid-name scans) and memoized on the string identity, which is stable
+ * across state updates.
+ */
+const CATALOG_JSON_PARSE_MAX_BYTES = 6_000_000;
+const catalogFeaturesCache = new Map<string, any[]>();
+
+export function getCatalogLayerFeatures(layer: any): any[] {
+  const feats = layer?.geojson?.features;
+  if (Array.isArray(feats)) return feats;
+  const json = layer?.geojsonJson;
+  if (typeof json !== 'string' || json.length === 0) return [];
+  const cached = catalogFeaturesCache.get(json);
+  if (cached) return cached;
+  let out: any[] = [];
+  if (json.length <= CATALOG_JSON_PARSE_MAX_BYTES) {
+    try {
+      const parsed = JSON.parse(json);
+      out = Array.isArray(parsed?.features) ? parsed.features : [];
+    } catch {
+      out = [];
+    }
+  }
+  if (catalogFeaturesCache.size >= 24) catalogFeaturesCache.clear();
+  catalogFeaturesCache.set(json, out);
+  return out;
+}
+
+/**
  * Resolves the subgrid ID of a coordinate point [lng, lat] by checking loaded
  * catalog polygon grid layers (e.g. Grid_5km_tangkak_segamat), or fallback bounding boxes.
  */
@@ -87,8 +124,8 @@ export function resolveSpatialSubgrid(
   catalogLayers: any[] = []
 ): string | null {
   for (const layer of catalogLayers) {
-    const features = layer?.geojson?.features;
-    if (!Array.isArray(features)) continue;
+    const features = getCatalogLayerFeatures(layer);
+    if (features.length === 0) continue;
     for (const feat of features) {
       if (!feat.geometry) continue;
       const p = feat.properties || {};
@@ -1558,8 +1595,8 @@ export function getSubgridBbox(
   // 1. Direct Polygon Match in Catalog Layers
   if (Array.isArray(catalogLayers)) {
     for (const layer of catalogLayers) {
-      const features = layer?.geojson?.features;
-      if (!Array.isArray(features)) continue;
+      const features = getCatalogLayerFeatures(layer);
+      if (features.length === 0) continue;
       for (const feat of features) {
         if (!feat.geometry) continue;
         const p = feat.properties || {};
@@ -1635,8 +1672,8 @@ export function getSubgridBbox(
       // Also search catalogLayers for any known reference cell if none in SUBGRID_COORDINATES
       if (refLng === null && Array.isArray(catalogLayers)) {
         for (const layer of catalogLayers) {
-          const features = layer?.geojson?.features;
-          if (!Array.isArray(features)) continue;
+          const features = getCatalogLayerFeatures(layer);
+          if (features.length === 0) continue;
           for (const feat of features) {
             const p = feat.properties || {};
             const candidate = p.NAME || p.name || p.grid_id || p.GRID_ID || p.subgrid || p.grid || p.ID || p.id || p.CODE || p.code;
@@ -1763,15 +1800,16 @@ export function computeSubgridMetrics(
     if (sg) subgridSet.add(sg);
   });
   (catalogLayers || []).forEach((layer) => {
-    const features = layer?.geojson?.features;
-    if (Array.isArray(features)) {
-      features.forEach((feat: any) => {
-        const p = feat.properties || {};
-        const candidate = p.NAME || p.name || p.grid_id || p.GRID_ID || p.subgrid || p.grid || p.ID || p.id || p.CODE || p.code;
-        const sg = extractSubgridName(String(candidate || ''));
-        if (sg) subgridSet.add(sg);
-      });
-    }
+    const features = getCatalogLayerFeatures(layer);
+    features.forEach((feat: any) => {
+      const p = feat.properties || {};
+      const candidate = p.NAME || p.name || p.grid_id || p.GRID_ID || p.subgrid || p.grid || p.ID || p.id || p.CODE || p.code;
+      const sg = extractSubgridName(String(candidate || ''));
+      // Only true 5×5 km grid codes (NxxExx / SxxWxx) qualify. Road-plan
+      // layers carry numeric IDs and street names in the same property slots,
+      // and those must not masquerade as subgrids in the comparison list.
+      if (sg && /^[NS]\d+[EW]\d+$/i.test(sg)) subgridSet.add(sg);
+    });
   });
 
   const subgridList = Array.from(subgridSet).sort();

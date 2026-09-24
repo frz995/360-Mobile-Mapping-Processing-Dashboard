@@ -1,12 +1,18 @@
 import React, { useMemo, useState } from 'react';
-import { Database, Folder } from 'lucide-react';
+import { Database, Folder, Loader2, Trash2 } from 'lucide-react';
 import type { DatasetRecord } from '../../../types/production';
 import { extractCanonicalSubgrid } from '../../../utils/datasetLineage';
+import { deleteDatasetFromSupabase } from '../../../services/supabase';
+import { findRunningJobsForDataset } from '../../../services/supabase';
 import { formatBytes } from './storageCommon';
 
 export interface IndexPanelProps {
   datasets: DatasetRecord[];
   translate: (key: string) => string;
+  onChanged?: () => void;
+  onAddNotification?: (item: any) => void;
+  onAddAuditLog?: (type: string, title: string, details: string, status: string) => void;
+  isGuestUser?: boolean;
 }
 
 const STATUS_CLS: Record<string, string> = {
@@ -19,8 +25,66 @@ const STATUS_CLS: Record<string, string> = {
   ARCHIVED: 'text-text-muted border-subtle bg-inner'
 };
 
-export const IndexPanel: React.FC<IndexPanelProps> = ({ datasets }) => {
+export const IndexPanel: React.FC<IndexPanelProps> = ({
+  datasets,
+  onChanged,
+  onAddNotification,
+  onAddAuditLog,
+  isGuestUser
+}) => {
   const [filterType, setFilterType] = useState('ALL');
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const handleDelete = async (d: DatasetRecord) => {
+    const id = d.id || d.name;
+    if (deletingId) return;
+    setDeletingId(id);
+    // Safety: never remove a dataset that still has a related job running.
+    const running = await findRunningJobsForDataset(d);
+    if (running.length > 0) {
+      setDeletingId(null);
+      setConfirmId(null);
+      const name = `${running[0].job_type} · ${running[0].name}`;
+      onAddNotification?.({
+        title: 'Delete Blocked — Processing Running',
+        message: `You have a running processing (${name}) related to this data run — stop the process and proceed to delete.`,
+        category: 'ERROR',
+        read: false
+      });
+      onAddAuditLog?.(
+        'BLOCKED',
+        `Dataset delete blocked: ${d.name}`,
+        `${running.length} running job(s) related to this data run (${name}).`,
+        'WARNING'
+      );
+      return;
+    }
+    const ok = await deleteDatasetFromSupabase(d.id || d.name);
+    setDeletingId(null);
+    setConfirmId(null);
+    if (ok) {
+      onAddNotification?.({
+        title: 'Dataset removed',
+        message: `${d.name} removed from the dataset index.`,
+        category: 'SYSTEM'
+      });
+      onAddAuditLog?.(
+        'DELETE',
+        `Dataset ${d.name}`,
+        `Removed registry entry (${d.source_folder || 'no path'})`,
+        'COMPLETED'
+      );
+      onChanged?.();
+    } else {
+      onAddNotification?.({
+        title: 'Remove failed',
+        message: `Could not remove ${d.name} — you may lack permission.`,
+        category: 'ERROR'
+      });
+      onChanged?.();
+    }
+  };
 
   const types = ['ALL', 'RAW', 'PROCESSED', 'DELIVERABLE'];
   const filtered = useMemo(() => {
@@ -82,6 +146,7 @@ export const IndexPanel: React.FC<IndexPanelProps> = ({ datasets }) => {
                 <th className="px-3.5 py-2.5 text-right">Files</th>
                 <th className="px-3.5 py-2.5 text-right">Total Size</th>
                 <th className="px-3.5 py-2.5 text-right">Status</th>
+                {!isGuestUser && <th className="px-3.5 py-2.5 text-right w-24">Actions</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-subtle/80">
@@ -110,6 +175,40 @@ export const IndexPanel: React.FC<IndexPanelProps> = ({ datasets }) => {
                       {d.status || 'REGISTERED'}
                     </span>
                   </td>
+                  {!isGuestUser && (
+                    <td className="px-3.5 py-2.5 text-right">
+                      {confirmId === (d.id || d.name) ? (
+                        <div className="inline-flex items-center gap-1">
+                          <button
+                            onClick={() => handleDelete(d)}
+                            disabled={deletingId === (d.id || d.name)}
+                            className="px-2 py-1 rounded bg-rose-500 hover:bg-rose-400 text-rose-950 text-[10px] font-bold uppercase tracking-wider transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1"
+                          >
+                            {deletingId === (d.id || d.name) ? (
+                              <Loader2 size={11} className="animate-spin" />
+                            ) : (
+                              <Trash2 size={11} />
+                            )}
+                            Delete
+                          </button>
+                          <button
+                            onClick={() => setConfirmId(null)}
+                            className="px-2 py-1 rounded bg-inner hover:bg-card border border-subtle text-text-muted text-[10px] font-semibold uppercase tracking-wider transition-colors cursor-pointer"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setConfirmId(d.id || d.name)}
+                          title={`Remove ${d.name} from registry`}
+                          className="p-1.5 rounded bg-inner hover:bg-rose-500/15 border border-subtle text-rose-400 hover:text-rose-300 transition-colors cursor-pointer"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      )}
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>

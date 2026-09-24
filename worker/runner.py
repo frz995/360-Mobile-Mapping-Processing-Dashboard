@@ -366,7 +366,11 @@ class JobRegistry:
             if job_type == "BLUR":
                 img = apply_privacy_blur(img, settings.get("blur") or {})
             if job_type == "MASK" or "mask" in settings or (job_type == "ENHANCE" and settings.get("mask")):
-                img = apply_mask_pipeline(img, settings)
+                img = apply_mask_pipeline(
+                    img, settings,
+                    frame_dir=os.path.dirname(full),
+                    frame_name=os.path.basename(full),
+                )
             if job_type == "ENHANCE" or settings.get("enhance"):
                 img = apply_enhancement(img, settings.get("enhance") or {})
             ext = os.path.splitext(rel)[1].lower()

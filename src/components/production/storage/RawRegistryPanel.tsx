@@ -127,7 +127,7 @@ export const RawRegistryPanel: React.FC<RawRegistryPanelProps> = ({ api, dataset
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [api]);
+  }, [api, datasets]);
 
   const maturity = (row: MaturityRow): number => Math.min(5, row.stages.length) / 5;
 

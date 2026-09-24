@@ -321,7 +321,7 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
         run_id: (job.settings as any)?.run_id || ''
       };
       const nextOutFolder = resolveStationPath(
-        nextStation?.outputFolderTemplate || '/ENHANCED/{subgrid}/',
+        nextStation?.outputFolderTemplate || '/04_Enhanced/{subgrid}/',
         vars
       );
 
@@ -394,8 +394,22 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
     setGpuDispatching(true);
 
     const sg = gpuSubgrid.trim().toUpperCase();
-    const inFolder = `/RAW/${sg}/`;
-    const outFolder = `/PROCESSED/${sg}/`;
+    const stageByType: Record<string, string> = {
+      BLUR: '02_Blurring',
+      STITCH: '03_Stitching',
+      ENHANCE: '04_Enhanced',
+      MASK: '05_Final'
+    };
+    const inStageByType: Record<string, string> = {
+      BLUR: '00_Raw_data',
+      STITCH: '02_Blurring',
+      ENHANCE: '03_Stitching',
+      MASK: '04_Enhanced'
+    };
+    const outStage = stageByType[gpuJobType] || '05_Final';
+    const inStage = inStageByType[gpuJobType] || '00_Raw_data';
+    const inFolder = `/${inStage}/${sg}/`;
+    const outFolder = `/${outStage}/${sg}/`;
     const dynamicCount = (datasets.find((d) => d.subgrid === sg)?.file_count) || 0;
 
     await saveProcessingJobToSupabase({
@@ -722,7 +736,7 @@ export const HandoffPanel: React.FC<HandoffPanelProps> = ({
                   </div>
 
                   <div className="flex items-center justify-between text-[10px] font-sans text-text-muted pt-1">
-                    <span className="truncate">IN: {j.source_folder || '/RAW/'} → OUT: {j.output_folder || '/PROCESSED/'}</span>
+                    <span className="truncate">IN: {j.source_folder || '/03_Stitching/'} → OUT: {j.output_folder || '/05_Final/'}</span>
                     <span className="shrink-0 text-text-muted">{j.provider || 'GPU Worker'}</span>
                   </div>
                 </div>

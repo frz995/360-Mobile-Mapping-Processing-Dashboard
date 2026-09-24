@@ -15,6 +15,7 @@ import type {
   WorkerHealthInfo
 } from '../types/production';
 import { getActiveProjectId } from './projectContext';
+import { supabase } from './api/client';
 
 export interface SubmitJobResult {
   ok: boolean;
@@ -55,18 +56,33 @@ export interface ProductionApiClient {
 function buildHttpClient(settings: ProductionApiSettings): ProductionApiClient {
   const baseUrl = (settings.baseUrl || '').replace(/\/+$/, '');
   const apiKey = settings.apiKey || '';
-  const api = (path: string, init?: RequestInit) =>
-    baseUrl
-      ? fetch(`${baseUrl}${path}`, {
-          ...init,
-          signal: init?.signal ?? AbortSignal.timeout(10_000),
-          headers: {
-            'Content-Type': 'application/json',
-            ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-            ...(init?.headers || {})
-          }
-        })
-      : Promise.reject(new Error('Worker URL not configured'));
+  // The BFF gateway authorizes via the caller's Supabase access token (it
+  // resolves the app role from user_accounts); a direct worker connection
+  // uses the shared productionApiKey secret instead. Session token wins when
+  // no static key is configured, so BFF-routed deployments stay authenticated.
+  const authHeaders = async (): Promise<Record<string, string>> => {
+    if (apiKey) return { Authorization: `Bearer ${apiKey}` };
+    try {
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token;
+      return token ? { Authorization: `Bearer ${token}` } : {};
+    } catch {
+      return {};
+    }
+  };
+  const api = async (path: string, init?: RequestInit): Promise<Response> => {
+    if (!baseUrl) throw new Error('Worker URL not configured');
+    const auth = await authHeaders();
+    return fetch(`${baseUrl}${path}`, {
+      ...init,
+      signal: init?.signal ?? AbortSignal.timeout(10_000),
+      headers: {
+        'Content-Type': 'application/json',
+        ...auth,
+        ...(init?.headers || {})
+      }
+    });
+  };
 
   return {
     mode: 'http' as const,

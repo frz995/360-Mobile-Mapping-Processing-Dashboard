@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>GeoSphere 360 · Panorama CSV Toolkit</title>
+<style>
+  :root {
+    --bg-app: #111317;
+    --bg-card: #161920;
+    --bg-inner: #1f242e;
+    --border-subtle: #2a313e;
+    --text-base: #f1f5f9;
+    --text-muted: #94a3b8;
+    --accent: #cbd5e1;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg-app);
+    color: var(--text-base);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+    min-height: 100vh;
+    padding: 32px 16px 64px;
+  }
+  .wrap { max-width: 680px; margin: 0 auto; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 6px; }
+  .brand-line { display: flex; align-items: center; gap: 14px; }
+  .brand-line .rule { flex: 1; height: 1px; background: var(--border-subtle); align-self: center; margin: 0 14px; display: none; }
+  .tagline { color: var(--text-muted); font-size: 12px; margin: 4px 0 26px; }
+  .tabs { display: flex; gap: 6px; margin-bottom: 14px; }
+  .tab {
+    flex: 1; padding: 9px 12px; font-size: 12px; font-weight: 600; cursor: pointer;
+    background: var(--bg-inner); color: var(--text-muted);
+    border: 1px solid var(--border-subtle); border-radius: 10px; transition: color .15s, background .15s;
+  }
+  .tab.active { background: var(--bg-card); color: var(--text-base); border-color: var(--border-subtle); box-shadow: 0 2px 10px rgba(0,0,0,.35); }
+  .card { background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: 14px; padding: 20px; box-shadow: 0 4px 14px rgba(0,0,0,.4); }
+  .field { margin-bottom: 16px; }
+  .field label { display: block; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px; }
+  .hint { font-size: 11px; color: var(--text-muted); margin: -4px 0 14px; line-height: 1.5; }
+  .inputrow { display: flex; align-items: center; gap: 8px; }
+  input[type=text] {
+    flex: 1; background: var(--bg-inner); border: 1px solid var(--border-subtle); border-radius: 9px;
+    color: var(--text-base); font-size: 12.5px; font-family: inherit; padding: 9px 11px; outline: none; min-width: 0;
+  }
+  input[type=text]:focus { border-color: var(--text-muted); }
+  input[type=text]::placeholder { color: #5b6575; }
+  .mark { width: 22px; text-align: center; font-size: 14px; flex-shrink: 0; }
+  button.browse {
+    flex-shrink: 0; padding: 9px 11px; border-radius: 9px; cursor: pointer;
+    background: var(--bg-inner); border: 1px solid var(--border-subtle); color: var(--text-muted);
+    font-size: 11px; font-weight: 600; font-family: inherit; transition: color .15s, background .15s;
+  }
+  button.browse:hover { color: var(--text-base); background: var(--border-subtle); }
+  button.browse:disabled { opacity: .5; cursor: wait; }
+  .mark.ok::before { content: '\2714'; color: #34d399; }
+  .mark.bad::before { content: '\2716'; color: #f87171; }
+  .csvcount { font-size: 11px; color: var(--text-muted); width: 92px; flex-shrink: 0; }
+  button.primary {
+    width: 100%; padding: 11px 14px; border: none; border-radius: 10px; cursor: pointer;
+    background: var(--accent); color: #14171d; font-size: 13px; font-weight: 700; font-family: inherit;
+    transition: filter .15s; letter-spacing: .02em;
+  }
+  button.primary:hover { filter: brightness(1.12); }
+  button.primary:disabled { opacity: .45; cursor: not-allowed; }
+  button.shutdown {
+    margin-top: 10px; width: 100%; padding: 9px; border-radius: 10px; cursor: pointer;
+    background: transparent; border: 1px solid var(--border-subtle); color: var(--text-muted);
+    font-size: 12px; font-weight: 600; font-family: inherit;
+  }
+  button.shutdown:hover { color: var(--text-base); background: var(--bg-inner); }
+  .result { margin-top: 16px; display: none; background: var(--bg-inner); border: 1px solid var(--border-subtle); border-radius: 10px; padding: 14px 16px; font-size: 12px; line-height: 1.65; }
+  .result .title { font-weight: 700; margin-bottom: 4px; }
+  .result ul { margin: 4px 0 0 16px; }
+  .result .warn { color: #fbbf24; }
+  .result .dim { color: var(--text-muted); }
+  .result .error { color: #f87171; }
+  .footnote { margin-top: 18px; font-size: 11px; color: var(--text-muted); text-align: center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand-line">
+      <!-- GeoSphere 360 dual-chevron flight mark + brand text -->
+      <svg viewBox="0 0 820 200" height="40" fill="none" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="GeoSphere 360">
+        <defs>
+          <linearGradient id="gt" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#9CA3AF"/>
+            <stop offset="55%" stop-color="#D4D4D8"/>
+            <stop offset="100%" stop-color="#FFFFFF"/>
+          </linearGradient>
+        </defs>
+        <path d="M 189 11 C 145.3 24.9, 77.7 15.0, 62 67 C 89.0 65.7, 118.7 56.0, 147 52 Z" fill="#FFFFFF"/>
+        <path d="M 189 11 L 147 52 C 145.6 80.5, 135.4 109.0, 132 138 C 186.3 122.4, 175.4 54.6, 189 11 Z" fill="#FFFFFF"/>
+        <path d="M 137 63 C 93.3 76.9, 25.7 67.0, 10 119 C 37.0 117.7, 66.7 108.0, 95 104 Z" fill="#FFFFFF"/>
+        <path d="M 137 63 L 95 104 C 93.6 132.5, 83.4 161.0, 80 190 C 134.3 174.4, 123.4 106.6, 137 63 Z" fill="#FFFFFF"/>
+        <g transform="translate(220, 108)">
+          <text y="0" dominant-baseline="central" alignment-baseline="central"
+                font-family="'Outfit','Plus Jakarta Sans',system-ui,-apple-system,sans-serif"
+                font-weight="800" font-size="78" letter-spacing="-1">
+            <tspan fill="url(#gt)">GeoSphere</tspan><tspan font-weight="700" font-size="70" dx="14" fill="#FFFFFF">360&#176;</tspan>
+          </text>
+        </g>
+      </svg>
+    </div>
+    <span class="csvcount">local · v1</span>
+  </header>
+  <p class="tagline">Panorama CSV Toolkit — sort tour metadata, merge it per subgrid, then roll all child metadata into one master file per date.</p>
+
+  <div class="tabs">
+    <button class="tab active" id="tab-sort" onclick="showTab('sort')">1 · Sort Panoramas</button>
+    <button class="tab" id="tab-merge" onclick="showTab('merge')">2 · Merge Metadata</button>
+    <button class="tab" id="tab-master" onclick="showTab('master')">3 · Master Merge</button>
+  </div>
+
+  <div class="card">
+    <!-- SORT -->
+    <div id="pane-sort">
+      <div class="field">
+        <label>Input folder — tour exports (e.g. …\02_Privacy Keeper\20220904)</label>
+        <div class="inputrow">
+          <input type="text" id="sort-in" placeholder="C:\Users\…\Data Processing\02_Privacy Keeper\20220904" spellcheck="false" />
+          <button class="browse" onclick="browse('sort-in', this)">Browse</button>
+          <span class="mark" id="sort-in-mark"></span>
+          <span class="csvcount" id="sort-in-count"></span>
+        </div>
+      </div>
+      <div class="field">
+        <label>Output folder — metadata destination (e.g. …\01_Metadata\GRID_1\N93E70)</label>
+        <div class="inputrow">
+          <input type="text" id="sort-out" placeholder="C:\Users\…\Data Processing\01_Metadata\GRID_1\N93E70" spellcheck="false" />
+          <button class="browse" onclick="browse('sort-out', this)">Browse</button>
+          <span class="mark" id="sort-out-mark"></span>
+          <span class="csvcount"></span>
+        </div>
+      </div>
+      <p class="hint">Scans the folder recursively — nested exports like <b>…\003485-20220904-144310\7\panoramas.csv</b> are copied into the metadata folder renamed to their tour name <b>003485-20220904-144310.csv</b>. Only panorama CSVs are handled; <b>tracks.csv</b> and logs are skipped, sources never modified.</p>
+      <button class="primary" id="sort-btn" onclick="submit('sort')">Sort Panorama CSVs</button>
+    </div>
+
+    <!-- MERGE -->
+    <div id="pane-merge" style="display:none">
+      <div class="field">
+        <label>Metadata folder — CSVs to merge (e.g. …\01_Metadata\GRID_1\N93E70)</label>
+        <div class="inputrow">
+          <input type="text" id="merge-in" placeholder="C:\Users\…\Data Processing\01_Metadata\GRID_1\N93E70" spellcheck="false" />
+          <button class="browse" onclick="browse('merge-in', this)">Browse</button>
+          <span class="mark" id="merge-in-mark"></span>
+          <span class="csvcount" id="merge-in-count"></span>
+        </div>
+      </div>
+      <div class="field">
+        <label>Output folder (optional — defaults to input)</label>
+        <div class="inputrow">
+          <input type="text" id="merge-out" placeholder="Leave empty to save beside the source files" spellcheck="false" />
+          <button class="browse" onclick="browse('merge-out', this)">Browse</button>
+          <span class="mark" id="merge-out-mark"></span>
+          <span class="csvcount"></span>
+        </div>
+      </div>
+      <div class="field">
+        <label>Output filename (optional — defaults to tour date)</label>
+        <div class="inputrow">
+          <input type="text" id="merge-name" placeholder="auto: 20220904.csv · set only when one date group is found" spellcheck="false" />
+          <span class="mark"></span>
+          <span class="csvcount"></span>
+        </div>
+      </div>
+      <p class="hint">Groups <b>003485-20220904-144310.csv</b>-style files by their <b>YYYYMMDD</b> token and merges each group into one file, header once, rows in capture-time order. Files already named <b>YYYYMMDD.csv</b> are treated as previous outputs and skipped, so re-running is safe.</p>
+      <button class="primary" id="merge-btn" onclick="submit('merge')">Merge Same-Date CSVs</button>
+    </div>
+
+    <!-- MASTER MERGE -->
+    <div id="pane-master" style="display:none">
+      <div class="field">
+        <label>Subgrid folder — with merged date files (e.g. …\01_Metadata\GRID_1\N93E70)</label>
+        <div class="inputrow">
+          <input type="text" id="master-in" placeholder="C:\Users\…\Data Processing\01_Metadata\GRID_1\N93E70" spellcheck="false" />
+          <button class="browse" onclick="browse('master-in', this)">Browse</button>
+          <span class="mark" id="master-in-mark"></span>
+          <span class="csvcount" id="master-in-count"></span>
+        </div>
+      </div>
+      <div class="field">
+        <label>Output folder (optional — defaults to the subgrid folder)</label>
+        <div class="inputrow">
+          <input type="text" id="master-out" placeholder="Leave empty to save in the subgrid folder" spellcheck="false" />
+          <button class="browse" onclick="browse('master-out', this)">Browse</button>
+          <span class="mark" id="master-out-mark"></span>
+          <span class="csvcount"></span>
+        </div>
+      </div>
+      <div class="field">
+        <label>Master filename (optional — defaults to the subgrid name)</label>
+        <div class="inputrow">
+          <input type="text" id="master-name" placeholder="auto: N93E70.csv — same as the tour folder name, avoids confusion" spellcheck="false" />
+          <span class="mark"></span>
+          <span class="csvcount"></span>
+        </div>
+      </div>
+      <p class="hint">Rolls every child <b>YYYYMMDD.csv</b> produced by <b>Merge Metadata</b> in this folder into one master file named after the subgrid — e.g. <b>N93E70.csv</b> (dates oldest first). Raw tour CSVs and the master file itself are never re-read, so re-running is safe.</p>
+      <button class="primary" id="master-btn" onclick="submit('master')">Merge Child Metadata Into Master</button>
+    </div>
+
+    <button class="shutdown" onclick="shutdownService()">&#128274; Shutdown the service</button>
+    <div class="result" id="result"></div>
+  </div>
+
+  <p class="footnote">GeoSphere 360 · Metadata manager</p>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+const TABS = ['sort', 'merge', 'master'];
+function showTab(name) {
+  for (const t of TABS) {
+    $('pane-' + t).style.display = t === name ? '' : 'none';
+    $('tab-' + t).classList.toggle('active', t === name);
+  }
+  $('result').style.display = 'none';
+}
+
+const timers = {};
+function watchField(inputId, markId, countId, deep) {
+  const el = $(inputId);
+  el.addEventListener('input', () => {
+    const mark = $(markId), count = countId ? $(countId) : null;
+    clearTimeout(timers[inputId]);
+    mark.className = 'mark';
+    if (count) count.textContent = '';
+    const path = el.value.trim();
+    if (!path) return;
+    timers[inputId] = setTimeout(async () => {
+      try {
+        const r = await fetch('/api/validate?path=' + encodeURIComponent(path) + (deep ? '&deep=1' : ''));
+        const j = await r.json();
+        mark.className = 'mark ' + (j.exists ? 'ok' : 'bad');
+        if (count) count.textContent = j.exists ? j.csv_count + ' CSVs' : '';
+      } catch { mark.className = 'mark bad'; }
+    }, 450);
+  });
+}
+watchField('sort-in', 'sort-in-mark', 'sort-in-count', false);
+watchField('sort-out', 'sort-out-mark', null, false);
+watchField('merge-in', 'merge-in-mark', 'merge-in-count', false);
+watchField('merge-out', 'merge-out-mark', null, false);
+watchField('master-in', 'master-in-mark', 'master-in-count', false);
+watchField('master-out', 'master-out-mark', null, false);
+
+async function browse(targetId, btn) {
+  btn.disabled = true;
+  try {
+    const r = await fetch('/api/browse', { method: 'POST' });
+    const j = await r.json();
+    if (j && j.path) {
+      const el = $(targetId);
+      el.value = j.path;
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  } catch { /* service on another machine — dialog unavailable */ }
+  finally { btn.disabled = false; }
+}
+
+function renderResult(html) {
+  const box = $('result');
+  box.innerHTML = html;
+  box.style.display = '';
+}
+
+async function submit(op) {
+  const btn = $(op + '-btn');
+  btn.disabled = true;
+  try {
+    const body = op === 'sort'
+      ? { input_path: $('sort-in').value.trim(), output_path: $('sort-out').value.trim() }
+      : op === 'merge'
+        ? { input_path: $('merge-in').value.trim(), output_path: $('merge-out').value.trim(), output_name: $('merge-name').value.trim() }
+        : { input_path: $('master-in').value.trim(), output_path: $('master-out').value.trim(), output_name: $('master-name').value.trim() };
+    const r = await fetch('/api/' + op, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const j = await r.json();
+    if (!r.ok) {
+      renderResult('<div class="title error">Failed</div><div class="error">' + esc(j.detail || ('HTTP ' + r.status)) + '</div>');
+      return;
+    }
+    let html = '';
+    if (op === 'sort') {
+      html = '<div class="title">&#9989; Files sorted successfully</div>' +
+        '<div class="dim">' + j.copied.length + ' file(s) copied into ' + esc(j.output_folder) + '</div><ul>' +
+        j.copied.map(c => '<li>' + esc(c.copied_as) + ' <span class="dim">(' + c.bytes + ' B)</span></li>').join('') + '</ul>';
+    } else {
+      const label = op === 'master' ? 'Master metadata merged successfully' : 'Metadata merged successfully';
+      html = '<div class="title">' + (j.outputs.length ? '&#9989; ' + label : '&#9888; Nothing was merged') + '</div>' +
+        '<div class="dim">' + j.outputs.length + ' merged file(s) in ' + esc(j.output_folder) + '</div><ul>' +
+        j.outputs.map(o => '<li><b>' + esc(o.file) + '</b> <span class="dim">— ' + o.rows + ' rows from ' + o.merged_from.length + ' CSV(s): ' + esc(o.merged_from.join(', ')) + '</span></li>').join('') + '</ul>';
+      if (j.ignored) html += '<div class="dim" style="margin-top:4px">' + j.ignored + ' other CSV(s) (raw tour files) ignored</div>';
+    }
+    const notes = [
+      ...(j.warnings || []).map(w => '<div class="warn">&#9888; ' + esc(w) + '</div>'),
+      ...(j.skipped || []).map(s => '<div class="dim">skipped ' + esc(s.file) + ' — ' + esc(s.reason) + '</div>')
+    ];
+    if (notes.length) html += '<div style="margin-top:8px">' + notes.join('') + '</div>';
+    renderResult(html);
+  } catch (e) {
+    renderResult('<div class="title error">Request failed</div><div class="error">' + esc(e.message) + '</div>');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function shutdownService() {
+  try { await fetch('/api/shutdown', { method: 'POST' }); } catch {}
+  document.body.innerHTML = '<div style="text-align:center;padding:80px;color:#94a3b8;font-family:Inter,system-ui,sans-serif;font-size:13px">Service stopped. It is safe to close this tab.</div>';
+}
+</script>
+</body>
+</html>

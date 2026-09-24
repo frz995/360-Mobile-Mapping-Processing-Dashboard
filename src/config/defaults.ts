@@ -17,6 +17,13 @@ export const STORAGE_BUCKET_DEFAULT = 'MMS_PIC';
 /** Default storage path prefix used when building image paths. */
 export const STORAGE_PATH_PREFIX_DEFAULT = '/MMS_PIC/';
 
+/**
+ * Default Supabase storage bucket that holds oversized Road Analysis catalog-layer
+ * geometry (heavy GeoJSON too large to survive inside the lean `project_settings`
+ * snapshot). Env override: VITE_ROAD_GEOMETRY_BUCKET.
+ */
+export const ROAD_GEOMETRY_BUCKET_DEFAULT = 'road-analysis-geometry';
+
 /** Default manifest filename used for provider-agnostic dynamic frame counting. */
 export const MANIFEST_PATH_DEFAULT = 'manifest.json';
 

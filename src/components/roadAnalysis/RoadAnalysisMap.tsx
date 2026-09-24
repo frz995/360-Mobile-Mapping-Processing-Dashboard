@@ -21,6 +21,7 @@ import { estimateGeometryBytes } from '../../utils/gisImportParser';
 import type { ImportPreview } from './RoadImportPanel';
 import { type SystemLayerStyles } from './RoadCatalogPanel';
 import { resolveSpatialSubgrid } from '../../utils/subgridComparison';
+import { getCatalogSamplePropKeys, pickCatalogLabelField } from '../../utils/catalogLayerLabels';
 import { extractSubgridName } from '../../utils/subgrid';
 import { minMaxOf } from '../../utils/arrayBounds';
 import type { LonLat } from '../../utils/roadNetworkTrace';
@@ -368,12 +369,8 @@ function updateCatalogLayerStyle(
   sp(`${srcId}-labels`, 'text-color',       catLayer.labelColor     || '#f8fafc');
   sp(`${srcId}-labels`, 'text-halo-color',  catLayer.labelHaloColor || '#090d16');
   sp(`${srcId}-labels`, 'text-halo-width',  catLayer.labelHaloWidth ?? 2);
-  sl(`${srcId}-labels`, 'text-size',        catLayer.labelSize      || 11);
-  const propKeys = Object.keys(catLayer.geojson?.features?.[0]?.properties || {});
-  const lf =
-    catLayer.labelField ||
-    propKeys.find((k) => /^(name|label|id|title|station|grid|district|code|road)/i.test(k)) ||
-    propKeys[0];
+  sp(`${srcId}-labels`, 'text-size',        catLayer.labelSize      || 11);
+  const lf = pickCatalogLabelField(catLayer);
   if (lf) sl(`${srcId}-labels`, 'text-field', ['to-string', ['get', lf]]);
 }
 
@@ -877,15 +874,8 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
 
       // Render Feature Labels on map if enabled
       if (catLayer.showLabels) {
-        const sampleFeat = catLayer.geojson?.features?.[0];
-        const props = sampleFeat?.properties || {};
-        const propKeys = Object.keys(props);
-        const labelField =
-          catLayer.labelField ||
-          propKeys.find((k) =>
-            /^(name|label|id|title|station|grid|district|code|road)/i.test(k)
-          ) ||
-          propKeys[0];
+        const propKeys = getCatalogSamplePropKeys(catLayer);
+        const labelField = pickCatalogLabelField(catLayer, propKeys);
 
         if (labelField) {
           const labelId = `${srcId}-labels`;
@@ -901,13 +891,15 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
             layout: {
               'text-field': ['to-string', ['get', labelField]],
               'text-size': catLayer.labelSize || 11,
+              // OpenFreeMap basemaps serve only the Noto Sans family; the
+              // MapLibre default (Open Sans) 404s the glyph request.
+              'text-font': isBold ? ['Noto Sans Bold'] : ['Noto Sans Regular'],
               'symbol-placement': geomType === 'LineString' ? 'line-center' : 'point',
               'text-offset': geomType === 'Point' ? [0, 1.2] : [0, 0],
               'text-anchor': geomType === 'Point' ? 'top' : 'center',
               'text-allow-overlap': false,
               'text-ignore-placement': false,
-              'text-max-width': 10,
-              ...(isBold ? { 'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'] } : {})
+              'text-max-width': 10
             },
             paint: {
               'text-color': catLayer.labelColor || '#f8fafc',
@@ -1093,7 +1085,9 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
         filter: ['has', 'point_count'],
         layout: {
           'text-field': '{point_count_abbreviated}',
-          'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+          // OpenFreeMap's glyph endpoint serves only the Noto Sans family —
+          // requesting "Open Sans Bold" 404s the glyph fetch.
+          'text-font': ['Noto Sans Bold'],
           'text-size': 12
         },
         paint: {

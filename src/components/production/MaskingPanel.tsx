@@ -18,7 +18,7 @@ import type {
 import { loadImageWithRetry } from '../../utils/imageEnhancement';
 import { detectMaskFootprint } from '../../utils/maskFootprintDetector';
 import { extractCanonicalSubgrid } from '../../utils/datasetLineage';
-import { productionNasUrlFor } from './common';
+import { pipelineOutputFolder, pickFirstNasImage, productionNasUrlFor } from './common';
 import { Surface } from './chrome';
 
 export interface MaskingPanelProps {
@@ -55,7 +55,9 @@ export const MaskingPanel: React.FC<MaskingPanelProps> = ({
   const [queuing, setQueuing] = useState(false);
   const [analyzedUrl, setAnalyzedUrl] = useState<string | null>(null);
   const [copiedAction, setCopiedAction] = useState(false);
+  const [outputFolder, setOutputFolder] = useState('');
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const userTypedSample = useRef(false);
 
   const is4PcMode = (projectSettings?.processingEngineMode || 'multi_pc_workstations') === 'multi_pc_workstations';
 
@@ -66,6 +68,40 @@ export const MaskingPanel: React.FC<MaskingPanelProps> = ({
     selected?.source_folder || '',
     sampleName || (canonicalSg ? `${canonicalSg}-00001.jpg` : '')
   );
+
+  // Default output lands in the MASK stage folder; the operator can
+  // override it before queuing the batch.
+  const derivedOutputFolder = pipelineOutputFolder(
+    'MASK',
+    selected?.source_folder,
+    `05_Final/${(selected?.subgrid || selected?.name || '').replace(/[^\w\- ]+/g, '').trim()}`
+  );
+
+  useEffect(() => {
+    setOutputFolder(derivedOutputFolder);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDatasetId, selected?.id]);
+
+  // Auto-pick the first real image under the source folder so the preview
+  // shows something immediately (default name guesses often miss — real
+  // frames are `N93E70-0001.jpg`, not `N93E70-00001.jpg`). Handles deep
+  // container folders via pickFirstNasImage.
+  useEffect(() => {
+    let alive = true;
+    setSampleName('');
+    if (!selectedDatasetId || !api || userTypedSample.current) return;
+    const sel = datasets.find((d) => d.id === selectedDatasetId);
+    if (!sel || !sel.source_folder) return;
+    pickFirstNasImage(api, sel.source_folder)
+      .then((rel) => {
+        if (alive && rel) setSampleName(rel);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDatasetId]);
 
   useEffect(() => {
     setFootprint(null);
@@ -135,10 +171,10 @@ export const MaskingPanel: React.FC<MaskingPanelProps> = ({
 Subgrid: ${selected?.subgrid || 'ALL'}
 Bottom Nadir Band Height: ${Math.round(effectiveBand * 100)}% (≈ ${Math.round(effectiveBand * 5760)}px on 5.7K equirectangular)
 Action Sequence:
-1. Open /ENHANCED/{subgrid}/*.jpg
+1. Open 04_Enhanced/{subgrid}/*.jpg
 2. Select Bottom ${Math.round(effectiveBand * 100)}% or apply Nadir Mask Layer (.png)
 3. Run Generative Fill / Nadir Circle Patch
-4. Flatten image and export to /PROCESSED/{subgrid}/*.jpg (JPEG quality 92)`;
+4. Flatten image and export to 05_Final/{subgrid}/*.jpg (JPEG quality 92)`;
 
     navigator.clipboard.writeText(text);
     setCopiedAction(true);
@@ -153,14 +189,29 @@ Action Sequence:
 
   const queueMaskJob = async () => {
     if (isGuestUser || !selected) return;
+    const src = (selected.source_folder || '')
+      .trim()
+      .replace(/\\/g, '/')
+      .replace(/^\/+|\/+$/g, '');
+    const isEnhanceOutput = /(^|\/)04_Enhanced(\/|$)/.test(src) || selected.pipeline_stage === 'ENHANCE';
+    if (!isEnhanceOutput) {
+      onAddNotification?.({
+        title: 'MASK Input Must Be ENHANCE Output',
+        message: `Masking reads enhanced frames only (an 04_Enhanced stage folder). Selected source: ${selected.source_folder || selected.name} — register the Enhance output first.`,
+        category: 'ERROR',
+        read: false
+      });
+      return;
+    }
     const effectiveBand = useOverride ? overrideBand : (footprint?.detected ? footprint.bottomBandHeight : 0.18);
     setQueuing(true);
+    const output_folder = (outputFolder || '').trim().replace(/^\/+|\/+$/g, '') || derivedOutputFolder;
     const job: ProcessingJobRecord = {
       job_type: 'MASK',
       name: `Car-Roof Removal • ${selected.subgrid || selected.name}`,
       source_dataset_id: selected.id || null,
       source_folder: selected.source_folder,
-      output_folder: selected.output_folder || 'processed',
+      output_folder,
       subgrid: selected.subgrid,
       provider: is4PcMode ? 'PC 4 — Photoshop Station' : 'NAS GPU Worker',
       software_version: is4PcMode
@@ -185,23 +236,36 @@ Action Sequence:
       }
     };
     const saved = await saveProcessingJobToSupabase(job);
-    if (saved?.id) {
-      const res = await api.submitJob(saved);
+    const res = saved ? await api.submitJob(saved) : null;
+    setQueuing(false);
+    if (!saved || !res || res.ok === false) {
       onAddNotification?.({
-        title: 'MASK Job Queued',
-        message: `${saved.name} — ${is4PcMode ? 'Registered for PC 4 handoff' : res.message}`,
-        category: 'PENDING',
+        title: 'MASK Queue Failed',
+        message: res?.message || 'Job could not be saved or submitted — check your connection and permissions.',
+        category: 'ERROR',
         read: false
       });
       onAddAuditLog?.(
-        'CREATE',
-        `MASK Job Queued: ${saved.name}`,
-        `${userLabel} queued car-roof removal for band ${effectiveBand.toFixed(2)} via ${job.provider}.`,
-        'info'
+        'ERROR',
+        'MASK Batch Failed',
+        `${userLabel} queue attempt rejected: ${res?.message || 'save failed'}.`,
+        'failed'
       );
-      onRefreshJobs();
+      return;
     }
-    setQueuing(false);
+    onAddNotification?.({
+      title: 'MASK Job Queued',
+      message: `${saved.name} → ${output_folder} — ${is4PcMode ? 'registered for PC 4 handoff' : res.message}`,
+      category: 'PENDING',
+      read: false
+    });
+    onAddAuditLog?.(
+      'CREATE',
+      `MASK Job Queued: ${saved.name}`,
+      `${userLabel} queued car-roof removal for band ${effectiveBand.toFixed(2)} → ${output_folder} via ${job.provider}.`,
+      'info'
+    );
+    onRefreshJobs();
   };
 
   return (
@@ -217,7 +281,7 @@ Action Sequence:
             </span>
           </div>
           <span className="text-[10px] font-sans text-text-muted bg-inner border border-subtle px-2.5 py-1 rounded shrink-0">
-            Input: /ENHANCED/ &rarr; Output: /PROCESSED/
+            Input: 04_Enhanced/ &rarr; Output: 05_Final/
           </span>
         </div>
       )}
@@ -232,7 +296,10 @@ Action Sequence:
             <select
               className="w-full bg-inner border border-subtle rounded-lg px-3 py-2 text-xs text-text-base outline-none focus:border-sky-500/60"
               value={selectedDatasetId}
-              onChange={(e) => setSelectedDatasetId(e.target.value)}
+              onChange={(e) => {
+                userTypedSample.current = false;
+                setSelectedDatasetId(e.target.value);
+              }}
             >
               <option value="">— select a dataset —</option>
               {datasets.map((d) => (
@@ -250,8 +317,27 @@ Action Sequence:
               className="w-full bg-inner border border-subtle rounded-lg px-3 py-2 text-xs text-text-base outline-none focus:border-sky-500/60 font-sans"
               placeholder="N93E70-00001.jpg"
               value={sampleName}
-              onChange={(e) => setSampleName(e.target.value)}
+              onChange={(e) => {
+                userTypedSample.current = true;
+                setSampleName(e.target.value);
+              }}
             />
+          </div>
+
+          <div>
+            <label className="text-[10px] uppercase tracking-wider text-text-muted font-semibold">
+              Output Folder
+            </label>
+            <input
+              className="w-full bg-inner border border-subtle rounded-lg px-3 py-2 text-xs text-text-base outline-none focus:border-sky-500/60 font-mono"
+              placeholder={derivedOutputFolder || '05_Final/{rest}…'}
+              value={outputFolder}
+              disabled={isGuestUser}
+              onChange={(e) => setOutputFolder(e.target.value)}
+            />
+            <p className="text-[10px] text-text-muted mt-1">
+              {outputFolder.trim() ? `Batch output → ${outputFolder} (NAS-relative)` : `Default: ${derivedOutputFolder} — type to override.`}
+            </p>
           </div>
 
           <div className="bg-inner border border-subtle rounded-lg p-3 flex flex-col gap-1.5 text-[11px]">

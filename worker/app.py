@@ -202,16 +202,23 @@ def list_folders(path: str = "") -> dict:
     if not os.path.isdir(fs):
         raise HTTPException(status_code=404, detail="Not a directory.")
     entries, file_count, size_bytes = [], 0, 0
+
+    def _is_image(name: str) -> bool:
+        return os.path.splitext(name)[1].lower() in {".jpg", ".jpeg", ".png"}
+
     try:
         for name in sorted(os.listdir(fs)):
             full = os.path.join(fs, name)
             if os.path.isdir(full):
                 try:
-                    n_children = sum(len(fs_) for _, _, fs_ in os.walk(full))
+                    n_children = sum(
+                        sum(1 for f in files if _is_image(f))
+                        for _, _, files in os.walk(full)
+                    )
                     entries.append({"name": name, "path": f"{path}/{name}".strip("/"), "isDirectory": True, "fileCount": n_children, "sizeBytes": 0})
                 except OSError:
                     entries.append({"name": name, "path": f"{path}/{name}".strip("/"), "isDirectory": True, "fileCount": 0, "sizeBytes": 0})
-            else:
+            elif _is_image(name):
                 size = os.path.getsize(full)
                 file_count += 1
                 size_bytes += size

@@ -6,6 +6,7 @@ import {
   persistRoadAnalysisCache,
   mirrorRoadAnalysisToCache,
   computeRoadAnalysisFingerprint,
+  prepareCatalogLayersForCloudPersistence,
   ROAD_ANALYSIS_CACHE_VERSION,
   type RoadAnalysisSavedState
 } from '../../RoadAnalysisWorkspace';
@@ -358,6 +359,68 @@ describe('RoadAnalysisWorkspace state persistence', () => {
       expect(cache.mapBasemap).toBe('google-satellite');
       expect(cache.selectedDistrictIds).toEqual(['JHR-007']);
       expect(cache.systemStyles?.districtBoundary?.opacity).toBe(0.7);
+    });
+  });
+
+  describe('prepareCatalogLayersForCloudPersistence', () => {
+    const heavyLayer = {
+      id: 'L-heavy',
+      name: 'Malaysia Roads',
+      visible: true,
+      color: '#38bdf8',
+      opacity: 0.9,
+      strokeWidth: 3.5,
+      featureCount: 50,
+      geometryBytes: 50_000_000,
+      geojson: { type: 'FeatureCollection', features: [] }
+    } as any;
+
+    it('keeps small layers inline with their geometry untouched', async () => {
+      const lightLayer = {
+        id: 'L-light',
+        name: 'Local Plan',
+        visible: true,
+        color: '#10b981',
+        opacity: 1,
+        strokeWidth: 2,
+        geometryBytes: 10_000,
+        geojson: { type: 'FeatureCollection', features: [] }
+      } as any;
+
+      const out = await prepareCatalogLayersForCloudPersistence([lightLayer]);
+      expect(out).toHaveLength(1);
+      expect(out[0]).toBe(lightLayer);
+      expect(out[0].geojson).toBeDefined();
+      expect(out[0].geometryDropped).toBeUndefined();
+    });
+
+    it('degrades heavy layers to the legacy stripped form when storage is unavailable', async () => {
+      const out = await prepareCatalogLayersForCloudPersistence([heavyLayer]);
+      expect(out).toHaveLength(1);
+      expect(out[0].geojson).toBeUndefined();
+      expect(out[0].geojsonJson).toBeUndefined();
+      expect(out[0].geometryDropped).toBe(true);
+      expect(out[0].geometryStoragePath).toBeUndefined();
+    });
+
+    it('records a storage path pointer when the upload succeeds', async () => {
+      const { supabase } = await import('../../../services/supabase');
+      (supabase as any).storage = {
+        from: () => ({
+          upload: vi.fn(async () => ({ data: { path: 'catalog/L-heavy.geojson' }, error: null })),
+          download: vi.fn(),
+          remove: vi.fn()
+        })
+      };
+      try {
+        const out = await prepareCatalogLayersForCloudPersistence([heavyLayer]);
+        expect(out).toHaveLength(1);
+        expect(out[0].geojson).toBeUndefined();
+        expect(out[0].geometryDropped).toBe(true);
+        expect(out[0].geometryStoragePath).toBe('catalog/L-heavy.geojson');
+      } finally {
+        delete (supabase as any).storage;
+      }
     });
   });
 });

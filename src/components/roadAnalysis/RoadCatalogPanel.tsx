@@ -27,6 +27,7 @@ import {
   Loader2
 } from 'lucide-react';
 import type { CatalogVectorLayer } from '../../utils/gisImportParser';
+import { getCatalogSamplePropKeys, pickCatalogLabelField } from '../../utils/catalogLayerLabels';
 import { CommitSlider } from './CommitSlider';
 
 export interface SystemLayerStyles {
@@ -1735,17 +1736,9 @@ export const RoadCatalogPanel: React.FC<RoadCatalogPanelProps> = ({
                           <div className="flex flex-col gap-2 bg-inner/20 rounded-md p-2 border border-subtle/40">
                             {/* Label Field */}
                             {(() => {
-                              const sampleFeat = layer.geojson?.features?.[0];
-                              const propKeys = sampleFeat?.properties
-                                ? Object.keys(sampleFeat.properties)
-                                : [];
+                              const propKeys = getCatalogSamplePropKeys(layer);
                               if (propKeys.length === 0) return null;
-                              const currentField =
-                                layer.labelField ||
-                                propKeys.find((k) =>
-                                  /^(name|label|id|title|station|grid|district|code)/i.test(k)
-                                ) ||
-                                propKeys[0];
+                              const currentField = pickCatalogLabelField(layer, propKeys) || propKeys[0];
                               return (
                                 <div className="flex items-center justify-between text-[9px]">
                                   <span className="text-text-muted font-medium">Field</span>
