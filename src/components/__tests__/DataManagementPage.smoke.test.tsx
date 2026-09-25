@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react'
 import type { DailyTimeSeries, BatchLog } from '../../types/dashboard'
-import { deleteFromSupabase, saveDeletionRequestToSupabase } from '../../services/supabase'
+import { deleteFromSupabase, publishToSupabase, saveDeletionRequestToSupabase } from '../../services/supabase'
 
 // Mock the Supabase service so DataManagementPage never opens a real DB client
 // or makes network calls in jsdom. Every named import used by the page is
@@ -14,7 +14,7 @@ vi.mock('../../services/supabase', () => {
       channel: () => ({ on: () => ({}), subscribe: () => Promise.resolve() }),
       removeChannel: () => {}
     },
-    publishToSupabase: vi.fn(async () => ({})),
+    publishToSupabase: vi.fn(async () => ({ success: true, message: 'Published' })),
     saveToStagingSupabase: vi.fn(async () => ({})),
     deleteFromStagingSupabase: vi.fn(async () => ({})),
     fetchSupabaseData: vi.fn(async () => ({ dailyData: [], batchLogs: [] })),
@@ -85,6 +85,7 @@ function renderPage(props: Partial<Parameters<typeof DataManagementPage>[0]> = {
 describe('DataManagementPage smoke', () => {
   beforeEach(() => {
     vi.spyOn(window, 'alert').mockImplementation(() => {})
+    vi.mocked(publishToSupabase).mockResolvedValue({ success: true, message: 'Published' })
   })
 
   afterEach(() => {
@@ -206,6 +207,118 @@ describe('DataManagementPage smoke', () => {
 
     await waitFor(() => expect(hardDelete).toHaveBeenCalled())
     expect(submitTicket).not.toHaveBeenCalled()
+  })
+
+  it('reverts a blocked single-record publish', async () => {
+    const setDailyData = vi.fn()
+    vi.mocked(publishToSupabase).mockResolvedValue({
+      success: false,
+      message: 'Publication blocked: QA approval is required before handoff.'
+    })
+
+    renderPage({
+      dailyData: [dailyFixture()],
+      setDailyData,
+      initialTab: 'daily'
+    })
+
+    fireEvent.click(screen.getByTitle('Click to publish to database'))
+
+    await waitFor(() => expect(publishToSupabase).toHaveBeenCalled())
+    await waitFor(() => {
+      const latest = setDailyData.mock.calls[setDailyData.mock.calls.length - 1]?.[0] as DailyTimeSeries[] | undefined
+      expect(latest?.[0]).toEqual(expect.objectContaining({
+        publishToWebGIS: 'in process',
+        isSyncedWithSupabase: false,
+        action: 'Publish failed'
+      }))
+    })
+    expect(screen.getByText(/Publication blocked: QA approval/)).toBeInTheDocument()
+  })
+
+  it('reverts a single publish when the publisher throws', async () => {
+    const setDailyData = vi.fn()
+    vi.mocked(publishToSupabase).mockRejectedValue(new Error('Publisher unavailable'))
+
+    renderPage({
+      dailyData: [dailyFixture()],
+      setDailyData,
+      initialTab: 'daily'
+    })
+
+    fireEvent.click(screen.getByTitle('Click to publish to database'))
+
+    await waitFor(() => expect(publishToSupabase).toHaveBeenCalled())
+    await waitFor(() => {
+      const latest = setDailyData.mock.calls[setDailyData.mock.calls.length - 1]?.[0] as DailyTimeSeries[] | undefined
+      expect(latest?.[0]).toEqual(expect.objectContaining({
+        publishToWebGIS: 'in process',
+        action: 'Publish failed'
+      }))
+    })
+    expect(screen.getByText('Publisher unavailable')).toBeInTheDocument()
+  })
+
+  it('reverts a background auto-publish when an id-less daily record is saved', async () => {
+    const setDailyData = vi.fn()
+    const idlessDaily = { ...dailyFixture(), id: undefined, kmProcessed: 0 }
+    vi.mocked(publishToSupabase).mockClear()
+    vi.mocked(publishToSupabase).mockResolvedValue({
+      success: false,
+      message: 'Publication blocked: the release is not active.'
+    })
+
+    renderPage({
+      dailyData: [idlessDaily],
+      setDailyData,
+      initialTab: 'daily'
+    })
+
+    fireEvent.click(screen.getByTitle('Edit Record'))
+    const dialog = screen.getByRole('dialog')
+    fireEvent.change(within(dialog).getByRole('combobox'), { target: { value: 'yes' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: /Save Changes/ }))
+
+    await waitFor(() => expect(publishToSupabase).toHaveBeenCalledTimes(1))
+    await waitFor(() => {
+      const latest = setDailyData.mock.calls[setDailyData.mock.calls.length - 1]?.[0] as DailyTimeSeries[] | undefined
+      expect(latest?.[0]).toEqual(expect.objectContaining({
+        id: expect.any(String),
+        publishToWebGIS: 'in process',
+        isSyncedWithSupabase: false,
+        action: 'Publish failed'
+      }))
+    })
+    expect(screen.getByText(/Publication blocked: the release is not active/)).toBeInTheDocument()
+  })
+
+  it('reverts failed items during bulk publishing', async () => {
+    const setDailyData = vi.fn()
+    vi.mocked(publishToSupabase).mockResolvedValue({
+      success: false,
+      message: 'Publication blocked: the release is not active.'
+    })
+
+    renderPage({
+      dailyData: [dailyFixture()],
+      setDailyData,
+      initialTab: 'daily'
+    })
+
+    const checkboxes = screen.getAllByRole('checkbox')
+    fireEvent.click(checkboxes[1])
+    fireEvent.click(screen.getByRole('button', { name: /Publish Selected/ }))
+
+    await waitFor(() => expect(publishToSupabase).toHaveBeenCalled())
+    await waitFor(() => {
+      const latest = setDailyData.mock.calls[setDailyData.mock.calls.length - 1]?.[0] as DailyTimeSeries[] | undefined
+      expect(latest?.[0]).toEqual(expect.objectContaining({
+        publishToWebGIS: 'in process',
+        isSyncedWithSupabase: false,
+        action: 'Publish failed'
+      }))
+    })
+    expect(screen.getByText(/0 published; 1 failed/)).toBeInTheDocument()
   })
 
   it('renders POI column header in both Masterlist and Daily tables', () => {

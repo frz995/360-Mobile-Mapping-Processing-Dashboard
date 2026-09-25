@@ -3,21 +3,18 @@ import { restoreWorkspaceTab, persistWorkspaceTab } from '../utils/workspaceLoca
 import {
   Gauge,
   FolderTree,
-  ClipboardList,
   ShieldCheck,
-  Database
+  ArrowRight
 } from 'lucide-react';
 import { fetchDatasetsFromSupabase } from '../services/supabase';
 import { createProductionApiClient } from '../services/productionApi';
 import type { ProductionApiClient } from '../services/productionApi';
 import type { DatasetRecord, StorageTab } from '../types/production';
-import { getProductionApiSettings, STORAGE_TAB_LABELS } from './production/storage/storageCommon';
-import { UnderlineTabStrip, type ChromeTab } from './production/chrome';
+import { getProductionApiSettings } from './production/storage/storageCommon';
+import { Masthead, UnderlineTabStrip, type ChromeTab } from './production/chrome';
 import { OverviewPanel } from './production/storage/OverviewPanel';
 import { BrowserPanel } from './production/storage/BrowserPanel';
-import { RawRegistryPanel } from './production/storage/RawRegistryPanel';
 import { ValidationPanel } from './production/storage/ValidationPanel';
-import { IndexPanel } from './production/storage/IndexPanel';
 
 export interface NASStorageWorkspaceProps {
   projectSettings: any;
@@ -27,31 +24,38 @@ export interface NASStorageWorkspaceProps {
   addNotification?: (item: any) => void;
   addAuditLog?: (type: any, title: string, details: string, status?: any) => void;
   onBackToDashboard?: () => void;
+  onOpenProductionHub?: (path?: string, subgrid?: string) => void;
   translate?: (key: string) => string;
   initialFocusPath?: string;
 }
 
 const TABS: ChromeTab<StorageTab>[] = [
-  { key: 'overview', icon: <Gauge size={14} /> },
-  { key: 'browser', icon: <FolderTree size={14} /> },
-  { key: 'rawregistry', icon: <ClipboardList size={14} /> },
-  { key: 'validation', icon: <ShieldCheck size={14} /> },
-  { key: 'index', icon: <Database size={14} /> }
+  { key: 'browser', label: '1. Directory Explorer', icon: <FolderTree size={14} /> },
+  { key: 'overview', label: '2. Capacity & Volumes', icon: <Gauge size={14} /> },
+  { key: 'validation', label: '3. Integrity Verification', icon: <ShieldCheck size={14} /> }
 ];
+
+const TAB_TITLES: Record<string, string> = {
+  browser: '1. Directory Explorer',
+  overview: '2. Capacity & Volumes',
+  validation: '3. Integrity Verification'
+};
 
 export const NASStorageWorkspace: React.FC<NASStorageWorkspaceProps> = ({
   projectSettings,
+  setProjectSettings,
   authSession,
   isGuestUser,
   addNotification,
   addAuditLog,
   onBackToDashboard: _onBackToDashboard,
+  onOpenProductionHub,
   translate = (k) => k,
   initialFocusPath
 }) => {
   const [activeTab, setActiveTab] = useState<StorageTab>(() => {
-    const storageTabs = ['overview', 'browser', 'rawregistry', 'validation', 'index'] as const;
-    return initialFocusPath ? 'browser' : restoreWorkspaceTab<typeof storageTabs[number]>('storage', storageTabs) ?? 'overview';
+    const storageTabs = ['browser', 'overview', 'validation'] as const;
+    return initialFocusPath ? 'browser' : restoreWorkspaceTab<typeof storageTabs[number]>('storage', storageTabs) ?? 'browser';
   });
   useEffect(() => {
     persistWorkspaceTab('storage', activeTab);
@@ -77,39 +81,44 @@ export const NASStorageWorkspace: React.FC<NASStorageWorkspaceProps> = ({
   const userLabel = isGuestUser ? 'Guest' : userEmail;
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 overflow-hidden animate-in fade-in duration-500">
-      <div className="flex-1 flex flex-col gap-3 min-h-0 overflow-y-auto p-4">
-        {/* Header */}
-        <div className="px-1">
-          <h2 className="text-base font-bold text-text-base tracking-wide">
-            NAS Storage Manager
-          </h2>
-          <p className="text-xs text-text-muted mt-0.5 leading-relaxed">
-            Monitor storage capacity, folder browsing, and dataset indexing.
-          </p>
-        </div>
+    <div className="flex-1 flex flex-col min-h-0 overflow-y-auto animate-in fade-in duration-300">
+      <div className="flex flex-col gap-4 p-4 min-h-full pb-32">
+        {/* Top Masthead Console */}
+        <Masthead
+          title="NAS & Daemon"
+          subtitle="Direct high-speed NAS network volume explorer, folder sequence validator, and disk storage capacity monitor."
+          readouts={[
+            { key: 'mode', label: 'Storage Mode', value: (projectSettings?.productionApiMode || 'direct').toUpperCase() },
+            { key: 'nasBase', label: 'NAS Mount Base', value: projectSettings?.nasWorkBasePath || '/nas/360_images' },
+            { key: 'api', label: 'Worker Endpoint', value: projectSettings?.productionApiUrl || 'Local Native' }
+          ]}
+          actions={
+            onOpenProductionHub ? (
+              <button
+                onClick={() => onOpenProductionHub?.('/03_Stitching', 'N93E70')}
+                className="px-3 py-1.5 bg-card border border-subtle hover:border-divider text-text-base rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
+                title="Return to Production Hub"
+              >
+                <ArrowRight size={13} className="text-zinc-400" />
+                <span>Go to Production Hub</span>
+              </button>
+            ) : undefined
+          }
+        />
 
         {/* Main Panel Canvas */}
-        <div className="bg-card border border-subtle rounded-2xl shadow-md overflow-hidden flex flex-col min-h-0">
+        <div className="bg-card border border-subtle rounded-2xl shadow-md overflow-hidden flex flex-col">
           <div className="px-3 pt-2 border-b border-divider bg-card">
             <UnderlineTabStrip
               tabs={TABS}
               active={activeTab}
               onChange={setActiveTab}
-              tabLabel={(key) => translate(STORAGE_TAB_LABELS[key])}
+              tabLabel={(key) => TAB_TITLES[key] || translate(key)}
             />
           </div>
 
-          <div key={activeTab} className="p-4 flex-1 flex flex-col min-h-0 overflow-y-auto animate-panel-enter">
+          <div key={activeTab} className="p-4 flex-1 flex flex-col min-h-0 animate-panel-enter">
             {/* Active tab panel */}
-            {activeTab === 'overview' && (
-              <OverviewPanel
-                api={api}
-                projectSettings={projectSettings}
-                datasets={datasets}
-                translate={translate}
-              />
-            )}
             {activeTab === 'browser' && (
               <BrowserPanel
                 api={api}
@@ -118,14 +127,17 @@ export const NASStorageWorkspace: React.FC<NASStorageWorkspaceProps> = ({
                 isGuestUser={isGuestUser}
                 onAddNotification={addNotification}
                 onAddAuditLog={addAuditLog}
-                onDatasetChanged={refreshDatasets}
+                onOpenProductionHub={onOpenProductionHub}
                 userLabel={userLabel}
                 initialPath={initialFocusPath}
               />
             )}
-            {activeTab === 'rawregistry' && (
-              <RawRegistryPanel
+            {activeTab === 'overview' && (
+              <OverviewPanel
                 api={api}
+                projectSettings={projectSettings}
+                setProjectSettings={setProjectSettings}
+                addNotification={addNotification}
                 datasets={datasets}
                 translate={translate}
               />
@@ -135,16 +147,6 @@ export const NASStorageWorkspace: React.FC<NASStorageWorkspaceProps> = ({
                 api={api}
                 datasets={datasets}
                 translate={translate}
-              />
-            )}
-            {activeTab === 'index' && (
-              <IndexPanel
-                datasets={datasets}
-                translate={translate}
-                onChanged={refreshDatasets}
-                onAddNotification={addNotification}
-                onAddAuditLog={addAuditLog}
-                isGuestUser={isGuestUser}
               />
             )}
           </div>

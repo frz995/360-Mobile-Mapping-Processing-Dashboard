@@ -10,6 +10,7 @@ import { extractSubgridName } from '../../utils/subgrid';
 import { getDatabaseTableMapping } from '../supabaseConfig';
 import { withRetry } from '../../lib/retry';
 import { STORAGE_BUCKET_DEFAULT, DATABASE_TABLE_DEFAULTS } from '../../config/defaults';
+import { checkProductionPublicationEligibility } from './productionRuns';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_KEY || '';
@@ -29,15 +30,22 @@ export interface PanoramaItem {
   roll?: number;
   date?: string;
   time?: string;
+  productionRunId?: string | null;
+  productionAttemptId?: string | null;
+  productionReleaseId?: string | null;
 }
 
 export interface SupabasePanoramaRecord {
   id?: string | number;
+  project_id?: string;
+  subgrid?: string;
   filename?: string;
   image_url?: string;
   captured_at?: string;
   description?: string;
-  bearing?: number;
+  latitude?: number;
+  longitude?: number;
+  heading?: number;
   pitch?: number;
   roll?: number;
   defect_count?: number;
@@ -47,7 +55,7 @@ export interface SupabasePanoramaRecord {
   geom?: {
     type: string;
     coordinates: [number, number];
-  };
+  } | null;
 }
 
 // Subgrid centroid coordinates (longitude, latitude) populated dynamically from real database records
@@ -480,12 +488,18 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
               capturedAt: r.captured_at,
               equipment: extractedEq,
               status: extractedPub,
-              points: []
+              points: [],
+              productionRunId: r.production_run_id || null,
+              productionAttemptId: r.production_attempt_id || null,
+              productionReleaseId: r.production_release_id || null
             });
           }
 
-          const sgObj = stagingGrouped.get(runKey)!;
-          if (r.defect_count && Number(r.defect_count) > 0) {
+           const sgObj = stagingGrouped.get(runKey)!;
+           if (r.production_run_id) sgObj.productionRunId = r.production_run_id;
+           if (r.production_attempt_id) sgObj.productionAttemptId = r.production_attempt_id;
+           if (r.production_release_id) sgObj.productionReleaseId = r.production_release_id;
+           if (r.defect_count && Number(r.defect_count) > 0) {
             sgObj.defectCount = (sgObj.defectCount || 0) + Number(r.defect_count);
           }
           if (filename && !sgObj.imageFilenames.includes(filename)) {
@@ -573,9 +587,12 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
             pic: picName,
             isStagingPreview: true,
             isSyncedWithSupabase: false,
-            isStagedInSupabase: true,
-            points: g.points,
-            panoramas: g.points.map((pt: any, pIdx: number) => {
+             isStagedInSupabase: true,
+             productionRunId: g.productionRunId || null,
+             productionAttemptId: g.productionAttemptId || null,
+             productionReleaseId: g.productionReleaseId || null,
+             points: g.points,
+             panoramas: g.points.map((pt: any, pIdx: number) => {
               const fn = g.imageFilenames[pIdx] || `${sg}-${String(pIdx + 1).padStart(4, '0')}.jpg`;
               const cleanFn = (fn.split('/').pop() || '').toUpperCase().trim();
               const isDef = cleanFn ? knownDefectFilenames.has(cleanFn) : false;
@@ -734,8 +751,19 @@ export async function publishToSupabase(record: {
   status?: string;
   panoramas?: PanoramaItem[];
   rawRows?: PanoramaItem[];
+  productionRunId?: string | null;
+  productionAttemptId?: string | null;
+  productionReleaseId?: string | null;
 }): Promise<{ success: boolean; message: string }> {
   try {
+    const publicationGate = await checkProductionPublicationEligibility(record);
+    if (!publicationGate.allowed) {
+      return {
+        success: false,
+        message: `Publication blocked: ${publicationGate.reason}`
+      };
+    }
+
     let rawList: PanoramaItem[] = [];
 
     if (record.panoramas && record.panoramas.length > 0) {
@@ -780,7 +808,10 @@ export async function publishToSupabase(record: {
     const currentPid = getServiceProjectId();
     const itemsToInsert: SupabasePanoramaRecord[] = rawList.map((p: any) => {
       const filename = p.filename || p.imageFilename || record.imageFilename || '';
-      const sgKey = record.subgrid ? record.subgrid.toUpperCase() : extractSubgrid(filename);
+      const sgKey = record.subgrid ? record.subgrid.toUpperCase().trim() : extractSubgrid(filename);
+      if (!filename || !sgKey) {
+        throw new Error('Every published panorama needs a filename and subgrid');
+      }
       const cachedCoords = SUBGRID_COORDINATES[sgKey];
 
       const hasRealLon = p.longitude !== undefined && !isNaN(Number(p.longitude))
@@ -793,23 +824,32 @@ export async function publishToSupabase(record: {
       const rawLon = hasRealLon ? Number(p.longitude ?? p.lon) : (cachedCoords ? cachedCoords[0] : null);
       const rawLat = hasRealLat ? Number(p.latitude ?? p.lat) : (cachedCoords ? cachedCoords[1] : null);
       const hasCoords = rawLon !== null && rawLat !== null && !isNaN(rawLon) && !isNaN(rawLat);
+      if (!hasCoords) {
+        throw new Error(`Cannot publish ${filename}: latitude and longitude are required`);
+      }
+      const longitude = Number(rawLon);
+      const latitude = Number(rawLat);
 
       return {
         ...(currentPid ? { project_id: currentPid } : {}),
+        subgrid: sgKey,
         filename,
         image_url: filename,
         captured_at: parseToIsoTimestamp(p.date || p.captured_at || record.date),
         description: `Published Batch (Grid ${record.grid || '1'} / ${sgKey}) [id:${record.id || 'batch'}] [pic:${record.pic || 'Unassigned'}] - ${new Date().toISOString().slice(0, 19).replace('T', ' ')}`,
-        bearing: Number(p.bearing ?? p.heading ?? 0),
+        latitude,
+        longitude,
+        heading: Number(p.bearing ?? p.heading ?? 0),
         pitch: Number(p.pitch ?? 0),
         roll: Number(p.roll ?? 0),
+        is_fallback_coord: !hasRealLon || !hasRealLat,
         defect_count: (p.is_defect || (p.defect_flags && typeof p.defect_flags === 'object' && Object.values(p.defect_flags).some(Boolean))) ? 1 : 0,
         qa_status: p.is_defect ? 'flagged' : 'published',
         defect_flags: p.defect_flags || {},
-        geom: hasCoords ? {
+        geom: {
           type: 'Point',
-          coordinates: [rawLon, rawLat]
-        } : null as any
+          coordinates: [longitude, latitude]
+        }
       };
     });
 
@@ -820,7 +860,7 @@ export async function publishToSupabase(record: {
       const chunk = itemsToInsert.slice(i, i + chunkSize);
       const { error: upsertErr } = await supabase
         .from('panoramas')
-        .upsert(chunk, { onConflict: 'filename' });
+        .upsert(chunk, { onConflict: currentPid ? 'project_id,filename' : 'filename' });
 
       if (upsertErr) {
         console.warn('publishToSupabase upsert batch error, attempting fallback insert:', upsertErr);
@@ -857,6 +897,8 @@ export async function saveToStagingSupabase(record: {
   publishToWebGIS?: string;
   panoramas?: PanoramaItem[];
   rawRows?: PanoramaItem[];
+  productionRunId?: string | null;
+  productionAttemptId?: string | null;
 }): Promise<{ success: boolean; message: string }> {
   try {
     let rawList: PanoramaItem[] = [];
@@ -890,6 +932,11 @@ export async function saveToStagingSupabase(record: {
       const rawLon = hasRealLon ? Number(p.longitude ?? p.lon) : (cachedCoords ? cachedCoords[0] : null);
       const rawLat = hasRealLat ? Number(p.latitude ?? p.lat) : (cachedCoords ? cachedCoords[1] : null);
       const hasCoords = rawLon !== null && rawLat !== null && !isNaN(rawLon) && !isNaN(rawLat);
+      if (!filename || !sgKey || !hasCoords) {
+        throw new Error(`Cannot stage ${filename || 'panorama'}: filename, subgrid, latitude, and longitude are required`);
+      }
+      const longitude = Number(rawLon);
+      const latitude = Number(rawLat);
 
       const itemDate = p.date || record.date;
       const capturedAtIso = itemDate && !isNaN(new Date(itemDate).getTime())
@@ -898,11 +945,19 @@ export async function saveToStagingSupabase(record: {
 
       return {
         ...(currentPid ? { project_id: currentPid } : {}),
+        ...(record.productionRunId || p.productionRunId
+          ? { production_run_id: record.productionRunId || p.productionRunId }
+          : {}),
+        ...(record.productionAttemptId || p.productionAttemptId
+          ? { production_attempt_id: record.productionAttemptId || p.productionAttemptId }
+          : {}),
         filename,
         image_url: filename,
         captured_at: capturedAtIso,
         description: `Staged Batch (${record.subgrid || filename}) [id:${record.id || 'batch'}] [pic:${record.pic || p.pic || 'Unassigned'}] [grid:${record.grid || '1'}] [poi:${record.poiCount || rawList.length}] [km:${record.kmProcessed || 0}] [eq:${record.captureEquipment || 'MMS'}] [pub:${record.publishToWebGIS || 'in process'}]`,
-        bearing: Number(p.bearing ?? p.heading ?? 0),
+        latitude,
+        longitude,
+        heading: Number(p.bearing ?? p.heading ?? 0),
         pitch: Number(p.pitch ?? 0),
         roll: Number(p.roll ?? 0),
         subgrid: sgKey,
@@ -913,7 +968,8 @@ export async function saveToStagingSupabase(record: {
         defect_count: typeof record.defects === 'number' ? record.defects : 0,
         capture_equipment: record.captureEquipment || p.captureEquipment || 'MMS',
         status: record.publishToWebGIS || 'In Process',
-        geom: hasCoords ? { type: 'Point', coordinates: [rawLon, rawLat] } : null
+        is_fallback_coord: !hasRealLon || !hasRealLat,
+        geom: { type: 'Point', coordinates: [longitude, latitude] }
       };
     });
 
@@ -923,7 +979,7 @@ export async function saveToStagingSupabase(record: {
       const chunk = itemsToInsert.slice(i, i + chunkSize);
       const { error } = await supabase
         .from('staging_panoramas')
-        .upsert(chunk, { onConflict: 'filename' });
+        .upsert(chunk, { onConflict: currentPid ? 'project_id,filename' : 'filename' });
 
       if (error) {
         console.warn('Supabase staging_panoramas upsert notice, trying REST API:', error.message);

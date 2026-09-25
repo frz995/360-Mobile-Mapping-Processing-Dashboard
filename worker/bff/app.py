@@ -21,7 +21,9 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from typing import Optional
+from uuid import UUID
 
 import requests
 from dotenv import load_dotenv
@@ -81,10 +83,11 @@ def _role_can(role: str, capability: str) -> bool:
 
 
 class AuthContext:
-    __slots__ = ("email", "role")
+    __slots__ = ("email", "user_id", "role")
 
-    def __init__(self, email: str, role: str) -> None:
+    def __init__(self, email: str, user_id: str, role: str) -> None:
         self.email = email
+        self.user_id = user_id
         self.role = role
 
 
@@ -113,7 +116,7 @@ def _resolve_app_role(email: str) -> str:
     try:
         resp = requests.get(
             f"{SUPABASE_URL}/rest/v1/user_accounts",
-            params={"select": "role", "email": f"eq.{email}"},
+            params={"select": "role,status", "email": f"eq.{email}"},
             headers={
                 "Authorization": f"Bearer {SERVICE_ROLE_KEY}",
                 "apikey": SERVICE_ROLE_KEY,
@@ -122,8 +125,8 @@ def _resolve_app_role(email: str) -> str:
         )
         if resp.status_code == 200:
             rows = resp.json()
-            if rows and "role" in rows[0]:
-                return _normalize_role(rows[0]["role"])
+            if rows and rows[0].get("status", "").strip().lower() == "active":
+                return _normalize_role(rows[0].get("role", ""))
     except Exception as exc:  # noqa: BLE001
         logger.warning("role lookup failed for %s: %s", email, exc)
     return VIEWER
@@ -134,7 +137,7 @@ def _authenticate(request: Request) -> AuthContext:
     token = auth.removeprefix("Bearer ").strip() if auth else ""
     user = _verify_supabase_token(token)
     role = _resolve_app_role(user["email"])
-    return AuthContext(email=user["email"], role=role)
+    return AuthContext(email=user["email"], user_id=user["id"], role=role)
 
 
 def _require(capability: str) -> AuthContext:
@@ -157,13 +160,13 @@ def _worker_headers() -> dict:
     return headers
 
 
-def _proxy(path: str, method: str = "GET", body: Optional[dict] = None):
+def _proxy(path: str, method: str = "GET", body: Optional[dict] = None, timeout: int = 30):
     try:
         resp = requests.request(
             method, f"{WORKER_BASE_URL}{path}",
             json=body if body is not None else None,
             headers=_worker_headers(),
-            timeout=30,
+            timeout=timeout,
         )
     except requests.RequestException as exc:
         raise HTTPException(status_code=502, detail=f"Worker unreachable: {exc}")
@@ -179,6 +182,115 @@ def _proxy(path: str, method: str = "GET", body: Optional[dict] = None):
     return data
 
 
+def _supabase_rows(table: str, params: dict) -> list:
+    if not (SUPABASE_URL and SERVICE_ROLE_KEY):
+        raise HTTPException(status_code=503, detail="Supabase authorization is not configured.")
+    try:
+        resp = requests.get(
+            f"{SUPABASE_URL}/rest/v1/{table}",
+            params=params,
+            headers={
+                "Authorization": f"Bearer {SERVICE_ROLE_KEY}",
+                "apikey": SERVICE_ROLE_KEY,
+            },
+            timeout=10,
+        )
+    except requests.RequestException as exc:
+        raise HTTPException(status_code=502, detail=f"Supabase authorization lookup failed: {exc}")
+    if resp.status_code >= 400:
+        raise HTTPException(status_code=502, detail="Supabase authorization lookup failed.")
+    try:
+        rows = resp.json()
+    except ValueError:
+        raise HTTPException(status_code=502, detail="Supabase authorization returned invalid data.")
+    if not isinstance(rows, list):
+        raise HTTPException(status_code=502, detail="Supabase authorization returned invalid data.")
+    return rows
+
+
+def _require_uuid(value: object, field: str) -> str:
+    raw = str(value or "").strip()
+    try:
+        UUID(raw)
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=400, detail=f"{field} must be a valid identifier.")
+    return raw
+
+
+def _normalized_path(value: object) -> str:
+    return str(value or "").replace("\\", "/").rstrip("/")
+
+
+def _validate_release_request(body: object) -> dict:
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="Release request must be a JSON object.")
+
+    project_id = _require_uuid(body.get("project_id"), "project_id")
+    run_id = _require_uuid(body.get("run_id"), "run_id")
+    attempt_id = _require_uuid(body.get("attempt_id"), "attempt_id")
+    subgrid = str(body.get("subgrid") or "").strip().upper()
+    run_code = str(body.get("run_code") or "").strip()
+    capture_date = str(body.get("capture_date") or "").strip()
+    source_folder = _normalized_path(body.get("source_folder"))
+    release_folder = _normalized_path(body.get("release_folder"))
+    if not re.fullmatch(r"[A-Z0-9_-]+", subgrid):
+        raise HTTPException(status_code=400, detail="subgrid is invalid.")
+    if not re.fullmatch(r"[A-Z0-9_-]+", run_code):
+        raise HTTPException(status_code=400, detail="run_code is invalid.")
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", capture_date):
+        raise HTTPException(status_code=400, detail="capture_date is invalid.")
+    if not source_folder or ".." in source_folder.split("/"):
+        raise HTTPException(status_code=400, detail="source_folder is invalid.")
+    expected_release_folder = f"/DELIVERABLES/{subgrid}/{run_code}"
+    if release_folder != expected_release_folder:
+        raise HTTPException(status_code=400, detail="release_folder does not match the production run.")
+
+    run_rows = _supabase_rows(
+        "production_runs",
+        {
+            "select": "id,project_id,subgrid,capture_date,run_code,source_folder",
+            "project_id": f"eq.{project_id}",
+            "id": f"eq.{run_id}",
+        },
+    )
+    if len(run_rows) != 1:
+        raise HTTPException(status_code=404, detail="Production run was not found in the requested project.")
+    run = run_rows[0]
+    if (
+        str(run.get("subgrid") or "").upper() != subgrid
+        or str(run.get("capture_date") or "") != capture_date
+        or str(run.get("run_code") or "") != run_code
+    ):
+        raise HTTPException(status_code=400, detail="Release request does not match the production run.")
+    stored_source_folder = _normalized_path(run.get("source_folder"))
+    if stored_source_folder and source_folder != stored_source_folder:
+        raise HTTPException(status_code=400, detail="source_folder does not match the production run.")
+
+    attempt_rows = _supabase_rows(
+        "production_run_attempts",
+        {
+            "select": "id,project_id,production_run_id",
+            "project_id": f"eq.{project_id}",
+            "production_run_id": f"eq.{run_id}",
+            "id": f"eq.{attempt_id}",
+        },
+    )
+    if len(attempt_rows) != 1:
+        raise HTTPException(status_code=404, detail="Production attempt was not found in the requested project.")
+
+    return {
+        **body,
+        "project_id": project_id,
+        "run_id": run_id,
+        "attempt_id": attempt_id,
+        "subgrid": subgrid,
+        "run_code": run_code,
+        "capture_date": capture_date,
+        "source_folder": source_folder,
+        "release_folder": expected_release_folder,
+    }
+
+
 # ---------------------------------------------------------------------
 # Routes (identical contract to the NAS GPU Worker)
 # ---------------------------------------------------------------------
@@ -191,6 +303,12 @@ def health():
 async def submit_job(request: Request):
     body = await request.json()
     return _proxy("/api/jobs", "POST", body)
+
+
+@app.post("/api/releases/prepare")
+async def prepare_release(request: Request, ctx: AuthContext = Depends(_require("runQaqc"))):
+    body = _validate_release_request(await request.json())
+    return _proxy("/api/releases/prepare", "POST", body, timeout=120)
 
 
 @app.get("/api/jobs/{job_id}", dependencies=[Depends(_require("viewAll"))])

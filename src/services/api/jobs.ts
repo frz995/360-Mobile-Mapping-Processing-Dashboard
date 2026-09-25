@@ -211,6 +211,7 @@ export async function updateProcessingJobStatusInSupabase(
 ): Promise<boolean> {
   const current = getLocalJobs();
   const idx = current.findIndex((j) => j.id === id);
+  const previous = idx >= 0 ? current[idx] : null;
   const localPrevStatus: ProcessingJobStatus | undefined = idx >= 0 ? current[idx].status : undefined;
 
   // Guard: never flip a job that has already finished back into an active state
@@ -251,12 +252,24 @@ export async function updateProcessingJobStatusInSupabase(
     const { error } = await query;
     if (error) {
       console.warn('updateProcessingJobStatusInSupabase:', error.message);
-      return true;
+      if (previous) {
+        current[idx] = previous;
+      } else if (idx >= 0) {
+        current.splice(idx, 1);
+      }
+      setLocalJobs(current);
+      return false;
     }
     return true;
   } catch (err) {
     console.warn('updateProcessingJobStatusInSupabase catch:', err);
-    return true;
+    if (previous) {
+      current[idx] = previous;
+    } else if (idx >= 0) {
+      current.splice(idx, 1);
+    }
+    setLocalJobs(current);
+    return false;
   }
 }
 

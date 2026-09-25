@@ -246,26 +246,68 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
     const itemsToPublish = targetList.filter(item => selectedRowIds.has(getItemId(item)));
 
     try {
-      await Promise.all(itemsToPublish.map(async item => {
+      const publishResults = await Promise.all(itemsToPublish.map(async item => {
         try {
-          await publishToSupabase(item);
+          const result = await publishToSupabase(item);
+          return { item, result };
         } catch (err) {
-          console.warn('Bulk publish item error:', err);
+          return {
+            item,
+            result: { success: false, message: err instanceof Error ? err.message : String(err) }
+          };
         }
       }));
+      const failed = publishResults.filter(({ result }) => !result.success);
+      const failedIds = new Set(failed.map(({ item }) => getItemId(item)));
+      const finalDraft = failedIds.size > 0
+        ? updatedDraft.map(item => {
+            if (!failedIds.has(getItemId(item))) return item;
+            if ('images' in item) return item;
+            return {
+              ...item,
+              publishToWebGIS: 'in process' as const,
+              isSyncedWithSupabase: false,
+              action: 'Publish failed'
+            };
+          })
+        : updatedDraft;
+      const finalBatches = failedIds.size > 0
+        ? updatedBatches.map(item => failedIds.has(getItemId(item))
+          ? { ...item, status: 'Ongoing' as const, isSyncedWithSupabase: false }
+          : item)
+        : updatedBatches;
+      setDraftDailyData(finalDraft);
+      setDailyData(finalDraft);
+      setBatchLogs(reconcileBatchLogs(finalDraft, finalBatches));
 
-      if (onRefreshMap) onRefreshMap();
-      if (addNotification) {
+      const successCount = publishResults.length - failed.length;
+      if (successCount > 0 && onRefreshMap) onRefreshMap();
+      if (addNotification && successCount > 0) {
         addNotification({
           title: 'Bulk Publish Complete',
-          message: `Successfully published ${itemsToPublish.length} selected record(s) to database.`,
+          message: `Published ${successCount} of ${publishResults.length} selected record(s) to database.`,
           category: 'PUBLISH'
         });
       }
-      setPublishMessage({ text: `Successfully published ${itemsToPublish.length} selected record(s) to Supabase database!`, type: 'success' });
-      setTimeout(() => setPublishMessage(null), 4000);
+      if (failed.length > 0) {
+        const firstFailure = failed[0]?.result.message || 'Publication was blocked by the production gate.';
+        setPublishMessage({ text: `${successCount} published; ${failed.length} failed. ${firstFailure}`, type: 'error' });
+      } else {
+        setPublishMessage({ text: `Successfully published ${successCount} selected record(s) to Supabase database!`, type: 'success' });
+      }
+      setTimeout(() => setPublishMessage(null), failed.length > 0 ? 6000 : 4000);
     } catch (err) {
       console.error('Bulk publish error:', err);
+      const revertedDraft = draftDailyData.map(d => selectedRowIds.has(getItemId(d))
+        ? { ...d, publishToWebGIS: 'in process' as const, isSyncedWithSupabase: false, action: 'Publish failed' }
+        : d);
+      const revertedBatches = batchLogs.map(b => selectedRowIds.has(getItemId(b))
+        ? { ...b, status: 'Ongoing' as const, isSyncedWithSupabase: false }
+        : b);
+      setDraftDailyData(revertedDraft);
+      setDailyData(revertedDraft);
+      setBatchLogs(reconcileBatchLogs(revertedDraft, revertedBatches));
+      setPublishMessage({ text: err instanceof Error ? err.message : 'Bulk publish failed.', type: 'error' });
     } finally {
       setIsBulkPublishing(false);
       setSelectedRowIds(new Set());
@@ -1436,6 +1478,30 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
 
   const handlePublishRecord = async (item: BatchLog | DailyTimeSeries) => {
     const id = getItemId(item);
+    let optimisticDailyList: DailyTimeSeries[] | null = null;
+    let optimisticBatchList: BatchLog[] | null = null;
+    const rollbackOptimisticPublish = (message: string) => {
+      if (optimisticDailyList) {
+        const revertedItem: DailyTimeSeries = {
+          ...(item as DailyTimeSeries),
+          publishToWebGIS: 'in process',
+          isSyncedWithSupabase: false,
+          action: 'Publish failed'
+        };
+        const revertedList = optimisticDailyList.map(d => getItemId(d) === id ? revertedItem : d);
+        setDraftDailyData(revertedList);
+        setDailyData(revertedList);
+      } else if (optimisticBatchList) {
+        const revertedBatch = optimisticBatchList.map(b => getItemId(b) === id
+          ? { ...b, status: 'Ongoing' as const, isSyncedWithSupabase: false }
+          : b);
+        setBatchLogs(revertedBatch);
+        const persisted = revertedBatch.find(b => getItemId(b) === id);
+        if (persisted) persistBatchLogToSupabase(persisted, projectSettings);
+      }
+      setPublishMessage({ text: message, type: 'error' });
+      setTimeout(() => setPublishMessage(null), 5000);
+    };
     setPublishingId(id);
 
     // 1. Instant Optimistic UI Update (0ms delay)
@@ -1448,6 +1514,7 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
         action: 'Published in database'
       };
       const updatedList = draftDailyData.map(d => getItemId(d) === id ? optimisticItem : d);
+      optimisticDailyList = updatedList;
       setDraftDailyData(updatedList);
       setDailyData(updatedList);
       setBatchLogs(reconcileBatchLogs(updatedList, batchLogs));
@@ -1455,6 +1522,7 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
 
     } else {
       const updatedBatches = batchLogs.map(b => getItemId(b) === id ? { ...b, status: 'Complete' as const, isSyncedWithSupabase: true } : b);
+      optimisticBatchList = updatedBatches;
       setBatchLogs(updatedBatches);
       const publishedBatch = updatedBatches.find(b => getItemId(b) === id);
       if (publishedBatch) persistBatchLogToSupabase(publishedBatch as BatchLog, projectSettings);
@@ -1465,20 +1533,7 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
       const res = await publishToSupabase(item);
 
       if (!res.success) {
-        if (!('images' in item)) {
-          const revertedItem: DailyTimeSeries = {
-            ...(item as DailyTimeSeries),
-            publishToWebGIS: 'in process',
-            isSyncedWithSupabase: false,
-            action: 'Publish failed'
-          };
-          const revertedList = draftDailyData.map(d => getItemId(d) === id ? revertedItem : d);
-          setDraftDailyData(revertedList);
-          setDailyData(revertedList);
-
-        }
-        setPublishMessage({ text: res.message || 'Failed to publish record to database.', type: 'error' });
-        setTimeout(() => setPublishMessage(null), 5000);
+        rollbackOptimisticPublish(res.message || 'Failed to publish record to database.');
         return;
       }
 
@@ -1531,7 +1586,7 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
             isAvailable: verifiedFiles.length > 0 ? (p.filename ? (verifiedFiles.includes(p.filename) || verifiedFiles.some(vf => vf.toLowerCase() === p.filename!.toLowerCase())) : false) : p.isAvailable
           }))
         };
-        const finalDailyList = draftDailyData.map(d => getItemId(d) === id ? finalItem : d);
+        const finalDailyList = (optimisticDailyList || draftDailyData).map(d => getItemId(d) === id ? finalItem : d);
         setDraftDailyData(finalDailyList);
         setDailyData(finalDailyList);
         setBatchLogs(reconcileBatchLogs(finalDailyList, batchLogs));
@@ -1550,8 +1605,7 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
       setTimeout(() => setPublishMessage(null), 4000);
     } catch (err) {
       console.error('Publish error:', err);
-      setPublishMessage({ text: 'Error publishing record to database.', type: 'error' });
-      setTimeout(() => setPublishMessage(null), 4000);
+      rollbackOptimisticPublish(err instanceof Error ? err.message : 'Error publishing record to database.');
     } finally {
       setPublishingId(null);
     }
@@ -1589,17 +1643,19 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
       const editingId = editingItem ? getItemId(editingItem as DailyTimeSeries) : null;
       const pubStatus = (dailyItem.publishToWebGIS || (dailyItem as any).publishToUSVPRO || 'in process') as 'yes' | 'need to recheck' | 'no' | 'in process';
       const isPub = pubStatus === 'yes';
+      const resolvedId = editingId || dailyItem.id || Date.now().toString();
 
       const updatedItem: DailyTimeSeries = {
         ...dailyItem,
+        id: resolvedId,
         publishToWebGIS: pubStatus,
         isSyncedWithSupabase: isPub,
         action: isPub ? 'Published in database' : 'Ready to publish'
       };
 
       const updatedDraft = editingId
-        ? draftDailyData.map(d => getItemId(d) === editingId ? { ...updatedItem, id: editingId } : d)
-        : [...draftDailyData, { ...updatedItem, id: updatedItem.id || Date.now().toString() }];
+        ? draftDailyData.map(d => getItemId(d) === editingId ? updatedItem : d)
+        : [...draftDailyData, updatedItem];
 
       setDraftDailyData(updatedDraft);
       setDailyData(updatedDraft);
@@ -1608,7 +1664,26 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
 
       // Auto-persist directly to Supabase DB in real-time if published
       if (isPub) {
-        publishToSupabase(updatedItem).catch(err => console.warn('Background auto-publish error:', err));
+        const rollbackBackgroundPublish = (message: string) => {
+          const revertedItem: DailyTimeSeries = {
+            ...updatedItem,
+            publishToWebGIS: 'in process',
+            isSyncedWithSupabase: false,
+            action: 'Publish failed'
+          };
+          const revertedList = updatedDraft.map(d => getItemId(d) === resolvedId ? revertedItem : d);
+          setDraftDailyData(revertedList);
+          setDailyData(revertedList);
+          setBatchLogs(reconcileBatchLogs(revertedList, batchLogs));
+          setPublishMessage({ text: message, type: 'error' });
+        };
+        void publishToSupabase(updatedItem).then(result => {
+          if (result.success) return;
+          rollbackBackgroundPublish(result.message || 'Publication was blocked by the production gate.');
+        }).catch(err => {
+          console.warn('Background auto-publish error:', err);
+          rollbackBackgroundPublish(err instanceof Error ? err.message : 'Background publication failed.');
+        });
       }
     }
 

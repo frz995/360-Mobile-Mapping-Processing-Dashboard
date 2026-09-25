@@ -35,6 +35,12 @@ remotion/.remotion/
 # Python
 __pycache__/
 *.py[cod]
+worker/.venv/
+worker/_tmp_*.npy
+
+# Cloudflare Pages / Wrangler local dev
+.wrangler
+.dev.vars
 
 # Local scratch & temporary notes
 scratch/

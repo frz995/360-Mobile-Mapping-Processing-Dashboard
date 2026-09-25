@@ -16,13 +16,13 @@ export interface IndexPanelProps {
 }
 
 const STATUS_CLS: Record<string, string> = {
-  REGISTERED: 'text-sky-300 border-sky-500/40 bg-sky-950/40',
-  READY: 'text-emerald-300 border-emerald-500/40 bg-emerald-950/40',
-  IN_PROGRESS: 'text-amber-300 border-amber-500/40 bg-amber-950/40',
-  COMPLETED: 'text-emerald-300 border-emerald-500/40 bg-emerald-950/40',
-  FAILED: 'text-rose-300 border-rose-500/40 bg-rose-950/40',
-  IMPORTED: 'text-sky-300 border-sky-500/40 bg-sky-950/40',
-  ARCHIVED: 'text-text-muted border-subtle bg-inner'
+  REGISTERED: 'text-sky-300',
+  READY: 'text-emerald-300',
+  IN_PROGRESS: 'text-amber-300',
+  COMPLETED: 'text-emerald-300',
+  FAILED: 'text-rose-300',
+  IMPORTED: 'text-sky-300',
+  ARCHIVED: 'text-text-muted'
 };
 
 export const IndexPanel: React.FC<IndexPanelProps> = ({
@@ -170,10 +170,8 @@ export const IndexPanel: React.FC<IndexPanelProps> = ({
                   <td className="px-3.5 py-2.5 font-mono text-zinc-300">{extractCanonicalSubgrid(d.subgrid) || '—'}</td>
                   <td className="px-3.5 py-2.5 text-right font-mono text-text-muted">{d.file_count?.toLocaleString?.() || d.file_count || '—'}</td>
                   <td className="px-3.5 py-2.5 text-right font-mono text-text-base font-semibold">{formatBytes(d.size_bytes)}</td>
-                  <td className="px-3.5 py-2.5 text-right">
-                    <span className={`inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full border uppercase tracking-wider ${STATUS_CLS[d.status || 'REGISTERED'] || STATUS_CLS.REGISTERED}`}>
-                      {d.status || 'REGISTERED'}
-                    </span>
+                  <td className={`px-3.5 py-2.5 text-right text-[10px] font-semibold uppercase tracking-wider ${STATUS_CLS[d.status || 'REGISTERED'] || STATUS_CLS.REGISTERED}`}>
+                    {d.status || 'REGISTERED'}
                   </td>
                   {!isGuestUser && (
                     <td className="px-3.5 py-2.5 text-right">

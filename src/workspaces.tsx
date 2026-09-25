@@ -82,7 +82,7 @@ export const WORKSPACE_CATEGORIES: WorkspaceCategory[] = [
   {
     key: 'production',
     labelKey: 'workspaceCategoryProduction',
-    members: ['production', 'processing', 'lineage', 'storage']
+    members: ['production', 'storage']
   },
   {
     key: 'governance',

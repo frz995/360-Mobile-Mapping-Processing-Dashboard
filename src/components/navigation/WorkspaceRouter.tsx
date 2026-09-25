@@ -1,11 +1,11 @@
 import React from 'react';
-import type { WorkspaceKey } from '../../utils/urlRouter';
+import type { WorkspaceKey, WorkspacePathQuery } from '../../utils/urlRouter';
 import { WorkspacePlaceholder, getWorkspaceDefinition } from '../../workspaces';
 
-const ImageProductionWorkspace = React.lazy(() => import('../ImageProductionWorkspace').then(m => ({ default: m.ImageProductionWorkspace })));
+const ProductionHubWorkspace = React.lazy(() => import('../production/hub/ProductionHubWorkspace').then(m => ({ default: m.ProductionHubWorkspace })));
 const NASStorageWorkspace = React.lazy(() => import('../NASStorageWorkspace').then(m => ({ default: m.NASStorageWorkspace })));
-const ProcessingCenterWorkspace = React.lazy(() => import('../ProcessingCenterWorkspace').then(m => ({ default: m.ProcessingCenterWorkspace })));
-const LineageWorkspace = React.lazy(() => import('../LineageWorkspace').then(m => ({ default: m.LineageWorkspace })));
+// processing and lineage consolidated into ProductionHubWorkspace
+// lineage consolidated into ProductionHubWorkspace
 const AnalyticsWorkspace = React.lazy(() => import('../AnalyticsWorkspace').then(m => ({ default: m.AnalyticsWorkspace })));
 const ReportsWorkspace = React.lazy(() => import('../ReportsWorkspace').then(m => ({ default: m.ReportsWorkspace })));
 const AdministrationWorkspace = React.lazy(() => import('../AdministrationWorkspace').then(m => ({ default: m.AdministrationWorkspace })));
@@ -19,7 +19,7 @@ export interface WorkspaceRouterProps {
   isGuestUser?: boolean;
   addNotification?: (item: any) => void;
   addAuditLog?: (type: any, title: string, details: string, status?: any) => void;
-  goToWorkspace: (ws: WorkspaceKey) => void;
+  goToWorkspace: (ws: WorkspaceKey, query?: WorkspacePathQuery) => void;
   translate: (k: string) => string;
   storageFocusPath: string | null;
   openStorageAtPath: (p: string) => void;
@@ -41,7 +41,7 @@ export const WorkspaceRouter = ({
   goToWorkspace,
   translate: t,
   storageFocusPath,
-  openStorageAtPath,
+  openStorageAtPath: _openStorageAtPath,
   activeBatchLogs,
   dailyData,
   handleRefreshMap,
@@ -51,22 +51,6 @@ export const WorkspaceRouter = ({
   // These pages are rendered directly in App.tsx — skip WorkspaceRouter
   if (currentPage === 'dashboard' || currentPage === 'settings' || currentPage === 'project' || currentPage === 'data') {
     return null;
-  }
-
-  if (currentPage === 'production') {
-    return (
-      <ImageProductionWorkspace
-        key="workspace-production"
-        projectSettings={projectSettings}
-        setProjectSettings={setProjectSettings}
-        authSession={authSession}
-        isGuestUser={isGuestUser}
-        addNotification={addNotification}
-        addAuditLog={addAuditLog}
-        onBackToDashboard={() => goToWorkspace('dashboard')}
-        translate={t}
-      />
-    );
   }
 
   if (currentPage === 'storage') {
@@ -80,44 +64,30 @@ export const WorkspaceRouter = ({
         addNotification={addNotification}
         addAuditLog={addAuditLog}
         onBackToDashboard={() => goToWorkspace('dashboard')}
+        onOpenProductionHub={(_path, subgrid) => goToWorkspace('production', subgrid ? { subgrid } : undefined)}
         translate={t}
         initialFocusPath={storageFocusPath ?? undefined}
       />
     );
   }
 
-  if (currentPage === 'processing') {
+  if (currentPage === 'production' || currentPage === 'processing' || currentPage === 'lineage') {
     return (
-      <ProcessingCenterWorkspace
-        key="workspace-processing"
+      <ProductionHubWorkspace
+        key="workspace-production"
         projectSettings={projectSettings}
         setProjectSettings={setProjectSettings}
         authSession={authSession}
-        isGuestUser={isGuestUser}
-        addNotification={addNotification}
-        addAuditLog={addAuditLog}
-        onBackToDashboard={() => goToWorkspace('dashboard')}
-        translate={t}
-        onOpenStoragePath={openStorageAtPath}
-      />
-    );
-  }
-
-  if (currentPage === 'lineage') {
-    return (
-      <LineageWorkspace
-        key="workspace-lineage"
-        projectSettings={projectSettings}
-        setProjectSettings={setProjectSettings}
-        authSession={authSession}
-        isGuestUser={isGuestUser}
-        addNotification={addNotification}
-        addAuditLog={addAuditLog}
-        onBackToDashboard={() => goToWorkspace('dashboard')}
-        translate={t}
-      />
-    );
-  }
+         isGuestUser={isGuestUser}
+         addNotification={addNotification}
+         addAuditLog={addAuditLog}
+         onBackToDashboard={() => goToWorkspace('dashboard')}
+          onOpenDataManagement={(subgrid) => goToWorkspace('data', subgrid ? { subgrid } : undefined)}
+          onOpenStorage={() => goToWorkspace('storage')}
+         translate={t}
+       />
+     );
+   }
 
   if (currentPage === 'analytics') {
     return (

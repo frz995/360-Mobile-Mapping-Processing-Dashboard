@@ -22,11 +22,13 @@ except ImportError:
 
 try:
     from fastapi.testclient import TestClient
+    import app as worker_module
     from app import app
     HAS_APP = True
 except ImportError:
     HAS_APP = False
     TestClient = None  # type: ignore
+    worker_module = None  # type: ignore
     app = None  # type: ignore
 
 
@@ -131,6 +133,55 @@ def test_submit_job_rejects_unsupported_types():
             )
             assert resp.status_code == 400, f"Expected 400 for {unsupported_type}, got {resp.status_code}"
             assert "not executable by this worker" in resp.json()["detail"]
+
+
+@pytest.mark.skipif(not HAS_APP, reason="fastapi/app dependencies not installed")
+def test_worker_accepts_authorization_header(monkeypatch):
+    monkeypatch.setattr(worker_module, "API_TOKEN", "secret")
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/jobs",
+            headers={"Authorization": "Bearer secret"},
+            json={
+                "job_type": "STITCH",
+                "source_folder": "test_src",
+                "output_folder": "test_out",
+            },
+        )
+        assert response.status_code == 400
+
+        unauthorized = client.post(
+            "/api/jobs",
+            json={
+                "job_type": "STITCH",
+                "source_folder": "test_src",
+                "output_folder": "test_out",
+            },
+        )
+        assert unauthorized.status_code == 401
+
+
+@pytest.mark.skipif(not HAS_APP, reason="fastapi/app dependencies not installed")
+def test_worker_cancel_uses_authorization_header(monkeypatch):
+    monkeypatch.setattr(worker_module, "API_TOKEN", "secret")
+    with TestClient(app) as client:
+        unauthorized = client.post("/api/jobs/unknown/cancel")
+        assert unauthorized.status_code == 401
+
+        authorized = client.post(
+            "/api/jobs/unknown/cancel",
+            headers={"Authorization": "Bearer secret"},
+        )
+        assert authorized.status_code == 200
+
+
+@pytest.mark.skipif(not HAS_APP, reason="fastapi/app dependencies not installed")
+def test_worker_protects_data_routes_when_token_is_configured(monkeypatch):
+    monkeypatch.setattr(worker_module, "API_TOKEN", "secret")
+    with TestClient(app) as client:
+        assert client.get("/api/jobs/unknown").status_code == 401
+        assert client.get("/api/folders").status_code == 401
+        assert client.get("/api/storage").status_code == 401
 
 
 @pytest.mark.skipif(not HAS_APP, reason="fastapi/app dependencies not installed")

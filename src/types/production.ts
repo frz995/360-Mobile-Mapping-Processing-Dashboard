@@ -57,6 +57,9 @@ export interface DatasetRecord {
   /** Id of the dataset that superseded (replaced) this one. Set when a newer version is created. */
   superseded_by?: string | null;
   metadata?: Record<string, unknown>;
+  production_run_id?: string | null;
+  production_attempt_id?: string | null;
+  production_release_id?: string | null;
   created_by?: string;
   created_at?: string;
   updated_at?: string;
@@ -107,11 +110,88 @@ export interface ProcessingJobRecord {
   from_retry?: boolean;
   worker?: string;
   last_heartbeat?: string | null;
+  production_run_id?: string | null;
+  production_attempt_id?: string | null;
   /** Runtime-only pipeline stage association (not persisted). */
   pipeline_stage_key?: PipelineStageKey;
 }
 
 export type ExternalJobStatus = 'none' | 'awaiting_submit' | 'running_external' | 'done';
+
+export type ProductionRunStatus = 'CAPTURED' | 'PROCESSING' | 'QA_PENDING' | 'RELEASED' | 'ARCHIVED';
+export type ProductionAttemptStatus = 'ACTIVE' | 'PROCESSING' | 'QA_PENDING' | 'APPROVED' | 'REJECTED' | 'SUPERSEDED';
+export type ProductionReleaseStatus = 'PREPARING' | 'READY' | 'PUBLISHED' | 'FAILED' | 'ARCHIVED';
+
+export interface ProductionRunRecord {
+  id?: string;
+  project_id?: string;
+  subgrid: string;
+  capture_date: string;
+  run_code: string;
+  sequence: number;
+  status: ProductionRunStatus;
+  camera_model?: string | null;
+  source_folder: string;
+  active_release_id?: string | null;
+  metadata?: Record<string, unknown>;
+  created_by?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ProductionAttemptRecord {
+  id?: string;
+  project_id?: string;
+  production_run_id: string;
+  attempt_number: number;
+  status: ProductionAttemptStatus;
+  source_dataset_id?: string | null;
+  output_dataset_id?: string | null;
+  processing_job_id?: string | null;
+  metadata?: Record<string, unknown>;
+  created_by?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ProductionReleaseRecord {
+  id?: string;
+  project_id?: string;
+  production_run_id: string;
+  attempt_id: string;
+  release_code: string;
+  subgrid: string;
+  status: ProductionReleaseStatus;
+  is_active: boolean;
+  source_folder: string;
+  release_folder: string;
+  manifest_path: string;
+  file_count: number;
+  total_size_bytes: number;
+  metadata?: Record<string, unknown>;
+  generated_at?: string | null;
+  published_at?: string | null;
+  published_by?: string | null;
+  created_by?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ProductionReleaseFileRecord {
+  id?: string;
+  project_id?: string;
+  release_id: string;
+  source_path: string;
+  source_name: string;
+  release_name: string;
+  relative_path: string;
+  media_type: 'image' | 'metadata';
+  size_bytes: number;
+  sha256?: string | null;
+  sort_order: number;
+  metadata?: Record<string, unknown>;
+  created_at?: string;
+}
 
 export type ProcessingCenterTab = 'board' | 'handoff' | 'qa' | 'monitor' | 'lifecycle';
 
@@ -370,7 +450,8 @@ export type ProductionTab =
   | 'providers'
   | 'preview'
   | 'enhance'
-  | 'masking';
+  | 'masking'
+  | 'release';
 
 export type StorageTab =
   | 'overview'

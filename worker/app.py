@@ -10,7 +10,7 @@ import uuid
 import logging
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -18,6 +18,7 @@ from pydantic import BaseModel
 from enhancement import apply_enhancement
 from masking import apply_mask_pipeline, derive_mask
 from runner import JobRegistry
+from release import ReleaseError, prepare_release as prepare_release_files
 import sync as syncmod
 
 from dotenv import load_dotenv
@@ -110,6 +111,17 @@ class JobSubmit(BaseModel):
     project_id: Optional[str] = None
 
 
+class ReleasePrepare(BaseModel):
+    source_folder: str
+    release_folder: str
+    subgrid: str
+    run_code: str
+    project_id: str
+    run_id: str
+    attempt_id: str
+    capture_date: str
+
+
 # ---------------------------------------------------------------------------
 # Path safety: all folders resolve under NAS_BASE_PATH and never escape it.
 # ---------------------------------------------------------------------------
@@ -127,7 +139,7 @@ def _guard(auth: Optional[str]) -> None:
 
 
 @app.post("/api/jobs")
-def submit_job(body: JobSubmit, authorization: Optional[str] = None) -> dict:
+def submit_job(body: JobSubmit, authorization: Optional[str] = Header(default=None)) -> dict:
     _guard(authorization)
     if body.job_type not in ("ENHANCE", "MASK", "BLUR"):
         raise HTTPException(
@@ -163,8 +175,29 @@ def submit_job(body: JobSubmit, authorization: Optional[str] = None) -> dict:
     return {"ok": True, "message": f"Job {job_id} accepted into the batch queue."}
 
 
+@app.post("/api/releases/prepare")
+def prepare_release(body: ReleasePrepare, authorization: Optional[str] = Header(default=None)) -> dict:
+    _guard(authorization)
+    source = resolve_fs(body.source_folder)
+    release = resolve_fs(body.release_folder)
+    try:
+        return prepare_release_files(
+            source_dir=source,
+            release_dir=release,
+            subgrid=body.subgrid,
+            run_code=body.run_code,
+            project_id=body.project_id,
+            run_id=body.run_id,
+            attempt_id=body.attempt_id,
+            capture_date=body.capture_date,
+        )
+    except ReleaseError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
 @app.get("/api/jobs/{job_id}")
-def get_job(job_id: str) -> dict:
+def get_job(job_id: str, authorization: Optional[str] = Header(default=None)) -> dict:
+    _guard(authorization)
     if registry is None:
         raise HTTPException(status_code=503, detail="Worker still initialising.")
     job = registry.get(job_id)
@@ -188,8 +221,8 @@ def get_job(job_id: str) -> dict:
 
 
 @app.post("/api/jobs/{job_id}/cancel")
-def cancel_job(job_id: str) -> dict:
-    _guard(None)  # cancel requires no auth? keep parity with submit; token optional
+def cancel_job(job_id: str, authorization: Optional[str] = Header(default=None)) -> dict:
+    _guard(authorization)
     if registry is None:
         raise HTTPException(status_code=503, detail="Worker still initialising.")
     registry.cancel(job_id)
@@ -197,7 +230,8 @@ def cancel_job(job_id: str) -> dict:
 
 
 @app.get("/api/folders")
-def list_folders(path: str = "") -> dict:
+def list_folders(authorization: Optional[str] = Header(default=None), path: str = "") -> dict:
+    _guard(authorization)
     fs = resolve_fs(path)
     if not os.path.isdir(fs):
         raise HTTPException(status_code=404, detail="Not a directory.")
@@ -269,7 +303,8 @@ def _scan_top_level(base: str) -> list[dict]:
 
 
 @app.get("/api/storage")
-def storage_info() -> dict:
+def storage_info(authorization: Optional[str] = Header(default=None)) -> dict:
+    _guard(authorization)
     now = time.time()
     if _storage_cache["data"] is not None and now - _storage_cache["at"] < STORAGE_TTL_SECONDS:
         return _storage_cache["data"]

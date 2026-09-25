@@ -41,6 +41,9 @@ export interface DailyTimeSeries {
   qaqcStatus?: string;
   runsCount?: number;
   publishedRunsCount?: number;
+  productionRunId?: string | null;
+  productionAttemptId?: string | null;
+  productionReleaseId?: string | null;
 }
 
 export interface BatchLog {
@@ -66,6 +69,9 @@ export interface BatchLog {
   publishToWebGIS?: 'yes' | 'no' | 'in process' | 'need to recheck' | string;
   runsCount?: number;
   publishedRunsCount?: number;
+  productionRunId?: string | null;
+  productionAttemptId?: string | null;
+  productionReleaseId?: string | null;
 }
 
 export interface NotificationItem {

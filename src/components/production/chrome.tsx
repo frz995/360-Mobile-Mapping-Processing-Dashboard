@@ -220,6 +220,91 @@ export function Surface({ children, className = '' }: { children: React.ReactNod
   );
 }
 
+/* ── Flat tab-content primitives (Theme Packages canvas idiom) ─────────────
+   Sections are a small uppercase label + bare content, separated by
+   whitespace. No card-in-card stacks; secondary controls are text links. */
+
+export function SectionLabel({
+  icon,
+  children,
+  note,
+  actions
+}: {
+  icon?: React.ReactNode;
+  children: React.ReactNode;
+  note?: React.ReactNode;
+  actions?: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 flex-wrap">
+      <div className="text-[11px] font-semibold text-text-muted uppercase tracking-wider flex items-center gap-1.5 min-w-0">
+        {icon}
+        <span className="truncate">{children}</span>
+        {note && <span className="font-mono text-[10px] tracking-normal normal-case">{note}</span>}
+      </div>
+      {actions && <div className="flex items-center gap-3 shrink-0 flex-wrap">{actions}</div>}
+    </div>
+  );
+}
+
+export interface MetaRowItem {
+  key: string;
+  label: string;
+  value?: React.ReactNode;
+  note?: React.ReactNode;
+  actions?: React.ReactNode;
+}
+
+export function MetaList({ items, className = '' }: { items: MetaRowItem[]; className?: string }) {
+  return (
+    <div className={`rounded-lg border border-subtle divide-y divide-[var(--divider)] overflow-hidden ${className}`}>
+      {items.map((row) => (
+        <div key={row.key} className="flex items-center gap-x-3 gap-y-1 px-3 py-2.5 flex-wrap">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted w-28 sm:w-40 shrink-0">
+            {row.label}
+          </span>
+          <div className="flex-1 min-w-0 flex items-baseline gap-x-2 gap-y-0.5 flex-wrap">
+            {row.value !== undefined && row.value !== null && (
+              <span className="text-xs font-medium text-text-base">{row.value}</span>
+            )}
+            {row.note !== undefined && row.note !== null && (
+              <span className="text-[11px] text-text-muted min-w-0 truncate">{row.note}</span>
+            )}
+          </div>
+          {row.actions && <div className="flex items-center gap-3 shrink-0 ml-auto">{row.actions}</div>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function TextAction({
+  icon,
+  children,
+  onClick,
+  disabled = false,
+  title
+}: {
+  icon?: React.ReactNode;
+  children: React.ReactNode;
+  onClick?: () => void;
+  disabled?: boolean;
+  title?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      className="text-[11px] text-text-muted hover:text-text-base disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1 transition-colors cursor-pointer"
+    >
+      {icon}
+      <span>{children}</span>
+    </button>
+  );
+}
+
 export function StatusDot({ tone = 'text-text-muted', pulse = false }: { tone?: string; pulse?: boolean }) {
   return <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${tone} ${pulse ? 'animate-pulse' : ''}`} />;
 }

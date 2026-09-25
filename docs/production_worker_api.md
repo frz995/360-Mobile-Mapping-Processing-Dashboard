@@ -59,7 +59,54 @@ Response 2xx:
 { "ok": true, "message": "Job <id> accepted into the batch queue." }
 ```
 
-### GET /api/jobs/{job_id}
+### POST /api/releases/prepare
+
+Create a non-destructive, deterministic release copy for one production attempt. The source tree is never modified. Supported image files are renamed to `<subgrid>-<sequence>.<ext>`, CSV metadata is copied with a subgrid-based name, and `manifest.json` records source paths, release paths, checksums, counts, and lineage IDs.
+
+Request fields are relative to `NAS_BASE_PATH`:
+
+```json
+{
+  "source_folder": "05_Final/N93E70",
+  "release_folder": "DELIVERABLES/N93E70/N93E70-2026-09-25-R001",
+  "subgrid": "N93E70",
+  "run_code": "N93E70-2026-09-25-R001",
+  "project_id": "uuid-here",
+  "run_id": "uuid-here",
+  "attempt_id": "uuid-here",
+  "capture_date": "2026-09-25"
+}
+```
+
+Response 2xx:
+
+```json
+{
+  "ok": true,
+  "manifest": {
+    "schemaVersion": 1,
+    "projectId": "uuid-here",
+    "runId": "uuid-here",
+    "attemptId": "uuid-here",
+    "subgrid": "N93E70",
+    "runCode": "N93E70-2026-09-25-R001",
+    "captureDate": "2026-09-25",
+    "sourceFolder": "/nas/360_images/05_Final/N93E70",
+    "releaseFolder": "/nas/360_images/DELIVERABLES/N93E70/N93E70-2026-09-25-R001",
+    "generatedAt": "2026-09-25T12:00:00+00:00",
+    "files": [],
+    "csvFiles": [],
+    "fileCount": 0,
+    "totalSizeBytes": 0
+  },
+  "manifest_path": "/nas/360_images/DELIVERABLES/N93E70/N93E70-2026-09-25-R001/manifest.json",
+  "copied_count": 0,
+  "reused_count": 0
+}
+```
+
+The operation is idempotent for an unchanged source: matching existing outputs are reused. A checksum conflict returns HTTP 400. The BFF route requires the caller's `runQaqc` capability and injects the worker token; direct worker deployments should use the configured `NAS_WORKER_TOKEN`. WebGIS publication remains a separate QA-approved dashboard action.
+
 
 Live status for one job.
 

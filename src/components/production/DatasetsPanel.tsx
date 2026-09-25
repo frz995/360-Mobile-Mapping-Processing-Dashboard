@@ -9,9 +9,7 @@ import {
   RefreshCw,
   Copy,
   X,
-  Edit2,
-  Check,
-  Loader2
+  PackageCheck
 } from 'lucide-react';
 import type { ProductionApiClient } from '../../services/productionApi';
 import type { DatasetRecord, ProcessingJobRecord } from '../../types/production';
@@ -30,6 +28,7 @@ export interface DatasetsPanelProps {
   onRefreshDatasets: () => void;
   onAddNotification?: (item: any) => void;
   onAddAuditLog?: (type: any, title: string, details: string, status?: any) => void;
+  onOpenRelease?: (track: PanotrackTrackSummary) => void;
   userLabel: string;
 }
 
@@ -49,7 +48,7 @@ export interface PanotrackTrackSummary {
   subgrid: string;
   surveyDate: string;
   equipment: 'MMS' | 'Backpack' | 'General';
-  cameraModel: string;
+  cameraModel: string | null;
   pointCount: number;
   hasFolder7: boolean;
   folder7File: string;
@@ -66,8 +65,6 @@ export interface PanotrackTrackSummary {
   sampleRows: PanotrackCsvRow[];
 }
 
-const STORAGE_CUSTOM_FILENAMES = 'tnb_panotrack_custom_filenames';
-
 export const DatasetsPanel: React.FC<DatasetsPanelProps> = ({
   datasets,
   stagingRows = [],
@@ -76,7 +73,7 @@ export const DatasetsPanel: React.FC<DatasetsPanelProps> = ({
   api,
   isGuestUser: _isGuestUser,
   onAddNotification,
-  onAddAuditLog
+  onOpenRelease
 }) => {
   const [search, setSearch] = useState('');
   const [filterCompliance, setFilterCompliance] = useState<'ALL' | 'VALID' | 'WARNING' | 'ERROR'>('ALL');
@@ -84,21 +81,6 @@ export const DatasetsPanel: React.FC<DatasetsPanelProps> = ({
   const [verifyingFolder, setVerifyingFolder] = useState<string | null>(null);
   const [folder7Results, setFolder7Results] = useState<Record<string, { hasFolder7: boolean; fileName?: string; filesFound?: number }>>({});
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
-
-  // Custom renamed filenames map (persisted in localStorage)
-  const [customFileNames, setCustomFileNames] = useState<Record<string, string>>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_CUSTOM_FILENAMES);
-      return saved ? JSON.parse(saved) : {};
-    } catch {
-      return {};
-    }
-  });
-
-  // Inline editing state
-  const [editingKey, setEditingKey] = useState<string | null>(null);
-  const [editingValue, setEditingValue] = useState('');
-  const [savingRename, setSavingRename] = useState(false);
 
   // Probe NAS for Folder 7 presence per subgrid
   useEffect(() => {
@@ -258,12 +240,9 @@ export const DatasetsPanel: React.FC<DatasetsPanelProps> = ({
         ? 'Backpack'
         : 'MMS';
 
-      // Determine camera model & default survey track CSV filename based on tour date & subgrid
-      const cleanDate = (date !== 'undated' ? date : '20220904').replace(/[^0-9]/g, '');
-      const matchCam = `${rows[0]?.filename || ''} ${rows[0]?.description || ''} ${f7?.fileName || ''} ${customFileNames[key] || ''}`.match(/\b(003[0-9]{3}|00[0-9]{4})\b/);
-      const cameraModel = matchCam ? matchCam[1] : equipment === 'Backpack' ? '003491' : '003485';
-      const defaultTourFileName = f7?.fileName || `panorama-${cameraModel}-${cleanDate}-144310.csv`;
-      const finalFileName = customFileNames[key] || defaultTourFileName;
+       const matchCam = `${rows[0]?.filename || ''} ${rows[0]?.description || ''} ${f7?.fileName || ''}`.match(/\b(003[0-9]{3}|00[0-9]{4})\b/);
+       const cameraModel = matchCam ? matchCam[1] : null;
+       const finalFileName = f7?.fileName || `${sg}.csv`;
 
       results.push({
         key,
@@ -294,11 +273,9 @@ export const DatasetsPanel: React.FC<DatasetsPanelProps> = ({
         const sg = extractCanonicalSubgrid(agg.subgrid);
         const f7 = folder7Results[sg];
         const key = `${sg}::${agg.surveyDate || '2022-09-04'}`;
-        const cleanDate = (agg.surveyDate || '20220904').replace(/[^0-9]/g, '');
-        const matchCam = `${f7?.fileName || ''} ${customFileNames[key] || ''}`.match(/\b(003[0-9]{3}|00[0-9]{4})\b/);
-        const cameraModel = matchCam ? matchCam[1] : '003485';
-        const defaultTourFileName = f7?.fileName || `panorama-${cameraModel}-${cleanDate}-144310.csv`;
-        const finalFileName = customFileNames[key] || defaultTourFileName;
+         const matchCam = `${f7?.fileName || ''}`.match(/\b(003[0-9]{3}|00[0-9]{4})\b/);
+         const cameraModel = matchCam ? matchCam[1] : null;
+         const finalFileName = f7?.fileName || `${sg}.csv`;
 
         results.push({
           key,
@@ -334,7 +311,7 @@ export const DatasetsPanel: React.FC<DatasetsPanelProps> = ({
     }
 
     return results.sort((a, b) => a.subgrid.localeCompare(b.subgrid));
-  }, [stagingRows, stagingAggregates, folder7Results, customFileNames]);
+  }, [stagingRows, stagingAggregates, folder7Results]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -379,49 +356,6 @@ export const DatasetsPanel: React.FC<DatasetsPanelProps> = ({
       // Ignored
     } finally {
       setVerifyingFolder(null);
-    }
-  };
-
-  const startRename = (track: PanotrackTrackSummary) => {
-    setEditingKey(track.key);
-    setEditingValue(track.folder7File);
-  };
-
-  const cancelRename = () => {
-    setEditingKey(null);
-    setEditingValue('');
-  };
-
-  const submitRename = async (track: PanotrackTrackSummary) => {
-    const trimmed = editingValue.trim();
-    if (!trimmed) {
-      cancelRename();
-      return;
-    }
-    const cleanName = trimmed.endsWith('.csv') ? trimmed : `${trimmed}.csv`;
-
-    setSavingRename(true);
-    try {
-      // 1. Update local state & localStorage immediately
-      const updated = { ...customFileNames, [track.key]: cleanName };
-      setCustomFileNames(updated);
-      localStorage.setItem(STORAGE_CUSTOM_FILENAMES, JSON.stringify(updated));
-
-      // 2. Notify and Log Audit
-      onAddNotification?.({
-        title: 'Metadata CSV Renamed',
-        message: `Subgrid ${track.subgrid} survey track renamed to "${cleanName}".`,
-        category: 'SYSTEM',
-        read: false
-      });
-      onAddAuditLog?.('UPDATE', `Renamed Metadata CSV: ${track.subgrid}`, `Changed from ${track.folder7File} to ${cleanName}`, 'success');
-
-      setEditingKey(null);
-      setEditingValue('');
-    } catch {
-      // Fallback
-    } finally {
-      setSavingRename(false);
     }
   };
 
@@ -520,83 +454,39 @@ export const DatasetsPanel: React.FC<DatasetsPanelProps> = ({
                   </td>
                 </tr>
               ) : (
-                filtered.map((track) => {
-                  const verifying = verifyingFolder === track.subgrid;
-                  const isEditing = editingKey === track.key;
+                 filtered.map((track) => {
+                   const verifying = verifyingFolder === track.subgrid;
 
-                  return (
-                    <tr key={track.key} className="hover:bg-white/[0.02] transition-colors">
-                      {/* 1. Subgrid / Survey Date */}
-                      <td className="py-2.5 px-3">
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-bold text-zinc-100">{track.subgrid}</span>
-                          <span className="text-[10px] text-zinc-500 font-sans">{track.surveyDate}</span>
-                        </div>
-                      </td>
+                   return (
+                     <tr key={track.key} className="hover:bg-white/[0.02] transition-colors">
+                       <td className="py-2.5 px-3">
+                         <div className="flex items-center gap-1.5">
+                           <span className="font-bold text-zinc-100">{track.subgrid}</span>
+                           <span className="text-[10px] text-zinc-500 font-sans">{track.surveyDate}</span>
+                         </div>
+                       </td>
 
-                      {/* 2. Equipment */}
-                      <td className="py-2.5 px-3 font-sans">
-                        <span className="text-[10px] text-zinc-400">
-                          {track.equipment}
-                        </span>
-                      </td>
+                       <td className="py-2.5 px-3 font-sans">
+                         <span className="text-[10px] text-zinc-400">
+                           {track.equipment}
+                         </span>
+                       </td>
 
-                      {/* 3. Metadata/CSV (Inline Editable) */}
-                      <td className="py-2.5 px-3">
-                        {isEditing ? (
-                          <div className="flex items-center gap-1">
-                            <input
-                              type="text"
-                              value={editingValue}
-                              onChange={(e) => setEditingValue(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') submitRename(track);
-                                if (e.key === 'Escape') cancelRename();
-                              }}
-                              autoFocus
-                              className="bg-black/50 border border-sky-500/60 rounded px-2 py-0.5 text-xs text-sky-200 font-mono outline-none w-56"
-                            />
-                            <button
-                              onClick={() => submitRename(track)}
-                              disabled={savingRename}
-                              className="p-1 text-emerald-400 hover:bg-emerald-500/10 rounded cursor-pointer transition-colors"
-                              title="Save new CSV filename"
-                            >
-                              {savingRename ? <Loader2 size={11} className="animate-spin" /> : <Check size={12} />}
-                            </button>
-                            <button
-                              onClick={cancelRename}
-                              className="p-1 text-zinc-400 hover:bg-white/5 rounded cursor-pointer transition-colors"
-                              title="Cancel"
-                            >
-                              <X size={12} />
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-1.5 group">
-                            <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-emerald-400" />
-                            <span
-                              className="text-emerald-300 font-medium truncate max-w-[220px] cursor-pointer hover:underline"
-                              title={`${track.folder7File} (Click to rename)`}
-                              onClick={() => startRename(track)}
-                            >
-                              {track.folder7File}
-                            </span>
-                            <button
-                              onClick={() => startRename(track)}
-                              className="opacity-0 group-hover:opacity-100 p-0.5 text-zinc-500 hover:text-sky-300 rounded transition-all cursor-pointer"
-                              title="Rename survey track CSV"
-                            >
-                              <Edit2 size={10} />
-                            </button>
-                          </div>
-                        )}
-                      </td>
+                       <td className="py-2.5 px-3">
+                         <div className="flex items-center gap-1.5">
+                           <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-emerald-400" />
+                           <span
+                             className="text-emerald-300 font-medium truncate max-w-[220px]"
+                             title={track.folder7File}
+                           >
+                             {track.folder7File}
+                           </span>
+                         </div>
+                       </td>
 
-                      {/* 4. GPS Points */}
-                      <td className="py-2.5 px-3 text-zinc-200">
-                        {track.pointCount.toLocaleString()} POI
-                      </td>
+                        <td className="py-2.5 px-3 text-zinc-200">
+                         {track.pointCount.toLocaleString()} POI
+                       </td>
 
                       {/* 5. GPS Bounds & Precision */}
                       <td className="py-2.5 px-3">
@@ -613,7 +503,7 @@ export const DatasetsPanel: React.FC<DatasetsPanelProps> = ({
                       {/* 6. Camera Model */}
                       <td className="py-2.5 px-3 text-[10px]">
                         <div className="text-zinc-100 font-bold font-mono text-[11px]">
-                          {track.cameraModel}
+                           {track.cameraModel || '—'}
                         </div>
                         <div className="text-zinc-500 font-sans mt-0.5">{track.startTime || '—'} → {track.endTime || '—'}</div>
                       </td>
@@ -638,8 +528,19 @@ export const DatasetsPanel: React.FC<DatasetsPanelProps> = ({
                       {/* 8. Actions */}
                       <td className="py-2.5 px-3 text-right">
                         <div className="flex items-center justify-end gap-1 font-sans">
-                          <button
-                            onClick={() => setSelectedTrack(track)}
+                           {onOpenRelease && (
+                             <button
+                               onClick={() => onOpenRelease(track)}
+                               className="flex items-center gap-1 px-2 py-1 bg-inner border border-subtle hover:bg-white/5 text-zinc-200 text-[10px] font-medium rounded transition-colors cursor-pointer"
+                               title="Prepare the subgrid-named release"
+                             >
+                               <PackageCheck size={11} className="text-emerald-400" />
+                               <span>Release</span>
+                             </button>
+                           )}
+
+                           <button
+                             onClick={() => setSelectedTrack(track)}
                             className="flex items-center gap-1 px-2 py-1 bg-inner border border-subtle hover:bg-white/5 text-zinc-200 text-[10px] font-medium rounded transition-colors cursor-pointer"
                             title="Inspect 8-Column CSV Trajectory Table"
                           >

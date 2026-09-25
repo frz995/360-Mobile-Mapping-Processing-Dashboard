@@ -200,13 +200,54 @@ export function formatDateTime(iso?: string | null): string {
   }
 }
 
+const EARTH_RADIUS_M = 6371008.8;
+const toRadians = (deg: number) => (deg * Math.PI) / 180;
+
+/** Great-circle distance in metres, or null when a coordinate is unusable. */
+export function haversineMeters(
+  aLat: number,
+  aLon: number,
+  bLat: number,
+  bLon: number
+): number | null {
+  if (![aLat, aLon, bLat, bLon].every((v) => typeof v === 'number' && Number.isFinite(v))) return null;
+  const dLat = toRadians(bLat - aLat);
+  const dLon = toRadians(bLon - aLon);
+  const h =
+    Math.sin(dLat / 2) ** 2 + Math.cos(toRadians(aLat)) * Math.cos(toRadians(bLat)) * Math.sin(dLon / 2) ** 2;
+  return 2 * EARTH_RADIUS_M * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
+/**
+ * Summed track length over an ordered coordinate list, in metres. Returns null
+ * when fewer than two usable points exist, so callers can report "not
+ * computable" instead of a per-frame distance constant.
+ */
+export function trackLengthMeters(
+  points: Array<{ latitude: number; longitude: number }>
+): number | null {
+  if (points.length < 2) return null;
+  let total = 0;
+  for (let i = 1; i < points.length; i += 1) {
+    const leg = haversineMeters(
+      points[i - 1].latitude,
+      points[i - 1].longitude,
+      points[i].latitude,
+      points[i].longitude
+    );
+    if (leg !== null) total += leg;
+  }
+  return total;
+}
+
 export const PRODUCTION_TAB_LABELS: Record<string, string> = {
   pipeline: 'productionTabPipeline',
   datasets: 'productionTabDatasets',
   providers: 'productionTabProviders',
   preview: 'productionTabPreview',
   enhance: 'productionTabEnhance',
-  masking: 'productionTabMasking'
+  masking: 'productionTabMasking',
+  release: 'productionTabRelease'
 };
 
 export const JOB_TYPE_OPTIONS = [

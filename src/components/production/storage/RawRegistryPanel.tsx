@@ -133,9 +133,9 @@ export const RawRegistryPanel: React.FC<RawRegistryPanelProps> = ({ api, dataset
 
   const statusFor = (row: MaturityRow): { label: string; cls: string } => {
     const m = maturity(row);
-    if (m <= 0) return { label: 'Not captured', cls: 'text-rose-300 bg-rose-500/10 border-rose-500/30' };
-    if (m >= 1) return { label: 'Complete', cls: 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30' };
-    return { label: 'In progress', cls: 'text-amber-300 bg-amber-500/10 border-amber-500/30' };
+    if (m <= 0) return { label: 'Not captured', cls: 'text-rose-300' };
+    if (m >= 1) return { label: 'Complete', cls: 'text-emerald-300' };
+    return { label: 'In progress', cls: 'text-amber-300' };
   };
 
   const cell = (count?: number, bytes?: number) =>
@@ -216,11 +216,11 @@ export const RawRegistryPanel: React.FC<RawRegistryPanelProps> = ({ api, dataset
                       </td>
                       <td className="px-3.5 py-2.5">
                         <div className="flex items-center gap-2">
-                          <div className="h-1.5 flex-1 bg-black/40 rounded-full overflow-hidden">
+                          <div className="h-1.5 flex-1 bg-inner rounded-full overflow-hidden border border-subtle">
                             <div className="h-full rounded-full bg-sky-400 transition-all duration-500"
                               style={{ width: `${maturity(row) * 100}%` }} />
                           </div>
-                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border whitespace-nowrap ${st.cls}`}>
+                          <span className={`text-[10px] font-bold whitespace-nowrap ${st.cls}`}>
                             {st.label}
                           </span>
                         </div>

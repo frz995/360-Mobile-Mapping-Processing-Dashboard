@@ -83,6 +83,10 @@ export function isExplicitRoute(): boolean {
   return Boolean(readLegacyHash(window.location.hash));
 }
 
+export function getSubgridQuery(search = typeof window === 'undefined' ? '' : window.location.search): string {
+  return new URLSearchParams(search).get('subgrid') || '';
+}
+
 function buildHref(key: WorkspaceKey, query?: WorkspacePathQuery): string {
   const suffix = query ? `?${new URLSearchParams(query).toString()}` : '';
   return `/${key}${suffix}`;

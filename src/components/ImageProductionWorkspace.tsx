@@ -6,7 +6,8 @@ import {
   HardDrive,
   Eye,
   Sparkles,
-  Eraser
+  Eraser,
+  PackageCheck
 } from 'lucide-react';
 import {
   fetchDatasetsFromSupabase,
@@ -21,7 +22,7 @@ import type {
   ProductionTab
 } from '../types/production';
 import { startJobPolling } from '../utils/productionQueue';
-import { aggregateStagingBySubgrid } from '../utils/datasetLineage';
+import { aggregateStagingBySubgrid, extractCanonicalSubgrid } from '../utils/datasetLineage';
 import type { StagingAggregate } from '../utils/datasetLineage';
 import { UnderlineTabStrip, type ChromeTab } from './production/chrome';
 import {
@@ -29,11 +30,12 @@ import {
   PRODUCTION_TAB_LABELS
 } from './production/common';
 import { PipelinePanel } from './production/PipelinePanel';
-import { DatasetsPanel } from './production/DatasetsPanel';
+import { DatasetsPanel, type PanotrackTrackSummary } from './production/DatasetsPanel';
 import { ProvidersPanel } from './production/ProvidersPanel';
 import { PreviewPanel } from './production/PreviewPanel';
 import { EnhancementPanel } from './production/EnhancementPanel';
 import { MaskingPanel } from './production/MaskingPanel';
+import { ReleasePanel } from './production/ReleasePanel';
 import { JobDetailsDrawer } from './production/processing/JobDetailsDrawer';
 
 export interface ImageProductionWorkspaceProps {
@@ -44,6 +46,7 @@ export interface ImageProductionWorkspaceProps {
   addNotification?: (item: any) => void;
   addAuditLog?: (type: any, title: string, details: string, status?: any) => void;
   onBackToDashboard?: () => void;
+  onOpenDataManagement?: (subgrid?: string) => void;
   translate?: (key: string) => string;
 }
 
@@ -53,7 +56,8 @@ const TABS: Array<ChromeTab<ProductionTab>> = [
   { key: 'providers', icon: <HardDrive size={14} /> },
   { key: 'preview', icon: <Eye size={14} /> },
   { key: 'enhance', icon: <Sparkles size={14} /> },
-  { key: 'masking', icon: <Eraser size={14} /> }
+  { key: 'masking', icon: <Eraser size={14} /> },
+  { key: 'release', icon: <PackageCheck size={14} /> }
 ];
 
 export const ImageProductionWorkspace: React.FC<ImageProductionWorkspaceProps> = ({
@@ -64,10 +68,11 @@ export const ImageProductionWorkspace: React.FC<ImageProductionWorkspaceProps> =
   addNotification,
   addAuditLog,
   onBackToDashboard: _onBackToDashboard,
+  onOpenDataManagement,
   translate = (k) => k
 }) => {
   const [activeTab, setActiveTab] = useState<ProductionTab>(() => {
-    const productionTabs = ['pipeline', 'datasets', 'providers', 'preview', 'enhance', 'masking'] as const;
+    const productionTabs = ['pipeline', 'datasets', 'providers', 'preview', 'enhance', 'masking', 'release'] as const;
     return restoreWorkspaceTab<typeof productionTabs[number]>('production', productionTabs) ?? 'pipeline';
   });
   useEffect(() => {
@@ -77,6 +82,7 @@ export const ImageProductionWorkspace: React.FC<ImageProductionWorkspaceProps> =
   const [jobs, setJobs] = useState<ProcessingJobRecord[]>([]);
   const [stagingRows, setStagingRows] = useState<any[]>([]);
   const [selectedJob, setSelectedJob] = useState<ProcessingJobRecord | null>(null);
+  const [releaseSeed, setReleaseSeed] = useState<{ subgrid?: string; captureDate?: string }>({});
   const pollStopRef = useRef<(() => void) | null>(null);
 
   const api: ProductionApiClient = useMemo(
@@ -126,6 +132,14 @@ export const ImageProductionWorkspace: React.FC<ImageProductionWorkspaceProps> =
     authSession?.user?.email || authSession?.user?.user_metadata?.full_name || 'Operator';
   const userLabel = isGuestUser ? 'Guest' : userEmail;
 
+  const openRelease = (track: PanotrackTrackSummary) => {
+    setReleaseSeed({
+      subgrid: extractCanonicalSubgrid(track.subgrid),
+      captureDate: track.surveyDate
+    });
+    setActiveTab('release');
+  };
+
   return (
     <div className="flex-1 flex flex-col min-h-0 md:overflow-hidden animate-in fade-in duration-500">
       <div className="flex-1 flex flex-col gap-3 min-h-0 md:overflow-y-auto p-4">
@@ -169,22 +183,23 @@ export const ImageProductionWorkspace: React.FC<ImageProductionWorkspaceProps> =
                 onOpenJobDetails={setSelectedJob}
               />
             )}
-            {activeTab === 'datasets' && (
-              <DatasetsPanel
-                datasets={datasets}
-                stagingRows={stagingRows}
-                stagingAggregates={stagingAggregates}
-                jobs={jobs}
-                api={api}
-                translate={translate}
-                isGuestUser={isGuestUser}
-                onRefreshDatasets={refreshDatasets}
-                onAddNotification={addNotification}
-                onAddAuditLog={addAuditLog}
-                userLabel={userLabel}
-              />
-            )}
-            {activeTab === 'providers' && (
+             {activeTab === 'datasets' && (
+               <DatasetsPanel
+                 datasets={datasets}
+                 stagingRows={stagingRows}
+                 stagingAggregates={stagingAggregates}
+                 jobs={jobs}
+                 api={api}
+                 translate={translate}
+                 isGuestUser={isGuestUser}
+                 onRefreshDatasets={refreshDatasets}
+                 onAddNotification={addNotification}
+                 onAddAuditLog={addAuditLog}
+                 onOpenRelease={openRelease}
+                 userLabel={userLabel}
+               />
+             )}
+             {activeTab === 'providers' && (
               <ProvidersPanel
                 projectSettings={projectSettings}
                 setProjectSettings={setProjectSettings}
@@ -216,20 +231,32 @@ export const ImageProductionWorkspace: React.FC<ImageProductionWorkspaceProps> =
                 userLabel={userLabel}
               />
             )}
-            {activeTab === 'masking' && (
-              <MaskingPanel
-                datasets={datasets}
-                api={api}
-                projectSettings={projectSettings}
-                translate={translate}
-                isGuestUser={isGuestUser}
-                onRefreshJobs={refreshJobs}
-                onAddNotification={addNotification}
-                onAddAuditLog={addAuditLog}
-                userLabel={userLabel}
-              />
-            )}
-          </div>
+             {activeTab === 'masking' && (
+               <MaskingPanel
+                 datasets={datasets}
+                 api={api}
+                 projectSettings={projectSettings}
+                 translate={translate}
+                 isGuestUser={isGuestUser}
+                 onRefreshJobs={refreshJobs}
+                 onAddNotification={addNotification}
+                 onAddAuditLog={addAuditLog}
+                 userLabel={userLabel}
+               />
+             )}
+             {activeTab === 'release' && (
+               <ReleasePanel
+                 api={api}
+                 datasets={datasets}
+                 userLabel={userLabel}
+                 initialSubgrid={releaseSeed.subgrid}
+                 initialCaptureDate={releaseSeed.captureDate}
+                 onOpenDataManagement={onOpenDataManagement}
+                 onAddNotification={addNotification}
+                 onAddAuditLog={addAuditLog}
+               />
+             )}
+           </div>
         </div>
       </div>
 

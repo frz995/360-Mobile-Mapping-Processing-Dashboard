@@ -1,9 +1,9 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-function devRoadExtractionPlugin() {
+function devApiPlugin() {
   return {
-    name: 'dev-road-extraction-plugin',
+    name: 'dev-api-plugin',
     configureServer(server: any) {
       server.middlewares.use(async (req: any, res: any, next: any) => {
         if (req.url && req.url.startsWith('/api/road-extraction')) {
@@ -18,6 +18,20 @@ function devRoadExtractionPlugin() {
           }
           return;
         }
+
+        if (req.url && req.url.startsWith('/api/nas-scan')) {
+          try {
+            // @ts-ignore
+            const { default: handler } = await import('./api/nas-scan.js');
+            await handler(req, res);
+          } catch (err: any) {
+            res.statusCode = 500;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ error: err.message }));
+          }
+          return;
+        }
+
         next();
       });
     }
@@ -26,7 +40,7 @@ function devRoadExtractionPlugin() {
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [react(), devRoadExtractionPlugin()],
+  plugins: [react(), devApiPlugin()],
   build: {
     rollupOptions: {
       output: {

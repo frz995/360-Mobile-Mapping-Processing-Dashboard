@@ -5,6 +5,7 @@ import {
   replaceWorkspace,
   subscribeWorkspace,
   isExplicitRoute,
+  getSubgridQuery,
   DEFAULT_WORKSPACE,
   WORKSPACE_KEYS
 } from '../urlRouter';
@@ -53,6 +54,13 @@ describe('urlRouter', () => {
   it('handles query parameters cleanly', () => {
     expect(parseWorkspace('/roadAnalysis?tab=compare&subgrid=SG01')).toBe('roadAnalysis');
     expect(parseWorkspace('/data?filter=active')).toBe('data');
+  });
+
+  it('reads and clears the subgrid query value', () => {
+    expect(getSubgridQuery('?subgrid=N93E70')).toBe('N93E70');
+    expect(getSubgridQuery('?filter=active&subgrid=SG02')).toBe('SG02');
+    expect(getSubgridQuery('?subgrid=')).toBe('');
+    expect(getSubgridQuery('?filter=active')).toBe('');
   });
 
   it('falls back to DEFAULT_WORKSPACE for unknown routes', () => {
@@ -130,6 +138,13 @@ describe('urlRouter', () => {
       expect(window.location.search).toBe('?subgrid=N93E70');
     });
 
+    it('clears query parameters when replacing a workspace without a query', () => {
+      pushWorkspace('data', { subgrid: 'N93E70' })
+      replaceWorkspace('dashboard')
+      expect(window.location.pathname).toBe('/dashboard')
+      expect(window.location.search).toBe('')
+    })
+
     it('replaces the current entry and notifies listeners', () => {
       const listener = vi.fn();
       const unsubscribe = subscribeWorkspace(listener);
@@ -159,6 +174,21 @@ describe('urlRouter', () => {
       window.dispatchEvent(new PopStateEvent('popstate', { state: null }));
 
       expect(listener).toHaveBeenCalledWith('reports');
+
+      unsubscribe();
+    });
+
+    it('re-reads the subgrid query on popstate', () => {
+      const listener = vi.fn();
+      const unsubscribe = subscribeWorkspace(() => listener(getSubgridQuery()));
+
+      window.history.pushState({}, '', '/data?subgrid=N93E70');
+      window.dispatchEvent(new PopStateEvent('popstate', { state: null }));
+      expect(listener).toHaveBeenLastCalledWith('N93E70');
+
+      window.history.pushState({}, '', '/data');
+      window.dispatchEvent(new PopStateEvent('popstate', { state: null }));
+      expect(listener).toHaveBeenLastCalledWith('');
 
       unsubscribe();
     });

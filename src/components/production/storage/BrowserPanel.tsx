@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   ChevronRight,
-  ChevronDown,
   Folder,
   FolderOpen,
   Image as ImageIcon,
@@ -9,14 +8,13 @@ import {
   RefreshCw,
   Loader2,
   Eye,
-  FolderPlus,
-  CheckCircle2,
-  Home
+  Home,
+  ArrowRight
 } from 'lucide-react';
 import type { ProductionApiClient } from '../../../services/productionApi';
-import { fetchDatasetsFromSupabase, saveDatasetToSupabase } from '../../../services/supabase';
 import type { NasFolderEntry, NasFolderListing } from '../../../types/production';
 import { formatBytes, guessSubgridFromPath } from './storageCommon';
+import { TextAction } from '../chrome';
 
 export interface BrowserPanelProps {
   api: ProductionApiClient;
@@ -25,7 +23,7 @@ export interface BrowserPanelProps {
   isGuestUser?: boolean;
   onAddNotification?: (item: any) => void;
   onAddAuditLog?: (type: any, title: string, details: string, status?: any) => void;
-  onDatasetChanged?: () => void;
+  onOpenProductionHub?: (path: string, subgrid?: string) => void;
   userLabel: string;
   initialPath?: string;
 }
@@ -37,18 +35,10 @@ function isPreviewable(name: string): boolean {
   return PREVIEW_EXT.has('.' + lower.split('.').pop());
 }
 
-function normalizeFolderPath(p?: string): string {
-  return (p || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
-}
-
 export const BrowserPanel: React.FC<BrowserPanelProps> = ({
   api,
   projectSettings,
-  isGuestUser,
-  onAddNotification,
-  onAddAuditLog,
-  onDatasetChanged,
-  userLabel,
+  onOpenProductionHub,
   initialPath
 }) => {
   const [stack, setStack] = useState<string[]>(
@@ -60,29 +50,7 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
   const [listing, setListing] = useState<NasFolderListing | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<NasFolderEntry | null>(null);
-  const [registering, setRegistering] = useState(false);
-  const [registeredPaths, setRegisteredPaths] = useState<Set<string>>(new Set());
-
-  // Folders that have already been registered as datasets (by source_folder)
-  // so the "Register as Dataset" action is not shown twice for the same path.
-  const refreshRegisteredPaths = useCallback(async () => {
-    try {
-      const datasets = await fetchDatasetsFromSupabase();
-      setRegisteredPaths(new Set(
-        (datasets || [])
-          .map((d: any) => normalizeFolderPath(d?.source_folder))
-          .filter(Boolean)
-      ));
-    } catch (_) {
-      // Non-fatal: registry just stays empty until the next refresh.
-    }
-  }, []);
-
-  useEffect(() => {
-    refreshRegisteredPaths();
-  }, [refreshRegisteredPaths]);
 
   const currentPath = stack.join('/');
 
@@ -111,11 +79,6 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
 
   const openDir = (entry: NasFolderEntry) => {
     setStack((s) => [...s, entry.name]);
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      next.add(`${stack.join('/')}/${entry.name}`.replace(/^\/+/, ''));
-      return next;
-    });
     setSelected(null);
   };
 
@@ -136,46 +99,28 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
         return base ? `${base}/${pfx}` : pfx;
       })();
 
-  const handleRegister = async (entry: NasFolderEntry) => {
-    if (isGuestUser || registering) return;
-    setRegistering(true);
-    const subgrid = guessSubgridFromPath(entry.path);
-    const isRawPath = entry.path.toUpperCase().includes('/RAW') || entry.path.toUpperCase().startsWith('RAW');
-    const dataset = await saveDatasetToSupabase({
-      dataset_type: isRawPath ? 'RAW' : 'PROCESSED',
-      pipeline_stage: 'STITCH',
-      name: entry.name,
-      subgrid: subgrid || undefined,
-      provider: isRawPath ? 'MMS Field Intake' : 'NAS Storage Manager',
-      source_folder: entry.path,
-      storage_provider: projectSettings?.storageProvider || 'nas',
-      file_count: entry.fileCount,
-      size_bytes: entry.sizeBytes,
-      status: 'REGISTERED',
-      created_by: userLabel,
-      metadata: { source: 'folder-register', path: entry.path, intakeTier: isRawPath ? 'RAW' : 'PROCESSED' }
-    });
-    setRegistering(false);
-    onDatasetChanged?.();
-    if (dataset) {
-      refreshRegisteredPaths();
-      onAddNotification?.({ title: `Dataset registered`, message: `${entry.name} [${dataset.dataset_type}] (${subgrid || 'no subgrid'}) indexed from ${entry.path}.`, category: 'SYSTEM' });
-      onAddAuditLog?.('CREATE', `Dataset ${entry.name}`, `Registered ${dataset.dataset_type} from ${entry.path} (${entry.fileCount || 0} files)`, 'COMPLETED');
-    } else {
-      onAddNotification?.({ title: `Register failed`, message: `Could not register ${entry.name}.`, category: 'ERROR' });
-    }
-  };
 
-  const toggleExpand = (entry: NasFolderEntry) => {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      const p = `${stack.join('/')}/${entry.name}`.replace(/^\/+/, '');
-      if (next.has(p)) next.delete(p);
-      else next.add(p);
-      return next;
-    });
-  };  return (
-    <div className="space-y-4 animate-in fade-in font-sans">
+  return (
+    <div className="space-y-3 animate-in fade-in font-sans">
+      {/* Pipeline Stage Quick Jumps */}
+      <div className="flex items-center justify-between flex-wrap gap-2 pb-2 border-b border-subtle">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-[10px] uppercase font-bold text-text-muted">Pipeline Folders:</span>
+          {['00_Raw_data', '01_Metadata', '02_Blurring', '03_Stitching', '04_Enhanced', '05_Final'].map((st) => (
+            <TextAction
+              key={st}
+              onClick={() => {
+                setStack([st]);
+                setSelected(null);
+              }}
+              title={`Jump to ${st}`}
+            >
+              <span className={`font-mono ${stack[0] === st ? 'text-text-base font-semibold' : ''}`}>{st}</span>
+            </TextAction>
+          ))}
+        </div>
+      </div>
+
       {/* Header with bottom divider line matching RBAC */}
       <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-subtle">
         <div className="flex items-center gap-1.5 flex-wrap">
@@ -199,14 +144,14 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
             </React.Fragment>
           ))}
         </div>
-        <button
+        <TextAction
+          icon={<RefreshCw size={11} className={loading ? 'animate-spin' : ''} />}
           onClick={() => navigate(currentPath)}
           disabled={loading}
-          className="px-3 py-1.5 bg-inner hover:bg-card border border-subtle rounded-lg text-xs font-semibold text-text-base flex items-center gap-1.5 cursor-pointer transition-all shadow-sm"
+          title="Re-list the current directory"
         >
-          <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
-          <span>Refresh Directory</span>
-        </button>
+          Refresh
+        </TextAction>
       </div>
 
       {error && <p className="text-xs text-amber-300">{error}</p>}
@@ -226,14 +171,11 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
                     <th className="px-3.5 py-2.5">Name</th>
                     <th className="px-3.5 py-2.5 text-right w-24">Files</th>
                     <th className="px-3.5 py-2.5 text-right w-28">Total Size</th>
-                    <th className="px-3.5 py-2.5 text-right w-24">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-subtle/80">
                   {listing?.entries.map((entry) => {
                     const isSel = selected?.path === entry.path;
-                    const p = `${stack.join('/')}/${entry.name}`.replace(/^\/+/, '');
-                    const isExp = expanded.has(p);
                     return (
                       <tr
                         key={entry.path}
@@ -248,13 +190,14 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                toggleExpand(entry);
+                                openDir(entry);
                               }}
+                              title={`Open ${entry.name}/`}
                               className="flex items-center gap-1.5 text-left cursor-pointer transition-colors"
                             >
-                              {isExp ? <ChevronDown size={12} className="text-text-muted" /> : <ChevronRight size={12} className="text-text-muted" />}
+                              <ChevronRight size={12} className="text-text-muted" />
                               <FolderOpen size={13} className="text-zinc-400" />
-                              <span className="font-semibold text-text-base">{entry.name}/</span>
+                              <span className="font-semibold text-text-base hover:underline">{entry.name}/</span>
                             </button>
                           ) : isPreviewable(entry.name) ? (
                             <span className="flex items-center gap-1.5">
@@ -274,29 +217,14 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
                         <td className="px-3.5 py-2.5 text-right font-mono text-text-muted">
                           {formatBytes(entry.sizeBytes)}
                         </td>
-                        <td className="px-3.5 py-2.5 text-right">
-                          {entry.isDirectory && (
-                            <div className="flex items-center justify-end gap-1">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  openDir(entry);
-                                }}
-                                className="px-2 py-1 rounded bg-inner hover:bg-card border border-subtle text-text-base text-[10px] font-semibold uppercase cursor-pointer transition-colors"
-                              >
-                                Open
-                              </button>
-                            </div>
-                          )}
-                        </td>
                       </tr>
                     );
                   })}
                   {listing && listing.entries.length === 0 && (
-                    <tr><td colSpan={4} className="py-12 text-center text-xs text-text-muted">Empty folder.</td></tr>
+                    <tr><td colSpan={3} className="py-12 text-center text-xs text-text-muted">Empty folder.</td></tr>
                   )}
                   {!listing && !loading && (
-                    <tr><td colSpan={4} className="py-12 text-center text-xs text-text-muted">No directory listing available.</td></tr>
+                    <tr><td colSpan={3} className="py-12 text-center text-xs text-text-muted">No directory listing available.</td></tr>
                   )}
                 </tbody>
               </table>
@@ -322,30 +250,13 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
               <div className="text-[11px] text-text-muted mt-2 font-mono">
                 {selected.fileCount?.toLocaleString?.() || selected.fileCount || 0} files · {formatBytes(selected.sizeBytes)}
               </div>
-              {!isGuestUser && (() => {
-                const isRegistered = registeredPaths.has(normalizeFolderPath(selected.path));
-                if (isRegistered) {
-                  return (
-                    <div className="mt-3 w-full flex items-center justify-center gap-1.5 px-3.5 py-2 bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-bold rounded-lg">
-                      <CheckCircle2 size={12} />
-                      <span>Registered as Dataset</span>
-                    </div>
-                  );
-                }
-                return (
-                  <button
-                    onClick={() => handleRegister(selected)}
-                    disabled={registering}
-                    className="mt-3 w-full flex items-center justify-center gap-1.5 px-3.5 py-2 bg-sky-500 hover:bg-sky-400 text-slate-950 text-xs font-bold rounded-lg transition-colors cursor-pointer disabled:opacity-50 shadow-sm"
-                  >
-                    {registering ? <Loader2 size={12} className="animate-spin" /> : <FolderPlus size={12} />}
-                    <span>Register as Dataset</span>
-                  </button>
-                );
-              })()}
-              {isGuestUser && (
-                <p className="text-[10px] text-amber-300 mt-2">Guest read-only: registration disabled.</p>
-              )}
+              <button
+                onClick={() => onOpenProductionHub?.(selected.path, guessSubgridFromPath(selected.path))}
+                className="mt-3 w-full flex items-center justify-center gap-1.5 px-3.5 py-2 bg-text-base text-card hover:opacity-90 text-xs font-semibold rounded-lg transition-all cursor-pointer shadow-sm"
+              >
+                <span>Load in Production Hub</span>
+                <ArrowRight size={13} />
+              </button>
             </div>
           ) : selected ? (
             <div className="border border-subtle rounded-lg overflow-hidden bg-inner/40 p-4">
@@ -371,7 +282,7 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
             </div>
           ) : (
             <div className="border border-subtle rounded-lg overflow-hidden bg-inner/40 p-4 text-xs text-text-muted">
-              Select a file or folder to inspect properties or register as a dataset.
+              Select a file or folder to inspect properties or load into Production Hub.
             </div>
           )}
         </div>

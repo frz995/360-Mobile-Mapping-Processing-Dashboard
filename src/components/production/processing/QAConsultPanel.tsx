@@ -5,6 +5,7 @@ import type { ProductionApiClient } from '../../../services/productionApi';
 import {
   saveDatasetToSupabase,
   saveProcessingJobToSupabase,
+  syncProductionAttemptForQaDecision,
   updateProcessingJobQaInSupabase
 } from '../../../services/supabase';
 import type { DatasetRecord, ProcessingJobRecord } from '../../../types/production';
@@ -136,6 +137,26 @@ export const QAConsultPanel: React.FC<QAConsultPanelProps> = ({
       status: decision
     });
     if (ok) {
+      try {
+        const attempt = await syncProductionAttemptForQaDecision(selected.id, decision);
+        if (attempt) {
+          onAddAuditLog?.(
+            'EDIT',
+            `Attempt ${attempt.attempt_number} QA status updated`,
+            `Production attempt ${attempt.id} marked ${decision} from QA job ${selected.id}.`,
+            decision === 'APPROVED' ? 'success' : 'warning'
+          );
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        onAddNotification?.({
+          title: 'QA decision saved without release lineage',
+          message,
+          category: 'WARNING',
+          read: false
+        });
+      }
+
       // APPROVED -> promote the matched PROCESSED dataset to a DELIVERABLE
       // (created as a new version, superseding any prior DELIVERABLE).
       if (decision === 'APPROVED') {

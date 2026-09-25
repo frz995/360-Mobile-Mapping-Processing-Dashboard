@@ -5,6 +5,7 @@ import type { DatasetRecord, ProcessedOutputValidationResult } from '../../../ty
 import { extractCanonicalSubgrid } from '../../../utils/datasetLineage';
 import { validateProcessedOutput, generateExpectedFilenames } from '../../../utils/processedOutputValidation';
 import { formatBytes } from './storageCommon';
+import { MetaList, TextAction } from '../chrome';
 
 export interface ValidationPanelProps {
   api: ProductionApiClient;
@@ -26,7 +27,7 @@ export const ValidationPanel: React.FC<ValidationPanelProps> = ({ api, datasets 
   }, [datasets]);
 
   const [subgrid, setSubgrid] = useState('');
-  const [folder, setFolder] = useState('PROCESSED');
+  const [folder, setFolder] = useState('03_Stitching');
   const [expectedCount, setExpectedCount] = useState<number>(0);
   const [result, setResult] = useState<ProcessedOutputValidationResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -34,7 +35,7 @@ export const ValidationPanel: React.FC<ValidationPanelProps> = ({ api, datasets 
 
   const run = async () => {
     if (!subgrid) {
-      setError('Select a subgrid to validate.');
+      setError('Enter a subgrid to validate.');
       return;
     }
     setLoading(true);
@@ -58,7 +59,9 @@ export const ValidationPanel: React.FC<ValidationPanelProps> = ({ api, datasets 
   };
 
   useEffect(() => {
-    setSubgrid((s) => s || subgrids[0] || '');
+    if (subgrids.length > 0 && !subgrid) {
+      setSubgrid(subgrids[0]);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [subgrids]);
 
@@ -68,43 +71,45 @@ export const ValidationPanel: React.FC<ValidationPanelProps> = ({ api, datasets 
       <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-subtle">
         <div>
           <h3 className="text-sm font-bold text-text-base flex items-center gap-2">
-            <ShieldCheck size={16} className="text-sky-400" />
+            <ShieldCheck size={16} className="text-zinc-400" />
             Output Validation Spot-Check
           </h3>
           <p className="text-xs text-text-muted mt-0.5">
             Validate subgrid directory completeness and frame sequences against storage.
           </p>
         </div>
-        <button
+        <TextAction
           onClick={run}
           disabled={loading}
-          className="px-3.5 py-1.5 bg-sky-500 hover:bg-sky-400 text-slate-950 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all shadow-sm disabled:opacity-50"
+          title="Re-check the selected folder against the expected sequence"
         >
-          {loading ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
-          <span>Validate Folder</span>
-        </button>
+          {loading ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
+          Validate Folder
+        </TextAction>
       </div>
 
       {/* Filter and Selection Row (RBAC Search Row Style) */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <label className="flex flex-col gap-1">
-          <span className="text-[10px] uppercase tracking-wider font-semibold text-text-muted">Subgrid (Recorded)</span>
-          <select value={subgrid} onChange={(e) => setSubgrid(e.target.value)} className={INPUT_CLASS}>
-            <option value="">— Select Subgrid —</option>
-            {subgrids.map((sg) => (
-              <option key={sg} value={sg}>{sg}</option>
-            ))}
-          </select>
+          <span className="text-[10px] uppercase tracking-wider font-semibold text-text-muted">Subgrid Target</span>
+          <input
+            type="text"
+            value={subgrid}
+            onChange={(e) => setSubgrid(e.target.value.toUpperCase().trim())}
+            placeholder="e.g. N93E70"
+            className={INPUT_CLASS}
+          />
         </label>
         <label className="flex flex-col gap-1">
           <span className="text-[10px] uppercase tracking-wider font-semibold text-text-muted">Folder Stage</span>
           <select value={folder} onChange={(e) => setFolder(e.target.value)} className={INPUT_CLASS}>
-            <option value="PROCESSED">PROCESSED (PC 4 Photoshop)</option>
-            <option value="ENHANCED">ENHANCED (PC 3 Lightroom)</option>
-            <option value="STITCHED">STITCHED (PC 2 Stitch)</option>
-            <option value="BLURRED">BLURRED (PC 1 Blur)</option>
-            <option value="RAW">RAW</option>
-            <option value="DELIVERABLES">DELIVERABLES</option>
+            <option value="03_Stitching">03_Stitching (Stitched Panoramas)</option>
+            <option value="05_Final">05_Final (Delivered Panoramas)</option>
+            <option value="04_Enhanced">04_Enhanced (Color Graded)</option>
+            <option value="02_Blurring">02_Blurring (Blurred Fisheye)</option>
+            <option value="00_Raw_data">00_Raw_data (Raw Multi-lens)</option>
+            <option value="01_Metadata">01_Metadata (Survey CSVs)</option>
+            <option value="PROCESSED">PROCESSED (Legacy Output)</option>
           </select>
         </label>
         <label className="flex flex-col gap-1">
@@ -125,8 +130,8 @@ export const ValidationPanel: React.FC<ValidationPanelProps> = ({ api, datasets 
       {result && (
         <div className="border border-subtle rounded-lg overflow-hidden flex flex-col">
           <div className="px-3.5 py-2.5 bg-app border-b border-subtle flex items-center justify-between gap-3 flex-wrap">
-            <div className={`flex items-center gap-1.5 text-xs font-bold ${result.ok ? 'text-emerald-300' : 'text-rose-300'}`}>
-              {result.ok ? <CheckCircle2 size={14} /> : <XCircle size={14} />}
+            <div className={`flex items-center gap-1.5 text-xs font-semibold ${result.ok ? 'text-emerald-400' : 'text-rose-400'}`}>
+              {result.ok ? <CheckCircle2 size={14} className="text-emerald-500" /> : <XCircle size={14} className="text-rose-400" />}
               <span>{result.ok ? 'Folder Validated — Matches Expected Sequence' : 'Validation Issues Found'}</span>
             </div>
             <div className="text-[11px] font-mono text-text-muted">
@@ -134,19 +139,19 @@ export const ValidationPanel: React.FC<ValidationPanelProps> = ({ api, datasets 
             </div>
           </div>
 
-          <div className="p-3.5 bg-inner/40 grid grid-cols-2 sm:grid-cols-4 gap-3 border-b border-subtle">
-            {[
-              { label: 'Expected', value: result.expectedCount.toLocaleString() },
-              { label: 'Found', value: result.foundCount.toLocaleString() },
-              { label: 'Valid', value: result.validCount.toLocaleString() },
-              { label: 'Total Size', value: formatBytes(result.totalSizeBytes) }
-            ].map((k) => (
-              <div key={k.label} className="bg-card border border-subtle rounded-lg p-2.5">
-                <div className="text-[10px] text-text-muted uppercase tracking-wider font-semibold">{k.label}</div>
-                <div className="text-sm font-bold text-text-base mt-0.5 font-mono">{k.value}</div>
-              </div>
-            ))}
-          </div>
+          <MetaList
+            items={[
+              {
+                key: 'expected',
+                label: 'Expected',
+                value: <span className="font-mono">{result.expectedCount.toLocaleString()}</span>
+              },
+              { key: 'found', label: 'Found', value: <span className="font-mono">{result.foundCount.toLocaleString()}</span> },
+              { key: 'valid', label: 'Valid', value: <span className="font-mono">{result.validCount.toLocaleString()}</span> },
+              { key: 'size', label: 'Total Size', value: <span className="font-mono">{formatBytes(result.totalSizeBytes)}</span> }
+            ]}
+          />
+          <div className="mt-2.5" />
 
           {result.issues.length > 0 && (
             <div className="p-3.5 bg-amber-500/5 border-b border-subtle">

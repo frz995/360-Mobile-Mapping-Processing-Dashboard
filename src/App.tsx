@@ -77,8 +77,8 @@ import { WorkspaceRouter } from './components/navigation/WorkspaceRouter';
 import { AboutPlatformModal } from './components/modals/AboutPlatformModal';
 import { DashboardKpiSummary } from './components/dashboard/DashboardKpiSummary';
 import { DashboardBatchTable } from './components/dashboard/DashboardBatchTable';
-import { parseWorkspace, pushWorkspace, replaceWorkspace, subscribeWorkspace, isExplicitRoute } from './utils/urlRouter';
-import type { WorkspaceKey } from './utils/urlRouter';
+import { parseWorkspace, pushWorkspace, replaceWorkspace, subscribeWorkspace, isExplicitRoute, getSubgridQuery } from './utils/urlRouter';
+import type { WorkspaceKey, WorkspacePathQuery } from './utils/urlRouter';
 import {
   getStoredWorkspaceKey,
   setStoredWorkspaceKey,
@@ -220,7 +220,7 @@ export default function App() {
     const dataTabs = ['batches', 'daily', 'datasets', 'recovery'] as const;
     return restoreWorkspaceTab<typeof dataTabs[number]>('data', dataTabs) ?? 'batches';
   });
-  const [dataManagementSearch, setDataManagementSearch] = useState<string>('');
+  const [dataManagementSearch, setDataManagementSearch] = useState<string>(() => getSubgridQuery());
 
   useEffect(() => {
     persistWorkspaceTab('data', dataManagementTab);
@@ -332,7 +332,7 @@ export default function App() {
   }, [focusedSection]);
 
   // Lightweight path-based workspace routing (History API, no external dependency)
-  const goToWorkspace = useCallback((key: WorkspaceKey) => {
+  const goToWorkspace = useCallback((key: WorkspaceKey, query?: WorkspacePathQuery) => {
     if (key === 'landing') {
       setShowLanding(true);
       setProjectGate('idle');
@@ -355,7 +355,10 @@ export default function App() {
     setShowLanding(false);
     setCurrentPage(key);
     setFocusedSection(null);
-    pushWorkspace(key);
+    if (key === 'data' && query?.subgrid !== undefined) {
+      setDataManagementSearch(query.subgrid);
+    }
+    pushWorkspace(key, query);
     setStoredWorkspaceKey(key);
   }, []);
 
@@ -382,6 +385,9 @@ export default function App() {
         setShowLanding(false);
         setProjectGate('idle');
         setCurrentPage((prev) => (prev === key ? prev : key));
+        if (key === 'data') {
+          setDataManagementSearch(getSubgridQuery());
+        }
       }
     });
   }, []);

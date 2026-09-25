@@ -622,8 +622,8 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                     id: 'm3-nas',
                     x: 50,
                     y: 25,
-                    title: 'NAS Storage Manager & Worker Telemetry',
-                    tag: 'NAS Storage',
+                    title: 'NAS & Daemon',
+                    tag: 'NAS & Daemon',
                     description: 'Monitors NAS volume health, capacity quotas, GPU worker daemon connectivity, and indexed dataset catalogs.',
                     tip: 'Click "Check Connectivity" to verify high-speed 10GbE network mounts.'
                 },

@@ -14,6 +14,7 @@ import type {
   StorageInfo,
   WorkerHealthInfo
 } from '../types/production';
+import type { ReleaseManifest } from '../utils/releaseNaming';
 import { getActiveProjectId } from './projectContext';
 import { supabase } from './api/client';
 
@@ -38,10 +39,31 @@ export interface WorkerJobStatus {
   finished: boolean;
 }
 
+export interface PrepareReleaseRequest {
+  sourceFolder: string;
+  releaseFolder: string;
+  subgrid: string;
+  runCode: string;
+  projectId: string;
+  runId: string;
+  attemptId: string;
+  captureDate: string;
+}
+
+export interface PrepareReleaseResult {
+  ok: boolean;
+  message?: string;
+  manifest?: ReleaseManifest;
+  manifestPath?: string;
+  copiedCount?: number;
+  reusedCount?: number;
+}
+
 export interface ProductionApiClient {
   readonly mode: 'mock' | 'http';
   readonly baseUrl: string;
   submitJob(job: ProcessingJobRecord): Promise<SubmitJobResult>;
+  prepareRelease(request: PrepareReleaseRequest): Promise<PrepareReleaseResult>;
   getJobStatus(jobId: string): Promise<WorkerJobStatus | null>;
   cancelJob(jobId: string): Promise<boolean>;
   listFolder(path: string): Promise<NasFolderListing | null>;
@@ -109,6 +131,40 @@ function buildHttpClient(settings: ProductionApiSettings): ProductionApiClient {
         return {
           ok: false,
           message: `Unable to reach NAS GPU Worker at ${baseUrl}: ${err instanceof Error ? err.message : String(err)}`
+        };
+      }
+    },
+    async prepareRelease(request: PrepareReleaseRequest): Promise<PrepareReleaseResult> {
+      try {
+        const res = await api('/api/releases/prepare', {
+          method: 'POST',
+          signal: AbortSignal.timeout(120_000),
+          body: JSON.stringify({
+            source_folder: request.sourceFolder,
+            release_folder: request.releaseFolder,
+            subgrid: request.subgrid,
+            run_code: request.runCode,
+            project_id: request.projectId,
+            run_id: request.runId,
+            attempt_id: request.attemptId,
+            capture_date: request.captureDate
+          })
+        });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          return { ok: false, message: body.detail || `HTTP ${res.status}` };
+        }
+        return {
+          ok: true,
+          manifest: body.manifest as ReleaseManifest,
+          manifestPath: body.manifest_path,
+          copiedCount: body.copied_count,
+          reusedCount: body.reused_count
+        };
+      } catch (err) {
+        return {
+          ok: false,
+          message: `Unable to prepare release at ${baseUrl}: ${err instanceof Error ? err.message : String(err)}`
         };
       }
     },
