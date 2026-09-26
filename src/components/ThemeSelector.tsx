@@ -25,6 +25,8 @@ export type ThemeKey =
     | 'industrial-basalt'
     | 'alabaster'
     | 'daylight'
+    | 'neumorph-clay'
+    | 'neumorph-dark'
     | 'midnight'
     | 'obsidian'
     | 'teal-slate';
@@ -158,6 +160,38 @@ export const THEME_PRESETS: ThemeDefinition[] = [
         textMuted: '#64748b',
         mapTileUrl: 'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
         mapStyle: 'Positron Clean'
+    },
+    {
+        id: 'neumorph-clay',
+        name: 'Neumorph Soft Clay',
+        badge: 'Soft UI Light',
+        tagline: 'Iconic Setproduct soft clay palette (#e0e5ec) with tactile debossed wells and sculpted pebble bevels.',
+        bgApp: '#e0e5ec',
+        bgCard: '#e0e5ec',
+        innerCard: '#d7dde6',
+        borderSubtle: '#c8d0dc',
+        accent: '#2563eb',
+        accentBg: 'rgba(37, 99, 235, 0.12)',
+        textPrimary: '#1e293b',
+        textMuted: '#64748b',
+        mapTileUrl: 'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
+        mapStyle: 'Carto Voyager'
+    },
+    {
+        id: 'neumorph-dark',
+        name: 'Neumorph Cyber Dark',
+        badge: 'Soft UI Dark',
+        tagline: 'Matte cyber charcoal (#1e222b) calibrated for high-contrast specular lighting and neon telemetry glows.',
+        bgApp: '#1e222b',
+        bgCard: '#1e222b',
+        innerCard: '#161920',
+        borderSubtle: '#2a303c',
+        accent: '#06b6d4',
+        accentBg: 'rgba(6, 182, 212, 0.14)',
+        textPrimary: '#f1f5f9',
+        textMuted: '#8e9baa',
+        mapTileUrl: 'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+        mapStyle: 'Dark Telemetry'
     }
 ];
 
@@ -197,11 +231,12 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
     type RadiusKey = 'sharp' | 'default' | 'rounded' | 'pill';
     type DensityKey = 'compact' | 'default' | 'spacious';
     type SplitKey = 'map-focus' | 'balanced' | 'panel-focus';
-    type SurfaceKey = 'card' | 'flat';
+    type SurfaceKey = 'card' | 'flat' | 'neumorphism';
 
     const SURFACE_OPTIONS: { key: SurfaceKey; label: string }[] = [
         { key: 'card', label: 'Card' },
-        { key: 'flat', label: 'Flat' }
+        { key: 'flat', label: 'Flat' },
+        { key: 'neumorphism', label: 'Neumorphism' }
     ];
 
     const RADIUS_OPTIONS: { key: RadiusKey; label: string; value: string }[] = [
@@ -501,7 +536,7 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                     <div
                         data-theme={stagedTheme}
                         data-surface={surfaceStyle}
-                        className="p-3.5 rounded-xl border transition-all duration-200 space-y-3 shadow-sm"
+                        className="p-3.5 rounded-xl border transition-all duration-200 space-y-3 shadow-sm staged-sandbox"
                         style={{
                             backgroundColor: stagedObj.bgApp,
                             borderColor: stagedObj.borderSubtle,

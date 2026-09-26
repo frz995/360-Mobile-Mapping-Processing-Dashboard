@@ -298,12 +298,12 @@ export const RoadAnalysis3DStudio: React.FC<RoadAnalysis3DStudioProps> = ({
                 <button
                   type="button"
                   onClick={() => onToggle3D(!show3D)}
-                  className={`relative inline-flex h-4.5 w-8 shrink-0 cursor-pointer rounded-full border border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                    show3D ? 'bg-sky-500' : 'bg-neutral-700'
+                  className={`neu-toggle neu-toggle-sky relative inline-flex h-4.5 w-8 shrink-0 cursor-pointer rounded-full border border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                    show3D ? 'bg-sky-500 neu-active' : 'bg-neutral-700'
                   }`}
                 >
                   <span
-                    className={`pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                    className={`neu-toggle-thumb pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
                       show3D ? 'translate-x-3.5' : 'translate-x-0.5'
                     }`}
                   />
@@ -353,13 +353,13 @@ export const RoadAnalysis3DStudio: React.FC<RoadAnalysis3DStudioProps> = ({
                 <button
                   type="button"
                   onClick={() => onToggleAtmosphereTint(!atmosphereTint)}
-                  className={`relative inline-flex h-4.5 w-8 shrink-0 cursor-pointer rounded-full border border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                    atmosphereTint ? 'bg-sky-500' : 'bg-neutral-700'
+                  className={`neu-toggle neu-toggle-sky relative inline-flex h-4.5 w-8 shrink-0 cursor-pointer rounded-full border border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                    atmosphereTint ? 'bg-sky-500 neu-active' : 'bg-neutral-700'
                   }`}
                   title={atmosphereTint ? 'Disable atmospheric ground tint' : 'Enable atmospheric ground tint'}
                 >
                   <span
-                    className={`pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                    className={`neu-toggle-thumb pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
                       atmosphereTint ? 'translate-x-3.5' : 'translate-x-0.5'
                     }`}
                   />
@@ -377,13 +377,13 @@ export const RoadAnalysis3DStudio: React.FC<RoadAnalysis3DStudioProps> = ({
                 <button
                   type="button"
                   onClick={() => onToggleLabels(!showLabels)}
-                  className={`relative inline-flex h-4.5 w-8 shrink-0 cursor-pointer rounded-full border border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                    showLabels ? 'bg-sky-500' : 'bg-neutral-700'
+                  className={`neu-toggle neu-toggle-sky relative inline-flex h-4.5 w-8 shrink-0 cursor-pointer rounded-full border border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                    showLabels ? 'bg-sky-500 neu-active' : 'bg-neutral-700'
                   }`}
                   title={showLabels ? 'Hide basemap place names and POIs' : 'Show basemap place names and POIs'}
                 >
                   <span
-                    className={`pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                    className={`neu-toggle-thumb pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
                       showLabels ? 'translate-x-3.5' : 'translate-x-0.5'
                     }`}
                   />

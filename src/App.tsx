@@ -546,9 +546,10 @@ export default function App() {
     // Listen for style widget changes from Theme System Engine
     const handleStyleEvent = (e: any) => {
       if (e.detail) {
-        const { split } = e.detail;
+        const { split, surface } = e.detail;
         const sg = document.querySelector('.dashboard-split-grid');
         if (sg && split) sg.setAttribute('data-split', split);
+        if (surface) document.documentElement.setAttribute('data-surface', surface);
       }
     };
 

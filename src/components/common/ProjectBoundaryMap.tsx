@@ -486,11 +486,11 @@ export const ProjectBoundaryMap: React.FC<ProjectBoundaryMapProps> = ({
             </span>
             {/* Toggle Switch Track & Knob */}
             <div
-              className={`w-8 h-4 rounded-full p-0.5 transition-colors duration-200 ease-in-out flex items-center ${
-                showBoundary ? 'bg-red-500 justify-end' : 'bg-neutral-700 justify-start'
+              className={`neu-toggle w-8 h-4 rounded-full p-0.5 transition-colors duration-200 ease-in-out flex items-center ${
+                showBoundary ? 'bg-red-500 justify-end neu-active' : 'bg-neutral-700 justify-start'
               }`}
             >
-              <div className="w-3 h-3 rounded-full bg-white shadow-md transition-all duration-200" />
+              <div className="neu-toggle-thumb w-3 h-3 rounded-full bg-white shadow-md transition-all duration-200" />
             </div>
           </button>
         </div>

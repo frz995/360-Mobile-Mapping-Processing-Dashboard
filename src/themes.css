@@ -166,6 +166,50 @@
     --canvas-bg: linear-gradient(180deg, #f8fafc 0%, #edf2f7 100%);
 }
 
+/* 8. NEUMORPHIC SOFT CLAY (Iconic Canonical Soft-UI Light Canvas) */
+[data-theme="neumorph-clay"] {
+    color-scheme: light;
+    --bg-app: #e0e5ec;
+    --bg-card: #e0e5ec;
+    --bg-inner: #d7dde6;
+    --border-subtle: #c8d0dc;
+    --divider: rgba(148, 163, 184, 0.25);
+    --accent: #2563eb;
+    --accent-bg: rgba(37, 99, 235, 0.12);
+    --text-primary: #1e293b;
+    --text-muted: #64748b;
+    --table-header-bg: #d7dde6;
+    --table-header-text: #334155;
+    --table-row-hover: #e8ecf3;
+    --table-text: #1e293b;
+    --input-bg: #e0e5ec;
+    --card-shadow: 6px 6px 16px #a3b1c6, -6px -6px 16px #ffffff;
+    --modal-overlay: rgba(30, 41, 59, 0.45);
+    --canvas-bg: linear-gradient(180deg, #e5eaf2 0%, #e0e5ec 100%);
+}
+
+/* 9. NEUMORPHIC CYBER DARK (Precision Matte Charcoal with Cyber Telemetry Highlights) */
+[data-theme="neumorph-dark"] {
+    color-scheme: dark;
+    --bg-app: #1e222b;
+    --bg-card: #1e222b;
+    --bg-inner: #161920;
+    --border-subtle: #2a303c;
+    --divider: rgba(142, 155, 170, 0.15);
+    --accent: #06b6d4;
+    --accent-bg: rgba(6, 182, 212, 0.14);
+    --text-primary: #f1f5f9;
+    --text-muted: #8e9baa;
+    --table-header-bg: #161920;
+    --table-header-text: #8e9baa;
+    --table-row-hover: #262c37;
+    --table-text: #f8fafc;
+    --input-bg: #161920;
+    --card-shadow: 6px 6px 16px #13151b, -6px -6px 16px #292f3b;
+    --modal-overlay: rgba(10, 12, 16, 0.88);
+    --canvas-bg: linear-gradient(180deg, #242934 0%, #1e222b 100%);
+}
+
 /* ==========================================================================
    GLOBAL APP CASCADE & STRUCTURAL INHERITANCE
    ========================================================================== */
@@ -277,20 +321,25 @@ html.showcase-active[data-theme] aside {
 [data-theme="daylight"] #root,
 [data-theme="alabaster"],
 [data-theme="alabaster"] body,
-[data-theme="alabaster"] #root {
+[data-theme="alabaster"] #root,
+[data-theme="neumorph-clay"],
+[data-theme="neumorph-clay"] body,
+[data-theme="neumorph-clay"] #root {
     background-color: var(--bg-app) !important;
 }
 
 /* 2. Force Card Layers */
 [data-theme="daylight"] div[class*="bg-card"],
-[data-theme="alabaster"] div[class*="bg-card"] {
+[data-theme="alabaster"] div[class*="bg-card"],
+[data-theme="neumorph-clay"] div[class*="bg-card"] {
     background-color: var(--bg-card) !important;
     border-color: var(--border-subtle) !important;
 }
 
 /* 3. Force Inner Wells */
 [data-theme="daylight"] div[class*="bg-inner"],
-[data-theme="alabaster"] div[class*="bg-inner"] {
+[data-theme="alabaster"] div[class*="bg-inner"],
+[data-theme="neumorph-clay"] div[class*="bg-inner"] {
     background-color: var(--bg-inner) !important;
     border-color: var(--border-subtle) !important;
 }
@@ -308,6 +357,12 @@ html.showcase-active[data-theme] aside {
     color: #1c1917 !important;
 }
 
+[data-theme="neumorph-clay"] [class*="text-text-base"],
+[data-theme="neumorph-clay"] [class*="text-zinc-100"],
+[data-theme="neumorph-clay"] [class*="text-zinc-200"] {
+    color: #1e293b !important;
+}
+
 [data-theme="daylight"] [class*="text-text-muted"],
 [data-theme="daylight"] [class*="text-slate-300"],
 [data-theme="daylight"] [class*="text-zinc-400"] {
@@ -320,9 +375,16 @@ html.showcase-active[data-theme] aside {
     color: #57534e !important;
 }
 
+[data-theme="neumorph-clay"] [class*="text-text-muted"],
+[data-theme="neumorph-clay"] [class*="text-slate-300"],
+[data-theme="neumorph-clay"] [class*="text-zinc-400"] {
+    color: #64748b !important;
+}
+
 /* 5. Force Soft Hairline Borders */
 [data-theme="daylight"] [class*="border-subtle"],
-[data-theme="alabaster"] [class*="border-subtle"] {
+[data-theme="alabaster"] [class*="border-subtle"],
+[data-theme="neumorph-clay"] [class*="border-subtle"] {
     border-color: var(--border-subtle) !important;
 }
 
@@ -359,6 +421,660 @@ html.showcase-active[data-theme] aside {
 
 [data-theme][data-surface="flat"] .style-surface-inner {
     background-color: transparent !important;
+}
+
+/* ==========================================================================
+   SURFACE STYLE: MODERN NEUMORPHISM (Soft UI 3D Extrusions & Inset Relief)
+   Based on Setproduct Neumorphism design guide with accessible micro-bevels.
+   Preserves base theme colors while extruding cards, panels, inputs, and buttons.
+   ========================================================================== */
+
+/* 1. DARK THEMES: Raised Extruded Cards & Panels */
+[data-theme][data-surface="neumorphism"] .bg-card,
+[data-theme][data-surface="neumorphism"] .style-surface,
+[data-theme][data-surface="neumorphism"] div[class*="rounded-2xl"].bg-card,
+[data-theme][data-surface="neumorphism"] div[class*="rounded-3xl"].bg-card,
+[data-theme][data-surface="neumorphism"] div[class*="rounded-xl"].bg-card,
+[data-theme][data-surface="neumorphism"] div[class*="rounded-lg"].bg-card,
+[data-theme][data-surface="neumorphism"] div[class*="rounded-2xl"][class*="border"],
+[data-theme][data-surface="neumorphism"] div[class*="rounded-3xl"][class*="border"] {
+    background-color: var(--bg-app) !important;
+    border-color: rgba(255, 255, 255, 0.045) !important;
+    box-shadow:
+        -5px -5px 14px rgba(255, 255, 255, 0.028),
+        6px 6px 18px rgba(0, 0, 0, 0.65),
+        inset 1px 1px 0px rgba(255, 255, 255, 0.04) !important;
+}
+
+/* 2. DARK THEMES: Sunken Inset Wells, Containers & Inner Panels */
+[data-theme][data-surface="neumorphism"] .bg-inner,
+[data-theme][data-surface="neumorphism"] .style-surface-inner,
+[data-theme][data-surface="neumorphism"] div[class*="bg-inner"] {
+    background-color: var(--bg-app) !important;
+    border-color: rgba(0, 0, 0, 0.35) !important;
+    box-shadow:
+        inset 4px 4px 10px rgba(0, 0, 0, 0.65),
+        inset -3px -3px 8px rgba(255, 255, 255, 0.03) !important;
+}
+
+/* 3. DARK THEMES: Sunken Form Inputs, Selects & Textareas */
+[data-theme][data-surface="neumorphism"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+[data-theme][data-surface="neumorphism"] select,
+[data-theme][data-surface="neumorphism"] textarea {
+    background-color: var(--bg-app) !important;
+    border: 1px solid rgba(255, 255, 255, 0.04) !important;
+    box-shadow:
+        inset 3px 3px 7px rgba(0, 0, 0, 0.6),
+        inset -2px -2px 6px rgba(255, 255, 255, 0.03) !important;
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+[data-theme][data-surface="neumorphism"] input:focus,
+[data-theme][data-surface="neumorphism"] select:focus,
+[data-theme][data-surface="neumorphism"] textarea:focus {
+    box-shadow:
+        inset 3px 3px 7px rgba(0, 0, 0, 0.6),
+        inset -2px -2px 6px rgba(255, 255, 255, 0.03),
+        0 0 0 1.5px var(--accent) !important;
+}
+
+/* 4. DARK THEMES: Extruded Buttons & Interactive Pills */
+[data-theme][data-surface="neumorphism"] button[class*="bg-card"],
+[data-theme][data-surface="neumorphism"] button[class*="bg-inner"],
+[data-theme][data-surface="neumorphism"] button.neu-btn {
+    border: 1px solid rgba(255, 255, 255, 0.04) !important;
+    box-shadow:
+        -3px -3px 8px rgba(255, 255, 255, 0.035),
+        4px 4px 10px rgba(0, 0, 0, 0.55),
+        inset 1px 1px 0px rgba(255, 255, 255, 0.03) !important;
+    transition: box-shadow 0.2s ease, transform 0.15s ease;
+}
+[data-theme][data-surface="neumorphism"] button[class*="bg-card"]:hover,
+[data-theme][data-surface="neumorphism"] button[class*="bg-inner"]:hover {
+    box-shadow:
+        -4px -4px 10px rgba(255, 255, 255, 0.05),
+        5px 5px 12px rgba(0, 0, 0, 0.65) !important;
+}
+[data-theme][data-surface="neumorphism"] button[class*="bg-card"]:active,
+[data-theme][data-surface="neumorphism"] button[class*="bg-inner"]:active {
+    box-shadow:
+        inset 3px 3px 6px rgba(0, 0, 0, 0.65),
+        inset -2px -2px 5px rgba(255, 255, 255, 0.03) !important;
+}
+
+/* 5. DARK THEMES: Tactile Neumorphic Toggle Switches (Debossed Inset Slot & 3D Extruded Knob) */
+[data-theme][data-surface="neumorphism"] button.neu-toggle,
+[data-theme][data-surface="neumorphism"] button[class*="rounded-full"][class*="p-0.5"],
+[data-theme][data-surface="neumorphism"] button[class*="rounded-full"][class*="h-5"],
+[data-theme][data-surface="neumorphism"] button[class*="rounded-full"][class*="h-4"],
+[data-theme][data-surface="neumorphism"] div[class*="rounded-full"][class*="p-0.5"] {
+    position: relative;
+    border-radius: 9999px !important;
+    overflow: visible !important;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+/* Dark Mode - OFF Track: Deep carved-out hollow groove */
+[data-theme][data-surface="neumorphism"] button.neu-toggle:not(.neu-active):not([data-state="checked"]),
+[data-theme][data-surface="neumorphism"] button[class*="rounded-full"]:not([class*="bg-sky"]):not([class*="bg-emerald"]):not([class*="bg-blue"]):not([class*="bg-green"]):not([class*="bg-red"]):not([class*="bg-amber"]),
+[data-theme][data-surface="neumorphism"] div[class*="rounded-full"][class*="p-0.5"]:not([class*="bg-sky"]):not([class*="bg-emerald"]):not([class*="bg-blue"]):not([class*="bg-green"]):not([class*="bg-red"]) {
+    background-color: #0b0f19 !important;
+    background-image: linear-gradient(180deg, #070a10 0%, #0d121c 100%) !important;
+    border: 1px solid rgba(0, 0, 0, 0.75) !important;
+    box-shadow:
+        inset 2px 2.5px 5px rgba(0, 0, 0, 0.9),
+        inset -1.5px -1.5px 3px rgba(255, 255, 255, 0.05),
+        0 1px 1px rgba(255, 255, 255, 0.04) !important;
+}
+
+/* Dark Mode - ON Track (Sky / Cyan): Illuminated sunken channel */
+[data-theme][data-surface="neumorphism"] button.neu-toggle-sky.neu-active,
+[data-theme][data-surface="neumorphism"] button.neu-toggle-sky[data-state="checked"],
+[data-theme][data-surface="neumorphism"] button[class*="rounded-full"][class*="bg-sky-"],
+[data-theme][data-surface="neumorphism"] button[class*="rounded-full"][class*="bg-blue-"] {
+    background-color: #0284c7 !important;
+    background-image: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%) !important;
+    border: 1px solid rgba(56, 189, 248, 0.6) !important;
+    box-shadow:
+        inset 1.5px 1.5px 3.5px rgba(0, 0, 0, 0.45),
+        inset -1.5px -1.5px 3px rgba(255, 255, 255, 0.35),
+        0 0 12px rgba(14, 165, 233, 0.45),
+        0 1px 2px rgba(0, 0, 0, 0.35) !important;
+}
+
+/* Dark Mode - ON Track (Emerald / Green): Vibrant illuminated channel */
+[data-theme][data-surface="neumorphism"] button.neu-toggle-emerald.neu-active,
+[data-theme][data-surface="neumorphism"] button.neu-toggle-emerald[data-state="checked"],
+[data-theme][data-surface="neumorphism"] button[class*="rounded-full"][class*="bg-emerald-"],
+[data-theme][data-surface="neumorphism"] button[class*="rounded-full"][class*="bg-green-"] {
+    background-color: #059669 !important;
+    background-image: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+    border: 1px solid rgba(52, 211, 153, 0.6) !important;
+    box-shadow:
+        inset 1.5px 1.5px 3.5px rgba(0, 0, 0, 0.45),
+        inset -1.5px -1.5px 3px rgba(255, 255, 255, 0.35),
+        0 0 12px rgba(16, 185, 129, 0.45),
+        0 1px 2px rgba(0, 0, 0, 0.35) !important;
+}
+
+/* Dark Mode - ON Track (Red / Amber) */
+[data-theme][data-surface="neumorphism"] button[class*="rounded-full"][class*="bg-red-"],
+[data-theme][data-surface="neumorphism"] div[class*="rounded-full"][class*="bg-red-"] {
+    background-color: #dc2626 !important;
+    background-image: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%) !important;
+    border: 1px solid rgba(248, 113, 113, 0.6) !important;
+    box-shadow:
+        inset 1.5px 1.5px 3.5px rgba(0, 0, 0, 0.4),
+        inset -1.5px -1.5px 3px rgba(255, 255, 255, 0.35),
+        0 0 12px rgba(239, 68, 68, 0.45) !important;
+}
+[data-theme][data-surface="neumorphism"] button.neu-toggle-amber.neu-active,
+[data-theme][data-surface="neumorphism"] button.neu-toggle-amber[data-state="checked"],
+[data-theme][data-surface="neumorphism"] button[class*="rounded-full"][class*="bg-amber-"],
+[data-theme][data-surface="neumorphism"] button[class*="rounded-full"][class*="bg-yellow-"] {
+    background-color: #d97706 !important;
+    background-image: linear-gradient(135deg, #f59e0b 0%, #b45309 100%) !important;
+    border: 1px solid rgba(251, 191, 36, 0.6) !important;
+    box-shadow:
+        inset 1.5px 1.5px 3.5px rgba(0, 0, 0, 0.4),
+        inset -1.5px -1.5px 3px rgba(255, 255, 255, 0.35),
+        0 0 12px rgba(245, 158, 11, 0.5),
+        0 1px 2px rgba(0, 0, 0, 0.35) !important;
+}
+
+/* Dark Mode - ON Track (Violet / Purple) */
+[data-theme][data-surface="neumorphism"] button.neu-toggle-violet.neu-active,
+[data-theme][data-surface="neumorphism"] button.neu-toggle-violet[data-state="checked"],
+[data-theme][data-surface="neumorphism"] button[class*="rounded-full"][class*="bg-violet-"],
+[data-theme][data-surface="neumorphism"] button[class*="rounded-full"][class*="bg-purple-"] {
+    background-color: #7c3aed !important;
+    background-image: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%) !important;
+    border: 1px solid rgba(167, 139, 250, 0.6) !important;
+    box-shadow:
+        inset 1.5px 1.5px 3.5px rgba(0, 0, 0, 0.4),
+        inset -1.5px -1.5px 3px rgba(255, 255, 255, 0.35),
+        0 0 12px rgba(139, 92, 246, 0.5),
+        0 1px 2px rgba(0, 0, 0, 0.35) !important;
+}
+
+/* Dark Mode - Knob / Thumb: 3D Tactile Extruded Bead */
+[data-theme][data-surface="neumorphism"] .neu-toggle-thumb,
+[data-theme][data-surface="neumorphism"] button[class*="rounded-full"] > div[class*="rounded-full"],
+[data-theme][data-surface="neumorphism"] button[class*="rounded-full"] > span[class*="rounded-full"],
+[data-theme][data-surface="neumorphism"] div[class*="rounded-full"][class*="p-0.5"] > div[class*="rounded-full"] {
+    border-radius: 9999px !important;
+    background: radial-gradient(circle at 35% 35%, #ffffff 0%, #f1f5f9 40%, #cbd5e1 75%, #94a3b8 100%) !important;
+    border: 0.5px solid rgba(255, 255, 255, 0.95) !important;
+    box-shadow:
+        -1.5px -1.5px 3px rgba(255, 255, 255, 0.7),
+        2.5px 3px 6px rgba(0, 0, 0, 0.75),
+        inset 1px 1px 1.5px #ffffff,
+        inset -1px -1px 2px rgba(100, 116, 139, 0.45) !important;
+    transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease !important;
+}
+
+/* Dark Mode - Knob inside Active Sky Channel */
+[data-theme][data-surface="neumorphism"] button.neu-toggle-sky.neu-active .neu-toggle-thumb,
+[data-theme][data-surface="neumorphism"] button.neu-toggle-sky[data-state="checked"] .neu-toggle-thumb,
+[data-theme][data-surface="neumorphism"] button[class*="rounded-full"][class*="bg-sky-"] > div[class*="rounded-full"],
+[data-theme][data-surface="neumorphism"] button[class*="rounded-full"][class*="bg-sky-"] > span[class*="rounded-full"],
+[data-theme][data-surface="neumorphism"] button[class*="rounded-full"][class*="bg-blue-"] > div[class*="rounded-full"] {
+    background: radial-gradient(circle at 35% 35%, #ffffff 0%, #f0f9ff 45%, #bae6fd 75%, #7dd3fc 100%) !important;
+    border: 0.5px solid rgba(255, 255, 255, 0.95) !important;
+    box-shadow:
+        -1.5px -1.5px 3px rgba(255, 255, 255, 0.85),
+        2px 2.5px 5px rgba(2, 132, 199, 0.6),
+        0 0 8px rgba(56, 189, 248, 0.6),
+        inset 1px 1px 1.5px #ffffff !important;
+}
+
+/* Dark Mode - Knob inside Active Emerald Channel */
+[data-theme][data-surface="neumorphism"] button.neu-toggle-emerald.neu-active .neu-toggle-thumb,
+[data-theme][data-surface="neumorphism"] button.neu-toggle-emerald[data-state="checked"] .neu-toggle-thumb,
+[data-theme][data-surface="neumorphism"] button[class*="rounded-full"][class*="bg-emerald-"] > div[class*="rounded-full"],
+[data-theme][data-surface="neumorphism"] button[class*="rounded-full"][class*="bg-emerald-"] > span[class*="rounded-full"],
+[data-theme][data-surface="neumorphism"] button[class*="rounded-full"][class*="bg-green-"] > div[class*="rounded-full"] {
+    background: radial-gradient(circle at 35% 35%, #ffffff 0%, #ecfdf5 45%, #a7f3d0 75%, #6ee7b7 100%) !important;
+    border: 0.5px solid rgba(255, 255, 255, 0.95) !important;
+    box-shadow:
+        -1.5px -1.5px 3px rgba(255, 255, 255, 0.85),
+        2px 2.5px 5px rgba(5, 150, 105, 0.6),
+        0 0 8px rgba(52, 211, 153, 0.6),
+        inset 1px 1px 1.5px #ffffff !important;
+}
+
+/* Dark Mode - Knob inside Active Amber Channel */
+[data-theme][data-surface="neumorphism"] button.neu-toggle-amber.neu-active .neu-toggle-thumb,
+[data-theme][data-surface="neumorphism"] button.neu-toggle-amber[data-state="checked"] .neu-toggle-thumb,
+[data-theme][data-surface="neumorphism"] button[class*="rounded-full"][class*="bg-amber-"] > div[class*="rounded-full"],
+[data-theme][data-surface="neumorphism"] button[class*="rounded-full"][class*="bg-amber-"] > span[class*="rounded-full"],
+[data-theme][data-surface="neumorphism"] button[class*="rounded-full"][class*="bg-yellow-"] > div[class*="rounded-full"] {
+    background: radial-gradient(circle at 35% 35%, #ffffff 0%, #fffbeb 45%, #fde68a 75%, #fcd34d 100%) !important;
+    border: 0.5px solid rgba(255, 255, 255, 0.95) !important;
+    box-shadow:
+        -1.5px -1.5px 3px rgba(255, 255, 255, 0.85),
+        2px 2.5px 5px rgba(180, 83, 9, 0.6),
+        0 0 8px rgba(245, 158, 11, 0.6),
+        inset 1px 1px 1.5px #ffffff !important;
+}
+
+/* Dark Mode - Knob inside Active Violet Channel */
+[data-theme][data-surface="neumorphism"] button.neu-toggle-violet.neu-active .neu-toggle-thumb,
+[data-theme][data-surface="neumorphism"] button.neu-toggle-violet[data-state="checked"] .neu-toggle-thumb,
+[data-theme][data-surface="neumorphism"] button[class*="rounded-full"][class*="bg-violet-"] > div[class*="rounded-full"],
+[data-theme][data-surface="neumorphism"] button[class*="rounded-full"][class*="bg-violet-"] > span[class*="rounded-full"],
+[data-theme][data-surface="neumorphism"] button[class*="rounded-full"][class*="bg-purple-"] > div[class*="rounded-full"] {
+    background: radial-gradient(circle at 35% 35%, #ffffff 0%, #faf5ff 45%, #ddd6fe 75%, #c4b5fd 100%) !important;
+    border: 0.5px solid rgba(255, 255, 255, 0.95) !important;
+    box-shadow:
+        -1.5px -1.5px 3px rgba(255, 255, 255, 0.85),
+        2px 2.5px 5px rgba(109, 40, 217, 0.6),
+        0 0 8px rgba(139, 92, 246, 0.6),
+        inset 1px 1px 1.5px #ffffff !important;
+}
+
+/* Knob Hover & Active Feedback */
+[data-theme][data-surface="neumorphism"] button[class*="rounded-full"]:not(:disabled):hover > div[class*="rounded-full"],
+[data-theme][data-surface="neumorphism"] button[class*="rounded-full"]:not(:disabled):hover > span[class*="rounded-full"],
+[data-theme][data-surface="neumorphism"] button.neu-toggle:not(:disabled):hover .neu-toggle-thumb {
+    box-shadow:
+        -2px -2px 4px rgba(255, 255, 255, 0.85),
+        3px 3.5px 7px rgba(0, 0, 0, 0.75),
+        inset 1px 1px 1px #ffffff !important;
+}
+
+/* 6. DARK THEMES: Checkboxes & Radio Controls */
+[data-theme][data-surface="neumorphism"] input[type="checkbox"],
+[data-theme][data-surface="neumorphism"] input[type="radio"] {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 1rem;
+    height: 1rem;
+    background-color: var(--bg-app) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    box-shadow:
+        inset 2px 2px 4px rgba(0, 0, 0, 0.65),
+        inset -1.5px -1.5px 3px rgba(255, 255, 255, 0.03),
+        0 1px 1px rgba(255, 255, 255, 0.04) !important;
+    cursor: pointer;
+    position: relative;
+    transition: all 0.2s ease;
+}
+[data-theme][data-surface="neumorphism"] input[type="checkbox"] {
+    border-radius: 4px;
+}
+[data-theme][data-surface="neumorphism"] input[type="radio"] {
+    border-radius: 9999px;
+}
+[data-theme][data-surface="neumorphism"] input[type="checkbox"]:checked,
+[data-theme][data-surface="neumorphism"] input[type="radio"]:checked {
+    background-color: var(--accent) !important;
+    box-shadow:
+        inset 1px 1px 2px rgba(0, 0, 0, 0.3),
+        inset -1px -1px 2px rgba(255, 255, 255, 0.3),
+        0 0 8px var(--accent) !important;
+}
+[data-theme][data-surface="neumorphism"] input[type="checkbox"]:checked::after {
+    content: "";
+    position: absolute;
+    left: 4.5px;
+    top: 1.5px;
+    width: 4px;
+    height: 8px;
+    border: solid #ffffff;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+}
+[data-theme][data-surface="neumorphism"] input[type="radio"]:checked::after {
+    content: "";
+    position: absolute;
+    left: 3px;
+    top: 3px;
+    width: 8px;
+    height: 8px;
+    border-radius: 9999px;
+    background: #ffffff;
+    box-shadow: 0 0 3px rgba(0,0,0,0.5);
+}
+
+/* 7. DARK THEMES: Headers, Navbars, Sidebars & Modals */
+[data-theme][data-surface="neumorphism"] header:not(.onboarding-header),
+[data-theme][data-surface="neumorphism"] nav,
+[data-theme][data-surface="neumorphism"] aside,
+[data-theme][data-surface="neumorphism"] .top-navbar,
+[data-theme][data-surface="neumorphism"] div[class*="w-16 bg-"],
+[data-theme][data-surface="neumorphism"] div[class*="w-64 bg-"] {
+    background-color: var(--bg-app) !important;
+    border-color: rgba(255, 255, 255, 0.04) !important;
+    box-shadow:
+        -4px -4px 12px rgba(255, 255, 255, 0.02),
+        5px 5px 16px rgba(0, 0, 0, 0.6) !important;
+}
+[data-theme][data-surface="neumorphism"] div[role="dialog"],
+[data-theme][data-surface="neumorphism"] div[class*="fixed inset-0"] > div[class*="rounded"] {
+    background-color: var(--bg-app) !important;
+    border: 1px solid rgba(255, 255, 255, 0.05) !important;
+    box-shadow:
+        -8px -8px 24px rgba(255, 255, 255, 0.03),
+        14px 14px 36px rgba(0, 0, 0, 0.8),
+        inset 1px 1px 0px rgba(255, 255, 255, 0.05) !important;
+}
+
+/* 6. LIGHT THEMES (Daylight & Alabaster & .light-mode): Soft High-Key Neumorphism */
+[data-theme="daylight"][data-surface="neumorphism"] .bg-card,
+[data-theme="daylight"][data-surface="neumorphism"] .style-surface,
+[data-theme="daylight"][data-surface="neumorphism"] div[class*="rounded-2xl"].bg-card,
+[data-theme="daylight"][data-surface="neumorphism"] div[class*="rounded-3xl"].bg-card,
+[data-theme="daylight"][data-surface="neumorphism"] div[class*="rounded-xl"].bg-card,
+[data-theme="daylight"][data-surface="neumorphism"] div[class*="rounded-lg"].bg-card,
+[data-theme="daylight"][data-surface="neumorphism"] div[class*="rounded-2xl"][class*="border"],
+[data-theme="daylight"][data-surface="neumorphism"] div[class*="rounded-3xl"][class*="border"],
+[data-theme="alabaster"][data-surface="neumorphism"] .bg-card,
+[data-theme="alabaster"][data-surface="neumorphism"] .style-surface,
+[data-theme="alabaster"][data-surface="neumorphism"] div[class*="rounded-2xl"].bg-card,
+[data-theme="alabaster"][data-surface="neumorphism"] div[class*="rounded-3xl"].bg-card,
+[data-theme="alabaster"][data-surface="neumorphism"] div[class*="rounded-xl"].bg-card,
+[data-theme="alabaster"][data-surface="neumorphism"] div[class*="rounded-lg"].bg-card,
+[data-theme="alabaster"][data-surface="neumorphism"] div[class*="rounded-2xl"][class*="border"],
+[data-theme="alabaster"][data-surface="neumorphism"] div[class*="rounded-3xl"][class*="border"],
+[data-theme="neumorph-clay"][data-surface="neumorphism"] .bg-card,
+[data-theme="neumorph-clay"][data-surface="neumorphism"] .style-surface,
+[data-theme="neumorph-clay"][data-surface="neumorphism"] div[class*="rounded-2xl"].bg-card,
+[data-theme="neumorph-clay"][data-surface="neumorphism"] div[class*="rounded-3xl"].bg-card,
+[data-theme="neumorph-clay"][data-surface="neumorphism"] div[class*="rounded-xl"].bg-card,
+[data-theme="neumorph-clay"][data-surface="neumorphism"] div[class*="rounded-lg"].bg-card,
+[data-theme="neumorph-clay"][data-surface="neumorphism"] div[class*="rounded-2xl"][class*="border"],
+[data-theme="neumorph-clay"][data-surface="neumorphism"] div[class*="rounded-3xl"][class*="border"],
+.light-mode[data-surface="neumorphism"] .bg-card,
+.light-mode[data-surface="neumorphism"] .style-surface,
+.light-mode[data-surface="neumorphism"] div[class*="rounded-2xl"].bg-card,
+.light-mode[data-surface="neumorphism"] div[class*="rounded-3xl"].bg-card {
+    background-color: var(--bg-app) !important;
+    border-color: rgba(255, 255, 255, 0.85) !important;
+    box-shadow:
+        -7px -7px 16px rgba(255, 255, 255, 0.95),
+        7px 7px 18px rgba(166, 175, 195, 0.45),
+        inset 1px 1px 0px rgba(255, 255, 255, 0.9) !important;
+}
+
+[data-theme="daylight"][data-surface="neumorphism"] .bg-inner,
+[data-theme="daylight"][data-surface="neumorphism"] .style-surface-inner,
+[data-theme="daylight"][data-surface="neumorphism"] div[class*="bg-inner"],
+[data-theme="alabaster"][data-surface="neumorphism"] .bg-inner,
+[data-theme="alabaster"][data-surface="neumorphism"] .style-surface-inner,
+[data-theme="alabaster"][data-surface="neumorphism"] div[class*="bg-inner"],
+[data-theme="neumorph-clay"][data-surface="neumorphism"] .bg-inner,
+[data-theme="neumorph-clay"][data-surface="neumorphism"] .style-surface-inner,
+[data-theme="neumorph-clay"][data-surface="neumorphism"] div[class*="bg-inner"],
+.light-mode[data-surface="neumorphism"] .bg-inner,
+.light-mode[data-surface="neumorphism"] .style-surface-inner,
+.light-mode[data-surface="neumorphism"] div[class*="bg-inner"] {
+    background-color: var(--bg-app) !important;
+    border-color: rgba(166, 175, 195, 0.25) !important;
+    box-shadow:
+        inset 4px 4px 10px rgba(166, 175, 195, 0.4),
+        inset -4px -4px 10px rgba(255, 255, 255, 0.95) !important;
+}
+
+[data-theme="daylight"][data-surface="neumorphism"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+[data-theme="daylight"][data-surface="neumorphism"] select,
+[data-theme="daylight"][data-surface="neumorphism"] textarea,
+[data-theme="alabaster"][data-surface="neumorphism"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+[data-theme="alabaster"][data-surface="neumorphism"] select,
+[data-theme="alabaster"][data-surface="neumorphism"] textarea,
+[data-theme="neumorph-clay"][data-surface="neumorphism"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+[data-theme="neumorph-clay"][data-surface="neumorphism"] select,
+[data-theme="neumorph-clay"][data-surface="neumorphism"] textarea,
+.light-mode[data-surface="neumorphism"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]) {
+    background-color: var(--bg-app) !important;
+    border: 1px solid rgba(166, 175, 195, 0.3) !important;
+    box-shadow:
+        inset 3px 3px 7px rgba(166, 175, 195, 0.35),
+        inset -3px -3px 7px rgba(255, 255, 255, 0.9) !important;
+}
+
+[data-theme="daylight"][data-surface="neumorphism"] button[class*="bg-card"],
+[data-theme="daylight"][data-surface="neumorphism"] button[class*="bg-inner"],
+[data-theme="alabaster"][data-surface="neumorphism"] button[class*="bg-card"],
+[data-theme="alabaster"][data-surface="neumorphism"] button[class*="bg-inner"],
+[data-theme="neumorph-clay"][data-surface="neumorphism"] button[class*="bg-card"],
+[data-theme="neumorph-clay"][data-surface="neumorphism"] button[class*="bg-inner"] {
+    border: 1px solid rgba(255, 255, 255, 0.8) !important;
+    box-shadow:
+        -4px -4px 10px rgba(255, 255, 255, 0.9),
+        4px 4px 10px rgba(166, 175, 195, 0.35),
+        inset 1px 1px 0px rgba(255, 255, 255, 0.8) !important;
+}
+[data-theme="daylight"][data-surface="neumorphism"] button[class*="bg-card"]:hover,
+[data-theme="daylight"][data-surface="neumorphism"] button[class*="bg-inner"]:hover,
+[data-theme="alabaster"][data-surface="neumorphism"] button[class*="bg-card"]:hover,
+[data-theme="alabaster"][data-surface="neumorphism"] button[class*="bg-inner"]:hover,
+[data-theme="neumorph-clay"][data-surface="neumorphism"] button[class*="bg-card"]:hover,
+[data-theme="neumorph-clay"][data-surface="neumorphism"] button[class*="bg-inner"]:hover {
+    box-shadow:
+        -5px -5px 12px rgba(255, 255, 255, 1),
+        5px 5px 12px rgba(166, 175, 195, 0.45) !important;
+}
+[data-theme="daylight"][data-surface="neumorphism"] button[class*="bg-card"]:active,
+[data-theme="daylight"][data-surface="neumorphism"] button[class*="bg-inner"]:active,
+[data-theme="alabaster"][data-surface="neumorphism"] button[class*="bg-card"]:active,
+[data-theme="alabaster"][data-surface="neumorphism"] button[class*="bg-inner"]:active,
+[data-theme="neumorph-clay"][data-surface="neumorphism"] button[class*="bg-card"]:active,
+[data-theme="neumorph-clay"][data-surface="neumorphism"] button[class*="bg-inner"]:active {
+    box-shadow:
+        inset 3px 3px 6px rgba(166, 175, 195, 0.45),
+        inset -3px -3px 6px rgba(255, 255, 255, 0.9) !important;
+}
+
+/* LIGHT THEMES: Tactile Neumorphic Toggle Switches */
+[data-theme="daylight"][data-surface="neumorphism"] button.neu-toggle,
+[data-theme="daylight"][data-surface="neumorphism"] button[class*="rounded-full"][class*="p-0.5"],
+[data-theme="daylight"][data-surface="neumorphism"] button[class*="rounded-full"][class*="h-5"],
+[data-theme="daylight"][data-surface="neumorphism"] button[class*="rounded-full"][class*="h-4"],
+[data-theme="alabaster"][data-surface="neumorphism"] button.neu-toggle,
+[data-theme="alabaster"][data-surface="neumorphism"] button[class*="rounded-full"][class*="p-0.5"],
+[data-theme="alabaster"][data-surface="neumorphism"] button[class*="rounded-full"][class*="h-5"],
+[data-theme="alabaster"][data-surface="neumorphism"] button[class*="rounded-full"][class*="h-4"],
+[data-theme="neumorph-clay"][data-surface="neumorphism"] button.neu-toggle,
+[data-theme="neumorph-clay"][data-surface="neumorphism"] button[class*="rounded-full"][class*="p-0.5"],
+[data-theme="neumorph-clay"][data-surface="neumorphism"] button[class*="rounded-full"][class*="h-5"],
+[data-theme="neumorph-clay"][data-surface="neumorphism"] button[class*="rounded-full"][class*="h-4"],
+.light-mode[data-surface="neumorphism"] button.neu-toggle,
+.light-mode[data-surface="neumorphism"] button[class*="rounded-full"][class*="p-0.5"] {
+    position: relative;
+    border-radius: 9999px !important;
+    overflow: visible !important;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+/* Light Mode - OFF Track */
+[data-theme="daylight"][data-surface="neumorphism"] button.neu-toggle:not(.neu-active):not([data-state="checked"]),
+[data-theme="daylight"][data-surface="neumorphism"] button[class*="rounded-full"]:not([class*="bg-sky"]):not([class*="bg-emerald"]):not([class*="bg-blue"]):not([class*="bg-green"]):not([class*="bg-red"]):not([class*="bg-amber"]),
+[data-theme="alabaster"][data-surface="neumorphism"] button.neu-toggle:not(.neu-active):not([data-state="checked"]),
+[data-theme="alabaster"][data-surface="neumorphism"] button[class*="rounded-full"]:not([class*="bg-sky"]):not([class*="bg-emerald"]):not([class*="bg-blue"]):not([class*="bg-green"]):not([class*="bg-red"]):not([class*="bg-amber"]),
+[data-theme="neumorph-clay"][data-surface="neumorphism"] button.neu-toggle:not(.neu-active):not([data-state="checked"]),
+[data-theme="neumorph-clay"][data-surface="neumorphism"] button[class*="rounded-full"]:not([class*="bg-sky"]):not([class*="bg-emerald"]):not([class*="bg-blue"]):not([class*="bg-green"]):not([class*="bg-red"]):not([class*="bg-amber"]),
+.light-mode[data-surface="neumorphism"] button.neu-toggle:not(.neu-active):not([data-state="checked"]),
+.light-mode[data-surface="neumorphism"] button[class*="rounded-full"]:not([class*="bg-sky"]):not([class*="bg-emerald"]):not([class*="bg-blue"]):not([class*="bg-green"]):not([class*="bg-red"]):not([class*="bg-amber"]) {
+    background-color: #cbd5e1 !important;
+    background-image: linear-gradient(180deg, #b8c5d6 0%, #cbd5e1 100%) !important;
+    border: 1px solid rgba(148, 163, 184, 0.4) !important;
+    box-shadow:
+        inset 2px 2px 4px rgba(71, 85, 105, 0.45),
+        inset -2px -2px 4px rgba(255, 255, 255, 0.9),
+        0 1px 1px rgba(255, 255, 255, 0.9) !important;
+}
+
+/* Light Mode - ON Track (Sky / Cyan) */
+[data-theme="daylight"][data-surface="neumorphism"] button.neu-toggle-sky.neu-active,
+[data-theme="daylight"][data-surface="neumorphism"] button.neu-toggle-sky[data-state="checked"],
+[data-theme="daylight"][data-surface="neumorphism"] button[class*="rounded-full"][class*="bg-sky-"],
+[data-theme="alabaster"][data-surface="neumorphism"] button.neu-toggle-sky.neu-active,
+[data-theme="alabaster"][data-surface="neumorphism"] button.neu-toggle-sky[data-state="checked"],
+[data-theme="alabaster"][data-surface="neumorphism"] button[class*="rounded-full"][class*="bg-sky-"],
+[data-theme="neumorph-clay"][data-surface="neumorphism"] button.neu-toggle-sky.neu-active,
+[data-theme="neumorph-clay"][data-surface="neumorphism"] button.neu-toggle-sky[data-state="checked"],
+[data-theme="neumorph-clay"][data-surface="neumorphism"] button[class*="rounded-full"][class*="bg-sky-"],
+.light-mode[data-surface="neumorphism"] button[class*="rounded-full"][class*="bg-sky-"] {
+    background-color: #0284c7 !important;
+    background-image: linear-gradient(135deg, #38bdf8 0%, #0284c7 100%) !important;
+    border: 1px solid rgba(2, 132, 199, 0.5) !important;
+    box-shadow:
+        inset 1.5px 1.5px 3px rgba(3, 105, 161, 0.5),
+        inset -1.5px -1.5px 3px rgba(255, 255, 255, 0.7),
+        0 0 10px rgba(14, 165, 233, 0.35) !important;
+}
+
+/* Light Mode - ON Track (Emerald / Green) */
+[data-theme="daylight"][data-surface="neumorphism"] button.neu-toggle-emerald.neu-active,
+[data-theme="daylight"][data-surface="neumorphism"] button.neu-toggle-emerald[data-state="checked"],
+[data-theme="daylight"][data-surface="neumorphism"] button[class*="rounded-full"][class*="bg-emerald-"],
+[data-theme="alabaster"][data-surface="neumorphism"] button.neu-toggle-emerald.neu-active,
+[data-theme="alabaster"][data-surface="neumorphism"] button.neu-toggle-emerald[data-state="checked"],
+[data-theme="alabaster"][data-surface="neumorphism"] button[class*="rounded-full"][class*="bg-emerald-"],
+[data-theme="neumorph-clay"][data-surface="neumorphism"] button.neu-toggle-emerald.neu-active,
+[data-theme="neumorph-clay"][data-surface="neumorphism"] button.neu-toggle-emerald[data-state="checked"],
+[data-theme="neumorph-clay"][data-surface="neumorphism"] button[class*="rounded-full"][class*="bg-emerald-"],
+.light-mode[data-surface="neumorphism"] button[class*="rounded-full"][class*="bg-emerald-"] {
+    background-color: #059669 !important;
+    background-image: linear-gradient(135deg, #34d399 0%, #059669 100%) !important;
+    border: 1px solid rgba(5, 150, 105, 0.5) !important;
+    box-shadow:
+        inset 1.5px 1.5px 3px rgba(4, 120, 87, 0.5),
+        inset -1.5px -1.5px 3px rgba(255, 255, 255, 0.7),
+        0 0 10px rgba(16, 185, 129, 0.35) !important;
+}
+
+/* Light Mode - Knob / Thumb */
+[data-theme="daylight"][data-surface="neumorphism"] .neu-toggle-thumb,
+[data-theme="daylight"][data-surface="neumorphism"] button[class*="rounded-full"] > div[class*="rounded-full"],
+[data-theme="daylight"][data-surface="neumorphism"] button[class*="rounded-full"] > span[class*="rounded-full"],
+[data-theme="alabaster"][data-surface="neumorphism"] .neu-toggle-thumb,
+[data-theme="alabaster"][data-surface="neumorphism"] button[class*="rounded-full"] > div[class*="rounded-full"],
+[data-theme="alabaster"][data-surface="neumorphism"] button[class*="rounded-full"] > span[class*="rounded-full"],
+[data-theme="neumorph-clay"][data-surface="neumorphism"] .neu-toggle-thumb,
+[data-theme="neumorph-clay"][data-surface="neumorphism"] button[class*="rounded-full"] > div[class*="rounded-full"],
+[data-theme="neumorph-clay"][data-surface="neumorphism"] button[class*="rounded-full"] > span[class*="rounded-full"],
+.light-mode[data-surface="neumorphism"] .neu-toggle-thumb,
+.light-mode[data-surface="neumorphism"] button[class*="rounded-full"] > div[class*="rounded-full"] {
+    border-radius: 9999px !important;
+    background: radial-gradient(circle at 35% 35%, #ffffff 0%, #f8fafc 50%, #e2e8f0 85%, #cbd5e1 100%) !important;
+    border: 0.5px solid #ffffff !important;
+    box-shadow:
+        -2px -2px 4px rgba(255, 255, 255, 0.95),
+        2px 2.5px 5px rgba(100, 116, 139, 0.45),
+        inset 1px 1px 1.5px #ffffff,
+        inset -1px -1px 1px rgba(203, 213, 225, 0.8) !important;
+    transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease !important;
+}
+
+/* Light Mode - Checkboxes & Radios */
+[data-theme="daylight"][data-surface="neumorphism"] input[type="checkbox"],
+[data-theme="daylight"][data-surface="neumorphism"] input[type="radio"],
+[data-theme="alabaster"][data-surface="neumorphism"] input[type="checkbox"],
+[data-theme="alabaster"][data-surface="neumorphism"] input[type="radio"],
+.light-mode[data-surface="neumorphism"] input[type="checkbox"],
+.light-mode[data-surface="neumorphism"] input[type="radio"] {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 1rem;
+    height: 1rem;
+    background-color: var(--bg-app) !important;
+    border: 1px solid rgba(166, 175, 195, 0.4) !important;
+    box-shadow:
+        inset 2px 2px 4px rgba(166, 175, 195, 0.45),
+        inset -2px -2px 4px rgba(255, 255, 255, 0.95),
+        0 1px 1px rgba(255, 255, 255, 0.9) !important;
+    cursor: pointer;
+    position: relative;
+    transition: all 0.2s ease;
+}
+[data-theme="daylight"][data-surface="neumorphism"] input[type="checkbox"],
+[data-theme="alabaster"][data-surface="neumorphism"] input[type="checkbox"],
+.light-mode[data-surface="neumorphism"] input[type="checkbox"] {
+    border-radius: 4px;
+}
+[data-theme="daylight"][data-surface="neumorphism"] input[type="radio"],
+[data-theme="alabaster"][data-surface="neumorphism"] input[type="radio"],
+.light-mode[data-surface="neumorphism"] input[type="radio"] {
+    border-radius: 9999px;
+}
+[data-theme="daylight"][data-surface="neumorphism"] input[type="checkbox"]:checked,
+[data-theme="daylight"][data-surface="neumorphism"] input[type="radio"]:checked,
+[data-theme="alabaster"][data-surface="neumorphism"] input[type="checkbox"]:checked,
+[data-theme="alabaster"][data-surface="neumorphism"] input[type="radio"]:checked,
+.light-mode[data-surface="neumorphism"] input[type="checkbox"]:checked,
+.light-mode[data-surface="neumorphism"] input[type="radio"]:checked {
+    background-color: var(--accent) !important;
+    box-shadow:
+        inset 1px 1px 2px rgba(0, 0, 0, 0.2),
+        inset -1px -1px 2px rgba(255, 255, 255, 0.5),
+        0 0 6px var(--accent) !important;
+}
+[data-theme="daylight"][data-surface="neumorphism"] input[type="checkbox"]:checked::after,
+[data-theme="alabaster"][data-surface="neumorphism"] input[type="checkbox"]:checked::after,
+.light-mode[data-surface="neumorphism"] input[type="checkbox"]:checked::after {
+    content: "";
+    position: absolute;
+    left: 4.5px;
+    top: 1.5px;
+    width: 4px;
+    height: 8px;
+    border: solid #ffffff;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+}
+
+/* ==========================================================================
+   NEUMORPHIC TABLES & DATA LEDGERS (ALL THEMES)
+   ========================================================================== */
+[data-theme][data-surface="neumorphism"] table thead tr {
+    background-color: var(--bg-app) !important;
+    box-shadow: inset 0 -2px 6px rgba(0, 0, 0, 0.45) !important;
+}
+[data-theme][data-surface="neumorphism"] table tbody tr[class*="bg-inner"] {
+    background-color: var(--bg-app) !important;
+    box-shadow:
+        inset 2px 2px 5px rgba(0, 0, 0, 0.65),
+        inset -1px -1px 3px rgba(255, 255, 255, 0.03) !important;
+}
+[data-theme][data-surface="neumorphism"] table tbody tr:hover {
+    background-color: rgba(255, 255, 255, 0.015) !important;
+}
+
+[data-theme="daylight"][data-surface="neumorphism"] table thead tr,
+[data-theme="alabaster"][data-surface="neumorphism"] table thead tr,
+[data-theme="neumorph-clay"][data-surface="neumorphism"] table thead tr,
+.light-mode[data-surface="neumorphism"] table thead tr {
+    background-color: var(--bg-app) !important;
+    box-shadow: inset 0 -2px 5px rgba(166, 175, 195, 0.35) !important;
+}
+[data-theme="daylight"][data-surface="neumorphism"] table tbody tr[class*="bg-inner"],
+[data-theme="alabaster"][data-surface="neumorphism"] table tbody tr[class*="bg-inner"],
+[data-theme="neumorph-clay"][data-surface="neumorphism"] table tbody tr[class*="bg-inner"],
+.light-mode[data-surface="neumorphism"] table tbody tr[class*="bg-inner"] {
+    background-color: var(--bg-app) !important;
+    box-shadow:
+        inset 2px 2px 5px rgba(166, 175, 195, 0.35),
+        inset -2px -2px 5px rgba(255, 255, 255, 0.9) !important;
+}
+[data-theme="daylight"][data-surface="neumorphism"] table tbody tr:hover,
+[data-theme="alabaster"][data-surface="neumorphism"] table tbody tr:hover,
+[data-theme="neumorph-clay"][data-surface="neumorphism"] table tbody tr:hover,
+.light-mode[data-surface="neumorphism"] table tbody tr:hover {
+    background-color: rgba(0, 0, 0, 0.015) !important;
+}
+
+/* 7. SANDBOX WORKBENCH PREVIEW */
+[data-surface="neumorphism"].staged-sandbox {
+    box-shadow:
+        inset 3px 3px 8px rgba(0, 0, 0, 0.5),
+        inset -3px -3px 8px rgba(255, 255, 255, 0.02) !important;
+}
+[data-theme="daylight"][data-surface="neumorphism"].staged-sandbox,
+[data-theme="alabaster"][data-surface="neumorphism"].staged-sandbox {
+    box-shadow:
+        inset 3px 3px 8px rgba(166, 175, 195, 0.35),
+        inset -3px -3px 8px rgba(255, 255, 255, 0.9) !important;
 }
 
 /* UI Density: dashboard grid gaps */

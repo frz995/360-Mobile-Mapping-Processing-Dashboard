@@ -800,13 +800,14 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
                                     type="button"
                                     disabled={!isAdmin || isLockedAdmin}
                                     onClick={() => handleTogglePermission(role, cap.id)}
-                                    className={`w-9 h-5 flex items-center rounded-full p-0.5 transition-colors ${
-                                      isEnabled ? 'bg-sky-500' : 'bg-slate-700/60'
+                                    data-state={isEnabled ? 'checked' : 'unchecked'}
+                                    className={`neu-toggle neu-toggle-sky w-9 h-5 flex items-center rounded-full p-0.5 transition-colors ${
+                                      isEnabled ? 'bg-sky-500 neu-active' : 'bg-slate-700/60'
                                     } ${!isAdmin || isLockedAdmin ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer'}`}
                                     title={isLockedAdmin ? 'Mandatory for Administrator' : `${role}: ${isEnabled ? 'Allowed' : 'Denied'}`}
                                   >
                                     <div
-                                      className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform ${
+                                      className={`neu-toggle-thumb bg-white w-4 h-4 rounded-full shadow-md transform transition-transform ${
                                         isEnabled ? 'translate-x-4' : 'translate-x-0'
                                       }`}
                                     />
@@ -849,13 +850,14 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
                                     type="button"
                                     disabled={!isAdmin}
                                     onClick={() => handleTogglePermission(role, cap.id)}
-                                    className={`w-9 h-5 flex items-center rounded-full p-0.5 transition-colors ${
-                                      isEnabled ? 'bg-emerald-500' : 'bg-slate-700/60'
+                                    data-state={isEnabled ? 'checked' : 'unchecked'}
+                                    className={`neu-toggle neu-toggle-emerald w-9 h-5 flex items-center rounded-full p-0.5 transition-colors ${
+                                      isEnabled ? 'bg-emerald-500 neu-active' : 'bg-slate-700/60'
                                     } ${!isAdmin ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer'}`}
                                     title={`${role}: ${isEnabled ? 'Allowed' : 'Denied'}`}
                                   >
                                     <div
-                                      className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform ${
+                                      className={`neu-toggle-thumb bg-white w-4 h-4 rounded-full shadow-md transform transition-transform ${
                                         isEnabled ? 'translate-x-4' : 'translate-x-0'
                                       }`}
                                     />
