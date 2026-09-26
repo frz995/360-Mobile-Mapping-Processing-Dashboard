@@ -11,6 +11,7 @@ import type {
   WorkstationStationConfig,
   WorkerHealthInfo
 } from '../types/production';
+import { diagnoseStationAgentTransport, stationAgentTransportMode } from '../config/transport';
 import { fetchDashboardApi } from './cloudflareApi';
 
 const DEFAULT_TIMEOUT_MS = 4_000;
@@ -25,7 +26,7 @@ function stationBaseUrl(ws: WorkstationStationConfig): string {
   return `http://${ip}:${ws.port || 8000}`;
 }
 
-const usesPagesProxy = (): boolean => Boolean(import.meta.env.PROD);
+const usesPagesProxy = (): boolean => stationAgentTransportMode() === 'proxy';
 
 function stationProxyUrl(ws: WorkstationStationConfig, resource: string, jobId?: string): string {
   const params = new URLSearchParams({ stationId: ws.id, resource });
@@ -66,7 +67,11 @@ async function getJson<T>(
   }
 }
 
-/** Probe one station agent: /health plus /api/station (auto-detect payload). */
+/** Probe one station agent: /health plus /api/station (auto-detect payload).
+ *
+ *  A failed probe always carries a `reason`, so the UI can distinguish "nobody
+ *  configured an address" from "the agent is down" from "this build cannot
+ *  reach a private IP" — previously all three looked identical. */
 export async function probeStationAgent(
   ws: WorkstationStationConfig,
   opts?: StationAgentProbeOptions
@@ -78,24 +83,63 @@ export async function probeStationAgent(
     health: null,
     report: null
   };
-  if ((!usesPagesProxy() && !ws.ipAddress) || ws.enabled === false) return base;
+
+  if (ws.enabled === false) {
+    return { ...base, reason: 'disabled', error: 'Station is disabled' };
+  }
+
+  const diagnosis = diagnoseStationAgentTransport(Boolean((ws.ipAddress || '').trim()));
+  if (diagnosis.problem) {
+    return {
+      ...base,
+      reason: diagnosis.problem,
+      error: diagnosis.detail || 'Station agent transport is not configured'
+    };
+  }
+
   try {
     const [health, report] = await Promise.all([
       getJson<WorkerHealthInfo>(ws, 'health', '/health', opts),
       getJson<StationAgentReport>(ws, 'report', '/api/station', opts)
     ]);
-    return { ...base, online: !!report, health, report, ...(report ? {} : { error: 'Agent unreachable' }) };
+    if (!report) {
+      // /health answering while /api/station does not is a distinct, actionable
+      // fault: the agent is alive but cannot inspect its NAS mount.
+      return health
+        ? {
+            ...base,
+            health,
+            reason: 'not-reporting',
+            error:
+              'Agent health responded but /api/station did not. Check the agent version and that its NAS mount is reachable.'
+          }
+        : {
+            ...base,
+            reason: 'unreachable',
+            error:
+              'Agent unreachable. Check the PC is powered on, the agent service is running, and that this network can route to it.'
+          };
+    }
+    return { ...base, online: true, health, report };
   } catch (err) {
-    return { ...base, error: err instanceof Error ? err.message : String(err) };
+    return {
+      ...base,
+      reason: 'unreachable',
+      error: err instanceof Error ? err.message : String(err)
+    };
   }
 }
 
-/** Probe every configured workstation once (sequential round, LAN-keyed). */
+/** Probe every configured workstation once (sequential round, LAN-keyed).
+ *
+ *  Disabled and unconfigured stations are still probed so the caller receives a
+ *  reason for each — filtering them out here is what previously made a station
+ *  vanish from the board with no explanation. */
 export async function probeAllStationAgents(
   workstations: WorkstationStationConfig[] | undefined,
   opts?: StationAgentProbeOptions
 ): Promise<Record<string, StationAgentObservation>> {
-  const list = (workstations || []).filter((w) => (usesPagesProxy() || w.ipAddress) && w.enabled !== false);
+  const list = (workstations || []).filter((w) => w.enabled !== false);
   if (list.length === 0) return {};
   const results = await Promise.all(list.map((ws) => probeStationAgent(ws, opts)));
   const map: Record<string, StationAgentObservation> = {};

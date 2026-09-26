@@ -20,6 +20,7 @@ import { testCloudflareStorageHealth } from '../../../services/api/storage';
 import { appendStageEventToSupabase } from '../../../services/api/stageEventLedger';
 import { probeStationAgent, startBucketSyncJob, pollBucketSyncJob } from '../../../services/stationAgentApi';
 import { fetchDashboardApi } from '../../../services/cloudflareApi';
+import { workerTransportMode } from '../../../config/transport';
 import type { PairedFrameRecord } from './IntakePairingStation';
 import {
   STORAGE_BUCKET_DEFAULT,
@@ -319,7 +320,10 @@ export const BucketPublicationGate: React.FC<BucketPublicationGateProps> = ({
     import.meta.env.VITE_PRODUCTION_API_URL ||
     ''
   ).replace(/\/+$/, '');
-  const hasWorkerUrl = workerBaseUrl.length > 0 || import.meta.env.VITE_NAS_API_ENABLED === 'true';
+  // In proxy mode the worker route always exists, so the upload path is
+  // available; whether the *server-side* tunnel secrets are present is not
+  // observable from the browser and surfaces as a request error instead.
+  const hasWorkerUrl = workerTransportMode() === 'proxy' || workerBaseUrl.length > 0;
   const uploadMode = useMemo(
     () =>
       resolveUploadMode(

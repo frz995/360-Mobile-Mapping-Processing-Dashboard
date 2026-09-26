@@ -87,6 +87,30 @@ function remotePaneUrl(ws: WorkstationStationConfig): string | null {
   return `http://${ip}:${ws.vncPort}/vnc.html?autoconnect=true&resize=scale`;
 }
 
+/** Why this station is down, in the operator's terms.
+ *
+ *  A flat "unreachable" hides the two failures that actually happen in the
+ *  field: a station nobody gave an address to, and a station whose agent is
+ *  alive but cannot see its NAS mount. Both look identical on a busy board. */
+function offlineDetail(obs: StationAgentObservation | undefined, port?: number): string {
+  const portLabel = port || 8000;
+  switch (obs?.reason) {
+    case 'disabled':
+      return 'Station is disabled — enable it under Providers → Workstations.';
+    case 'no-ip-configured':
+      return 'No address configured for this PC. Add one under Providers → Workstations, or switch to the tunnel (VITE_STATION_AGENT_MODE=proxy).';
+    case 'not-reporting':
+      return obs.error || 'Agent is running but not reporting station state — check its NAS mount.';
+    case 'unreachable':
+      return (
+        obs.error ||
+        `Agent unreachable — check the PC / network, then confirm \`station-agent\` is running (port ${portLabel}).`
+      );
+    default:
+      return `Agent unreachable — check the PC / network, then confirm \`station-agent\` is running (port ${portLabel}).`;
+  }
+}
+
 export const PcMonitoringStation: React.FC<PcMonitoringStationProps> = ({
   projectSettings,
   isGuestUser,
@@ -211,7 +235,7 @@ export const PcMonitoringStation: React.FC<PcMonitoringStationProps> = ({
                 )}
                 {!online && (
                   <div className="text-[10px] text-text-muted leading-relaxed">
-                    Agent unreachable — check the PC / LAN, then confirm `station-agent` is running (port {ws.port || 8000}).
+                    {offlineDetail(obs, ws.port)}
                   </div>
                 )}
               </div>

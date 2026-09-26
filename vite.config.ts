@@ -63,9 +63,17 @@ function nasWorkerDevProxy(target: string, token: string): Record<string, any> {
 export default defineConfig(({ mode }) => {
   // '.' is the project root; @types/node is not a dependency, so avoid process.
   const env = loadEnv(mode, '.', '');
+  const hasWorkerProxy = Boolean(
+    (env.NAS_API_URL || '').trim() && (env.NAS_WORKER_TOKEN || '').trim()
+  );
 
   return {
     plugins: [react(), devApiPlugin()],
+    // Compiled in so the client can tell "worker proxy not configured" apart
+    // from "worker unreachable" instead of firing a request that can only 404.
+    define: {
+      __NAS_WORKER_DEV_PROXY__: JSON.stringify(hasWorkerProxy),
+    },
     server: {
       proxy: nasWorkerDevProxy(env.NAS_API_URL, env.NAS_WORKER_TOKEN),
     },

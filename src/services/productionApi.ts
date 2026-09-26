@@ -15,6 +15,7 @@ import type {
   WorkerHealthInfo
 } from '../types/production';
 import type { ReleaseManifest } from '../utils/releaseNaming';
+import { workerProxyAvailable, workerTransportMode } from '../config/transport';
 import { getActiveProjectId } from './projectContext';
 import { supabase } from './api/client';
 import { fetchDashboardApi } from './cloudflareApi';
@@ -77,8 +78,11 @@ export interface ProductionApiClient {
 // ---------------------------------------------------------------------
 
 function buildHttpClient(settings: ProductionApiSettings): ProductionApiClient {
-  const usePagesProxy = Boolean(import.meta.env.PROD && import.meta.env.VITE_NAS_API_ENABLED === 'true');
-  const baseUrl = usePagesProxy ? '/api/worker' : (settings.baseUrl || '').replace(/\/+$/, '');
+  // One code path for local and cloud: the worker is a single service behind a
+  // single proxy, so dev and production differ only in where the proxy
+  // terminates (Vite vs Pages Functions). See src/config/transport.ts.
+  const useProxy = workerTransportMode() === 'proxy';
+  const baseUrl = useProxy ? '/api/worker' : (settings.baseUrl || '').replace(/\/+$/, '');
   const apiKey = settings.apiKey || '';
   // The BFF gateway authorizes via the caller's Supabase access token (it
   // resolves the app role from user_accounts); a direct worker connection
@@ -95,8 +99,15 @@ function buildHttpClient(settings: ProductionApiSettings): ProductionApiClient {
     }
   };
   const api = async (path: string, init?: RequestInit): Promise<Response> => {
+    if (useProxy && !workerProxyAvailable()) {
+      // Fail loudly instead of issuing a same-origin request that can only 404.
+      throw new Error(
+        'Worker proxy is not configured. Set NAS_API_URL and NAS_WORKER_TOKEN in .env ' +
+          '(local dev), or point VITE_WORKER_API_MODE=direct at a reachable worker URL.'
+      );
+    }
     if (!baseUrl) throw new Error('Worker URL not configured');
-    if (usePagesProxy) {
+    if (useProxy) {
       return fetchDashboardApi(`${baseUrl}${path}`, {
         ...init,
         signal: init?.signal ?? AbortSignal.timeout(10_000),

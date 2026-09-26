@@ -12,6 +12,10 @@ declare module '*.mjs?url' {
 
 interface ImportMetaEnv {
   readonly VITE_MAP_URL?: string;
+  /** Worker / NAS transport: 'proxy' (default) or 'direct'. See src/config/transport.ts */
+  readonly VITE_WORKER_API_MODE?: string;
+  /** Station agent transport: 'proxy' or 'direct'. Defaults per environment. */
+  readonly VITE_STATION_AGENT_MODE?: string;
   readonly VITE_ROAD_EXTRACTION_ROUTE?: string;
   readonly VITE_ROAD_EXTRACTION_URL?: string;
   readonly VITE_ROAD_EXTRACTION_KEY?: string;
@@ -36,7 +40,6 @@ interface ImportMetaEnv {
   readonly VITE_WASABI_BUCKET?: string;
   readonly VITE_WASABI_REGION?: string;
   readonly VITE_NAS_SERVER_URL?: string;
-  readonly VITE_NAS_API_ENABLED?: string;
   readonly VITE_NAS_WORK_BASE_PATH?: string;
   readonly VITE_PSV_SERVER_URL?: string;
   readonly VITE_DB_PANORAMAS_TABLE?: string;

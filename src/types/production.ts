@@ -444,6 +444,8 @@ export interface StationAgentObservation {
   lastProbeAt?: string;
   health?: WorkerHealthInfo | null;
   report?: StationAgentReport | null;
+  /** Why this station is offline. Absent when online. */
+  reason?: import('../config/transport').StationAgentOfflineReason;
   error?: string;
 }
 

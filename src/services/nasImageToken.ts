@@ -1,3 +1,4 @@
+import { nasImageProxyEnabled as resolveNasImageProxy } from '../config/transport';
 import { fetchDashboardApi } from './cloudflareApi';
 
 /** Short-lived signed token used for NAS image / tile-config URLs.
@@ -13,8 +14,9 @@ let cachedToken = '';
 let cachedAt = 0;
 let inFlight: Promise<string> | null = null;
 
+/** Re-exported so image URL builders have a single import for "use the proxy". */
 export function isNasImageProxyEnabled(): boolean {
-  return Boolean(import.meta.env.PROD && import.meta.env.VITE_NAS_API_ENABLED === 'true');
+  return resolveNasImageProxy();
 }
 
 export function nasImageToken(): string {
