@@ -3654,7 +3654,18 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
                       </h2>
                       <span className="text-[11px] text-text-muted font-sans">
                         {imagesListModal.poiCount !== undefined ? `POI: ${imagesListModal.poiCount.toLocaleString()}  •  ` : ''}
-                        Available Frames: <strong className="text-sky-400 font-bold">{filenames.length.toLocaleString()}</strong>
+                        Available Frames:{' '}
+                        <strong className="text-sky-400 font-bold">
+                          {(imagesListModal.count > 0 ? imagesListModal.count : 0).toLocaleString()}
+                        </strong>
+                        {/* Count comes from the batch record, not the listed
+                            filenames, which are only present when real frame
+                            names are loaded. */}
+                        {filenames.length !== (imagesListModal.count > 0 ? imagesListModal.count : 0) && (
+                          <span className="text-text-muted">
+                            {' '}• {filenames.length.toLocaleString()} filename(s) loaded
+                          </span>
+                        )}
                       </span>
                     </div>
                     <button
@@ -3666,20 +3677,37 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
                     </button>
                   </div>
                   <div className="flex-1 overflow-y-auto font-sans text-xs text-text-base space-y-1 p-2 bg-card rounded-lg border border-subtle max-h-96">
-                    {filenames.map((name, idx) => (
-                      <div key={idx} className="flex items-center justify-between px-2.5 py-1 hover:bg-inner rounded transition-colors">
-                        <span className="text-text-muted text-[10px] w-10 shrink-0">{idx + 1}.</span>
-                        <span className="text-text-base font-semibold flex-1 truncate">{name}</span>
+                    {filenames.length === 0 ? (
+                      <div className="py-10 text-center text-text-muted">
+                        <Camera size={20} className="mx-auto text-text-muted/70 mb-2" />
+                        <span className="block text-xs font-semibold text-text-base">No frame filenames loaded</span>
+                        <span className="text-[11px]">
+                          This run reports {((imagesListModal.count > 0 ? imagesListModal.count : 0)).toLocaleString()} frames,
+                          but their filenames are not loaded, so they cannot be listed.
+                          Run a live NAS scan to populate them.
+                        </span>
                       </div>
-                    ))}
+                    ) : (
+                      filenames.map((name, idx) => (
+                        <div key={idx} className="flex items-center justify-between px-2.5 py-1 hover:bg-inner rounded transition-colors">
+                          <span className="text-text-muted text-[10px] w-10 shrink-0">{idx + 1}.</span>
+                          <span className="text-text-base font-semibold flex-1 truncate">{name}</span>
+                        </div>
+                      ))
+                    )}
                   </div>
                   <div className="pt-3 border-t border-subtle flex items-center justify-between shrink-0">
                     <button
                       onClick={() => {
+                        if (filenames.length === 0) {
+                          toast.error('No frame filenames are loaded, so there is nothing to copy.');
+                          return;
+                        }
                         navigator.clipboard.writeText(filenames.join('\n'));
                         toast.success(`Copied ${filenames.length} image filenames to clipboard!`);
                       }}
-                      className="px-3 py-1.5 bg-inner hover:bg-inner text-text-base border border-subtle rounded-lg text-xs font-medium cursor-pointer transition-colors flex items-center gap-1.5"
+                      disabled={filenames.length === 0}
+                      className="px-3 py-1.5 bg-inner hover:bg-inner disabled:opacity-40 disabled:cursor-not-allowed text-text-base border border-subtle rounded-lg text-xs font-medium cursor-pointer transition-colors flex items-center gap-1.5"
                     >
                       <Copy size={13} /> Copy List ({filenames.length})
                     </button>
