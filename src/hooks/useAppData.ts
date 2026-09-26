@@ -244,8 +244,14 @@ export function useAppData() {
             };
           });
 
-          setDailyData(hydratedDaily);
-          setBatchLogs(hydratedBatches);
+          // A realtime/poll re-fetch must never replace a populated view with an
+          // empty one. The rows can be briefly invisible to a project-scoped
+          // query (rows written without project_id, a lagging view, or a
+          // just-reactivated project), and overwriting here wipes the table AND
+          // the map ~1s after an import. Individual runs can still legitimately
+          // disappear, so only a fully empty result is treated as non-authoritative.
+          setDailyData(prev => (hydratedDaily.length === 0 && prev.length > 0 ? prev : hydratedDaily));
+          setBatchLogs(prev => (hydratedBatches.length === 0 && prev.length > 0 ? prev : hydratedBatches));
         }
 
         // Process QA Records

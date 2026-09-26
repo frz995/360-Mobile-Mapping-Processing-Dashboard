@@ -34,6 +34,13 @@ export interface FileInventoryResult {
   countsBySubgrid: Map<string, number>;
   /** Total number of distinct uploaded image files (multi-res: distinct station folders) found. */
   totalFiles: number;
+  /**
+   * `false` when storage could not be reached at all (network/permission/
+   * misconfigured worker proxy), as opposed to a reachable-but-empty bucket.
+   * This distinction matters: an unreachable store must NOT be reported as
+   * "zero uploaded frames", it means the count is simply unverified.
+   */
+  listingOk?: boolean;
 }
 
 export const FILE_INVENTORY_TABLE = 'file_inventory';
@@ -89,6 +96,7 @@ export async function resolveStorageFiles(
     return {
       fromInventory: storageInventoryCache.result.fromInventory,
       fromManifest: storageInventoryCache.result.fromManifest,
+      listingOk: storageInventoryCache.result.listingOk,
       fileSet: new Set(storageInventoryCache.result.fileSet),
       countsBySubgrid: new Map(storageInventoryCache.result.countsBySubgrid),
       totalFiles: storageInventoryCache.result.totalFiles
@@ -99,7 +107,8 @@ export async function resolveStorageFiles(
     fromInventory: false,
     fileSet: new Set<string>(),
     countsBySubgrid: new Map<string, number>(),
-    totalFiles: 0
+    totalFiles: 0,
+    listingOk: false
   };
 
   // 1a) Non-Supabase provider: resolve frames from the public manifest first.
@@ -115,6 +124,7 @@ export async function resolveStorageFiles(
           result.countsBySubgrid = counted.countsBySubgrid;
           result.totalFiles = counted.totalFiles;
           result.fromManifest = true;
+          result.listingOk = true;
           storageInventoryCache = { result, timestamp: Date.now(), key: cacheKey };
           return result;
         }
@@ -159,6 +169,7 @@ export async function resolveStorageFiles(
         if (name) addFile(name);
       });
       result.fromInventory = true;
+      result.listingOk = true;
       storageInventoryCache = { result, timestamp: Date.now(), key: cacheKey };
       return result;
     }
@@ -173,7 +184,12 @@ export async function resolveStorageFiles(
       let totalFetched = 0;
       while (hasMore && totalFetched < 10000) {
         const { data, error } = await supabase.storage.from(loc.bucket).list(loc.path, { limit, offset });
-        if (error || !data || data.length === 0) break;
+        if (error) break;
+        // A successful listing — even an empty one — proves storage is reachable.
+        // That is materially different from storage being unreachable, and only
+        // the latter means frame counts are unverified.
+        result.listingOk = true;
+        if (!data || data.length === 0) break;
         totalFetched += data.length;
         data.forEach(item => addFile(item.name));
         if (data.length < limit) hasMore = false;

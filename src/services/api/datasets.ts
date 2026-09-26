@@ -1,4 +1,4 @@
-import { supabase, scoped, getServiceProjectId } from './client';
+import { supabase, scoped, scopedIncludingUnassigned, getServiceProjectId } from './client';
 import { ensureManifestSettings, resolveStorageFiles } from './storage';
 import type { ExtendedProjectSettings } from '../../types/admin';
 import type { BatchLog } from '../../types/dashboard';
@@ -96,8 +96,20 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
     data = viewResult.data;
     error = viewResult.error;
 
+    // The view is queried strictly-scoped first. If that yields nothing, retry
+    // tolerating unassigned rows: panoramas_view may only expose rows that carry a
+    // project_id, which would otherwise hide freshly imported data on refresh.
+    // Any error from the tolerant form falls back to the strict query so a view
+    // that does not expose project_id can never reduce us to zero rows.
+    if (!error && (!data || data.length === 0)) {
+      const tolerant = await scopedIncludingUnassigned(supabase.from('panoramas_view').select('*'));
+      if (!tolerant.error && tolerant.data && tolerant.data.length > 0) {
+        data = tolerant.data;
+      }
+    }
+
     if (error || !data || data.length === 0) {
-      const res = await scoped(supabase
+      const res = await scopedIncludingUnassigned(supabase
         .from('panoramas')
         .select('*'));
       data = res.data;
@@ -160,14 +172,16 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
     const storageResolved = await resolveStorageFiles(uniqueLocations, manifestSettings);
     const storageImageCounts = storageResolved.countsBySubgrid;
     const storageFileSet = storageResolved.fileSet;
+    // Distinguishes "storage reachable and empty" from "storage unreachable".
+    const storageListingOk = storageResolved.listingOk === true;
 
     // Helper to verify image filenames directly against storage
     function verifyFilenamesAgainstStorage(
       filenames: string[],
       _subgridKey?: string
-    ): { count: number; verifiedFilenames: string[] } {
+    ): { count: number; verifiedFilenames: string[]; verified: boolean } {
       if (!filenames || filenames.length === 0) {
-        return { count: 0, verifiedFilenames: [] };
+        return { count: 0, verifiedFilenames: [], verified: storageListingOk };
       }
 
       // Check in-memory storage file set from bucket list
@@ -176,11 +190,21 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
           const cleanFn = fn.split('/').pop()?.toLowerCase().trim() || fn.toLowerCase().trim();
           return storageFileSet.has(cleanFn) || storageFileSet.has(fn.toLowerCase().trim());
         });
-        return { count: verified.length, verifiedFilenames: verified };
+        return { count: verified.length, verifiedFilenames: verified, verified: true };
       }
 
-      // If storage list is empty or track images are not uploaded, count is 0
-      return { count: 0, verifiedFilenames: [] };
+      // Storage was reachable but genuinely holds none of these frames: that is a
+      // real, verified zero.
+      if (storageListingOk) {
+        return { count: 0, verifiedFilenames: [], verified: true };
+      }
+
+      // Storage could not be reached at all. Reporting 0 here would claim "no
+      // frames uploaded" when the truth is "unknown", which silently zeroed every
+      // frame count whenever the worker/NAS proxy was unavailable. Fall back to
+      // the filenames recorded in the database and flag them unverified so the
+      // UI can label the count as not storage-confirmed.
+      return { count: filenames.length, verifiedFilenames: [...filenames], verified: false };
     }
 
     // Query qa_defects table to aggregate actual defect counts per subgrid
@@ -349,17 +373,20 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
       const countFromDB = g.imageFilenames.length || explicitPoi;
       const poiCount = countFromDB > 0 ? countFromDB : explicitPoi;
 
-      // For published records: storage-verify actual DB filenames against bucket.
-      // Fall back to g.imageFilenames.length only if storage verification is unavailable.
+      // Storage-verify the recorded DB filenames against the bucket. When storage
+      // is unreachable the helper falls back to the DB count and reports
+      // `verified: false` so the UI can label it as unverified.
       let verifiedImagesCount = 0;
       let verifiedFiles: string[] = [];
+      let imagesStorageVerified = storageListingOk;
       if (g.imageFilenames.length > 0) {
         const verifyRes = await verifyFilenamesAgainstStorage(g.imageFilenames, subgrid);
         verifiedImagesCount = typeof verifyRes.count === 'number' ? verifyRes.count : 0;
         verifiedFiles = verifyRes.verifiedFilenames || [];
-      } else {
-        verifiedImagesCount = 0;
-        verifiedFiles = [];
+        imagesStorageVerified = verifyRes.verified;
+      } else if (g.recordImages) {
+        // No per-frame filenames recorded, but the row carries a real DB count.
+        verifiedImagesCount = g.recordImages;
       }
 
       const finalImageCount = poiCount > 0 ? Math.min(poiCount, verifiedImagesCount) : verifiedImagesCount;
@@ -401,6 +428,7 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
         poiCount: poiCount,
         availableImagesCount: finalImageCount,
         availableFilenames: verifiedFiles.length > 0 ? verifiedFiles : undefined,
+        imagesStorageVerified,
         defectCount: defects,
         imagesDefected: defects,
         ...(qaqcStatus ? { qaqcStatus } : {}),
@@ -445,7 +473,7 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
 
     // 2. Query staging_panoramas table for persistent staged records
     try {
-      const { data: stagingData, error: stagingErr } = await scoped(supabase.from('staging_panoramas').select('*'));
+      const { data: stagingData, error: stagingErr } = await scopedIncludingUnassigned(supabase.from('staging_panoramas').select('*'));
       if (!stagingErr && stagingData && stagingData.length > 0) {
         const stagingGrouped = new Map<string, any>();
         stagingData.forEach((r: any) => {
@@ -455,8 +483,14 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
           const sg = extractedSubgrid.toUpperCase().trim();
           if (!sg || sg === 'UNKNOWN' || sg === 'N/A') return;
 
-          // If this specific image has already been published in production, skip it
-          if (r.status === 'yes' || r.status === 'published' || r.publish_to_webgis === 'yes' || r.publishToWebGIS === 'yes' || r.qa_status === 'published') return;
+          // Only a real QA publication state hides a staged row here. The
+          // `status` / `publish_to_webgis` flags are NOT evidence of publication:
+          // saveToStagingSupabase writes `status: record.publishToWebGIS || 'In Process'`,
+          // so a manually imported CSV that merely requests publication was stored
+          // as status 'yes' and then filtered out on every read — the row appeared
+          // right after import and vanished on the next refresh. Rows that really
+          // are already published are still removed by the filename dedupe below.
+          if (r.qa_status === 'published') return;
           const baseName = (filename.split('/').pop() || filename).toLowerCase().trim();
           const cleanNoExt = baseName.replace(/\.[^/.]+$/, '');
           if (filename && (
@@ -540,13 +574,23 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
 
           let verifiedCount = 0;
           let verifiedFiles: string[] = [];
+          let imagesStorageVerified = storageListingOk;
           if (g.imageFilenames && g.imageFilenames.length > 0) {
             const verifyRes = await verifyFilenamesAgainstStorage(g.imageFilenames, sg);
             verifiedCount = typeof verifyRes.count === 'number' ? verifyRes.count : 0;
             verifiedFiles = verifyRes.verifiedFilenames || [];
+            imagesStorageVerified = verifyRes.verified;
           } else {
-            const normSg = (sg || '').toUpperCase().trim();
-            verifiedCount = storageImageCounts.get(normSg) || 0;
+            const normSg0 = (sg || '').toUpperCase().trim();
+            const fromSubgridIndex = storageImageCounts.get(normSg0) || 0;
+            if (fromSubgridIndex > 0) {
+              verifiedCount = fromSubgridIndex;
+            } else {
+              // No filenames and no reachable storage index: fall back to the real
+              // count recorded on the staged row instead of reporting a hard 0.
+              verifiedCount = explicitPoi;
+              imagesStorageVerified = false;
+            }
             verifiedFiles = [];
           }
 
@@ -580,6 +624,7 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
             poiCount: count,
             availableImagesCount: finalImgCount,
             availableFilenames: verifiedFiles.length > 0 ? verifiedFiles : undefined,
+            imagesStorageVerified,
             defectCount: finalDefectCount,
             imagesDefected: finalDefectCount,
             ...(qaqcStatus ? { qaqcStatus } : {}),

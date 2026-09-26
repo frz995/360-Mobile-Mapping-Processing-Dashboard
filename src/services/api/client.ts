@@ -95,6 +95,26 @@ export function scoped(query: any): any {
   return query;
 }
 
+/**
+ * Project filter that ALSO keeps rows with no `project_id`.
+ *
+ * Imported/staged rows can predate project scoping (or be written while no
+ * project is active), leaving `project_id` NULL. A strict `project_id = <id>`
+ * filter hides those rows entirely, so freshly imported data appears in the UI
+ * and then vanishes on the next realtime/poll refresh. NULL means "not assigned
+ * to any project", not "belongs to another project", so dashboard reads include
+ * it. Uses `.or()` rather than `.eq()` because combining both would require
+ * `project_id = id AND project_id IS NULL`, which can never match.
+ */
+export function scopedIncludingUnassigned(query: any): any {
+  const id = getServiceProjectId();
+  if (!id || !query) return query;
+  if (typeof query.or === 'function') {
+    return query.or(`project_id.eq.${id},project_id.is.null`);
+  }
+  return query;
+}
+
 const MAX_SAFE_HEADER_LENGTH = 1500;
 
 /**

@@ -402,9 +402,20 @@ export const DashboardBatchTable: React.FC<DashboardBatchTableProps> = ({
                           });
                         }}
                         className="inline-flex items-center gap-1.5 text-text-base hover:text-text-base hover:underline font-semibold text-[11px] cursor-pointer whitespace-nowrap"
-                        title="Click to view list of image filenames"
+                        title={
+                          log.imagesStorageVerified === false
+                            ? 'Count taken from the database record — storage could not be reached to confirm the uploaded files'
+                            : 'Click to view list of image filenames'
+                        }
                       >
-                        <span>{getImagesProcessedCount(log).toLocaleString()} frames</span>
+                        <span>
+                          {getImagesProcessedCount(log).toLocaleString()} frames
+                          {log.imagesStorageVerified === false && (
+                            <span className="ml-1 text-[9px] font-normal text-text-muted" title="Storage unreachable — count not storage-verified">
+                              (unverified)
+                            </span>
+                          )}
+                        </span>
                         <ExternalLink size={10} className="shrink-0 text-text-muted" />
                       </button>
                     </td>
