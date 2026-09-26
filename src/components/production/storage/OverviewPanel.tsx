@@ -132,13 +132,6 @@ export const OverviewPanel: React.FC<OverviewPanelProps> = ({
       }));
     }
 
-    try {
-      localStorage.setItem('tnb_nas_worker_url', cleanUrl);
-      localStorage.setItem('tnb_nas_work_base_path', cleanMount);
-    } catch {
-      // ignore
-    }
-
     addNotification?.({
       type: 'success',
       title: 'Configuration Saved',

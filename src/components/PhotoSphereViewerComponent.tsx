@@ -187,24 +187,6 @@ export const PhotoSphereViewerComponent = forwardRef<PhotoSphereViewerHandle, Ph
         };
         preloadImg.onerror = () => {
           if (isMounted) {
-            if (panoramaUrl.includes('-0001.jpg')) {
-              const fallbackUrl = panoramaUrl.replace('-0001.jpg', '-0002.jpg');
-              preloadImg.src = fallbackUrl;
-              viewerRef.current?.setPanorama(fallbackUrl, { transition: false, showLoader: false })
-                .then(() => {
-                  if (isMounted) {
-                    setLoadError(null);
-                    setIsLoading(false);
-                  }
-                })
-                .catch(() => {
-                  if (isMounted) {
-                    setLoadError('Unable to load the 360° image (request failed or file missing).');
-                    setIsLoading(false);
-                  }
-                });
-              return;
-            }
             setLoadError('Unable to load the 360° image (request failed or file missing).');
             setIsLoading(false);
           }
@@ -238,23 +220,6 @@ export const PhotoSphereViewerComponent = forwardRef<PhotoSphereViewerHandle, Ph
           })
           .catch((err) => {
             console.warn('Fast panorama swap notice:', err);
-            if (typeof targetPanorama === 'string' && targetPanorama.includes('-0001.jpg')) {
-              const fallbackUrl = targetPanorama.replace('-0001.jpg', '-0002.jpg');
-              viewerRef.current?.setPanorama(fallbackUrl, { transition: false, showLoader: false })
-                .then(() => {
-                  if (isMounted) {
-                    setLoadError(null);
-                    setIsLoading(false);
-                  }
-                })
-                .catch(() => {
-                  if (isMounted) {
-                    setLoadError('Unable to load the 360° image (request failed or file missing).');
-                    setIsLoading(false);
-                  }
-                });
-              return;
-            }
             if (panoramaUrl && hasValidConfigUrl) {
               // Fall back to flat equirectangular image if multi-res tiles fail
               viewerRef.current?.setPanorama(panoramaUrl.trim(), { transition: false, showLoader: false })

@@ -17,7 +17,7 @@ import { BucketPublicationGate } from './BucketPublicationGate';
 import { WebGISPublishGate } from './WebGISPublishGate';
 import { StageHistoryLedger } from './StageHistoryLedger';
 import { useStationAgents } from '../../../hooks/useStationAgents';
-import { fetchHubSessionFromSupabase, saveHubSessionToSupabase } from '../../../services/api/hubSession';
+import { fetchHubSessionFromSupabase, purgeHubSession, saveHubSessionToSupabase } from '../../../services/api/hubSession';
 import { DEFAULT_4_WORKSTATIONS, type WorkstationStationConfig } from '../../../types/production';
 
 export type ProductionHubStationKey = 'intake' | 'stations' | 'qa' | 'bucket' | 'publish' | 'history';
@@ -76,20 +76,21 @@ export const ProductionHubWorkspace: React.FC<ProductionHubWorkspaceProps> = ({
   const { observations: stationObservations } = useStationAgents(workstations, 10_000);
 
   // --- Hub working session: restore the operator's last activity ------------
+  // Only navigation + survey-source *selection* is restored. NAS-derived facts
+  // (pairing rows, frame totals) are deliberately NOT: they are re-derived from
+  // the live worker on every load, so a cached copy can only be stale. Legacy
+  // payloads that did cache them are purged on sight.
   useEffect(() => {
     let disposed = false;
     fetchHubSessionFromSupabase()
       .then((s) => {
         if (disposed || !s) return;
+        const hasLegacyCache = Array.isArray(s.pairedRecords) || typeof s.totalFrames === 'number';
         if (typeof s.activeStation === 'string' && STATION_TABS.some((t) => t.key === s.activeStation)) {
           setActiveStation(s.activeStation as ProductionHubStationKey);
         }
         if (typeof s.subgrid === 'string' && s.subgrid) setSubgrid(s.subgrid);
         if (typeof s.surveyDate === 'string' && s.surveyDate) setSurveyDate(s.surveyDate);
-        if (typeof s.totalFrames === 'number' && s.totalFrames > 0) setTotalFrames(s.totalFrames);
-        if (Array.isArray(s.pairedRecords) && s.pairedRecords.length > 0) {
-          setPairedRecords(s.pairedRecords as PairedFrameRecord[]);
-        }
         if (typeof s.selectedFolderId === 'string' || typeof s.csvFileName === 'string') {
           setRestoredSession({
             selectedFolderId: typeof s.selectedFolderId === 'string' ? s.selectedFolderId : undefined,
@@ -97,6 +98,7 @@ export const ProductionHubWorkspace: React.FC<ProductionHubWorkspaceProps> = ({
             customFolderName: typeof s.customFolderName === 'string' ? s.customFolderName : undefined
           });
         }
+        if (hasLegacyCache) void purgeHubSession();
       })
       .catch(() => { })
       .finally(() => {
@@ -112,7 +114,6 @@ export const ProductionHubWorkspace: React.FC<ProductionHubWorkspaceProps> = ({
     activeStation,
     subgrid,
     surveyDate,
-    totalFrames,
     pairedRecords.length,
     pairedRecords.length > 0 ? pairedRecords[pairedRecords.length - 1]?.timestamp : '',
     intakeSession.selectedFolderId || '',
@@ -127,8 +128,6 @@ export const ProductionHubWorkspace: React.FC<ProductionHubWorkspaceProps> = ({
         activeStation,
         subgrid,
         surveyDate,
-        totalFrames,
-        pairedRecords,
         ...(restoredSession || {}),
         ...intakeSession,
         updatedAt: new Date().toISOString()

@@ -42,6 +42,13 @@ worker/_tmp_*.npy
 .wrangler
 .dev.vars
 
+# tsc -b emits these from vite.config.ts (tsconfig.node.json is `composite`
+# with no noEmit). vite.config.ts is the single source of truth; Vite reads it
+# directly, so the generated copies must never be committed or hand-edited.
+vite.config.js
+vite.config.d.ts
+tsconfig.node.tsbuildinfo
+
 # Local scratch & temporary notes
 scratch/
 git clone supabase.txt

@@ -29,9 +29,12 @@ const healthFull = {
   uptime_sec: 90000
 }
 
-function setup(opts: { vncStations?: number } = {}) {
+function setup(opts: { vncStations?: number; addresses?: boolean } = {}) {
+  // Addresses are supplied by the test, never by DEFAULT_4_WORKSTATIONS: the
+  // shipped topology intentionally carries no invented IPs.
   const workstationsConfig = DEFAULT_4_WORKSTATIONS.map((w, i) => ({
     ...w,
+    ...(opts.addresses === false ? {} : { ipAddress: `10.20.30.${11 + i}`, port: 8100 }),
     vncPort: (opts.vncStations ?? 0) > i ? 6080 : undefined,
     remoteChannel: (opts.vncStations ?? 0) > i ? ('vnc' as const) : undefined
   }))
@@ -76,9 +79,21 @@ describe('PcMonitoringStation', () => {
     )
     const iframes = container.querySelectorAll('iframe')
     expect(iframes).toHaveLength(2)
-    expect(iframes[0].getAttribute('src')).toContain('192.168.1.101:6080/vnc.html')
+    expect(iframes[0].getAttribute('src')).toContain('10.20.30.11:6080/vnc.html')
     expect(screen.getAllByText(/Embedded live view is not enabled/i).length).toBe(2)
     expect(screen.getByText(/2\/4 VNC enabled/)).toBeInTheDocument()
+  })
+
+  it('ships no invented station addresses: unconfigured stations expose no remote actions', () => {
+    expect(DEFAULT_4_WORKSTATIONS.every((w) => w.ipAddress === undefined)).toBe(true)
+    const ws = setup({ addresses: false })
+    const { container } = render(
+      <PcMonitoringStation userLabel="QA Lead" projectSettings={{ workstationsConfig: ws }} />
+    )
+    expect(container.querySelectorAll('iframe')).toHaveLength(0)
+    const rdpButtons = screen.getAllByRole('button', { name: /Open RDP/i })
+    expect(rdpButtons.length).toBeGreaterThanOrEqual(4)
+    rdpButtons.forEach((b) => expect(b).toBeDisabled())
   })
 
   it('downloads an .rdp handoff on Open RDP and audits the action', () => {
@@ -98,6 +113,6 @@ describe('PcMonitoringStation', () => {
     expect(addNotification).toHaveBeenCalledWith(
       expect.objectContaining({ title: expect.stringContaining('RDP session prepared') })
     )
-    expect(addAuditLog).toHaveBeenCalledWith('INFO', 'RDP Handoff Launched', expect.stringContaining('192.168.1.101'), 'info')
+    expect(addAuditLog).toHaveBeenCalledWith('INFO', 'RDP Handoff Launched', expect.stringContaining('10.20.30.11'), 'info')
   })
 })

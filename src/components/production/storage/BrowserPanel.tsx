@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import type { ProductionApiClient } from '../../../services/productionApi';
 import type { NasFolderEntry, NasFolderListing } from '../../../types/production';
+import { isNasImageProxyEnabled, nasImageUrl } from '../../../services/nasImageToken';
 import { formatBytes, guessSubgridFromPath } from './storageCommon';
 import { TextAction } from '../chrome';
 
@@ -85,6 +86,15 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
   const previewUrl = selected?.isDirectory
     ? ''
     : (() => {
+        const pfx = [currentPath, selected?.name]
+          .filter(Boolean)
+          .join('/')
+          .replace(/^\/+/, '');
+        if (!pfx) return '';
+        // Cloudflare Pages is HTTPS, so a private http:// NAS origin cannot be
+        // embedded directly; previews go through the authenticated same-origin
+        // proxy in production.
+        if (isNasImageProxyEnabled()) return nasImageUrl(pfx);
         const base = (
           projectSettings?.nasServerUrl ||
           projectSettings?.productionApiUrl ||
@@ -92,10 +102,6 @@ export const BrowserPanel: React.FC<BrowserPanelProps> = ({
           import.meta.env.VITE_PRODUCTION_API_URL ||
           ''
         ).replace(/\/+$/, '');
-        const pfx = [currentPath, selected?.name]
-          .filter(Boolean)
-          .join('/')
-          .replace(/^\/+/, '');
         return base ? `${base}/${pfx}` : pfx;
       })();
 

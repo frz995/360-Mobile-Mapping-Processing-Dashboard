@@ -203,7 +203,10 @@ export const IntakePairingStation: React.FC<IntakePairingStationProps> = ({
   const [rawFolderPath, setRawFolderPath] = useState<string>(
     `/03_Stitching/Project-OUT/Grid 1/${subgrid || '{subgrid}'}/{survey-run}/`
   );
-  const [csvFileName, setCsvFileName] = useState<string>(() => sessionSource?.csvFileName || '');
+  // The metadata CSV name is only ever set from a live NAS scan or a verified
+  // disk read below — never from the session cache, which can name a file that
+  // no longer exists.
+  const [csvFileName, setCsvFileName] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState<string>('');
   // Actual image files listed from the selected survey folder on disk. null =
   // never verified (no folder listing available); [] = folder exists but empty.
@@ -318,11 +321,9 @@ export const IntakePairingStation: React.FC<IntakePairingStationProps> = ({
           setSelectedFolderId(chosen);
           setSurveyDate(target.rawDate);
           setRawFolderPath(target.path);
-          if (chosen === sesFolder && sessionSource?.csvFileName) {
-            setCsvFileName(sessionSource.csvFileName);
-          } else {
-            setCsvFileName(target.csvName);
-          }
+          // The CSV name comes from the scan that just ran, not from the
+          // session cache, so the field always names a file the worker can see.
+          setCsvFileName(target.csvName);
           if (chosen !== sesFolder) {
             setTotalFrames(target.panoramasCount);
           }
@@ -382,7 +383,9 @@ export const IntakePairingStation: React.FC<IntakePairingStationProps> = ({
   }, [subgrid]);
 
   // Hydration race: the intake can mount BEFORE the Hub session fetch lands.
-  // Apply the session seeds once when they first arrive.
+  // Apply the session seeds once when they first arrive. Only the operator's
+  // *selection* is restored; the CSV name and pairing rows are re-derived from
+  // the NAS, because a cached value can outlive the file it refers to.
   const sessionAppliedRef = useRef(false);
   useEffect(() => {
     if (sessionAppliedRef.current) return;
@@ -390,7 +393,6 @@ export const IntakePairingStation: React.FC<IntakePairingStationProps> = ({
     if (!s || (!s.selectedFolderId && !s.csvFileName && !s.customFolderName)) return;
     sessionAppliedRef.current = true;
     if (s.selectedFolderId) setSelectedFolderId(s.selectedFolderId);
-    if (s.csvFileName) setCsvFileName(s.csvFileName);
     if (s.customFolderName) setCustomFolderName(s.customFolderName);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionSource]);

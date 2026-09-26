@@ -65,3 +65,20 @@ export async function saveHubSessionToSupabase(
     return false;
   }
 }
+
+/** Drop the stored snapshot entirely.
+ *
+ * Used to retire session payloads that cached NAS-derived facts (pairing rows,
+ * frame totals). Those are re-derived from the live worker on every load, so a
+ * cached copy can only ever be stale — and showing it as current is worse than
+ * showing nothing. */
+export async function purgeHubSession(): Promise<void> {
+  try {
+    localStorage.removeItem(getSessionStorageKey());
+  } catch (_) { }
+  const pid = getServiceProjectId();
+  if (!pid) return;
+  try {
+    await supabase.from(HUB_SESSION_TABLE).delete().eq('project_id', pid);
+  } catch (_) { }
+}

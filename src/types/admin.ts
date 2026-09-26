@@ -106,7 +106,7 @@ export interface ExtendedProjectSettings {
     workerUrl?: string;
     enabled: boolean;
   }>;
-  productionApiMode?: 'mock' | 'http';
+  productionApiMode?: 'http';
   productionApiUrl?: string;
   productionApiKey?: string; // API key/JWT sent as Authorization Bearer to the NAS GPU Worker
   productionConcurrency?: number; // 1 - 16

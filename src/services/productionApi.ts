@@ -61,7 +61,7 @@ export interface PrepareReleaseResult {
 }
 
 export interface ProductionApiClient {
-  readonly mode: 'mock' | 'http';
+  readonly mode: 'http';
   readonly baseUrl: string;
   submitJob(job: ProcessingJobRecord): Promise<SubmitJobResult>;
   prepareRelease(request: PrepareReleaseRequest): Promise<PrepareReleaseResult>;
@@ -231,9 +231,5 @@ function buildHttpClient(settings: ProductionApiSettings): ProductionApiClient {
 }
 
 export function createProductionApiClient(settings: ProductionApiSettings): ProductionApiClient {
-  const baseUrl =
-    settings.baseUrl ||
-    (typeof window !== 'undefined' && (window as any).__NAS_WORKER_URL__) ||
-    '';
-  return buildHttpClient({ ...settings, baseUrl });
+  return buildHttpClient({ ...settings, baseUrl: settings.baseUrl || '' });
 }
