@@ -197,10 +197,10 @@ export default function App() {
   // Never silently fall back to a hardcoded project/map URL (see implementation_plan_v13.md).
   useEffect(() => {
     if (!import.meta.env.VITE_SUPABASE_URL) {
-      console.warn('[config] Missing VITE_SUPABASE_URL â€” Supabase data & storage features will not work. Set it in your .env / deployment environment.');
+      console.warn('[config] Missing VITE_SUPABASE_URL — Supabase data & storage features will not work. Set it in your .env / deployment environment.');
     }
     if (!import.meta.env.VITE_MAP_URL) {
-      console.warn('[config] Missing VITE_MAP_URL â€” embedded WebGIS map links will be blank. Set it in your .env / deployment environment.');
+      console.warn('[config] Missing VITE_MAP_URL — embedded WebGIS map links will be blank. Set it in your .env / deployment environment.');
     }
   }, []);
 
@@ -413,7 +413,7 @@ export default function App() {
       goToWorkspace('production');
       setFocusedSection(null);
     } else if (targetView === 'qaqc' || targetView === 'qa-inspector') {
-      // 4. QA/QC 360Â° Spherical Defect Workspace
+      // 4. QA/QC 360° Spherical Defect Workspace
       goToWorkspace('dashboard');
       setFocusedSection('qa');
     } else if (targetView === 'postgis') {
@@ -490,14 +490,14 @@ export default function App() {
   // Derived themeMode for backward compatibility
   const themeMode = currentTheme === 'daylight' || currentTheme === 'alabaster' ? 'light' : 'dark';
 
-  // A user who has applied ANY dashboard theme has finished onboarding â€” the
+  // A user who has applied ANY dashboard theme has finished onboarding — the
   // theme step is the last interactive config a campaign needs, so once it's
   // set the showcase/onboarding gate must never auto-trigger for them again.
   const markOnboarded = useCallback((userKey: string): void => {
     try {
       localStorage.setItem(`geosphere360_onboarded_${userKey}`, '1');
     } catch {
-      /* storage unavailable â€” non-fatal */
+      /* storage unavailable — non-fatal */
     }
   }, []);
 
@@ -506,7 +506,7 @@ export default function App() {
 
   // True when the current session was restored from persistent storage on load
   // (page refresh / new tab) rather than created by an explicit sign-in this page
-  // â€” a restored session must never re-trigger the onboarding gate.
+  // — a restored session must never re-trigger the onboarding gate.
   const restoredSessionRef = useRef(false);
 
   // Global Theme Listener
@@ -594,7 +594,7 @@ export default function App() {
     addAuditLog('CREATE', 'Guest Login', 'User logged in under Guest Read-Only mode', 'info');
   };
 
-  // ---- v14 Hybrid sign-in gate (welcome â†’ pick â†’ loading); guests stay idle ----
+  // ---- v14 Hybrid sign-in gate (welcome → pick → loading); guests stay idle ----
   const [projectGate, setProjectGate] = useState<GateStage>('idle');
   const [welcomeUserName, setWelcomeUserName] = useState<string>('');
 
@@ -677,7 +677,7 @@ export default function App() {
         setAuthSession(session);
         // Supabase re-emits auth pulses (SIGNED_IN/TOKEN_REFRESHED) when the tab
         // regains focus. Only the FIRST session (no previous one) may switch the
-        // workspace â€” otherwise a re-emitted pulse yanks the user off the
+        // workspace — otherwise a re-emitted pulse yanks the user off the
         // landing showcase they navigated to via the onboarding Back button and
         // dumps them on a stale dashboard page.
         if (hadSession) {
@@ -784,7 +784,7 @@ export default function App() {
     }
 
     // A session restored from persistent storage (page refresh/new tab while
-    // already signed in) must land straight on the workspace â€” the onboarding
+    // already signed in) must land straight on the workspace — the onboarding
     // gate is reserved for genuine sign-ins.
     if (restoredSessionRef.current) {
       setProjectGate('idle');
@@ -830,7 +830,7 @@ export default function App() {
   }, []);
 
   // Show the picker/welcome gate after auth resolves (covers page refresh with
-  // a persisted session, and the explicit sign-in path â€” both funnel here).
+  // a persisted session, and the explicit sign-in path — both funnel here).
   const gateTriggeredRef = useRef<string | null>(null);
   useEffect(() => {
     if (authLoading) return;
@@ -862,7 +862,7 @@ export default function App() {
     return projects;
   }, []);
 
-  // v14 carry-forward â€” register the pre-v14 "current production project"
+  // v14 carry-forward — register the pre-v14 "current production project"
   // (from projectSettings) into the registry once per user + no active project.
   const ensureSeedProject = useCallback(
     async (settings: Record<string, unknown> | undefined) => {
@@ -916,7 +916,7 @@ export default function App() {
       seedProjectRef.current = true;
       return;
     }
-    // A `local-*` stub (left by a failed v14 seed) is not a real project â€”
+    // A `local-*` stub (left by a failed v14 seed) is not a real project —
     // clear it and re-seed so the carried-forward production project actually
     // gets a real DB row (otherwise every scoped query returns 0 rows).
     if (savedId) clearActiveProjectId(userKey);
@@ -1047,11 +1047,11 @@ export default function App() {
       const t = window.setTimeout(() => setTourFirstRunOpen(true), 1400);
       return () => window.clearTimeout(t);
     } catch {
-      // localStorage unavailable â€” skip the auto-suggest
+      // localStorage unavailable — skip the auto-suggest
     }
   }, [authSession, authLoading, isGuestUser]);
 
-  // Session inactivity lock â€” signs out authenticated users who go idle
+  // Session inactivity lock — signs out authenticated users who go idle
   // beyond projectSettings.sessionTimeoutMinutes (0 == never, undefined defaults 30).
   // Activity inside embedded maps/360 iframes is not observable from the parent
   // window, so sustained work inside those panes may still count as idle.
@@ -1076,7 +1076,7 @@ export default function App() {
 
     // On same-session refresh while idle past the limit, sign out immediately
     // ("refresh out from session inactivity lock") instead of restoring the page.
-    // Only meaningful when a previous session actually recorded activity â€” a
+    // Only meaningful when a previous session actually recorded activity — a
     // first-ever visit (no marker) must never be treated as "idle".
     if (hasLastActivity() && getLastActivityAgeMs() >= timeoutMs) {
       void handleSignOut();
@@ -1144,7 +1144,7 @@ export default function App() {
       const msg = err instanceof Error ? err.message : String(err);
       setAuthError(
         /JSON\.parse|Unexpected token|unexpected character|not valid JSON/i.test(msg)
-          ? 'The login server returned an HTML page instead of JSON â€” your Supabase REST URL or anon key is wrong, or the backend host is unreachable. Check Admin Settings â†’ Database Host, or the .env values.'
+          ? 'The login server returned an HTML page instead of JSON — your Supabase REST URL or anon key is wrong, or the backend host is unreachable. Check Admin Settings → Database Host, or the .env values.'
           : msg || 'Unexpected error during sign-in.'
       );
       return;
@@ -1394,7 +1394,7 @@ export default function App() {
   const [mapRefreshKey, setMapRefreshKey] = useState<number>(Date.now());
 
   // While the navigation rail animates its width (300ms), the embedded WebGIS
-  // iframe continuously re-renders its tiles/3D scene â†’ visible map flicker.
+  // iframe continuously re-renders its tiles/3D scene → visible map flicker.
   // A short opaque veil over the map hides that repaint so the dashboard stays
   // clean; it is lifted once the layout has settled.
   const [mapVeilActive, setMapVeilActive] = useState<boolean>(false);
@@ -1589,7 +1589,7 @@ export default function App() {
       addAuditLog(
         'EDIT',
         'Saved Project & Database Settings',
-        `Updated database host to ${next.databaseProvider || 'supabase_cloud'} and storage provider to ${next.storageProvider || 'supabase'}${backendSwitched ? ' â€” backend reconnected' : ''} (Panoramas table: ${tables.panoramasTable}, Sample URL: ${sampleUrl})`,
+        `Updated database host to ${next.databaseProvider || 'supabase_cloud'} and storage provider to ${next.storageProvider || 'supabase'}${backendSwitched ? ' — backend reconnected' : ''} (Panoramas table: ${tables.panoramasTable}, Sample URL: ${sampleUrl})`,
         'info'
       );
       addNotification({
@@ -2750,7 +2750,7 @@ export default function App() {
                 type={showPassword ? 'text' : 'password'}
                 value={authPassword}
                 onChange={(e) => setAuthPassword(e.target.value)}
-                placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
+                placeholder="••••••••"
                 required
                 className="w-full bg-card border border-subtle focus:border-accent focus:ring-1 focus:ring-accent/20 rounded-lg px-3.5 py-2.5 text-sm text-text-base placeholder-text-muted outline-none transition-all duration-150"
               />
@@ -2848,7 +2848,7 @@ export default function App() {
         </div>
       )}
 
-      {/* v14 HYBRID SIGN-IN GATE â€” sits above the mounted app so data preloads underneath */}
+      {/* v14 HYBRID SIGN-IN GATE — sits above the mounted app so data preloads underneath */}
       {projectGate !== 'idle' && (
         <ProjectOnboarding
           stage={projectGate}
@@ -3091,7 +3091,7 @@ export default function App() {
                               onClick={() => setIsStatusFilterOpen(false)}
                               className="text-text-muted hover:text-text-base text-xs px-1 cursor-pointer transition-colors"
                             >
-                              âœ•
+                              ✕
                             </button>
                           </div>
 
@@ -3273,10 +3273,10 @@ export default function App() {
                               className="text-text-muted hover:text-text-base p-0.5 rounded cursor-pointer transition-colors"
                               title="Close filter"
                             >
-                              âœ•
+                              ✕
                             </button>
                           </div>
-                          <div className="text-text-base font-sans text-[11px] flex justify-between gap-4"><span className="text-text-muted">Coordinates:</span> <span>{activeCoords.lat && activeCoords.lng ? `${activeCoords.lat.toFixed(4)}Â° N, ${activeCoords.lng.toFixed(4)}Â° E` : 'â€”'}</span></div>
+                          <div className="text-text-base font-sans text-[11px] flex justify-between gap-4"><span className="text-text-muted">Coordinates:</span> <span>{activeCoords.lat && activeCoords.lng ? `${activeCoords.lat.toFixed(4)}° N, ${activeCoords.lng.toFixed(4)}° E` : '—'}</span></div>
                           <div className="text-text-base text-[11px] flex justify-between gap-4"><span className="text-text-muted">Distance from start:</span> <span className="font-semibold text-text-base">{activeKm} km</span></div>
                           <div className="text-text-base text-[11px] flex justify-between gap-4"><span className="text-text-muted">Image Count:</span> <span className="font-semibold text-text-base">{activeImages}</span></div>
                           <div className="text-text-base text-[11px] flex justify-between items-center gap-4">
@@ -3342,7 +3342,7 @@ export default function App() {
                     <ShareMapDialog
                       open={shareMapOpen}
                       kind="webgis"
-                      defaultTitle={`${projectSettings?.projectName || 'GeoSphere 360'} â€” Survey Map`}
+                      defaultTitle={`${projectSettings?.projectName || 'GeoSphere 360'} — Survey Map`}
                       buildSnapshot={() => buildWebgisSnapshot(dailyData, projectSettings)}
                       basemap={projectSettings?.defaultBasemap || 'ofm-positron'}
                       createdBy={authSession?.user?.id || null}
@@ -3630,7 +3630,7 @@ export default function App() {
                                     // Live heading-cone sync: broadcast 360 camera rotation to the
                                     // embedded WebGIS map so its sonar/heading cone follows the view.
                                     // NOTE: React state (panoramaTelemetry) is intentionally NOT updated
-                                    // here â€” rotation would re-render the entire dashboard. The live
+                                    // here — rotation would re-render the entire dashboard. The live
                                     // heading is published via the heading store (see
                                     // PhotoSphereViewerComponent) for the HUD readout without App re-render.
                                     const yawDeg = Math.round(pos.yaw * 100) / 100;
@@ -3790,7 +3790,7 @@ export default function App() {
                               Select a location on the map
                             </h4>
                             <p className="text-[11px] text-text-muted mt-1">
-                              to view 360Â° imagery
+                              to view 360° imagery
                             </p>
                           </div>
                         )}

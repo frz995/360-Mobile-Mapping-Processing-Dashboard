@@ -47,7 +47,7 @@ create policy "file_inventory_select"
 --   with check (true);
 -- =====================================================================
 -- ROLLBACK / SUPPORTED VERSIONS
---   Down (rollback) — table is CREATE TABLE IF NOT EXISTS; to remove:
+--   Down (rollback) â€” table is CREATE TABLE IF NOT EXISTS; to remove:
 --     DROP TABLE IF EXISTS public.file_inventory;
 --   (only if you are certain no client depends on the server-side count).
 --   Supported versions: Supabase (Postgres 15), schema 'public'. Safe to re-run.
