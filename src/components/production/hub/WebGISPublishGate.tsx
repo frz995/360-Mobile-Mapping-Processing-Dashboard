@@ -8,7 +8,8 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../../services/supabase';
 import { SectionLabel, MetaList } from '../chrome';
-import { trackLengthMeters } from '../common';
+import { appendStageEventToSupabase } from '../../../services/api/stageEventLedger';
+import { computeTrajectorySpan } from './IntakePairingStation';
 
 export interface WebGISPublishGateProps {
   subgrid: string;
@@ -48,14 +49,6 @@ export const WebGISPublishGate: React.FC<WebGISPublishGateProps> = ({
   const effectiveTotal = pairedRecords.length > 0 ? pairedRecords.length : totalFrames;
   const nasBase = (projectSettings?.nasWorkBasePath || '').replace(/\/+$/, '');
   const deliverablePath = cleanSg ? `${nasBase ? `${nasBase}/` : ''}DELIVERABLES/${cleanSg}/` : '';
-  const targetBucket =
-    projectSettings?.supabaseBucket ||
-    projectSettings?.r2Bucket ||
-    projectSettings?.s3Bucket ||
-    projectSettings?.gcsBucket ||
-    projectSettings?.azureContainer ||
-    projectSettings?.wasabiBucket ||
-    '';
 
   const [isPublishing, setIsPublishing] = useState<boolean>(false);
   const [isPublished, setIsPublished] = useState<boolean>(false);
@@ -81,10 +74,13 @@ export const WebGISPublishGate: React.FC<WebGISPublishGateProps> = ({
 
   const skippedRecords = pairedRecords.length - promotableRecords.length;
 
-  const trajectoryDistance = useMemo(
-    () => trackLengthMeters(promotableRecords),
+  // Same source-of-truth rule as intake: the metadata `distancetoprevious`
+  // column (metres) is authoritative; coordinates are only a fallback.
+  const trajectorySpan = useMemo(
+    () => computeTrajectorySpan(promotableRecords),
     [promotableRecords]
   );
+  const trajectoryDistance = trajectorySpan.km !== null ? trajectorySpan.km * 1000 : null;
 
   const canPublish = promotableRecords.length > 0 && !isGuestUser;
 
@@ -167,6 +163,16 @@ export const WebGISPublishGate: React.FC<WebGISPublishGateProps> = ({
         }`
       );
 
+      void appendStageEventToSupabase({
+        subgrid: cleanSg,
+        stage: 'publish',
+        event: 'PUBLISHED',
+        via: 'operator',
+        detail: `${written} record(s) promoted to public.panoramas`,
+        counts: { written, paired: pairedRecords.length, skipped: skippedRecords },
+        updated_by: userLabel || 'Operator'
+      });
+
       addNotification?.({
         title: `Subgrid ${cleanSg} Published`,
         message: `${written} record(s) written to public.panoramas.`,
@@ -231,16 +237,7 @@ export const WebGISPublishGate: React.FC<WebGISPublishGateProps> = ({
             WebGIS Publication Gate &amp; Deliverable Release
           </h3>
           <p className="text-xs text-text-muted mt-0.5 leading-relaxed">
-            Promote paired records to <span className="font-mono text-text-base">public.panoramas</span>
-            {targetBucket ? (
-              <>
-                {' '}
-                · linked to bucket <span className="font-mono text-text-base">{targetBucket}</span>
-              </>
-            ) : (
-              ' · no storage bucket configured'
-            )}
-            . Only records carrying a real GPS fix are promoted; nothing is generated here.
+            Release approved, location-linked survey records to the WebGIS.
           </p>
         </div>
 
@@ -281,7 +278,10 @@ export const WebGISPublishGate: React.FC<WebGISPublishGateProps> = ({
               key: 'distance',
               label: 'Trajectory Distance',
               value: trajectoryDistance !== null ? `${(trajectoryDistance / 1000).toFixed(2)} km` : 'Not computable',
-              note: 'summed from the paired coordinates'
+              note:
+                trajectorySpan.source === 'metadata'
+                  ? 'summed from metadata distance-to-previous (m → km)'
+                  : 'summed from the paired coordinates'
             },
             {
               key: 'path',

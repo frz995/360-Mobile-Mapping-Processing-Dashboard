@@ -8,6 +8,7 @@ import {
 import { PhotoSphereViewerComponent } from '../../PhotoSphereViewerComponent';
 import { resolvePanoramaUrl } from '../../../services/storageUrls';
 import { SectionLabel, MetaList, TextAction } from '../chrome';
+import { appendStageEventToSupabase } from '../../../services/api/stageEventLedger';
 
 export interface QAAuditStationProps {
   subgrid: string;
@@ -148,6 +149,16 @@ export const QAAuditStation: React.FC<QAAuditStationProps> = ({
     };
     setDefects((prev) => [...prev, newDefect]);
 
+    void appendStageEventToSupabase({
+      subgrid: cleanSg,
+      stage: 'qa',
+      event: 'FLAGGED',
+      via: 'operator',
+      detail: `${type} flagged on ${currentFrame.filename}`,
+      counts: { defectType: type, frame: currentFrame.filename, defects: [...defects, newDefect].length },
+      updated_by: userLabel || 'Operator'
+    });
+
     addNotification?.({
       title: `Defect Flagged: ${currentFrame.filename}`,
       message: `Categorized as ${type}. Logged to QA defect ledger.`,
@@ -159,6 +170,15 @@ export const QAAuditStation: React.FC<QAAuditStationProps> = ({
   };
 
   const handleSignOff = () => {
+    void appendStageEventToSupabase({
+      subgrid: cleanSg,
+      stage: 'qa',
+      event: 'COMPLETED',
+      via: 'operator',
+      detail: `QA sign-off by ${userLabel} with ${defects.length} defect note(s)`,
+      counts: { defects: defects.length, sampledFrames: activeFrameSubset.length || frameList.length },
+      updated_by: userLabel || 'Operator'
+    });
     addNotification?.({
       title: `Subgrid ${cleanSg} Approved!`,
       message: `QA sign-off completed by ${userLabel}. Ready for WebGIS publication.`,
@@ -195,10 +215,7 @@ export const QAAuditStation: React.FC<QAAuditStationProps> = ({
             Acceptance QA &amp; 360° Inspection
           </h3>
           <p className="text-xs text-text-muted mt-0.5 leading-relaxed">
-            Inspect final processed equirectangular frames from{' '}
-            <span className="font-mono text-text-base">/05_Final/{cleanSg}/</span> before publication. Automated
-            privacy and nadir-cap checks are not wired to this station, so every result below is either measured or
-            reported as unmeasured.
+            Review final survey imagery and record quality acceptance for the selected subgrid.
           </p>
         </div>
 

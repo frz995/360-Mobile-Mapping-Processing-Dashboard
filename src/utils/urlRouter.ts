@@ -4,6 +4,7 @@ export type WorkspaceKey =
   | 'data'
   | 'settings'
   | 'production'
+  | 'pcmon'
   | 'storage'
   | 'processing'
   | 'lineage'
@@ -21,6 +22,7 @@ export const WORKSPACE_KEYS: WorkspaceKey[] = [
   'data',
   'settings',
   'production',
+  'pcmon',
   'storage',
   'processing',
   'lineage',

@@ -5,7 +5,8 @@
  *
  * These functions are stateless and side-effect free: they only read their
  * arguments and `import.meta.env`. They do NOT touch the Supabase client,
- * localStorage, or network.
+ * localStorage, or network. (The NAS proxy branch additionally reads the
+ * in-memory, already-fetched NAS image token cached in nasImageToken.ts.)
  *
  * The public surface (function names & return values) is IDENTICAL to the
  * previous barrel exports, so callers can import them from either
@@ -13,6 +14,7 @@
  */
 import { extractSubgridName } from '../utils/subgrid';
 import { STORAGE_BUCKET_DEFAULT, REGION_DEFAULTS } from '../config/defaults';
+import { isNasImageProxyEnabled, nasImageUrl } from './nasImageToken';
 
 /** Supported object-storage providers for 360 imagery resolution. */
 export type StorageProviderType =
@@ -223,6 +225,11 @@ export function resolvePanoramaUrl(
     }
 
     case 'nas_local': {
+      if (isNasImageProxyEnabled()) {
+        return options?.asConfigUrl
+          ? nasImageUrl(`tiles/${targetSubgrid}/${nameWithoutExt}/config.json`)
+          : nasImageUrl(cleanFn);
+      }
       const nasUrl = (
         settings?.nasServerUrl ||
         settings?.productionApiUrl ||

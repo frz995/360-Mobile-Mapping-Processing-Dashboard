@@ -855,6 +855,91 @@ export const ProvidersPanel: React.FC<ProvidersPanelProps> = ({
               </div>
 
               {/* Online Status Toggle */}
+              <div className="space-y-3 p-3.5 bg-inner/50 border border-subtle rounded-xl">
+                <div className="text-xs font-bold text-text-base flex items-center gap-1.5">
+                  <Monitor size={14} className="text-sky-400" />
+                  <span>Remote Desktop Access</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-semibold text-text-muted mb-1">
+                      Agent Port (telemetry)
+                    </label>
+                    <input
+                      type="number"
+                      value={stationDraft.port ?? ''}
+                      onChange={(e) => {
+                        const v = e.target.value === '' ? undefined : Number(e.target.value);
+                        setStationDraft({ ...stationDraft, port: Number.isFinite(v as number) ? (v as number) : undefined });
+                      }}
+                      placeholder="8000"
+                      min={1}
+                      max={65535}
+                      className="w-full bg-card border border-subtle rounded-lg px-3 py-1.5 text-xs font-mono text-text-base outline-none focus:border-sky-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-semibold text-text-muted mb-1">
+                      RDP Port (native console)
+                    </label>
+                    <input
+                      type="number"
+                      value={stationDraft.rdpPort ?? ''}
+                      onChange={(e) => {
+                        const v = e.target.value === '' ? undefined : Number(e.target.value);
+                        setStationDraft({ ...stationDraft, rdpPort: Number.isFinite(v as number) ? (v as number) : undefined });
+                      }}
+                      placeholder="3389"
+                      min={1}
+                      max={65535}
+                      className="w-full bg-card border border-subtle rounded-lg px-3 py-1.5 text-xs font-mono text-text-base outline-none focus:border-sky-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-semibold text-text-muted mb-1">
+                      VNC Port (browser live view)
+                    </label>
+                    <input
+                      type="number"
+                      value={stationDraft.vncPort ?? ''}
+                      onChange={(e) => {
+                        const v = e.target.value === '' ? undefined : Number(e.target.value);
+                        setStationDraft({
+                          ...stationDraft,
+                          vncPort: Number.isFinite(v as number) ? (v as number) : undefined,
+                          remoteChannel: v ? 'vnc' as const : stationDraft.remoteChannel
+                        });
+                      }}
+                      placeholder="6080"
+                      min={1}
+                      max={65535}
+                      className="w-full bg-card border border-subtle rounded-lg px-3 py-1.5 text-xs font-mono text-text-base outline-none focus:border-sky-500"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-semibold text-text-muted mb-1">
+                    VNC Live URL (HTTPS tunnel for Cloudflare)
+                  </label>
+                  <input
+                    type="url"
+                    value={stationDraft.remoteUrl || ''}
+                    onChange={(e) => setStationDraft({
+                      ...stationDraft,
+                      remoteUrl: e.target.value,
+                      remoteChannel: e.target.value ? 'vnc' : stationDraft.remoteChannel
+                    })}
+                    placeholder="https://pc2-remote.example.com/vnc.html?autoconnect=true"
+                    className="w-full bg-card border border-subtle rounded-lg px-3 py-1.5 text-xs font-mono text-text-base outline-none focus:border-sky-500"
+                  />
+                </div>
+                <p className="text-[10px] text-text-muted leading-relaxed">
+                  RDP generates one-click `mstsc` handoff files (Windows Remote Desktop must be enabled on the workstation).
+                  VNC powers the embedded live desktop panel — requires websockify/noVNC running on the PC; use an HTTPS tunnel URL on Cloudflare.
+                </p>
+              </div>
+
+              {/* Online Status Toggle */}
               <div className="flex items-center justify-between p-3.5 bg-inner/50 border border-subtle rounded-xl">
                 <div>
                   <div className="text-xs font-bold text-text-base">Station Enabled &amp; Active</div>

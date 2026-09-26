@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   RefreshCw,
   Copy,
@@ -10,18 +10,24 @@ import {
   UploadCloud,
   FileCode,
   Database,
-  X
+  X,
+  AlertTriangle
 } from 'lucide-react';
-import { SectionLabel, MetaList, TextAction } from '../chrome';
+import { SectionLabel, MetaList, TextAction, StatusDot } from '../chrome';
 import { supabase } from '../../../services/supabase';
 import { resolvePanoramaUrl, resolvePanoramaConfigUrl } from '../../../services/storageUrls';
 import { testCloudflareStorageHealth } from '../../../services/api/storage';
+import { appendStageEventToSupabase } from '../../../services/api/stageEventLedger';
+import { probeStationAgent, startBucketSyncJob, pollBucketSyncJob } from '../../../services/stationAgentApi';
+import { fetchDashboardApi } from '../../../services/cloudflareApi';
+import type { PairedFrameRecord } from './IntakePairingStation';
 import {
   STORAGE_BUCKET_DEFAULT,
   S3_BUCKET_DEFAULT,
   AZURE_CONTAINER_DEFAULT,
   REGION_DEFAULTS
 } from '../../../config/defaults';
+import { DEFAULT_4_WORKSTATIONS, type WorkstationStationConfig } from '../../../types/production';
 
 export interface BucketPublicationGateProps {
   subgrid: string;
@@ -33,6 +39,77 @@ export interface BucketPublicationGateProps {
   addAuditLog?: (type: any, title: string, details: string, status?: any) => void;
   userLabel: string;
   isGuestUser?: boolean;
+  /** Paired frames (metadata names) — the one-click upload list. */
+  pairedRecords?: PairedFrameRecord[];
+  /** Survey run folder id (e.g. 20220904 / BP_20220630) for the final-image check. */
+  surveyFolder?: string;
+}
+
+// ---------------------------------------------------------------------
+// One-click image upload helpers (pure — unit-tested).
+// ---------------------------------------------------------------------
+
+/** Bucket-relative object path from the user's storage pattern. */
+export function buildBucketObjectPath(pattern: string, subgrid: string, filename: string): string {
+  return (pattern || '{subgrid}/{filename}')
+    .replace('{subgrid}', subgrid)
+    .replace('{pointFolder}', filename.replace(/\.(jpe?g|png)$/i, ''))
+    .replace('{filename}', filename);
+}
+
+/** Where the final image may live on the NAS (worker /api/images rel paths),
+ * tried in order: the survey run's 05_Final output → release copy → final
+ * stage flat layouts. */
+export function buildUploadRelCandidates(subgrid: string, folder: string, filename: string): string[] {
+  const runFolder = (folder || '').trim();
+  const candidates: string[] = [];
+  if (runFolder && runFolder !== '__none__' && runFolder !== '__custom__') {
+    candidates.push(`05_Final/Project-OUT/Grid 1/${subgrid}/${runFolder}/panoramas/${filename}`);
+    candidates.push(`05_Final/Project-OUT/Grid 1/${subgrid}/${runFolder}/${filename}`);
+  }
+  candidates.push(`DELIVERABLES/${subgrid}/${filename}`);
+  candidates.push(`05_Final/${subgrid}/${filename}`);
+  return candidates;
+}
+
+export type BucketUploadMode = 'browser' | 'agent_cli' | 'unavailable';
+
+export interface UploadModeResolution {
+  mode: BucketUploadMode;
+  /** Filled for 'unavailable' — shown on the disabled button. */
+  reason?: string;
+}
+
+/**
+ * The upload runs in the browser (supabase-js) only for the Supabase
+ * provider with a single-image strategy and a worker URL to fetch the NAS
+ * bytes through. Every other provider is pushed by the station agent running
+ * the exact CLI the sync-script block shows (credentials never enter the
+ * browser). Custom CDN has no sync CLI at all.
+ */
+export function resolveUploadMode(
+  provider: string,
+  strategy: string,
+  hasWorkerUrl: boolean,
+  hasAgent: boolean
+): UploadModeResolution {
+  if (provider === 'supabase' && strategy === 'single_equirectangular' && hasWorkerUrl) {
+    return { mode: 'browser' };
+  }
+  if (provider === 'supabase' && strategy === 'multires_tiles' && hasAgent) {
+    return { mode: 'agent_cli' };
+  }
+  if (provider === 'supabase') {
+    if (hasAgent) return { mode: 'agent_cli' };
+    return hasWorkerUrl
+      ? { mode: 'unavailable', reason: 'Tile strategy pushes run via the station agent (CLI).' }
+      : { mode: 'unavailable', reason: 'Set the Worker URL (Providers) to upload in-browser, or configure a station agent for the CLI push.' };
+  }
+  if (provider === 'custom_cdn') {
+    return { mode: 'unavailable', reason: 'Custom CDN / reverse proxy has no sync CLI — deploy via your CDN pipeline.' };
+  }
+  if (hasAgent) return { mode: 'agent_cli' };
+  return { mode: 'unavailable', reason: 'No station agent is configured (Providers → Workstations) to run the provider CLI.' };
 }
 
 export interface DetectedBucketConfig {
@@ -178,7 +255,9 @@ export const BucketPublicationGate: React.FC<BucketPublicationGateProps> = ({
   addNotification,
   addAuditLog,
   userLabel,
-  isGuestUser
+  isGuestUser,
+  pairedRecords,
+  surveyFolder
 }) => {
   const cleanSg = subgrid.trim().toUpperCase();
   // Real frame count only. An unknown total is reported as unknown and blocks
@@ -224,8 +303,302 @@ export const BucketPublicationGate: React.FC<BucketPublicationGateProps> = ({
   const [pushStep, setPushStep] = useState<'IDLE' | 'VALIDATING' | 'GENERATING_MANIFEST' | 'SYNCING' | 'DONE' | 'FAILED'>('IDLE');
   const [pushProgress, setPushProgress] = useState<number>(0);
   const [pushLogs, setPushLogs] = useState<string[]>([]);
-  const [generatedManifest, setGeneratedManifest] = useState<any | null>(null);
+  interface GeneratedManifest {
+    enumeratedFrames?: number;
+    [key: string]: unknown;
+  }
+  const [generatedManifest, setGeneratedManifest] = useState<GeneratedManifest | null>(null);
   const [showManifestModal, setShowManifestModal] = useState<boolean>(false);
+
+  // === One-click image upload (any provider) =================================
+  const workstations: WorkstationStationConfig[] =
+    (projectSettings?.workstationsConfig as WorkstationStationConfig[] | undefined) || DEFAULT_4_WORKSTATIONS;
+  const agentConfigured = workstations.some((w) => w.ipAddress && w.enabled !== false);
+  const workerBaseUrl = (
+    projectSettings?.productionApiUrl ||
+    import.meta.env.VITE_PRODUCTION_API_URL ||
+    ''
+  ).replace(/\/+$/, '');
+  const hasWorkerUrl = workerBaseUrl.length > 0 || import.meta.env.VITE_NAS_API_ENABLED === 'true';
+  const uploadMode = useMemo(
+    () =>
+      resolveUploadMode(
+        bucketConfig.provider,
+        bucketConfig.strategy,
+        hasWorkerUrl,
+        agentConfigured
+      ),
+    [bucketConfig.provider, bucketConfig.strategy, hasWorkerUrl, agentConfigured]
+  );
+
+  interface ImgUploadState {
+    running: boolean;
+    done: number;
+    total: number;
+    current: string;
+    failed: string[];
+    lastLine: string;
+    finishedAt?: string;
+    outcome?: 'DONE' | 'FAILED' | 'CANCELLED';
+  }
+  const [imgUpload, setImgUpload] = useState<ImgUploadState>({ running: false, done: 0, total: 0, current: '', failed: [], lastLine: '' });
+  const imgCancelRef = useRef(false);
+
+  /** Frames eligible for upload: verified pairs with a metadata name. */
+  const uploadFrames = useMemo(() => {
+    const list = (pairedRecords || []).filter((r) => r.targetFilename && (r.isMatched || r.renamedAt));
+    const seen = new Set<string>();
+    return list.filter((r) => {
+      const key = r.targetFilename;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [pairedRecords]);
+
+  // The upload only unlocks when the FINAL panoramic dataset actually exists
+  // on disk for this survey run (05_Final/Project-OUT/Grid 1/<sg>/<run>/).
+  const [finalImages, setFinalImages] = useState<string[] | null>(null);
+  const [finalPath, setFinalPath] = useState<string>('');
+  const surveyFolderId = (surveyFolder || '').trim();
+  const scanFolderId = surveyFolderId === '__custom__' || surveyFolderId === '__none__' ? '' : surveyFolderId;
+  useEffect(() => {
+    let disposed = false;
+    setFinalImages(null);
+    setFinalPath('');
+    if (!cleanSg || !scanFolderId) return;
+    fetchDashboardApi(`/api/nas-scan?action=final-images&subgrid=${encodeURIComponent(cleanSg)}&folder=${encodeURIComponent(scanFolderId)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (disposed) return;
+        if (data?.success) {
+          setFinalImages(Array.isArray(data.images) ? data.images : []);
+          setFinalPath(data.path || '');
+        } else {
+          setFinalImages([]);
+        }
+      })
+      .catch(() => {
+        if (!disposed) setFinalImages([]);
+      });
+    return () => {
+      disposed = true;
+    };
+  }, [cleanSg, scanFolderId]);
+  const hasFinalImages = (finalImages?.length || 0) > 0;
+
+  const fetchImageBlobFromNas = async (relCandidates: string[]): Promise<Blob | null> => {
+    for (const rel of relCandidates) {
+      try {
+        const res = await fetchDashboardApi(`/api/nas-image?path=${encodeURIComponent(rel)}`, {
+          method: 'GET',
+          signal: AbortSignal.timeout(60_000)
+        });
+        if (res.ok) {
+          const blob = await res.blob();
+          if (blob.size > 0) return blob;
+        }
+      } catch {
+        // try the next candidate location
+      }
+    }
+    return null;
+  };
+
+  const handleUploadImagesToBucket = async () => {
+    if (imgUpload.running || isGuestUser) return;
+    if (!hasFinalImages) {
+      addNotification?.({
+        type: 'warning',
+        title: 'No Final Image Found',
+        message: `No final image dataset exists for ${cleanSg || 'this survey'}${scanFolderId ? ` / ${scanFolderId}` : ''} — run the 4-PC board (PC 4 output) first.`
+      });
+      return;
+    }
+    if (uploadMode.mode === 'unavailable') {
+      addNotification?.({
+        type: 'warning',
+        title: 'Image Upload Unavailable',
+        message: uploadMode.reason || 'No upload channel is configured for this provider.'
+      });
+      return;
+    }
+    if (uploadMode.mode === 'browser') {
+      if (uploadFrames.length === 0) {
+        addNotification?.({
+          type: 'warning',
+          title: 'No Paired Frames To Upload',
+          message: 'Pair the survey frames in Stitched Intake & Pairing first — the upload list follows verified metadata names.'
+        });
+        return;
+      }
+      const objectPattern = projectSettings?.singleImagePathPattern || '{subgrid}/{filename}';
+      imgCancelRef.current = false;
+      setImgUpload({ running: true, done: 0, total: uploadFrames.length, current: '', failed: [], lastLine: '' });
+      let uploaded = 0;
+      const failed: string[] = [];
+      for (const frame of uploadFrames) {
+        if (imgCancelRef.current) break;
+        const name = frame.targetFilename;
+        setImgUpload((prev) => ({ ...prev, current: name }));
+        const blob = await fetchImageBlobFromNas(buildUploadRelCandidates(cleanSg, scanFolderId, name));
+        if (!blob) {
+          failed.push(`${name} (not found on NAS)`);
+          setImgUpload((prev) => ({ ...prev, done: prev.done + 1 }));
+          continue;
+        }
+        try {
+          const objectPath = buildBucketObjectPath(objectPattern, cleanSg, name);
+          const { error } = await supabase.storage
+            .from(bucketConfig.bucketName)
+            .upload(objectPath, blob, { upsert: true, contentType: 'image/jpeg' });
+          if (error) {
+            failed.push(`${name} (${error.message})`);
+          } else {
+            uploaded += 1;
+          }
+        } catch (err) {
+          failed.push(`${name} (${err instanceof Error ? err.message : 'upload failed'})`);
+        }
+        setImgUpload((prev) => ({ ...prev, done: prev.done + 1 }));
+      }
+      const outcome = imgCancelRef.current ? 'CANCELLED' : failed.length === 0 ? 'DONE' : 'FAILED';
+      setImgUpload((prev) => ({ ...prev, running: false, finishedAt: new Date().toISOString(), outcome, failed }));
+      const cancelled = outcome === 'CANCELLED';
+      addNotification?.({
+        title: cancelled ? 'Image Upload Cancelled' : uploaded > 0 ? 'Image Upload Finished' : 'Image Upload Failed',
+        message: cancelled
+          ? `${uploaded} of ${uploadFrames.length} image(s) uploaded before cancellation.`
+          : `${uploaded}/${uploadFrames.length} image(s) uploaded to ${bucketConfig.bucketName}${failed.length > 0 ? `; ${failed.length} failed: ${failed.slice(0, 3).join(', ')}${failed.length > 3 ? '…' : ''}` : ''}.`,
+        category: 'SYSTEM',
+        read: false
+      });
+      addAuditLog?.(
+        'BUCKET_PUSH',
+        cancelled ? 'Bucket Image Upload Cancelled' : 'Bucket Image Upload (browser)',
+        `${uploaded}/${uploadFrames.length} image(s) uploaded to ${bucketConfig.bucketName}/${objectPattern} by ${userLabel}${failed.length > 0 ? ` (${failed.length} failed)` : ''}.`,
+        failed.length > 0 || cancelled ? 'warning' : 'success'
+      );
+      if (uploaded > 0) {
+        void appendStageEventToSupabase({
+          subgrid: cleanSg,
+          stage: 'bucket',
+          event: 'PROGRESS',
+          via: 'operator',
+          detail: `${uploaded} final image(s) uploaded to ${bucketConfig.bucketName} (browser channel)`,
+          counts: { uploaded, failed: failed.length, total: uploadFrames.length },
+          updated_by: userLabel || 'Operator'
+        });
+        // Upload implies new inventory — refresh the listing so the sign-off unlocks.
+        void handleScanBucketFiles();
+      }
+      return;
+    }
+
+    // agent_cli mode: run the provider CLI on the station PC, poll the job.
+    let agent: WorkstationStationConfig | null = null;
+    for (const ws of workstations.filter((w) => w.ipAddress && w.enabled !== false)) {
+      const probe = await probeStationAgent(ws, { timeoutMs: 2_000 });
+      if (probe.online) {
+        agent = ws;
+        break;
+      }
+    }
+    if (!agent) {
+      addNotification?.({
+        type: 'warning',
+        title: 'No Station Agent Reachable',
+        message: 'The CLI push runs on a workstation PC — start station-agent on one, or use the sync script manually.'
+      });
+      return;
+    }
+    const providerCli =
+      bucketConfig.provider === 'cloudflare_r2' ? 'r2'
+        : bucketConfig.provider === 'aws_s3' ? 's3'
+          : bucketConfig.provider === 'wasabi' ? 'wasabi'
+            : bucketConfig.provider === 'gcs' ? 'gcs'
+              : bucketConfig.provider === 'azure_blob' ? 'azure'
+                : bucketConfig.provider === 'nas_local' ? 'nas_local'
+                  : 'supabase_cli';
+    setImgUpload({ running: true, done: 0, total: uploadFrames.length || effectiveTotal, current: '', failed: [], lastLine: 'Starting CLI sync...' });
+    const started = await startBucketSyncJob(agent, {
+      provider: providerCli as 'r2' | 's3' | 'wasabi' | 'gcs' | 'azure' | 'supabase_cli' | 'nas_local',
+      stageDir: `DELIVERABLES/${cleanSg}`,
+      subgrid: cleanSg,
+      bucket: bucketConfig.bucketName,
+      region: bucketConfig.region,
+      account: bucketConfig.account,
+      endpoint: bucketConfig.endpointUrl,
+      includeManifest: true
+    });
+    if (!started) {
+      const message = 'Station agent unreachable.';
+      setImgUpload((prev) => ({ ...prev, running: false, outcome: 'FAILED', finishedAt: new Date().toISOString(), lastLine: message }));
+      addNotification?.({ type: 'warning', title: 'CLI Sync Could Not Start', message });
+      return;
+    }
+    if ('message' in started) {
+      const message = started.message;
+      setImgUpload((prev) => ({ ...prev, running: false, outcome: 'FAILED', finishedAt: new Date().toISOString(), lastLine: message }));
+      addNotification?.({ type: 'warning', title: 'CLI Sync Could Not Start', message });
+      return;
+    }
+    const jobId = started.job_id;
+    setImgUpload((prev) => ({ ...prev, lastLine: started.command_desc || 'CLI sync running...' }));
+    // Poll until the agent-side job settles (2 s cadence, bounded to 1 h).
+    const deadline = Date.now() + 3_600_000;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 2_000));
+      const status = await pollBucketSyncJob(agent, jobId);
+      if (!status) {
+        setImgUpload((prev) => ({ ...prev, lastLine: '… (agent unreachable, job continues on the PC)' }));
+        continue;
+      }
+      setImgUpload((prev) => ({
+        ...prev,
+        lastLine: status.lines.length > 0 ? status.lines[status.lines.length - 1] : prev.lastLine,
+        done: Math.min(prev.total, status.line_count || 0)
+      }));
+      if (status.status !== 'RUNNING') {
+        const ok = status.status === 'DONE';
+        setImgUpload((prev) => ({
+          ...prev,
+          running: false,
+          outcome: ok ? 'DONE' : 'FAILED',
+          finishedAt: new Date().toISOString(),
+          failed: ok ? [] : [status.error || 'CLI failed']
+        }));
+        addNotification?.({
+          title: ok ? 'Bucket Sync Finished' : 'Bucket Sync Failed',
+          message: ok
+            ? `${status.command_desc} completed on ${agent.ipAddress} (${status.line_count} log line(s)).`
+            : `${status.command_desc} failed: ${status.error || 'CLI error'}.`,
+          category: 'SYSTEM',
+          read: false
+        });
+        addAuditLog?.(
+          'BUCKET_PUSH',
+          ok ? 'Bucket CLI Sync Completed' : 'Bucket CLI Sync Failed',
+          `${status.command_desc} via station agent ${agent.ipAddress}: ${ok ? 'done' : status.error}.`,
+          ok ? 'success' : 'error'
+        );
+        if (ok) {
+          void appendStageEventToSupabase({
+            subgrid: cleanSg,
+            stage: 'bucket',
+            event: 'PROGRESS',
+            via: 'system',
+            detail: `${status.command_desc} completed via station agent`,
+            counts: { logLines: status.line_count, bucket: bucketConfig.bucketName },
+            updated_by: userLabel || 'System'
+          });
+          if (bucketConfig.provider === 'supabase') void handleScanBucketFiles();
+        }
+        return;
+      }
+    }
+    setImgUpload((prev) => ({ ...prev, running: false, outcome: 'FAILED', finishedAt: new Date().toISOString(), lastLine: 'Timed out after 1 h.' }));
+  };
 
   // Run initial probe on mount. A changed provider, bucket, or subgrid makes
   // the previous inventory stale, so the enumerated object names are dropped.
@@ -601,6 +974,15 @@ pause
 
       setPushStep('DONE');
       setPushProgress(100);
+      void appendStageEventToSupabase({
+        subgrid: cleanSg,
+        stage: 'bucket',
+        event: 'PROGRESS',
+        via: 'operator',
+        detail: `manifest.json for ${effectiveTotal} frames ${usesSupabaseChannel ? 'uploaded to' : 'downloaded from'} ${bucketConfig.bucketName} — frame transfer follows the sync step`,
+        counts: { total: effectiveTotal, channel: usesSupabaseChannel ? 'supabase' : 'manual-sync' },
+        updated_by: userLabel || 'Operator'
+      });
       addNotification?.({
         title: 'Bucket Manifest Prepared',
         message: usesSupabaseChannel
@@ -635,6 +1017,15 @@ pause
 
   const handleSignOffBucket = () => {
     setIsSignOffDone(true);
+    void appendStageEventToSupabase({
+      subgrid: cleanSg,
+      stage: 'bucket',
+      event: 'COMPLETED',
+      via: 'operator',
+      detail: `${verifiedCount} listed image(s) in ${bucketConfig.bucketName} approved for ${cleanSg}`,
+      counts: { verified: verifiedCount, total: effectiveTotal, bucket: bucketConfig.bucketName },
+      updated_by: userLabel || 'Operator'
+    });
     addNotification?.({
       title: 'Bucket Publication Approved',
       message: `${verifiedCount} listed images in ${bucketConfig.bucketName} approved for ${cleanSg}.`,
@@ -675,15 +1066,7 @@ pause
             Cloud Bucket Publication Gate
           </h3>
           <p className="text-xs text-text-muted mt-0.5 leading-relaxed">
-            Target bucket{' '}
-            <span className="font-mono text-text-base">
-              {bucketConfig.bucketName || 'not configured'}
-            </span>
-            {' · '}
-            {bucketConfig.providerLabel}
-            {' · '}
-            {bucketConfig.strategyLabel}
-            {!hasBatch && ' · no paired frame count from intake'}
+            Prepare, upload, and verify final panorama images for the selected survey.
           </p>
         </div>
 
@@ -839,6 +1222,126 @@ pause
         )}
       </div>
 
+      {/* === One-click image upload (any provider) === */}
+      <div className="space-y-3">
+        <SectionLabel
+          icon={<UploadCloud size={12} />}
+          note={hasBatch ? `${uploadFrames.length} frame(s) ready` : 'no frame count'}
+        >
+          One-Click Image Upload — {bucketConfig.providerLabel}
+        </SectionLabel>
+
+        <div className="rounded-xl border border-subtle bg-card p-4 space-y-3">
+          <div className="flex items-start justify-between flex-wrap gap-3">
+            <div className="min-w-0 space-y-1.5">
+              <p className="text-[11px] text-text-muted leading-relaxed">
+                Uploads the final panoramic images for <span className="font-mono text-text-base">{cleanSg || '{subgrid}'}</span> to{' '}
+                <span className="font-mono text-text-base">{bucketConfig.bucketName || '—'}</span>
+                {uploadMode.mode === 'browser' ? ' — streamed NAS → browser → bucket with per-frame progress.' : ' — the station agent runs the provider CLI (same command as the sync script), credentials stay on the PC.'}
+              </p>
+              {scanFolderId ? (
+                finalImages === null ? (
+                  <p className="text-[11px] text-text-muted flex items-center gap-1.5">
+                    <RefreshCw size={11} className="animate-spin" />
+                    <span>Checking the final image dataset for this survey…</span>
+                  </p>
+                ) : hasFinalImages ? (
+                  <p className="text-[11px] text-emerald-400 flex items-center gap-1.5" title={finalPath}>
+                    <Check size={12} className="shrink-0" />
+                    <span>Found <span className="font-bold">{finalImages!.length}</span> final image(s) at <span className="font-mono">{finalPath}</span></span>
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-amber-400 flex items-start gap-1.5" title={finalPath}>
+                    <AlertTriangle size={12} className="shrink-0 mt-px" />
+                    <span>
+                      <span className="font-bold">No final image found for this survey</span> — run the 4-PC board (PC 4 output) first.
+                      Expected at <span className="font-mono">{finalPath || `/05_Final/Project-OUT/Grid 1/${cleanSg}/${scanFolderId}/`}</span>
+                    </span>
+                  </p>
+                )
+              ) : (
+                <p className="text-[11px] text-text-muted">
+                  Select a survey run in Stitched Intake &amp; Pairing to check the final image dataset before uploading.
+                </p>
+              )}
+              {uploadMode.mode === 'agent_cli' && (
+                <p className="text-[10px] text-text-muted font-mono">
+                  source: DELIVERABLES/{cleanSg || '{subgrid}'}/ on the agent PC (run release prepare first)
+                </p>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={handleUploadImagesToBucket}
+              disabled={imgUpload.running || isGuestUser || uploadMode.mode === 'unavailable' || !hasBatch || finalImages === null || !hasFinalImages || (uploadMode.mode === 'browser' && uploadFrames.length === 0)}
+              title={
+                uploadMode.mode === 'unavailable'
+                  ? uploadMode.reason
+                  : finalImages === null
+                    ? 'Checking the final image dataset…'
+                    : !hasFinalImages
+                      ? 'No final image found for this survey — run the 4-PC board first'
+                      : `Upload ${uploadFrames.length || effectiveTotal} image(s) to ${bucketConfig.bucketName}`
+              }
+              className="px-4 py-2 bg-text-base text-card hover:opacity-90 font-semibold text-xs rounded-lg flex items-center gap-2 transition-opacity cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+            >
+              <UploadCloud size={14} />
+              <span>{imgUpload.running ? 'Uploading…' : `Upload Images (${uploadFrames.length || effectiveTotal})`}</span>
+            </button>
+          </div>
+
+          {(imgUpload.running || imgUpload.finishedAt) && (
+            <div className="space-y-2 pt-2 border-t border-[var(--divider)]">
+              <div className="flex items-center justify-between gap-2 text-[11px] font-mono">
+                <span className="flex items-center gap-1.5">
+                  {imgUpload.running && <StatusDot tone="text-sky-400" pulse />}
+                  <span className={imgUpload.outcome === 'FAILED' ? 'text-red-300' : imgUpload.outcome === 'CANCELLED' ? 'text-amber-300' : imgUpload.outcome === 'DONE' ? 'text-emerald-300' : 'text-text-base'}>
+                    {imgUpload.running ? 'Uploading' : imgUpload.outcome === 'FAILED' ? 'Finished with failures' : imgUpload.outcome === 'CANCELLED' ? 'Cancelled' : 'Complete'}
+                  </span>
+                </span>
+                <span className="text-text-muted">
+                  {imgUpload.done} / {imgUpload.total}
+                  {imgUpload.total > 0 ? ` (${Math.round((imgUpload.done / imgUpload.total) * 100)}%)` : ''}
+                </span>
+              </div>
+              <div className="w-full h-2 bg-inner border border-subtle rounded-full overflow-hidden relative">
+                {imgUpload.running && uploadMode.mode === 'agent_cli' ? (
+                  <div className="absolute inset-0 animate-pulse" style={{ background: 'var(--text-base)', opacity: 0.3 }} />
+                ) : (
+                  <div
+                    className="h-full bg-text-base transition-all duration-300"
+                    style={{ width: `${imgUpload.total > 0 ? Math.max(2, Math.round((imgUpload.done / imgUpload.total) * 100)) : 2}%` }}
+                  />
+                )}
+              </div>
+              <div className="flex items-center justify-between gap-3 flex-wrap text-[10px] font-mono">
+                <span className="text-text-muted truncate min-w-0 animate-pulse" title={imgUpload.current || imgUpload.lastLine}>
+                  {imgUpload.current ? `→ ${imgUpload.current}` : imgUpload.lastLine || '…'}
+                </span>
+                <span className="flex items-center gap-3 shrink-0">
+                  {imgUpload.failed.length > 0 && <span className="text-red-300">{imgUpload.failed.length} failed</span>}
+                  {imgUpload.running ? (
+                    uploadMode.mode === 'browser' ? (
+                      <button
+                        type="button"
+                        onClick={() => { imgCancelRef.current = true; }}
+                        className="text-[10px] font-semibold text-text-muted hover:text-text-base cursor-pointer transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    ) : (
+                      <span className="text-text-muted/70">job runs on the agent PC</span>
+                    )
+                  ) : (
+                    <span className="text-text-muted/70">{imgUpload.finishedAt ? new Date(imgUpload.finishedAt).toLocaleTimeString() : ''}</span>
+                  )}
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* Synchronization console — bare sections separated by rules */}
       <div className="space-y-3">
         <SectionLabel
@@ -974,8 +1477,8 @@ pause
                 </h3>
                 <p className="text-[11px] text-text-muted">
                   Layout: {bucketConfig.strategy} • Subgrid: {cleanSg || '—'} •{' '}
-                  {generatedManifest?.enumeratedFrames > 0
-                    ? `${generatedManifest.enumeratedFrames} listed object(s)`
+                  {(generatedManifest?.enumeratedFrames ?? 0) > 0
+                    ? `${generatedManifest?.enumeratedFrames} listed object(s)`
                     : 'no enumerated frames'}{' '}
                   • inventory {inventoryVerified ? 'verified' : 'not verified'}
                 </p>
@@ -1001,3 +1504,4 @@ pause
     </div>
   );
 };
+

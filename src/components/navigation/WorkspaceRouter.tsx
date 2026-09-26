@@ -4,6 +4,7 @@ import { WorkspacePlaceholder, getWorkspaceDefinition } from '../../workspaces';
 
 const ProductionHubWorkspace = React.lazy(() => import('../production/hub/ProductionHubWorkspace').then(m => ({ default: m.ProductionHubWorkspace })));
 const NASStorageWorkspace = React.lazy(() => import('../NASStorageWorkspace').then(m => ({ default: m.NASStorageWorkspace })));
+const PcMonitoringStation = React.lazy(() => import('../production/hub/PcMonitoringStation').then(m => ({ default: m.PcMonitoringStation })));
 // processing and lineage consolidated into ProductionHubWorkspace
 // lineage consolidated into ProductionHubWorkspace
 const AnalyticsWorkspace = React.lazy(() => import('../AnalyticsWorkspace').then(m => ({ default: m.AnalyticsWorkspace })));
@@ -78,16 +79,32 @@ export const WorkspaceRouter = ({
         projectSettings={projectSettings}
         setProjectSettings={setProjectSettings}
         authSession={authSession}
-         isGuestUser={isGuestUser}
-         addNotification={addNotification}
-         addAuditLog={addAuditLog}
-         onBackToDashboard={() => goToWorkspace('dashboard')}
-          onOpenDataManagement={(subgrid) => goToWorkspace('data', subgrid ? { subgrid } : undefined)}
-          onOpenStorage={() => goToWorkspace('storage')}
-         translate={t}
-       />
-     );
-   }
+        isGuestUser={isGuestUser}
+        addNotification={addNotification}
+        addAuditLog={addAuditLog}
+        onBackToDashboard={() => goToWorkspace('dashboard')}
+        onOpenDataManagement={(subgrid) => goToWorkspace('data', subgrid ? { subgrid } : undefined)}
+        onOpenStorage={() => goToWorkspace('storage')}
+        translate={t}
+      />
+    );
+  }
+
+  if (currentPage === 'pcmon') {
+    const userLabel = isGuestUser
+      ? 'Guest'
+      : authSession?.user?.email || authSession?.user?.user_metadata?.full_name || 'Operator';
+    return (
+      <PcMonitoringStation
+        key="workspace-pcmon"
+        projectSettings={projectSettings}
+        isGuestUser={isGuestUser}
+        addNotification={addNotification}
+        addAuditLog={addAuditLog}
+        userLabel={userLabel}
+      />
+    );
+  }
 
   if (currentPage === 'analytics') {
     return (

@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+
 import {
   FolderInput,
+  History,
   Monitor,
   ShieldCheck,
   Database,
@@ -8,13 +10,17 @@ import {
   HardDrive
 } from 'lucide-react';
 import { Masthead, UnderlineTabStrip, type ChromeTab } from '../chrome';
-import { IntakePairingStation, type PairedFrameRecord } from './IntakePairingStation';
+import { IntakePairingStation, type PairedFrameRecord, type IntakeSessionSource } from './IntakePairingStation';
 import { MultiPCStationBoard } from './MultiPCStationBoard';
 import { QAAuditStation } from './QAAuditStation';
 import { BucketPublicationGate } from './BucketPublicationGate';
 import { WebGISPublishGate } from './WebGISPublishGate';
+import { StageHistoryLedger } from './StageHistoryLedger';
+import { useStationAgents } from '../../../hooks/useStationAgents';
+import { fetchHubSessionFromSupabase, saveHubSessionToSupabase } from '../../../services/api/hubSession';
+import { DEFAULT_4_WORKSTATIONS, type WorkstationStationConfig } from '../../../types/production';
 
-export type ProductionHubStationKey = 'intake' | 'stations' | 'qa' | 'bucket' | 'publish';
+export type ProductionHubStationKey = 'intake' | 'stations' | 'qa' | 'bucket' | 'publish' | 'history';
 
 export interface ProductionHubWorkspaceProps {
   projectSettings: any;
@@ -30,11 +36,12 @@ export interface ProductionHubWorkspaceProps {
 }
 
 const STATION_TABS: ChromeTab<ProductionHubStationKey>[] = [
-  { key: 'intake', label: 'Stitched Intake & Pairing', icon: <FolderInput size={14} /> },
   { key: 'stations', label: '4-PC Multi-Station Flight Board', icon: <Monitor size={14} /> },
+  { key: 'intake', label: 'Stitched Intake & Pairing', icon: <FolderInput size={14} /> },
   { key: 'qa', label: 'Acceptance QA & 360° Inspection', icon: <ShieldCheck size={14} /> },
   { key: 'bucket', label: 'Cloud Bucket Gate', icon: <Database size={14} /> },
-  { key: 'publish', label: 'WebGIS Release Gate', icon: <Globe size={14} /> }
+  { key: 'publish', label: 'WebGIS Release Gate', icon: <Globe size={14} /> },
+  { key: 'history', label: 'Stage History Ledger', icon: <History size={14} /> }
 ];
 
 export const ProductionHubWorkspace: React.FC<ProductionHubWorkspaceProps> = ({
@@ -47,15 +54,91 @@ export const ProductionHubWorkspace: React.FC<ProductionHubWorkspaceProps> = ({
   onOpenStorage,
   translate = (k) => k
 }) => {
-  const [activeStation, setActiveStation] = useState<ProductionHubStationKey>('intake');
+  const [activeStation, setActiveStation] = useState<ProductionHubStationKey>('stations');
   const [subgrid, setSubgrid] = useState<string>('');
   const [surveyDate, setSurveyDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
   const [totalFrames, setTotalFrames] = useState<number>(0);
   const [pairedRecords, setPairedRecords] = useState<PairedFrameRecord[]>([]);
+  // Survey Source selections reported by the intake section (used at save).
+  const [intakeSession, setIntakeSession] = useState<IntakeSessionSource>({});
+  // Session values fetched at bootstrap — set exactly once, never by self.
+  const [restoredSession, setRestoredSession] = useState<IntakeSessionSource | null>(null);
+  const [sessionReady, setSessionReady] = useState(false);
 
   const userEmail =
     authSession?.user?.email || authSession?.user?.user_metadata?.full_name || 'Operator';
   const userLabel = isGuestUser ? 'Guest' : userEmail;
+
+  const workstations: WorkstationStationConfig[] =
+    (projectSettings?.workstationsConfig as WorkstationStationConfig[] | undefined) ||
+    DEFAULT_4_WORKSTATIONS;
+  // Lanside auto-detection source for the 4-PC station board (10 s cadence).
+  const { observations: stationObservations } = useStationAgents(workstations, 10_000);
+
+  // --- Hub working session: restore the operator's last activity ------------
+  useEffect(() => {
+    let disposed = false;
+    fetchHubSessionFromSupabase()
+      .then((s) => {
+        if (disposed || !s) return;
+        if (typeof s.activeStation === 'string' && STATION_TABS.some((t) => t.key === s.activeStation)) {
+          setActiveStation(s.activeStation as ProductionHubStationKey);
+        }
+        if (typeof s.subgrid === 'string' && s.subgrid) setSubgrid(s.subgrid);
+        if (typeof s.surveyDate === 'string' && s.surveyDate) setSurveyDate(s.surveyDate);
+        if (typeof s.totalFrames === 'number' && s.totalFrames > 0) setTotalFrames(s.totalFrames);
+        if (Array.isArray(s.pairedRecords) && s.pairedRecords.length > 0) {
+          setPairedRecords(s.pairedRecords as PairedFrameRecord[]);
+        }
+        if (typeof s.selectedFolderId === 'string' || typeof s.csvFileName === 'string') {
+          setRestoredSession({
+            selectedFolderId: typeof s.selectedFolderId === 'string' ? s.selectedFolderId : undefined,
+            csvFileName: typeof s.csvFileName === 'string' ? s.csvFileName : undefined,
+            customFolderName: typeof s.customFolderName === 'string' ? s.customFolderName : undefined
+          });
+        }
+      })
+      .catch(() => { })
+      .finally(() => {
+        if (!disposed) setSessionReady(true);
+      });
+    return () => {
+      disposed = true;
+    };
+  }, []);
+
+  // --- Hub working session: persist the last activity (debounced) -----------
+  const sessionSignature = [
+    activeStation,
+    subgrid,
+    surveyDate,
+    totalFrames,
+    pairedRecords.length,
+    pairedRecords.length > 0 ? pairedRecords[pairedRecords.length - 1]?.timestamp : '',
+    intakeSession.selectedFolderId || '',
+    intakeSession.csvFileName || '',
+    intakeSession.customFolderName || ''
+  ].join('~');
+  const sessionPayloadRef = useRef<Record<string, unknown>>({});
+  useEffect(() => {
+    if (!sessionReady) return;
+    const t = setTimeout(() => {
+      const payload = {
+        activeStation,
+        subgrid,
+        surveyDate,
+        totalFrames,
+        pairedRecords,
+        ...(restoredSession || {}),
+        ...intakeSession,
+        updatedAt: new Date().toISOString()
+      };
+      sessionPayloadRef.current = payload;
+      void saveHubSessionToSupabase(payload, userLabel);
+    }, 400);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionSignature, sessionReady]);
 
   // Storage readouts must reflect real project configuration only: an unconfigured
   // project reports "Not configured" rather than a placeholder bucket or mount.
@@ -76,7 +159,7 @@ export const ProductionHubWorkspace: React.FC<ProductionHubWorkspaceProps> = ({
         {/* Top Masthead Console */}
         <Masthead
           title="Production Hub"
-          subtitle="Unified multi-workstation assembly hub: raw sensor intake, 4-PC pipeline tracking, 360° QA review, and WebGIS publication."
+          subtitle="Manage survey intake, multi-PC processing, quality review, and publication."
           readouts={[
             {
               key: 'bucket',
@@ -133,6 +216,10 @@ export const ProductionHubWorkspace: React.FC<ProductionHubWorkspaceProps> = ({
                 addNotification={addNotification}
                 addAuditLog={addAuditLog}
                 translate={translate}
+                sessionSource={restoredSession ?? undefined}
+                onSurveySourceChange={setIntakeSession}
+                projectSettings={projectSettings}
+                isGuestUser={isGuestUser}
               />
             )}
 
@@ -146,6 +233,8 @@ export const ProductionHubWorkspace: React.FC<ProductionHubWorkspaceProps> = ({
                 addAuditLog={addAuditLog}
                 userLabel={userLabel}
                 isGuestUser={isGuestUser}
+                projectSettings={projectSettings}
+                stationObservations={stationObservations}
               />
             )}
 
@@ -169,6 +258,8 @@ export const ProductionHubWorkspace: React.FC<ProductionHubWorkspaceProps> = ({
                 subgrid={subgrid}
                 surveyDate={surveyDate}
                 totalFrames={totalFrames}
+                pairedRecords={pairedRecords}
+                surveyFolder={intakeSession.selectedFolderId}
                 projectSettings={projectSettings}
                 onAdvanceToWebGIS={() => setActiveStation('publish')}
                 addNotification={addNotification}
@@ -191,6 +282,10 @@ export const ProductionHubWorkspace: React.FC<ProductionHubWorkspaceProps> = ({
                 userLabel={userLabel}
                 isGuestUser={isGuestUser}
               />
+            )}
+
+            {activeStation === 'history' && (
+              <StageHistoryLedger subgrid={subgrid} totalFrames={totalFrames} />
             )}
           </div>
         </div>

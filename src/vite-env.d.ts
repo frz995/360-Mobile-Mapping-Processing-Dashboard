@@ -36,6 +36,8 @@ interface ImportMetaEnv {
   readonly VITE_WASABI_BUCKET?: string;
   readonly VITE_WASABI_REGION?: string;
   readonly VITE_NAS_SERVER_URL?: string;
+  readonly VITE_NAS_API_ENABLED?: string;
+  readonly VITE_NAS_WORK_BASE_PATH?: string;
   readonly VITE_PSV_SERVER_URL?: string;
   readonly VITE_DB_PANORAMAS_TABLE?: string;
   readonly VITE_DB_SUMMARY_VIEW?: string;

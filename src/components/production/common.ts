@@ -4,6 +4,7 @@
 
 import type { ExtendedProjectSettings } from '../../types/admin';
 import type { ProductionApiSettings } from '../../types/production';
+import { isNasImageProxyEnabled, nasImageUrl } from '../../services/nasImageToken';
 
 export type TranslateFn = (key: string) => string;
 
@@ -56,7 +57,14 @@ export function productionNasUrlFor(
     .join('/')
     .replace(/^\/+/, '');
 
-  if (!pfx || !base) return '';
+  if (!pfx) return '';
+
+  // Cloudflare Pages is HTTPS; private HTTP NAS origins are proxied through
+  // the authenticated same-origin Pages Function in production.
+  if (isNasImageProxyEnabled()) {
+    return nasImageUrl(pfx);
+  }
+  if (!base) return '';
 
   if (base.endsWith('/api/images')) {
     return `${base}/${pfx}`;

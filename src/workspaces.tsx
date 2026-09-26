@@ -1,5 +1,6 @@
 import type { ElementType } from 'react';
 import {
+  Activity,
   BarChart3,
   Cpu,
   Database,
@@ -40,6 +41,7 @@ export const WORKSPACES: WorkspaceDefinition[] = [
   { key: 'data', labelKey: 'data', descriptionKey: 'workspaceDataDesc', icon: Database, tag: 'live' },
   { key: 'settings', labelKey: 'settings', descriptionKey: 'workspaceSettingsDesc', icon: Settings, tag: 'live', guard: ['manageSettings'] },
   { key: 'production', labelKey: 'workspaceProduction', descriptionKey: 'workspaceProductionDesc', icon: Workflow, tag: 'live' },
+  { key: 'pcmon', labelKey: 'workspacePcMon', descriptionKey: 'workspacePcMonDesc', icon: Activity, tag: 'live' },
   { key: 'storage', labelKey: 'workspaceStorage', descriptionKey: 'workspaceStorageDesc', icon: HardDrive, tag: 'live' },
   { key: 'processing', labelKey: 'workspaceProcessing', descriptionKey: 'workspaceProcessingDesc', icon: Cpu, tag: 'live' },
   { key: 'lineage', labelKey: 'workspaceLineage', descriptionKey: 'workspaceLineageDesc', icon: GitBranch, tag: 'live' },
@@ -82,7 +84,7 @@ export const WORKSPACE_CATEGORIES: WorkspaceCategory[] = [
   {
     key: 'production',
     labelKey: 'workspaceCategoryProduction',
-    members: ['production', 'storage']
+    members: ['production', 'pcmon', 'storage']
   },
   {
     key: 'governance',

@@ -17,6 +17,7 @@ import type {
 import type { ReleaseManifest } from '../utils/releaseNaming';
 import { getActiveProjectId } from './projectContext';
 import { supabase } from './api/client';
+import { fetchDashboardApi } from './cloudflareApi';
 
 export interface SubmitJobResult {
   ok: boolean;
@@ -76,7 +77,8 @@ export interface ProductionApiClient {
 // ---------------------------------------------------------------------
 
 function buildHttpClient(settings: ProductionApiSettings): ProductionApiClient {
-  const baseUrl = (settings.baseUrl || '').replace(/\/+$/, '');
+  const usePagesProxy = Boolean(import.meta.env.PROD && import.meta.env.VITE_NAS_API_ENABLED === 'true');
+  const baseUrl = usePagesProxy ? '/api/worker' : (settings.baseUrl || '').replace(/\/+$/, '');
   const apiKey = settings.apiKey || '';
   // The BFF gateway authorizes via the caller's Supabase access token (it
   // resolves the app role from user_accounts); a direct worker connection
@@ -94,6 +96,16 @@ function buildHttpClient(settings: ProductionApiSettings): ProductionApiClient {
   };
   const api = async (path: string, init?: RequestInit): Promise<Response> => {
     if (!baseUrl) throw new Error('Worker URL not configured');
+    if (usePagesProxy) {
+      return fetchDashboardApi(`${baseUrl}${path}`, {
+        ...init,
+        signal: init?.signal ?? AbortSignal.timeout(10_000),
+        headers: {
+          'Content-Type': 'application/json',
+          ...(init?.headers || {})
+        }
+      });
+    }
     const auth = await authHeaders();
     return fetch(`${baseUrl}${path}`, {
       ...init,

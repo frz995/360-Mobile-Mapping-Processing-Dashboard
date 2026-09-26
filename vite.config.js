@@ -31,6 +31,32 @@ function devApiPlugin() {
                     }
                     return;
                 }
+                if (req.url && req.url.startsWith('/api/nas-image')) {
+                    try {
+                        // @ts-ignore
+                        const { default: handler } = await import('./api/nas-image.js');
+                        await handler(req, res);
+                    }
+                    catch (err) {
+                        res.statusCode = 500;
+                        res.setHeader('Content-Type', 'application/json');
+                        res.end(JSON.stringify({ error: err.message }));
+                    }
+                    return;
+                }
+                if (req.url && req.url.startsWith('/api/nas-image')) {
+                    try {
+                        // @ts-ignore
+                        const { default: handler } = await import('./api/nas-image.js');
+                        await handler(req, res);
+                    }
+                    catch (err) {
+                        res.statusCode = 500;
+                        res.setHeader('Content-Type', 'application/json');
+                        res.end(JSON.stringify({ error: err.message }));
+                    }
+                    return;
+                }
                 next();
             });
         }

@@ -271,3 +271,14 @@ i.e. 3 total attempts; set `"retryLimit": N` in `settings` to override).
 Set `NAS_WORKER_TOKEN` on the worker and send `Authorization: Bearer <token>`
 on `POST`/`GET` requests. Status PATCH to Supabase uses the service-role key
 server-side only.
+
+## Per-PC station agents (Flight Board auto mode)
+
+The 4 workstation PCs run a sibling service, `station-agent/` (see
+station-agent/README.md for the full contract). It exposes the same
+`GET /health` shape as this worker (so Worker Monitor works) plus
+`GET /api/station` returning the auto-detection payload the
+`4-PC Multi-Station Flight Board` polls every 10 s: matched work processes
+(psutil, incl. true process start time) and per-subgrid output file counts
+under the station's OUT stage folder. Optional `AGENT_TOKEN` mirrors
+`NAS_WORKER_TOKEN` (Bearer header).

@@ -5,6 +5,7 @@ import './index.css'
 import './themes.css';
 import { initSentry, captureException, sentryReportSink } from './lib/sentry';
 import { addReportSink, installReporters } from './lib/report';
+import { ensureNasImageToken, isNasImageProxyEnabled } from './services/nasImageToken';
 
 initSentry();
 installReporters();
@@ -64,7 +65,39 @@ const isShareRoute =
   window.location.hash.startsWith('#/share/') ||
   window.location.hash === '#/share';
 
-if (isShareRoute) {
+/** Production NAS previews go through the authenticated same-origin Pages
+ * proxy. `<img src>`/tile loaders cannot send the bearer token, so fetch the
+ * short-lived signed token before the first render (never blocks startup for
+ * more than a few seconds and stays a no-op outside Cloudflare production). */
+async function boot() {
+  if (isNasImageProxyEnabled()) {
+    try {
+      await Promise.race([
+        ensureNasImageToken(),
+        new Promise((resolve) => setTimeout(resolve, 8000))
+      ]);
+    } catch {
+      // Non-fatal: the App surface reports NAS availability separately.
+    }
+  }
+  if (isShareRoute) {
+    renderShare();
+  } else {
+    render();
+  }
+}
+
+function render() {
+  ReactDOM.createRoot(rootEl).render(
+    <React.StrictMode>
+      <ErrorBoundary>
+        <App />
+      </ErrorBoundary>
+    </React.StrictMode>,
+  );
+}
+
+function renderShare() {
   import('./share/SharedMapPage')
     .then(({ SharedMapPage }) => {
       ReactDOM.createRoot(rootEl).render(
@@ -92,13 +125,7 @@ if (isShareRoute) {
         </div>
       );
     });
-} else {
-  ReactDOM.createRoot(rootEl).render(
-    <React.StrictMode>
-      <ErrorBoundary>
-        <App />
-      </ErrorBoundary>
-    </React.StrictMode>,
-  );
 }
+
+void boot();
 

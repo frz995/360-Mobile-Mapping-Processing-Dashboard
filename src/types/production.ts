@@ -294,6 +294,8 @@ export type ProcessingEngineMode = 'gpu_worker' | 'multi_pc_workstations';
 
 export type WorkstationStationId = 'stitch' | 'blur' | 'lightroom' | 'photoshop';
 
+export type StationRemoteChannel = 'rdp' | 'vnc';
+
 export interface WorkstationStationConfig {
   id: WorkstationStationId;
   name: string;
@@ -305,8 +307,23 @@ export interface WorkstationStationConfig {
   description: string;
   iconName?: string;
   enabled: boolean;
+  /** Lower-case substrings the station agent matches work processes against
+   * (authoritative list lives in each PC's station-agent/.env). */
+  processNames?: string[];
+  /** Optional shared secret for agent probes (station agent AGENT_TOKEN). */
+  agentToken?: string;
   ipAddress?: string;
   port?: number;
+  /** Microsoft RDP port for one-click mstsc launch (default 3389). */
+  rdpPort?: number;
+  /** Optional noVNC/websockify port for the in-browser live desktop pane. */
+  vncPort?: number;
+  /** Optional HTTPS noVNC URL (Cloudflare Tunnel) for the live desktop pane.
+   * Supports `{ip}` and `{port}` placeholders. Required on HTTPS deployments
+   * because browsers block a private http:// VNC iframe (mixed content). */
+  remoteUrl?: string;
+  /** Which remote channel the quad view uses for this station. */
+  remoteChannel?: StationRemoteChannel;
   lastHeartbeat?: string;
   isOnline?: boolean;
   latencyMs?: number;
@@ -369,6 +386,122 @@ export const DEFAULT_4_WORKSTATIONS: WorkstationStationConfig[] = [
   }
 ];
 
+// ---------------------------------------------------------------------
+// Station agent telemetry (4-PC Multi-Station Flight Board auto mode)
+// Matches the station-agent/app.py wire contract (station-agent/README.md).
+// ---------------------------------------------------------------------
+export interface StationAgentProcessInfo {
+  name: string;
+  pid?: number;
+  /** psutil process create_time — the true task start moment. */
+  started_at?: string | null;
+}
+
+export interface StationAgentOutputSubgrid {
+  files: number;
+  last_write_at?: string | null;
+  /** A file landed within the agent's growing window (live activity). */
+  growing?: boolean;
+}
+
+export interface StationAgentPointsSubgrid {
+  points_total?: number;
+  points_done?: number;
+  tiles_done?: number;
+}
+
+export interface StationAgentReport {
+  agent_version?: string;
+  station_id: WorkstationStationId;
+  hostname?: string;
+  generated_at?: string;
+  watch_error?: string | null;
+  task?: {
+    started: boolean;
+    processes?: StationAgentProcessInfo[];
+    first_started_at?: string | null;
+  };
+  output?: {
+    root?: string;
+    stage?: string;
+    subgrids?: Record<string, StationAgentOutputSubgrid>;
+  };
+  /** Capture-point progress for tile-rig stations (POINT_MODE, default blur). */
+  points?: {
+    stage_in?: string;
+    point_mode?: boolean;
+    subgrids?: Record<string, StationAgentPointsSubgrid>;
+    error?: string | null;
+  };
+}
+
+export interface StationAgentObservation {
+  stationId: WorkstationStationId;
+  online: boolean;
+  lastProbeAt?: string;
+  health?: WorkerHealthInfo | null;
+  report?: StationAgentReport | null;
+  error?: string;
+}
+
+export type StationBoardStatus = 'WAITING' | 'IN_PROGRESS' | 'COMPLETED' | 'FLAGGED';
+
+export type StationBoardSource = 'agent' | 'snapshot' | 'none';
+
+/** Unit behind the Done/Total counters: stitched frames (default) or capture
+ * points (tile-rig stations like PC 1 blur, POINT_MODE). */
+export type StationBoardMetricUnit = 'frames' | 'points';
+
+/** Board state for one (project, subgrid, station), persisted so the
+ * board survives refresh and shares one state across operator browsers. */
+export interface StationBoardRow {
+  id?: string;
+  project_id?: string | null;
+  subgrid: string;
+  station_id: WorkstationStationId;
+  status: StationBoardStatus;
+  total_frames?: number | null;
+  completed_frames?: number | null;
+  metric_unit?: StationBoardMetricUnit | null;
+  started_at?: string | null;
+  completed_at?: string | null;
+  source?: string;
+  note?: string | null;
+  last_agent_pulse?: string | null;
+  updated_by?: string | null;
+  updated_at?: string;
+}
+
+// ---------------------------------------------------------------------
+// Stage event ledger — append-only history for the Production Hub
+// pipeline (intake → blur → stitch → lightroom → photoshop → qa →
+// bucket → publish). Written by the browser on real stage transitions.
+// ---------------------------------------------------------------------
+export type StageLedgerStage =
+  | 'intake' | 'blur' | 'stitch' | 'lightroom' | 'photoshop'
+  | 'qa' | 'bucket' | 'publish';
+
+export type StageLedgerEvent =
+  | 'STARTED' | 'PROGRESS' | 'COMPLETED' | 'FLAGGED' | 'PUBLISHED'
+  | 'AGENT_ONLINE' | 'AGENT_OFFLINE';
+
+export type StageLedgerVia = 'agent' | 'operator' | 'system';
+
+export interface StageEventLedgerRow {
+  id?: string;
+  project_id?: string | null;
+  subgrid: string;
+  stage: StageLedgerStage;
+  event: StageLedgerEvent;
+  /** Business time: agent process start / file mtime / operator action time. */
+  occurrence?: string;
+  recorded_at?: string;
+  via?: StageLedgerVia;
+  detail?: string | null;
+  counts?: Record<string, unknown> | null;
+  updated_by?: string | null;
+}
+
 export interface NasFolderEntry {
   name: string;
   path: string;
@@ -408,8 +541,11 @@ export interface WorkerHealthInfo {
   status: string;
   jobs_active: number;
   nas_base: string;
+  agent_version?: string;
   cpu_usage?: number;
   cpu_cores?: number;
+  /** Optional per-core CPU belt (0-100 each, capped at 24 cores). */
+  cpu_percpu?: number[];
   gpu_usage?: number;
   gpu_name?: string;
   gpu_vram_total_gb?: number;
@@ -417,6 +553,9 @@ export interface WorkerHealthInfo {
   ram_total_gb?: number;
   ram_used_gb?: number;
   storage_used_pct?: number;
+  /** Agent disk readout (GB) of the watched volume / system disk. */
+  disk_total?: number;
+  disk_free_gb?: number;
   hostname?: string;
   uptime_sec?: number;
 }

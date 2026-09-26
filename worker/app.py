@@ -8,6 +8,7 @@ import threading
 import time
 import uuid
 import logging
+import mimetypes
 from typing import Optional
 
 from fastapi import FastAPI, Header, HTTPException
@@ -20,6 +21,7 @@ from masking import apply_mask_pipeline, derive_mask
 from runner import JobRegistry
 from release import ReleaseError, prepare_release as prepare_release_files
 import sync as syncmod
+from nas_scan import scan_nas
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -262,12 +264,37 @@ def list_folders(authorization: Optional[str] = Header(default=None), path: str 
     return {"path": path, "entries": entries[:1000], "fileCount": file_count, "sizeBytes": size_bytes}
 
 
+@app.get("/api/nas-scan")
+def nas_scan_endpoint(
+    authorization: Optional[str] = Header(default=None),
+    action: str = "subgrids",
+    subgrid: str = "",
+    folder: str = "",
+    csv: str = "",
+) -> dict:
+    """Production NAS implementation of the dashboard's survey scan API.
+
+    Unlike the Vite-only `api/nas-scan.js`, this always reads NAS_BASE_PATH
+    from the on-prem worker configuration; no Project_Test path is assumed.
+    """
+    _guard(authorization)
+    try:
+        return scan_nas(NAS_BASE_PATH, action, subgrid, folder, csv)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f"NAS scan failed: {exc}")
+
+
 @app.get("/api/images/{rel_path:path}")
-def serve_image(rel_path: str) -> FileResponse:
+def serve_image(rel_path: str, authorization: Optional[str] = Header(default=None)) -> FileResponse:
+    _guard(authorization)
     fs = resolve_fs(rel_path)
     if not os.path.isfile(fs):
         raise HTTPException(status_code=404, detail="Image not found.")
-    return FileResponse(fs, media_type="image/jpeg")
+    return FileResponse(fs, media_type=mimetypes.guess_type(fs)[0] or "application/octet-stream")
 
 
 # ---------------------------------------------------------------------------

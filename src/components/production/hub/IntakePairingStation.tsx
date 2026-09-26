@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   FileSpreadsheet,
   CheckCircle2,
@@ -14,16 +14,111 @@ import {
 } from 'lucide-react';
 import { SectionLabel, MetaList, TextAction } from '../chrome';
 import { trackLengthMeters } from '../common';
+import { appendStageEventToSupabase } from '../../../services/api/stageEventLedger';
+import { probeStationAgent, renameNasFilesOnStation } from '../../../services/stationAgentApi';
+import { fetchDashboardApi } from '../../../services/cloudflareApi';
+import { DEFAULT_4_WORKSTATIONS, type WorkstationStationConfig } from '../../../types/production';
 
 export interface PairedFrameRecord {
   index: number;
+  /** Metadata filename as written in the survey CSV (e.g. N93E70-0093.jpg). */
   sourceFilename: string;
+  /** Rename target = the metadata name (see read-csv / CSV-upload parsers). */
   targetFilename: string;
+  /** Actual stitched image on disk (e.g. 003485-20220630-170708-000000001.jpg). */
+  originalFilename?: string;
+  /** Set when the batch rename applied this pair on the NAS. */
+  renamedAt?: string | null;
+  /** Metadata `distancetoprevious` column (metres) — the authoritative
+   * trajectory length source when the survey CSV carries it. */
+  distanceToPrevious?: number | null;
   timestamp: string;
   latitude: number;
   longitude: number;
   heading: number | null;
   isMatched: boolean;
+}
+
+// Pair metadata rows against the stitched output listing.
+//
+// Pass 1 — exact filename match (already-renamed folders / name-aligned rigs).
+// Pass 2 — positional join: PTGui keeps the rig's own device naming
+//          (003485-20220630-170708-000000001.jpg) while survey CSVs can start
+//          at any index (N93E70-0093.jpg), so when both lists carry the same
+//          count they pair in capture order — chronological on both sides.
+// Anything left over is reported as unpaired instead of silently dropped.
+export function applyPairing(
+  rows: PairedFrameRecord[],
+  images: string[]
+): { records: PairedFrameRecord[]; unpairedImages: string[] } {
+  const norm = (n: string) => n.trim().toLowerCase();
+  // Keep the on-disk casing: rename operations need exact filenames.
+  const imageByLower = new Map(images.map((n) => [norm(n), n]));
+  const claimed = new Set<string>();
+  const nameMatched: PairedFrameRecord[] = [];
+  const unmatched: PairedFrameRecord[] = [];
+
+  rows.forEach((r) => {
+    const base = r.sourceFilename.trim().toLowerCase().replace(/^.*[\\/]/, '');
+    let matchedName = '';
+    if (base) {
+      const hit = imageByLower.get(base);
+      if (hit) {
+        matchedName = hit;
+      } else if (!/\.[a-z0-9]+$/i.test(base)) {
+        for (const ext of ['.jpg', '.jpeg', '.png']) {
+          const cand = imageByLower.get(base + ext);
+          if (cand) {
+            matchedName = cand;
+            break;
+          }
+        }
+      }
+    }
+    if (matchedName) {
+      claimed.add(norm(matchedName));
+      nameMatched.push({ ...r, originalFilename: matchedName, isMatched: true });
+    } else {
+      unmatched.push(r);
+    }
+  });
+
+  const rest = images.filter((img) => !claimed.has(norm(img)));
+  const positional: PairedFrameRecord[] = [];
+  if (unmatched.length > 0 && rest.length === unmatched.length) {
+    unmatched.forEach((r, k) => {
+      const matchedName = rest[k];
+      claimed.add(norm(matchedName));
+      positional.push({ ...r, originalFilename: matchedName, isMatched: true });
+    });
+  } else {
+    // Counts differ (or nothing to pair): verification stays unresolved.
+    unmatched.forEach((r) => positional.push({ ...r, isMatched: false }));
+  }
+
+  const records = [...nameMatched, ...positional].sort((a, b) => a.index - b.index);
+  const unpaired = images.filter((img) => !claimed.has(norm(img)));
+  return { records, unpairedImages: unpaired };
+}
+
+/**
+ * Trajectory length in km. The survey metadata's `distancetoprevious`
+ * column (metres) is authoritative — sum it and convert to km. When the
+ * CSV carries no distance column, fall back to recomputing the
+ * great-circle length from the paired coordinates.
+ */
+export function computeTrajectorySpan(
+  records: PairedFrameRecord[]
+): { km: number | null; source: 'metadata' | 'coordinates' } {
+  const withDistance = records.filter(
+    (r) => typeof r.distanceToPrevious === 'number' && Number.isFinite(r.distanceToPrevious)
+  );
+  if (withDistance.length > 0) {
+    const metres = withDistance.reduce((acc, r) => acc + (r.distanceToPrevious as number), 0);
+    return { km: metres / 1000, source: 'metadata' };
+  }
+  const metres = trackLengthMeters(records);
+  return { km: metres === null ? null : metres / 1000, source: 'coordinates' };
 }
 
 export interface SurveyFolderMeta {
@@ -54,6 +149,12 @@ export const DEFAULT_AVAILABLE_SUBGRIDS: SubgridOption[] = [];
 
 export const AVAILABLE_SUBGRIDS = DEFAULT_AVAILABLE_SUBGRIDS;
 
+export interface IntakeSessionSource {
+  selectedFolderId?: string;
+  csvFileName?: string;
+  customFolderName?: string;
+}
+
 export interface IntakePairingStationProps {
   subgrid: string;
   setSubgrid: (s: string) => void;
@@ -67,6 +168,12 @@ export interface IntakePairingStationProps {
   addNotification?: (item: any) => void;
   addAuditLog?: (type: any, title: string, details: string, status?: any) => void;
   translate?: (key: string) => string;
+  /** Restored Hub session (last activity) — seeds the Survey Source inputs. */
+  sessionSource?: IntakeSessionSource;
+  onSurveySourceChange?: (next: IntakeSessionSource) => void;
+  /** Station config for the direct NAS rename (station-agent based). */
+  projectSettings?: { workstationsConfig?: WorkstationStationConfig[] } & Record<string, unknown>;
+  isGuestUser?: boolean;
 }
 
 export const IntakePairingStation: React.FC<IntakePairingStationProps> = ({
@@ -80,29 +187,34 @@ export const IntakePairingStation: React.FC<IntakePairingStationProps> = ({
   setPairedRecords,
   onAdvanceToNextStation,
   addNotification,
-  addAuditLog
+  addAuditLog,
+  sessionSource,
+  onSurveySourceChange,
+  projectSettings,
+  isGuestUser
 }) => {
   const [availableSubgrids, setAvailableSubgrids] = useState<SubgridOption[]>(DEFAULT_AVAILABLE_SUBGRIDS);
   const [hasScannedSubgrids, setHasScannedSubgrids] = useState<boolean>(false);
   const [isCustomSubgrid, setIsCustomSubgrid] = useState<boolean>(() => !DEFAULT_AVAILABLE_SUBGRIDS.some((s) => s.code === subgrid));
   const [isScanningFolders, setIsScanningFolders] = useState<boolean>(false);
   const [subgridFolders, setSubgridFolders] = useState<SurveyFolderMeta[]>(() => getFoldersForSubgrid(subgrid));
-  const [selectedFolderId, setSelectedFolderId] = useState<string>('__none__');
-  const [customFolderName, setCustomFolderName] = useState<string>('');
+  const [selectedFolderId, setSelectedFolderId] = useState<string>(() => sessionSource?.selectedFolderId || '__none__');
+  const [customFolderName, setCustomFolderName] = useState<string>(() => sessionSource?.customFolderName || '');
   const [rawFolderPath, setRawFolderPath] = useState<string>(
     `/03_Stitching/Project-OUT/Grid 1/${subgrid || '{subgrid}'}/{survey-run}/`
   );
-  const [csvFileName, setCsvFileName] = useState<string>('');
+  const [csvFileName, setCsvFileName] = useState<string>(() => sessionSource?.csvFileName || '');
   const [searchTerm, setSearchTerm] = useState<string>('');
   // Actual image files listed from the selected survey folder on disk. null =
   // never verified (no folder listing available); [] = folder exists but empty.
   const [folderImages, setFolderImages] = useState<string[] | null>(null);
   const [unpairedImages, setUnpairedImages] = useState<string[]>([]);
+  const [probeDone, setProbeDone] = useState(false);
 
   // Probe NAS endpoint on mount to detect which subgrids exist in 03_Stitching
   useEffect(() => {
     let isMounted = true;
-    fetch('/api/nas-scan?action=subgrids')
+    fetchDashboardApi('/api/nas-scan?action=subgrids')
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (!isMounted) return;
@@ -111,13 +223,17 @@ export const IntakePairingStation: React.FC<IntakePairingStationProps> = ({
           setHasScannedSubgrids(true);
         }
       })
-      .catch(() => {
-        // Scan unavailable: the subgrid field stays "unverified" below.
-      });
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+        .catch(() => {
+          // Scan unavailable: the subgrid field stays "unverified" below.
+        })
+        .finally(() => {
+          if (!isMounted) return;
+          setProbeDone(true);
+        });
+      return () => {
+        isMounted = false;
+      };
+    }, []);
 
   // Presence of the subgrid in 03_Stitching, straight from the NAS scan.
   // Anything else (including a failed scan) is reported as unverified rather
@@ -172,7 +288,7 @@ export const IntakePairingStation: React.FC<IntakePairingStationProps> = ({
   }, [subgridFolders, selectedFolderId, subgrid, customFolderName, surveyDate, totalFrames, csvFileName, rawFolderPath]);
 
   // Handle Subgrid dropdown selection with scanning of exact survey folders
-  const handleSubgridSelect = async (newSg: string) => {
+  const handleSubgridSelect = async (newSg: string, opts?: { silent?: boolean }) => {
     if (newSg === '__custom__') {
       setIsCustomSubgrid(true);
       return;
@@ -185,31 +301,55 @@ export const IntakePairingStation: React.FC<IntakePairingStationProps> = ({
     setIsScanningFolders(true);
 
     try {
-      const res = await fetch(`/api/nas-scan?action=survey-folders&subgrid=${clean}`);
+      const res = await fetchDashboardApi(`/api/nas-scan?action=survey-folders&subgrid=${encodeURIComponent(clean)}`);
       if (res.ok) {
         const data = await res.json();
         if (data.success && Array.isArray(data.folders) && data.folders.length > 0) {
           setSubgridFolders(data.folders);
-          const first = data.folders[0];
-          setSelectedFolderId(first.id);
-          setSurveyDate(first.rawDate);
-          setRawFolderPath(first.path);
-          setCsvFileName(first.csvName);
-          setTotalFrames(first.panoramasCount);
+          // Session restore: prefer the previously selected survey folder when
+          // the scan still contains it, instead of always resetting to first.
+          const sesFolder = sessionSource?.selectedFolderId;
+          const chosen =
+            sesFolder && data.folders.some((f: SurveyFolderMeta) => f.id === sesFolder)
+              ? sesFolder
+              : data.folders[0].id;
+          const target =
+            data.folders.find((f: SurveyFolderMeta) => f.id === chosen) || data.folders[0];
+          setSelectedFolderId(chosen);
+          setSurveyDate(target.rawDate);
+          setRawFolderPath(target.path);
+          if (chosen === sesFolder && sessionSource?.csvFileName) {
+            setCsvFileName(sessionSource.csvFileName);
+          } else {
+            setCsvFileName(target.csvName);
+          }
+          if (chosen !== sesFolder) {
+            setTotalFrames(target.panoramasCount);
+          }
           setIsScanningFolders(false);
+          // Refresh the paired records from the disk CSV for the chosen run —
+          // restored sessions pick up newer metadata fields (distance column,
+          // verified status) without a manual re-pair. Silent on restore.
+          void readSurveyCsv(clean, chosen, target.csvName, opts?.silent === true);
           return;
-        } else {
+        } else if (sessionSource?.selectedFolderId) {
+          // Scan found nothing for this subgrid, but a session selection
+          // exists — keep the restored selections instead of wiping them.
           setSubgridFolders([]);
-          setSelectedFolderId('__none__');
           setRawFolderPath(`/03_Stitching/Project-OUT/Grid 1/${clean}/`);
-          setCsvFileName('');
-          setTotalFrames(0);
           setIsScanningFolders(false);
           return;
         }
       }
     } catch {
-      // ignore
+      // fall through to offline defaults below
+    }
+    if (sessionSource?.selectedFolderId || sessionSource?.customFolderName) {
+      // NAS scan unavailable: retain the restored session selections.
+      setSubgridFolders([]);
+      setRawFolderPath(`/03_Stitching/Project-OUT/Grid 1/${clean}/`);
+      setIsScanningFolders(false);
+      return;
     }
 
     setSubgridFolders([]);
@@ -220,12 +360,69 @@ export const IntakePairingStation: React.FC<IntakePairingStationProps> = ({
     setIsScanningFolders(false);
   };
 
+  // Report the Survey Source selections upward so the Hub session persists
+  // the operator's last activity (restored on refresh / tab re-entry).
+  useEffect(() => {
+    onSurveySourceChange?.({
+      selectedFolderId,
+      csvFileName,
+      customFolderName
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedFolderId, csvFileName, customFolderName]);
+
+  // On mount (or restored subgrid), re-scan the NAS folder list once so the
+  // Survey Source continues the last session rather than showing placeholders.
+  const restoredScanRef = useRef<string>('');
+  useEffect(() => {
+    if (!subgrid || restoredScanRef.current !== '') return;
+    restoredScanRef.current = subgrid;
+    void handleSubgridSelect(subgrid, { silent: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subgrid]);
+
+  // Hydration race: the intake can mount BEFORE the Hub session fetch lands.
+  // Apply the session seeds once when they first arrive.
+  const sessionAppliedRef = useRef(false);
+  useEffect(() => {
+    if (sessionAppliedRef.current) return;
+    const s = sessionSource;
+    if (!s || (!s.selectedFolderId && !s.csvFileName && !s.customFolderName)) return;
+    sessionAppliedRef.current = true;
+    if (s.selectedFolderId) setSelectedFolderId(s.selectedFolderId);
+    if (s.csvFileName) setCsvFileName(s.csvFileName);
+    if (s.customFolderName) setCustomFolderName(s.customFolderName);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionSource]);
+
+  // A restored (session) subgrid must stay visible/selectable even when the
+  // NAS scan probe fails or doesn't list it: fall back to the custom entry
+  // input, then revert to the dropdown once the scan confirms the code.
+  const restoredSgRef = useRef<string>('');
+  useEffect(() => {
+    if (restoredSgRef.current) return;
+    if (!subgrid) return;
+    restoredSgRef.current = subgrid;
+  }, [subgrid]);
+  useEffect(() => {
+    if (!restoredSgRef.current || !probeDone || isCustomSubgrid) return;
+    const scannedOk = hasScannedSubgrids && availableSubgrids.some((sg) => sg.code === subgrid);
+    if (scannedOk) {
+      if (isCustomSubgrid) setIsCustomSubgrid(false);
+      return;
+    }
+    if (subgridDetection === 'absent' || (!hasScannedSubgrids && probeDone)) {
+      setIsCustomSubgrid(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [probeDone, subgridDetection, hasScannedSubgrids, availableSubgrids, subgrid, isCustomSubgrid]);
+
   // List the real image files inside the selected survey folder on disk.
   // Returns null when the folder cannot be listed (pairing stays unverified).
   const fetchFolderImages = async (sg: string, folderId: string): Promise<string[] | null> => {
     if (!sg || !folderId || folderId === '__none__' || folderId === '__custom__') return null;
     try {
-      const res = await fetch(`/api/nas-scan?action=folder-images&subgrid=${sg}&folder=${folderId}`);
+      const res = await fetchDashboardApi(`/api/nas-scan?action=folder-images&subgrid=${encodeURIComponent(sg)}&folder=${encodeURIComponent(folderId)}`);
       if (!res.ok) return null;
       const data = await res.json();
       if (data?.success && Array.isArray(data.images)) return data.images as string[];
@@ -237,34 +434,8 @@ export const IntakePairingStation: React.FC<IntakePairingStationProps> = ({
 
   // Verify each metadata row against the actual folder images by filename.
   // A row is matched only when its file really exists on disk; leftover images
-  // are exactly the files no metadata row claims.
-  const applyPairing = (
-    rows: PairedFrameRecord[],
-    images: string[]
-  ): { records: PairedFrameRecord[]; unpairedImages: string[] } => {
-    const imageSet = new Set(images.map((n) => n.trim().toLowerCase()));
-    const claimed = new Set<string>();
-    const records = rows.map((r) => {
-      const base = r.sourceFilename.trim().toLowerCase().replace(/^.*[\\/]/, '');
-      let matchedName = '';
-      if (base) {
-        if (imageSet.has(base)) {
-          matchedName = base;
-        } else if (!/\.[a-z0-9]+$/i.test(base)) {
-          for (const ext of ['.jpg', '.jpeg', '.png']) {
-            if (imageSet.has(base + ext)) {
-              matchedName = base + ext;
-              break;
-            }
-          }
-        }
-      }
-      if (matchedName) claimed.add(matchedName);
-      return { ...r, isMatched: Boolean(matchedName) };
-    });
-    const unpaired = images.filter((img) => !claimed.has(img.trim().toLowerCase()));
-    return { records, unpairedImages: unpaired };
-  };
+  // are exactly the files no metadata row claims. (Implementation: the module
+  // level `applyPairing` above — exact-name pass + positional join.)
 
   // Surface count mismatches with explicit reasons instead of silently
   // accepting whatever the CSV and folder happen to contain.
@@ -298,10 +469,11 @@ export const IntakePairingStation: React.FC<IntakePairingStationProps> = ({
     });
   };
 
-  // Helper to read actual survey CSV from NAS 01_Metadata
-  const readSurveyCsv = async (sg: string, folderId: string, csvName: string): Promise<boolean> => {
+  // Helper to read actual survey CSV from NAS 01_Metadata. `silent` skips the
+  // outcome notification (used by the session-restore auto-refresh).
+  const readSurveyCsv = async (sg: string, folderId: string, csvName: string, silent = false): Promise<boolean> => {
     try {
-      const res = await fetch(`/api/nas-scan?action=read-csv&subgrid=${sg}&folder=${folderId}&csv=${csvName}`);
+      const res = await fetchDashboardApi(`/api/nas-scan?action=read-csv&subgrid=${encodeURIComponent(sg)}&folder=${encodeURIComponent(folderId)}&csv=${encodeURIComponent(csvName)}`);
       if (!res.ok) return false;
       const data = await res.json();
       if (!(data.success && Array.isArray(data.records) && data.records.length > 0)) return false;
@@ -323,7 +495,7 @@ export const IntakePairingStation: React.FC<IntakePairingStationProps> = ({
       setPairedRecords(records);
       setTotalFrames(records.length);
       if (data.csvPath) setCsvFileName(data.csvPath);
-      notifyPairingOutcome(records, images);
+      if (!silent) notifyPairingOutcome(records, images);
       return true;
     } catch {
       // ignore
@@ -422,6 +594,7 @@ export const IntakePairingStation: React.FC<IntakePairingStationProps> = ({
       const fileIdx = header.findIndex((h) => h.includes('file') || h.includes('name') || h.includes('img'));
       const headIdx = header.findIndex((h) => h.includes('head') || h.includes('yaw') || h.includes('azimuth'));
       const timeIdx = header.findIndex((h) => h.includes('time') || h.includes('date'));
+      const distIdx = header.findIndex((h) => h.includes('distance'));
 
       // Coordinates are mandatory. Without them nothing is paired — inventing a
       // track here would publish fabricated geometry to PostGIS downstream.
@@ -454,18 +627,22 @@ export const IntakePairingStation: React.FC<IntakePairingStationProps> = ({
         const seqStr = String(seq).padStart(4, '0');
         const heading = headIdx >= 0 ? Number.parseFloat(parts[headIdx]) : NaN;
         const srcName = fileIdx >= 0 && parts[fileIdx] ? parts[fileIdx] : '';
-
-        const isMatched = Boolean(srcName) && cleanSg.length > 0;
+        // The CSV's own filename is the canonical metadata name (rename
+        // target); the row-index name is only a fallback for bare CSVs.
+        const targetName = srcName || (cleanSg.length > 0 ? `${cleanSg}-${seqStr}.jpg` : '');
+        const distRaw = distIdx >= 0 && parts[distIdx] ? Number.parseFloat(parts[distIdx]) : NaN;
+        const distanceToPrevious = Number.isFinite(distRaw) ? distRaw : null;
 
         parsed.push({
           index: seq,
           sourceFilename: srcName,
-          targetFilename: isMatched ? `${cleanSg}-${seqStr}.jpg` : '',
+          targetFilename: targetName,
           timestamp: timeIdx >= 0 ? parts[timeIdx] : '',
           latitude: Number.parseFloat(lat.toFixed(6)),
           longitude: Number.parseFloat(lon.toFixed(6)),
           heading: Number.isFinite(heading) ? Number.parseFloat(heading.toFixed(1)) : null,
-          isMatched
+          distanceToPrevious,
+          isMatched: Boolean(srcName) && cleanSg.length > 0
         });
       }
 
@@ -499,6 +676,18 @@ export const IntakePairingStation: React.FC<IntakePairingStationProps> = ({
       notifyPairingOutcome(finalRecords, images);
 
       const renamed = finalRecords.filter((r) => r.isMatched).length;
+      void appendStageEventToSupabase({
+        subgrid: cleanSg,
+        stage: 'intake',
+        event: 'COMPLETED',
+        via: 'operator',
+        detail: `${finalRecords.length} coordinate record(s) parsed from ${file.name}${
+          renamed < finalRecords.length ? `, ${finalRecords.length - renamed} unpaired` : ''
+        }`,
+        counts: { total: finalRecords.length, matched: renamed },
+        updated_by: 'Operator'
+      });
+
       addAuditLog?.(
         'IMPORT',
         'Survey CSV Ingested',
@@ -535,7 +724,7 @@ export const IntakePairingStation: React.FC<IntakePairingStationProps> = ({
 
   // Generate downloadable Windows Batch (.bat) Rename Script
   const generateRenameBatchScript = () => {
-    const renamable = pairedRecords.filter((r) => r.sourceFilename && r.targetFilename);
+    const renamable = pairedRecords.filter((r) => (r.originalFilename || r.sourceFilename) && r.targetFilename);
     const lines = [
       '@echo off',
       `echo ====================================================`,
@@ -548,7 +737,10 @@ export const IntakePairingStation: React.FC<IntakePairingStationProps> = ({
     ];
 
     renamable.forEach((r) => {
-      lines.push(`if exist "${r.sourceFilename}" ren "${r.sourceFilename}" "${r.targetFilename}"`);
+      // The on-disk stitched name is the original; metadata names only exist
+      // after the rename. Fall back to sourceFilename for unlisted folders.
+      const from = r.originalFilename || r.sourceFilename;
+      lines.push(`if exist "${from}" ren "${from}" "${r.targetFilename}"`);
     });
 
     if (renamable.length === 0) {
@@ -571,11 +763,113 @@ export const IntakePairingStation: React.FC<IntakePairingStationProps> = ({
     URL.revokeObjectURL(url);
   };
 
+  // === One-click NAS rename: renames the stitched images to the metadata
+  // names through the first reachable station agent (all PCs see the NAS).
+  const [renameBusy, setRenameBusy] = useState(false);
+
+  const renameableRecords = pairedRecords.filter(
+    (r) => r.isMatched && r.originalFilename && r.targetFilename && !r.renamedAt && r.originalFilename !== r.targetFilename
+  );
+
+  const handleRenameOnNas = async () => {
+    if (renameBusy || renameableRecords.length === 0) return;
+    const workstations: WorkstationStationConfig[] =
+      (projectSettings?.workstationsConfig as WorkstationStationConfig[] | undefined) || DEFAULT_4_WORKSTATIONS;
+    const candidates = ['stitch', 'blur', 'lightroom', 'photoshop']
+      .map((id) => workstations.find((w) => w.id === id))
+      .filter((w): w is WorkstationStationConfig => !!w && !!w.ipAddress && w.enabled !== false);
+    if (candidates.length === 0) {
+      addNotification?.({
+        type: 'warning',
+        title: 'No Station Agent Configured',
+        message: 'Set a workstation IP under Providers → Workstations (station-agent running) to rename on the NAS.'
+      });
+      return;
+    }
+
+    setRenameBusy(true);
+    const cleanSg = subgrid.trim().toUpperCase();
+    const stageDir = `${(rawFolderPath || '').replace(/^\//, '').replace(/\/+$/, '')}/panoramas`;
+    const renames = renameableRecords.map((r) => ({ src: r.originalFilename as string, dst: r.targetFilename }));
+    try {
+      // Fail fast: probe each candidate with a short health check instead of
+      // letting unreachable IPs burn the long rename timeout one by one.
+      let agent: WorkstationStationConfig | null = null;
+      for (const ws of candidates) {
+        const probe = await probeStationAgent(ws, { timeoutMs: 2_000 });
+        if (probe.online) {
+          agent = ws;
+          break;
+        }
+      }
+      if (!agent) {
+        addNotification?.({
+          type: 'warning',
+          title: 'No Station Agent Reachable',
+          message: 'All workstation agents are offline — start station-agent on a PC, or use the .BAT script instead.'
+        });
+        return;
+      }
+      const result = await renameNasFilesOnStation(agent, stageDir, renames, { timeoutMs: 60_000 });
+      if (!result) {
+        addNotification?.({
+          type: 'warning',
+          title: 'Agent Dropped Mid-Rename',
+          message: 'The station agent became unreachable while renaming. Re-run Rename Batch to continue (existing targets are skipped, so it is idempotent).'
+        });
+        return;
+      }
+      if (!result.ok) {
+        addNotification?.({
+          type: 'warning',
+          title: 'Rename Rejected',
+          message: result.message || 'The station agent refused the rename request.'
+        });
+        return;
+      }
+      const renamedAt = new Date().toISOString();
+      const doneSet = new Set(renameableRecords.map((r) => r.index));
+      setPairedRecords(
+        pairedRecords.map((r) => (doneSet.has(r.index) ? { ...r, renamedAt, isMatched: true } : r))
+      );
+      const skipped = result.skipped?.length || 0;
+      addNotification?.({
+        title: skipped > 0 ? 'Rename Batch Finished With Skips' : 'Rename Batch Complete',
+        message: `${result.renamed || 0} image(s) renamed to metadata names on ${stageDir}${
+          skipped > 0 ? `; ${skipped} skipped: ${(result.skipped || []).map((s) => `${s.src} (${s.reason})`).join(', ')}` : ''
+        }`,
+        category: 'SYSTEM',
+        read: false
+      });
+      addAuditLog?.(
+        'EDIT',
+        'NAS Batch Rename Applied',
+        `${result.renamed || 0} image(s) renamed to metadata names under ${stageDir}${skipped > 0 ? ` (${skipped} skipped)` : ''} by ${isGuestUser ? 'Guest' : 'Operator'}.`,
+        skipped > 0 ? 'warning' : 'success'
+      );
+      void appendStageEventToSupabase({
+        subgrid: cleanSg,
+        stage: 'intake',
+        event: 'PROGRESS',
+        via: 'operator',
+        detail: `${result.renamed || 0} stitched image(s) renamed to metadata names (${stageDir})`,
+        counts: { renamed: result.renamed || 0, skipped, total: pairedRecords.length },
+        updated_by: isGuestUser ? 'Guest' : 'Operator'
+      });
+    } finally {
+      setRenameBusy(false);
+    }
+  };
+
   const matchedCount = pairedRecords.filter((r) => r.isMatched).length;
-  const trajectorySpanKm = useMemo(() => {
-    const metres = trackLengthMeters(pairedRecords);
-    return metres === null ? null : (metres / 1000).toFixed(2);
-  }, [pairedRecords]);
+  const trajectory = useMemo(() => computeTrajectorySpan(pairedRecords), [pairedRecords]);
+  const trajectorySpanKm = trajectory.km !== null ? trajectory.km.toFixed(2) : null;
+  const trajectoryNote =
+    trajectory.km === null
+      ? 'needs 2+ coordinate records'
+      : trajectory.source === 'metadata'
+        ? 'summed from metadata distance-to-previous (m → km)'
+        : 'summed from paired coordinates';
   const gpsSyncLabel =
     pairedRecords.length === 0
       ? 'Awaiting CSV / Sequence'
@@ -635,8 +929,7 @@ export const IntakePairingStation: React.FC<IntakePairingStationProps> = ({
             Stitched Panorama Intake &amp; Spatial Pairing
           </h3>
           <p className="text-xs text-text-muted mt-0.5 leading-relaxed max-w-2xl">
-            Register stitched equirectangular panoramas (e.g. <span className="font-mono text-text-base">N93E70-0001.jpg</span>)
-            and pair 1-to-1 with survey GPS coordinates from <span className="font-mono text-text-base">01_Metadata</span> before publication.
+            Prepare survey source data and pair metadata with the selected imagery.
           </p>
         </div>
 
@@ -815,25 +1108,25 @@ export const IntakePairingStation: React.FC<IntakePairingStationProps> = ({
         {/* Folder-vs-metadata reconciliation: counts must agree, mismatches are explained */}
         {pairCheck && (
           pairCheck.inSync ? (
-            <div className="px-3 py-2 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-xs text-emerald-300 flex items-start gap-2">
+            <div className="px-3 py-2 bg-inner border border-subtle rounded-lg text-xs flex items-start gap-2">
               <CheckCircle2 size={14} className="shrink-0 mt-px text-emerald-400" />
               <span>
-                Survey data folder and metadata CSV are in sync: {pairCheck.folderCount} image(s) = {pairedRecords.length}{' '}
-                metadata row(s), every pair verified on disk.
+                <span className="font-semibold text-text-base">In sync</span> —{' '}
+                {pairCheck.folderCount} image(s) = {pairedRecords.length} metadata row(s), every pair verified on disk.
               </span>
             </div>
           ) : (
-            <div className="px-3 py-2 bg-amber-500/10 border border-amber-500/20 rounded-lg text-xs text-amber-300 flex items-start gap-2">
+            <div className="px-3 py-2 bg-inner border border-subtle rounded-lg text-xs flex items-start gap-2">
               <AlertTriangle size={14} className="shrink-0 mt-px text-amber-400" />
               <div className="space-y-1">
-                <div className="font-semibold">
+                <div className="font-semibold text-text-base">
                   Survey data folder and metadata CSV do not match
                   {pairCheck.folderCount !== null
                     ? ` — folder images: ${pairCheck.folderCount}, metadata rows: ${pairedRecords.length}`
                     : ' — folder listing unavailable, pairing not verified on disk'}
                   :
                 </div>
-                <ul className="list-disc pl-4 space-y-0.5">
+                <ul className="list-disc pl-4 space-y-0.5 text-text-muted">
                   {pairCheck.reasons.map((reason) => (
                     <li key={reason}>{reason}</li>
                   ))}
@@ -845,10 +1138,10 @@ export const IntakePairingStation: React.FC<IntakePairingStationProps> = ({
 
         {/* Alert when unstitched subgrid is selected */}
         {activeFolderMeta.panoramasCount === 0 && !isScanningFolders && (
-          <div className="px-3 py-2 bg-amber-500/10 border border-amber-500/20 rounded-lg text-xs text-amber-300 flex items-start gap-2">
+          <div className="px-3 py-2 bg-inner border border-subtle rounded-lg text-xs flex items-start gap-2">
             <AlertTriangle size={14} className="shrink-0 mt-px text-amber-400" />
-            <span>
-              No stitched survey runs were found in <strong className="font-mono">{activeFolderMeta.path}</strong>. Run the 4-PC Multi-Station board to process raw multi-lens captures, or enter a custom path.
+            <span className="text-text-muted">
+              No stitched survey runs found in <span className="font-mono text-text-base">{activeFolderMeta.path}</span>. Run the 4-PC Multi-Station board to process raw multi-lens captures, or enter a custom path.
             </span>
           </div>
         )}
@@ -863,16 +1156,16 @@ export const IntakePairingStation: React.FC<IntakePairingStationProps> = ({
             { key: 'gps', label: 'GPS Sync Status', value: gpsSyncLabel },
             {
               key: 'span',
-              label: 'Trajectory Span',
+              label: 'Trajectory Distance',
               value: trajectorySpanKm !== null ? `${trajectorySpanKm} km` : 'Not computable',
-              note: trajectorySpanKm !== null ? 'summed from paired coordinates' : 'needs 2+ coordinate records'
+              note: trajectoryNote
             },
             {
               key: 'rename',
               label: 'Renaming Tool',
               value:
                 pairedRecords.length > 0 ? `${matchedCount} of ${pairedRecords.length} mappable` : 'Awaiting records',
-              note: '.bat batch script'
+              note: 'Rename Batch (agent) or .BAT script'
             }
           ]}
         />
@@ -895,6 +1188,14 @@ export const IntakePairingStation: React.FC<IntakePairingStationProps> = ({
                   className="bg-inner border border-subtle rounded-lg pl-8 pr-3 py-1.5 text-xs text-text-base placeholder:text-text-muted focus:outline-none focus:border-divider w-44 sm:w-52"
                 />
               </div>
+              <TextAction
+                icon={<FileSpreadsheet size={11} />}
+                onClick={handleRenameOnNas}
+                disabled={isGuestUser || renameBusy || renameableRecords.length === 0}
+                title="Batch-rename the stitched images to their metadata names directly on the NAS via a station agent"
+              >
+                {renameBusy ? 'Renaming…' : renameableRecords.length > 0 ? `Rename Batch (${renameableRecords.length})` : 'Rename Batch'}
+              </TextAction>
               <TextAction
                 icon={<Download size={11} />}
                 onClick={handleDownloadRenameScript}
@@ -920,11 +1221,12 @@ export const IntakePairingStation: React.FC<IntakePairingStationProps> = ({
             </div>
           ) : (
             <div className="overflow-x-auto max-h-[380px] overflow-y-auto">
-              <table className="w-full text-left border-collapse text-xs min-w-[860px]">
+              <table className="w-full text-left border-collapse text-xs min-w-[1080px]">
                 <thead>
                   <tr className="border-b border-divider bg-inner text-[10px] uppercase font-bold text-text-muted tracking-wider sticky top-0 z-10">
                     <th className="py-2.5 px-3 w-14">#</th>
                     <th className="py-2.5 px-3">Original Tour Filename</th>
+                    <th className="py-2.5 px-3">Metadata Filename</th>
                     <th className="py-2.5 px-3">Target Subgrid Name</th>
                     <th className="py-2.5 px-3 w-24">Time</th>
                     <th className="py-2.5 px-3 w-28">Latitude</th>
@@ -937,10 +1239,35 @@ export const IntakePairingStation: React.FC<IntakePairingStationProps> = ({
                   {filteredRecords.map((r) => (
                     <tr key={r.index} className="hover:bg-inner transition-colors">
                       <td className="py-2 px-3 text-text-muted text-[11px]">{r.index}</td>
-                      <td className="py-2 px-3 text-text-base truncate max-w-[240px]" title={r.sourceFilename}>
-                        {r.sourceFilename}
+                      <td className="py-2 px-3 text-text-muted truncate max-w-[260px]" title={r.originalFilename || r.sourceFilename}>
+                        {r.originalFilename || r.sourceFilename || '—'}
                       </td>
-                      <td className="py-2 px-3 text-text-base font-semibold">{r.targetFilename}</td>
+                      <td className="py-2 px-3 text-text-muted truncate max-w-[200px]" title={r.sourceFilename}>
+                        {r.sourceFilename || '—'}
+                      </td>
+                      <td className="py-2 px-3">
+                        {r.isMatched && r.originalFilename && r.targetFilename && r.originalFilename !== r.targetFilename ? (
+                          r.renamedAt ? (
+                            <div className="flex flex-col leading-tight">
+                              <span className="text-text-base font-semibold truncate max-w-[220px]" title={r.targetFilename}>{r.targetFilename}</span>
+                              <span className="text-[9px] font-sans text-emerald-400 flex items-center gap-1">
+                                <CheckCircle2 size={9} />
+                                <span>renamed {r.renamedAt ? new Date(r.renamedAt).toLocaleString() : ''}</span>
+                              </span>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <span className="text-text-muted truncate max-w-[180px]" title={r.originalFilename}>{r.originalFilename}</span>
+                              <ArrowRight size={11} className="text-sky-400 shrink-0" />
+                              <span className="text-text-base font-semibold truncate max-w-[180px]" title={r.targetFilename}>{r.targetFilename}</span>
+                            </div>
+                          )
+                        ) : (
+                          <span className="text-text-base font-semibold truncate max-w-[220px] inline-block" title={r.targetFilename}>
+                            {r.targetFilename || '—'}
+                          </span>
+                        )}
+                      </td>
                       <td className="py-2 px-3 text-text-muted">{r.timestamp || '—'}</td>
                       <td className="py-2 px-3 text-text-base">{r.latitude.toFixed(6)}°</td>
                       <td className="py-2 px-3 text-text-base">{r.longitude.toFixed(6)}°</td>
@@ -948,7 +1275,12 @@ export const IntakePairingStation: React.FC<IntakePairingStationProps> = ({
                         {r.heading === null ? '—' : `${r.heading.toFixed(1)}°`}
                       </td>
                       <td className="py-2 px-3 text-right">
-                        {r.isMatched ? (
+                        {r.renamedAt ? (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-sans font-medium text-emerald-400">
+                            <CheckCircle2 size={11} />
+                            <span>Renamed</span>
+                          </span>
+                        ) : r.isMatched ? (
                           <span className="inline-flex items-center gap-1 text-[11px] font-sans font-medium text-text-base">
                             <CheckCircle2 size={11} className="text-emerald-500" />
                             <span>Matched</span>
