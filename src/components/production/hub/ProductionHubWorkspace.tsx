@@ -51,6 +51,7 @@ export const ProductionHubWorkspace: React.FC<ProductionHubWorkspaceProps> = ({
   addNotification,
   addAuditLog,
   onBackToDashboard,
+  onOpenDataManagement,
   onOpenStorage,
   translate = (k) => k
 }) => {
@@ -276,6 +277,7 @@ export const ProductionHubWorkspace: React.FC<ProductionHubWorkspaceProps> = ({
                 pairedRecords={pairedRecords}
                 projectSettings={projectSettings}
                 onViewOnMap={() => onBackToDashboard?.()}
+                onViewInDataManagement={onOpenDataManagement}
                 addNotification={addNotification}
                 addAuditLog={addAuditLog}
                 userLabel={userLabel}

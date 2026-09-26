@@ -440,15 +440,15 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
         panoramaMode: s.panoramaMode || '',
         multiResEnabled: s.imageStorageStrategy !== 'single_equirectangular',
         supabaseUrl: s.supabaseUrl || import.meta.env.VITE_SUPABASE_URL || '',
-        supabaseBucket: s.supabaseBucket || STORAGE_BUCKET_DEFAULT,
+        supabaseBucket: (s.supabaseBucket || STORAGE_BUCKET_DEFAULT).trim().replace(/\s+/g, '_'),
         r2Domain: s.r2Domain || '',
         r2PublicDomain: s.r2PublicDomain || '',
         r2PublicUrl: s.r2PublicUrl || '',
         customCdnUrl: s.customCdnUrl || '',
         cloudStorageBaseUrl: s.cloudStorageBaseUrl || '',
         customStorageUrl: s.customStorageUrl || '',
-        singleImagePathPattern: s.singleImagePathPattern || s.imageFormatPattern || '',
-        imageFormatPattern: s.imageFormatPattern || '',
+        singleImagePathPattern: (s.singleImagePathPattern && !s.singleImagePathPattern.includes('{index')) ? s.singleImagePathPattern : '',
+        imageFormatPattern: (s.imageFormatPattern && !s.imageFormatPattern.includes('{index')) ? s.imageFormatPattern : '',
         multiResTilePattern: s.multiResTilePattern || s.tilePathPattern || '',
         tilePathPattern: s.tilePathPattern || '',
         multiResFallbackPattern: s.multiResFallbackPattern || '',
@@ -1729,7 +1729,10 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                     <input
                       type="text"
                       value={projectSettings.supabaseBucket || STORAGE_BUCKET_DEFAULT}
-                      onChange={e => setProjectSettings(prev => ({ ...prev, supabaseBucket: e.target.value, imageStoragePath: `/storage/v1/object/public/${e.target.value}/` }))}
+                      onChange={e => {
+                        const val = e.target.value.replace(/\s+/g, '_');
+                        setProjectSettings(prev => ({ ...prev, supabaseBucket: val, imageStoragePath: `/storage/v1/object/public/${val}/` }));
+                      }}
                       placeholder="MMS_PIC"
                       className={`w-full px-3 py-2 rounded-lg font-sans focus:outline-none border ${inputBg}`}
                     />

@@ -4,7 +4,9 @@ import {
   Send,
   Download,
   ArrowRight,
-  AlertTriangle
+  AlertTriangle,
+  X,
+  Database
 } from 'lucide-react';
 import { supabase } from '../../../services/supabase';
 import { SectionLabel, MetaList } from '../chrome';
@@ -27,6 +29,7 @@ export interface WebGISPublishGateProps {
   }>;
   projectSettings?: any;
   onViewOnMap: () => void;
+  onViewInDataManagement?: (subgrid?: string) => void;
   addNotification?: (item: any) => void;
   addAuditLog?: (type: any, title: string, details: string, status?: any) => void;
   userLabel: string;
@@ -40,6 +43,7 @@ export const WebGISPublishGate: React.FC<WebGISPublishGateProps> = ({
   pairedRecords = [],
   projectSettings,
   onViewOnMap,
+  onViewInDataManagement,
   addNotification,
   addAuditLog,
   userLabel,
@@ -54,6 +58,7 @@ export const WebGISPublishGate: React.FC<WebGISPublishGateProps> = ({
   const [isPublished, setIsPublished] = useState<boolean>(false);
   const [publishMessage, setPublishMessage] = useState<string>('');
   const [publishError, setPublishError] = useState<string>('');
+  const [isConfirmModalOpen, setIsConfirmModalOpen] = useState<boolean>(false);
 
   // A record is promotable only when intake actually paired a real source
   // file with a real GPS fix. Nothing is synthesised here: frames without a
@@ -106,7 +111,7 @@ export const WebGISPublishGate: React.FC<WebGISPublishGateProps> = ({
       };
     });
 
-  const handlePublishToWebGIS = async () => {
+  const handleRequestPublish = () => {
     setPublishError('');
 
     if (pairedRecords.length === 0) {
@@ -131,6 +136,11 @@ export const WebGISPublishGate: React.FC<WebGISPublishGateProps> = ({
       return;
     }
 
+    setIsConfirmModalOpen(true);
+  };
+
+  const handlePublishToWebGIS = async () => {
+    setPublishError('');
     setIsPublishing(true);
     setPublishMessage('');
 
@@ -321,7 +331,7 @@ export const WebGISPublishGate: React.FC<WebGISPublishGateProps> = ({
         {!isPublished ? (
           <button
             type="button"
-            onClick={handlePublishToWebGIS}
+            onClick={handleRequestPublish}
             disabled={isPublishing || !canPublish}
             title={
               isGuestUser
@@ -345,16 +355,137 @@ export const WebGISPublishGate: React.FC<WebGISPublishGateProps> = ({
             )}
           </button>
         ) : (
-          <button
-            type="button"
-            onClick={onViewOnMap}
-            className="px-4 py-2 bg-text-base text-card hover:opacity-90 font-semibold text-xs rounded-lg flex items-center gap-2 transition-all cursor-pointer shrink-0"
-          >
-            <span>View on Map</span>
-            <ArrowRight size={14} />
-          </button>
+          <div className="flex items-center gap-2 flex-wrap">
+            {onViewInDataManagement && (
+              <button
+                type="button"
+                onClick={() => onViewInDataManagement(cleanSg)}
+                className="px-3.5 py-2 bg-inner hover:border-divider border border-subtle text-text-base font-medium text-xs rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <Database size={13} className="text-text-muted" />
+                <span>View in Daily Tab</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onViewOnMap}
+              className="px-4 py-2 bg-text-base text-card hover:opacity-90 font-semibold text-xs rounded-lg flex items-center gap-2 transition-all cursor-pointer shrink-0"
+            >
+              <span>View on Map</span>
+              <ArrowRight size={14} />
+            </button>
+          </div>
         )}
       </div>
+
+      {/* Pre-flight confirmation modal strictly following global design style */}
+      {isConfirmModalOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="confirm-publish-title"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+        >
+          <div className="bg-card border border-subtle w-full max-w-lg rounded-xl shadow-2xl overflow-hidden flex flex-col">
+            {/* Modal Header */}
+            <div className="px-4 py-3 border-b border-subtle flex items-center justify-between">
+              <div>
+                <h4 id="confirm-publish-title" className="text-sm font-semibold text-text-base">
+                  Confirm WebGIS Promotion
+                </h4>
+                <p className="text-[11px] text-text-muted">
+                  Verify campaign promotion target before committing
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsConfirmModalOpen(false)}
+                className="text-text-muted hover:text-text-base p-1 transition-colors cursor-pointer"
+                title="Close"
+              >
+                <X size={15} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-4 space-y-3.5 text-xs">
+              <MetaList
+                items={[
+                  {
+                    key: 'subgrid',
+                    label: 'Subgrid Campaign',
+                    value: <span className="font-mono font-bold">{cleanSg}</span>
+                  },
+                  {
+                    key: 'date',
+                    label: 'Metadata Date',
+                    value: <span className="font-mono">{surveyDate}</span>
+                  },
+                  {
+                    key: 'target_view',
+                    label: 'Target View',
+                    value: <span>Data Management &rarr; Daily Tab</span>,
+                    note: `promotes as ${cleanSg} (${surveyDate})`
+                  },
+                  {
+                    key: 'target_table',
+                    label: 'Database Table',
+                    value: <span className="font-mono">public.panoramas</span>,
+                    note: 'PostGIS spatial point layer'
+                  },
+                  {
+                    key: 'promotable',
+                    label: 'Publishable POIs',
+                    value: <span className="font-mono">{promotableRecords.length} records</span>
+                  },
+                  {
+                    key: 'distance',
+                    label: 'Track Distance',
+                    value: trajectoryDistance !== null ? `${(trajectoryDistance / 1000).toFixed(2)} km` : 'Not computable'
+                  }
+                ]}
+              />
+
+              {skippedRecords > 0 && (
+                <div className="flex items-start gap-2 text-[11px] text-text-muted">
+                  <AlertTriangle size={13} className="shrink-0 mt-0.5 text-text-muted" />
+                  <span>
+                    {skippedRecords} record(s) without verified coordinates or filenames will be skipped during promotion.
+                  </span>
+                </div>
+              )}
+
+              <p className="text-[11px] text-text-muted leading-relaxed">
+                This data will be promoted to the Data Management table as <strong className="text-text-base font-semibold">{cleanSg}</strong> in the Daily tab, and published to the live WebGIS map layer.
+              </p>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-4 py-3 bg-inner border-t border-subtle flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setIsConfirmModalOpen(false)}
+                disabled={isPublishing}
+                className="px-3 py-1.5 bg-card border border-subtle hover:border-divider text-text-base rounded-lg text-xs font-medium transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  setIsConfirmModalOpen(false);
+                  await handlePublishToWebGIS();
+                }}
+                disabled={isPublishing}
+                className="px-4 py-1.5 bg-text-base text-card hover:opacity-90 font-medium text-xs rounded-lg flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-40"
+              >
+                <Send size={13} />
+                <span>Confirm &amp; Promote</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

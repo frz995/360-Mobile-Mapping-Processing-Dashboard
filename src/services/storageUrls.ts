@@ -78,6 +78,11 @@ export function formatCloudflareUrl(domainOrUrl: string): string {
   return d.replace(/\/+$/, '');
 }
 
+function sanitizeBucketName(raw?: string): string {
+  const b = (raw || import.meta.env.VITE_SUPABASE_BUCKET || STORAGE_BUCKET_DEFAULT).trim();
+  return b.replace(/\s+/g, '_') || STORAGE_BUCKET_DEFAULT;
+}
+
 export function resolvePanoramaUrl(
   filename?: string,
   settings?: StorageResolveSettings,
@@ -98,7 +103,7 @@ export function resolvePanoramaUrl(
   }
   cleanFn = cleanFn.replace(/^\/+/, '');
   cleanFn = cleanFn.replace(/^storage\/v1\/object\/public\/[^/]+\//i, '');
-  cleanFn = cleanFn.replace(/^(?:MMS_PIC|mms_pic|panoramas)\//i, '');
+  cleanFn = cleanFn.replace(/^(?:MMS_PIC|mms_pic|MMS\s+PIC|mms\s+pic|panoramas)\//i, '');
   cleanFn = cleanFn.replace(/^\/+/, '').trim();
   if (!cleanFn) return '';
 
@@ -137,7 +142,7 @@ export function resolvePanoramaUrl(
             ? rawSbUrl
             : defaultSupabaseUrl
         ).replace(/\/+$/, '');
-        const bucket = settings?.supabaseBucket || import.meta.env.VITE_SUPABASE_BUCKET || STORAGE_BUCKET_DEFAULT;
+        const bucket = sanitizeBucketName(settings?.supabaseBucket);
         return `${baseSupabaseUrl}/storage/v1/object/public/${bucket}/${cleanFn}`;
       }
 
@@ -177,7 +182,11 @@ export function resolvePanoramaUrl(
 
       // Standard Flat Equirectangular Single Image fallback
       const singlePattern = settings?.singleImagePathPattern;
-      if (singlePattern && (singlePattern.includes('{subgrid}') || singlePattern.includes('{filename}') || singlePattern.includes('{pointFolder}'))) {
+      if (
+        singlePattern &&
+        !singlePattern.includes('{index') &&
+        (singlePattern.includes('{subgrid}') || singlePattern.includes('{filename}') || singlePattern.includes('{pointFolder}'))
+      ) {
         const path = singlePattern
           .replace('{pointFolder}', nameWithoutExt)
           .replace('{filename}', cleanFn)
@@ -187,7 +196,7 @@ export function resolvePanoramaUrl(
       }
 
       const prefix = (settings?.imageStoragePath || '').replace(/^\/+/, '').replace(/\/+$/, '');
-      if (prefix && prefix !== STORAGE_BUCKET_DEFAULT) {
+      if (prefix && prefix !== STORAGE_BUCKET_DEFAULT && prefix !== 'MMS PIC') {
         return baseUrl ? `${baseUrl}/${prefix}/${cleanFn}` : `/${prefix}/${cleanFn}`;
       }
       return baseUrl ? `${baseUrl}/${cleanFn}` : `/${cleanFn}`;
@@ -251,10 +260,14 @@ export function resolvePanoramaUrl(
           ? rawSbUrl
           : defaultSupabaseUrl
       ).replace(/\/+$/, '');
-      const bucket = settings?.supabaseBucket || import.meta.env.VITE_SUPABASE_BUCKET || STORAGE_BUCKET_DEFAULT;
+      const bucket = sanitizeBucketName(settings?.supabaseBucket);
 
       const pattern = settings?.singleImagePathPattern;
-      if (pattern && (pattern.includes('{filename}') || pattern.includes('{pointFolder}'))) {
+      if (
+        pattern &&
+        !pattern.includes('{index') &&
+        (pattern.includes('{filename}') || pattern.includes('{pointFolder}'))
+      ) {
         const path = pattern
           .replace('{subgrid}', targetSubgrid || '')
           .replace('{pointFolder}', nameWithoutExt)
@@ -290,7 +303,7 @@ export function resolvePanoramaConfigUrl(
         ? rawSbUrl
         : defaultSupabaseUrl
     ).replace(/\/+$/, '');
-    const bucket = settings?.supabaseBucket || import.meta.env.VITE_SUPABASE_BUCKET || STORAGE_BUCKET_DEFAULT;
+    const bucket = sanitizeBucketName(settings?.supabaseBucket);
     baseUrl = sbUrl ? `${sbUrl}/storage/v1/object/public/${bucket}` : '';
   } else {
     baseUrl = (settings?.customCdnUrl || settings?.customStorageUrl || settings?.cloudStorageBaseUrl || '').trim();
