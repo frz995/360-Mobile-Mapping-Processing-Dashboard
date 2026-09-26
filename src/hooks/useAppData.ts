@@ -355,25 +355,32 @@ export function useAppData() {
       }, 750);
     };
 
-    const liveChannel = supabase
-      .channel(channelName)
-      .on('postgres_changes', chanOpts(projectSettings?.panoramasTable || 'panoramas'), () => {
-        triggerDebouncedLiveUpdate();
-      })
-      .on('postgres_changes', chanOpts(projectSettings?.qaDefectsTable || 'qa_defects'), () => {
-        triggerDebouncedLiveUpdate();
-      })
-      .on('postgres_changes', chanOpts(projectSettings?.qaqcRunsTable || 'qaqc_audit_runs'), () => {
-        triggerDebouncedLiveUpdate();
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'project_settings' }, () => {
-        triggerDebouncedLiveUpdate();
-      });
-
+    // Creating and wiring the channel is inside the try block, not just the
+    // subscribe() call. When VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY are
+    // missing, client.ts returns a no-op client whose `.channel` is absent;
+    // building the chain outside the try previously turned that into an
+    // uncaught TypeError that crashed the whole dashboard via ErrorBoundary.
+    let liveChannel: ReturnType<typeof supabase.channel> | null = null;
     try {
+      liveChannel = supabase
+        .channel(channelName)
+        .on('postgres_changes', chanOpts(projectSettings?.panoramasTable || 'panoramas'), () => {
+          triggerDebouncedLiveUpdate();
+        })
+        .on('postgres_changes', chanOpts(projectSettings?.qaDefectsTable || 'qa_defects'), () => {
+          triggerDebouncedLiveUpdate();
+        })
+        .on('postgres_changes', chanOpts(projectSettings?.qaqcRunsTable || 'qaqc_audit_runs'), () => {
+          triggerDebouncedLiveUpdate();
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'project_settings' }, () => {
+          triggerDebouncedLiveUpdate();
+        });
+
       liveChannel.subscribe();
     } catch (e) {
       console.warn('Realtime subscription notice:', e);
+      liveChannel = null;
     }
 
     // 30s Polling fallback
@@ -383,7 +390,7 @@ export function useAppData() {
 
     return () => {
       if (debounceTimer) clearTimeout(debounceTimer);
-      try { supabase.removeChannel(liveChannel); } catch { }
+      if (liveChannel) { try { supabase.removeChannel(liveChannel); } catch { } }
       clearInterval(liveInterval);
     };
   }, []);

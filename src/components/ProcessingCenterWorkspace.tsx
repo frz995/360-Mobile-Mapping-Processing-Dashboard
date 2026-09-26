@@ -106,18 +106,23 @@ export const ProcessingCenterWorkspace: React.FC<ProcessingCenterWorkspaceProps>
     const channelOpts: { event: '*'; schema: 'public'; table: 'processing_jobs'; filter?: string } = { event: '*', schema: 'public', table: 'processing_jobs' };
     const pid = getActiveProjectId();
     if (pid) channelOpts.filter = `project_id=eq.${pid}`;
-    const channel = supabase
-      .channel(channelName)
-      .on('postgres_changes', channelOpts, () => {
-        refreshJobs();
-      });
+    // Channel creation is guarded too: the no-op Supabase client used when
+    // build-time env vars are missing exposes no `.channel`, and building the
+    // chain unguarded crashed the component into the ErrorBoundary.
+    let channel: ReturnType<typeof supabase.channel> | null = null;
     try {
+      channel = supabase
+        .channel(channelName)
+        .on('postgres_changes', channelOpts, () => {
+          refreshJobs();
+        });
       channel.subscribe();
     } catch (e) {
       console.warn('Processing jobs realtime subscription notice:', e);
+      channel = null;
     }
     return () => {
-      try { supabase.removeChannel(channel); } catch { }
+      if (channel) { try { supabase.removeChannel(channel); } catch { } }
     };
   }, [refreshJobs]);
 

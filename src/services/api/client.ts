@@ -69,7 +69,21 @@ function createNoopSupabaseClient(): SupabaseClientInstance {
         list: () => Promise.resolve({ data: [], error: null }),
         remove: () => Promise.resolve({ data: null, error: null })
       })
-    }
+    },
+    // Realtime stub. Without this, `supabase.channel(...)` is undefined and the
+    // call throws a TypeError that takes down the whole render tree via the
+    // ErrorBoundary -- a missing build-time env var turned into a white screen
+    // instead of a degraded, offline-capable dashboard. Returning an inert
+    // channel means realtime is simply unavailable while polling still works.
+    channel: () => {
+      const chan: any = {
+        on: () => chan,
+        subscribe: () => chan,
+        unsubscribe: () => Promise.resolve('ok')
+      };
+      return chan;
+    },
+    removeChannel: () => Promise.resolve('ok')
   };
 
   return client as SupabaseClientInstance;
