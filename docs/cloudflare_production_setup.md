@@ -103,10 +103,34 @@ and the Production Hub last-activity session.
 
 ## Local development
 
-`vite.config.ts` mounts `api/nas-scan.js` and `api/nas-image.js` as local-only
-development adapters. The former's `Project_Test` root is a development
-fixture only; deployed Cloudflare Pages requests go through the Pages
-Functions to the worker's configured `NAS_BASE_PATH`.
+There is no local NAS adapter. The frontend never touches a filesystem: it
+speaks the same HTTP API in every environment, and the difference is only
+where that API is served from.
+
+`src/config/transport.ts` resolves worker and station-agent transport once, from
+`import.meta.env`:
+
+| | Worker | Station agents |
+| --- | --- | --- |
+| `npm run dev` | Proxy to `NAS_API_URL` | Direct LAN to the configured IPs |
+| Deployed (Pages) | Same-origin `/api/worker/...` | Same-origin `/api/station-agent/...` |
+
+For the local worker proxy, set in untracked `.env`:
+
+```ini
+NAS_API_URL=https://<tunnel-host>
+NAS_WORKER_TOKEN=<same token as the worker's NAS_WORKER_TOKEN>
+```
+
+If `NAS_API_URL`/`NAS_WORKER_TOKEN` are absent, `vite.config.ts` sets
+`__NAS_WORKER_DEV_PROXY__` to false so the UI reports a misconfigured local
+proxy instead of silently falling back to a direct private URL. Both are
+overridable with `VITE_WORKER_API_MODE` and `VITE_STATION_AGENT_MODE`.
+
+Each station agent requires a real LAN address. With none configured the panel
+reports `no-ip-configured` rather than inventing a placeholder host. Unreachable
+agents report `unreachable`, and reachable agents that have not checked in
+report `not-reporting`.
 
 ## Readiness boundary
 

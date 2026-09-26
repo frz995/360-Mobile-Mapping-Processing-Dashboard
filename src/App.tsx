@@ -108,8 +108,8 @@ type Layer = CatalogLayer;
 type Folder = CatalogFolder;
 export type { Layer, Folder };
 
-import { formatBatchIdDisplay, getPOICount, getImagesProcessedCount, parseFlexibleDate, formatDisplayDate, toISODateString, calculateSubgridDistanceKm, createBatchLogFromSupabaseOrDummy, reconcileBatchLogs } from './utils/dashboardData';
-export { formatBatchIdDisplay, getPOICount, getImagesProcessedCount, parseFlexibleDate, formatDisplayDate, toISODateString, calculateSubgridDistanceKm, createBatchLogFromSupabaseOrDummy, reconcileBatchLogs };
+import { formatBatchIdDisplay, getPOICount, getImagesProcessedCount, parseFlexibleDate, formatDisplayDate, toISODateString, calculateSubgridDistanceKm, reconcileBatchLogs } from './utils/dashboardData';
+export { formatBatchIdDisplay, getPOICount, getImagesProcessedCount, parseFlexibleDate, formatDisplayDate, toISODateString, calculateSubgridDistanceKm, reconcileBatchLogs };
 import { getItemId } from './utils/items';
 export { getItemId };
 import { openPrintableReport } from './utils/reportDocuments';
@@ -197,10 +197,10 @@ export default function App() {
   // Never silently fall back to a hardcoded project/map URL (see implementation_plan_v13.md).
   useEffect(() => {
     if (!import.meta.env.VITE_SUPABASE_URL) {
-      console.warn('[config] Missing VITE_SUPABASE_URL — Supabase data & storage features will not work. Set it in your .env / deployment environment.');
+      console.warn('[config] Missing VITE_SUPABASE_URL â€” Supabase data & storage features will not work. Set it in your .env / deployment environment.');
     }
     if (!import.meta.env.VITE_MAP_URL) {
-      console.warn('[config] Missing VITE_MAP_URL — embedded WebGIS map links will be blank. Set it in your .env / deployment environment.');
+      console.warn('[config] Missing VITE_MAP_URL â€” embedded WebGIS map links will be blank. Set it in your .env / deployment environment.');
     }
   }, []);
 
@@ -413,7 +413,7 @@ export default function App() {
       goToWorkspace('production');
       setFocusedSection(null);
     } else if (targetView === 'qaqc' || targetView === 'qa-inspector') {
-      // 4. QA/QC 360° Spherical Defect Workspace
+      // 4. QA/QC 360Â° Spherical Defect Workspace
       goToWorkspace('dashboard');
       setFocusedSection('qa');
     } else if (targetView === 'postgis') {
@@ -490,14 +490,14 @@ export default function App() {
   // Derived themeMode for backward compatibility
   const themeMode = currentTheme === 'daylight' || currentTheme === 'alabaster' ? 'light' : 'dark';
 
-  // A user who has applied ANY dashboard theme has finished onboarding — the
+  // A user who has applied ANY dashboard theme has finished onboarding â€” the
   // theme step is the last interactive config a campaign needs, so once it's
   // set the showcase/onboarding gate must never auto-trigger for them again.
   const markOnboarded = useCallback((userKey: string): void => {
     try {
       localStorage.setItem(`geosphere360_onboarded_${userKey}`, '1');
     } catch {
-      /* storage unavailable — non-fatal */
+      /* storage unavailable â€” non-fatal */
     }
   }, []);
 
@@ -506,7 +506,7 @@ export default function App() {
 
   // True when the current session was restored from persistent storage on load
   // (page refresh / new tab) rather than created by an explicit sign-in this page
-  // — a restored session must never re-trigger the onboarding gate.
+  // â€” a restored session must never re-trigger the onboarding gate.
   const restoredSessionRef = useRef(false);
 
   // Global Theme Listener
@@ -594,7 +594,7 @@ export default function App() {
     addAuditLog('CREATE', 'Guest Login', 'User logged in under Guest Read-Only mode', 'info');
   };
 
-  // ---- v14 Hybrid sign-in gate (welcome → pick → loading); guests stay idle ----
+  // ---- v14 Hybrid sign-in gate (welcome â†’ pick â†’ loading); guests stay idle ----
   const [projectGate, setProjectGate] = useState<GateStage>('idle');
   const [welcomeUserName, setWelcomeUserName] = useState<string>('');
 
@@ -677,7 +677,7 @@ export default function App() {
         setAuthSession(session);
         // Supabase re-emits auth pulses (SIGNED_IN/TOKEN_REFRESHED) when the tab
         // regains focus. Only the FIRST session (no previous one) may switch the
-        // workspace — otherwise a re-emitted pulse yanks the user off the
+        // workspace â€” otherwise a re-emitted pulse yanks the user off the
         // landing showcase they navigated to via the onboarding Back button and
         // dumps them on a stale dashboard page.
         if (hadSession) {
@@ -784,7 +784,7 @@ export default function App() {
     }
 
     // A session restored from persistent storage (page refresh/new tab while
-    // already signed in) must land straight on the workspace — the onboarding
+    // already signed in) must land straight on the workspace â€” the onboarding
     // gate is reserved for genuine sign-ins.
     if (restoredSessionRef.current) {
       setProjectGate('idle');
@@ -830,7 +830,7 @@ export default function App() {
   }, []);
 
   // Show the picker/welcome gate after auth resolves (covers page refresh with
-  // a persisted session, and the explicit sign-in path — both funnel here).
+  // a persisted session, and the explicit sign-in path â€” both funnel here).
   const gateTriggeredRef = useRef<string | null>(null);
   useEffect(() => {
     if (authLoading) return;
@@ -862,7 +862,7 @@ export default function App() {
     return projects;
   }, []);
 
-  // v14 carry-forward — register the pre-v14 "current production project"
+  // v14 carry-forward â€” register the pre-v14 "current production project"
   // (from projectSettings) into the registry once per user + no active project.
   const ensureSeedProject = useCallback(
     async (settings: Record<string, unknown> | undefined) => {
@@ -916,7 +916,7 @@ export default function App() {
       seedProjectRef.current = true;
       return;
     }
-    // A `local-*` stub (left by a failed v14 seed) is not a real project —
+    // A `local-*` stub (left by a failed v14 seed) is not a real project â€”
     // clear it and re-seed so the carried-forward production project actually
     // gets a real DB row (otherwise every scoped query returns 0 rows).
     if (savedId) clearActiveProjectId(userKey);
@@ -1047,11 +1047,11 @@ export default function App() {
       const t = window.setTimeout(() => setTourFirstRunOpen(true), 1400);
       return () => window.clearTimeout(t);
     } catch {
-      // localStorage unavailable — skip the auto-suggest
+      // localStorage unavailable â€” skip the auto-suggest
     }
   }, [authSession, authLoading, isGuestUser]);
 
-  // Session inactivity lock — signs out authenticated users who go idle
+  // Session inactivity lock â€” signs out authenticated users who go idle
   // beyond projectSettings.sessionTimeoutMinutes (0 == never, undefined defaults 30).
   // Activity inside embedded maps/360 iframes is not observable from the parent
   // window, so sustained work inside those panes may still count as idle.
@@ -1076,7 +1076,7 @@ export default function App() {
 
     // On same-session refresh while idle past the limit, sign out immediately
     // ("refresh out from session inactivity lock") instead of restoring the page.
-    // Only meaningful when a previous session actually recorded activity — a
+    // Only meaningful when a previous session actually recorded activity â€” a
     // first-ever visit (no marker) must never be treated as "idle".
     if (hasLastActivity() && getLastActivityAgeMs() >= timeoutMs) {
       void handleSignOut();
@@ -1144,7 +1144,7 @@ export default function App() {
       const msg = err instanceof Error ? err.message : String(err);
       setAuthError(
         /JSON\.parse|Unexpected token|unexpected character|not valid JSON/i.test(msg)
-          ? 'The login server returned an HTML page instead of JSON — your Supabase REST URL or anon key is wrong, or the backend host is unreachable. Check Admin Settings → Database Host, or the .env values.'
+          ? 'The login server returned an HTML page instead of JSON â€” your Supabase REST URL or anon key is wrong, or the backend host is unreachable. Check Admin Settings â†’ Database Host, or the .env values.'
           : msg || 'Unexpected error during sign-in.'
       );
       return;
@@ -1394,7 +1394,7 @@ export default function App() {
   const [mapRefreshKey, setMapRefreshKey] = useState<number>(Date.now());
 
   // While the navigation rail animates its width (300ms), the embedded WebGIS
-  // iframe continuously re-renders its tiles/3D scene → visible map flicker.
+  // iframe continuously re-renders its tiles/3D scene â†’ visible map flicker.
   // A short opaque veil over the map hides that repaint so the dashboard stays
   // clean; it is lifted once the layout has settled.
   const [mapVeilActive, setMapVeilActive] = useState<boolean>(false);
@@ -1589,7 +1589,7 @@ export default function App() {
       addAuditLog(
         'EDIT',
         'Saved Project & Database Settings',
-        `Updated database host to ${next.databaseProvider || 'supabase_cloud'} and storage provider to ${next.storageProvider || 'supabase'}${backendSwitched ? ' — backend reconnected' : ''} (Panoramas table: ${tables.panoramasTable}, Sample URL: ${sampleUrl})`,
+        `Updated database host to ${next.databaseProvider || 'supabase_cloud'} and storage provider to ${next.storageProvider || 'supabase'}${backendSwitched ? ' â€” backend reconnected' : ''} (Panoramas table: ${tables.panoramasTable}, Sample URL: ${sampleUrl})`,
         'info'
       );
       addNotification({
@@ -2358,7 +2358,9 @@ export default function App() {
         const foundDaily = dailyData.find(d => (extractSubgridName(d.subgrid) || '').toUpperCase().trim() === s);
         const foundBatch = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === s);
         const firstPan = foundDaily?.panoramas?.[0] || foundBatch?.panoramas?.[0];
-        const fn = firstPan?.filename || foundDaily?.availableFilenames?.[0] || (foundBatch?.imageFilename) || `${s}-0001.jpg`;
+        // Never invent a filename: an unresolvable one produces a broken image
+        // with no error. Callers fall back to their own empty state.
+        const fn = firstPan?.filename || foundDaily?.availableFilenames?.[0] || (foundBatch?.imageFilename) || '';
         const lat = firstPan?.latitude ?? (firstPan as any)?.lat ?? (foundDaily as any)?.points?.[0]?.lat ?? (SUBGRID_COORDINATES[s]?.[1] ?? 0);
         const lng = firstPan?.longitude ?? (firstPan as any)?.lon ?? (firstPan as any)?.lng ?? (foundDaily as any)?.points?.[0]?.lon ?? (SUBGRID_COORDINATES[s]?.[0] ?? 0);
         return { fn, lat, lng };
@@ -2537,7 +2539,7 @@ export default function App() {
 
     const normSg = (extractSubgridName(daily.subgrid) || daily.subgrid || '').toUpperCase().trim();
     const firstPan = daily.panoramas?.[0];
-    const fn = firstPan?.filename || daily.availableFilenames?.[0] || (daily as any)?.imageFilename || `${normSg}-0001.jpg`;
+    const fn = firstPan?.filename || daily.availableFilenames?.[0] || (daily as any)?.imageFilename || '';
     const lat = firstPan?.latitude ?? (firstPan as any)?.lat ?? (daily as any)?.points?.[0]?.lat ?? (SUBGRID_COORDINATES[normSg]?.[1] ?? 0);
     const lng = firstPan?.longitude ?? (firstPan as any)?.lon ?? (firstPan as any)?.lng ?? (daily as any)?.points?.[0]?.lon ?? (SUBGRID_COORDINATES[normSg]?.[0] ?? 0);
     const imgUrl = fn ? resolvePanoramaUrl(fn, projectSettings) : '';
@@ -2748,7 +2750,7 @@ export default function App() {
                 type={showPassword ? 'text' : 'password'}
                 value={authPassword}
                 onChange={(e) => setAuthPassword(e.target.value)}
-                placeholder="••••••••"
+                placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
                 required
                 className="w-full bg-card border border-subtle focus:border-accent focus:ring-1 focus:ring-accent/20 rounded-lg px-3.5 py-2.5 text-sm text-text-base placeholder-text-muted outline-none transition-all duration-150"
               />
@@ -2846,7 +2848,7 @@ export default function App() {
         </div>
       )}
 
-      {/* v14 HYBRID SIGN-IN GATE — sits above the mounted app so data preloads underneath */}
+      {/* v14 HYBRID SIGN-IN GATE â€” sits above the mounted app so data preloads underneath */}
       {projectGate !== 'idle' && (
         <ProjectOnboarding
           stage={projectGate}
@@ -3089,7 +3091,7 @@ export default function App() {
                               onClick={() => setIsStatusFilterOpen(false)}
                               className="text-text-muted hover:text-text-base text-xs px-1 cursor-pointer transition-colors"
                             >
-                              ✕
+                              âœ•
                             </button>
                           </div>
 
@@ -3271,10 +3273,10 @@ export default function App() {
                               className="text-text-muted hover:text-text-base p-0.5 rounded cursor-pointer transition-colors"
                               title="Close filter"
                             >
-                              ✕
+                              âœ•
                             </button>
                           </div>
-                          <div className="text-text-base font-sans text-[11px] flex justify-between gap-4"><span className="text-text-muted">Coordinates:</span> <span>{activeCoords.lat && activeCoords.lng ? `${activeCoords.lat.toFixed(4)}° N, ${activeCoords.lng.toFixed(4)}° E` : '—'}</span></div>
+                          <div className="text-text-base font-sans text-[11px] flex justify-between gap-4"><span className="text-text-muted">Coordinates:</span> <span>{activeCoords.lat && activeCoords.lng ? `${activeCoords.lat.toFixed(4)}Â° N, ${activeCoords.lng.toFixed(4)}Â° E` : 'â€”'}</span></div>
                           <div className="text-text-base text-[11px] flex justify-between gap-4"><span className="text-text-muted">Distance from start:</span> <span className="font-semibold text-text-base">{activeKm} km</span></div>
                           <div className="text-text-base text-[11px] flex justify-between gap-4"><span className="text-text-muted">Image Count:</span> <span className="font-semibold text-text-base">{activeImages}</span></div>
                           <div className="text-text-base text-[11px] flex justify-between items-center gap-4">
@@ -3340,7 +3342,7 @@ export default function App() {
                     <ShareMapDialog
                       open={shareMapOpen}
                       kind="webgis"
-                      defaultTitle={`${projectSettings?.projectName || 'GeoSphere 360'} — Survey Map`}
+                      defaultTitle={`${projectSettings?.projectName || 'GeoSphere 360'} â€” Survey Map`}
                       buildSnapshot={() => buildWebgisSnapshot(dailyData, projectSettings)}
                       basemap={projectSettings?.defaultBasemap || 'ofm-positron'}
                       createdBy={authSession?.user?.id || null}
@@ -3628,7 +3630,7 @@ export default function App() {
                                     // Live heading-cone sync: broadcast 360 camera rotation to the
                                     // embedded WebGIS map so its sonar/heading cone follows the view.
                                     // NOTE: React state (panoramaTelemetry) is intentionally NOT updated
-                                    // here — rotation would re-render the entire dashboard. The live
+                                    // here â€” rotation would re-render the entire dashboard. The live
                                     // heading is published via the heading store (see
                                     // PhotoSphereViewerComponent) for the HUD readout without App re-render.
                                     const yawDeg = Math.round(pos.yaw * 100) / 100;
@@ -3653,10 +3655,10 @@ export default function App() {
 
                             {/* Dashboard-only Compact Floating HUD */}
                             <WebGISHUDViewerOverlay
-                              imageName={activePanoramaFilename || (inspectorSubgrid ? `${inspectorSubgrid}-0001.jpg` : 'Inspection Node')}
+                              imageName={activePanoramaFilename || 'Inspection Node'}
                               currentIndex={
                                 (() => {
-                                  const cleanSg = (inspectorSubgrid || selectedSubgridFilter || 'N93E70').toUpperCase().trim();
+                                  const cleanSg = (inspectorSubgrid || selectedSubgridFilter || '').toUpperCase().trim();
                                   const stations = getStationsForSubgrid(cleanSg, selectedDailyRunId);
 
                                   // 1. Match by exact filename in the sorted stations list
@@ -3673,13 +3675,13 @@ export default function App() {
                               }
                               totalFrames={
                                 (() => {
-                                  const cleanSg = (inspectorSubgrid || selectedSubgridFilter || 'N93E70').toUpperCase().trim();
+                                  const cleanSg = (inspectorSubgrid || selectedSubgridFilter || '').toUpperCase().trim();
                                   const stations = getStationsForSubgrid(cleanSg, selectedDailyRunId);
                                   if (stations.length > 0) return stations.length;
                                   const currentItem = dailyData.find(
                                     (d) => (extractSubgridName(d.subgrid) || '').toUpperCase() === cleanSg
                                   );
-                                  return currentItem ? getImagesProcessedCount(currentItem) : (totalImages > 0 ? totalImages : 104);
+                                  return currentItem ? getImagesProcessedCount(currentItem) : totalImages;
                                 })()
                               }
                               coordinates={inspectorCoords}
@@ -3687,21 +3689,28 @@ export default function App() {
                               gpsAccuracy="0.0m"
                               equipType={projectSettings?.defaultEquipment || 'MMS 360'}
                               onIndexChange={(newIdx: number) => {
-                                const cleanSg = (inspectorSubgrid || selectedSubgridFilter || 'N93E70').toUpperCase().trim();
+                                const cleanSg = (inspectorSubgrid || selectedSubgridFilter || '').toUpperCase().trim();
 
                                 // Retrieve sorted sequential station track
                                 const stations = getStationsForSubgrid(cleanSg, selectedDailyRunId);
-                                const total = stations.length > 0 ? stations.length : (totalImages > 0 ? totalImages : 1);
+                                // With no real station records there is nothing to step to.
+                                // Synthesising "<subgrid>-0001.jpg" and a bearing here would
+                                // push an invented panorama into app state, the map iframe
+                                // and the 360 camera, so refuse instead.
+                                if (stations.length === 0) return;
 
                                 // Clamp strictly to array boundaries
-                                const targetIdx = Math.max(0, Math.min(newIdx, total - 1));
+                                const targetIdx = Math.max(0, Math.min(newIdx, stations.length - 1));
                                 const targetStation = stations[targetIdx];
+                                if (!targetStation) return;
 
-                                const nextFn = targetStation?.filename || `${cleanSg}-${String(targetIdx + 1).padStart(4, '0')}.jpg`;
+                                const nextFn = targetStation.filename || (targetStation.image_url ? targetStation.image_url.split('?')[0].split('/').pop() || '' : '');
                                 const nextUrl = nextFn ? resolvePanoramaUrl(nextFn, projectSettings, { subgrid: cleanSg }) : (targetStation?.image_url || '');
                                 const nextLat = Number(targetStation?.latitude ?? (targetStation as any)?.lat ?? inspectorCoords.lat);
                                 const nextLng = Number(targetStation?.longitude ?? (targetStation as any)?.lng ?? (targetStation as any)?.lon ?? inspectorCoords.lng);
-                                const nextBearing = targetStation?.bearing ?? (targetStation as any)?.heading ?? ((targetIdx * 12) % 360);
+                                // Hold the current heading rather than inventing one, so the
+                                // camera does not swing to a fabricated bearing.
+                                const nextBearing = targetStation?.bearing ?? (targetStation as any)?.heading ?? panoramaTelemetry.yaw;
 
                                 // Preload adjacent stations into browser cache for instant 0ms stepping
                                 const aheadStation = stations[targetIdx + 1];
@@ -3781,7 +3790,7 @@ export default function App() {
                               Select a location on the map
                             </h4>
                             <p className="text-[11px] text-text-muted mt-1">
-                              to view 360° imagery
+                              to view 360Â° imagery
                             </p>
                           </div>
                         )}

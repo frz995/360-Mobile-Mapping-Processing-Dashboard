@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, XCircle, Eye, Loader2, ListChecks } from 'lucide-react';
-import { PhotoSphereViewerComponent } from '../../PhotoSphereViewerComponent';
+import { CheckCircle2, XCircle, Loader2, ListChecks } from 'lucide-react';
 import type { ProductionApiClient } from '../../../services/productionApi';
 import {
   saveDatasetToSupabase,
@@ -10,7 +9,7 @@ import {
 } from '../../../services/supabase';
 import type { DatasetRecord, ProcessingJobRecord } from '../../../types/production';
 import { jobStatusMeta } from '../../../utils/productionQueue';
-import { formatDateTime, productionNasUrlFor } from '../common';
+import { formatDateTime } from '../common';
 import { isWorkerJobType } from './processingCommon';
 import { createNextVersion } from '../../../utils/datasetVersioning';
 import { extractCanonicalSubgrid } from '../../../utils/datasetLineage';
@@ -111,16 +110,9 @@ export const QAConsultPanel: React.FC<QAConsultPanelProps> = ({
       })()
     : null;
 
-  const canonicalSg = extractCanonicalSubgrid(selected?.subgrid);
-  const previewFilename = canonicalSg ? `${canonicalSg}-0001.jpg` : '';
-  const previewUrl =
-    selected && !isGuestUser && selected.job_type !== 'BLUR' && previewFilename
-      ? productionNasUrlFor(
-          projectSettings,
-          selected.output_folder,
-          previewFilename
-        )
-      : '';
+  // A QA job record carries no real frame filename, so there is nothing honest
+  // to preview. It previously guessed "<SUBGRID>-0001.jpg", which resolved to a
+  // 404 and rendered a broken 360 viewer with an invented caption.
 
   const notify = (title: string, details: string) => {
     onAddNotification?.({ title, message: details, category: 'SYSTEM' as any, read: false });
@@ -331,19 +323,11 @@ export const QAConsultPanel: React.FC<QAConsultPanelProps> = ({
                   Output path: {selected.output_folder}
                 </div>
               </div>
-            ) : previewUrl ? (
-              <div className="bg-card border border-subtle rounded-xl p-3">
-                <div className="text-[10px] uppercase tracking-wider text-text-muted font-bold flex items-center gap-1.5 mb-2">
-                  <Eye size={12} className="text-sky-400" /> 360 preview · {previewFilename}
-                </div>
-                <div className="h-[360px] rounded-lg overflow-hidden border border-subtle bg-black/40">
-                  <PhotoSphereViewerComponent key={`qa-${selected.id}`} panoramaUrl={previewUrl} caption={previewFilename} initialFov={projectSettings?.defaultFov} />
-                </div>
-                <p className="text-[10px] text-text-muted font-sans break-all mt-1">{previewUrl}</p>
-              </div>
             ) : (
               <p className="text-[11px] text-amber-300">
-                Configure <span className="font-sans">nasServerUrl</span> in Settings to enable the 360 preview of processed output.
+                No 360 preview: this job record has no real frame filename. Open the
+                frame from a NAS scan in the Data Management view instead of a guessed
+                filename.
               </p>
             )}
 

@@ -1,7 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { ShieldAlert, X, Search, RefreshCw, CheckCircle, AlertTriangle, Copy, FileText, Loader2 } from 'lucide-react';
-import { generateImageFilenamesList } from '../utils/subgrid';
+import { ShieldAlert, X, Search, CheckCircle, AlertTriangle, Copy, FileText } from 'lucide-react';
 import { toast } from './common/toast';
 import { useDialogEscape } from './common/dialog';
 
@@ -15,64 +14,44 @@ interface QCAuditModalProps {
   onClose: () => void;
 }
 
-export function QCAuditModal({ subgrid, poiCount, availableCount, baseFilename, availableFilenames, expectedFilenames, onClose }: QCAuditModalProps) {
-  const expectedTotal = poiCount > 0 ? poiCount : 1;
-  const missingCount = Math.max(0, expectedTotal - availableCount);
-
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [currentScanningFilename, setCurrentScanningFilename] = useState('');
-  const [, setHasAnalyzed] = useState(false);
+export function QCAuditModal({ subgrid, poiCount, availableCount, availableFilenames, expectedFilenames, onClose }: QCAuditModalProps) {
   const [activeTab, setActiveTab] = useState<'all' | 'missing' | 'available'>('missing');
   const [searchQuery, setSearchQuery] = useState('');
-  const [results, setResults] = useState<{ filename: string; index: number; isMissing: boolean }[]>([]);
 
   useDialogEscape(onClose);
 
-  const runIntegrityAudit = () => {
-    setIsAnalyzing(true);
-    setProgress(0);
-    setHasAnalyzed(false);
+  const realExpected = useMemo(
+    () => (expectedFilenames || []).filter(f => Boolean(f && f.trim())),
+    [expectedFilenames]
+  );
+  const realAvailable = useMemo(
+    () => (availableFilenames || []).filter(f => Boolean(f && f.trim())),
+    [availableFilenames]
+  );
 
-    const allExpected = (expectedFilenames && expectedFilenames.length > 0)
-      ? expectedFilenames
-      : generateImageFilenamesList(subgrid, expectedTotal, baseFilename);
+  // A filename-level integrity audit needs BOTH a real survey track and a real
+  // imagery inventory. Previously the fallback synthesised a sequence from the
+  // subgrid code and then assumed the first N of those invented names existed,
+  // so "missing" was only ever arithmetic and the report could claim PASSED
+  // without anything having been checked. Without both lists we cannot audit.
+  const canAudit = realExpected.length > 0 && realAvailable.length > 0;
 
-    const availableSet = new Set((availableFilenames && availableFilenames.length > 0)
-      ? availableFilenames.map(f => f.toLowerCase().trim())
-      : allExpected.slice(0, availableCount).map(f => f.toLowerCase().trim()));
+  const results = useMemo(() => {
+    if (!canAudit) return [] as { filename: string; index: number; isMissing: boolean }[];
+    const availableSet = new Set(realAvailable.map(f => f.toLowerCase().trim()));
+    return realExpected.map((fn, idx) => ({
+      filename: fn,
+      index: idx + 1,
+      isMissing: !availableSet.has(fn.toLowerCase().trim())
+    }));
+  }, [canAudit, realExpected, realAvailable]);
 
-    let currentStep = 0;
-    const totalSteps = Math.min(100, allExpected.length);
-    const stepIncrement = Math.max(1, Math.floor(allExpected.length / totalSteps));
-
-    const interval = setInterval(() => {
-      currentStep += stepIncrement;
-      if (currentStep >= allExpected.length) {
-        currentStep = allExpected.length;
-        clearInterval(interval);
-
-        const analyzedList = allExpected.map((fn, idx) => ({
-          filename: fn,
-          index: idx + 1,
-          isMissing: !availableSet.has(fn.toLowerCase().trim())
-        }));
-
-        setResults(analyzedList);
-        setProgress(100);
-        setIsAnalyzing(false);
-        setHasAnalyzed(true);
-      } else {
-        const pct = Math.round((currentStep / allExpected.length) * 100);
-        setProgress(pct);
-        setCurrentScanningFilename(allExpected[currentStep - 1] || '');
-      }
-    }, 25);
-  };
-
-  useEffect(() => {
-    runIntegrityAudit();
-  }, [subgrid, poiCount, availableCount]);
+  const missingCount = canAudit ? results.filter(r => r.isMissing).length : 0;
+  const trackCount = canAudit ? realExpected.length : 0;
+  const availableTotal = canAudit ? realAvailable.length : 0;
+  const verdict = !canAudit
+    ? 'NOT VERIFIED'
+    : (missingCount === 0 ? 'PASSED (100% Matched)' : 'ACTION REQUIRED (Missing Images Detected)');
 
   const filteredResults = results.filter(item => {
     if (activeTab === 'missing' && !item.isMissing) return false;
@@ -86,6 +65,10 @@ export function QCAuditModal({ subgrid, poiCount, availableCount, baseFilename, 
   const missingFilenames = results.filter(r => r.isMissing).map(r => r.filename);
 
   const copyMissingList = () => {
+    if (!canAudit) {
+      toast.error('Audit not verified: no real survey track and imagery inventory to compare.');
+      return;
+    }
     if (missingFilenames.length === 0) {
       toast.info('No missing image files found for this subgrid!');
       return;
@@ -100,15 +83,20 @@ TNB 360 MOBILE MAPPING - QC AUDIT REPORT
 =====================================================
 Subgrid: ${subgrid}
 Audit Date: ${new Date().toLocaleString()}
-POI Survey Count (CSV Metadata): ${expectedTotal}
-Available Images in MMS_PIC: ${availableCount}
-Missing Panorama Images: ${missingCount}
-Integrity Status: ${missingCount === 0 ? 'PASSED (100% Complete)' : 'ACTION REQUIRED (Missing Images Detected)'}
-=====================================================
+POI Survey Count (CSV Metadata): ${poiCount}
+Survey Track Filenames Loaded: ${trackCount}
+Available Image Filenames Loaded: ${availableTotal}
+Missing Panorama Images: ${canAudit ? missingCount : 'UNKNOWN - NOT VERIFIED'}
+Integrity Status: ${verdict}
+Source: set difference of the loaded survey track against the loaded
+imagery inventory. No storage bucket is scanned by this report.
+====================================================
 
-MISSING FILENAMES (${missingFilenames.length}):
+MISSING FILENAMES (${canAudit ? missingFilenames.length : 'not determined'}):
 -----------------------------------------------------
-${missingFilenames.length > 0 ? missingFilenames.join('\n') : 'None - All images exist in MMS_PIC storage.'}
+${!canAudit
+      ? 'Audit could not be run: a real survey track filename list and a real\nimagery inventory list are both required. Nothing was inferred.'
+      : (missingFilenames.length > 0 ? missingFilenames.join('\n') : 'None - every survey track frame has a matching loaded image.')}
 `;
     const blob = new Blob([reportText], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
@@ -136,14 +124,16 @@ ${missingFilenames.length > 0 ? missingFilenames.join('\n') : 'None - All images
         {/* Header */}
         <div className="flex justify-between items-start pb-4 mb-4 border-b border-subtle shrink-0">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-inner border border-subtle text-text-base">
-              <ShieldAlert size={18} className={missingCount > 0 ? 'text-rose-400' : 'text-text-muted'} />
+            <div className={`p-2.5 rounded-xl bg-inner border border-subtle ${canAudit ? 'text-text-base' : 'text-text-muted'}`}>
+              <ShieldAlert size={18} className={canAudit && missingCount > 0 ? 'text-rose-400' : 'text-text-muted'} />
             </div>
             <div>
               <h2 className="text-base font-bold text-text-base tracking-wide flex items-center gap-2">
                 QC Integrity Audit &bull; Subgrid [{subgrid}]
               </h2>
-              <span className="text-xs text-text-muted">Verifying panorama file availability in Supabase MMS_PIC storage</span>
+              <span className="text-xs text-text-muted">
+                Compares the loaded survey track against the loaded imagery inventory
+              </span>
             </div>
           </div>
           <button
@@ -158,42 +148,29 @@ ${missingFilenames.length > 0 ? missingFilenames.join('\n') : 'None - All images
         <div className="grid grid-cols-3 gap-3 mb-4 shrink-0">
           <div className="bg-inner border border-subtle p-3 rounded-xl">
             <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider block">POI Metadata Points</span>
-            <span className="text-xl font-bold text-text-base font-sans mt-0.5 block">{expectedTotal.toLocaleString()}</span>
-            <span className="text-[10px] text-text-muted">Expected survey track</span>
+            <span className="text-xl font-bold text-text-base font-sans mt-0.5 block">{poiCount.toLocaleString()}</span>
+            <span className="text-[10px] text-text-muted">From CSV metadata</span>
           </div>
           <div className="bg-inner border border-subtle p-3 rounded-xl">
-            <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider block">Available in MMS_PIC</span>
-            <span className="text-xl font-bold text-text-base font-sans mt-0.5 block">{availableCount.toLocaleString()}</span>
-            <span className="text-[10px] text-text-muted">Uploaded image frames</span>
+            <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider block">Loaded Imagery</span>
+            <span className="text-xl font-bold text-text-base font-sans mt-0.5 block">
+              {canAudit ? availableTotal.toLocaleString() : <span className="text-text-muted">&mdash;</span>}
+            </span>
+            <span className="text-[10px] text-text-muted">Filenames actually loaded</span>
           </div>
           <div className="bg-inner border border-subtle p-3 rounded-xl">
             <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider block">Missing Images</span>
-            <span className={`text-xl font-bold font-sans mt-0.5 block ${missingCount > 0 ? 'text-rose-400' : 'text-text-base'}`}>{missingCount.toLocaleString()}</span>
-            <span className={`text-[10px] ${missingCount > 0 ? 'text-rose-400/90 font-medium' : 'text-text-muted'}`}>{missingCount > 0 ? 'Upload required' : '100% Matched'}</span>
+            <span className={`text-xl font-bold font-sans mt-0.5 block ${canAudit && missingCount > 0 ? 'text-rose-400' : 'text-text-base'}`}>
+              {canAudit ? missingCount.toLocaleString() : <span className="text-text-muted">&mdash;</span>}
+            </span>
+            <span className={`text-[10px] ${canAudit && missingCount > 0 ? 'text-rose-400/90 font-medium' : 'text-text-muted'}`}>
+              {canAudit ? (missingCount > 0 ? 'Upload required' : '100% Matched') : 'Not verified'}
+            </span>
           </div>
         </div>
 
-        {/* Progress Bar during Analysis */}
-        {isAnalyzing ? (
-          <div className="bg-inner border border-subtle p-5 rounded-xl mb-4 shrink-0 space-y-3">
-            <div className="flex items-center justify-between text-xs font-semibold">
-              <span className="text-sky-400 flex items-center gap-2">
-                <Loader2 size={15} className="animate-spin text-sky-400" />
-                Analyzing MMS_PIC storage bucket files...
-              </span>
-              <span className="text-text-base font-sans">{progress}%</span>
-            </div>
-            <div className="w-full bg-card h-2 rounded-full overflow-hidden p-0.5 border border-subtle">
-              <div
-                className="bg-sky-500 h-full rounded-full transition-all duration-75"
-                style={{ width: `${progress}%` }}
-              />
-            </div>
-            <div className="text-[11px] text-text-muted font-sans truncate">
-              {currentScanningFilename ? `Scanning: ${currentScanningFilename}` : 'Checking panorama filenames...'}
-            </div>
-          </div>
-        ) : (
+        {/* Unverified banner / filter row */}
+        {canAudit ? (
           <div className="flex items-center justify-between gap-3 mb-4 shrink-0">
             {/* Filter Tabs */}
             <div className="flex bg-inner p-1 rounded-xl border border-subtle text-xs font-medium">
@@ -217,7 +194,7 @@ ${missingFilenames.length > 0 ? missingFilenames.join('\n') : 'None - All images
                 }`}
               >
                 <CheckCircle size={13} className={activeTab === 'available' ? 'text-emerald-400' : 'text-text-muted'} />
-                Available ({availableCount})
+                Available ({availableTotal})
               </button>
               <button
                 onClick={() => setActiveTab('all')}
@@ -227,30 +204,41 @@ ${missingFilenames.length > 0 ? missingFilenames.join('\n') : 'None - All images
                     : 'text-text-muted hover:text-text-base'
                 }`}
               >
-                All ({expectedTotal})
+                All ({trackCount})
               </button>
             </div>
 
-            {/* Re-analyze & Search */}
-            <div className="flex items-center gap-2">
-              <div className="relative">
-                <Search size={13} className="absolute left-2.5 top-2.5 text-text-muted" />
-                <input
-                  type="text"
-                  placeholder="Filter filenames..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-8 pr-3 py-1.5 bg-inner border border-subtle rounded-lg text-xs text-text-base placeholder-text-muted focus:outline-none focus:border-subtle"
-                />
-              </div>
-              <button
-                onClick={runIntegrityAudit}
-                className="p-2 bg-inner hover:bg-inner/80 text-text-base rounded-lg border border-subtle transition-colors cursor-pointer"
-                title="Re-run QC Audit"
-              >
-                <RefreshCw size={14} />
-              </button>
+            {/* Search */}
+            <div className="relative">
+              <Search size={13} className="absolute left-2.5 top-2.5 text-text-muted" />
+              <input
+                type="text"
+                placeholder="Filter filenames..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-8 pr-3 py-1.5 bg-inner border border-subtle rounded-lg text-xs text-text-base placeholder-text-muted focus:outline-none focus:border-subtle"
+              />
             </div>
+          </div>
+        ) : (
+          <div className="bg-inner border border-subtle p-4 rounded-xl mb-4 shrink-0">
+            <div className="flex items-center gap-2 text-xs font-bold text-text-base">
+              <AlertTriangle size={14} className="text-amber-400" />
+              Audit not verified
+            </div>
+            <p className="text-[11px] text-text-muted mt-1.5 leading-relaxed">
+              An integrity audit needs a real survey track filename list and a real imagery
+              inventory list for this subgrid. Without both, no verdict can be given.
+              {trackCount === 0 && ' No survey track filenames are loaded.'}
+              {availableTotal === 0 && realAvailable.length === 0 && availableCount > 0 && (
+                <> {availableCount.toLocaleString()} frames are counted for this subgrid, but
+                  their filenames are not loaded, so they cannot be checked individually.</>
+              )}
+              {availableTotal === 0 && realAvailable.length === 0 && availableCount === 0 && (
+                ' No imagery filenames are loaded.'
+              )}
+              {' '}Run a live NAS scan for this subgrid to populate both.
+            </p>
           </div>
         )}
 
@@ -258,13 +246,27 @@ ${missingFilenames.length > 0 ? missingFilenames.join('\n') : 'None - All images
         <div className="flex-1 overflow-y-auto font-sans text-xs space-y-1 p-2 bg-inner rounded-xl border border-subtle min-h-[220px]">
           {filteredResults.length === 0 ? (
             <div className="py-12 text-center text-text-muted">
-              <CheckCircle size={22} className="mx-auto text-emerald-400/80 mb-2" />
-              <span className="block text-xs font-semibold text-text-base">
-                {activeTab === 'missing' ? 'No missing image files' : 'No files matching criteria'}
-              </span>
-              <span className="text-[11px] text-text-muted">
-                {activeTab === 'missing' ? 'All expected survey points have matching images in MMS_PIC.' : 'Try changing search or tab filters.'}
-              </span>
+              {canAudit && activeTab === 'missing' ? (
+                <>
+                  <CheckCircle size={22} className="mx-auto text-emerald-400/80 mb-2" />
+                  <span className="block text-xs font-semibold text-text-base">No missing image files</span>
+                  <span className="text-[11px] text-text-muted">
+                    Every loaded survey track frame has a matching loaded image.
+                  </span>
+                </>
+              ) : (
+                <>
+                  <Search size={22} className="mx-auto text-text-muted/80 mb-2" />
+                  <span className="block text-xs font-semibold text-text-base">
+                    {canAudit ? 'No files matching criteria' : 'No audit results'}
+                  </span>
+                  <span className="text-[11px] text-text-muted">
+                    {canAudit
+                      ? 'Try changing search or tab filters.'
+                      : 'This audit was not run because no real filename lists were loaded.'}
+                  </span>
+                </>
+              )}
             </div>
           ) : (
             filteredResults.map((item) => (
@@ -302,10 +304,10 @@ ${missingFilenames.length > 0 ? missingFilenames.join('\n') : 'None - All images
           <div className="flex items-center gap-2">
             <button
               onClick={copyMissingList}
-              disabled={missingCount === 0}
+              disabled={!canAudit || missingCount === 0}
               className="px-3 py-1.5 bg-inner hover:bg-inner/80 disabled:opacity-40 disabled:cursor-not-allowed text-text-base border border-subtle rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer"
             >
-              <Copy size={13} /> Copy Missing ({missingCount})
+              <Copy size={13} /> Copy Missing ({canAudit ? missingCount : 0})
             </button>
             <button
               onClick={exportQCReport}

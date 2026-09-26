@@ -170,6 +170,8 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
   const [cfTestLoading, setCfTestLoading] = useState(false);
   const [cfTestResult, setCfTestResult] = useState<{
     ok: boolean;
+    /** The endpoint answered. Distinct from "the probed object exists". */
+    reachable?: boolean;
     status: number;
     statusText: string;
     latencyMs: number;
@@ -179,7 +181,9 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
     contentType?: string;
     error?: string;
   } | null>(null);
-  const [testFilename, setTestFilename] = useState<string>('SG01-0001.jpg');
+  // Empty by default: prefilling a made-up filename makes the connectivity
+  // test appear to target a real frame when nothing has been chosen.
+  const [testFilename, setTestFilename] = useState<string>('');
 
   // Frame Manifest (Dynamic Frame Count) probe state
   const [manifestTestLoading, setManifestTestLoading] = useState(false);
@@ -899,7 +903,9 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
   const dbProviderName = (p?: string) => DATABASE_PROVIDER_LABELS[p || 'supabase_cloud'] || p || 'Supabase Cloud';
 
   const [isTestingHealth, setIsTestingHealth] = useState(false);
-  const [postgisLatencyMs, setPostgisLatencyMs] = useState<number>(38);
+  // null until a probe runs. It used to start at 38ms, so the settings page
+  // showed a latency figure for a measurement that had not happened.
+  const [postgisLatencyMs, setPostgisLatencyMs] = useState<number | null>(null);
 
   const handleTestHealth = async () => {
     setIsTestingHealth(true);
@@ -1499,7 +1505,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                 </div>
 
                 <div className="text-[11px] text-text-muted font-sans">
-                  Latency: <strong className="text-text-muted font-bold">{postgisLatencyMs} ms</strong> &bull; Query Chunk: <strong className="text-text-base">{projectSettings.queryChunkSize || 50} rows</strong>
+                  Latency: <strong className="text-text-muted font-bold">{postgisLatencyMs !== null ? `${postgisLatencyMs} ms` : 'not measured'}</strong> &bull; Query Chunk: <strong className="text-text-base">{projectSettings.queryChunkSize || 50} rows</strong>
                 </div>
               </div>
             </div>
@@ -1978,9 +1984,14 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                   <button
                     type="button"
                     onClick={() => {
+                      // Only offer a frame that actually exists in loaded data.
                       const firstPano = dailyData.find(d => d.panoramas?.length > 0)?.panoramas?.[0]?.filename
                         || batchLogs.find(b => b.imageFilename)?.imageFilename
-                        || (dailyData[0]?.subgrid ? `${dailyData[0].subgrid}-0001.jpg` : 'SG01-0001.jpg');
+                        || '';
+                      if (!firstPano) {
+                        showToast('No loaded imagery to sample from.');
+                        return;
+                      }
                       setTestFilename(firstPano);
                       showToast(`Loaded sample station: ${firstPano}`);
                     }}
@@ -2003,31 +2014,36 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                           setCfTestResult(res);
                           if (res.ok) {
                             showToast(`Storage probe OK &bull; ${res.latencyMs}ms latency &bull; HTTP ${res.status}`);
-                          } else if (res.status === 404) {
-                            showToast(`Bucket reachable (${res.latencyMs}ms), but sample file returned 404.`, 'error');
+                          } else if (res.reachable) {
+                            showToast(`Bucket reachable (${res.latencyMs}ms), but "${testFilename}" is not published there (HTTP ${res.status}).`, 'error');
                           } else {
-                            showToast(`Storage probe notice: ${res.statusText || res.error}`, 'error');
+                            showToast(`Storage probe failed: ${res.error || res.statusText}`, 'error');
                           }
                         } else {
                           const res = await testDatabaseHealth();
                           setCfTestResult({
                             ok: res.storageStatus === 'operational',
+                            reachable: res.storageStatus !== 'offline',
                             status: res.storageStatus === 'operational' ? 200 : 503,
                             statusText: res.storageStatus === 'operational' ? 'Operational' : 'Degraded',
                             latencyMs: res.postgisLatencyMs,
-                            imageUrl: resolvePanoramaUrl(testFilename, projectSettings),
-                            corsOk: true,
-                            contentType: 'image/jpeg'
+                            imageUrl: testFilename ? resolvePanoramaUrl(testFilename, projectSettings) : '',
+                            corsOk: true
                           });
-                          showToast(`Storage probe OK &bull; Bucket: ${projectSettings.supabaseBucket || STORAGE_BUCKET_DEFAULT} (${res.storageTotalFiles}+ files)`);
+                          showToast(
+                            res.storageStatus === 'operational'
+                              ? `Bucket reachable: ${projectSettings.supabaseBucket || STORAGE_BUCKET_DEFAULT}${res.storageTotalFiles !== null ? ` (${res.storageTotalFiles.toLocaleString()} files indexed)` : ' (inventory not enumerated)'}`
+                              : `Storage reported ${res.storageStatus}.`
+                          );
                         }
                       } catch (err: any) {
                         setCfTestResult({
                           ok: false,
+                          reachable: false,
                           status: 0,
                           statusText: 'Probe Failed',
                           latencyMs: 0,
-                          imageUrl: resolvePanoramaUrl(testFilename, projectSettings),
+                          imageUrl: testFilename ? resolvePanoramaUrl(testFilename, projectSettings) : '',
                           corsOk: false,
                           error: err?.message || 'Failed to ping storage provider'
                         });

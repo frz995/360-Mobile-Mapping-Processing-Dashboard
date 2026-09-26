@@ -274,8 +274,8 @@ def nas_scan_endpoint(
 ) -> dict:
     """Production NAS implementation of the dashboard's survey scan API.
 
-    Unlike the Vite-only `api/nas-scan.js`, this always reads NAS_BASE_PATH
-    from the on-prem worker configuration; no Project_Test path is assumed.
+    Always reads NAS_BASE_PATH from the on-prem worker configuration. There is
+    no development path, fixture root or fallback root in this code path.
     """
     _guard(authorization)
     try:

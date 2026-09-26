@@ -6,7 +6,6 @@ import {
   parseFlexibleDate,
   formatDisplayDate,
   toISODateString,
-  createBatchLogFromSupabaseOrDummy,
   reconcileBatchLogs,
   applyBatchLogOverrides,
   batchLogToDbRow
@@ -169,27 +168,6 @@ describe('toISODateString', () => {
 
   it('converts parseable dates to YYYY-MM-DD', () => {
     expect(toISODateString('19/08/2026')).toBe('2026-08-19')
-  })
-})
-
-describe('createBatchLogFromSupabaseOrDummy', () => {
-  it('builds a BatchLog from a supabase row', () => {
-    const log = createBatchLogFromSupabaseOrDummy(
-      { image_url: 'https://x/N93E70-0002.jpg', images: 5, defects: 1, km_processed: 2.5 },
-      'N93E70',
-      '7'
-    )
-    expect(log.subgrid).toBe('N93E70')
-    expect(log.images).toBe(5)
-    expect(log.defects).toBe(1)
-    expect(log.kmProcessed).toBe(2.5)
-    expect(log.grid).toBe('7')
-  })
-
-  it('uses fallback subgrid filename when row has no image info', () => {
-    const log = createBatchLogFromSupabaseOrDummy({}, 'N91E71', '3')
-    expect(log.subgrid).toBe('N91E71')
-    expect(log.imageFilename).toContain('N91E71')
   })
 })
 

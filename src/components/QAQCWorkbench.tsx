@@ -722,16 +722,19 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
 
   const curSg = (activeRunningSubgrid || selectedSubgrid || '').toUpperCase().trim();
 
+  // Never synthesise a "<subgrid>-0001.jpg" name: it resolves to a file that
+  // does not exist, which shows as a blank frame with no error. An empty
+  // source resolves to '' and the panel renders its empty state.
   const defaultStation = selectedStations[0];
   const defaultThumbnail = defaultStation
     ? resolvePanoramaUrl(
-      defaultStation.image_url || defaultStation.filename || (defaultStation as any).thumbnailUrl || (curSg ? `${curSg}-0001.jpg` : ''),
+      defaultStation.image_url || defaultStation.filename || (defaultStation as any).thumbnailUrl || '',
       projectSettings,
       { subgrid: curSg }
     )
     : '';
 
-  const activeRawFile = activeRecord?.thumbnailUrl || activeRecord?.pointId || currentThumbnail || selectedStationFallback?.filename || selectedStationFallback?.point_id || (curSg ? `${curSg}-0001.jpg` : '');
+  const activeRawFile = activeRecord?.thumbnailUrl || activeRecord?.pointId || currentThumbnail || selectedStationFallback?.filename || selectedStationFallback?.point_id || '';
 
   const activeDisplayThumbnail = activeRawFile
     ? resolvePanoramaUrl(activeRawFile, projectSettings, { subgrid: curSg })
@@ -739,7 +742,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
 
   const activeDisplayPointId = activeRecord
     ? activeRecord.pointId
-    : currentPointId || selectedStationFallback?.point_id || selectedStationFallback?.filename || selectedStationFallback?.id || (cachedAudit && cachedAudit.history?.[0]?.pointId) || (selectedSubgrid ? `${selectedSubgrid}-0001` : '');
+    : currentPointId || selectedStationFallback?.point_id || selectedStationFallback?.filename || selectedStationFallback?.id || (cachedAudit && cachedAudit.history?.[0]?.pointId) || '';
 
   const activeDisplayCoords = activeRecord
     ? { lat: activeRecord.lat, lng: activeRecord.lng }

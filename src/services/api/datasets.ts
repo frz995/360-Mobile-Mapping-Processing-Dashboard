@@ -297,9 +297,11 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
         }
       }
 
+      // No real date means no date. Defaulting to today placed undated runs in
+      // the wrong day's batch, which reads as real survey data.
       const rawDate = r.captured_at
         ? new Date(r.captured_at).toISOString().slice(0, 10)
-        : (r.date || r.survey_date || (r.created_at ? new Date(r.created_at).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10)));
+        : (r.date || r.survey_date || (r.created_at ? new Date(r.created_at).toISOString().slice(0, 10) : ''));
       const extractedBatchId = r.description ? (r.description.match(/\[(.*?)\]/)?.[1] || r.description.match(/daily-[\w-]+/)?.[0] || r.description.match(/staging-[\w-]+/)?.[0]) : null;
       const extractedPublishSignature = r.description ? r.description.match(/Published Batch \([^)]+\) - ([\d\-: ]+)/)?.[0] : null;
       const runKey = r.batch_id || r.run_id || extractedBatchId || (extractedPublishSignature ? `${sg}_${extractedPublishSignature}` : `${sg}_${rawDate}`);
@@ -529,7 +531,7 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
           const count = explicitPoi;
           const calcKm = calculatePathDistanceKm(g.points);
           const km = g.kmProcessed > 0 ? g.kmProcessed : (calcKm > 0 ? calcKm : Math.round((count * 0.005) * 100) / 100);
-          const rawDate = g.capturedAt ? new Date(g.capturedAt).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
+          const rawDate = g.capturedAt ? new Date(g.capturedAt).toISOString().slice(0, 10) : '';
           let dateFormatted = rawDate;
           const dObj = new Date(rawDate);
           if (!isNaN(dObj.getTime())) {
@@ -676,8 +678,9 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
           id: `BATCH-${sg}`,
           subgrid: sg,
           grid: d.grid || '',
-          date: d.date || new Date().toISOString().slice(0, 10),
-          imageFilename: (d.panoramas?.[0]?.filename) || `${sg}-0001.jpg`,
+          // Undated runs stay undated rather than being filed under today.
+          date: d.date || '',
+          imageFilename: d.panoramas?.[0]?.filename || '',
           totalImages: singleImg,
           publishedImages: isPublished ? singleImg : 0,
           totalPoi: singlePoi,
@@ -773,17 +776,22 @@ export async function publishToSupabase(record: {
       const maxCount = record.poiCount || record.imagesProcessed || record.rawRows.length;
       rawList = record.rawRows.slice(0, maxCount);
     } else {
-      const count = record.poiCount || record.imagesProcessed || 1;
-      const baseFn = record.imageFilename || (record.subgrid ? `${record.subgrid}-0001.jpg` : 'IMG-0001.jpg');
-      const ext = baseFn.includes('.') ? baseFn.slice(baseFn.lastIndexOf('.')) : '.jpg';
-      const prefix = record.subgrid || baseFn.split('-')[0] || 'IMG';
-      rawList = [];
-      for (let idx = 1; idx <= count; idx++) {
-        rawList.push({
-          filename: `${prefix}-${String(idx).padStart(4, '0')}${ext}`,
-          date: record.date
-        });
-      }
+      // Never invent filenames to publish. The previous fallback built
+      // "<PREFIX>-0001.jpg".."-000N.jpg" from a count and published those rows,
+      // writing frames that do not exist into real storage and the database.
+      // Publishing requires the real frame inventory from a NAS scan.
+      return {
+        success: false,
+        message: 'Publication blocked: no real frame inventory for this run. Run a live NAS scan so the actual panorama filenames are loaded, then publish.'
+      };
+    }
+
+    const namedList = rawList.filter(r => Boolean(r.filename && r.filename.trim()));
+    if (namedList.length === 0) {
+      return {
+        success: false,
+        message: 'Publication blocked: the loaded frame inventory contains no filenames.'
+      };
     }
 
     const parseToIsoTimestamp = (rawDate?: string): string => {

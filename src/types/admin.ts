@@ -35,10 +35,12 @@ export interface SystemHealthMetrics {
   postgisStatus: 'operational' | 'degraded' | 'offline';
   postgisLatencyMs: number;
   storageStatus: 'operational' | 'degraded' | 'offline';
-  storageTotalFiles: number;
-  realtimeStatus: 'connected' | 'connecting' | 'disconnected';
-  webgisStatus: 'online' | 'degraded' | 'offline';
-  memoryUsageMb: number;
+  /** null = not enumerated. Never a placeholder count. */
+  storageTotalFiles: number | null;
+  realtimeStatus: 'connected' | 'connecting' | 'disconnected' | 'unknown';
+  webgisStatus: 'online' | 'degraded' | 'offline' | 'unknown';
+  /** null = browser does not expose heap metrics. */
+  memoryUsageMb: number | null;
   lastPingTime: string;
 }
 

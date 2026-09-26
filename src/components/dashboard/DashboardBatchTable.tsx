@@ -397,7 +397,7 @@ export const DashboardBatchTable: React.FC<DashboardBatchTableProps> = ({
                             subgrid: dailySubgrid,
                             count: customFn && customFn.length > 0 ? customFn.length : rowFrameCount,
                             poiCount: getPOICount(log),
-                            baseFilename: (log.panoramas?.[0]?.filename) || `${dailySubgrid}-0001.jpg`,
+                            baseFilename: log.panoramas?.[0]?.filename,
                             customFilenames: customFn && customFn.length > 0 ? customFn : undefined
                           });
                         }}

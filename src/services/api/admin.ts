@@ -134,21 +134,28 @@ export async function saveNotificationToSupabase(notif: {
 
 /**
  * Diagnostic health probe measuring PostGIS and Storage latency in real-time.
+ *
+ * Only measured values are reported. Values this probe cannot observe are
+ * returned as null / 'unknown' rather than filled in with plausible constants,
+ * which previously showed a green "34ms / 114 files / realtime connected /
+ * WebGIS online" panel for a system that had never been checked.
  */
 export async function testDatabaseHealth(): Promise<{
   postgisStatus: 'operational' | 'degraded' | 'offline';
   postgisLatencyMs: number;
   storageStatus: 'operational' | 'degraded' | 'offline';
-  storageTotalFiles: number;
-  realtimeStatus: 'connected' | 'connecting' | 'disconnected';
-  webgisStatus: 'online' | 'degraded' | 'offline';
-  memoryUsageMb: number;
+  /** null when the inventory has not been enumerated, not a placeholder count. */
+  storageTotalFiles: number | null;
+  realtimeStatus: 'connected' | 'connecting' | 'disconnected' | 'unknown';
+  webgisStatus: 'online' | 'degraded' | 'offline' | 'unknown';
+  /** null when the browser does not expose heap metrics. */
+  memoryUsageMb: number | null;
   lastPingTime: string;
 }> {
   const startTime = performance.now();
   let postgisStatus: 'operational' | 'degraded' | 'offline' = 'operational';
   let storageStatus: 'operational' | 'degraded' | 'offline' = 'operational';
-  let totalFiles = 0;
+  let totalFiles: number | null = null;
 
   try {
     const { error } = await supabase.from('panoramas').select('id').limit(1);
@@ -166,22 +173,26 @@ export async function testDatabaseHealth(): Promise<{
     if (storageErr) {
       storageStatus = 'degraded';
     }
-    totalFiles = getStorageInventoryCacheTotalFiles();
+    const cachedTotal = getStorageInventoryCacheTotalFiles();
+    totalFiles = typeof cachedTotal === 'number' && cachedTotal > 0 ? cachedTotal : null;
   } catch {
     storageStatus = 'degraded';
   }
 
-  const memoryUsageMb = (typeof performance !== 'undefined' && (performance as any).memory?.usedJSHeapSize)
-    ? Math.round((performance as any).memory.usedJSHeapSize / (1024 * 1024))
-    : 48;
+  const heap = (typeof performance !== 'undefined' ? (performance as any).memory?.usedJSHeapSize : undefined);
+  const memoryUsageMb = typeof heap === 'number' && heap > 0
+    ? Math.round(heap / (1024 * 1024))
+    : null;
 
   return {
     postgisStatus,
-    postgisLatencyMs: postgisLatencyMs > 0 ? postgisLatencyMs : 34,
+    postgisLatencyMs,
     storageStatus,
-    storageTotalFiles: totalFiles || 114,
-    realtimeStatus: 'connected',
-    webgisStatus: 'online',
+    storageTotalFiles: totalFiles,
+    // This probe does not open a realtime channel or call the WebGIS host, so
+    // it cannot assert either state.
+    realtimeStatus: 'unknown',
+    webgisStatus: 'unknown',
     memoryUsageMb,
     lastPingTime: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
   };

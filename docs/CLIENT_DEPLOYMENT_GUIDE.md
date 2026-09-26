@@ -127,8 +127,12 @@ The system operates across three coordinated tiers:
 4. **Configure Worker Environment**:
    Copy `.env.example` to `.env` and configure:
    ```ini
-   # Root path where raw survey folders are mounted or stored
-   NAS_BASE_PATH=D:\MMS_Storage\raw_surveys
+   # Root path where raw survey folders are mounted or stored.
+   # Must be the NAS mount/share root that contains 00_Raw_data, 01_Metadata,
+   # 03_Stitching, 05_Final. There is no default: set it for your host.
+   #   Windows worker: NAS_BASE_PATH=X:\nas\360_images
+   #   Linux worker:   NAS_BASE_PATH=/mnt/nas/360_images
+   NAS_BASE_PATH=
 
    # Number of concurrent GPU workers (1 for 8GB VRAM, 2-4 for 16GB+ VRAM)
    CONCURRENCY=1

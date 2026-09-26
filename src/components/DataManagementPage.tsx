@@ -64,7 +64,7 @@ import type { DatasetRecord, ProcessingJobRecord } from '../types/production';
 import { aggregateStagingBySubgrid, type StagingAggregate } from '../utils/datasetLineage';
 import { computeDeletionImpact, type DeletionImpact, type DeletionMode } from '../utils/deletionImpact';
 import type { SubgridPointRow, SelectedPointInfo } from './DeletionSelectionMap';
-import { extractSubgridName, generateImageFilenamesList } from '../utils/subgrid';
+import { extractSubgridName } from '../utils/subgrid';
 import {
   getPOICount,
   getImagesProcessedCount,
@@ -3336,7 +3336,7 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
                                         subgrid: dailySubgrid,
                                         count: customFn && customFn.length > 0 ? customFn.length : rowFrameCount,
                                         poiCount: getPOICount(daily),
-                                        baseFilename: (daily.panoramas?.[0]?.filename) || `${dailySubgrid}-0001.jpg`,
+                                        baseFilename: daily.panoramas?.[0]?.filename,
                                         customFilenames: customFn && customFn.length > 0 ? customFn : undefined
                                       });
                                     }}
@@ -3636,9 +3636,13 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
 
           {/* Subgrid Image Filenames List View Modal */}
           {imagesListModal && imagesListModal.isOpen && (() => {
+            // Only real, loaded filenames. generateImageFilenamesList invents a
+            // plausible sequence from the subgrid code, so using it as a
+            // fallback would list frames that may not exist — indistinguishable
+            // from a verified inventory in a list an operator acts on.
             const filenames = (imagesListModal.customFilenames && imagesListModal.customFilenames.length > 0)
               ? imagesListModal.customFilenames
-              : generateImageFilenamesList(imagesListModal.subgrid, imagesListModal.count > 0 ? imagesListModal.count : (imagesListModal.poiCount || 1), imagesListModal.baseFilename);
+              : [];
             return (
               <div role="dialog" aria-modal="true" className="fixed inset-0 bg-[var(--modal-overlay)] flex items-center justify-center z-[1000] p-4 backdrop-blur-sm">
                 <div className="bg-card border border-subtle rounded-xl p-5 max-w-md w-full max-h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">

@@ -172,32 +172,6 @@ export function toISODateString(dateStr?: string): string {
 // Helper: Calculate point-to-point geodesic range distance (km) for points within the same subgrid
 export const calculateSubgridDistanceKm = calculatePathDistanceKm;
 
-// Helper: Build a BatchLog from Supabase record or return dynamic fallback
-export function createBatchLogFromSupabaseOrDummy(
-  row?: { filename?: string; image_url?: string; captured_at?: string; images?: number; defects?: number; km_processed?: number; kmProcessed?: number; grid?: string; subgrid?: string; pic?: string },
-  fallbackSubgrid: string = '',
-  gridNum: string = '1'
-): BatchLog {
-  const imageFilename = row?.image_url || row?.filename || (fallbackSubgrid ? `${fallbackSubgrid}-0001.jpg` : '');
-  const subgrid = (row?.subgrid || extractSubgridName(imageFilename) || fallbackSubgrid || '').toUpperCase().trim();
-  const date = row?.captured_at
-    ? new Date(row.captured_at).toISOString().replace('T', ' ').slice(0, 16)
-    : new Date().toISOString().replace('T', ' ').slice(0, 16);
-
-  return {
-    id: String(Date.now()),
-    date,
-    grid: row?.grid || gridNum,
-    subgrid,
-    imageFilename,
-    images: Number(row?.images || 0),
-    defects: Number(row?.defects || 0),
-    kmProcessed: Number(row?.km_processed || row?.kmProcessed || 0),
-    status: 'Complete',
-    pic: row?.pic || 'Admin'
-  };
-}
-
 export function reconcileBatchLogs(dailyItems: DailyTimeSeries[], baseBatches?: BatchLog[]): BatchLog[] {
   if (!dailyItems || dailyItems.length === 0) {
     return [];

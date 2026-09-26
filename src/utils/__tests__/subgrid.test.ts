@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { extractSubgridName, generateImageFilenamesList } from '../subgrid'
+import { extractSubgridName } from '../subgrid'
 
 describe('extractSubgridName', () => {
   it('returns empty for falsy input', () => {
@@ -28,41 +28,5 @@ describe('extractSubgridName', () => {
 
   it('applies GIS syntax even with mixed separators', () => {
     expect(extractSubgridName('prefix_N93E70_extra')).toBe('N93E70')
-  })
-})
-
-describe('generateImageFilenamesList', () => {
-  it('count defaults to 1 for non-positive count', () => {
-    const list = generateImageFilenamesList('N93E70', 0)
-    expect(list).toHaveLength(1)
-    expect(list[0]).toContain('N93E70')
-  })
-
-  it('generates zero-padded suffixes when no base filename', () => {
-    const list = generateImageFilenamesList('N93E70', 3)
-    expect(list).toEqual([
-      'N93E70-0001.jpg',
-      'N93E70-0002.jpg',
-      'N93E70-0003.jpg'
-    ])
-  })
-
-  it('uses SUBGRID placeholder prefix when subgrid empty and no base filename', () => {
-    const list = generateImageFilenamesList('', 2)
-    expect(list[0]).toMatch(/SUBGRID-\d{4}\.jpg/)
-  })
-
-  it('continues numbering from a provided base filename', () => {
-    const list = generateImageFilenamesList('N93E70', 3, 'N93E70-0010.jpg')
-    expect(list).toEqual([
-      'N93E70-0010.jpg',
-      'N93E70-0011.jpg',
-      'N93E70-0012.jpg'
-    ])
-  })
-
-  it('preserves zero padding width from base filename', () => {
-    const list = generateImageFilenamesList('N93E70', 2, 'N93E70-0007.jpg')
-    expect(list).toEqual(['N93E70-0007.jpg', 'N93E70-0008.jpg'])
   })
 })

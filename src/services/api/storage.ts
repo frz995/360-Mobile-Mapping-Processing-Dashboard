@@ -252,7 +252,12 @@ export async function verifyCsvImageFilenamesInStorage(filenames: string[], sett
 
 /**
  * Health probe for Cloudflare R2 and Custom CDN storage endpoints.
- * Verifies HTTP status, CORS headers, latency, and sample file accessibility.
+ *
+ * A real sample filename is required. Probing an invented name such as
+ * "<SUBGRID>-0001.jpg" returns 404 for a perfectly healthy bucket, which the
+ * UI would then report as a failed connection. `reachable` separates "the
+ * endpoint answered" from "that object exists", so a 404 reports as reachable
+ * with the object missing instead of a false storage failure.
  */
 export async function testCloudflareStorageHealth(
   domainOrUrl: string,
@@ -260,6 +265,7 @@ export async function testCloudflareStorageHealth(
   settings?: any
 ): Promise<{
   ok: boolean;
+  reachable: boolean;
   status: number;
   statusText: string;
   latencyMs: number;
@@ -277,6 +283,7 @@ export async function testCloudflareStorageHealth(
   if (!cleanDomain) {
     return {
       ok: false,
+      reachable: false,
       status: 0,
       statusText: 'No Domain Provided',
       latencyMs: 0,
@@ -286,7 +293,19 @@ export async function testCloudflareStorageHealth(
     };
   }
 
-  const fn = (sampleFilename || 'N93E70-0001.jpg').trim();
+  const fn = (sampleFilename || '').trim();
+  if (!fn) {
+    return {
+      ok: false,
+      reachable: false,
+      status: 0,
+      statusText: 'No Sample Filename',
+      latencyMs: 0,
+      imageUrl: '',
+      corsOk: false,
+      error: 'A real frame filename is required to probe storage. Nothing is probed, because a made-up name would return 404 for a healthy bucket.'
+    };
+  }
   const testSettings = {
     ...settings,
     storageProvider: 'cloudflare_r2',
@@ -310,22 +329,32 @@ export async function testCloudflareStorageHealth(
 
     const latencyMs = Math.round(performance.now() - startTime);
     const contentType = response.headers.get('content-type') || '';
+    // Any HTTP answer means the endpoint is reachable and CORS-permitting,
+    // including 404 for a frame that is genuinely not published.
+    const notFound = response.status === 404;
 
     return {
       ok: response.ok,
+      reachable: true,
       status: response.status,
-      statusText: response.statusText || (response.ok ? 'OK' : 'Error'),
+      statusText: notFound
+        ? `Reachable (${response.status} - "${fn}" not published)`
+        : (response.statusText || (response.ok ? 'OK' : 'Error')),
       latencyMs,
       imageUrl,
       configUrl,
       corsOk: true,
-      contentType
+      contentType,
+      error: notFound
+        ? `Storage answered, but no object named "${fn}" exists. Verify the filename or the publish step.`
+        : undefined
     };
   } catch (err: any) {
     const latencyMs = Math.round(performance.now() - startTime);
     const isCors = err?.message?.toLowerCase().includes('failed to fetch') || err?.name === 'TypeError';
     return {
       ok: false,
+      reachable: false,
       status: 0,
       statusText: isCors ? 'CORS / Network Blocked' : 'Connection Failed',
       latencyMs,

@@ -108,17 +108,10 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
   const [rejectModalReqId, setRejectModalReqId] = useState<string | null>(null);
   const [rejectionReasonInput, setRejectionReasonInput] = useState('');
 
-  // System Health State
-  const [healthMetrics, setHealthMetrics] = useState<SystemHealthMetrics>({
-    postgisStatus: 'operational',
-    postgisLatencyMs: 38,
-    storageStatus: 'operational',
-    storageTotalFiles: 114,
-    realtimeStatus: 'connected',
-    webgisStatus: 'online',
-    memoryUsageMb: 48,
-    lastPingTime: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
-  });
+  // System Health State. Starts unmeasured: these fields used to be seeded with
+  // 38ms / 114 files / connected / online / 48MB, so the panel showed a healthy
+  // system before any probe had run.
+  const [healthMetrics, setHealthMetrics] = useState<SystemHealthMetrics | null>(null);
   const [isTestingHealth, setIsTestingHealth] = useState(false);
 
   // Audit Log Filter State
@@ -1117,34 +1110,76 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
               <div className="p-4 rounded-xl border border-subtle bg-inner space-y-1.5 shadow-sm">
                 <span className="text-[10px] uppercase font-bold text-text-muted">PostGIS Database</span>
-                <div className="text-sm font-bold text-emerald-400 flex items-center gap-1.5">
-                  <CheckCircle size={14} /> {healthMetrics.postgisStatus}
-                </div>
-                <div className="text-[11px] text-text-muted font-sans">{healthMetrics.postgisLatencyMs}ms ping latency</div>
+                {healthMetrics ? (
+                  <>
+                    <div className={`text-sm font-bold flex items-center gap-1.5 ${healthMetrics.postgisStatus === 'operational' ? 'text-emerald-400' : 'text-amber-400'}`}>
+                      <CheckCircle size={14} /> {healthMetrics.postgisStatus}
+                    </div>
+                    <div className="text-[11px] text-text-muted font-sans">{healthMetrics.postgisLatencyMs}ms ping latency</div>
+                  </>
+                ) : (
+                  <>
+                    <div className="text-sm font-bold text-text-muted flex items-center gap-1.5">
+                      <Clock size={14} /> Not measured
+                    </div>
+                    <div className="text-[11px] text-text-muted font-sans">Run diagnostics to query the database.</div>
+                  </>
+                )}
               </div>
 
               <div className="p-4 rounded-xl border border-subtle bg-inner space-y-1.5 shadow-sm">
                 <span className="text-[10px] uppercase font-bold text-text-muted">NAS / Storage Engine</span>
-                <div className="text-sm font-bold text-emerald-400 flex items-center gap-1.5">
-                  <CheckCircle size={14} /> {healthMetrics.storageStatus}
-                </div>
-                <div className="text-[11px] text-text-muted font-sans">114 indexed subgrid volumes</div>
+                {healthMetrics ? (
+                  <>
+                    <div className={`text-sm font-bold flex items-center gap-1.5 ${healthMetrics.storageStatus === 'operational' ? 'text-emerald-400' : 'text-amber-400'}`}>
+                      <CheckCircle size={14} /> {healthMetrics.storageStatus}
+                    </div>
+                    <div className="text-[11px] text-text-muted font-sans">
+                      {healthMetrics.storageTotalFiles !== null
+                        ? `${healthMetrics.storageTotalFiles.toLocaleString()} indexed files`
+                        : 'File inventory not enumerated'}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="text-sm font-bold text-text-muted flex items-center gap-1.5">
+                      <Clock size={14} /> Not measured
+                    </div>
+                    <div className="text-[11px] text-text-muted font-sans">Run diagnostics to probe the storage bucket.</div>
+                  </>
+                )}
               </div>
 
               <div className="p-4 rounded-xl border border-subtle bg-inner space-y-1.5 shadow-sm">
                 <span className="text-[10px] uppercase font-bold text-text-muted">Realtime Supabase Sync</span>
-                <div className="text-sm font-bold text-sky-400 flex items-center gap-1.5">
-                  <Activity size={14} /> {healthMetrics.realtimeStatus}
+                <div className={`text-sm font-bold flex items-center gap-1.5 ${
+                  healthMetrics?.realtimeStatus === 'connected' ? 'text-sky-400' : 'text-text-muted'
+                }`}>
+                  <Activity size={14} /> {healthMetrics?.realtimeStatus ?? 'unknown'}
                 </div>
-                <div className="text-[11px] text-text-muted font-sans">WebSocket channel active</div>
+                <div className="text-[11px] text-text-muted font-sans">
+                  Not observed by the health probe.
+                </div>
               </div>
 
               <div className="p-4 rounded-xl border border-subtle bg-inner space-y-1.5 shadow-sm">
                 <span className="text-[10px] uppercase font-bold text-text-muted">Last Health Probe</span>
                 <div className="text-sm font-bold text-text-base flex items-center gap-1.5">
-                  <Clock size={14} /> {healthMetrics.lastPingTime}
+                  <Clock size={14} /> {healthMetrics?.lastPingTime ?? 'never'}
                 </div>
-                <div className="text-[11px] text-emerald-400 font-sans">All services green</div>
+                <div className={`text-[11px] font-sans ${
+                  !healthMetrics
+                    ? 'text-text-muted'
+                    : (healthMetrics.postgisStatus === 'operational' && healthMetrics.storageStatus === 'operational')
+                      ? 'text-emerald-400'
+                      : 'text-amber-400'
+                }`}>
+                  {!healthMetrics
+                    ? 'No probe has run in this session.'
+                    : (healthMetrics.postgisStatus === 'operational' && healthMetrics.storageStatus === 'operational')
+                      ? 'PostGIS and storage responded.'
+                      : 'One or more checks reported a problem.'}
+                </div>
               </div>
             </div>
           </div>

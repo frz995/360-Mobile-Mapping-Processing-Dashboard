@@ -48,7 +48,7 @@ export const DiagnosticsPanel: React.FC<{ cardBg?: string }> = ({ cardBg = 'bg-c
     storageStatus: string;
     webgisStatus: string;
     realtimeStatus: string;
-    memoryUsageMb: number;
+    memoryUsageMb: number | null;
     lastPingTime: string;
   } | null>(null);
   const [envExpanded, setEnvExpanded] = useState(false);
@@ -72,7 +72,18 @@ export const DiagnosticsPanel: React.FC<{ cardBg?: string }> = ({ cardBg = 'bg-c
         lastPingTime: res.lastPingTime
       });
     } catch {
-      setPingResult({ ok: false, latencyMs: 0, postgisStatus: 'offline', storageStatus: 'offline', webgisStatus: 'offline', realtimeStatus: 'disconnected', memoryUsageMb: 0, lastPingTime: new Date().toISOString() });
+      // A thrown probe means the check did not complete, which is not the same
+      // as the services being offline. Report that nothing was determined.
+      setPingResult({
+        ok: false,
+        latencyMs: 0,
+        postgisStatus: 'unknown',
+        storageStatus: 'unknown',
+        webgisStatus: 'unknown',
+        realtimeStatus: 'unknown',
+        memoryUsageMb: null,
+        lastPingTime: new Date().toISOString()
+      });
     } finally {
       setPingLoading(false);
     }
@@ -121,24 +132,24 @@ export const DiagnosticsPanel: React.FC<{ cardBg?: string }> = ({ cardBg = 'bg-c
             <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
               <div className="px-3 py-2 rounded-lg bg-inner/60 border border-subtle/40 flex items-center gap-1.5">
                 <span className="text-text-muted">PostGIS</span>
-                <span className={`ml-auto font-semibold ${pingResult.postgisStatus === 'operational' ? 'text-emerald-400' : pingResult.postgisStatus === 'degraded' ? 'text-amber-400' : 'text-rose-400'}`}>{pingResult.postgisStatus}</span>
+                <span className={`ml-auto font-semibold ${pingResult.postgisStatus === 'operational' ? 'text-emerald-400' : pingResult.postgisStatus === 'degraded' ? 'text-amber-400' : pingResult.postgisStatus === 'offline' ? 'text-rose-400' : 'text-text-muted'}`}>{pingResult.postgisStatus}</span>
               </div>
               <div className="px-3 py-2 rounded-lg bg-inner/60 border border-subtle/40 flex items-center gap-1.5">
                 <span className="text-text-muted">Storage</span>
-                <span className={`ml-auto font-semibold ${pingResult.storageStatus === 'operational' ? 'text-emerald-400' : pingResult.storageStatus === 'degraded' ? 'text-amber-400' : 'text-rose-400'}`}>{pingResult.storageStatus}</span>
+                <span className={`ml-auto font-semibold ${pingResult.storageStatus === 'operational' ? 'text-emerald-400' : pingResult.storageStatus === 'degraded' ? 'text-amber-400' : pingResult.storageStatus === 'offline' ? 'text-rose-400' : 'text-text-muted'}`}>{pingResult.storageStatus}</span>
               </div>
               <div className="px-3 py-2 rounded-lg bg-inner/60 border border-subtle/40 flex items-center gap-1.5">
                 <span className="text-text-muted">WebGIS</span>
-                <span className={`ml-auto font-semibold ${pingResult.webgisStatus === 'online' ? 'text-emerald-400' : pingResult.webgisStatus === 'degraded' ? 'text-amber-400' : 'text-rose-400'}`}>{pingResult.webgisStatus}</span>
+                <span className={`ml-auto font-semibold ${pingResult.webgisStatus === 'online' ? 'text-emerald-400' : pingResult.webgisStatus === 'degraded' ? 'text-amber-400' : pingResult.webgisStatus === 'offline' ? 'text-rose-400' : 'text-text-muted'}`}>{pingResult.webgisStatus}</span>
               </div>
               <div className="px-3 py-2 rounded-lg bg-inner/60 border border-subtle/40 flex items-center gap-1.5">
                 <span className="text-text-muted">Realtime</span>
-                <span className={`ml-auto font-semibold ${pingResult.realtimeStatus === 'connected' ? 'text-emerald-400' : 'text-amber-400'}`}>{pingResult.realtimeStatus}</span>
+                <span className={`ml-auto font-semibold ${pingResult.realtimeStatus === 'connected' ? 'text-emerald-400' : pingResult.realtimeStatus === 'connecting' ? 'text-amber-400' : pingResult.realtimeStatus === 'disconnected' ? 'text-rose-400' : 'text-text-muted'}`}>{pingResult.realtimeStatus}</span>
               </div>
             </div>
             <div className="flex items-center gap-3 mt-2 text-[11px] text-text-muted font-mono">
               <span className="flex items-center gap-1"><Clock size={10} /> Last ping: {pingResult.lastPingTime ? new Date(pingResult.lastPingTime).toLocaleTimeString() : '—'}</span>
-              <span className="flex items-center gap-1"><Server size={10} /> Mem: {pingResult.memoryUsageMb} MB</span>
+              <span className="flex items-center gap-1"><Server size={10} /> Mem: {pingResult.memoryUsageMb !== null ? `${pingResult.memoryUsageMb} MB` : 'not exposed by this browser'}</span>
             </div>
           </>
         )}

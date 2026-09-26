@@ -1,6 +1,5 @@
 import { Camera, Copy } from 'lucide-react';
 import { toast } from './common/toast';
-import { generateImageFilenamesList } from '../utils/subgrid';
 
 interface SubgridImagesListModalData {
   isOpen: boolean;
@@ -19,9 +18,12 @@ interface SubgridImagesListModalProps {
 export function SubgridImagesListModal({ modal, onClose }: SubgridImagesListModalProps) {
   if (!modal || !modal.isOpen) return null;
 
+  // Only filenames that were actually loaded. Previously the fallback
+  // synthesised "<SUBGRID>-0001.jpg" ... "-00NN.jpg" from the frame count, so
+  // this list could present entirely invented names as an inventory.
   const filenames = (modal.customFilenames && modal.customFilenames.length > 0)
     ? modal.customFilenames
-    : generateImageFilenamesList(modal.subgrid, modal.count > 0 ? modal.count : (modal.poiCount || 1), modal.baseFilename);
+    : [];
 
   return (
     <div

@@ -137,10 +137,14 @@ export interface DetectedBucketConfig {
  * unconfigured provider resolves to empty strings plus isConfigured=false so
  * the gate can block the push instead of naming a bucket that does not exist.
  */
-export function detectBucketConfig(settings: any, subgrid: string = ''): DetectedBucketConfig {
+export function detectBucketConfig(settings: any, subgrid: string = '', realSampleFilename: string = ''): DetectedBucketConfig {
   const cleanSg = (subgrid || '').toUpperCase().trim();
   const sgSeg = cleanSg || '{subgrid}';
-  const sampleFilename = cleanSg ? `${cleanSg}-0001.jpg` : '';
+  // Prefer a real frame name so the resolved sample URL points at an object that
+  // can exist. The "<SUBGRID>-0001.jpg" shape is only a placeholder for the URL
+  // pattern; callers must not link it as if it were a published frame.
+  const realName = (realSampleFilename || '').trim();
+  const sampleFilename = realName || (cleanSg ? `${cleanSg}-0001.jpg` : '');
   const rawProvider = (settings?.storageProvider || import.meta.env.VITE_STORAGE_PROVIDER || 'supabase').toLowerCase().trim();
   const strategy = (settings?.imageStorageStrategy || 'single_equirectangular') as 'single_equirectangular' | 'multires_tiles';
   const strategyLabel = strategy === 'multires_tiles' ? 'Multi-Resolution Tile Pyramid' : 'Single Equirectangular Full Image';
@@ -270,10 +274,20 @@ export const BucketPublicationGate: React.FC<BucketPublicationGateProps> = ({
     : '';
   const hasBatch = effectiveTotal > 0 && cleanSg.length > 0;
 
+  // A real frame name from the live NAS pairing, if one is loaded. Used instead
+  // of a "<SUBGRID>-0001.jpg" guess so any sample URL we render can resolve to an
+  // object that actually exists.
+  const realSampleFilename = useMemo(() => {
+    const fromPaired = (pairedRecords || [])
+      .map((r: any) => r?.filename)
+      .find((f: any) => Boolean(f && String(f).trim()));
+    return fromPaired ? String(fromPaired) : '';
+  }, [pairedRecords]);
+
   // Auto-detect bucket specification from user's current project settings
   const bucketConfig = useMemo(
-    () => detectBucketConfig(projectSettings, cleanSg),
-    [projectSettings, cleanSg]
+    () => detectBucketConfig(projectSettings, cleanSg, realSampleFilename),
+    [projectSettings, cleanSg, realSampleFilename]
   );
 
   // The push writes a manifest and a sign-off record, so it only runs when a
@@ -284,6 +298,8 @@ export const BucketPublicationGate: React.FC<BucketPublicationGateProps> = ({
   const [isProbing, setIsProbing] = useState<boolean>(false);
   const [probeResult, setProbeResult] = useState<{
     ok: boolean;
+    /** The endpoint answered. Distinct from "the probed object exists". */
+    reachable?: boolean;
     status: number;
     statusText: string;
     latencyMs: number;
@@ -634,13 +650,19 @@ export const BucketPublicationGate: React.FC<BucketPublicationGateProps> = ({
 
     try {
       if (bucketConfig.provider === 'cloudflare_r2' || bucketConfig.provider === 'custom_cdn') {
+        // No sample filename: this component has no real published frame name
+        // at probe time, and requesting "<SUBGRID>-0001.jpg" returned 404 for a
+        // healthy bucket, which the gate then displayed as a connection issue.
+        // The inventory enumeration below is what actually verifies the bucket,
+        // using real object names.
         const res = await testCloudflareStorageHealth(
           bucketConfig.endpointUrl,
-          `${cleanSg}-0001.jpg`,
+          '',
           projectSettings
         );
         setProbeResult({
           ok: res.ok,
+          reachable: res.reachable,
           status: res.status || (res.ok ? 200 : 0),
           statusText: res.statusText,
           latencyMs: res.latencyMs || Math.round(performance.now() - start),
@@ -656,6 +678,7 @@ export const BucketPublicationGate: React.FC<BucketPublicationGateProps> = ({
         if (error) {
           setProbeResult({
             ok: false,
+            reachable: true,
             status: 403,
             statusText: error.message || 'Access Restricted',
             latencyMs,
@@ -665,6 +688,7 @@ export const BucketPublicationGate: React.FC<BucketPublicationGateProps> = ({
         } else {
           setProbeResult({
             ok: true,
+            reachable: true,
             status: 200,
             statusText: 'Connected',
             latencyMs,
@@ -681,6 +705,7 @@ export const BucketPublicationGate: React.FC<BucketPublicationGateProps> = ({
           // no-cors responses are opaque: the request left the browser, but the
           // status and CORS headers are deliberately unreadable.
           ok: res.type !== 'opaque' ? res.ok : true,
+          reachable: true,
           status: res.type === 'opaque' ? 0 : res.status,
           statusText: res.type === 'opaque' ? 'Opaque response' : `HTTP ${res.status}`,
           latencyMs,
@@ -692,6 +717,7 @@ export const BucketPublicationGate: React.FC<BucketPublicationGateProps> = ({
       const latencyMs = Math.round(performance.now() - start);
       setProbeResult({
         ok: false,
+        reachable: false,
         status: 0,
         statusText: 'Failed',
         latencyMs,
@@ -857,7 +883,10 @@ gsutil cp "${deliverablePath}manifest.json" "gs://${bucketConfig.bucketName}/man
 azcopy copy "${deliverablePath}manifest.json" "${bucketConfig.endpointUrl}/manifest.json?[SAS_TOKEN]"`;
 
       case 'nas_local':
-        return `robocopy "D:\\Output\\${cleanSg}" "\\\\NAS\\360_images\\${cleanSg}" /E /MT:8`;
+        // Both roots come from configuration; do not bake in a local staging
+        // path, otherwise the copied command targets a directory that does not
+        // exist on the operator's machine.
+        return `robocopy "<local-staging-root>\\${cleanSg}" "\\\\NAS\\<share>\\${cleanSg}" /E /MT:8`;
 
       case 'supabase':
       default:
@@ -1052,14 +1081,20 @@ pause
       ? 'Probing storage bucket...'
       : probeResult.ok
         ? `Reachable (${probeResult.status || 'opaque'})`
-        : `Issue (${probeResult.status || 'Error'})`;
+        : probeResult.reachable
+          ? `Reachable (${probeResult.status || 'opaque'})`
+          : probeResult.statusText === 'No Sample Filename'
+            ? 'Not probed'
+            : `Issue (${probeResult.status || 'Error'})`;
   const probeNote = !bucketConfig.isConfigured
     ? 'Set the provider bucket and endpoint in project settings to enable probing.'
     : !probeResult
       ? 'Waiting for the first probe response.'
-      : `${probeResult.latencyMs} ms · CORS ${
-          probeResult.corsOk ? 'allowed' : 'header missing'
-        }${probeResult.error ? ` · ${probeResult.error}` : ''}`;
+      : probeResult.statusText === 'No Sample Filename'
+        ? 'No published frame name available to probe with, so no request was made. Verify the bucket with the inventory check below.'
+        : `${probeResult.latencyMs} ms · CORS ${
+            probeResult.corsOk ? 'allowed' : 'header missing'
+          }${probeResult.error ? ` · ${probeResult.error}` : ''}`;
 
   return (
     <div className="flex flex-col gap-5 animate-in fade-in duration-200">
@@ -1183,8 +1218,12 @@ pause
             },
             {
               key: 'sample',
-              label: 'Sample Public URL',
-              value: bucketConfig.sampleUrl ? (
+              label: 'Public URL Shape',
+              // Previously this row built a concrete "<SUBGRID>-0001.jpg" URL and
+              // rendered it as a clickable link, which always 404s because that
+              // frame is not published. Show the pattern with a placeholder and
+              // only link when a real frame name is known.
+              value: bucketConfig.sampleUrl && realSampleFilename ? (
                 <a
                   href={bucketConfig.sampleUrl}
                   target="_blank"
@@ -1194,12 +1233,16 @@ pause
                   {bucketConfig.sampleUrl}
                 </a>
               ) : (
-                <span className="text-text-muted">
-                  {cleanSg ? 'Not resolvable from the current storage settings' : 'Set a subgrid to resolve a preview URL'}
+                <span className="font-mono text-text-muted text-[11px] break-all">
+                  {bucketConfig.endpointUrl
+                    ? `${bucketConfig.endpointUrl.replace(/\/+$/, '')}/{filename}`
+                    : 'Not resolvable from the current storage settings'}
                 </span>
               ),
-              note: cleanSg ? `Expected frame name: ${cleanSg}-0001.jpg` : undefined,
-              actions: bucketConfig.sampleUrl ? <ExternalLink size={12} className="text-text-muted shrink-0" /> : undefined
+              note: realSampleFilename
+                ? `Real frame: ${realSampleFilename}`
+                : 'Placeholder only. No real frame filename is loaded for this subgrid, so no sample object is requested.',
+              actions: bucketConfig.sampleUrl && realSampleFilename ? <ExternalLink size={12} className="text-text-muted shrink-0" /> : undefined
             },
             {
               key: 'connection',
