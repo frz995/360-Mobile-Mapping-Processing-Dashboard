@@ -1403,7 +1403,7 @@ export const RoadCatalogPanel: React.FC<RoadCatalogPanelProps> = ({
                       <button
                         type="button"
                         onClick={() => onRemoveCatalogLayer(layer.id)}
-                        className="p-1.5 rounded text-text-muted hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer shrink-0"
+                        className="p-1.5 rounded bg-inner/60 hover:bg-inner border border-subtle text-text-muted hover:text-rose-400 hover:border-rose-500/40 transition-colors cursor-pointer shrink-0"
                         title="Delete layer from catalog"
                       >
                         <Trash2 size={12} />
@@ -1434,7 +1434,7 @@ export const RoadCatalogPanel: React.FC<RoadCatalogPanelProps> = ({
                                   type="button"
                                   onClick={() => onUpdateCatalogLayer(layer.id, { color: c })}
                                   style={{ backgroundColor: c }}
-                                  className={`w-3 h-3 rounded-full transition-all border shrink-0 cursor-pointer ${
+                                  className={`neu-color-swatch w-3 h-3 rounded-full transition-all border shrink-0 cursor-pointer ${
                                     isSelected
                                       ? 'ring-1.5 ring-sky-400 ring-offset-1 ring-offset-slate-900 border-white scale-110 shadow-sm'
                                       : 'border-white/20 hover:scale-110 hover:border-white/60 opacity-85'
@@ -1602,7 +1602,7 @@ export const RoadCatalogPanel: React.FC<RoadCatalogPanelProps> = ({
                                           onUpdateCatalogLayer(layer.id, { fillColor: c })
                                         }
                                         style={{ backgroundColor: c }}
-                                        className={`w-3 h-3 rounded-full transition-all border shrink-0 cursor-pointer ${
+                                        className={`neu-color-swatch w-3 h-3 rounded-full transition-all border shrink-0 cursor-pointer ${
                                           isSelected
                                             ? 'ring-1.5 ring-sky-400 ring-offset-1 ring-offset-slate-900 border-white scale-110 shadow-sm'
                                             : 'border-white/20 hover:scale-110 opacity-85'
@@ -1693,7 +1693,7 @@ export const RoadCatalogPanel: React.FC<RoadCatalogPanelProps> = ({
                                     onUpdateCatalogLayer(layer.id, { pointStrokeColor: hc })
                                   }
                                   style={{ backgroundColor: hc }}
-                                  className={`w-3 h-3 rounded-full border border-white/20 cursor-pointer ${
+                                  className={`neu-color-swatch w-3 h-3 rounded-full border border-white/20 cursor-pointer ${
                                     (layer.pointStrokeColor || '#ffffff') === hc
                                       ? 'ring-1.5 ring-sky-400 ring-offset-1 ring-offset-slate-900 scale-110'
                                       : 'opacity-70 hover:opacity-100'
@@ -1785,7 +1785,7 @@ export const RoadCatalogPanel: React.FC<RoadCatalogPanelProps> = ({
                                     type="button"
                                     onClick={() => onUpdateCatalogLayer(layer.id, { labelColor: c })}
                                     style={{ backgroundColor: c, border: (layer.labelColor || '#f8fafc') === c ? '2px solid #38bdf8' : '1.5px solid rgba(255,255,255,0.15)' }}
-                                    className={`w-3 h-3 rounded-full cursor-pointer transition-transform ${(layer.labelColor || '#f8fafc') === c ? 'scale-125' : 'opacity-70 hover:opacity-100'}`}
+                                    className={`neu-color-swatch w-3 h-3 rounded-full cursor-pointer transition-transform ${(layer.labelColor || '#f8fafc') === c ? 'scale-125' : 'opacity-70 hover:opacity-100'}`}
                                     title={c}
                                   />
                                 ))}
@@ -1811,7 +1811,7 @@ export const RoadCatalogPanel: React.FC<RoadCatalogPanelProps> = ({
                                     type="button"
                                     onClick={() => onUpdateCatalogLayer(layer.id, { labelHaloColor: c })}
                                     style={{ backgroundColor: c, border: (layer.labelHaloColor || '#090d16') === c ? '2px solid #38bdf8' : '1.5px solid rgba(255,255,255,0.15)' }}
-                                    className={`w-3 h-3 rounded-full cursor-pointer transition-transform ${(layer.labelHaloColor || '#090d16') === c ? 'scale-125' : 'opacity-70 hover:opacity-100'}`}
+                                    className={`neu-color-swatch w-3 h-3 rounded-full cursor-pointer transition-transform ${(layer.labelHaloColor || '#090d16') === c ? 'scale-125' : 'opacity-70 hover:opacity-100'}`}
                                     title={c}
                                   />
                                 ))}

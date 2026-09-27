@@ -19,9 +19,9 @@ interface CoveragePanelProps {
 }
 
 const DARK_TOOLTIP = {
-  contentStyle: { background: '#0f172a', border: '1px solid #334155', borderRadius: 8, fontSize: 11 },
-  labelStyle: { color: '#e2e8f0' },
-  itemStyle: { color: '#e2e8f0' }
+  contentStyle: { background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 8, fontSize: 11 },
+  labelStyle: { color: 'var(--text-primary)' },
+  itemStyle: { color: 'var(--text-primary)' }
 };
 
 export function CoveragePanel({ analytics, translate }: CoveragePanelProps) {
@@ -64,7 +64,8 @@ export function CoveragePanel({ analytics, translate }: CoveragePanelProps) {
         </h3>
         <button
           onClick={handleExport}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-inner border border-subtle text-sky-300 text-[10px] font-bold uppercase tracking-wider cursor-pointer hover:border-sky-500/40"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-inner border border-subtle text-[10px] font-bold uppercase tracking-wider cursor-pointer"
+          style={{ color: 'var(--palette-slateblue)' }}
         >
           <Download size={12} /> CSV
         </button>
@@ -73,11 +74,11 @@ export function CoveragePanel({ analytics, translate }: CoveragePanelProps) {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         <div className="bg-inner border border-subtle rounded-xl p-3">
           <div className="text-[9px] font-bold uppercase tracking-wider text-text-muted">Total Road Plan</div>
-          <div className="text-sm font-bold text-sky-300 font-sans">
+          <div className="text-sm font-bold font-sans" style={{ color: 'var(--palette-slateblue)' }}>
             {analytics.totals.hasRoadPlanSource ? (
               `${formatNumber(analytics.totals.totalPlanKm, 2)} km`
             ) : (
-              <span className="text-[11px] text-amber-300/80 font-normal italic">No plan source</span>
+              <span className="text-[11px] font-normal italic" style={{ color: 'var(--palette-butter)' }}>No plan source</span>
             )}
           </div>
         </div>
@@ -91,7 +92,7 @@ export function CoveragePanel({ analytics, translate }: CoveragePanelProps) {
           <div className="text-[9px] font-bold uppercase tracking-wider text-text-muted">Remaining to Capture</div>
           <div className="text-sm font-bold font-sans">
             {analytics.totals.hasRoadPlanSource ? (
-              <span className={analytics.totals.totalRemainingKm > 0 ? 'text-amber-300' : 'text-emerald-300'}>
+              <span style={{ color: analytics.totals.totalRemainingKm > 0 ? 'var(--palette-butter)' : 'var(--palette-sage)' }}>
                 {formatNumber(analytics.totals.totalRemainingKm, 2)} km
               </span>
             ) : (
@@ -103,7 +104,7 @@ export function CoveragePanel({ analytics, translate }: CoveragePanelProps) {
           <div className="text-[9px] font-bold uppercase tracking-wider text-text-muted">Actual Coverage</div>
           <div className="text-sm font-bold font-sans">
             {analytics.totals.hasRoadPlanSource && analytics.totals.actualCoveragePct !== null ? (
-              <span className={analytics.totals.actualCoveragePct >= 100 ? 'text-emerald-300' : analytics.totals.actualCoveragePct >= 80 ? 'text-sky-300' : 'text-amber-300'}>
+              <span style={{ color: analytics.totals.actualCoveragePct >= 100 ? 'var(--palette-sage)' : analytics.totals.actualCoveragePct >= 80 ? 'var(--palette-slateblue)' : 'var(--palette-butter)' }}>
                 {analytics.totals.actualCoveragePct}%
               </span>
             ) : (
@@ -115,7 +116,7 @@ export function CoveragePanel({ analytics, translate }: CoveragePanelProps) {
 
       {!analytics.totals.hasRoadPlanSource ? (
         <div className="px-4 py-3 bg-inner/60 border border-amber-500/30 rounded-xl text-center">
-          <p className="text-[11px] text-amber-300 font-medium">
+          <p className="text-[11px] font-medium" style={{ color: 'var(--palette-butter)' }}>
             No existing road plan source detected.
           </p>
           <p className="text-[10px] text-text-muted mt-0.5">
@@ -133,13 +134,13 @@ export function CoveragePanel({ analytics, translate }: CoveragePanelProps) {
             )}
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={chartData} margin={{ top: 6, right: 12, left: -18, bottom: 0 }}>
-                <CartesianGrid stroke="#1e293b" strokeDasharray="3 3" />
-                <XAxis dataKey="name" tick={{ fill: '#94a3b8', fontSize: 9 }} stroke="#334155" interval={xAxisInterval} angle={-32} height={56} />
-                <YAxis domain={[0, 100]} tick={{ fill: '#94a3b8', fontSize: 10 }} stroke="#334155" unit="%" />
+                <CartesianGrid stroke="var(--divider)" strokeDasharray="3 3" />
+                <XAxis dataKey="name" tick={{ fill: 'var(--text-muted)', fontSize: 9 }} stroke="var(--border-subtle)" interval={xAxisInterval} angle={-32} height={56} />
+                <YAxis domain={[0, 100]} tick={{ fill: 'var(--text-muted)', fontSize: 10 }} stroke="var(--border-subtle)" unit="%" />
                 <Tooltip {...DARK_TOOLTIP} formatter={(value: any) => [`${value}%`, 'Actual Coverage']} />
                 <Bar dataKey="pct" name="Actual Coverage" radius={[4, 4, 0, 0]}>
                   {chartData.map((d, i) => (
-                    <Cell key={i} fill={d.pct >= 100 ? '#10b981' : d.pct >= 80 ? '#38bdf8' : '#f59e0b'} />
+                    <Cell key={i} fill={d.pct >= 100 ? 'var(--palette-sage)' : d.pct >= 80 ? 'var(--palette-slateblue)' : 'var(--palette-butter)'} />
                   ))}
                 </Bar>
               </BarChart>
@@ -168,7 +169,7 @@ export function CoveragePanel({ analytics, translate }: CoveragePanelProps) {
             {rows.map((r) => (
               <tr key={r.subgrid} className="border-b border-subtle hover:bg-inner/40 transition-colors">
                 <td className="px-3 py-2 font-mono text-text-muted">{r.grid || '1'}</td>
-                <td className="px-3 py-2 font-bold text-sky-300">{r.subgrid}</td>
+                <td className="px-3 py-2 font-bold" style={{ color: 'var(--palette-slateblue)' }}>{r.subgrid}</td>
                 <td className="px-3 py-2 text-right font-sans font-medium text-text-base">
                   {formatNumber(r.km, 2)} km
                 </td>
@@ -178,12 +179,12 @@ export function CoveragePanel({ analytics, translate }: CoveragePanelProps) {
                   ) : analytics.totals.hasRoadPlanSource ? (
                     <span className="text-text-muted">—</span>
                   ) : (
-                    <span className="text-[10px] text-amber-300/80 italic">No existing road plan source</span>
+                    <span className="text-[10px] italic" style={{ color: 'var(--palette-butter)' }}>No existing road plan source</span>
                   )}
                 </td>
                 <td className="px-3 py-2 text-right font-sans">
                   {r.hasPlanSource && r.remainingKm !== null && r.remainingKm !== undefined ? (
-                    <span className={r.remainingKm > 0 ? 'text-amber-300' : 'text-emerald-300'}>
+                    <span style={{ color: r.remainingKm > 0 ? 'var(--palette-butter)' : 'var(--palette-sage)' }}>
                       {formatNumber(r.remainingKm, 2)} km
                     </span>
                   ) : (
@@ -192,7 +193,7 @@ export function CoveragePanel({ analytics, translate }: CoveragePanelProps) {
                 </td>
                 <td className="px-3 py-2 text-right font-sans">
                   {r.hasPlanSource && typeof r.actualCoveragePct === 'number' ? (
-                    <span className={`font-bold ${r.actualCoveragePct >= 100 ? 'text-emerald-300' : r.actualCoveragePct >= 80 ? 'text-sky-300' : 'text-amber-300'}`}>
+                    <span className="font-bold" style={{ color: r.actualCoveragePct >= 100 ? 'var(--palette-sage)' : r.actualCoveragePct >= 80 ? 'var(--palette-slateblue)' : 'var(--palette-butter)' }}>
                       {r.actualCoveragePct}%
                     </span>
                   ) : (
@@ -217,13 +218,13 @@ export function CoveragePanel({ analytics, translate }: CoveragePanelProps) {
       {analytics.gaps.length > 0 && (
         <div>
           <h3 className="text-[11px] font-bold uppercase tracking-wider text-text-muted mb-2 flex items-center gap-1.5">
-            <AlertTriangle size={13} className="text-amber-300" /> {translate('analyticsGaps')} ({analytics.gaps.length})
+            <AlertTriangle size={13} style={{ color: 'var(--palette-butter)' }} /> {translate('analyticsGaps')} ({analytics.gaps.length})
           </h3>
           <div className="flex flex-col gap-1.5">
             {analytics.gaps.map((g) => (
               <div key={`${g.kind}-${g.subgrid}-${g.detail}`} className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-inner border border-amber-500/30">
                 <div>
-                  <span className="text-[11px] font-bold text-amber-300">{g.subgrid}</span>
+                  <span className="text-[11px] font-bold" style={{ color: 'var(--palette-butter)' }}>{g.subgrid}</span>
                   <span className="text-[10px] text-text-muted ml-2">
                     {g.kind === 'missing_frames'
                       ? `${g.missing} ${translate('analyticsGapMissing')}`

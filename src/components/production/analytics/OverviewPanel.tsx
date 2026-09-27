@@ -20,16 +20,16 @@ interface OverviewPanelProps {
 }
 
 const PIE_COLORS: Record<string, string> = {
-  published: '#10b981',
-  staged: '#38bdf8',
-  partial: '#f59e0b',
-  none: '#64748b'
+  published: 'var(--palette-sage)',
+  staged: 'var(--palette-mint)',
+  partial: 'var(--palette-butter)',
+  none: 'var(--palette-slateblue)'
 };
 
 const DARK_TOOLTIP = {
-  contentStyle: { background: '#0f172a', border: '1px solid #334155', borderRadius: 8, fontSize: 11 },
-  labelStyle: { color: '#e2e8f0' },
-  itemStyle: { color: '#e2e8f0' }
+  contentStyle: { background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 8, fontSize: 11 },
+  labelStyle: { color: 'var(--text-primary)' },
+  itemStyle: { color: 'var(--text-primary)' }
 };
 
 export function OverviewPanel({ analytics, translate }: OverviewPanelProps) {
@@ -111,7 +111,7 @@ export function OverviewPanel({ analytics, translate }: OverviewPanelProps) {
               </span>
             </div>
             <div className="h-2 rounded-full bg-inner border border-subtle overflow-hidden">
-              <div className="h-full rounded-full bg-sky-400 transition-all" style={{ width: `${Math.min(100, t.targetProgressKmPct)}%` }} />
+              <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(100, t.targetProgressKmPct)}%`, backgroundColor: 'var(--palette-slateblue)' }} />
             </div>
           </div>
           <div>
@@ -124,21 +124,21 @@ export function OverviewPanel({ analytics, translate }: OverviewPanelProps) {
               </span>
             </div>
             <div className="h-2 rounded-full bg-inner border border-subtle overflow-hidden">
-              <div className="h-full rounded-full bg-emerald-400 transition-all" style={{ width: `${Math.min(100, t.targetProgressImagesPct)}%` }} />
+              <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(100, t.targetProgressImagesPct)}%`, backgroundColor: 'var(--palette-mint)' }} />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-2 mt-1">
             <div className="text-[11px] text-text-muted">
-              {translate('analyticsQaApproved')}: <span className="font-bold text-emerald-300 font-mono">{formatNumber(t.qaApproved)}</span>
+              {translate('analyticsQaApproved')}: <span className="font-bold font-mono" style={{ color: 'var(--palette-sage)' }}>{formatNumber(t.qaApproved)}</span>
             </div>
             <div className="text-[11px] text-text-muted">
-              {translate('analyticsQaRejected')}: <span className="font-bold text-rose-300 font-mono">{formatNumber(t.qaRejected)}</span>
+              {translate('analyticsQaRejected')}: <span className="font-bold font-mono" style={{ color: 'var(--palette-coral)' }}>{formatNumber(t.qaRejected)}</span>
             </div>
             <div className="text-[11px] text-text-muted">
-              RAW Ingested: <span className="font-bold text-amber-300 font-mono">{formatNumber(t.captureFrames)}</span>
+              RAW Ingested: <span className="font-bold font-mono" style={{ color: 'var(--palette-butter)' }}>{formatNumber(t.captureFrames)}</span>
             </div>
             <div className="text-[11px] text-text-muted">
-              Masterlist Reconciled: <span className="font-bold text-sky-300 font-mono">{formatNumber(t.masterlistFrames)}</span>
+              Masterlist Reconciled: <span className="font-bold font-mono" style={{ color: 'var(--palette-slateblue)' }}>{formatNumber(t.masterlistFrames)}</span>
             </div>
           </div>
         </div>
@@ -156,7 +156,7 @@ export function OverviewPanel({ analytics, translate }: OverviewPanelProps) {
                 <PieChart>
                   <Pie data={pieData} dataKey="value" nameKey="name" innerRadius={52} outerRadius={82} paddingAngle={2}>
                     {pieData.map((p) => (
-                      <Cell key={p.state} fill={PIE_COLORS[p.state] || '#64748b'} stroke="#0b1020" strokeWidth={2} />
+                      <Cell key={p.state} fill={PIE_COLORS[p.state] || 'var(--text-muted)'} stroke="var(--bg-app)" strokeWidth={2} />
                     ))}
                   </Pie>
                   <Tooltip {...DARK_TOOLTIP} />
@@ -185,11 +185,11 @@ export function OverviewPanel({ analytics, translate }: OverviewPanelProps) {
         ) : (
           <ResponsiveContainer width="100%" height={220}>
             <LineChart data={analytics.dailySeries} margin={{ top: 6, right: 12, left: -18, bottom: 0 }}>
-              <CartesianGrid stroke="#1e293b" strokeDasharray="3 3" />
-              <XAxis dataKey="date" tick={{ fill: '#94a3b8', fontSize: 10 }} stroke="#334155" />
-              <YAxis tick={{ fill: '#94a3b8', fontSize: 10 }} stroke="#334155" />
+              <CartesianGrid stroke="var(--divider)" strokeDasharray="3 3" />
+              <XAxis dataKey="date" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} stroke="var(--border-subtle)" />
+              <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 10 }} stroke="var(--border-subtle)" />
               <Tooltip {...DARK_TOOLTIP} />
-              <Line type="monotone" dataKey="km" stroke="#38bdf8" strokeWidth={2} dot={{ r: 2, fill: '#38bdf8' }} name="km" />
+              <Line type="monotone" dataKey="km" stroke="var(--palette-teal)" strokeWidth={2} dot={{ r: 2, fill: 'var(--palette-teal)' }} name="km" />
             </LineChart>
           </ResponsiveContainer>
         )}

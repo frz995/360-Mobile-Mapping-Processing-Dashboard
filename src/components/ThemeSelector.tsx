@@ -20,19 +20,44 @@ import {
 export type ThemeKey =
     | 'graphite'
     | 'monochrome'
+    | 'neumorph-dark'
     | 'geodetic-sage'
     | 'naval-steel'
     | 'industrial-basalt'
     | 'alabaster'
     | 'daylight'
-    | 'neumorph-clay'
-    | 'neumorph-dark'
-    | 'midnight'
-    | 'obsidian'
-    | 'teal-slate';
+    | 'neumorph-clay';
+
+export const resolveThemeKey = (value: unknown): ThemeKey => {
+    switch (value) {
+        case 'monochrome':
+        case 'obsidian':
+            return 'monochrome';
+        case 'neumorph-dark':
+            return 'neumorph-dark';
+        case 'geodetic-sage':
+            return 'geodetic-sage';
+        case 'naval-steel':
+        case 'midnight':
+            return 'naval-steel';
+        case 'industrial-basalt':
+            return 'industrial-basalt';
+        case 'alabaster':
+            return 'alabaster';
+        case 'daylight':
+            return 'daylight';
+        case 'neumorph-clay':
+            return 'neumorph-clay';
+        case 'teal-slate':
+            return 'geodetic-sage';
+        default:
+            return 'graphite';
+    }
+};
 
 export interface ThemeDefinition {
     id: ThemeKey;
+    mode: 'light' | 'dark';
     name: string;
     badge: string;
     tagline: string;
@@ -42,156 +67,178 @@ export interface ThemeDefinition {
     borderSubtle: string;
     accent: string;
     accentBg: string;
+    accentForeground: string;
     textPrimary: string;
     textMuted: string;
     mapTileUrl: string;
     mapStyle: string;
 }
 
+export const isLightTheme = (value: unknown): boolean =>
+    THEME_PRESETS.find((theme) => theme.id === resolveThemeKey(value))?.mode === 'light';
+
 export const THEME_PRESETS: ThemeDefinition[] = [
     {
         id: 'graphite',
+        mode: 'dark',
         name: 'Titanium Graphite',
-        badge: 'Neutral Studio',
-        tagline: 'Balanced matte charcoal surfaces with soft metallic borders for color-accurate technical inspection.',
-        bgApp: '#111317',
-        bgCard: '#161920',
-        innerCard: '#1f242e',
-        borderSubtle: '#2a313e',
-        accent: '#cbd5e1',
-        accentBg: 'rgba(203, 213, 225, 0.10)',
-        textPrimary: '#f1f5f9',
-        textMuted: '#94a3b8',
-        mapTileUrl: 'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
-        mapStyle: 'Carto Voyager'
+        badge: 'Soft Graphite',
+        tagline: 'Quiet graphite surfaces with a softened mint-teal accent for focused GIS work.',
+        bgApp: '#14191D',
+        bgCard: '#1A2125',
+        innerCard: '#222B30',
+        borderSubtle: '#303B40',
+        accent: '#7CBBAE',
+        accentBg: 'rgba(124, 187, 174, 0.12)',
+        accentForeground: '#17211F',
+        textPrimary: '#EEF2F1',
+        textMuted: '#9BAAA9',
+        mapTileUrl: 'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+        mapStyle: 'Muted Dark'
     },
     {
         id: 'monochrome',
+        mode: 'light',
         name: 'Monochrome Slate',
-        badge: 'Minimal Dark',
-        tagline: 'High-contrast pure carbon surfaces with crisp white typography and zero color distortion.',
-        bgApp: '#08090a',
-        bgCard: '#0f1113',
-        innerCard: '#171a1d',
-        borderSubtle: '#23272d',
-        accent: '#f4f4f5',
-        accentBg: 'rgba(244, 244, 245, 0.10)',
-        textPrimary: '#fafafa',
-        textMuted: '#8b949e',
-        mapTileUrl: 'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-        mapStyle: 'Carto Dark Matter'
-    },
-    {
-        id: 'geodetic-sage',
-        name: 'Geodetic Sage',
-        badge: 'Field Survey',
-        tagline: 'Muted botanical slate with subdued alpine sage highlights for environmental and geodetic mapping.',
-        bgApp: '#0a0e0c',
-        bgCard: '#101714',
-        innerCard: '#16201b',
-        borderSubtle: '#1f2d27',
-        accent: '#34d399',
-        accentBg: 'rgba(52, 211, 153, 0.12)',
-        textPrimary: '#f0fdf4',
-        textMuted: '#7f9f8f',
-        mapTileUrl: 'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-        mapStyle: 'Dark Topo'
-    },
-    {
-        id: 'naval-steel',
-        name: 'Naval Steel',
-        badge: 'Maritime Dark',
-        tagline: 'Deep naval slate with restrained technical steel blue accents for mission operations.',
-        bgApp: '#070c14',
-        bgCard: '#0d1420',
-        innerCard: '#121c2c',
-        borderSubtle: '#1a273c',
-        accent: '#38bdf8',
-        accentBg: 'rgba(56, 189, 248, 0.12)',
-        textPrimary: '#f8fafc',
-        textMuted: '#869bb8',
-        mapTileUrl: 'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-        mapStyle: 'Dark Telemetry'
-    },
-    {
-        id: 'industrial-basalt',
-        name: 'Industrial Basalt',
-        badge: 'GNSS Hardware',
-        tagline: 'Warm dark basalt carbon with muted topographic gold inspired by field GNSS surveying hardware.',
-        bgApp: '#0c0b0a',
-        bgCard: '#141311',
-        innerCard: '#1c1b18',
-        borderSubtle: '#262420',
-        accent: '#d97706',
-        accentBg: 'rgba(217, 119, 6, 0.12)',
-        textPrimary: '#fafaf9',
-        textMuted: '#9c9589',
-        mapTileUrl: 'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-        mapStyle: 'Basalt Topo'
-    },
-    {
-        id: 'alabaster',
-        name: 'Alabaster Warm Light',
-        badge: 'Warm Light',
-        tagline: 'Warm stone off-white canvas with deep charcoal typography for glare-free daytime processing.',
-        bgApp: '#f6f5f1',
-        bgCard: '#ffffff',
-        innerCard: '#eceae3',
-        borderSubtle: '#d8d4c7',
-        accent: '#1c1917',
-        accentBg: 'rgba(28, 25, 23, 0.08)',
-        textPrimary: '#1c1917',
-        textMuted: '#57534e',
+        badge: 'Soft Light',
+        tagline: 'A calm, light slate canvas with gentle blue-gray contrast and a muted teal accent.',
+        bgApp: '#F1F4F2',
+        bgCard: '#FAFBF9',
+        innerCard: '#E8EEEA',
+        borderSubtle: '#D3DDD8',
+        accent: '#5B7880',
+        accentBg: 'rgba(91, 120, 128, 0.12)',
+        accentForeground: '#F9FBFA',
+        textPrimary: '#263330',
+        textMuted: '#64736F',
         mapTileUrl: 'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
-        mapStyle: 'Positron Clean'
-    },
-    {
-        id: 'daylight',
-        name: 'Daylight Clean',
-        badge: 'Clean Light',
-        tagline: 'High-luminance crisp workspace with soft slate borders and deep navy typography for client reporting.',
-        bgApp: '#f8fafc',
-        bgCard: '#ffffff',
-        innerCard: '#f1f5f9',
-        borderSubtle: '#e2e8f0',
-        accent: '#0f172a',
-        accentBg: 'rgba(15, 23, 42, 0.08)',
-        textPrimary: '#0f172a',
-        textMuted: '#64748b',
-        mapTileUrl: 'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
-        mapStyle: 'Positron Clean'
-    },
-    {
-        id: 'neumorph-clay',
-        name: 'Neumorph Soft Clay',
-        badge: 'Soft UI Light',
-        tagline: 'Iconic Setproduct soft clay palette (#e0e5ec) with tactile debossed wells and sculpted pebble bevels.',
-        bgApp: '#e0e5ec',
-        bgCard: '#e0e5ec',
-        innerCard: '#d7dde6',
-        borderSubtle: '#c8d0dc',
-        accent: '#2563eb',
-        accentBg: 'rgba(37, 99, 235, 0.12)',
-        textPrimary: '#1e293b',
-        textMuted: '#64748b',
-        mapTileUrl: 'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
-        mapStyle: 'Carto Voyager'
+        mapStyle: 'Muted Light'
     },
     {
         id: 'neumorph-dark',
+        mode: 'dark',
         name: 'Neumorph Cyber Dark',
         badge: 'Soft UI Dark',
-        tagline: 'Matte cyber charcoal (#1e222b) calibrated for high-contrast specular lighting and neon telemetry glows.',
-        bgApp: '#1e222b',
-        bgCard: '#1e222b',
-        innerCard: '#161920',
-        borderSubtle: '#2a303c',
-        accent: '#06b6d4',
-        accentBg: 'rgba(6, 182, 212, 0.14)',
-        textPrimary: '#f1f5f9',
-        textMuted: '#8e9baa',
+        tagline: 'Soft charcoal depth with restrained mint-teal highlights instead of neon color.',
+        bgApp: '#20252A',
+        bgCard: '#20252A',
+        innerCard: '#191F23',
+        borderSubtle: '#323B40',
+        accent: '#83BFAF',
+        accentBg: 'rgba(131, 191, 175, 0.13)',
+        accentForeground: '#17211F',
+        textPrimary: '#EDF2F0',
+        textMuted: '#9AA8A5',
         mapTileUrl: 'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-        mapStyle: 'Dark Telemetry'
+        mapStyle: 'Muted Dark'
+    },
+    {
+        id: 'geodetic-sage',
+        mode: 'dark',
+        name: 'Geodetic Sage',
+        badge: 'Field Survey',
+        tagline: 'Deep botanical slate with soft sage and mint tones for field-survey work.',
+        bgApp: '#151D1A',
+        bgCard: '#1C2722',
+        innerCard: '#26342D',
+        borderSubtle: '#37473F',
+        accent: '#9AB58D',
+        accentBg: 'rgba(154, 181, 141, 0.13)',
+        accentForeground: '#1C281F',
+        textPrimary: '#EEF2EC',
+        textMuted: '#A0ADA0',
+        mapTileUrl: 'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+        mapStyle: 'Muted Topographic'
+    },
+    {
+        id: 'naval-steel',
+        mode: 'dark',
+        name: 'Naval Steel',
+        badge: 'Cool Slate',
+        tagline: 'Cool steel-blue graphite with softened blue and teal highlights.',
+        bgApp: '#171D22',
+        bgCard: '#1D252B',
+        innerCard: '#273239',
+        borderSubtle: '#37464D',
+        accent: '#8EAFB9',
+        accentBg: 'rgba(142, 175, 185, 0.13)',
+        accentForeground: '#182226',
+        textPrimary: '#EEF2F2',
+        textMuted: '#9EACB0',
+        mapTileUrl: 'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+        mapStyle: 'Muted Dark Steel'
+    },
+    {
+        id: 'industrial-basalt',
+        mode: 'dark',
+        name: 'Industrial Basalt',
+        badge: 'Earthy Dark',
+        tagline: 'Warm basalt surfaces with quiet sand, ochre, and dusty-coral accents.',
+        bgApp: '#211D19',
+        bgCard: '#28231E',
+        innerCard: '#342E27',
+        borderSubtle: '#494138',
+        accent: '#D2AD75',
+        accentBg: 'rgba(210, 173, 117, 0.14)',
+        accentForeground: '#30271D',
+        textPrimary: '#F2EEE8',
+        textMuted: '#B1A79A',
+        mapTileUrl: 'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+        mapStyle: 'Muted Basalt'
+    },
+    {
+        id: 'alabaster',
+        mode: 'light',
+        name: 'Alabaster Warm Light',
+        badge: 'Warm Paper',
+        tagline: 'Soft cream canvas, warm stone panels, and muted earthy accents.',
+        bgApp: '#F5F1EA',
+        bgCard: '#FCFAF6',
+        innerCard: '#ECE7DE',
+        borderSubtle: '#DDD3C4',
+        accent: '#947F66',
+        accentBg: 'rgba(148, 127, 102, 0.12)',
+        accentForeground: '#FFFCF7',
+        textPrimary: '#302D28',
+        textMuted: '#71695E',
+        mapTileUrl: 'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
+        mapStyle: 'Warm Light'
+    },
+    {
+        id: 'daylight',
+        mode: 'light',
+        name: 'Daylight Clean',
+        badge: 'Cool Light',
+        tagline: 'A clear mist-gray canvas with gentle blue-green accents and crisp text.',
+        bgApp: '#F3F6F7',
+        bgCard: '#FBFCFC',
+        innerCard: '#E7EEF0',
+        borderSubtle: '#D4E0E3',
+        accent: '#648C95',
+        accentBg: 'rgba(100, 140, 149, 0.12)',
+        accentForeground: '#F9FCFC',
+        textPrimary: '#263438',
+        textMuted: '#627277',
+        mapTileUrl: 'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
+        mapStyle: 'Muted Light'
+    },
+    {
+        id: 'neumorph-clay',
+        mode: 'light',
+        name: 'Neumorph Soft Clay',
+        badge: 'Soft UI Light',
+        tagline: 'Soft clay-gray surfaces with gentle bevels and subdued lavender-blue accents.',
+        bgApp: '#E7EBEF',
+        bgCard: '#E7EBEF',
+        innerCard: '#DDE3E8',
+        borderSubtle: '#CDD5DD',
+        accent: '#687E97',
+        accentBg: 'rgba(104, 126, 151, 0.13)',
+        accentForeground: '#F8FAFC',
+        textPrimary: '#2A333C',
+        textMuted: '#65727D',
+        mapTileUrl: 'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
+        mapStyle: 'Soft Clay Light'
     }
 ];
 
@@ -209,7 +256,7 @@ const DotOption: React.FC<{ label: string; selected: boolean; onSelect: () => vo
         <span className={`w-3 h-3 rounded-full border flex items-center justify-center transition-colors ${
             selected ? 'bg-accent border-accent' : 'border-subtle group-hover:border-slate-500'
         }`}>
-            {selected && <Check className="w-2 h-2 text-app" strokeWidth={4} />}
+            {selected && <Check className="w-2 h-2" strokeWidth={4} style={{ color: 'var(--accent-foreground)' }} />}
         </span>
         <span className={`text-[10px] transition-colors ${selected ? 'font-medium text-text-base' : 'text-text-muted group-hover:text-text-base'}`}>
             {label}
@@ -276,7 +323,7 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
     };
 
     useEffect(() => {
-        const saved = (localStorage.getItem('app_dashboard_theme') as ThemeKey) || 'graphite';
+        const saved = resolveThemeKey(localStorage.getItem('app_dashboard_theme'));
         setActiveTheme(saved);
         setStagedTheme(saved);
 
@@ -300,6 +347,7 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
     const handleApplyTheme = () => {
         setActiveTheme(stagedTheme);
         document.documentElement.setAttribute('data-theme', stagedTheme);
+        document.documentElement.classList.toggle('light-mode', isLightTheme(stagedTheme));
         try {
             localStorage.setItem('app_dashboard_theme', stagedTheme);
             // Persist style widgets
@@ -330,6 +378,7 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
         setUiDensity(savedDensity);
         setMapSplit(savedSplit);
         setSurfaceStyle(savedSurface);
+        applyStyleWidgets(savedRadius, savedDensity, savedSplit, savedSurface);
     };
 
     const isStyleDirty =
@@ -380,7 +429,14 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                 {/* Global Save Action */}
                 <div className="flex items-center gap-3">
                     {isSavedBanner && (
-                        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-medium">
+                        <div
+                            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium"
+                            style={{
+                                backgroundColor: 'color-mix(in srgb, var(--palette-sage) 12%, transparent)',
+                                border: '1px solid color-mix(in srgb, var(--palette-sage) 30%, transparent)',
+                                color: 'var(--palette-sage)'
+                            }}
+                        >
                             <CheckCircle2 className="w-3.5 h-3.5" />
                             Theme Applied
                         </div>
@@ -388,7 +444,7 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                     <button
                         onClick={handleApplyTheme}
                         disabled={(stagedTheme === activeTheme && !isStyleDirty) && !isSavedBanner}
-                        style={stagedTheme !== activeTheme || isStyleDirty ? { backgroundColor: 'var(--accent)', color: 'var(--bg-app)' } : undefined}
+                        style={stagedTheme !== activeTheme || isStyleDirty ? { backgroundColor: 'var(--accent)', color: 'var(--accent-foreground)' } : undefined}
                         className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${stagedTheme !== activeTheme || isStyleDirty
                             ? 'opacity-95 hover:opacity-100 shadow-sm cursor-pointer'
                             : 'bg-inner text-text-muted cursor-not-allowed border border-subtle'
@@ -419,45 +475,53 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                         </button>
                     </div>
 
-                    <div className="rounded-lg border border-subtle divide-y divide-[var(--divider)] overflow-hidden">
+                    <div className="flex flex-col gap-2.5">
                         {THEME_PRESETS.map((preset) => {
                             const isStaged = stagedTheme === preset.id;
                             const isCurrentlyActive = activeTheme === preset.id;
 
                             return (
-                                <div
+                                <button
+                                    type="button"
                                     key={preset.id}
                                     onClick={() => handleSelectPreset(preset.id)}
-                                    className={`flex items-center gap-2.5 px-3 py-2.5 transition-colors cursor-pointer ${isStaged ? 'bg-inner' : 'hover:bg-inner/60'
-                                        }`}
+                                    className={`w-full group flex items-center gap-3 px-3.5 py-2.5 rounded-xl cursor-pointer select-none text-left transition-all duration-150 ${
+                                        isStaged
+                                            ? 'bg-inner border border-subtle/80 shadow-xs'
+                                            : 'border border-transparent hover:bg-inner/60 hover:border-subtle/40'
+                                    }`}
                                 >
                                     <span
-                                        className="w-3.5 h-3.5 rounded-full border flex items-center justify-center shrink-0 transition-colors"
+                                        className={`w-4 h-4 rounded-full flex items-center justify-center shrink-0 transition-all ${
+                                            isStaged
+                                                ? 'shadow-xs border-0'
+                                                : 'border'
+                                        }`}
                                         style={{
-                                            borderColor: isStaged ? preset.accent : preset.borderSubtle,
-                                            backgroundColor: isStaged ? preset.accent : 'transparent'
+                                            backgroundColor: isStaged ? preset.accent : 'transparent',
+                                            borderColor: isStaged ? preset.accent : `${preset.borderSubtle}`
                                         }}
                                     >
                                         {isStaged ? (
-                                            <Check className="w-2.5 h-2.5" strokeWidth={4} style={{ color: preset.bgApp }} />
+                                            <Check className="w-2.5 h-2.5" strokeWidth={3.5} style={{ color: preset.accentForeground }} />
                                         ) : (
                                             <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: preset.accent }} />
                                         )}
                                     </span>
 
-                                    <h4 className={`text-xs truncate ${isStaged ? 'font-semibold text-text-base' : 'font-medium text-text-muted'}`}>
+                                    <h4 className={`text-xs truncate ${isStaged ? 'font-semibold text-text-base' : 'font-medium text-text-muted group-hover:text-text-base'}`}>
                                         {preset.name}
                                     </h4>
 
                                     <span className="ml-auto flex items-center gap-2 shrink-0">
                                         {isCurrentlyActive && !isStaged && (
-                                            <span className="text-[9px] text-emerald-400 font-medium">Active</span>
+                                            <span className="text-[9px] font-medium" style={{ color: 'var(--palette-sage)' }}>Active</span>
                                         )}
                                         {isStaged && !isCurrentlyActive && (
                                             <span className="text-[9px] text-text-muted">Previewing</span>
                                         )}
                                     </span>
-                                </div>
+                                </button>
                             );
                         })}
                     </div>
@@ -477,7 +541,15 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                             </div>
                             <div className="flex items-center flex-wrap gap-x-3.5 gap-y-1">
                                 {SURFACE_OPTIONS.map((opt) => (
-                                    <DotOption key={opt.key} label={opt.label} selected={surfaceStyle === opt.key} onSelect={() => setSurfaceStyle(opt.key)} />
+                                    <DotOption
+                                        key={opt.key}
+                                        label={opt.label}
+                                        selected={surfaceStyle === opt.key}
+                                        onSelect={() => {
+                                            setSurfaceStyle(opt.key);
+                                            applyStyleWidgets(cardRadius, uiDensity, mapSplit, opt.key);
+                                        }}
+                                    />
                                 ))}
                             </div>
                         </div>
@@ -490,7 +562,15 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                             </div>
                             <div className="flex items-center flex-wrap gap-x-3.5 gap-y-1">
                                 {RADIUS_OPTIONS.map((opt) => (
-                                    <DotOption key={opt.key} label={opt.label} selected={cardRadius === opt.key} onSelect={() => setCardRadius(opt.key)} />
+                                    <DotOption
+                                        key={opt.key}
+                                        label={opt.label}
+                                        selected={cardRadius === opt.key}
+                                        onSelect={() => {
+                                            setCardRadius(opt.key);
+                                            applyStyleWidgets(opt.key, uiDensity, mapSplit, surfaceStyle);
+                                        }}
+                                    />
                                 ))}
                             </div>
                         </div>
@@ -503,7 +583,15 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                             </div>
                             <div className="flex items-center flex-wrap gap-x-3.5 gap-y-1">
                                 {DENSITY_OPTIONS.map((opt) => (
-                                    <DotOption key={opt.key} label={opt.label} selected={uiDensity === opt.key} onSelect={() => setUiDensity(opt.key)} />
+                                    <DotOption
+                                        key={opt.key}
+                                        label={opt.label}
+                                        selected={uiDensity === opt.key}
+                                        onSelect={() => {
+                                            setUiDensity(opt.key);
+                                            applyStyleWidgets(cardRadius, opt.key, mapSplit, surfaceStyle);
+                                        }}
+                                    />
                                 ))}
                             </div>
                         </div>
@@ -516,7 +604,15 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                             </div>
                             <div className="flex items-center flex-wrap gap-x-3.5 gap-y-1">
                                 {SPLIT_OPTIONS.map((opt) => (
-                                    <DotOption key={opt.key} label={opt.label} selected={mapSplit === opt.key} onSelect={() => setMapSplit(opt.key)} />
+                                    <DotOption
+                                        key={opt.key}
+                                        label={opt.label}
+                                        selected={mapSplit === opt.key}
+                                        onSelect={() => {
+                                            setMapSplit(opt.key);
+                                            applyStyleWidgets(cardRadius, uiDensity, opt.key, surfaceStyle);
+                                        }}
+                                    />
                                 ))}
                             </div>
                         </div>
@@ -536,7 +632,7 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                     <div
                         data-theme={stagedTheme}
                         data-surface={surfaceStyle}
-                        className="p-3.5 rounded-xl border transition-all duration-200 space-y-3 shadow-sm staged-sandbox"
+                        className={`p-3.5 rounded-xl border transition-all duration-200 space-y-3 shadow-sm staged-sandbox ${isLightTheme(stagedTheme) ? 'light-mode' : ''}`}
                         style={{
                             backgroundColor: stagedObj.bgApp,
                             borderColor: stagedObj.borderSubtle,
@@ -557,8 +653,8 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                         >
                             <div className="flex items-center gap-2.5">
                                 <div
-                                    className="w-6 h-6 rounded flex items-center justify-center text-white text-[11px]"
-                                    style={{ backgroundColor: stagedObj.accent }}
+                                    className="w-6 h-6 rounded flex items-center justify-center text-[11px]"
+                                    style={{ backgroundColor: stagedObj.accent, color: stagedObj.accentForeground }}
                                 >
                                     <Layers className="w-3.5 h-3.5" />
                                 </div>
@@ -641,15 +737,21 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                             >
                                 <div className="flex items-center justify-between text-[8.5px] uppercase font-semibold tracking-wider" style={{ color: stagedObj.textMuted }}>
                                     <span>QUALITY SLA</span>
-                                    <Activity className="w-3 h-3 text-emerald-400" />
+                                    <Activity className="w-3 h-3" style={{ color: 'var(--palette-sage)' }} />
                                 </div>
                                 <div className="my-0.5">
-                                    <span className="text-sm font-bold text-emerald-400">
+                                    <span className="text-sm font-bold" style={{ color: 'var(--palette-sage)' }}>
                                         {qualitySlaPercent}%
                                     </span>
                                 </div>
                                 <div className="text-[8px]" style={{ color: stagedObj.textMuted }}>{totalDefects} Defect Flags</div>
                             </div>
+                        </div>
+
+                        <div className="flex items-center gap-1.5 px-0.5" aria-label="Theme accent palette">
+                            {['--palette-mint', '--palette-sage', '--palette-butter', '--palette-coral', '--palette-lavender', '--palette-slateblue'].map((token) => (
+                                <span key={token} className="h-1.5 flex-1 rounded-full" style={{ backgroundColor: `var(${token})` }} />
+                            ))}
                         </div>
 
                         {/* 3. Map & Data Columns */}
@@ -742,7 +844,7 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
                                                         >
                                                             <span className="font-sans font-medium" style={{ color: stagedObj.textPrimary }}>{row.subgrid || `SG-${idx + 1}`}</span>
                                                             <span style={{ color: stagedObj.textMuted }}>{frameCount} frames</span>
-                                                            <span className="font-medium text-amber-500">{row.status || 'Ongoing'}</span>
+                                                            <span className="font-medium" style={{ color: 'var(--palette-butter)' }}>{row.status || 'Ongoing'}</span>
                                                         </div>
                                                     );
                                                 })
@@ -756,7 +858,7 @@ export const ThemeManagementCanvas: React.FC<ThemeCanvasProps> = ({
 
                                     <div className="pt-1 border-t flex items-center justify-between text-[7.5px]" style={{ borderColor: stagedObj.borderSubtle, color: stagedObj.textMuted }}>
                                         <span>Pipeline Status</span>
-                                        <span className="font-sans text-emerald-500">Operational</span>
+                                        <span className="font-sans" style={{ color: 'var(--palette-sage)' }}>Operational</span>
                                     </div>
                                 </div>
 

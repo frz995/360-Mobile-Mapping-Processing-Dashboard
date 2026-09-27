@@ -740,18 +740,15 @@ select:-webkit-autofill:focus {
   height: 0 !important;
 }
 
-/* Daylight / Light Mode Scrollbars */
-[data-theme="daylight"] *,
+/* Light Palette Scrollbars */
 .light-mode * {
   scrollbar-color: rgba(100, 116, 139, 0.35) transparent;
 }
 
-[data-theme="daylight"] ::-webkit-scrollbar-thumb,
 .light-mode ::-webkit-scrollbar-thumb {
   background-color: rgba(100, 116, 139, 0.35);
 }
 
-[data-theme="daylight"] ::-webkit-scrollbar-thumb:hover,
 .light-mode ::-webkit-scrollbar-thumb:hover {
   background-color: rgba(37, 99, 235, 0.6);
 }

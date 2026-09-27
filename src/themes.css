@@ -1,29 +1,37 @@
 /* ==========================================================================
-   ENTERPRISE MULTI-THEME ENGINE — COMPLETE COLOR & TYPOGRAPHY MATRIX
+   GLOBAL THEME TOKENS — nine coordinated, low-chroma palettes
    ========================================================================== */
 
-/* 1. TITANIUM GRAPHITE (Neutral Studio Workspace - System Default) */
 :root,
 [data-theme="graphite"] {
     color-scheme: dark;
-    --bg-app: #111317;
-    --bg-card: #161920;
-    --bg-inner: #1f242e;
-    --border-subtle: #2a313e;
-    --divider: rgba(148, 163, 184, 0.12);
-    --accent: #cbd5e1;
-    --accent-bg: rgba(203, 213, 225, 0.10);
-    --text-primary: #f1f5f9;
-    --text-muted: #94a3b8;
-    --table-header-bg: #161920;
-    --table-header-text: #94a3b8;
-    --table-row-hover: #202530;
-    --table-text: #f1f5f9;
-    --input-bg: #0f1116;
-    --card-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
-    --modal-overlay: rgba(8, 10, 13, 0.88);
-    --canvas-bg: linear-gradient(180deg, #15181f 0%, #111317 100%);
-    /* Style Widget Defaults */
+    --bg-app: #14191D;
+    --bg-card: #1A2125;
+    --bg-inner: #222B30;
+    --border-subtle: #303B40;
+    --divider: rgba(155, 174, 169, 0.14);
+    --accent: #7CBBAE;
+    --accent-bg: rgba(124, 187, 174, 0.12);
+    --accent-foreground: #17211F;
+    --palette-mint: #7CBBAE;
+    --palette-sage: #AFC491;
+    --palette-butter: #D7BC80;
+    --palette-coral: #D58B7F;
+    --palette-lavender: #B5A0BE;
+    --palette-slateblue: #809BAC;
+    --palette-teal: #5D9991;
+    --text-primary: #EEF2F1;
+    --text-muted: #9BAAA9;
+    --table-header-bg: #1A2125;
+    --table-header-text: #A3B0AE;
+    --table-row-hover: #20292D;
+    --table-text: #E8EEEC;
+    --input-bg: #171E22;
+    --card-shadow: 0 4px 14px rgba(0, 0, 0, 0.24);
+    --modal-overlay: rgba(8, 12, 14, 0.82);
+    --canvas-bg: linear-gradient(180deg, #191F23 0%, #14191D 100%);
+    --neu-shadow-light: rgba(226, 239, 235, 0.035);
+    --neu-shadow-dark: rgba(0, 0, 0, 0.42);
     --card-radius: 12px;
     --ui-gap: 12px;
     --ui-padding: 14px;
@@ -31,183 +39,252 @@
     --panel-cols: 5;
 }
 
-/* 2. MONOCHROME SLATE (Swiss Engineering & Minimal Pure Contrast) */
-[data-theme="monochrome"],
-[data-theme="obsidian"] {
-    color-scheme: dark;
-    --bg-app: #08090a;
-    --bg-card: #0f1113;
-    --bg-inner: #171a1d;
-    --border-subtle: #23272d;
-    --divider: rgba(139, 148, 158, 0.14);
-    --accent: #f4f4f5;
-    --accent-bg: rgba(244, 244, 245, 0.10);
-    --text-primary: #fafafa;
-    --text-muted: #8b949e;
-    --table-header-bg: #0f1113;
-    --table-header-text: #8b949e;
-    --table-row-hover: #1b1e22;
-    --table-text: #f4f4f5;
-    --input-bg: #0b0c0e;
-    --card-shadow: 0 6px 18px rgba(0, 0, 0, 0.7);
-    --modal-overlay: rgba(0, 0, 0, 0.92);
-    --canvas-bg: linear-gradient(180deg, #0e1012 0%, #08090a 100%);
-}
-
-/* 3. GEODETIC SAGE (Topographic GIS & Field Survey) */
-[data-theme="geodetic-sage"],
-[data-theme="teal-slate"] {
-    color-scheme: dark;
-    --bg-app: #0a0e0c;
-    --bg-card: #101714;
-    --bg-inner: #16201b;
-    --border-subtle: #1f2d27;
-    --divider: rgba(127, 159, 143, 0.14);
-    --accent: #34d399;
-    --accent-bg: rgba(52, 211, 153, 0.12);
-    --text-primary: #f0fdf4;
-    --text-muted: #7f9f8f;
-    --table-header-bg: #101714;
-    --table-header-text: #7f9f8f;
-    --table-row-hover: #18241f;
-    --table-text: #e6f7ee;
-    --input-bg: #0d1310;
-    --card-shadow: 0 6px 18px rgba(3, 8, 6, 0.55);
-    --modal-overlay: rgba(3, 7, 5, 0.90);
-    --canvas-bg: linear-gradient(180deg, #0f1713 0%, #0a0e0c 100%);
-}
-
-/* 4. NAVAL STEEL (Command & Spatial Telemetry) */
-[data-theme="naval-steel"],
-[data-theme="midnight"] {
-    color-scheme: dark;
-    --bg-app: #070c14;
-    --bg-card: #0d1420;
-    --bg-inner: #121c2c;
-    --border-subtle: #1a273c;
-    --divider: rgba(134, 155, 184, 0.14);
-    --accent: #38bdf8;
-    --accent-bg: rgba(56, 189, 248, 0.12);
-    --text-primary: #f8fafc;
-    --text-muted: #869bb8;
-    --table-header-bg: #0d1420;
-    --table-header-text: #869bb8;
-    --table-row-hover: #152236;
-    --table-text: #e2e8f0;
-    --input-bg: #090f19;
-    --card-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
-    --modal-overlay: rgba(3, 6, 12, 0.88);
-    --canvas-bg: linear-gradient(180deg, #0c1320 0%, #070c14 100%);
-}
-
-/* 5. INDUSTRIAL BASALT (Field GNSS Hardware & Batch Operations) */
-[data-theme="industrial-basalt"] {
-    color-scheme: dark;
-    --bg-app: #0c0b0a;
-    --bg-card: #141311;
-    --bg-inner: #1c1b18;
-    --border-subtle: #262420;
-    --divider: rgba(156, 149, 137, 0.14);
-    --accent: #d97706;
-    --accent-bg: rgba(217, 119, 6, 0.12);
-    --text-primary: #fafaf9;
-    --text-muted: #9c9589;
-    --table-header-bg: #141311;
-    --table-header-text: #9c9589;
-    --table-row-hover: #22201c;
-    --table-text: #f5f5f4;
-    --input-bg: #0f0e0c;
-    --card-shadow: 0 6px 18px rgba(0, 0, 0, 0.55);
-    --modal-overlay: rgba(5, 5, 4, 0.90);
-    --canvas-bg: linear-gradient(180deg, #161412 0%, #0c0b0a 100%);
-}
-
-/* 6. ALABASTER WARM LIGHT (Architectural Studio & Paper Canvas) */
-[data-theme="alabaster"] {
+[data-theme="monochrome"] {
     color-scheme: light;
-    --bg-app: #f6f5f1;
-    --bg-card: #ffffff;
-    --bg-inner: #eceae3;
-    --border-subtle: #d8d4c7;
-    --divider: #e0dcd0;
-    --accent: #1c1917;
-    --accent-bg: rgba(28, 25, 23, 0.08);
-    --text-primary: #1c1917;
-    --text-muted: #57534e;
-    --table-header-bg: #eceae3;
-    --table-header-text: #292524;
-    --table-row-hover: #f5f4ef;
-    --table-text: #1c1917;
-    --input-bg: #ffffff;
-    --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 2px 6px -1px rgba(0, 0, 0, 0.03);
-    --modal-overlay: rgba(28, 25, 23, 0.50);
-    --canvas-bg: linear-gradient(180deg, #f8f7f4 0%, #f0eee7 100%);
+    --bg-app: #F1F4F2;
+    --bg-card: #FAFBF9;
+    --bg-inner: #E8EEEA;
+    --border-subtle: #D3DDD8;
+    --divider: rgba(82, 105, 99, 0.15);
+    --accent: #5B7880;
+    --accent-bg: rgba(91, 120, 128, 0.12);
+    --accent-foreground: #F9FBFA;
+    --palette-mint: #4F8F82;
+    --palette-sage: #748D5D;
+    --palette-butter: #94753E;
+    --palette-coral: #B26B61;
+    --palette-lavender: #826B91;
+    --palette-slateblue: #5B7880;
+    --palette-teal: #477F79;
+    --text-primary: #263330;
+    --text-muted: #64736F;
+    --table-header-bg: #E8EEEA;
+    --table-header-text: #455650;
+    --table-row-hover: #F7F9F7;
+    --table-text: #303D38;
+    --input-bg: #FBFCFA;
+    --card-shadow: 0 1px 3px rgba(32, 50, 43, 0.05), 0 2px 6px -1px rgba(32, 50, 43, 0.035);
+    --modal-overlay: rgba(38, 51, 48, 0.42);
+    --canvas-bg: linear-gradient(180deg, #F6F8F6 0%, #EEF2EF 100%);
+    --neu-shadow-light: rgba(255, 255, 255, 0.92);
+    --neu-shadow-dark: rgba(113, 129, 121, 0.24);
 }
 
-/* 7. DAYLIGHT CLEAN (High-Luminance Crisp Executive Canvas) */
-[data-theme="daylight"] {
-    color-scheme: light;
-    --bg-app: #f8fafc;
-    --bg-card: #ffffff;
-    --bg-inner: #f1f5f9;
-    --border-subtle: #e2e8f0;
-    --divider: #e8eef5;
-    --accent: #0f172a;
-    --accent-bg: rgba(15, 23, 42, 0.08);
-    --text-primary: #0f172a;
-    --text-muted: #64748b;
-    --table-header-bg: #f1f5f9;
-    --table-header-text: #334155;
-    --table-row-hover: #f8fafc;
-    --table-text: #1e293b;
-    --input-bg: #ffffff;
-    --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 2px 6px -1px rgba(0, 0, 0, 0.03);
-    --modal-overlay: rgba(15, 23, 42, 0.45);
-    --canvas-bg: linear-gradient(180deg, #f8fafc 0%, #edf2f7 100%);
-}
-
-/* 8. NEUMORPHIC SOFT CLAY (Iconic Canonical Soft-UI Light Canvas) */
-[data-theme="neumorph-clay"] {
-    color-scheme: light;
-    --bg-app: #e0e5ec;
-    --bg-card: #e0e5ec;
-    --bg-inner: #d7dde6;
-    --border-subtle: #c8d0dc;
-    --divider: rgba(148, 163, 184, 0.25);
-    --accent: #2563eb;
-    --accent-bg: rgba(37, 99, 235, 0.12);
-    --text-primary: #1e293b;
-    --text-muted: #64748b;
-    --table-header-bg: #d7dde6;
-    --table-header-text: #334155;
-    --table-row-hover: #e8ecf3;
-    --table-text: #1e293b;
-    --input-bg: #e0e5ec;
-    --card-shadow: 6px 6px 16px #a3b1c6, -6px -6px 16px #ffffff;
-    --modal-overlay: rgba(30, 41, 59, 0.45);
-    --canvas-bg: linear-gradient(180deg, #e5eaf2 0%, #e0e5ec 100%);
-}
-
-/* 9. NEUMORPHIC CYBER DARK (Precision Matte Charcoal with Cyber Telemetry Highlights) */
 [data-theme="neumorph-dark"] {
     color-scheme: dark;
-    --bg-app: #1e222b;
-    --bg-card: #1e222b;
-    --bg-inner: #161920;
-    --border-subtle: #2a303c;
-    --divider: rgba(142, 155, 170, 0.15);
-    --accent: #06b6d4;
-    --accent-bg: rgba(6, 182, 212, 0.14);
-    --text-primary: #f1f5f9;
-    --text-muted: #8e9baa;
-    --table-header-bg: #161920;
-    --table-header-text: #8e9baa;
-    --table-row-hover: #262c37;
-    --table-text: #f8fafc;
-    --input-bg: #161920;
-    --card-shadow: 6px 6px 16px #13151b, -6px -6px 16px #292f3b;
-    --modal-overlay: rgba(10, 12, 16, 0.88);
-    --canvas-bg: linear-gradient(180deg, #242934 0%, #1e222b 100%);
+    --bg-app: #20252A;
+    --bg-card: #20252A;
+    --bg-inner: #191F23;
+    --border-subtle: #323B40;
+    --divider: rgba(155, 174, 169, 0.14);
+    --accent: #83BFAF;
+    --accent-bg: rgba(131, 191, 175, 0.13);
+    --accent-foreground: #17211F;
+    --palette-mint: #83BFAF;
+    --palette-sage: #B4C494;
+    --palette-butter: #D4B97D;
+    --palette-coral: #D28A7E;
+    --palette-lavender: #B3A0BD;
+    --palette-slateblue: #819BA8;
+    --palette-teal: #609A92;
+    --text-primary: #EDF2F0;
+    --text-muted: #9AA8A5;
+    --table-header-bg: #191F23;
+    --table-header-text: #9AA8A5;
+    --table-row-hover: #292F33;
+    --table-text: #E8EEEC;
+    --input-bg: #191F23;
+    --card-shadow: 5px 5px 14px rgba(0, 0, 0, 0.28), -4px -4px 12px rgba(225, 238, 233, 0.025);
+    --modal-overlay: rgba(8, 12, 14, 0.84);
+    --canvas-bg: linear-gradient(180deg, #252B30 0%, #20252A 100%);
+    --neu-shadow-light: rgba(225, 238, 233, 0.035);
+    --neu-shadow-dark: rgba(0, 0, 0, 0.48);
+}
+
+[data-theme="geodetic-sage"] {
+    color-scheme: dark;
+    --bg-app: #151D1A;
+    --bg-card: #1C2722;
+    --bg-inner: #26342D;
+    --border-subtle: #37473F;
+    --divider: rgba(160, 180, 157, 0.14);
+    --accent: #9AB58D;
+    --accent-bg: rgba(154, 181, 141, 0.13);
+    --accent-foreground: #1C281F;
+    --palette-mint: #86B9AA;
+    --palette-sage: #AFC491;
+    --palette-butter: #D6BC83;
+    --palette-coral: #D39184;
+    --palette-lavender: #B4A2BD;
+    --palette-slateblue: #819BA7;
+    --palette-teal: #64968A;
+    --text-primary: #EEF2EC;
+    --text-muted: #A0ADA0;
+    --table-header-bg: #1C2722;
+    --table-header-text: #A0ADA0;
+    --table-row-hover: #27342E;
+    --table-text: #E7ECE6;
+    --input-bg: #19231E;
+    --card-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+    --modal-overlay: rgba(7, 12, 9, 0.82);
+    --canvas-bg: linear-gradient(180deg, #1C2722 0%, #151D1A 100%);
+    --neu-shadow-light: rgba(226, 239, 229, 0.035);
+    --neu-shadow-dark: rgba(0, 0, 0, 0.42);
+}
+
+[data-theme="naval-steel"] {
+    color-scheme: dark;
+    --bg-app: #171D22;
+    --bg-card: #1D252B;
+    --bg-inner: #273239;
+    --border-subtle: #37464D;
+    --divider: rgba(158, 181, 185, 0.14);
+    --accent: #8EAFB9;
+    --accent-bg: rgba(142, 175, 185, 0.13);
+    --accent-foreground: #182226;
+    --palette-mint: #83B9B2;
+    --palette-sage: #B0C39A;
+    --palette-butter: #D7BE8B;
+    --palette-coral: #D59289;
+    --palette-lavender: #B6A5C1;
+    --palette-slateblue: #8EAFB9;
+    --palette-teal: #659B9A;
+    --text-primary: #EEF2F2;
+    --text-muted: #9EACB0;
+    --table-header-bg: #1D252B;
+    --table-header-text: #9EACB0;
+    --table-row-hover: #273137;
+    --table-text: #E7ECEE;
+    --input-bg: #1A2227;
+    --card-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+    --modal-overlay: rgba(8, 12, 15, 0.84);
+    --canvas-bg: linear-gradient(180deg, #202930 0%, #171D22 100%);
+    --neu-shadow-light: rgba(225, 238, 241, 0.035);
+    --neu-shadow-dark: rgba(0, 0, 0, 0.42);
+}
+
+[data-theme="industrial-basalt"] {
+    color-scheme: dark;
+    --bg-app: #211D19;
+    --bg-card: #28231E;
+    --bg-inner: #342E27;
+    --border-subtle: #494138;
+    --divider: rgba(180, 165, 142, 0.14);
+    --accent: #D2AD75;
+    --accent-bg: rgba(210, 173, 117, 0.14);
+    --accent-foreground: #30271D;
+    --palette-mint: #83B8A9;
+    --palette-sage: #B0C18F;
+    --palette-butter: #D7BC80;
+    --palette-coral: #D58B7F;
+    --palette-lavender: #B5A0BA;
+    --palette-slateblue: #8499A1;
+    --palette-teal: #63978C;
+    --text-primary: #F2EEE8;
+    --text-muted: #B1A79A;
+    --table-header-bg: #28231E;
+    --table-header-text: #B1A79A;
+    --table-row-hover: #342F29;
+    --table-text: #ECE7E0;
+    --input-bg: #241F1B;
+    --card-shadow: 0 4px 14px rgba(0, 0, 0, 0.28);
+    --modal-overlay: rgba(13, 10, 7, 0.84);
+    --canvas-bg: linear-gradient(180deg, #2D2822 0%, #211D19 100%);
+    --neu-shadow-light: rgba(242, 233, 219, 0.035);
+    --neu-shadow-dark: rgba(0, 0, 0, 0.45);
+}
+
+[data-theme="alabaster"] {
+    color-scheme: light;
+    --bg-app: #F5F1EA;
+    --bg-card: #FCFAF6;
+    --bg-inner: #ECE7DE;
+    --border-subtle: #DDD3C4;
+    --divider: rgba(111, 99, 80, 0.16);
+    --accent: #947F66;
+    --accent-bg: rgba(148, 127, 102, 0.12);
+    --accent-foreground: #FFFCF7;
+    --palette-mint: #4F8C7E;
+    --palette-sage: #758A5E;
+    --palette-butter: #967642;
+    --palette-coral: #B36D63;
+    --palette-lavender: #826C91;
+    --palette-slateblue: #657E88;
+    --palette-teal: #477D75;
+    --text-primary: #302D28;
+    --text-muted: #71695E;
+    --table-header-bg: #ECE7DE;
+    --table-header-text: #514A40;
+    --table-row-hover: #F7F4EE;
+    --table-text: #38332C;
+    --input-bg: #FDFBF8;
+    --card-shadow: 0 1px 3px rgba(48, 39, 25, 0.05), 0 2px 6px -1px rgba(48, 39, 25, 0.035);
+    --modal-overlay: rgba(48, 45, 40, 0.42);
+    --canvas-bg: linear-gradient(180deg, #F9F6F0 0%, #F1ECE3 100%);
+    --neu-shadow-light: rgba(255, 255, 255, 0.92);
+    --neu-shadow-dark: rgba(135, 121, 99, 0.23);
+}
+
+[data-theme="daylight"] {
+    color-scheme: light;
+    --bg-app: #F3F6F7;
+    --bg-card: #FBFCFC;
+    --bg-inner: #E7EEF0;
+    --border-subtle: #D4E0E3;
+    --divider: rgba(82, 110, 116, 0.15);
+    --accent: #648C95;
+    --accent-bg: rgba(100, 140, 149, 0.12);
+    --accent-foreground: #F9FCFC;
+    --palette-mint: #4D8D84;
+    --palette-sage: #778E66;
+    --palette-butter: #9A7A44;
+    --palette-coral: #B57068;
+    --palette-lavender: #887395;
+    --palette-slateblue: #5E7E89;
+    --palette-teal: #4C817D;
+    --text-primary: #263438;
+    --text-muted: #627277;
+    --table-header-bg: #E7EEF0;
+    --table-header-text: #46575B;
+    --table-row-hover: #F7F9FA;
+    --table-text: #303E42;
+    --input-bg: #FCFDFD;
+    --card-shadow: 0 1px 3px rgba(33, 55, 60, 0.05), 0 2px 6px -1px rgba(33, 55, 60, 0.035);
+    --modal-overlay: rgba(38, 52, 56, 0.4);
+    --canvas-bg: linear-gradient(180deg, #F8FAFA 0%, #EEF3F4 100%);
+    --neu-shadow-light: rgba(255, 255, 255, 0.94);
+    --neu-shadow-dark: rgba(117, 138, 143, 0.24);
+}
+
+[data-theme="neumorph-clay"] {
+    color-scheme: light;
+    --bg-app: #E7EBEF;
+    --bg-card: #E7EBEF;
+    --bg-inner: #DDE3E8;
+    --border-subtle: #CDD5DD;
+    --divider: rgba(100, 116, 139, 0.2);
+    --accent: #687E97;
+    --accent-bg: rgba(104, 126, 151, 0.13);
+    --accent-foreground: #F8FAFC;
+    --palette-mint: #4D8B82;
+    --palette-sage: #758B64;
+    --palette-butter: #987B49;
+    --palette-coral: #B67269;
+    --palette-lavender: #877491;
+    --palette-slateblue: #617A94;
+    --palette-teal: #4B7F7A;
+    --text-primary: #2A333C;
+    --text-muted: #65727D;
+    --table-header-bg: #DDE3E8;
+    --table-header-text: #46515C;
+    --table-row-hover: #EEF1F4;
+    --table-text: #313B45;
+    --input-bg: #EBEFF2;
+    --card-shadow: 0 1px 3px rgba(53, 67, 81, 0.05), 0 2px 6px -1px rgba(53, 67, 81, 0.035);
+    --modal-overlay: rgba(42, 51, 60, 0.4);
+    --canvas-bg: linear-gradient(180deg, #EDF0F3 0%, #E7EBEF 100%);
+    --neu-shadow-light: rgba(255, 255, 255, 0.92);
+    --neu-shadow-dark: rgba(117, 130, 144, 0.28);
 }
 
 /* ==========================================================================
@@ -315,76 +392,36 @@ html.showcase-active[data-theme] aside {
    LIGHT MODE ARCHITECTURAL & EXECUTIVE OVERRIDES
    ========================================================================== */
 
-/* 1. Force Outer Canvas & Backgrounds */
-[data-theme="daylight"],
-[data-theme="daylight"] body,
-[data-theme="daylight"] #root,
-[data-theme="alabaster"],
-[data-theme="alabaster"] body,
-[data-theme="alabaster"] #root,
-[data-theme="neumorph-clay"],
-[data-theme="neumorph-clay"] body,
-[data-theme="neumorph-clay"] #root {
+/* 1. Shared light-palette canvas and surface overrides */
+.light-mode,
+.light-mode body,
+.light-mode #root {
     background-color: var(--bg-app) !important;
 }
 
 /* 2. Force Card Layers */
-[data-theme="daylight"] div[class*="bg-card"],
-[data-theme="alabaster"] div[class*="bg-card"],
-[data-theme="neumorph-clay"] div[class*="bg-card"] {
+.light-mode div[class*="bg-card"] {
     background-color: var(--bg-card) !important;
     border-color: var(--border-subtle) !important;
 }
 
 /* 3. Force Inner Wells */
-[data-theme="daylight"] div[class*="bg-inner"],
-[data-theme="alabaster"] div[class*="bg-inner"],
-[data-theme="neumorph-clay"] div[class*="bg-inner"] {
+.light-mode div[class*="bg-inner"] {
     background-color: var(--bg-inner) !important;
     border-color: var(--border-subtle) !important;
 }
 
 /* 4. Force High-Contrast Text */
-[data-theme="daylight"] [class*="text-text-base"],
-[data-theme="daylight"] [class*="text-zinc-100"],
-[data-theme="daylight"] [class*="text-zinc-200"] {
-    color: #0f172a !important;
+.light-mode [class*="text-text-base"] {
+    color: var(--text-primary) !important;
 }
 
-[data-theme="alabaster"] [class*="text-text-base"],
-[data-theme="alabaster"] [class*="text-zinc-100"],
-[data-theme="alabaster"] [class*="text-zinc-200"] {
-    color: #1c1917 !important;
-}
-
-[data-theme="neumorph-clay"] [class*="text-text-base"],
-[data-theme="neumorph-clay"] [class*="text-zinc-100"],
-[data-theme="neumorph-clay"] [class*="text-zinc-200"] {
-    color: #1e293b !important;
-}
-
-[data-theme="daylight"] [class*="text-text-muted"],
-[data-theme="daylight"] [class*="text-slate-300"],
-[data-theme="daylight"] [class*="text-zinc-400"] {
-    color: #64748b !important;
-}
-
-[data-theme="alabaster"] [class*="text-text-muted"],
-[data-theme="alabaster"] [class*="text-slate-300"],
-[data-theme="alabaster"] [class*="text-zinc-400"] {
-    color: #57534e !important;
-}
-
-[data-theme="neumorph-clay"] [class*="text-text-muted"],
-[data-theme="neumorph-clay"] [class*="text-slate-300"],
-[data-theme="neumorph-clay"] [class*="text-zinc-400"] {
-    color: #64748b !important;
+.light-mode [class*="text-text-muted"] {
+    color: var(--text-muted) !important;
 }
 
 /* 5. Force Soft Hairline Borders */
-[data-theme="daylight"] [class*="border-subtle"],
-[data-theme="alabaster"] [class*="border-subtle"],
-[data-theme="neumorph-clay"] [class*="border-subtle"] {
+.light-mode [class*="border-subtle"] {
     border-color: var(--border-subtle) !important;
 }
 
@@ -441,35 +478,109 @@ html.showcase-active[data-theme] aside {
     background-color: var(--bg-app) !important;
     border-color: rgba(255, 255, 255, 0.045) !important;
     box-shadow:
-        -5px -5px 14px rgba(255, 255, 255, 0.028),
-        6px 6px 18px rgba(0, 0, 0, 0.65),
+        -5px -5px 14px var(--neu-shadow-light),
+        6px 6px 18px var(--neu-shadow-dark),
+        inset 1px 1px 0px var(--neu-shadow-light) !important;
+}
+
+/* 2. DARK THEMES: Raised Extruded Inner Panels, KPI Chips, Option Cards, Dropzones & Metric Cards (Arising from Canvas) */
+[data-theme][data-surface="neumorphism"] .bg-inner:not(input):not(textarea),
+[data-theme][data-surface="neumorphism"] .style-surface-inner,
+[data-theme][data-surface="neumorphism"] div[class*="bg-inner"],
+[data-theme][data-surface="neumorphism"] label[class*="bg-inner"],
+[data-theme][data-surface="neumorphism"] div[class*="border-dashed"] {
+    background-color: var(--bg-app) !important;
+    border: 1px solid rgba(255, 255, 255, 0.05) !important;
+    box-shadow:
+        -4px -4px 10px var(--neu-shadow-light),
+        4px 5px 12px var(--neu-shadow-dark),
+        inset 1px 1px 0px var(--neu-shadow-light) !important;
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.2s ease !important;
+}
+
+[data-theme][data-surface="neumorphism"] div[class*="bg-inner"][class*="cursor-pointer"]:hover,
+[data-theme][data-surface="neumorphism"] label[class*="bg-inner"]:hover,
+[data-theme][data-surface="neumorphism"] div[class*="border-dashed"]:hover {
+    transform: translateY(-1.5px) !important;
+    box-shadow:
+        -5px -5px 12px rgba(255, 255, 255, 0.06),
+        5px 6px 14px rgba(0, 0, 0, 0.75),
         inset 1px 1px 0px rgba(255, 255, 255, 0.04) !important;
 }
 
-/* 2. DARK THEMES: Sunken Inset Wells, Containers & Inner Panels */
-[data-theme][data-surface="neumorphism"] .bg-inner,
-[data-theme][data-surface="neumorphism"] .style-surface-inner,
-[data-theme][data-surface="neumorphism"] div[class*="bg-inner"] {
-    background-color: var(--bg-app) !important;
-    border-color: rgba(0, 0, 0, 0.35) !important;
+[data-theme][data-surface="neumorphism"] div[class*="bg-inner"][class*="cursor-pointer"]:active,
+[data-theme][data-surface="neumorphism"] label[class*="bg-inner"]:active {
+    transform: translateY(0px) !important;
     box-shadow:
-        inset 4px 4px 10px rgba(0, 0, 0, 0.65),
-        inset -3px -3px 8px rgba(255, 255, 255, 0.03) !important;
+        -2px -2px 5px rgba(255, 255, 255, 0.03),
+        2px 2px 6px rgba(0, 0, 0, 0.55) !important;
 }
 
-/* 3. DARK THEMES: Sunken Form Inputs, Selects & Textareas */
-[data-theme][data-surface="neumorphism"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+/* Extruded Selects / Dropdown Triggers (Must Arise from Canvas) */
 [data-theme][data-surface="neumorphism"] select,
+[data-theme][data-surface="neumorphism"] select[class*="bg-inner"],
+[data-theme][data-surface="neumorphism"] div[class*="relative"] > select,
+[data-theme][data-surface="neumorphism"] [role="combobox"] {
+    background-color: var(--bg-app) !important;
+    border: 1px solid rgba(255, 255, 255, 0.07) !important;
+    box-shadow:
+        -4px -4px 10px rgba(255, 255, 255, 0.05),
+        4px 5px 12px rgba(0, 0, 0, 0.68),
+        inset 1px 1px 0px rgba(255, 255, 255, 0.04) !important;
+    cursor: pointer;
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.2s ease !important;
+}
+
+[data-theme][data-surface="neumorphism"] select:hover,
+[data-theme][data-surface="neumorphism"] [role="combobox"]:hover {
+    transform: translateY(-1.5px) !important;
+    box-shadow:
+        -5px -5px 12px rgba(255, 255, 255, 0.07),
+        5px 6px 14px rgba(0, 0, 0, 0.78) !important;
+}
+
+[data-theme][data-surface="neumorphism"] select:focus,
+[data-theme][data-surface="neumorphism"] [role="combobox"]:focus {
+    box-shadow:
+        -3px -3px 8px rgba(255, 255, 255, 0.05),
+        3px 4px 10px rgba(0, 0, 0, 0.68),
+        0 0 0 1.5px var(--accent) !important;
+}
+
+[data-theme][data-surface="neumorphism"] select:active,
+[data-theme][data-surface="neumorphism"] [role="combobox"]:active {
+    transform: translateY(0px) !important;
+    box-shadow:
+        -2px -2px 5px rgba(255, 255, 255, 0.03),
+        2px 2px 6px rgba(0, 0, 0, 0.55),
+        0 0 0 1.5px var(--accent) !important;
+}
+
+[data-theme][data-surface="neumorphism"] select option {
+    background-color: var(--bg-app) !important;
+    color: var(--text-base) !important;
+}
+
+[data-theme][data-surface="neumorphism"] div[class*="h-2.5"][class*="rounded-full"][class*="overflow-hidden"],
+[data-theme][data-surface="neumorphism"] div[class*="h-2"][class*="rounded-full"][class*="overflow-hidden"] {
+    background-color: var(--bg-app) !important;
+    box-shadow:
+        inset 2px 2px 5px rgba(0, 0, 0, 0.7),
+        inset -1px -1px 3px rgba(255, 255, 255, 0.04) !important;
+}
+
+/* 3. DARK THEMES: Sunken Form Inputs & Textareas (Press Effect) */
+[data-theme][data-surface="neumorphism"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="button"]):not([type="submit"]):not([type="reset"]),
 [data-theme][data-surface="neumorphism"] textarea {
     background-color: var(--bg-app) !important;
-    border: 1px solid rgba(255, 255, 255, 0.04) !important;
+    border: 1px solid rgba(255, 255, 255, 0.045) !important;
     box-shadow:
         inset 3px 3px 7px rgba(0, 0, 0, 0.6),
         inset -2px -2px 6px rgba(255, 255, 255, 0.03) !important;
-    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+    transition: box-shadow 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
 }
+
 [data-theme][data-surface="neumorphism"] input:focus,
-[data-theme][data-surface="neumorphism"] select:focus,
 [data-theme][data-surface="neumorphism"] textarea:focus {
     box-shadow:
         inset 3px 3px 7px rgba(0, 0, 0, 0.6),
@@ -477,36 +588,158 @@ html.showcase-active[data-theme] aside {
         0 0 0 1.5px var(--accent) !important;
 }
 
-/* 4. DARK THEMES: Extruded Buttons & Interactive Pills */
+/* 3b. Sunken Code Blocks, Terminal Consoles, and Pre Containers (Press Effect for Non-Input Content) */
+[data-theme][data-surface="neumorphism"] pre,
+[data-theme][data-surface="neumorphism"] div:has(> pre),
+[data-theme][data-surface="neumorphism"] div[class*="font-mono"][class*="overflow-x-auto"],
+[data-theme][data-surface="neumorphism"] div[class*="font-mono"][class*="max-h-"] {
+    background-color: var(--bg-app) !important;
+    border: 1px solid rgba(255, 255, 255, 0.04) !important;
+    box-shadow:
+        inset 3px 3px 8px rgba(0, 0, 0, 0.7),
+        inset -2px -2px 6px rgba(255, 255, 255, 0.03) !important;
+    transform: none !important;
+}
+
+/* 3c. Debossed Checklist Pills & Status Wells (Press Effect for Non-Input Content) */
+[data-theme][data-surface="neumorphism"] li[class*="bg-inner"] {
+    background-color: var(--bg-app) !important;
+    border: 1px solid rgba(255, 255, 255, 0.04) !important;
+    box-shadow:
+        inset 2px 2px 5px rgba(0, 0, 0, 0.65),
+        inset -1.5px -1.5px 4px rgba(255, 255, 255, 0.03) !important;
+    transform: none !important;
+}
+
+/* 4. DARK THEMES: Extruded Buttons & Interactive Pills (Arising from Canvas) */
 [data-theme][data-surface="neumorphism"] button[class*="bg-card"],
 [data-theme][data-surface="neumorphism"] button[class*="bg-inner"],
 [data-theme][data-surface="neumorphism"] button.neu-btn {
-    border: 1px solid rgba(255, 255, 255, 0.04) !important;
-    box-shadow:
-        -3px -3px 8px rgba(255, 255, 255, 0.035),
-        4px 4px 10px rgba(0, 0, 0, 0.55),
-        inset 1px 1px 0px rgba(255, 255, 255, 0.03) !important;
-    transition: box-shadow 0.2s ease, transform 0.15s ease;
-}
-[data-theme][data-surface="neumorphism"] button[class*="bg-card"]:hover,
-[data-theme][data-surface="neumorphism"] button[class*="bg-inner"]:hover {
+    background-color: var(--bg-app) !important;
+    border: 1px solid rgba(255, 255, 255, 0.05) !important;
     box-shadow:
         -4px -4px 10px rgba(255, 255, 255, 0.05),
-        5px 5px 12px rgba(0, 0, 0, 0.65) !important;
+        4px 5px 12px rgba(0, 0, 0, 0.65) !important;
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.2s ease !important;
+}
+[data-theme][data-surface="neumorphism"] button[class*="bg-card"]:hover,
+[data-theme][data-surface="neumorphism"] button[class*="bg-inner"]:hover,
+[data-theme][data-surface="neumorphism"] button.neu-btn:hover {
+    transform: translateY(-1.5px) !important;
+    box-shadow:
+        -5px -5px 12px rgba(255, 255, 255, 0.07),
+        5px 6px 14px rgba(0, 0, 0, 0.75) !important;
 }
 [data-theme][data-surface="neumorphism"] button[class*="bg-card"]:active,
-[data-theme][data-surface="neumorphism"] button[class*="bg-inner"]:active {
+[data-theme][data-surface="neumorphism"] button[class*="bg-inner"]:active,
+[data-theme][data-surface="neumorphism"] button.neu-btn:active {
+    transform: translateY(0px) !important;
     box-shadow:
-        inset 3px 3px 6px rgba(0, 0, 0, 0.65),
-        inset -2px -2px 5px rgba(255, 255, 255, 0.03) !important;
+        -2px -2px 5px rgba(255, 255, 255, 0.03),
+        2px 2px 6px rgba(0, 0, 0, 0.55) !important;
+}
+
+/* Ensure full-width accordion header buttons cleanly let their outer rounded container arise */
+[data-theme][data-surface="neumorphism"] div[class*="overflow-hidden"] > button[class*="w-full"][class*="bg-inner"],
+[data-theme="daylight"][data-surface="neumorphism"] div[class*="overflow-hidden"] > button[class*="w-full"][class*="bg-inner"],
+[data-theme="alabaster"][data-surface="neumorphism"] div[class*="overflow-hidden"] > button[class*="w-full"][class*="bg-inner"],
+[data-theme="neumorph-clay"][data-surface="neumorphism"] div[class*="overflow-hidden"] > button[class*="w-full"][class*="bg-inner"] {
+    background-color: transparent !important;
+    background-image: none !important;
+    border: none !important;
+    box-shadow: none !important;
+    transform: none !important;
+}
+
+[data-theme][data-surface="neumorphism"] div[class*="overflow-hidden"]:has(> button[class*="w-full"][class*="bg-inner"]:hover) {
+    transform: translateY(-1.5px) !important;
+    box-shadow:
+        -5px -5px 12px rgba(255, 255, 255, 0.06),
+        5px 6px 14px rgba(0, 0, 0, 0.75) !important;
+}
+
+/* 4b. DARK THEMES: Sidebar Navigation & Section Navigation Arise Effect */
+[data-theme][data-surface="neumorphism"] nav[aria-label*="Workspace navigation"] {
+    background-color: var(--bg-app) !important;
+    border-right-color: rgba(255, 255, 255, 0.05) !important;
+}
+
+[data-theme][data-surface="neumorphism"] .sidebar-nav-item,
+[data-theme][data-surface="neumorphism"] nav[aria-label*="Workspace navigation"] button {
+    background-color: transparent;
+    border: 1px solid transparent;
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.2s ease, background-color 0.2s ease !important;
+}
+
+[data-theme][data-surface="neumorphism"] .sidebar-nav-item:hover,
+[data-theme][data-surface="neumorphism"] nav[aria-label*="Workspace navigation"] button:hover {
+    background-color: var(--bg-app) !important;
+    border: 1px solid rgba(255, 255, 255, 0.05) !important;
+    transform: translateY(-1.5px) !important;
+    box-shadow:
+        -3px -3px 8px rgba(255, 255, 255, 0.04),
+        3px 4px 10px rgba(0, 0, 0, 0.6) !important;
+}
+
+[data-theme][data-surface="neumorphism"] .sidebar-nav-item.sidebar-nav-active,
+[data-theme][data-surface="neumorphism"] .sidebar-nav-item[aria-current="page"],
+[data-theme][data-surface="neumorphism"] nav[aria-label*="Workspace navigation"] button[aria-current="page"] {
+    background-color: var(--bg-app) !important;
+    border: 1px solid rgba(255, 255, 255, 0.09) !important;
+    transform: translateY(-1px) !important;
+    box-shadow:
+        -4px -4px 10px rgba(255, 255, 255, 0.06),
+        4px 5px 12px rgba(0, 0, 0, 0.75) !important;
+}
+
+[data-theme][data-surface="neumorphism"] .sidebar-nav-item.sidebar-nav-active:hover,
+[data-theme][data-surface="neumorphism"] .sidebar-nav-item[aria-current="page"]:hover,
+[data-theme][data-surface="neumorphism"] nav[aria-label*="Workspace navigation"] button[aria-current="page"]:hover {
+    transform: translateY(-2px) !important;
+    box-shadow:
+        -5px -5px 12px rgba(255, 255, 255, 0.08),
+        5px 6px 14px rgba(0, 0, 0, 0.82) !important;
+}
+
+[data-theme][data-surface="neumorphism"] .sidebar-nav-item:active,
+[data-theme][data-surface="neumorphism"] nav[aria-label*="Workspace navigation"] button:active {
+    transform: translateY(0px) !important;
+    box-shadow:
+        -2px -2px 5px rgba(255, 255, 255, 0.03),
+        2px 2px 6px rgba(0, 0, 0, 0.55) !important;
+}
+
+/* UnderlineTabStrip and tablist buttons stay flat ("what it is") without button arise */
+[data-theme][data-surface="neumorphism"] div[role="tablist"] button[role="tab"] {
+    background-color: transparent !important;
+    background-image: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    transform: none !important;
+}
+
+/* 4c. COLOR SWATCHES & PALETTES: Always preserve custom inline background colors in Neumorphism */
+[data-theme][data-surface="neumorphism"] button.neu-color-swatch,
+[data-theme][data-surface="neumorphism"] button[style*="background"],
+[data-theme][data-surface="neumorphism"] button[style*="background-color"],
+[data-theme][data-surface="neumorphism"] button[style*="backgroundColor"] {
+    background-image: none !important;
+    border: 1px solid rgba(255, 255, 255, 0.25) !important;
+    box-shadow:
+        -1px -1px 2.5px rgba(255, 255, 255, 0.15),
+        1.5px 2px 4px rgba(0, 0, 0, 0.65),
+        inset 0.5px 0.5px 1px rgba(255, 255, 255, 0.35) !important;
 }
 
 /* 5. DARK THEMES: Tactile Neumorphic Toggle Switches (Debossed Inset Slot & 3D Extruded Knob) */
 [data-theme][data-surface="neumorphism"] button.neu-toggle,
-[data-theme][data-surface="neumorphism"] button[class*="rounded-full"][class*="p-0.5"],
-[data-theme][data-surface="neumorphism"] button[class*="rounded-full"][class*="h-5"],
-[data-theme][data-surface="neumorphism"] button[class*="rounded-full"][class*="h-4"],
-[data-theme][data-surface="neumorphism"] div[class*="rounded-full"][class*="p-0.5"] {
+[data-theme][data-surface="neumorphism"] button[role="switch"],
+[data-theme][data-surface="neumorphism"] button[class*="rounded-full"][class*="p-0.5"]:not([style*="background"]):not([class*="neu-color-swatch"]),
+[data-theme][data-surface="neumorphism"] button[class*="rounded-full"]:has(> .neu-toggle-thumb):not([style*="background"]):not([class*="neu-color-swatch"]),
+[data-theme][data-surface="neumorphism"] button[class*="rounded-full"]:has(> div[class*="rounded-full"]):not([style*="background"]):not([class*="neu-color-swatch"]),
+[data-theme][data-surface="neumorphism"] button[class*="rounded-full"]:has(> span[class*="rounded-full"]):not([style*="background"]):not([class*="neu-color-swatch"]),
+[data-theme][data-surface="neumorphism"] div[class*="rounded-full"][class*="p-0.5"]:not([style*="background"]) {
     position: relative;
     border-radius: 9999px !important;
     overflow: visible !important;
@@ -515,8 +748,12 @@ html.showcase-active[data-theme] aside {
 
 /* Dark Mode - OFF Track: Deep carved-out hollow groove */
 [data-theme][data-surface="neumorphism"] button.neu-toggle:not(.neu-active):not([data-state="checked"]),
-[data-theme][data-surface="neumorphism"] button[class*="rounded-full"]:not([class*="bg-sky"]):not([class*="bg-emerald"]):not([class*="bg-blue"]):not([class*="bg-green"]):not([class*="bg-red"]):not([class*="bg-amber"]),
-[data-theme][data-surface="neumorphism"] div[class*="rounded-full"][class*="p-0.5"]:not([class*="bg-sky"]):not([class*="bg-emerald"]):not([class*="bg-blue"]):not([class*="bg-green"]):not([class*="bg-red"]) {
+[data-theme][data-surface="neumorphism"] button[role="switch"]:not([aria-checked="true"]):not([data-state="checked"]),
+[data-theme][data-surface="neumorphism"] button[class*="rounded-full"][class*="p-0.5"]:not([class*="bg-sky"]):not([class*="bg-emerald"]):not([class*="bg-blue"]):not([class*="bg-green"]):not([class*="bg-red"]):not([class*="bg-amber"]):not([style*="background"]):not([class*="neu-color-swatch"]),
+[data-theme][data-surface="neumorphism"] button[class*="rounded-full"]:has(> .neu-toggle-thumb):not(.neu-active):not([data-state="checked"]):not([style*="background"]):not([class*="neu-color-swatch"]),
+[data-theme][data-surface="neumorphism"] button[class*="rounded-full"]:has(> div[class*="rounded-full"]):not([class*="bg-sky"]):not([class*="bg-emerald"]):not([class*="bg-blue"]):not([class*="bg-green"]):not([class*="bg-red"]):not([class*="bg-amber"]):not([style*="background"]):not([class*="neu-color-swatch"]),
+[data-theme][data-surface="neumorphism"] button[class*="rounded-full"]:has(> span[class*="rounded-full"]):not([class*="bg-sky"]):not([class*="bg-emerald"]):not([class*="bg-blue"]):not([class*="bg-green"]):not([class*="bg-red"]):not([class*="bg-amber"]):not([style*="background"]):not([class*="neu-color-swatch"]),
+[data-theme][data-surface="neumorphism"] div[class*="rounded-full"][class*="p-0.5"]:not([class*="bg-sky"]):not([class*="bg-emerald"]):not([class*="bg-blue"]):not([class*="bg-green"]):not([class*="bg-red"]):not([style*="background"]) {
     background-color: #0b0f19 !important;
     background-image: linear-gradient(180deg, #070a10 0%, #0d121c 100%) !important;
     border: 1px solid rgba(0, 0, 0, 0.75) !important;
@@ -526,7 +763,7 @@ html.showcase-active[data-theme] aside {
         0 1px 1px rgba(255, 255, 255, 0.04) !important;
 }
 
-/* Dark Mode - ON Track (Sky / Cyan): Illuminated sunken channel */
+/* Dark Mode - ON Track (Sky / Cyan): Clean tactile sunken channel (NO GLOW) */
 [data-theme][data-surface="neumorphism"] button.neu-toggle-sky.neu-active,
 [data-theme][data-surface="neumorphism"] button.neu-toggle-sky[data-state="checked"],
 [data-theme][data-surface="neumorphism"] button[class*="rounded-full"][class*="bg-sky-"],
@@ -537,11 +774,10 @@ html.showcase-active[data-theme] aside {
     box-shadow:
         inset 1.5px 1.5px 3.5px rgba(0, 0, 0, 0.45),
         inset -1.5px -1.5px 3px rgba(255, 255, 255, 0.35),
-        0 0 12px rgba(14, 165, 233, 0.45),
         0 1px 2px rgba(0, 0, 0, 0.35) !important;
 }
 
-/* Dark Mode - ON Track (Emerald / Green): Vibrant illuminated channel */
+/* Dark Mode - ON Track (Emerald / Green): Clean tactile sunken channel (NO GLOW) */
 [data-theme][data-surface="neumorphism"] button.neu-toggle-emerald.neu-active,
 [data-theme][data-surface="neumorphism"] button.neu-toggle-emerald[data-state="checked"],
 [data-theme][data-surface="neumorphism"] button[class*="rounded-full"][class*="bg-emerald-"],
@@ -552,11 +788,10 @@ html.showcase-active[data-theme] aside {
     box-shadow:
         inset 1.5px 1.5px 3.5px rgba(0, 0, 0, 0.45),
         inset -1.5px -1.5px 3px rgba(255, 255, 255, 0.35),
-        0 0 12px rgba(16, 185, 129, 0.45),
         0 1px 2px rgba(0, 0, 0, 0.35) !important;
 }
 
-/* Dark Mode - ON Track (Red / Amber) */
+/* Dark Mode - ON Track (Red / Amber) (NO GLOW) */
 [data-theme][data-surface="neumorphism"] button[class*="rounded-full"][class*="bg-red-"],
 [data-theme][data-surface="neumorphism"] div[class*="rounded-full"][class*="bg-red-"] {
     background-color: #dc2626 !important;
@@ -565,7 +800,7 @@ html.showcase-active[data-theme] aside {
     box-shadow:
         inset 1.5px 1.5px 3.5px rgba(0, 0, 0, 0.4),
         inset -1.5px -1.5px 3px rgba(255, 255, 255, 0.35),
-        0 0 12px rgba(239, 68, 68, 0.45) !important;
+        0 1px 2px rgba(0, 0, 0, 0.35) !important;
 }
 [data-theme][data-surface="neumorphism"] button.neu-toggle-amber.neu-active,
 [data-theme][data-surface="neumorphism"] button.neu-toggle-amber[data-state="checked"],
@@ -577,11 +812,10 @@ html.showcase-active[data-theme] aside {
     box-shadow:
         inset 1.5px 1.5px 3.5px rgba(0, 0, 0, 0.4),
         inset -1.5px -1.5px 3px rgba(255, 255, 255, 0.35),
-        0 0 12px rgba(245, 158, 11, 0.5),
         0 1px 2px rgba(0, 0, 0, 0.35) !important;
 }
 
-/* Dark Mode - ON Track (Violet / Purple) */
+/* Dark Mode - ON Track (Violet / Purple) (NO GLOW) */
 [data-theme][data-surface="neumorphism"] button.neu-toggle-violet.neu-active,
 [data-theme][data-surface="neumorphism"] button.neu-toggle-violet[data-state="checked"],
 [data-theme][data-surface="neumorphism"] button[class*="rounded-full"][class*="bg-violet-"],
@@ -592,7 +826,6 @@ html.showcase-active[data-theme] aside {
     box-shadow:
         inset 1.5px 1.5px 3.5px rgba(0, 0, 0, 0.4),
         inset -1.5px -1.5px 3px rgba(255, 255, 255, 0.35),
-        0 0 12px rgba(139, 92, 246, 0.5),
         0 1px 2px rgba(0, 0, 0, 0.35) !important;
 }
 
@@ -612,7 +845,7 @@ html.showcase-active[data-theme] aside {
     transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease !important;
 }
 
-/* Dark Mode - Knob inside Active Sky Channel */
+/* Dark Mode - Knob inside Active Sky Channel (NO GLOW) */
 [data-theme][data-surface="neumorphism"] button.neu-toggle-sky.neu-active .neu-toggle-thumb,
 [data-theme][data-surface="neumorphism"] button.neu-toggle-sky[data-state="checked"] .neu-toggle-thumb,
 [data-theme][data-surface="neumorphism"] button[class*="rounded-full"][class*="bg-sky-"] > div[class*="rounded-full"],
@@ -623,11 +856,10 @@ html.showcase-active[data-theme] aside {
     box-shadow:
         -1.5px -1.5px 3px rgba(255, 255, 255, 0.85),
         2px 2.5px 5px rgba(2, 132, 199, 0.6),
-        0 0 8px rgba(56, 189, 248, 0.6),
         inset 1px 1px 1.5px #ffffff !important;
 }
 
-/* Dark Mode - Knob inside Active Emerald Channel */
+/* Dark Mode - Knob inside Active Emerald Channel (NO GLOW) */
 [data-theme][data-surface="neumorphism"] button.neu-toggle-emerald.neu-active .neu-toggle-thumb,
 [data-theme][data-surface="neumorphism"] button.neu-toggle-emerald[data-state="checked"] .neu-toggle-thumb,
 [data-theme][data-surface="neumorphism"] button[class*="rounded-full"][class*="bg-emerald-"] > div[class*="rounded-full"],
@@ -638,11 +870,10 @@ html.showcase-active[data-theme] aside {
     box-shadow:
         -1.5px -1.5px 3px rgba(255, 255, 255, 0.85),
         2px 2.5px 5px rgba(5, 150, 105, 0.6),
-        0 0 8px rgba(52, 211, 153, 0.6),
         inset 1px 1px 1.5px #ffffff !important;
 }
 
-/* Dark Mode - Knob inside Active Amber Channel */
+/* Dark Mode - Knob inside Active Amber Channel (NO GLOW) */
 [data-theme][data-surface="neumorphism"] button.neu-toggle-amber.neu-active .neu-toggle-thumb,
 [data-theme][data-surface="neumorphism"] button.neu-toggle-amber[data-state="checked"] .neu-toggle-thumb,
 [data-theme][data-surface="neumorphism"] button[class*="rounded-full"][class*="bg-amber-"] > div[class*="rounded-full"],
@@ -653,11 +884,10 @@ html.showcase-active[data-theme] aside {
     box-shadow:
         -1.5px -1.5px 3px rgba(255, 255, 255, 0.85),
         2px 2.5px 5px rgba(180, 83, 9, 0.6),
-        0 0 8px rgba(245, 158, 11, 0.6),
         inset 1px 1px 1.5px #ffffff !important;
 }
 
-/* Dark Mode - Knob inside Active Violet Channel */
+/* Dark Mode - Knob inside Active Violet Channel (NO GLOW) */
 [data-theme][data-surface="neumorphism"] button.neu-toggle-violet.neu-active .neu-toggle-thumb,
 [data-theme][data-surface="neumorphism"] button.neu-toggle-violet[data-state="checked"] .neu-toggle-thumb,
 [data-theme][data-surface="neumorphism"] button[class*="rounded-full"][class*="bg-violet-"] > div[class*="rounded-full"],
@@ -668,7 +898,6 @@ html.showcase-active[data-theme] aside {
     box-shadow:
         -1.5px -1.5px 3px rgba(255, 255, 255, 0.85),
         2px 2.5px 5px rgba(109, 40, 217, 0.6),
-        0 0 8px rgba(139, 92, 246, 0.6),
         inset 1px 1px 1.5px #ffffff !important;
 }
 
@@ -708,10 +937,11 @@ html.showcase-active[data-theme] aside {
 [data-theme][data-surface="neumorphism"] input[type="checkbox"]:checked,
 [data-theme][data-surface="neumorphism"] input[type="radio"]:checked {
     background-color: var(--accent) !important;
+    border-color: rgba(255, 255, 255, 0.25) !important;
     box-shadow:
-        inset 1px 1px 2px rgba(0, 0, 0, 0.3),
-        inset -1px -1px 2px rgba(255, 255, 255, 0.3),
-        0 0 8px var(--accent) !important;
+        inset 1.5px 1.5px 3px rgba(0, 0, 0, 0.45),
+        inset -1px -1px 2px rgba(255, 255, 255, 0.25),
+        0 1px 2px rgba(0, 0, 0, 0.35) !important;
 }
 [data-theme][data-surface="neumorphism"] input[type="checkbox"]:checked::after {
     content: "";
@@ -720,7 +950,7 @@ html.showcase-active[data-theme] aside {
     top: 1.5px;
     width: 4px;
     height: 8px;
-    border: solid #ffffff;
+    border: solid var(--accent-foreground);
     border-width: 0 2px 2px 0;
     transform: rotate(45deg);
 }
@@ -732,7 +962,7 @@ html.showcase-active[data-theme] aside {
     width: 8px;
     height: 8px;
     border-radius: 9999px;
-    background: #ffffff;
+    background: var(--accent-foreground);
     box-shadow: 0 0 3px rgba(0,0,0,0.5);
 }
 
@@ -796,33 +1026,134 @@ html.showcase-active[data-theme] aside {
         inset 1px 1px 0px rgba(255, 255, 255, 0.9) !important;
 }
 
-[data-theme="daylight"][data-surface="neumorphism"] .bg-inner,
+/* 2. LIGHT THEMES: Raised Extruded Inner Panels, KPI Chips, Option Cards, Dropzones & Metric Cards (Arising from Canvas) */
+[data-theme="daylight"][data-surface="neumorphism"] .bg-inner:not(input):not(textarea):not(select),
 [data-theme="daylight"][data-surface="neumorphism"] .style-surface-inner,
 [data-theme="daylight"][data-surface="neumorphism"] div[class*="bg-inner"],
-[data-theme="alabaster"][data-surface="neumorphism"] .bg-inner,
+[data-theme="daylight"][data-surface="neumorphism"] label[class*="bg-inner"],
+[data-theme="daylight"][data-surface="neumorphism"] div[class*="border-dashed"],
+[data-theme="alabaster"][data-surface="neumorphism"] .bg-inner:not(input):not(textarea):not(select),
 [data-theme="alabaster"][data-surface="neumorphism"] .style-surface-inner,
 [data-theme="alabaster"][data-surface="neumorphism"] div[class*="bg-inner"],
-[data-theme="neumorph-clay"][data-surface="neumorphism"] .bg-inner,
+[data-theme="alabaster"][data-surface="neumorphism"] label[class*="bg-inner"],
+[data-theme="alabaster"][data-surface="neumorphism"] div[class*="border-dashed"],
+[data-theme="neumorph-clay"][data-surface="neumorphism"] .bg-inner:not(input):not(textarea):not(select),
 [data-theme="neumorph-clay"][data-surface="neumorphism"] .style-surface-inner,
 [data-theme="neumorph-clay"][data-surface="neumorphism"] div[class*="bg-inner"],
-.light-mode[data-surface="neumorphism"] .bg-inner,
+[data-theme="neumorph-clay"][data-surface="neumorphism"] label[class*="bg-inner"],
+[data-theme="neumorph-clay"][data-surface="neumorphism"] div[class*="border-dashed"],
+.light-mode[data-surface="neumorphism"] .bg-inner:not(input):not(textarea):not(select),
 .light-mode[data-surface="neumorphism"] .style-surface-inner,
-.light-mode[data-surface="neumorphism"] div[class*="bg-inner"] {
+.light-mode[data-surface="neumorphism"] div[class*="bg-inner"],
+.light-mode[data-surface="neumorphism"] label[class*="bg-inner"],
+.light-mode[data-surface="neumorphism"] div[class*="border-dashed"] {
     background-color: var(--bg-app) !important;
-    border-color: rgba(166, 175, 195, 0.25) !important;
+    background-image: linear-gradient(145deg, rgba(255, 255, 255, 0.95) 0%, rgba(200, 210, 225, 0.4) 100%) !important;
+    border-top: 1px solid rgba(255, 255, 255, 0.95) !important;
+    border-left: 1px solid rgba(255, 255, 255, 0.95) !important;
+    border-right: 1px solid rgba(166, 175, 195, 0.35) !important;
+    border-bottom: 1px solid rgba(166, 175, 195, 0.35) !important;
     box-shadow:
-        inset 4px 4px 10px rgba(166, 175, 195, 0.4),
-        inset -4px -4px 10px rgba(255, 255, 255, 0.95) !important;
+        -5px -5px 12px #ffffff,
+        5px 6px 14px rgba(166, 175, 195, 0.42),
+        inset 1px 1px 1px #ffffff !important;
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.2s ease !important;
+}
+
+[data-theme="daylight"][data-surface="neumorphism"] div[class*="bg-inner"][class*="cursor-pointer"]:hover,
+[data-theme="daylight"][data-surface="neumorphism"] label[class*="bg-inner"]:hover,
+[data-theme="daylight"][data-surface="neumorphism"] div[class*="border-dashed"]:hover,
+[data-theme="alabaster"][data-surface="neumorphism"] div[class*="bg-inner"][class*="cursor-pointer"]:hover,
+[data-theme="alabaster"][data-surface="neumorphism"] label[class*="bg-inner"]:hover,
+[data-theme="alabaster"][data-surface="neumorphism"] div[class*="border-dashed"]:hover,
+[data-theme="neumorph-clay"][data-surface="neumorphism"] div[class*="bg-inner"][class*="cursor-pointer"]:hover,
+[data-theme="neumorph-clay"][data-surface="neumorphism"] label[class*="bg-inner"]:hover,
+[data-theme="neumorph-clay"][data-surface="neumorphism"] div[class*="border-dashed"]:hover,
+.light-mode[data-surface="neumorphism"] div[class*="bg-inner"][class*="cursor-pointer"]:hover,
+.light-mode[data-surface="neumorphism"] label[class*="bg-inner"]:hover,
+.light-mode[data-surface="neumorphism"] div[class*="border-dashed"]:hover {
+    transform: translateY(-1.5px) !important;
+    box-shadow:
+        -6px -6px 14px #ffffff,
+        6px 7px 16px rgba(166, 175, 195, 0.52),
+        inset 1px 1px 1px #ffffff !important;
+}
+
+[data-theme="daylight"][data-surface="neumorphism"] div[class*="bg-inner"][class*="cursor-pointer"]:active,
+[data-theme="daylight"][data-surface="neumorphism"] label[class*="bg-inner"]:active,
+[data-theme="alabaster"][data-surface="neumorphism"] div[class*="bg-inner"][class*="cursor-pointer"]:active,
+[data-theme="alabaster"][data-surface="neumorphism"] label[class*="bg-inner"]:active,
+[data-theme="neumorph-clay"][data-surface="neumorphism"] div[class*="bg-inner"][class*="cursor-pointer"]:active,
+[data-theme="neumorph-clay"][data-surface="neumorphism"] label[class*="bg-inner"]:active,
+.light-mode[data-surface="neumorphism"] div[class*="bg-inner"][class*="cursor-pointer"]:active,
+.light-mode[data-surface="neumorphism"] label[class*="bg-inner"]:active {
+    transform: translateY(0px) !important;
+    box-shadow:
+        -2px -2px 6px #ffffff,
+        2px 3px 7px rgba(166, 175, 195, 0.4),
+        inset 1px 1px 1px #ffffff !important;
+}
+
+/* Extruded Selects / Dropdown Triggers (Light Themes) */
+[data-theme="daylight"][data-surface="neumorphism"] select,
+[data-theme="alabaster"][data-surface="neumorphism"] select,
+[data-theme="neumorph-clay"][data-surface="neumorphism"] select,
+.light-mode[data-surface="neumorphism"] select {
+    background-color: var(--bg-app) !important;
+    background-image: linear-gradient(145deg, rgba(255, 255, 255, 0.95) 0%, rgba(200, 210, 225, 0.4) 100%) !important;
+    border-top: 1px solid rgba(255, 255, 255, 0.95) !important;
+    border-left: 1px solid rgba(255, 255, 255, 0.95) !important;
+    border-right: 1px solid rgba(166, 175, 195, 0.35) !important;
+    border-bottom: 1px solid rgba(166, 175, 195, 0.35) !important;
+    box-shadow:
+        -4px -4px 10px #ffffff,
+        4px 4px 10px rgba(166, 175, 195, 0.42),
+        inset 1px 1px 1px #ffffff !important;
+    cursor: pointer;
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.2s ease !important;
+}
+
+[data-theme="daylight"][data-surface="neumorphism"] select:hover,
+[data-theme="alabaster"][data-surface="neumorphism"] select:hover,
+[data-theme="neumorph-clay"][data-surface="neumorphism"] select:hover,
+.light-mode[data-surface="neumorphism"] select:hover {
+    transform: translateY(-1px) !important;
+    box-shadow:
+        -5px -5px 12px #ffffff,
+        5px 5px 12px rgba(166, 175, 195, 0.5),
+        inset 1px 1px 1px #ffffff !important;
+}
+
+[data-theme="daylight"][data-surface="neumorphism"] select:focus,
+[data-theme="alabaster"][data-surface="neumorphism"] select:focus,
+[data-theme="neumorph-clay"][data-surface="neumorphism"] select:focus,
+.light-mode[data-surface="neumorphism"] select:focus,
+[data-theme="daylight"][data-surface="neumorphism"] select:active,
+[data-theme="alabaster"][data-surface="neumorphism"] select:active,
+[data-theme="neumorph-clay"][data-surface="neumorphism"] select:active,
+.light-mode[data-surface="neumorphism"] select:active {
+    transform: translateY(0px) !important;
+    box-shadow:
+        -2px -2px 6px #ffffff,
+        2px 2px 6px rgba(166, 175, 195, 0.35),
+        0 0 0 1.5px var(--accent) !important;
+}
+
+[data-theme="daylight"][data-surface="neumorphism"] div[class*="h-2.5"][class*="rounded-full"][class*="overflow-hidden"],
+[data-theme="alabaster"][data-surface="neumorphism"] div[class*="h-2.5"][class*="rounded-full"][class*="overflow-hidden"],
+[data-theme="neumorph-clay"][data-surface="neumorphism"] div[class*="h-2.5"][class*="rounded-full"][class*="overflow-hidden"],
+.light-mode[data-surface="neumorphism"] div[class*="h-2.5"][class*="rounded-full"][class*="overflow-hidden"] {
+    background-color: var(--bg-app) !important;
+    box-shadow:
+        inset 2.5px 2.5px 6px rgba(166, 175, 195, 0.5),
+        inset -2px -2px 5px rgba(255, 255, 255, 0.95) !important;
 }
 
 [data-theme="daylight"][data-surface="neumorphism"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
-[data-theme="daylight"][data-surface="neumorphism"] select,
 [data-theme="daylight"][data-surface="neumorphism"] textarea,
 [data-theme="alabaster"][data-surface="neumorphism"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
-[data-theme="alabaster"][data-surface="neumorphism"] select,
 [data-theme="alabaster"][data-surface="neumorphism"] textarea,
 [data-theme="neumorph-clay"][data-surface="neumorphism"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
-[data-theme="neumorph-clay"][data-surface="neumorphism"] select,
 [data-theme="neumorph-clay"][data-surface="neumorphism"] textarea,
 .light-mode[data-surface="neumorphism"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]) {
     background-color: var(--bg-app) !important;
@@ -832,17 +1163,61 @@ html.showcase-active[data-theme] aside {
         inset -3px -3px 7px rgba(255, 255, 255, 0.9) !important;
 }
 
+/* Sunken Code Blocks, Terminal Consoles, and Pre Containers (Light Themes - Press Effect) */
+[data-theme="daylight"][data-surface="neumorphism"] pre,
+[data-theme="daylight"][data-surface="neumorphism"] div:has(> pre),
+[data-theme="daylight"][data-surface="neumorphism"] div[class*="font-mono"][class*="overflow-x-auto"],
+[data-theme="daylight"][data-surface="neumorphism"] div[class*="font-mono"][class*="max-h-"],
+[data-theme="alabaster"][data-surface="neumorphism"] pre,
+[data-theme="alabaster"][data-surface="neumorphism"] div:has(> pre),
+[data-theme="alabaster"][data-surface="neumorphism"] div[class*="font-mono"][class*="overflow-x-auto"],
+[data-theme="alabaster"][data-surface="neumorphism"] div[class*="font-mono"][class*="max-h-"],
+[data-theme="neumorph-clay"][data-surface="neumorphism"] pre,
+[data-theme="neumorph-clay"][data-surface="neumorphism"] div:has(> pre),
+[data-theme="neumorph-clay"][data-surface="neumorphism"] div[class*="font-mono"][class*="overflow-x-auto"],
+[data-theme="neumorph-clay"][data-surface="neumorphism"] div[class*="font-mono"][class*="max-h-"],
+.light-mode[data-surface="neumorphism"] pre,
+.light-mode[data-surface="neumorphism"] div:has(> pre),
+.light-mode[data-surface="neumorphism"] div[class*="font-mono"][class*="overflow-x-auto"],
+.light-mode[data-surface="neumorphism"] div[class*="font-mono"][class*="max-h-"] {
+    background-color: var(--bg-app) !important;
+    border: 1px solid rgba(166, 175, 195, 0.3) !important;
+    box-shadow:
+        inset 3px 3px 7px rgba(166, 175, 195, 0.4),
+        inset -2.5px -2.5px 6px rgba(255, 255, 255, 0.95) !important;
+    transform: none !important;
+}
+
+/* Debossed Checklist Pills & Status Wells (Light Themes - Press Effect) */
+[data-theme="daylight"][data-surface="neumorphism"] li[class*="bg-inner"],
+[data-theme="alabaster"][data-surface="neumorphism"] li[class*="bg-inner"],
+[data-theme="neumorph-clay"][data-surface="neumorphism"] li[class*="bg-inner"],
+.light-mode[data-surface="neumorphism"] li[class*="bg-inner"] {
+    background-color: var(--bg-app) !important;
+    border: 1px solid rgba(166, 175, 195, 0.28) !important;
+    box-shadow:
+        inset 2px 2px 5px rgba(166, 175, 195, 0.35),
+        inset -2px -2px 4px rgba(255, 255, 255, 0.9) !important;
+    transform: none !important;
+}
+
 [data-theme="daylight"][data-surface="neumorphism"] button[class*="bg-card"],
 [data-theme="daylight"][data-surface="neumorphism"] button[class*="bg-inner"],
 [data-theme="alabaster"][data-surface="neumorphism"] button[class*="bg-card"],
 [data-theme="alabaster"][data-surface="neumorphism"] button[class*="bg-inner"],
 [data-theme="neumorph-clay"][data-surface="neumorphism"] button[class*="bg-card"],
 [data-theme="neumorph-clay"][data-surface="neumorphism"] button[class*="bg-inner"] {
-    border: 1px solid rgba(255, 255, 255, 0.8) !important;
+    background-color: var(--bg-app) !important;
+    background-image: linear-gradient(145deg, rgba(255, 255, 255, 0.95) 0%, rgba(200, 210, 225, 0.4) 100%) !important;
+    border-top: 1px solid rgba(255, 255, 255, 0.95) !important;
+    border-left: 1px solid rgba(255, 255, 255, 0.95) !important;
+    border-right: 1px solid rgba(166, 175, 195, 0.35) !important;
+    border-bottom: 1px solid rgba(166, 175, 195, 0.35) !important;
     box-shadow:
-        -4px -4px 10px rgba(255, 255, 255, 0.9),
-        4px 4px 10px rgba(166, 175, 195, 0.35),
-        inset 1px 1px 0px rgba(255, 255, 255, 0.8) !important;
+        -6px -6px 14px #ffffff,
+        6px 6px 14px rgba(166, 175, 195, 0.45),
+        inset 1px 1px 1px #ffffff !important;
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.2s ease !important;
 }
 [data-theme="daylight"][data-surface="neumorphism"] button[class*="bg-card"]:hover,
 [data-theme="daylight"][data-surface="neumorphism"] button[class*="bg-inner"]:hover,
@@ -850,9 +1225,10 @@ html.showcase-active[data-theme] aside {
 [data-theme="alabaster"][data-surface="neumorphism"] button[class*="bg-inner"]:hover,
 [data-theme="neumorph-clay"][data-surface="neumorphism"] button[class*="bg-card"]:hover,
 [data-theme="neumorph-clay"][data-surface="neumorphism"] button[class*="bg-inner"]:hover {
+    transform: translateY(-2px) !important;
     box-shadow:
-        -5px -5px 12px rgba(255, 255, 255, 1),
-        5px 5px 12px rgba(166, 175, 195, 0.45) !important;
+        -7px -7px 18px #ffffff,
+        7px 8px 18px rgba(166, 175, 195, 0.55) !important;
 }
 [data-theme="daylight"][data-surface="neumorphism"] button[class*="bg-card"]:active,
 [data-theme="daylight"][data-surface="neumorphism"] button[class*="bg-inner"]:active,
@@ -860,26 +1236,144 @@ html.showcase-active[data-theme] aside {
 [data-theme="alabaster"][data-surface="neumorphism"] button[class*="bg-inner"]:active,
 [data-theme="neumorph-clay"][data-surface="neumorphism"] button[class*="bg-card"]:active,
 [data-theme="neumorph-clay"][data-surface="neumorphism"] button[class*="bg-inner"]:active {
+    transform: translateY(0px) !important;
     box-shadow:
-        inset 3px 3px 6px rgba(166, 175, 195, 0.45),
-        inset -3px -3px 6px rgba(255, 255, 255, 0.9) !important;
+        -2px -2px 6px #ffffff,
+        2px 3px 7px rgba(166, 175, 195, 0.4),
+        inset 1px 1px 1px #ffffff !important;
+}
+
+/* LIGHT THEMES: Sidebar Navigation & Section Navigation Arise Effect */
+[data-theme="daylight"][data-surface="neumorphism"] nav[aria-label*="Workspace navigation"],
+[data-theme="alabaster"][data-surface="neumorphism"] nav[aria-label*="Workspace navigation"],
+[data-theme="neumorph-clay"][data-surface="neumorphism"] nav[aria-label*="Workspace navigation"],
+.light-mode[data-surface="neumorphism"] nav[aria-label*="Workspace navigation"] {
+    background-color: var(--bg-app) !important;
+    border-right-color: rgba(166, 175, 195, 0.35) !important;
+}
+
+[data-theme="daylight"][data-surface="neumorphism"] .sidebar-nav-item,
+[data-theme="alabaster"][data-surface="neumorphism"] .sidebar-nav-item,
+[data-theme="neumorph-clay"][data-surface="neumorphism"] .sidebar-nav-item,
+.light-mode[data-surface="neumorphism"] .sidebar-nav-item,
+[data-theme="daylight"][data-surface="neumorphism"] nav[aria-label*="Workspace navigation"] button,
+[data-theme="alabaster"][data-surface="neumorphism"] nav[aria-label*="Workspace navigation"] button,
+[data-theme="neumorph-clay"][data-surface="neumorphism"] nav[aria-label*="Workspace navigation"] button,
+.light-mode[data-surface="neumorphism"] nav[aria-label*="Workspace navigation"] button {
+    background-color: transparent;
+    border: 1px solid transparent;
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.2s ease, background-color 0.2s ease !important;
+}
+
+[data-theme="daylight"][data-surface="neumorphism"] .sidebar-nav-item:hover,
+[data-theme="alabaster"][data-surface="neumorphism"] .sidebar-nav-item:hover,
+[data-theme="neumorph-clay"][data-surface="neumorphism"] .sidebar-nav-item:hover,
+.light-mode[data-surface="neumorphism"] .sidebar-nav-item:hover,
+[data-theme="daylight"][data-surface="neumorphism"] nav[aria-label*="Workspace navigation"] button:hover,
+[data-theme="alabaster"][data-surface="neumorphism"] nav[aria-label*="Workspace navigation"] button:hover,
+[data-theme="neumorph-clay"][data-surface="neumorphism"] nav[aria-label*="Workspace navigation"] button:hover,
+.light-mode[data-surface="neumorphism"] nav[aria-label*="Workspace navigation"] button:hover {
+    background-color: var(--bg-app) !important;
+    background-image: linear-gradient(145deg, rgba(255, 255, 255, 0.9) 0%, rgba(200, 210, 225, 0.35) 100%) !important;
+    border-top: 1px solid rgba(255, 255, 255, 0.95) !important;
+    border-left: 1px solid rgba(255, 255, 255, 0.95) !important;
+    border-right: 1px solid rgba(166, 175, 195, 0.3) !important;
+    border-bottom: 1px solid rgba(166, 175, 195, 0.3) !important;
+    transform: translateY(-1.5px) !important;
+    box-shadow:
+        -4px -4px 10px #ffffff,
+        4px 4px 10px rgba(166, 175, 195, 0.4) !important;
+}
+
+[data-theme="daylight"][data-surface="neumorphism"] .sidebar-nav-item.sidebar-nav-active,
+[data-theme="alabaster"][data-surface="neumorphism"] .sidebar-nav-item.sidebar-nav-active,
+[data-theme="neumorph-clay"][data-surface="neumorphism"] .sidebar-nav-item.sidebar-nav-active,
+.light-mode[data-surface="neumorphism"] .sidebar-nav-item.sidebar-nav-active,
+[data-theme="daylight"][data-surface="neumorphism"] .sidebar-nav-item[aria-current="page"],
+[data-theme="alabaster"][data-surface="neumorphism"] .sidebar-nav-item[aria-current="page"],
+[data-theme="neumorph-clay"][data-surface="neumorphism"] .sidebar-nav-item[aria-current="page"],
+.light-mode[data-surface="neumorphism"] .sidebar-nav-item[aria-current="page"],
+[data-theme="daylight"][data-surface="neumorphism"] nav[aria-label*="Workspace navigation"] button[aria-current="page"],
+[data-theme="alabaster"][data-surface="neumorphism"] nav[aria-label*="Workspace navigation"] button[aria-current="page"],
+[data-theme="neumorph-clay"][data-surface="neumorphism"] nav[aria-label*="Workspace navigation"] button[aria-current="page"],
+.light-mode[data-surface="neumorphism"] nav[aria-label*="Workspace navigation"] button[aria-current="page"] {
+    background-color: var(--bg-app) !important;
+    background-image: linear-gradient(145deg, #ffffff 0%, rgba(200, 210, 225, 0.45) 100%) !important;
+    border-top: 1px solid rgba(255, 255, 255, 0.98) !important;
+    border-left: 1px solid rgba(255, 255, 255, 0.98) !important;
+    border-right: 1px solid rgba(166, 175, 195, 0.4) !important;
+    border-bottom: 1px solid rgba(166, 175, 195, 0.4) !important;
+    transform: translateY(-1px) !important;
+    box-shadow:
+        -5px -5px 12px #ffffff,
+        5px 6px 14px rgba(166, 175, 195, 0.48),
+        inset 1px 1px 1px #ffffff !important;
+}
+
+[data-theme="daylight"][data-surface="neumorphism"] .sidebar-nav-item.sidebar-nav-active:hover,
+[data-theme="alabaster"][data-surface="neumorphism"] .sidebar-nav-item.sidebar-nav-active:hover,
+[data-theme="neumorph-clay"][data-surface="neumorphism"] .sidebar-nav-item.sidebar-nav-active:hover,
+.light-mode[data-surface="neumorphism"] .sidebar-nav-item.sidebar-nav-active:hover,
+[data-theme="daylight"][data-surface="neumorphism"] nav[aria-label*="Workspace navigation"] button[aria-current="page"]:hover,
+[data-theme="alabaster"][data-surface="neumorphism"] nav[aria-label*="Workspace navigation"] button[aria-current="page"]:hover,
+[data-theme="neumorph-clay"][data-surface="neumorphism"] nav[aria-label*="Workspace navigation"] button[aria-current="page"]:hover,
+.light-mode[data-surface="neumorphism"] nav[aria-label*="Workspace navigation"] button[aria-current="page"]:hover {
+    transform: translateY(-2px) !important;
+    box-shadow:
+        -6px -6px 15px #ffffff,
+        6px 7px 16px rgba(166, 175, 195, 0.55),
+        inset 1px 1px 1px #ffffff !important;
+}
+
+[data-theme="daylight"][data-surface="neumorphism"] .sidebar-nav-item:active,
+[data-theme="alabaster"][data-surface="neumorphism"] .sidebar-nav-item:active,
+[data-theme="neumorph-clay"][data-surface="neumorphism"] .sidebar-nav-item:active,
+.light-mode[data-surface="neumorphism"] .sidebar-nav-item:active,
+[data-theme="daylight"][data-surface="neumorphism"] nav[aria-label*="Workspace navigation"] button:active,
+[data-theme="alabaster"][data-surface="neumorphism"] nav[aria-label*="Workspace navigation"] button:active,
+[data-theme="neumorph-clay"][data-surface="neumorphism"] nav[aria-label*="Workspace navigation"] button:active,
+.light-mode[data-surface="neumorphism"] nav[aria-label*="Workspace navigation"] button:active {
+    transform: translateY(0px) !important;
+    box-shadow:
+        -2px -2px 6px #ffffff,
+        2px 3px 6px rgba(166, 175, 195, 0.35),
+        inset 1px 1px 1px #ffffff !important;
+}
+
+/* UnderlineTabStrip and tablist buttons stay flat ("what it is") without button arise */
+[data-theme="daylight"][data-surface="neumorphism"] div[role="tablist"] button[role="tab"],
+[data-theme="alabaster"][data-surface="neumorphism"] div[role="tablist"] button[role="tab"],
+[data-theme="neumorph-clay"][data-surface="neumorphism"] div[role="tablist"] button[role="tab"],
+.light-mode[data-surface="neumorphism"] div[role="tablist"] button[role="tab"] {
+    background-color: transparent !important;
+    background-image: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    transform: none !important;
 }
 
 /* LIGHT THEMES: Tactile Neumorphic Toggle Switches */
 [data-theme="daylight"][data-surface="neumorphism"] button.neu-toggle,
-[data-theme="daylight"][data-surface="neumorphism"] button[class*="rounded-full"][class*="p-0.5"],
-[data-theme="daylight"][data-surface="neumorphism"] button[class*="rounded-full"][class*="h-5"],
-[data-theme="daylight"][data-surface="neumorphism"] button[class*="rounded-full"][class*="h-4"],
+[data-theme="daylight"][data-surface="neumorphism"] button[role="switch"],
+[data-theme="daylight"][data-surface="neumorphism"] button[class*="rounded-full"][class*="p-0.5"]:not([style*="background"]):not([class*="neu-color-swatch"]),
+[data-theme="daylight"][data-surface="neumorphism"] button[class*="rounded-full"]:has(> .neu-toggle-thumb):not([style*="background"]):not([class*="neu-color-swatch"]),
+[data-theme="daylight"][data-surface="neumorphism"] button[class*="rounded-full"]:has(> div[class*="rounded-full"]):not([style*="background"]):not([class*="neu-color-swatch"]),
 [data-theme="alabaster"][data-surface="neumorphism"] button.neu-toggle,
-[data-theme="alabaster"][data-surface="neumorphism"] button[class*="rounded-full"][class*="p-0.5"],
-[data-theme="alabaster"][data-surface="neumorphism"] button[class*="rounded-full"][class*="h-5"],
-[data-theme="alabaster"][data-surface="neumorphism"] button[class*="rounded-full"][class*="h-4"],
+[data-theme="alabaster"][data-surface="neumorphism"] button[role="switch"],
+[data-theme="alabaster"][data-surface="neumorphism"] button[class*="rounded-full"][class*="p-0.5"]:not([style*="background"]):not([class*="neu-color-swatch"]),
+[data-theme="alabaster"][data-surface="neumorphism"] button[class*="rounded-full"]:has(> .neu-toggle-thumb):not([style*="background"]):not([class*="neu-color-swatch"]),
+[data-theme="alabaster"][data-surface="neumorphism"] button[class*="rounded-full"]:has(> div[class*="rounded-full"]):not([style*="background"]):not([class*="neu-color-swatch"]),
 [data-theme="neumorph-clay"][data-surface="neumorphism"] button.neu-toggle,
-[data-theme="neumorph-clay"][data-surface="neumorphism"] button[class*="rounded-full"][class*="p-0.5"],
-[data-theme="neumorph-clay"][data-surface="neumorphism"] button[class*="rounded-full"][class*="h-5"],
-[data-theme="neumorph-clay"][data-surface="neumorphism"] button[class*="rounded-full"][class*="h-4"],
+[data-theme="neumorph-clay"][data-surface="neumorphism"] button[role="switch"],
+[data-theme="neumorph-clay"][data-surface="neumorphism"] button[class*="rounded-full"][class*="p-0.5"]:not([style*="background"]):not([class*="neu-color-swatch"]),
+[data-theme="neumorph-clay"][data-surface="neumorphism"] button[class*="rounded-full"]:has(> .neu-toggle-thumb):not([style*="background"]):not([class*="neu-color-swatch"]),
+[data-theme="neumorph-clay"][data-surface="neumorphism"] button[class*="rounded-full"]:has(> div[class*="rounded-full"]):not([style*="background"]):not([class*="neu-color-swatch"]),
 .light-mode[data-surface="neumorphism"] button.neu-toggle,
-.light-mode[data-surface="neumorphism"] button[class*="rounded-full"][class*="p-0.5"] {
+.light-mode[data-surface="neumorphism"] button[role="switch"],
+.light-mode[data-surface="neumorphism"] button[class*="rounded-full"][class*="p-0.5"]:not([style*="background"]):not([class*="neu-color-swatch"]),
+.light-mode[data-surface="neumorphism"] button[class*="rounded-full"]:has(> .neu-toggle-thumb):not([style*="background"]):not([class*="neu-color-swatch"]),
+.light-mode[data-surface="neumorphism"] button[class*="rounded-full"]:has(> div[class*="rounded-full"]):not([style*="background"]):not([class*="neu-color-swatch"]) {
     position: relative;
     border-radius: 9999px !important;
     overflow: visible !important;
@@ -888,13 +1382,25 @@ html.showcase-active[data-theme] aside {
 
 /* Light Mode - OFF Track */
 [data-theme="daylight"][data-surface="neumorphism"] button.neu-toggle:not(.neu-active):not([data-state="checked"]),
-[data-theme="daylight"][data-surface="neumorphism"] button[class*="rounded-full"]:not([class*="bg-sky"]):not([class*="bg-emerald"]):not([class*="bg-blue"]):not([class*="bg-green"]):not([class*="bg-red"]):not([class*="bg-amber"]),
+[data-theme="daylight"][data-surface="neumorphism"] button[role="switch"]:not([aria-checked="true"]):not([data-state="checked"]),
+[data-theme="daylight"][data-surface="neumorphism"] button[class*="rounded-full"][class*="p-0.5"]:not([class*="bg-sky"]):not([class*="bg-emerald"]):not([class*="bg-blue"]):not([class*="bg-green"]):not([class*="bg-red"]):not([class*="bg-amber"]):not([style*="background"]):not([class*="neu-color-swatch"]),
+[data-theme="daylight"][data-surface="neumorphism"] button[class*="rounded-full"]:has(> .neu-toggle-thumb):not(.neu-active):not([data-state="checked"]):not([style*="background"]):not([class*="neu-color-swatch"]),
+[data-theme="daylight"][data-surface="neumorphism"] button[class*="rounded-full"]:has(> div[class*="rounded-full"]):not([class*="bg-sky"]):not([class*="bg-emerald"]):not([class*="bg-blue"]):not([class*="bg-green"]):not([class*="bg-red"]):not([class*="bg-amber"]):not([style*="background"]):not([class*="neu-color-swatch"]),
 [data-theme="alabaster"][data-surface="neumorphism"] button.neu-toggle:not(.neu-active):not([data-state="checked"]),
-[data-theme="alabaster"][data-surface="neumorphism"] button[class*="rounded-full"]:not([class*="bg-sky"]):not([class*="bg-emerald"]):not([class*="bg-blue"]):not([class*="bg-green"]):not([class*="bg-red"]):not([class*="bg-amber"]),
+[data-theme="alabaster"][data-surface="neumorphism"] button[role="switch"]:not([aria-checked="true"]):not([data-state="checked"]),
+[data-theme="alabaster"][data-surface="neumorphism"] button[class*="rounded-full"][class*="p-0.5"]:not([class*="bg-sky"]):not([class*="bg-emerald"]):not([class*="bg-blue"]):not([class*="bg-green"]):not([class*="bg-red"]):not([class*="bg-amber"]):not([style*="background"]):not([class*="neu-color-swatch"]),
+[data-theme="alabaster"][data-surface="neumorphism"] button[class*="rounded-full"]:has(> .neu-toggle-thumb):not(.neu-active):not([data-state="checked"]):not([style*="background"]):not([class*="neu-color-swatch"]),
+[data-theme="alabaster"][data-surface="neumorphism"] button[class*="rounded-full"]:has(> div[class*="rounded-full"]):not([class*="bg-sky"]):not([class*="bg-emerald"]):not([class*="bg-blue"]):not([class*="bg-green"]):not([class*="bg-red"]):not([class*="bg-amber"]):not([style*="background"]):not([class*="neu-color-swatch"]),
 [data-theme="neumorph-clay"][data-surface="neumorphism"] button.neu-toggle:not(.neu-active):not([data-state="checked"]),
-[data-theme="neumorph-clay"][data-surface="neumorphism"] button[class*="rounded-full"]:not([class*="bg-sky"]):not([class*="bg-emerald"]):not([class*="bg-blue"]):not([class*="bg-green"]):not([class*="bg-red"]):not([class*="bg-amber"]),
+[data-theme="neumorph-clay"][data-surface="neumorphism"] button[role="switch"]:not([aria-checked="true"]):not([data-state="checked"]),
+[data-theme="neumorph-clay"][data-surface="neumorphism"] button[class*="rounded-full"][class*="p-0.5"]:not([class*="bg-sky"]):not([class*="bg-emerald"]):not([class*="bg-blue"]):not([class*="bg-green"]):not([class*="bg-red"]):not([class*="bg-amber"]):not([style*="background"]):not([class*="neu-color-swatch"]),
+[data-theme="neumorph-clay"][data-surface="neumorphism"] button[class*="rounded-full"]:has(> .neu-toggle-thumb):not(.neu-active):not([data-state="checked"]):not([style*="background"]):not([class*="neu-color-swatch"]),
+[data-theme="neumorph-clay"][data-surface="neumorphism"] button[class*="rounded-full"]:has(> div[class*="rounded-full"]):not([class*="bg-sky"]):not([class*="bg-emerald"]):not([class*="bg-blue"]):not([class*="bg-green"]):not([class*="bg-red"]):not([class*="bg-amber"]):not([style*="background"]):not([class*="neu-color-swatch"]),
 .light-mode[data-surface="neumorphism"] button.neu-toggle:not(.neu-active):not([data-state="checked"]),
-.light-mode[data-surface="neumorphism"] button[class*="rounded-full"]:not([class*="bg-sky"]):not([class*="bg-emerald"]):not([class*="bg-blue"]):not([class*="bg-green"]):not([class*="bg-red"]):not([class*="bg-amber"]) {
+.light-mode[data-surface="neumorphism"] button[role="switch"]:not([aria-checked="true"]):not([data-state="checked"]),
+.light-mode[data-surface="neumorphism"] button[class*="rounded-full"][class*="p-0.5"]:not([class*="bg-sky"]):not([class*="bg-emerald"]):not([class*="bg-blue"]):not([class*="bg-green"]):not([class*="bg-red"]):not([class*="bg-amber"]):not([style*="background"]):not([class*="neu-color-swatch"]),
+.light-mode[data-surface="neumorphism"] button[class*="rounded-full"]:has(> .neu-toggle-thumb):not(.neu-active):not([data-state="checked"]):not([style*="background"]):not([class*="neu-color-swatch"]),
+.light-mode[data-surface="neumorphism"] button[class*="rounded-full"]:has(> div[class*="rounded-full"]):not([class*="bg-sky"]):not([class*="bg-emerald"]):not([class*="bg-blue"]):not([class*="bg-green"]):not([class*="bg-red"]):not([class*="bg-amber"]):not([style*="background"]):not([class*="neu-color-swatch"]) {
     background-color: #cbd5e1 !important;
     background-image: linear-gradient(180deg, #b8c5d6 0%, #cbd5e1 100%) !important;
     border: 1px solid rgba(148, 163, 184, 0.4) !important;
@@ -904,7 +1410,7 @@ html.showcase-active[data-theme] aside {
         0 1px 1px rgba(255, 255, 255, 0.9) !important;
 }
 
-/* Light Mode - ON Track (Sky / Cyan) */
+/* Light Mode - ON Track (Sky / Cyan) (NO GLOW) */
 [data-theme="daylight"][data-surface="neumorphism"] button.neu-toggle-sky.neu-active,
 [data-theme="daylight"][data-surface="neumorphism"] button.neu-toggle-sky[data-state="checked"],
 [data-theme="daylight"][data-surface="neumorphism"] button[class*="rounded-full"][class*="bg-sky-"],
@@ -921,10 +1427,10 @@ html.showcase-active[data-theme] aside {
     box-shadow:
         inset 1.5px 1.5px 3px rgba(3, 105, 161, 0.5),
         inset -1.5px -1.5px 3px rgba(255, 255, 255, 0.7),
-        0 0 10px rgba(14, 165, 233, 0.35) !important;
+        0 1px 2px rgba(0, 0, 0, 0.15) !important;
 }
 
-/* Light Mode - ON Track (Emerald / Green) */
+/* Light Mode - ON Track (Emerald / Green) (NO GLOW) */
 [data-theme="daylight"][data-surface="neumorphism"] button.neu-toggle-emerald.neu-active,
 [data-theme="daylight"][data-surface="neumorphism"] button.neu-toggle-emerald[data-state="checked"],
 [data-theme="daylight"][data-surface="neumorphism"] button[class*="rounded-full"][class*="bg-emerald-"],
@@ -941,7 +1447,7 @@ html.showcase-active[data-theme] aside {
     box-shadow:
         inset 1.5px 1.5px 3px rgba(4, 120, 87, 0.5),
         inset -1.5px -1.5px 3px rgba(255, 255, 255, 0.7),
-        0 0 10px rgba(16, 185, 129, 0.35) !important;
+        0 1px 2px rgba(0, 0, 0, 0.15) !important;
 }
 
 /* Light Mode - Knob / Thumb */
@@ -1005,10 +1511,11 @@ html.showcase-active[data-theme] aside {
 .light-mode[data-surface="neumorphism"] input[type="checkbox"]:checked,
 .light-mode[data-surface="neumorphism"] input[type="radio"]:checked {
     background-color: var(--accent) !important;
+    border-color: rgba(0, 0, 0, 0.15) !important;
     box-shadow:
-        inset 1px 1px 2px rgba(0, 0, 0, 0.2),
-        inset -1px -1px 2px rgba(255, 255, 255, 0.5),
-        0 0 6px var(--accent) !important;
+        inset 1px 1px 2px rgba(0, 0, 0, 0.25),
+        inset -1px -1px 2px rgba(255, 255, 255, 0.6),
+        0 1px 2px rgba(0, 0, 0, 0.1) !important;
 }
 [data-theme="daylight"][data-surface="neumorphism"] input[type="checkbox"]:checked::after,
 [data-theme="alabaster"][data-surface="neumorphism"] input[type="checkbox"]:checked::after,
@@ -1114,4 +1621,23 @@ html.showcase-active[data-theme] aside {
     .dashboard-split-grid[data-split="panel-focus"] > .panel-column {
         grid-column: span 6;
     }
+}
+
+/* Light palette compatibility for legacy utility colors used in older views. */
+.light-mode [class*="text-zinc-100"],
+.light-mode [class*="text-zinc-200"],
+.light-mode [class*="text-slate-100"],
+.light-mode [class*="text-slate-200"] {
+    color: var(--text-primary) !important;
+}
+
+.light-mode [class*="text-zinc-300"],
+.light-mode [class*="text-zinc-400"],
+.light-mode [class*="text-slate-300"] {
+    color: var(--text-muted) !important;
+}
+
+.light-mode [class*="border-slate-700"],
+.light-mode [class*="border-zinc-700"] {
+    border-color: var(--border-subtle) !important;
 }

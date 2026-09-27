@@ -22,7 +22,7 @@ import {
   ensureDistrictGeometriesLoaded,
   isDistrictGeometriesLoaded
 } from './boundary/malaysiaDistricts';
-import { THEME_PRESETS, type ThemeKey } from './ThemeSelector';
+import { THEME_PRESETS, isLightTheme, resolveThemeKey, type ThemeKey } from './ThemeSelector';
 import { pushWorkspace } from '../utils/urlRouter';
 
 export type GateStage = 'idle' | 'welcome' | 'pick' | 'loading';
@@ -369,7 +369,7 @@ export const ProjectOnboarding: React.FC<ProjectOnboardingProps> = ({
   // Step 4: Theme Selection state (synced with current system theme)
   const [selectedTheme, setSelectedTheme] = useState<ThemeKey>(() => {
     try {
-      return (localStorage.getItem('app_dashboard_theme') as ThemeKey) || 'graphite';
+      return resolveThemeKey(localStorage.getItem('app_dashboard_theme'));
     } catch {
       return 'graphite';
     }
@@ -491,6 +491,7 @@ export const ProjectOnboarding: React.FC<ProjectOnboardingProps> = ({
   const handleSelectTheme = (themeId: ThemeKey) => {
     setSelectedTheme(themeId);
     document.documentElement.setAttribute('data-theme', themeId);
+    document.documentElement.classList.toggle('light-mode', isLightTheme(themeId));
     try {
       localStorage.setItem('app_dashboard_theme', themeId);
     } catch {}
@@ -1059,7 +1060,7 @@ export const ProjectOnboarding: React.FC<ProjectOnboardingProps> = ({
                         selectedDistrictIds={selectedDistrictIds}
                         geoJson={activeBoundaryGeo.geojson}
                         bbox={activeBoundaryGeo.bbox}
-                        themeMode={selectedTheme === 'daylight' || selectedTheme === 'alabaster' ? 'light' : 'dark'}
+                        themeMode={isLightTheme(selectedTheme) ? 'light' : 'dark'}
                         basemap={selectedBasemap}
                       />
                     </div>

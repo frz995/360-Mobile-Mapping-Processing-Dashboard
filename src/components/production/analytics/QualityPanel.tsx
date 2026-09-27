@@ -19,9 +19,9 @@ interface QualityPanelProps {
 }
 
 const DARK_TOOLTIP = {
-  contentStyle: { background: '#0f172a', border: '1px solid #334155', borderRadius: 8, fontSize: 11 },
-  labelStyle: { color: '#e2e8f0' },
-  itemStyle: { color: '#e2e8f0' }
+  contentStyle: { background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 8, fontSize: 11 },
+  labelStyle: { color: 'var(--text-primary)' },
+  itemStyle: { color: 'var(--text-primary)' }
 };
 
 export function QualityPanel({ analytics, translate }: QualityPanelProps) {
@@ -35,12 +35,12 @@ export function QualityPanel({ analytics, translate }: QualityPanelProps) {
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] px-1">
         <span className="text-text-muted">
           {translate('analyticsQaApproved')}:{' '}
-          <strong className="font-mono font-semibold text-emerald-300">{formatNumber(t.qaApproved)}</strong>
+          <strong className="font-mono font-semibold" style={{ color: 'var(--palette-sage)' }}>{formatNumber(t.qaApproved)}</strong>
         </span>
         <span className="text-text-muted">&bull;</span>
         <span className="text-text-muted">
           {translate('analyticsQaRejected')}:{' '}
-          <strong className="font-mono font-semibold text-rose-300">{formatNumber(t.qaRejected)}</strong>
+          <strong className="font-mono font-semibold" style={{ color: 'var(--palette-coral)' }}>{formatNumber(t.qaRejected)}</strong>
         </span>
         <span className="text-text-muted">&bull;</span>
         <span className="text-text-muted">
@@ -63,13 +63,13 @@ export function QualityPanel({ analytics, translate }: QualityPanelProps) {
             </h3>
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={chartData} margin={{ top: 6, right: 12, left: -18, bottom: 0 }}>
-                <CartesianGrid stroke="#1e293b" strokeDasharray="3 3" />
-                <XAxis dataKey="name" tick={{ fill: '#94a3b8', fontSize: 9 }} stroke="#334155" interval={0} angle={-32} height={56} />
-                <YAxis tick={{ fill: '#94a3b8', fontSize: 10 }} stroke="#334155" />
+                <CartesianGrid stroke="var(--divider)" strokeDasharray="3 3" />
+                <XAxis dataKey="name" tick={{ fill: 'var(--text-muted)', fontSize: 9 }} stroke="var(--border-subtle)" interval={0} angle={-32} height={56} />
+                <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 10 }} stroke="var(--border-subtle)" />
                 <Tooltip {...DARK_TOOLTIP} />
                 <Bar dataKey="defects" radius={[4, 4, 0, 0]}>
                   {chartData.map((d, i) => (
-                    <Cell key={i} fill={d.defects > 0 ? '#f43f5e' : '#64748b'} />
+                    <Cell key={i} fill={d.defects > 0 ? 'var(--palette-coral)' : 'var(--palette-slateblue)'} />
                   ))}
                 </Bar>
               </BarChart>
@@ -91,12 +91,12 @@ export function QualityPanel({ analytics, translate }: QualityPanelProps) {
               <tbody>
                 {rows.map((r) => (
                   <tr key={r.subgrid} className="border-b border-subtle hover:bg-inner/40 transition-colors">
-                    <td className="px-3 py-2 font-bold text-sky-300">{r.subgrid}</td>
-                    <td className="px-3 py-2 text-right font-sans text-rose-300">{formatNumber(r.defects)}</td>
+                    <td className="px-3 py-2 font-bold" style={{ color: 'var(--palette-slateblue)' }}>{r.subgrid}</td>
+                    <td className="px-3 py-2 text-right font-sans" style={{ color: 'var(--palette-coral)' }}>{formatNumber(r.defects)}</td>
                     <td className="px-3 py-2 text-right font-sans">{formatNumber(r.defectsPerKm, 2)}</td>
                     <td className="px-3 py-2 text-right font-sans">{formatNumber(r.passRate, 0)}%</td>
-                    <td className="px-3 py-2 text-center font-sans text-emerald-300">{formatNumber(r.qaApproved)}</td>
-                    <td className="px-3 py-2 text-center font-sans text-rose-300">{formatNumber(r.qaRejected)}</td>
+                    <td className="px-3 py-2 text-center font-sans" style={{ color: 'var(--palette-sage)' }}>{formatNumber(r.qaApproved)}</td>
+                    <td className="px-3 py-2 text-center font-sans" style={{ color: 'var(--palette-coral)' }}>{formatNumber(r.qaRejected)}</td>
                   </tr>
                 ))}
               </tbody>

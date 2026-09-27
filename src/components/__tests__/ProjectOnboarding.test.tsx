@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
 import { ProjectOnboarding } from '../ProjectOnboarding';
+import { THEME_PRESETS } from '../ThemeSelector';
 import { TRANSLATIONS } from '../../lib/i18n';
 import type { UserProject } from '../../services/projects';
 
@@ -144,12 +145,21 @@ describe('ProjectOnboarding (StartGlobal architecture)', () => {
     // Proceed to Step 4: Workspace Theme Selection
     fireEvent.click(screen.getByText('Continue'));
     expect(screen.getByText('Workspace Theme & Style')).toBeInTheDocument();
-    expect(screen.getAllByText('Titanium Graphite').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Monochrome Slate').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Naval Steel').length).toBeGreaterThan(0);
+    expect(THEME_PRESETS).toHaveLength(9);
+    [
+      'Titanium Graphite',
+      'Monochrome Slate',
+      'Neumorph Cyber Dark',
+      'Geodetic Sage',
+      'Naval Steel',
+      'Industrial Basalt',
+      'Alabaster Warm Light',
+      'Daylight Clean',
+      'Neumorph Soft Clay'
+    ].forEach((themeName) => expect(screen.getAllByText(themeName).length).toBeGreaterThan(0));
 
-    // Select Naval Steel theme
-    fireEvent.click(screen.getAllByText('Naval Steel')[0]);
+    // Select Neumorph Cyber Dark theme
+    fireEvent.click(screen.getByText('Neumorph Cyber Dark'));
 
     // Proceed to Step 5: Review & Launch
     fireEvent.click(screen.getByText('Continue'));

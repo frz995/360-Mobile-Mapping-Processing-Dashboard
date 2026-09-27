@@ -2,8 +2,7 @@ import React from 'react';
 
 /* =====================================================================
    Production Workspace console chrome.
-   All token-driven so every theme (midnight/obsidian/graphite/teal-slate/
-   daylight) and the legacy .light-mode layer keep working.
+   Token-driven across all palettes and the light-mode surface layer.
    ===================================================================== */
 
 export interface MastheadReadout {

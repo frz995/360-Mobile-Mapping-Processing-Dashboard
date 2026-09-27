@@ -44,7 +44,7 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
             </p>
             <button
               onClick={this.handleReset}
-              style={{ width: '100%', backgroundColor: 'var(--accent)', color: '#ffffff', fontWeight: '600', padding: '0.625rem 1rem', borderRadius: '0.5rem', border: 'none', cursor: 'pointer' }}
+              style={{ width: '100%', backgroundColor: 'var(--accent)', color: 'var(--accent-foreground)', fontWeight: '600', padding: '0.625rem 1rem', borderRadius: '0.5rem', border: 'none', cursor: 'pointer' }}
             >
               Reload Dashboard
             </button>
@@ -128,4 +128,3 @@ function renderShare() {
 }
 
 void boot();
-

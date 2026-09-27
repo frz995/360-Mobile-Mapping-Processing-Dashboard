@@ -3,6 +3,7 @@ import { PhotoSphereViewerComponent, type PhotoSphereViewerHandle } from './comp
 import { WebGISHUDViewerOverlay } from './components/WebGISHUDViewerOverlay';
 import { setHeading } from './utils/headingStore';
 import { extractSubgridName } from './utils/subgrid';
+import { rowsForSubgrid, framableSubgridPoints } from './utils/subgridCameraFrame';
 import {
   AlertTriangle,
   CheckCircle,
@@ -39,6 +40,7 @@ import { GeoSphereIcon } from './components/common/GeoSphereLogo';
 import { translate } from './lib/i18n';
 import { APP_VERSION } from './config/defaults';
 import { ProjectOnboarding, type GateStage } from './components/ProjectOnboarding';
+import { isLightTheme, resolveThemeKey } from './components/ThemeSelector';
 import {
   fetchProjects,
   createProject as createProjectService,
@@ -484,11 +486,11 @@ export default function App() {
 
   // Unified Theme State (Clean Professional GIS Themes)
   const [currentTheme, setCurrentTheme] = useState<string>(() => {
-    return localStorage.getItem('app_dashboard_theme') || 'graphite';
+    return resolveThemeKey(localStorage.getItem('app_dashboard_theme'));
   });
 
   // Derived themeMode for backward compatibility
-  const themeMode = currentTheme === 'daylight' || currentTheme === 'alabaster' ? 'light' : 'dark';
+  const themeMode = isLightTheme(currentTheme) ? 'light' : 'dark';
 
   // A user who has applied ANY dashboard theme has finished onboarding — the
   // theme step is the last interactive config a campaign needs, so once it's
@@ -512,6 +514,10 @@ export default function App() {
   // Global Theme Listener
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', currentTheme);
+    document.documentElement.classList.toggle('light-mode', isLightTheme(currentTheme));
+    try {
+      localStorage.setItem('app_dashboard_theme', currentTheme);
+    } catch {}
 
     // Restore style widget custom properties from localStorage
     const radiusMap: Record<string, string> = { sharp: '4px', default: '12px', rounded: '16px', pill: '24px' };
@@ -532,9 +538,10 @@ export default function App() {
 
     const handleThemeEvent = (e: any) => {
       if (e.detail) {
-        setCurrentTheme(e.detail);
-        if (e.detail !== 'daylight' && e.detail !== 'alabaster') {
-          localStorage.setItem('app_last_dark_theme', e.detail);
+        const nextTheme = resolveThemeKey(e.detail);
+        setCurrentTheme(nextTheme);
+        if (!isLightTheme(nextTheme)) {
+          localStorage.setItem('app_last_dark_theme', nextTheme);
         }
         // Any user-initiated theme apply (onboarding step 4, dashboard theme
         // selector, or a project with a saved scope.theme) completes onboarding.
@@ -958,11 +965,13 @@ export default function App() {
     if (!activeProject) return;
     setProjectSettings((prev: any) => applyProjectScope(prev, activeProject));
     if (activeProject.scope?.theme) {
-      document.documentElement.setAttribute('data-theme', activeProject.scope.theme);
+      const projectTheme = resolveThemeKey(activeProject.scope.theme);
+      document.documentElement.setAttribute('data-theme', projectTheme);
+      document.documentElement.classList.toggle('light-mode', isLightTheme(projectTheme));
       try {
-        localStorage.setItem('app_dashboard_theme', activeProject.scope.theme);
+        localStorage.setItem('app_dashboard_theme', projectTheme);
       } catch {}
-      window.dispatchEvent(new CustomEvent('app-theme-changed', { detail: activeProject.scope.theme }));
+      window.dispatchEvent(new CustomEvent('app-theme-changed', { detail: projectTheme }));
     }
   }, [activeProject, setProjectSettings]);
 
@@ -2354,37 +2363,31 @@ export default function App() {
 
       setSelectedDateFilter(nextDate);
 
-      const getSubgridDefault = (subgridName: string) => {
-        const s = subgridName.toUpperCase().trim();
-        const foundDaily = dailyData.find(d => (extractSubgridName(d.subgrid) || '').toUpperCase().trim() === s);
-        const foundBatch = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === s);
-        const firstPan = foundDaily?.panoramas?.[0] || foundBatch?.panoramas?.[0];
-        // Never invent a filename: an unresolvable one produces a broken image
-        // with no error. Callers fall back to their own empty state.
-        const fn = firstPan?.filename || foundDaily?.availableFilenames?.[0] || (foundBatch?.imageFilename) || '';
-        const lat = firstPan?.latitude ?? (firstPan as any)?.lat ?? (foundDaily as any)?.points?.[0]?.lat ?? (SUBGRID_COORDINATES[s]?.[1] ?? 0);
-        const lng = firstPan?.longitude ?? (firstPan as any)?.lon ?? (firstPan as any)?.lng ?? (foundDaily as any)?.points?.[0]?.lon ?? (SUBGRID_COORDINATES[s]?.[0] ?? 0);
-        return { fn, lat, lng };
-      };
-
       if (nextSubgrid) {
-        const def = getSubgridDefault(nextSubgrid);
-        const imgUrl = def.fn ? resolvePanoramaUrl(def.fn, projectSettings) : '';
-        setActivePanoramaFilename(def.fn);
-        setActivePanoramaUrl(imgUrl);
-        setInspectorCoords({ lat: def.lat, lng: def.lng });
-        setInspectorSubgrid(nextSubgrid);
-        setHasSelectedPoint(Boolean(imgUrl || (def.lat && def.lng)));
+        // A subgrid row only frames that subgrid's data on the map — it must
+        // never open the 360 inspector. Clear whatever frame was showing (map
+        // click, defect jump, CSV import) so the inspector can't keep displaying
+        // a panorama that doesn't belong to the newly selected subgrid.
+        clearMapSelection();
 
-        const subgridDaily = dailyData.filter(d => (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim() === nextSubgrid);
-        const formattedSubgridData = (subgridDaily.length > 0 ? subgridDaily : dailyData).map(d => {
+        // Masterlist rows carry the same subgrid's frames when no daily run has
+        // landed yet. Never fall back to every subgrid: that framed the whole
+        // project instead of the parent subgrid.
+        const subgridRows: any[] = rowsForSubgrid(
+          nextSubgrid,
+          dailyData as any[],
+          batchLogs as any[],
+          d => d.subgrid || d.imageFilename
+        );
+        const formattedSubgridData = subgridRows.map(d => {
           const isPub = d.publishToWebGIS === 'yes' || d.isSyncedWithSupabase === true;
           return {
             ...d,
+            subgrid: nextSubgrid,
             isPublished: isPub,
             status: isPub ? 'yes' : (d.publishToWebGIS || 'in process'),
             opacity: isPub ? 1.0 : 0.7,
-            statusColor: isPub ? '#10b981' : '#f59e0b',
+            statusColor: isPub ? '#10b981' : '#f59b0b',
             panoramas: (d.panoramas || []).map((p: any) => {
               const fnClean = (p.filename || p.image_url || '').split('/').pop()?.toUpperCase().trim();
               const isPtDefect = Boolean(
@@ -2405,10 +2408,14 @@ export default function App() {
           };
         });
 
+        // Frame the whole parent subgrid: only frames that actually carry
+        // coordinates can drive the camera extent, so drop the rest instead of
+        // letting the map fit a single stray point.
+        const subgridPoints = framableSubgridPoints(formattedSubgridData, nextSubgrid);
+
         const iframes = document.querySelectorAll('iframe');
         iframes.forEach(f => {
           try {
-            const subgridPoints = formattedSubgridData.flatMap(d => d.panoramas || d.points || []);
             f.contentWindow?.postMessage({
               type: 'SET_MAP_VIEW_STATE',
               viewMode: 'SUBGRID',
@@ -2430,21 +2437,9 @@ export default function App() {
               isSingleRun: false,
               runId: null
             }, '*');
-            f.contentWindow?.postMessage({
-              type: 'SET_PANORAMA',
-              point: {
-                filename: def.fn,
-                image_url: imgUrl,
-                config_url: def.fn ? resolvePanoramaConfigUrl(def.fn, projectSettings, nextSubgrid) : '',
-                subgrid: nextSubgrid,
-                lat: def.lat,
-                lon: def.lng,
-                lng: def.lng,
-                bearing: 0
-              }
-            }, '*');
           } catch (e) { }
         });
+        return nextSubgrid;
       } else {
         const formattedAll = dailyData.map(d => {
           const isPub = d.publishToWebGIS === 'yes' || d.isSyncedWithSupabase === true;
@@ -2539,17 +2534,11 @@ export default function App() {
     setSelectedDateFilter(daily.date || null);
 
     const normSg = (extractSubgridName(daily.subgrid) || daily.subgrid || '').toUpperCase().trim();
-    const firstPan = daily.panoramas?.[0];
-    const fn = firstPan?.filename || daily.availableFilenames?.[0] || (daily as any)?.imageFilename || '';
-    const lat = firstPan?.latitude ?? (firstPan as any)?.lat ?? (daily as any)?.points?.[0]?.lat ?? (SUBGRID_COORDINATES[normSg]?.[1] ?? 0);
-    const lng = firstPan?.longitude ?? (firstPan as any)?.lon ?? (firstPan as any)?.lng ?? (daily as any)?.points?.[0]?.lon ?? (SUBGRID_COORDINATES[normSg]?.[0] ?? 0);
-    const imgUrl = fn ? resolvePanoramaUrl(fn, projectSettings) : '';
 
-    setActivePanoramaFilename(fn);
-    setActivePanoramaUrl(imgUrl);
-    setInspectorCoords({ lat, lng });
-    setInspectorSubgrid(daily.subgrid);
-    setHasSelectedPoint(Boolean(imgUrl || (lat && lng)));
+    // A daily-run row frames that run on the map — it must never open the 360
+    // inspector. Clear any frame left from a previous selection so the inspector
+    // can't keep showing a panorama from another run or subgrid.
+    clearMapSelection();
 
     // 2. Transmit message restricting map display strictly to this single run
     const isPub = daily.publishToWebGIS === 'yes' || daily.isSyncedWithSupabase === true;
@@ -2621,36 +2610,6 @@ export default function App() {
           stagedItems: [formattedItem],
           isSingleRun: true,
           runId: rowId
-        }, '*');
-
-        // Send SET_PANORAMA to 360 viewer
-        f.contentWindow?.postMessage({
-          type: 'SET_PANORAMA',
-          point: {
-            filename: fn,
-            image_url: imgUrl,
-            config_url: fn ? resolvePanoramaConfigUrl(fn, projectSettings, normSg) : '',
-            subgrid: daily.subgrid,
-            lat,
-            lon: lng,
-            lng,
-            bearing: firstPan?.bearing ?? 0
-          }
-        }, '*');
-
-        // Select the initial node on map
-        f.contentWindow?.postMessage({
-          type: 'MAP_POINT_SELECTED',
-          point: {
-            filename: fn,
-            image_url: imgUrl,
-            config_url: fn ? resolvePanoramaConfigUrl(fn, projectSettings, normSg) : '',
-            subgrid: daily.subgrid,
-            lat,
-            lon: lng,
-            lng,
-            bearing: firstPan?.bearing ?? 0
-          }
         }, '*');
       } catch (e) { }
     });
@@ -3165,7 +3124,7 @@ export default function App() {
                             <label className="flex items-center justify-between px-2 py-1 rounded-md hover:bg-inner text-text-base hover:text-text-base cursor-pointer select-none transition-colors">
                               <div className="flex items-center gap-2">
                                 <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
-                                <span className="text-[11px]">Not yet on WebGIS</span>
+                                <span className="text-[11px]">Staging</span>
                               </div>
                               <input
                                 type="checkbox"
@@ -3246,8 +3205,8 @@ export default function App() {
                       const activeStatusText = isDailySelected && activeDailyLog
                         ? (activeDailyLog.publishToWebGIS === 'yes'
                           ? 'Published to WebGIS'
-                          : (activeDailyLog.qaqcStatus || (activeDefects > 0 ? `QAQC Flagged (${activeDefects} Defects)` : 'Not yet on WebGIS')))
-                        : (activeBatchLog?.status === 'Complete' ? 'Published to WebGIS' : 'Not yet on WebGIS');
+                          : ((activeDailyLog.qaqcStatus && activeDailyLog.qaqcStatus !== 'Not yet on WebGIS' ? activeDailyLog.qaqcStatus : null) || (activeDefects > 0 ? `QAQC Flagged (${activeDefects} Defects)` : 'Staging')))
+                        : (activeBatchLog?.status === 'Complete' ? 'Published to WebGIS' : 'Staging');
 
                       return selectedSubgridFilter ? (
                         <div className="absolute top-3 right-3 z-20 bg-card backdrop-blur-md border border-subtle rounded-xl p-3 text-xs text-text-base shadow-2xl max-w-xs space-y-1.5 animate-in fade-in zoom-in-95 duration-200">
@@ -3309,7 +3268,7 @@ export default function App() {
                           </div>
                           <div className="text-text-base text-[11px] flex justify-between gap-4"><span className="text-text-muted">PIC:</span> <span className="font-semibold text-emerald-400">{activePic}</span></div>
                           <div className="text-text-base text-[11px] flex justify-between items-center pt-1 border-t border-subtle">
-                            <span className="text-text-muted">Processing Status:</span>
+                            <span className="text-text-muted">Staging Processing Status:</span>
                             <span className={`font-semibold px-2 py-0.5 rounded border text-[10px] ${isPublished
                               ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
                               : 'text-amber-400 bg-amber-500/10 border-amber-500/20'

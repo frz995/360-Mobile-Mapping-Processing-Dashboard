@@ -18,11 +18,15 @@ interface WorkspaceSidebarNavProps {
 }
 
 function activeButtonClass(active: boolean, isExpanded: boolean): string {
-  return `transition-all duration-300 relative cursor-pointer flex items-center rounded-xl ${isExpanded ? 'w-full px-3 py-2 text-xs font-semibold gap-3 justify-start' : 'w-full h-10 justify-center p-0'} ${active ? 'text-sky-400 font-bold' : 'text-text-muted hover:text-text-base'}`;
+  return `sidebar-nav-item ${active ? 'sidebar-nav-active' : ''} transition-all duration-200 relative cursor-pointer flex items-center rounded-xl ${
+    isExpanded ? 'w-full px-3 py-2.5 text-xs font-semibold gap-3 justify-start' : 'w-10 h-10 justify-center p-0 mx-auto'
+  } ${active ? 'text-sky-400 font-bold' : 'text-text-muted hover:text-text-base'}`;
 }
 
 function actionButtonClass(isExpanded: boolean): string {
-  return `transition-all duration-200 cursor-pointer flex items-center rounded-xl text-text-muted hover:text-text-base ${isExpanded ? 'w-full px-3 py-2 text-xs font-semibold gap-3 justify-start' : 'w-full h-10 justify-center p-0'}`;
+  return `sidebar-nav-item transition-all duration-200 cursor-pointer flex items-center rounded-xl text-text-muted hover:text-text-base ${
+    isExpanded ? 'w-full px-3 py-2.5 text-xs font-semibold gap-3 justify-start' : 'w-10 h-10 justify-center p-0 mx-auto'
+  }`;
 }
 
 function labelClass(isExpanded: boolean): string {
@@ -123,7 +127,7 @@ export function WorkspaceSidebarNav({
   const renderNavContent = (isExpanded: boolean, onNavigateItem: (key: WorkspaceKey) => void) => (
     <>
       {WORKSPACE_CATEGORIES.map((category, catIndex) => (
-        <div key={category.key} className="flex flex-col gap-0.5">
+        <div key={category.key} className="flex flex-col gap-1">
           {isExpanded && (
             <div className="px-3 pt-1 pb-0.5 text-[9px] font-bold uppercase tracking-wider text-text-muted/70">
               {translate(category.labelKey)}
@@ -236,7 +240,7 @@ export function WorkspaceSidebarNav({
 
         <button
           onClick={onToggleSidebar}
-          className={`rounded-xl text-text-muted hover:text-text-base hover:bg-inner transition-all duration-300 cursor-pointer flex items-center overflow-hidden ${tourStep === 12 ? 'ring-2 ring-slate-300 shadow-[0_0_20px_rgba(255,255,255,0.25)] z-30 bg-inner' : ''} ${isSidebarExpanded ? 'justify-between w-full px-3 py-2 bg-inner border border-subtle shadow-sm' : 'justify-center w-10 h-10'}`}
+          className={`sidebar-nav-item rounded-xl text-text-muted hover:text-text-base hover:bg-inner transition-all duration-200 cursor-pointer flex items-center overflow-hidden ${tourStep === 12 ? 'ring-2 ring-slate-300 shadow-[0_0_20px_rgba(255,255,255,0.25)] z-30 bg-inner' : ''} ${isSidebarExpanded ? 'justify-between w-full px-3 py-2 bg-inner border border-subtle shadow-sm' : 'justify-center w-10 h-10 mx-auto'}`}
           title={isSidebarExpanded ? 'Collapse Navigation Panel' : 'Expand Navigation Panel'}
           aria-label={isSidebarExpanded ? 'Collapse navigation panel' : 'Expand navigation panel'}
           aria-expanded={isSidebarExpanded}
