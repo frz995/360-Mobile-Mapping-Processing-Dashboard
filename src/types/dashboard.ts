@@ -33,6 +33,13 @@ export interface DailyTimeSeries {
   publishToWebGIS: 'yes' | 'need to recheck' | 'no' | 'in process';
   action: string; // remarks field
   pic?: string;
+  /**
+   * Real raw CSV file name this record was imported from (e.g. `20220904.csv`).
+   * This is the survey record identity operators recognise, and it is written
+   * to the staging batch id so the registry never has to show a synthetic
+   * `daily-csv-<timestamp>-…` id.
+   */
+  csvFileName?: string;
   isSyncedWithSupabase?: boolean;
   isFromSupabase?: boolean;
   _alreadySyncedToBatch?: boolean;

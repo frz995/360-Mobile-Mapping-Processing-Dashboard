@@ -66,6 +66,11 @@ import { computeDeletionImpact, type DeletionImpact, type DeletionMode } from '.
 import type { SubgridPointRow, SelectedPointInfo } from './DeletionSelectionMap';
 import { extractSubgridName } from '../utils/subgrid';
 import {
+  extractChildSubgridFromFilename,
+  normalizeCsvImageFilename,
+  parseCsvFilenameMetadata
+} from '../utils/csvImportMetadata';
+import {
   getPOICount,
   getImagesProcessedCount,
   formatDisplayDate,
@@ -109,7 +114,61 @@ function calculatePanoramaTrackKm(panoramas?: PanoramaItem[]): number {
       totalKm += calculateHaversineDistance(p1.latitude, p1.longitude, p2.latitude, p2.longitude);
     }
   }
-return Math.round(totalKm * 100) / 100;
+  return Math.round(totalKm * 100) / 100;
+}
+
+function getMappedCsvValue(
+  row: string[],
+  headers: string[],
+  fieldMap: Record<string, string>,
+  field: string
+): string {
+  const column = Object.keys(fieldMap).find((header) => fieldMap[header] === field);
+  const index = column !== undefined ? headers.indexOf(column) : -1;
+  return index >= 0 ? (row[index] || '').trim() : '';
+}
+
+function getRawCsvValue(row: string[], headers: string[], aliases: string[]): string {
+  const normalizedAliases = new Set(aliases.map((alias) => alias.toLowerCase().replace(/[^a-z0-9]/g, '')));
+  const index = headers.findIndex((header) => normalizedAliases.has(header.toLowerCase().replace(/[^a-z0-9]/g, '')));
+  return index >= 0 ? (row[index] || '').trim() : '';
+}
+
+function getCsvImageFilename(row: string[], headers: string[], fieldMap: Record<string, string>): string {
+  return getRawCsvValue(row, headers, ['filename', 'imagefilename', 'image_url', 'file', 'image', 'img']) ||
+    getMappedCsvValue(row, headers, fieldMap, 'imageFilename');
+}
+
+function getCsvRowSubgrid(row: string[], headers: string[], fieldMap: Record<string, string>): string {
+  const mappedSubgrid = getMappedCsvValue(row, headers, fieldMap, 'subgrid');
+  if (mappedSubgrid) return extractSubgridName(mappedSubgrid) || mappedSubgrid.toUpperCase();
+  return extractChildSubgridFromFilename(getCsvImageFilename(row, headers, fieldMap));
+}
+
+function getCsvFileSubgrids(
+  file: { fileName: string; headers: string[]; rows: string[][] },
+  fieldMap: Record<string, string>,
+  subgridOverride?: string
+): string[] {
+  // An explicit per-file subgrid is a user decision and always wins, so a child CSV
+  // whose filenames simply continue the parent numbering can still be merged.
+  const override = (subgridOverride || '').trim().toUpperCase();
+  if (override) return [override];
+
+  const subgrids = new Set(file.rows.map((row) => getCsvRowSubgrid(row, file.headers, fieldMap)).filter(Boolean));
+  if (subgrids.size === 0) {
+    const filenameSubgrid = parseCsvFilenameMetadata(file.fileName).childSubgrid;
+    if (filenameSubgrid) subgrids.add(filenameSubgrid);
+  }
+  return Array.from(subgrids);
+}
+
+
+function getDailyImageFilenames(items: DailyTimeSeries[]): string[] {
+  return (items || []).flatMap((item) => [
+    ...(item.panoramas || []).map((panorama) => panorama.filename || ''),
+    ...(item.availableFilenames || [])
+  ]).filter(Boolean);
 }
 
 // ==============================================
@@ -839,6 +898,7 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
   const [csvPreview, setCsvPreview] = useState<Record<string, string>[]>([]);
   const [csvFieldMap, setCsvFieldMap] = useState<Record<string, string>>({});
   const [csvFileList, setCsvFileList] = useState<{ fileName: string; headers: string[]; rows: string[][] }[]>([]);
+  const [existingStagingFilenames, setExistingStagingFilenames] = useState<string[]>([]);
   const [selectedEquipment, setSelectedEquipment] = useState<'MMS' | 'Backpack' | 'Drone'>('MMS');
   const [selectedPic, setSelectedPic] = useState<string>(() => {
     if (!authSession?.user) return '';
@@ -852,6 +912,7 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
   });
   const [selectedGrid, setSelectedGrid] = useState<string>('1');
   const [fileGridMap, setFileGridMap] = useState<Record<string, string>>({});
+  const [fileSubgridMap, setFileSubgridMap] = useState<Record<string, string>>({});
   const [isImportingCsv, setIsImportingCsv] = useState(false);
 
   // Batch fields for CSV mapping (with alias patterns for auto-match)
@@ -896,6 +957,41 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
 
   const csvTargetFields = dataTab === 'batches' ? BATCH_FIELDS : DAILY_FIELDS;
 
+  const existingImageFilenameSet = useMemo(
+    () => new Set(
+      [...getDailyImageFilenames(dailyData), ...existingStagingFilenames]
+        .map(normalizeCsvImageFilename)
+        .filter(Boolean)
+    ),
+    [dailyData, existingStagingFilenames]
+  );
+
+  const csvFilenameStats = useMemo(() => {
+    const seen = new Set(existingImageFilenameSet);
+    const duplicateFilenames: string[] = [];
+    let filenameCount = 0;
+    const files = csvFileList.length > 0
+      ? csvFileList
+      : [{ fileName: 'imported.csv', headers: csvHeaders, rows: csvRows }];
+
+    files.forEach((file) => {
+      file.rows.forEach((row) => {
+        const filename = getCsvImageFilename(row, file.headers, csvFieldMap);
+        const normalized = normalizeCsvImageFilename(filename);
+        if (!normalized) return;
+        filenameCount += 1;
+        if (seen.has(normalized)) duplicateFilenames.push(filename);
+        else seen.add(normalized);
+      });
+    });
+
+    return {
+      filenameCount,
+      duplicateFilenames,
+      newFilenameCount: filenameCount - duplicateFilenames.length
+    };
+  }, [existingImageFilenameSet, csvFileList, csvHeaders, csvRows, csvFieldMap]);
+
   // Auto-match CSV headers to fields using explicit aliases (avoids stale closure issues)
   function autoMatchFields(headers: string[], fields: typeof BATCH_FIELDS | typeof DAILY_FIELDS): Record<string, string> {
     const map: Record<string, string> = {};
@@ -913,6 +1009,15 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
     });
     return map;
   }
+
+  const loadExistingStagingFilenames = useCallback(async () => {
+    try {
+      const stagingRows = await fetchStagingPanoramasFromSupabase();
+      setExistingStagingFilenames(stagingRows.map((r) => r.filename || '').filter(Boolean));
+    } catch (err) {
+      console.warn('Staging duplicate pre-check unavailable:', err);
+    }
+  }, []);
 
   const handleCsvFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -952,8 +1057,20 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
     });
     setFileGridMap(initialGridMap);
     const activeFields = dataTab === 'batches' ? BATCH_FIELDS : DAILY_FIELDS;
-    setCsvFieldMap(autoMatchFields(combinedHeaders, activeFields));
+    const initialFieldMap = autoMatchFields(combinedHeaders, activeFields);
+    setCsvFieldMap(initialFieldMap);
+    // Seed the per-file subgrid from the row data so an unambiguous survey shows the
+    // subgrid it will merge into; the user can still override it for a continuation
+    // CSV whose filenames carry no subgrid code.
+    const initialSubgridMap: Record<string, string> = {};
+    list.forEach(f => {
+      const detected = getCsvFileSubgrids(f, initialFieldMap);
+      if (detected.length === 1) initialSubgridMap[f.fileName] = detected[0];
+    });
+    setFileSubgridMap(initialSubgridMap);
     setIsCsvImportOpen(true);
+    // Surface already-staged image filenames so duplicates are visible before importing.
+    void loadExistingStagingFilenames();
     if (csvInputRef.current) csvInputRef.current.value = '';
   };
 
@@ -965,11 +1082,32 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
       ? csvFileList
       : [{ fileName: 'imported.csv', headers: csvHeaders, rows: csvRows }];
 
+    // Already-staged image filenames are the only real duplicate signal: the same
+    // subgrid surveyed again on another date is a separate run, not a duplicate.
+    let existingFilenames = existingImageFilenameSet;
+    try {
+      const stagingRows = await fetchStagingPanoramasFromSupabase();
+      setExistingStagingFilenames(stagingRows.map((r) => r.filename || '').filter(Boolean));
+      existingFilenames = new Set(
+        [...existingImageFilenameSet, ...stagingRows.map((r) => normalizeCsvImageFilename(r.filename || ''))].filter(Boolean)
+      );
+    } catch (err) {
+      console.warn('Staging duplicate pre-check unavailable:', err);
+    }
+
+    const duplicatesSkipped: string[] = [];
+
     for (let fIdx = 0; fIdx < filesToProcess.length; fIdx++) {
       const fileItem = filesToProcess[fIdx];
       const fHeaders = fileItem.headers;
       const fRows = fileItem.rows;
       const fileSpecificGrid = fileGridMap[fileItem.fileName] || selectedGrid || '1';
+      // The real raw CSV name is the survey record identity. `imported.csv` is
+      // only the manual paste fallback when no file was selected.
+      const rawCsvName = (fileItem.fileName || 'imported.csv').trim();
+      // Two files can share a name across folders, so the position stays in the
+      // key while the name stays readable for the operator.
+      const importKey = `${rawCsvName}#${fIdx}`;
 
       const getVal = (row: string[], field: string) => {
         const csvCol = Object.keys(csvFieldMap).find(k => csvFieldMap[k] === field);
@@ -1002,7 +1140,8 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
         panoramas: PanoramaItem[];
       }>();
 
-      const fileSubgrid = extractSubgridName(fileItem.fileName);
+      const filenameMetadata = parseCsvFilenameMetadata(fileItem.fileName);
+      const manualSubgrid = (fileSubgridMap[fileItem.fileName] || '').trim().toUpperCase();
 
       fRows.forEach(row => {
         const rawSubgrid = getVal(row, 'subgrid');
@@ -1011,9 +1150,18 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
         // Only treat it as a valid filename if it looks like a file (has extension or hyphen-number pattern)
         const isValidFilename = rawFilename && (rawFilename.includes('.') || /[-_]\d{3,}/.test(rawFilename));
         const filename = isValidFilename ? rawFilename : '';
-        const rowSubgrid = extractSubgridName(rawSubgrid) || (rawFilename ? extractSubgridName(rawFilename) : '');
-        const subgrid = fileSubgrid || rowSubgrid || rawSubgrid || fileItem.fileName.replace(/\.[^/.]+$/, '') || '';
-        const date = getVal(row, 'date') || getRawColVal(row, ['date', 'time', 'captured_at']) || new Date().toISOString().slice(0, 10);
+        // Same image filename already staged in this project = true duplicate data.
+        const normalizedFilename = normalizeCsvImageFilename(filename);
+        const isDuplicateRow = Boolean(normalizedFilename) && existingFilenames.has(normalizedFilename);
+        if (isDuplicateRow) duplicatesSkipped.push(filename);
+        else if (normalizedFilename) existingFilenames.add(normalizedFilename);
+        // Resolution order: explicit per-file subgrid, mapped subgrid column, then the
+        // child subgrid encoded in the row image filename, then an unambiguous GIS code in
+        // the CSV name. Survey CSVs like 20220904.csv / BP_20220630.csv carry no subgrid,
+        // so they must never be treated as one — they only contribute date/equipment metadata.
+        const rowSubgrid = manualSubgrid || getCsvRowSubgrid(row, fHeaders, csvFieldMap) || filenameMetadata.childSubgrid || '';
+        const subgrid = rowSubgrid || rawSubgrid || fileItem.fileName.replace(/\.[^/.]+$/, '') || '';
+        const date = getVal(row, 'date') || getRawColVal(row, ['date', 'time', 'captured_at']) || filenameMetadata.surveyDate || new Date().toISOString().slice(0, 10);
 
         const latStr = getVal(row, 'latitude') || getRawColVal(row, ['latitude', 'lat', 'y']);
         const lonStr = getVal(row, 'longitude') || getRawColVal(row, ['longitude', 'lon', 'lng', 'x']);
@@ -1038,7 +1186,7 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
         };
 
         const eqVal = getVal(row, 'captureEquipment');
-        const eq = ['MMS', 'Backpack', 'Drone'].includes(eqVal) ? eqVal : selectedEquipment;
+        const eq = ['MMS', 'Backpack', 'Drone'].includes(eqVal) ? eqVal : (filenameMetadata.captureEquipment || selectedEquipment);
         const picVal = getVal(row, 'pic');
 
         const fallbackPic =
@@ -1057,32 +1205,34 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
 
         const existing = groupedInFile.get(subgrid);
         if (existing) {
-          existing.imagesProcessed += Number(getVal(row, 'imagesProcessed')) || (filename ? 1 : 0);
+          // Skipped duplicates still contribute their row-level metrics to the run
+          // total, but their panorama is not re-imported.
+          const rowImages = Number(getVal(row, 'imagesProcessed'));
+          existing.imagesProcessed += rowImages || (filename && !isDuplicateRow ? 1 : 0);
           existing.defectCount += Number(getVal(row, 'defectCount')) || 0;
           existing.imagesDefected += Number(getVal(row, 'imagesDefected')) || 0;
           existing.kmProcessed += Number(getVal(row, 'kmProcessed')) || 0;
-          existing.panoramas.push(pItem);
+          if (!isDuplicateRow) existing.panoramas.push(pItem);
         } else {
           groupedInFile.set(subgrid, {
             date: date,
             grid: getVal(row, 'grid') || fileSpecificGrid,
             subgrid: subgrid,
             kmProcessed: Number(getVal(row, 'kmProcessed')) || 0,
-            imagesProcessed: Number(getVal(row, 'imagesProcessed')) || (filename ? 1 : 0),
+            imagesProcessed: Number(getVal(row, 'imagesProcessed')) || (filename && !isDuplicateRow ? 1 : 0),
             defectCount: Number(getVal(row, 'defectCount')) || 0,
             imagesDefected: Number(getVal(row, 'imagesDefected')) || 0,
             captureEquipment: eq,
             pic: pic,
             publishToWebGIS: pub,
             action: getVal(row, 'action') || `Imported (${fileItem.fileName || subgrid})`,
-            panoramas: [pItem]
+            panoramas: isDuplicateRow ? [] : [pItem]
           });
         }
       });
 
       const subgridsList = Array.from(groupedInFile.keys());
-      for (let sIdx = 0; sIdx < subgridsList.length; sIdx++) {
-        const sgKey = subgridsList[sIdx];
+      for (const sgKey of subgridsList) {
         const d = groupedInFile.get(sgKey)!;
         const trackKm = calculatePanoramaTrackKm(d.panoramas);
         const finalKm = d.kmProcessed > 0 ? d.kmProcessed : (trackKm > 0 ? trackKm : Math.round((d.panoramas.length * 0.005) * 100) / 100);
@@ -1120,7 +1270,10 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
           imagesDefected: d.imagesDefected || 0,
           publishToWebGIS: directPublish ? 'yes' : d.publishToWebGIS,
           isSyncedWithSupabase: directPublish,
-          id: `daily-csv-${Date.now()}-${fIdx}-${sIdx}`,
+          csvFileName: rawCsvName,
+          // Deterministic per (CSV file, subgrid): re-importing the same file
+          // updates its record instead of accumulating timestamped duplicates.
+          id: `csv-${importKey}-${(sgKey || 'unassigned').toUpperCase()}`,
           kmProcessed: Math.round(finalKm * 100) / 100,
           panoramas: markedPanoramas
         });
@@ -1253,14 +1406,24 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
 
     const importedSubgrids = Array.from(new Set(imported.map(d => (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim()).filter(Boolean)));
     const subgridStr = importedSubgrids.join(', ') || 'Unknown';
-    const count = imported.length;
-    const addMsg = `${count} data added : ${subgridStr}`;
+    const duplicateNote = duplicatesSkipped.length > 0
+      ? ` — ${duplicatesSkipped.length} duplicate image(s) skipped: ${Array.from(new Set(duplicatesSkipped)).slice(0, 5).join(', ')}${duplicatesSkipped.length > 5 ? ', …' : ''}`
+      : '';
+    const addMsg = `${imported.length} data added : ${subgridStr}${duplicateNote}`;
 
     setPublishMessage({
       text: addMsg,
       type: 'success'
     });
     setTimeout(() => setPublishMessage(null), 6000);
+
+    if (duplicatesSkipped.length > 0) {
+      addNotification?.({
+        title: 'Duplicate images skipped',
+        message: `${duplicatesSkipped.length} image(s) in ${importedFileNames.length > 0 ? importedFileNames.join(', ') : 'the CSV'} were already staged and were not imported again. Subgrid reuse across survey dates is kept as a separate run.`,
+        category: 'PUBLISH'
+      });
+    }
 
     setIsCsvImportOpen(false);
     setCsvHeaders([]);
@@ -4000,48 +4163,58 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
 
                   {/* Stats & Subgrid Detection Summary */}
                   {(() => {
-                    const subgridCol = Object.keys(csvFieldMap).find(k => csvFieldMap[k] === 'imageFilename' || csvFieldMap[k] === 'subgrid');
-                    const subgridIdx = subgridCol !== undefined ? csvHeaders.indexOf(subgridCol) : -1;
-
-                    const detectedList: string[] = [];
-                    if (csvFileList.length > 0) {
-                      csvFileList.forEach(file => {
-                        const sg = extractSubgridName(file.fileName);
-                        if (sg) detectedList.push(sg);
-                      });
-                    }
-                    if (csvRows.length > 0) {
-                      csvRows.forEach(r => {
-                        const val = subgridIdx >= 0 ? r[subgridIdx] : (r[0] || '');
-                        const sg = extractSubgridName(val);
-                        if (sg) detectedList.push(sg);
-                      });
-                    }
-
-                    const detectedSubgrids = Array.from(new Set(detectedList.filter(Boolean)));
+                    // Canonical detection: row subgrid column -> child subgrid in the row
+                    // image filename -> unambiguous GIS code in the CSV name. Survey CSVs
+                    // such as 20220904.csv / BP_20220630.csv are metadata, never subgrids.
+                    const detectedSubgrids = Array.from(new Set(
+                      (csvFileList.length > 0
+                        ? csvFileList.flatMap((file) => getCsvFileSubgrids(file, csvFieldMap, fileSubgridMap[file.fileName]))
+                        : getCsvFileSubgrids({ fileName: 'imported.csv', headers: csvHeaders, rows: csvRows }, csvFieldMap, fileSubgridMap['imported.csv'])
+                      ).filter(Boolean)
+                    ));
                     const displaySubgrids = detectedSubgrids;
-                    const isMultiFile = csvFileList.length > 1;
+                    const isMultiFile = csvFileList.length > 0;
 
                     const existingSubgridSet = new Set(dailyData.map(d => (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim()).filter(Boolean));
-                    const duplicateDetectedSubgrids = detectedSubgrids.filter(sg => existingSubgridSet.has(sg.toUpperCase().trim()));
-                    const hasDuplicates = duplicateDetectedSubgrids.length > 0;
+                    // An existing subgrid is a continuation to merge, not duplicate data.
+                    const matchingSubgrids = detectedSubgrids.filter(sg => existingSubgridSet.has(sg.toUpperCase().trim()));
+                    const hasFilenameDuplicates = csvFilenameStats.duplicateFilenames.length > 0;
+                    const willMerge = matchingSubgrids.length > 0;
 
                     return (
                       <div className="space-y-2">
-                        {/* Duplicate Detection Notice Banner */}
-                        {hasDuplicates && (
+                        {/* Existing subgrid match: continuation data that merges into the parent run */}
+                        {willMerge && (
+                          <div className="p-3 bg-card border border-sky-500/50 rounded-xl flex items-center justify-between gap-3 text-xs text-sky-100 shadow-md">
+                            <div className="flex items-center gap-2.5">
+                              <Layers size={16} className="text-sky-400 shrink-0" />
+                              <div>
+                                <span className="font-bold text-sky-300">Data match as subgrid {matchingSubgrids.join(', ')}</span>
+                                <span className="text-sky-100/90 ml-2 font-sans text-[11px]">
+                                  will be merged to parent subgrid {matchingSubgrids.join(', ')}.
+                                </span>
+                              </div>
+                            </div>
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-sky-500/20 text-sky-300 border border-sky-500/40 shrink-0">
+                              {matchingSubgrids.length} Subgrid Match{matchingSubgrids.length > 1 ? 'es' : ''}
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Real duplicates are repeated image filenames, never a repeated subgrid */}
+                        {hasFilenameDuplicates && (
                           <div className="p-3 bg-card border border-amber-500/50 rounded-xl flex items-center justify-between gap-3 text-xs text-amber-200 shadow-md">
                             <div className="flex items-center gap-2.5">
-                              <AlertTriangle size={16} className="text-amber-400 shrink-0 animate-pulse" />
+                              <AlertTriangle size={16} className="text-amber-400 shrink-0" />
                               <div>
-                                <span className="font-bold text-amber-300">Multiple data detected</span>
+                                <span className="font-bold text-amber-300">Duplicate images detected</span>
                                 <span className="text-amber-200/90 ml-2 font-sans text-[11px]">
-                                  Subgrid(s) <strong className="text-amber-100 font-bold font-sans">{duplicateDetectedSubgrids.join(', ')}</strong> already exist in records.
+                                  <strong className="text-amber-100 font-bold font-sans">{csvFilenameStats.duplicateFilenames.length}</strong> image filename(s) are already staged and will be skipped.
                                 </span>
                               </div>
                             </div>
                             <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 shrink-0">
-                              {duplicateDetectedSubgrids.length} Duplicate{duplicateDetectedSubgrids.length > 1 ? 's' : ''} Detected
+                              {csvFilenameStats.newFilenameCount} New
                             </span>
                           </div>
                         )}
@@ -4065,7 +4238,11 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
                                     CSV loaded &bull; <span className="font-bold">{csvRows.length} image rows</span> &amp; <span className="font-bold">{csvHeaders.length} columns</span> detected.
                                     <> Will be processed as <span className="font-bold text-text-base">{displaySubgrids.length} unique subgrid{displaySubgrids.length !== 1 ? 's' : ''}</span>.</>
                                   </p>
-                                  <p className="text-text-muted text-[11px]">Each imported entry will be added as a separate entity without overwriting existing rows.</p>
+                                  <p className="text-text-muted text-[11px]">
+                                    {willMerge
+                                      ? <>New images will be added as a new daily entry merged into the existing subgrid without overwriting existing rows.</>
+                                      : <>Each imported entry will be added as a separate entity without overwriting existing rows.</>}
+                                  </p>
                                 </>
                               )}
 
@@ -4073,14 +4250,14 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
                               <div className="pt-1 flex items-center gap-1.5 flex-wrap">
                                 <span className="text-[10px] font-bold text-sky-400 uppercase tracking-wider">Detected Subgrid(s):</span>
                                 {displaySubgrids.map(sg => {
-                                  const isSubDup = existingSubgridSet.has(sg.toUpperCase().trim());
+                                  const isSubMatch = existingSubgridSet.has(sg.toUpperCase().trim());
                                   return (
-                                    <span key={sg} className={`px-2 py-0.5 rounded-md text-[11px] font-sans font-bold flex items-center gap-1 ${isSubDup
-                                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                                    <span key={sg} className={`px-2 py-0.5 rounded-md text-[11px] font-sans font-bold flex items-center gap-1 ${isSubMatch
+                                      ? 'bg-sky-500/15 text-sky-300 border border-sky-500/40'
                                       : 'bg-sky-500/15 text-sky-300 border border-sky-500/30'
                                       }`}>
                                       {sg}
-                                      {isSubDup && <span className="text-[9px] font-sans font-semibold text-amber-400 ml-1">(multiple data detected)</span>}
+                                      {isSubMatch && <span className="text-[9px] font-sans font-semibold text-sky-400 ml-1">(merges into existing)</span>}
                                     </span>
                                   );
                                 })}
@@ -4155,9 +4332,53 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
                       </div>
                     )}
 
-                    {/* 2. Capture Equipment & PIC */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div className="bg-card border border-subtle p-3 rounded-xl">
+                    {/* 2. Subgrid Assignment */}
+                    <div className="bg-card border border-subtle p-3 rounded-xl space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <label className="block text-[10px] font-bold text-text-muted uppercase tracking-wider">
+                          Subgrid {csvFileList.length > 1 ? 'Per CSV File' : ''}
+                        </label>
+                        <span className="text-[10px] text-text-muted font-sans">
+                          Auto-detected from rows &bull; edit to merge a continuation CSV
+                        </span>
+                      </div>
+                      {csvFileList.length > 1 ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-36 overflow-y-auto pr-1">
+                          {csvFileList.map((file) => (
+                            <div key={file.fileName} className="flex flex-col gap-1 p-2 bg-app border border-subtle rounded-lg">
+                              <span className="text-[10px] text-text-base truncate font-sans" title={file.fileName}>
+                                {file.fileName}
+                              </span>
+                              <input
+                                type="text"
+                                list="csvExistingSubgrids"
+                                value={fileSubgridMap[file.fileName] || ''}
+                                onChange={(e) => setFileSubgridMap({ ...fileSubgridMap, [file.fileName]: e.target.value })}
+                                placeholder="e.g. N93E70"
+                                className="w-full bg-app border border-subtle rounded px-2 py-1 text-xs text-text-base placeholder-text-muted focus:outline-none focus:border-sky-500 font-mono"
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <input
+                          type="text"
+                          list="csvExistingSubgrids"
+                          value={fileSubgridMap[csvFileList[0]?.fileName || 'imported.csv'] || ''}
+                          onChange={(e) => setFileSubgridMap({ ...fileSubgridMap, [csvFileList[0]?.fileName || 'imported.csv']: e.target.value })}
+                          placeholder="Auto-detected from image filenames, e.g. N93E70"
+                          className="w-full bg-app border border-subtle rounded-lg px-3 py-1.5 text-xs text-text-base placeholder-text-muted focus:outline-none focus:border-sky-500 font-mono"
+                        />
+                      )}
+                      <datalist id="csvExistingSubgrids">
+                        {Array.from(new Set(dailyData.map((d) => (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim()).filter(Boolean))).map((sg) => (
+                          <option key={sg} value={sg} />
+                        ))}
+                      </datalist>
+                    </div>
+
+                    {/* 3. Capture Equipment & PIC */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">                      <div className="bg-card border border-subtle p-3 rounded-xl">
                         <label className="block text-[10px] font-bold text-text-muted uppercase tracking-wider mb-2">Capture Equipment</label>
                         <div className="flex items-center gap-1.5">
                           {(['MMS', 'Backpack', 'Drone'] as const).map(eq => (
@@ -4247,7 +4468,9 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
                         const fHeaders = fileItem.headers;
                         const fRows = fileItem.rows;
                         const fileSpecificGrid = fileGridMap[fileItem.fileName] || selectedGrid || '1';
-                        const fileSubgrid = extractSubgridName(fileItem.fileName);
+                        const fileMeta = parseCsvFilenameMetadata(fileItem.fileName);
+                        const fileSubgrid = (fileSubgridMap[fileItem.fileName] || '').trim().toUpperCase() || fileMeta.childSubgrid || '';
+                        const fileSurveyDate = fileMeta.surveyDate;
 
                         const getVal = (row: string[], fieldKey: string) => {
                           const mappedHeader = Object.keys(csvFieldMap).find(k => csvFieldMap[k] === fieldKey);
@@ -4270,13 +4493,14 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
                           const rawFilename = getRawColVal(r, ['filename', 'imagefilename', 'image_url', 'file', 'image', 'img', 'poi']) || getVal(r, 'imageFilename');
                           const isValidFilename = rawFilename && (rawFilename.includes('.') || /[-_]\d{3,}/.test(rawFilename));
                           const filename = isValidFilename ? rawFilename : '';
-                          const rowSubgrid = extractSubgridName(rawSubgrid) || (rawFilename ? extractSubgridName(rawFilename) : '');
+                          const rowSubgrid = getCsvRowSubgrid(r, fHeaders, csvFieldMap);
                           const subgrid = (fileSubgrid || rowSubgrid || rawSubgrid || fileItem.fileName.replace(/\.[^/.]+$/, '') || 'SUBGRID').toUpperCase().trim();
+
 
                           const latStr = getVal(r, 'latitude') || getRawColVal(r, ['latitude', 'lat', 'y']);
                           const lonStr = getVal(r, 'longitude') || getRawColVal(r, ['longitude', 'lon', 'lng', 'x']);
                           const headingStr = getVal(r, 'heading') || getRawColVal(r, ['heading', 'bearing', 'dir', 'orientation']);
-                          const dateVal = getVal(r, 'date') || getRawColVal(r, ['date', 'time', 'captured_at', 'timestamp']);
+                          const dateVal = getVal(r, 'date') || getRawColVal(r, ['date', 'time', 'captured_at', 'timestamp']) || fileSurveyDate;
 
                           const lat = parseFloat(latStr);
                           const lon = parseFloat(lonStr);
@@ -4408,10 +4632,22 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
                   )}
 
                   {/* Parsed Subgrids Summary Table */}
-                  <div>
-                    <h3 className="text-xs font-bold text-text-base mb-2 uppercase tracking-wider">
-                      Staging Subgrids Summary ({csvFileList.length > 0 ? csvFileList.length : 1} file(s))
-                    </h3>
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="text-xs font-bold text-text-base mb-2 uppercase tracking-wider">
+                        Staging Subgrids Summary ({csvFileList.length > 0 ? csvFileList.length : 1} file(s))
+                      </h3>
+                      {csvFilenameStats.filenameCount > 0 && (
+                        <span className="text-[11px] text-text-muted font-sans">
+                          {csvFilenameStats.newFilenameCount} new image(s)
+                          {csvFilenameStats.duplicateFilenames.length > 0 && (
+                            <span className="text-amber-400 font-semibold">
+                              {' '}· {csvFilenameStats.duplicateFilenames.length} duplicate(s) will be skipped
+                            </span>
+                          )}
+                        </span>
+                      )}
+                    </div>
+
                     <div className="overflow-x-auto rounded-xl border border-subtle max-h-32">
                       <table className="w-full text-[11px] text-left">
                         <thead className="bg-card text-text-muted sticky top-0">
@@ -4425,12 +4661,20 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-subtle/60 font-sans">
-                          {csvFileList.map((file, idx) => (
+                          {csvFileList.map((file, idx) => {
+                            const fileSubgrids = getCsvFileSubgrids(file, csvFieldMap);
+                            const fileMeta = parseCsvFilenameMetadata(file.fileName);
+                            return (
                             <tr key={file.fileName || idx} className="hover:bg-inner">
-                              <td className="px-3 py-2 font-bold text-text-base">{extractSubgridName(file.fileName) || `Subgrid ${idx + 1}`}</td>
+                              <td className="px-3 py-2 font-bold text-text-base">
+                                {fileSubgrids.length > 0 ? fileSubgrids.join(', ') : `Subgrid ${idx + 1}`}
+                                <div className="text-[10px] font-normal text-text-muted truncate max-w-[16rem]" title={file.fileName}>
+                                  {file.fileName}
+                                </div>
+                              </td>
                               <td className="px-3 py-2 text-text-base">Grid {fileGridMap[file.fileName] || selectedGrid || '1'}</td>
                               <td className="px-3 py-2 text-text-base">{file.rows.length}</td>
-                              <td className="px-3 py-2 text-text-base">{selectedEquipment}</td>
+                              <td className="px-3 py-2 text-text-base">{fileMeta.captureEquipment || selectedEquipment}</td>
                               <td className="px-3 py-2 text-text-base">{selectedPic}</td>
                               <td className="px-3 py-2">
                                 <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-950/40 text-amber-300 border border-amber-500/30 opacity-80 inline-flex items-center gap-1">
@@ -4438,11 +4682,11 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
                                 </span>
                               </td>
                             </tr>
-                          ))}
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>
-                  </div>
 
                 </div>
 

@@ -1,8 +1,11 @@
 // =====================================================================
-// DatasetRegistryPanel — read-only registry of RAW / PROCESSED /
-// DELIVERABLE datasets with their versioning, file stats, QA decisions,
-// processing history and source↔output relationships. Reuses the
-// lineage graph so parent_dataset_id chains and orphans are surfaced.
+// DatasetRegistryPanel — the survey registry for Data Management.
+// Every row is real capture data that entered the system through one of
+// two ingress points: a CSV survey import staged from Data Management, or
+// records promoted to the WebGIS by the release gate in the production
+// hub. Rows are grouped parent subgrid → child survey records, the same
+// parent→child shape the Multi PC daily processing registry shows, and
+// counts are capture points rather than files.
 // =====================================================================
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
@@ -11,31 +14,55 @@ import {
   Loader2,
   Search,
   MapPin,
-  AlertTriangle,
-  Plus,
   X,
-  Folder,
-  CheckCircle2,
-  Globe
+  Globe,
+  ChevronDown,
+  ChevronRight
 } from 'lucide-react';
 import { ContentLoading } from './common/ContentLoading';
 import {
+  fetchSupabaseData,
+  fetchSubgridIndexFromSupabase,
   fetchDatasetsFromSupabase,
-  fetchProcessingJobsFromSupabase,
-  registerSurveyDataset,
-  checkDatasetDuplicates
+  fetchProcessingJobsFromSupabase
 } from '../services/supabase';
-import type { DatasetRecord, DatasetType, ProcessingJobRecord } from '../types/production';
-import { buildLineageGraph, findOrphans, extractCanonicalSubgrid } from '../utils/datasetLineage';
-import { computeDatasetVersionState } from '../utils/datasetVersioning';
-import { formatBytes, formatDateTime } from './production/common';
+import type { DatasetRecord, ProcessingJobRecord } from '../types/production';
+import {
+  buildSurveyRegistry,
+  filterRegistryNodes,
+  type RegistryChildSource,
+  type RegistryState,
+  type SubgridIndexEntry,
+  type SurveyRecordInput
+} from '../utils/datasetRegistry';
+import { formatDateTime } from './production/common';
 import type { TranslateFn } from './production/common';
-import { qaBadge, statusTone } from './production/lineage/lineageCommon';
 import { resolveSubgridLifecycle } from '../utils/dataLifecycle';
 import { WebGISHandoffCard } from './production/WebGISHandoffCard';
 import { pushWorkspace } from '../utils/urlRouter';
 
-type TypeFilter = 'all' | 'RAW' | 'PROCESSED' | 'DELIVERABLE';
+type SourceFilter = 'all' | RegistryChildSource;
+type StateFilter = 'all' | RegistryState;
+
+const SOURCE_FILTERS: Array<{ id: SourceFilter; label: string }> = [
+  { id: 'all', label: 'lineageFilterAll' },
+  { id: 'import', label: 'dataRegistrySourceImport' },
+  { id: 'webgis', label: 'dataRegistrySourceWebgis' }
+];
+
+const STATE_FILTERS: Array<{ id: StateFilter; label: string }> = [
+  { id: 'all', label: 'lineageFilterAll' },
+  { id: 'published', label: 'dataRegistryStateReleased' },
+  { id: 'staging', label: 'dataRegistryStateStaging' },
+  { id: 'defect', label: 'dataRegistryStateDefect' }
+];
+
+const STATE_CLASS: Record<RegistryState, string> = {
+  published: 'text-emerald-300 border-emerald-500/40 bg-emerald-950/40',
+  staging: 'text-amber-300 border-amber-500/40 bg-amber-950/40',
+  defect: 'text-rose-300 border-rose-500/40 bg-rose-950/40',
+  mixed: 'text-text-base border-subtle bg-inner'
+};
 
 interface DatasetRegistryPanelProps {
   translate: TranslateFn;
@@ -43,64 +70,51 @@ interface DatasetRegistryPanelProps {
   isGuestUser?: boolean;
   userLabel?: string;
   onAddNotification?: (item: any) => void;
-  onAddAuditLog?: (type: any, title: string, details: string, status?: any) => void;
-}
-
-interface RegistryRow {
-  dataset: DatasetRecord;
-  sourceName?: string;
-  qaDecision: string | null;
-  processCount: number;
-  latestVersion: boolean;
-  superseded: boolean;
-  versionChain: DatasetRecord[];
+  onAddAuditLog?: (
+    type: any,
+    title: string,
+    details: string,
+    status?: 'error' | 'info' | 'success' | 'warning'
+  ) => void;
 }
 
 export const DatasetRegistryPanel: React.FC<DatasetRegistryPanelProps> = ({
   translate,
-  onOpenInMap,
-  isGuestUser = false,
-  userLabel = 'Operator',
-  onAddNotification,
-  onAddAuditLog
+  onOpenInMap
 }) => {
-  const [datasets, setDatasets] = useState<DatasetRecord[]>([]);
-  const [jobs, setJobs] = useState<ProcessingJobRecord[]>([]);
+  const [records, setRecords] = useState<SurveyRecordInput[]>([]);
+  const [subgridIndex, setSubgridIndex] = useState<Record<string, SubgridIndexEntry>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
-  const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
-  const [subgridFilter, setSubgridFilter] = useState<string | null>(null);
-  
-  // Registration Form State
-  const [showRegisterModal, setShowRegisterModal] = useState(false);
-  const [registering, setRegistering] = useState(false);
-  const [regForm, setRegForm] = useState({
-    name: '',
-    subgrid: '',
-    equipment: 'MMS Vehicle Unit',
-    datasetType: 'RAW' as DatasetType,
-    pipelineStage: 'STITCH' as any,
-    sourceFolder: '',
-    fileCount: 0,
-    sizeBytes: 0,
-    storageProvider: 'nas_local'
-  });
-  const [duplicateWarnings, setDuplicateWarnings] = useState<DatasetRecord[]>([]);
+  const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all');
+  const [stateFilter, setStateFilter] = useState<StateFilter>('all');
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+
+  // Handoff assistant state — the lifecycle card is resolved on demand, so
+  // the catalog and job tables are only read when an operator asks for it.
   const [handoffSubgrid, setHandoffSubgrid] = useState<string | null>(null);
+  const [handoffLoading, setHandoffLoading] = useState(false);
+  const [handoffDatasets, setHandoffDatasets] = useState<DatasetRecord[]>([]);
+  const [handoffJobs, setHandoffJobs] = useState<ProcessingJobRecord[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const [ds, js] = await Promise.all([
-        fetchDatasetsFromSupabase(),
-        fetchProcessingJobsFromSupabase()
+      const [captures, index] = await Promise.all([
+        fetchSupabaseData(),
+        fetchSubgridIndexFromSupabase()
       ]);
-      setDatasets(ds || []);
-      setJobs(js || []);
+      if (captures.error) {
+        setError(captures.error);
+        setRecords([]);
+      } else {
+        setRecords((captures.dailyData || []) as SurveyRecordInput[]);
+      }
+      setSubgridIndex(index || {});
     } catch (err: any) {
-      setError(err?.message || 'Failed to load dataset registry.');
+      setError(err?.message || 'Failed to load the survey registry.');
     } finally {
       setLoading(false);
     }
@@ -110,187 +124,48 @@ export const DatasetRegistryPanel: React.FC<DatasetRegistryPanelProps> = ({
     load();
   }, [load]);
 
-  const graph = useMemo(
-    () => buildLineageGraph(datasets, jobs, []),
-    [datasets, jobs]
+  const registry = useMemo(
+    () => buildSurveyRegistry({ records, subgridIndex }),
+    [records, subgridIndex]
   );
 
-  const orphans = useMemo(() => findOrphans(graph), [graph]);
-  const orphanNames = useMemo(
-    () => new Set(orphans.map((n) => n.id)),
-    [orphans]
+  const nodes = useMemo(
+    () => filterRegistryNodes(registry.nodes, { search, source: sourceFilter, state: stateFilter }),
+    [registry.nodes, search, sourceFilter, stateFilter]
   );
 
-  const subgrids = useMemo(() => {
-    const set = new Set<string>();
-    datasets.forEach((d) => {
-      const clean = extractCanonicalSubgrid(d.subgrid);
-      if (clean) set.add(clean);
-    });
-    return Array.from(set).sort();
-  }, [datasets]);
+  const allExpanded = nodes.length > 0 && nodes.every((n) => !collapsed.has(n.key));
 
-  const datasetById = useMemo(() => {
-    const map = new Map<string, DatasetRecord>();
-    datasets.forEach((d) => d.id && map.set(d.id, d));
-    return map;
-  }, [datasets]);
-
-  const rows = useMemo<RegistryRow[]>(() => {
-    const jobOutputQa = new Map<string, string | null>();
-    jobs.forEach((j) => {
-      if (j.output_dataset_id) {
-        jobOutputQa.set(j.output_dataset_id, j.qa_decision ?? null);
-      }
-    });
-    const jobTouchCount = new Map<string, number>();
-    jobs.forEach((j) => {
-      if (j.source_dataset_id) {
-        jobTouchCount.set(j.source_dataset_id, (jobTouchCount.get(j.source_dataset_id) || 0) + 1);
-      }
-      if (j.output_dataset_id) {
-        jobTouchCount.set(j.output_dataset_id, (jobTouchCount.get(j.output_dataset_id) || 0) + 1);
-      }
+  const toggleNode = (key: string) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
     });
 
-    const versionState = computeDatasetVersionState(datasets);
-
-    return datasets
-      .map((d) => ({
-        dataset: d,
-        sourceName: d.parent_dataset_id ? datasetById.get(d.parent_dataset_id)?.name : undefined,
-        qaDecision: jobOutputQa.get(d.id || '') ?? null,
-        processCount: jobTouchCount.get(d.id || '') || 0,
-        latestVersion: versionState.latestByDataset.get(d.id || '') ?? !d.superseded_by,
-        superseded: Boolean(d.superseded_by),
-        versionChain: (d.id && versionState.chainByDataset.get(d.id)) || [d]
-      }))
-      .sort((a, b) => (b.dataset.created_at || '').localeCompare(a.dataset.created_at || ''));
-  }, [datasets, jobs, datasetById]);
-
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return rows.filter((r) => {
-      if (typeFilter !== 'all' && r.dataset.dataset_type !== typeFilter) return false;
-      if (subgridFilter && extractCanonicalSubgrid(r.dataset.subgrid) !== subgridFilter) return false;
-      if (q) {
-        const hay = [
-          r.dataset.name,
-          r.dataset.subgrid,
-          r.dataset.provider,
-          r.dataset.source_folder,
-          r.dataset.output_folder,
-          r.sourceName
-        ]
-          .filter(Boolean)
-          .join(' ')
-          .toLowerCase();
-        if (!hay.includes(q)) return false;
-      }
-      return true;
-    });
-  }, [rows, search, typeFilter, subgridFilter]);
-
-  const totals = useMemo(() => {
-    let files = 0;
-    let bytes = 0;
-    let raw = 0;
-    let processed = 0;
-    let deliverable = 0;
-    datasets.forEach((d) => {
-      files += d.file_count || 0;
-      bytes += d.size_bytes || 0;
-      if (d.dataset_type === 'RAW') raw += 1;
-      else if (d.dataset_type === 'PROCESSED') processed += 1;
-      else if (d.dataset_type === 'DELIVERABLE') deliverable += 1;
-    });
-    return { files, bytes, raw, processed, deliverable };
-  }, [datasets]);
-
-  // Check duplicates when subgrid or folder changes
-  useEffect(() => {
-    let active = true;
-    if (regForm.subgrid || regForm.sourceFolder) {
-      checkDatasetDuplicates(regForm.subgrid, regForm.sourceFolder).then((dups) => {
-        if (active) setDuplicateWarnings(dups);
-      });
-    } else {
-      setDuplicateWarnings([]);
-    }
-    return () => {
-      active = false;
-    };
-  }, [regForm.subgrid, regForm.sourceFolder]);
-
-  const handleRegisterSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (isGuestUser || registering) return;
-    if (!regForm.name.trim()) {
-      onAddNotification?.({
-        title: 'Dataset Name Required',
-        message: 'Please provide a valid dataset name before submitting.',
-        category: 'ERROR',
-        read: false
-      });
-      return;
-    }
-
-    setRegistering(true);
+  const openHandoff = async (subgrid: string) => {
+    setHandoffSubgrid(subgrid);
+    setHandoffLoading(true);
     try {
-      const saved = await registerSurveyDataset({
-        name: regForm.name.trim(),
-        subgrid: regForm.subgrid.trim().toUpperCase(),
-        equipment: regForm.equipment,
-        datasetType: regForm.datasetType,
-        pipelineStage: regForm.pipelineStage,
-        sourceFolder: regForm.sourceFolder.trim(),
-        fileCount: Number(regForm.fileCount) || 0,
-        sizeBytes: Number(regForm.sizeBytes) || 0,
-        storageProvider: regForm.storageProvider,
-        userLabel,
-        metadata: {
-          intakeSource: 'dataset-registry-panel',
-          equipmentType: regForm.equipment
-        }
-      });
-
-      if (saved) {
-        onAddNotification?.({
-          title: 'Raw Survey Dataset Registered',
-          message: `"${saved.name}" (${saved.subgrid || 'No subgrid'}) successfully registered into catalog.`,
-          category: 'SYSTEM',
-          read: false
-        });
-        onAddAuditLog?.(
-          'CREATE',
-          `Survey Dataset Registered: ${saved.name}`,
-          `Registered type ${saved.dataset_type} (${saved.file_count || 0} frames) for subgrid ${saved.subgrid || '-'} by ${userLabel}.`,
-          'success'
-        );
-        setShowRegisterModal(false);
-        setRegForm({
-          name: '',
-          subgrid: '',
-          equipment: 'MMS Vehicle Unit',
-          datasetType: 'RAW',
-          pipelineStage: 'STITCH',
-          sourceFolder: '',
-          fileCount: 0,
-          sizeBytes: 0,
-          storageProvider: 'nas_local'
-        });
-        await load();
-      }
-    } catch (err: any) {
-      onAddNotification?.({
-        title: 'Registration Failed',
-        message: err?.message || 'Could not register dataset.',
-        category: 'ERROR',
-        read: false
-      });
+      const [ds, js] = await Promise.all([
+        fetchDatasetsFromSupabase(),
+        fetchProcessingJobsFromSupabase()
+      ]);
+      setHandoffDatasets(ds || []);
+      setHandoffJobs(js || []);
+    } catch {
+      setHandoffDatasets([]);
+      setHandoffJobs([]);
     } finally {
-      setRegistering(false);
+      setHandoffLoading(false);
     }
+  };
+
+  const closeHandoff = () => {
+    setHandoffSubgrid(null);
+    setHandoffDatasets([]);
+    setHandoffJobs([]);
   };
 
   return (
@@ -306,95 +181,75 @@ export const DatasetRegistryPanel: React.FC<DatasetRegistryPanelProps> = ({
           <span>{translate('dataRegistryRefresh')}</span>
         </button>
 
-        {!isGuestUser && (
-          <button
-            onClick={() => setShowRegisterModal(true)}
-            className="flex items-center gap-1.5 bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/40 px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all shadow-sm cursor-pointer"
-          >
-            <Plus size={13} />
-            <span>Register Survey Batch</span>
-          </button>
-        )}
-
         <span className="text-[11px] font-bold uppercase tracking-wider text-text-muted ml-1">
-          {translate('dataRegistrySubgrid')}
+          {translate('dataRegistryColSource')}
         </span>
-        <button
-          onClick={() => setSubgridFilter(null)}
-          className={`px-2.5 py-1 rounded-md text-[11px] font-semibold border transition-colors cursor-pointer ${
-            subgridFilter === null
-              ? 'bg-sky-500/20 text-sky-300 border-sky-500/40'
-              : 'bg-inner text-text-muted border-subtle hover:text-text-base'
-          }`}
-        >
-          {translate('lineageGraphAllSubgrids')}
-        </button>
-        {subgrids.slice(0, 24).map((sg) => (
+        {SOURCE_FILTERS.map((f) => (
           <button
-            key={sg}
-            onClick={() => setSubgridFilter(subgridFilter === sg ? null : sg)}
+            key={f.id}
+            onClick={() => setSourceFilter(f.id)}
             className={`px-2.5 py-1 rounded-md text-[11px] font-semibold border transition-colors cursor-pointer ${
-              subgridFilter === sg
+              sourceFilter === f.id
                 ? 'bg-sky-500/20 text-sky-300 border-sky-500/40'
                 : 'bg-inner text-text-muted border-subtle hover:text-text-base'
             }`}
           >
-            {sg}
+            {translate(f.label)}
           </button>
         ))}
-        {subgrids.length > 24 && (
-          <span className="text-[10px] text-text-muted">+{subgrids.length - 24}…</span>
-        )}
+
+        <span className="text-[11px] font-bold uppercase tracking-wider text-text-muted ml-2">
+          {translate('dataRegistryColState')}
+        </span>
+        {STATE_FILTERS.map((f) => (
+          <button
+            key={f.id}
+            onClick={() => setStateFilter(f.id)}
+            className={`px-2.5 py-1 rounded-md text-[11px] font-semibold border transition-colors cursor-pointer ${
+              stateFilter === f.id
+                ? 'bg-sky-500/20 text-sky-300 border-sky-500/40'
+                : 'bg-inner text-text-muted border-subtle hover:text-text-base'
+            }`}
+          >
+            {translate(f.label)}
+          </button>
+        ))}
       </div>
 
       {/* Summary Telemetry Strip */}
       <div className="bg-card border border-subtle rounded-xl px-4 py-2.5 shadow-sm text-xs flex flex-wrap items-center gap-x-4 gap-y-2">
         <span className="text-[11px] font-bold text-text-muted shrink-0 uppercase tracking-wider">
-          Registry Telemetry:
+          {translate('dataRegistryTelemetry')}
         </span>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
           <span>
-            <span className="text-text-muted">{translate('dataRegistryTotalDatasets')}: </span>
-            <strong className="font-semibold text-text-base">{datasets.length}</strong>
+            <span className="text-text-muted">{translate('dataRegistrySubgrid')}: </span>
+            <strong className="font-semibold text-text-base">{registry.totals.subgrids}</strong>
           </span>
           <span className="text-text-muted">&bull;</span>
           <span>
-            <span className="text-text-muted">{translate('dataRegistryTotalFiles')}: </span>
-            <strong className="font-semibold text-text-base">{totals.files.toLocaleString()}</strong>
+            <span className="text-text-muted">{translate('dataRegistrySurveyRecord')}: </span>
+            <strong className="font-semibold text-text-base">{registry.totals.surveyRecords}</strong>
           </span>
           <span className="text-text-muted">&bull;</span>
           <span>
-            <span className="text-text-muted">{translate('dataRegistryTotalSize')}: </span>
-            <strong className="font-semibold text-text-base">{formatBytes(totals.bytes)}</strong>
+            <span className="text-text-muted">{translate('dataRegistryPointCapture')}: </span>
+            <strong className="font-semibold text-text-base">
+              {registry.totals.pointCapture.toLocaleString()}
+            </strong>
           </span>
           <span className="text-text-muted">&bull;</span>
           <span>
-            <span className="text-text-muted">{translate('dataRegistryRaw')}: </span>
-            <strong className="font-semibold text-text-base">{totals.raw}</strong>
+            <span className="text-text-muted">{translate('dataRegistrySourceImport')}: </span>
+            <strong className="font-semibold text-text-base">{registry.totals.imported}</strong>
           </span>
           <span className="text-text-muted">&bull;</span>
           <span>
-            <span className="text-text-muted">{translate('dataRegistryProcessed')}: </span>
-            <strong className="font-semibold text-text-base">{totals.processed}</strong>
-          </span>
-          <span className="text-text-muted">&bull;</span>
-          <span>
-            <span className="text-text-muted">{translate('dataRegistryDeliverables')}: </span>
-            <strong className="font-semibold text-text-base">{totals.deliverable}</strong>
+            <span className="text-text-muted">{translate('dataRegistrySourceWebgis')}: </span>
+            <strong className="font-semibold text-text-base">{registry.totals.released}</strong>
           </span>
         </div>
       </div>
-
-      {orphanNames.size > 0 && (
-        <div className="p-3 bg-amber-950/30 border border-amber-700/40 rounded-xl flex items-start gap-2.5 text-xs text-amber-200">
-          <AlertTriangle size={15} className="text-amber-400 shrink-0 mt-0.5" />
-          <span>
-            <strong className="font-semibold">{translate('dataRegistryOrphans')}:</strong> {orphanNames.size} —{' '}
-            {Array.from(orphanNames).slice(0, 6).join(', ')}
-            {orphanNames.size > 6 ? '…' : ''}
-          </span>
-        </div>
-      )}
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-2">
@@ -408,131 +263,185 @@ export const DatasetRegistryPanel: React.FC<DatasetRegistryPanelProps> = ({
             className="w-full bg-inner border border-subtle rounded-lg pl-8 pr-3 py-1.5 text-[11px] text-text-base placeholder-text-muted focus:outline-none focus:border-sky-500/60 transition-all"
           />
         </div>
-        <select
-          value={typeFilter}
-          onChange={(e) => setTypeFilter(e.target.value as TypeFilter)}
-          className="bg-inner border border-subtle rounded-md px-2 py-1.5 text-[11px] text-text-base cursor-pointer"
+        <button
+          onClick={() => setCollapsed(allExpanded ? new Set(nodes.map((n) => n.key)) : new Set())}
+          className="px-2.5 py-1.5 rounded-md text-[11px] font-semibold bg-inner text-text-muted border border-subtle hover:text-text-base transition-colors cursor-pointer"
         >
-          {(['all', 'RAW', 'PROCESSED', 'DELIVERABLE'] as const).map((t) => (
-            <option key={t} value={t}>
-              {t === 'all' ? translate('lineageFilterAll') : t}
-            </option>
-          ))}
-        </select>
-        <span className="text-[11px] text-text-muted font-sans ml-auto">{filtered.length} / {rows.length}</span>
+          {allExpanded ? translate('dataRegistryCollapseAll') : translate('dataRegistryExpandAll')}
+        </button>
+        <span className="text-[11px] text-text-muted font-sans ml-auto">
+          {registry.totals.surveyRecords} {translate('dataRegistrySurveyRecord').toLowerCase()}
+        </span>
       </div>
 
-      {/* Table */}
+      {/* Parent / child survey registry */}
       {loading ? (
         <ContentLoading variant="table" label={translate('dataRegistryLoading')} rows={6} />
       ) : error ? (
         <div className="p-4 rounded-xl border border-rose-800/60 bg-rose-950/30 text-xs text-rose-300">
-          {error} — <button onClick={load} className="underline cursor-pointer">{translate('dataRegistryRefresh')}</button>
+          {error} —{' '}
+          <button onClick={load} className="underline cursor-pointer">
+            {translate('dataRegistryRefresh')}
+          </button>
         </div>
       ) : (
         <div className="bg-card border border-subtle rounded-xl overflow-hidden shadow-sm">
           <div className="overflow-x-auto max-h-[520px] overflow-y-auto">
-            <table className="w-full text-left text-[11px]">
+            <table className="w-full text-left text-[11px] min-w-[760px]">
               <thead className="bg-inner text-text-muted border-b border-subtle sticky top-0">
                 <tr>
-                  <th className="px-3 py-2.5">{translate('dataRegistryColName')}</th>
-                  <th className="px-3 py-2.5">{translate('dataRegistryColType')}</th>
-                  <th className="px-3 py-2.5">{translate('dataRegistryColStage')}</th>
-                  <th className="px-3 py-2.5">{translate('dataRegistryColVersion')}</th>
-                  <th className="px-3 py-2.5">{translate('dataRegistryColSubgrid')}</th>
-                  <th className="px-3 py-2.5 text-right">{translate('dataRegistryColFiles')}</th>
-                  <th className="px-3 py-2.5 text-right">{translate('dataRegistryColSize')}</th>
-                  <th className="px-3 py-2.5">{translate('dataRegistryColStatus')}</th>
-                  <th className="px-3 py-2.5">{translate('dataRegistryColQa')}</th>
-                  <th className="px-3 py-2.5 text-right">{translate('dataRegistryColJobs')}</th>
+                  <th className="px-3 py-2.5">{translate('dataRegistryColEntry')}</th>
                   <th className="px-3 py-2.5">{translate('dataRegistryColSource')}</th>
-                  <th className="px-3 py-2.5">{translate('dataRegistryColCreated')}</th>
+                  <th className="px-3 py-2.5 text-center">{translate('dataRegistryGrid')}</th>
+                  <th className="px-3 py-2.5 text-right">{translate('dataRegistrySurveyRecord')}</th>
+                  <th className="px-3 py-2.5 text-right">{translate('dataRegistryPointCapture')}</th>
+                  <th className="px-3 py-2.5">{translate('dataRegistryColState')}</th>
+                  <th className="px-3 py-2.5 whitespace-nowrap">{translate('dataRegistryColWhen')}</th>
                   <th className="px-3 py-2.5" />
                 </tr>
               </thead>
               <tbody>
-                {filtered.map(({ dataset: d, sourceName, qaDecision, processCount, latestVersion, superseded, versionChain }) => (
-                  <tr
-                    key={d.id || d.name}
-                    className={`border-t border-subtle hover:bg-inner/50 transition-colors ${orphanNames.has(d.id || '') ? 'bg-amber-950/20' : ''}`}
-                  >
-                    <td className="px-3 py-2 font-sans text-sky-300 max-w-[220px] truncate" title={d.name}>
-                      {d.name || '—'}
-                      {orphanNames.has(d.id || '') && (
-                        <span className="ml-1.5 text-[8px] font-bold uppercase text-amber-400">orphan</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2">
-                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider border ${
-                        d.dataset_type === 'RAW'
-                          ? 'text-amber-300 border-amber-500/40 bg-amber-950/40'
-                          : d.dataset_type === 'DELIVERABLE'
-                            ? 'text-emerald-300 border-emerald-500/40 bg-emerald-950/40'
-                            : 'text-sky-300 border-sky-500/40 bg-sky-950/40'
-                      }`}>
-                        {d.dataset_type}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2 text-text-muted">{d.pipeline_stage || '—'}</td>
-                    <td className="px-3 py-2">
-                      <div className="flex items-center gap-1.5">
-                        <span className={`font-sans font-bold ${latestVersion && !superseded ? 'text-emerald-300' : 'text-text-muted'}`}>
-                          v{d.version ?? 1}
-                        </span>
-                        {latestVersion && !superseded ? (
-                          <span className="text-[8px] font-bold text-emerald-400 uppercase">current</span>
-                        ) : superseded ? (
-                          <span className="text-[8px] font-bold text-amber-400 uppercase">superseded</span>
-                        ) : null}
-                      </div>
-                      {versionChain.length > 1 && (
-                        <div className="mt-0.5 text-[9px] text-text-muted font-sans">
-                          {Array.from(new Set(versionChain.map((v) => `v${v.version ?? 1}`))).sort().join(' · ')} ({versionChain.length} versions)
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-3 py-2 font-sans text-text-base">{d.subgrid || '—'}</td>
-                    <td className="px-3 py-2 text-right text-text-muted">{d.file_count?.toLocaleString() ?? '—'}</td>
-                    <td className="px-3 py-2 text-right text-text-base">{formatBytes(d.size_bytes)}</td>
-                    <td className="px-3 py-2">
-                      {d.status ? (
-                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider border ${statusTone(d.status)}`}>
-                          {d.status}
-                        </span>
-                      ) : (
-                        <span className="text-text-muted">—</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2">{qaBadge(qaDecision, translate)}</td>
-                    <td className="px-3 py-2 text-right text-text-muted">{processCount}</td>
-                    <td className="px-3 py-2 text-text-muted max-w-[160px] truncate" title={sourceName}>{sourceName || '—'}</td>
-                    <td className="px-3 py-2 text-text-muted whitespace-nowrap">{formatDateTime(d.created_at)}</td>
-                    <td className="px-3 py-2 flex items-center gap-1.5 justify-end">
-                      {d.subgrid && d.dataset_type === 'DELIVERABLE' && (
-                        <button
-                          onClick={() => setHandoffSubgrid(d.subgrid!)}
-                          title="Open WebGIS Handoff Guide"
-                          className="px-2 py-1 rounded-md text-[10px] font-bold text-emerald-300 border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 transition-colors cursor-pointer flex items-center gap-1 shrink-0"
-                        >
-                          <Globe size={11} />
-                          <span>Handoff</span>
-                        </button>
-                      )}
-                      {d.subgrid && (
-                        <button
-                          onClick={() => onOpenInMap(d.subgrid!)}
-                          title={translate('dataRegistryOpenInMap')}
-                          className="p-1.5 rounded-md text-sky-300 border border-sky-500/30 hover:bg-sky-500/10 transition-colors cursor-pointer"
-                        >
-                          <MapPin size={13} />
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-                {filtered.length === 0 && (
+                {nodes.map((node) => {
+                  const open = !collapsed.has(node.key);
+                  const sourceLabel = node.sources.length > 1
+                    ? translate('dataRegistrySourceBoth')
+                    : node.sources[0] === 'webgis'
+                      ? translate('dataRegistrySourceWebgis')
+                      : translate('dataRegistrySourceImport');
+                  return (
+                    <React.Fragment key={node.key}>
+                      <tr className="border-t border-subtle hover:bg-inner/50 transition-colors">
+                        <td className="px-3 py-2">
+                          <button
+                            type="button"
+                            onClick={() => toggleNode(node.key)}
+                            className="flex items-center gap-2 text-left cursor-pointer"
+                            title={`${open ? 'Hide' : 'Show'} ${node.surveyRecords} survey record(s)`}
+                          >
+                            {open ? (
+                              <ChevronDown size={13} className="text-text-muted shrink-0" />
+                            ) : (
+                              <ChevronRight size={13} className="text-text-muted shrink-0" />
+                            )}
+                            <span
+                              className={`font-mono font-bold ${node.unassigned ? 'text-text-muted' : 'text-text-base'}`}
+                            >
+                              {node.subgrid}
+                            </span>
+                          </button>
+                        </td>
+                        <td className="px-3 py-2 text-text-muted">{sourceLabel}</td>
+                        <td className="px-3 py-2 text-center font-mono text-text-base">
+                          {node.grids.length > 0 ? node.grids.join(', ') : '—'}
+                        </td>
+                        <td className="px-3 py-2 text-right font-mono font-bold text-text-base">
+                          {node.surveyRecords}
+                        </td>
+                        <td className="px-3 py-2 text-right font-mono font-bold text-text-base">
+                          {node.pointCapture.toLocaleString()}
+                        </td>
+                        <td className="px-3 py-2">
+                          <span
+                            className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider border ${STATE_CLASS[node.state]}`}
+                          >
+                            {translate(`dataRegistryState${node.state[0].toUpperCase()}${node.state.slice(1)}`)}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 text-text-muted whitespace-nowrap">
+                          {node.recordDate || '—'}
+                        </td>
+                        <td className="px-3 py-2 flex items-center gap-1.5 justify-end">
+                          {!node.unassigned && (
+                            <>
+                              <button
+                                onClick={() => onOpenInMap(node.subgrid)}
+                                title={translate('dataRegistryOpenInMap')}
+                                className="p-1.5 rounded-md text-sky-300 border border-sky-500/30 hover:bg-sky-500/10 transition-colors cursor-pointer"
+                              >
+                                <MapPin size={13} />
+                              </button>
+                              <button
+                                onClick={() => openHandoff(node.subgrid)}
+                                title="Open WebGIS Handoff Guide"
+                                className="px-2 py-1 rounded-md text-[10px] font-bold text-emerald-300 border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 transition-colors cursor-pointer flex items-center gap-1 shrink-0"
+                              >
+                                <Globe size={11} />
+                                <span>Handoff</span>
+                              </button>
+                            </>
+                          )}
+                        </td>
+                      </tr>
+                      {open &&
+                        node.children.map((child) => (
+                          <tr
+                            key={child.key}
+                            className="border-t border-subtle bg-inner/40 hover:bg-inner transition-colors"
+                          >
+                            <td className="py-1.5 pl-10 pr-3 max-w-[280px]">
+                              <span className="font-mono text-[11px] text-text-muted">└ </span>
+                              <span className="font-mono text-[11px] text-text-base" title={child.name}>
+                                {child.name}
+                              </span>
+                              {child.pic && (
+                                <div className="text-[10px] font-sans text-text-muted truncate mt-0.5">
+                                  {child.pic}
+                                </div>
+                              )}
+                            </td>
+                            <td className="py-1.5 px-3 text-text-muted">
+                              {child.source === 'webgis'
+                                ? translate('dataRegistrySourceWebgis')
+                                : translate('dataRegistrySourceImport')}
+                            </td>
+                            <td
+                              className="py-1.5 px-3 text-center font-mono text-text-base"
+                              title={
+                                child.gridAssigned
+                                  ? translate('dataRegistryGridAssigned')
+                                  : translate('dataRegistryGrid')
+                              }
+                            >
+                              {child.grid || '—'}
+                              {child.gridAssigned && (
+                                <span className="ml-1 text-[8px] font-sans text-text-muted">*</span>
+                              )}
+                            </td>
+                            <td className="py-1.5 px-3 text-right font-mono text-text-muted">1</td>
+                            <td className="py-1.5 px-3 text-right font-mono text-text-base">
+                              {child.pointCapture.toLocaleString()}
+                            </td>
+                            <td className="py-1.5 px-3">
+                              <span
+                                className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider border ${STATE_CLASS[child.state]}`}
+                              >
+                                {translate(
+                                  `dataRegistryState${child.state[0].toUpperCase()}${child.state.slice(1)}`
+                                )}
+                              </span>
+                            </td>
+                            <td className="py-1.5 px-3 text-text-muted whitespace-nowrap">
+                              {child.recordDate || formatDateTime(child.key)}
+                            </td>
+                            <td className="py-1.5 px-3 flex items-center gap-1.5 justify-end">
+                              {child.subgrid && (
+                                <button
+                                  onClick={() => onOpenInMap(child.subgrid)}
+                                  title={translate('dataRegistryOpenInMap')}
+                                  className="p-1.5 rounded-md text-sky-300 border border-sky-500/30 hover:bg-sky-500/10 transition-colors cursor-pointer shrink-0"
+                                >
+                                  <MapPin size={13} />
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                    </React.Fragment>
+                  );
+                })}
+                {nodes.length === 0 && (
                   <tr>
-                    <td colSpan={13} className="px-3 py-8 text-center text-text-muted">
+                    <td colSpan={8} className="px-3 py-8 text-center text-text-muted">
                       {translate('dataRegistryEmpty')}
                     </td>
                   </tr>
@@ -548,182 +457,39 @@ export const DatasetRegistryPanel: React.FC<DatasetRegistryPanelProps> = ({
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-card border border-subtle rounded-2xl w-full max-w-3xl shadow-2xl overflow-hidden animate-panel-enter">
             <div className="p-3 bg-inner border-b border-subtle flex items-center justify-between">
-              <span className="text-xs font-bold text-text-base">WebGIS Handoff Assistant • {handoffSubgrid}</span>
-              <button onClick={() => setHandoffSubgrid(null)} className="text-text-muted hover:text-text-base cursor-pointer p-1">
+              <span className="text-xs font-bold text-text-base">
+                WebGIS Handoff Assistant • {handoffSubgrid}
+              </span>
+              <button
+                onClick={closeHandoff}
+                className="text-text-muted hover:text-text-base cursor-pointer p-1"
+              >
                 <X size={15} />
               </button>
             </div>
             <div className="p-4">
-              <WebGISHandoffCard
-                lifecycle={resolveSubgridLifecycle({ subgrid: handoffSubgrid, datasets, jobs })}
-                onNavigateToDataManagement={(sg) => {
-                  setHandoffSubgrid(null);
-                  pushWorkspace('data', { subgrid: sg });
-                }}
-              />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Registration Modal Dialog */}
-      {showRegisterModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fadeIn">
-          <div className="bg-app border border-subtle rounded-2xl w-full max-w-xl shadow-2xl overflow-hidden animate-scaleUp">
-            {/* Modal Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-subtle bg-inner">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-sky-500/20 text-sky-400 rounded-lg border border-sky-500/30">
-                  <Plus size={18} />
+              {handoffLoading ? (
+                <div className="py-10 flex items-center justify-center gap-2 text-xs text-text-muted">
+                  <Loader2 size={14} className="animate-spin" />
+                  <span>{translate('dataRegistryLoading')}</span>
                 </div>
-                <div>
-                  <h3 className="text-sm font-bold text-text-base">Register Raw Survey Batch</h3>
-                  <p className="text-[11px] text-text-muted">Index NAS folder into the survey catalog before processing</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowRegisterModal(false)}
-                className="p-1.5 rounded-lg text-text-muted hover:text-text-base hover:bg-white/5 transition-colors cursor-pointer"
-              >
-                <X size={16} />
-              </button>
-            </div>
-
-            {/* Modal Body */}
-            <form onSubmit={handleRegisterSubmit} className="p-6 space-y-4 text-xs">
-              {duplicateWarnings.length > 0 && (
-                <div className="p-3 bg-amber-950/40 border border-amber-500/40 rounded-xl text-amber-200 flex items-start gap-2.5">
-                  <AlertTriangle size={16} className="text-amber-400 shrink-0 mt-0.5" />
-                  <div>
-                    <div className="font-semibold">Potential Duplicate Batch Detected</div>
-                    <div className="text-[11px] text-amber-300/90 mt-0.5">
-                      Subgrid <strong>{regForm.subgrid}</strong> already has {duplicateWarnings.length} registered dataset(s) (e.g. {duplicateWarnings[0].name}). A new entry will create an additional lineage track.
-                    </div>
-                  </div>
-                </div>
+              ) : (
+                <WebGISHandoffCard
+                  lifecycle={resolveSubgridLifecycle({
+                    subgrid: handoffSubgrid,
+                    datasets: handoffDatasets,
+                    jobs: handoffJobs
+                  })}
+                  onNavigateToDataManagement={(sg) => {
+                    closeHandoff();
+                    pushWorkspace('data', { subgrid: sg });
+                  }}
+                />
               )}
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* Dataset Name */}
-                <div className="sm:col-span-2">
-                  <label className="block text-[11px] font-semibold text-text-muted uppercase tracking-wider mb-1">
-                    Dataset Name *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={regForm.name}
-                    onChange={(e) => setRegForm({ ...regForm, name: e.target.value })}
-                    placeholder="e.g. N93E70_2026_MMS_SURVEY_RAW"
-                    className="w-full bg-inner border border-subtle rounded-lg px-3 py-2 text-text-base focus:outline-none focus:border-sky-500/60 transition-colors"
-                  />
-                </div>
-
-                {/* Subgrid */}
-                <div>
-                  <label className="block text-[11px] font-semibold text-text-muted uppercase tracking-wider mb-1">
-                    Subgrid Code *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={regForm.subgrid}
-                    onChange={(e) => setRegForm({ ...regForm, subgrid: e.target.value.toUpperCase() })}
-                    placeholder="e.g. N93E70"
-                    className="w-full bg-inner border border-subtle rounded-lg px-3 py-2 text-text-base font-sans uppercase focus:outline-none focus:border-sky-500/60 transition-colors"
-                  />
-                </div>
-
-                {/* Equipment Type */}
-                <div>
-                  <label className="block text-[11px] font-semibold text-text-muted uppercase tracking-wider mb-1">
-                    Capture Equipment
-                  </label>
-                  <select
-                    value={regForm.equipment}
-                    onChange={(e) => setRegForm({ ...regForm, equipment: e.target.value })}
-                    className="w-full bg-inner border border-subtle rounded-lg px-3 py-2 text-text-base focus:outline-none focus:border-sky-500/60 transition-colors cursor-pointer"
-                  >
-                    <option value="MMS Vehicle Unit">MMS Vehicle Unit (360° Rig)</option>
-                    <option value="Backpack Mobile Unit">Backpack Mobile Unit</option>
-                    <option value="Drone Survey">Drone Aerial 360°</option>
-                    <option value="Handheld 360">Handheld / Tripod 360°</option>
-                  </select>
-                </div>
-
-                {/* Source Folder */}
-                <div className="sm:col-span-2">
-                  <label className="block text-[11px] font-semibold text-text-muted uppercase tracking-wider mb-1">
-                    NAS Source Folder Path
-                  </label>
-                  <div className="relative">
-                    <Folder size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
-                    <input
-                      type="text"
-                      value={regForm.sourceFolder}
-                      onChange={(e) => setRegForm({ ...regForm, sourceFolder: e.target.value })}
-                      placeholder="/RAW/N93E70/2026-08-29/"
-                      className="w-full bg-inner border border-subtle rounded-lg pl-9 pr-3 py-2 text-text-base font-sans focus:outline-none focus:border-sky-500/60 transition-colors"
-                    />
-                  </div>
-                </div>
-
-                {/* File Count */}
-                <div>
-                  <label className="block text-[11px] font-semibold text-text-muted uppercase tracking-wider mb-1">
-                    Estimated Frame Count
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={regForm.fileCount || ''}
-                    onChange={(e) => setRegForm({ ...regForm, fileCount: parseInt(e.target.value) || 0 })}
-                    placeholder="e.g. 1500"
-                    className="w-full bg-inner border border-subtle rounded-lg px-3 py-2 text-text-base focus:outline-none focus:border-sky-500/60 transition-colors"
-                  />
-                </div>
-
-                {/* Dataset Type */}
-                <div>
-                  <label className="block text-[11px] font-semibold text-text-muted uppercase tracking-wider mb-1">
-                    Dataset Stage Tier
-                  </label>
-                  <select
-                    value={regForm.datasetType}
-                    onChange={(e) => setRegForm({ ...regForm, datasetType: e.target.value as DatasetType })}
-                    className="w-full bg-inner border border-subtle rounded-lg px-3 py-2 text-text-base focus:outline-none focus:border-sky-500/60 transition-colors cursor-pointer"
-                  >
-                    <option value="RAW">RAW (Initial Field Ingest)</option>
-                    <option value="PROCESSED">PROCESSED (Stitched/Enhanced)</option>
-                    <option value="DELIVERABLE">DELIVERABLE (Client QA Final)</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Modal Footer */}
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-subtle">
-                <button
-                  type="button"
-                  onClick={() => setShowRegisterModal(false)}
-                  className="px-4 py-2 bg-inner hover:bg-white/5 border border-subtle text-text-muted hover:text-text-base rounded-lg font-semibold transition-colors cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={registering}
-                  className="flex items-center gap-2 px-5 py-2 bg-sky-500 hover:bg-sky-400 active:bg-sky-600 text-slate-950 font-bold rounded-lg transition-all shadow-md cursor-pointer disabled:opacity-50"
-                >
-                  {registering ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
-                  <span>{registering ? 'Registering...' : 'Confirm Registration'}</span>
-                </button>
-              </div>
-            </form>
+            </div>
           </div>
         </div>
       )}
     </div>
   );
 };
-
-export default DatasetRegistryPanel;

@@ -326,9 +326,12 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
       const rawDate = r.captured_at
         ? new Date(r.captured_at).toISOString().slice(0, 10)
         : (r.date || r.survey_date || (r.created_at ? new Date(r.created_at).toISOString().slice(0, 10) : ''));
-      const extractedBatchId = r.description ? (r.description.match(/\[(.*?)\]/)?.[1] || r.description.match(/daily-[\w-]+/)?.[0] || r.description.match(/staging-[\w-]+/)?.[0]) : null;
+      const extractedBatchId = r.description ? (r.description.match(/\[csv:(.*?)\]/)?.[1] || r.description.match(/\[id:(.*?)\]/)?.[1] || r.description.match(/\[(.*?)\]/)?.[1] || r.description.match(/daily-[\w-]+/)?.[0] || r.description.match(/staging-[\w-]+/)?.[0]) : null;
       const extractedPublishSignature = r.description ? r.description.match(/Published Batch \([^)]+\) - ([\d\-: ]+)/)?.[0] : null;
-      const runKey = r.batch_id || r.run_id || extractedBatchId || (extractedPublishSignature ? `${sg}_${extractedPublishSignature}` : `${sg}_${rawDate}`);
+      // Always scope the run key by subgrid: one raw CSV can cover more than one
+      // subgrid, and without the prefix those runs merge into a single record
+      // filed under whichever subgrid was read first.
+      const runKey = `${sg}_${r.batch_id || r.run_id || extractedBatchId || (extractedPublishSignature || rawDate)}`;
 
       const rowPic = r.pic || r.person_in_charge || r.operator || r.surveyor || r.created_by || r.pic_name || knownMetadata[sg]?.pic || '';
 
@@ -420,6 +423,9 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
 
       dailyData.push({
         id: `sp-d-${runKey}`,
+        // Real raw CSV name where the release carried it, so the registry shows
+        // the survey record the operator imported.
+        csvFileName: (runKey.replace(/^[^_]*_/, '') || undefined),
         date: dateFormatted,
         grid: grid,
         subgrid: subgrid,
@@ -499,8 +505,11 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
             publishedFilenamesSet.has(cleanNoExt)
           )) return;
 
-          // Extract encoded metadata tags
-          const extractedBatchId = r.batch_id || r.run_id || (desc.match(/\[id:(.*?)\]/)?.[1]) || (desc.match(/\[(.*?)\]/)?.[1]) || null;
+          // Extract encoded metadata tags. `[csv:…]` is the real raw CSV file
+          // name and wins over `[id:…]`, which may still hold a legacy
+          // synthetic `daily-csv-<timestamp>-…` value on rows staged earlier.
+          const extractedCsvName = r.csv_file_name || r.source_file || (desc.match(/\[csv:(.*?)\]/)?.[1]) || null;
+          const extractedBatchId = extractedCsvName || r.batch_id || r.run_id || (desc.match(/\[id:(.*?)\]/)?.[1]) || (desc.match(/\[(.*?)\]/)?.[1]) || null;
           const extractedPic = r.pic || r.person_in_charge || (desc.match(/\[pic:(.*?)\]/)?.[1]) || knownMetadata[sg]?.pic || 'Unassigned';
           const extractedGrid = r.grid ? String(r.grid) : (desc.match(/\[grid:(.*?)\]/)?.[1] || knownMetadata[sg]?.grid || '1');
           const extractedPoi = r.poi_count ? Number(r.poi_count) : (desc.match(/\[poi:(\d+)\]/)?.[1] ? Number(desc.match(/\[poi:(\d+)\]/)?.[1]) : 0);
@@ -508,7 +517,10 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
           const extractedEq = r.capture_equipment || r.equipment || (desc.match(/\[eq:(.*?)\]/)?.[1]) || 'MMS';
           const extractedPub = r.status || r.publish_to_webgis || (desc.match(/\[pub:(.*?)\]/)?.[1]) || 'in process';
 
-          const runKey = extractedBatchId || `${sg}_${r.id || `${extractedPoi}_${extractedKm}`}`;
+          // Always scope the run key by subgrid: one raw CSV can cover more than
+          // one subgrid, and without the prefix those runs merge into a single
+          // record filed under whichever subgrid was read first.
+          const runKey = `${sg}_${extractedBatchId || r.id || `${extractedPoi}_${extractedKm}`}`;
 
           if (!stagingGrouped.has(runKey)) {
             stagingGrouped.set(runKey, {
@@ -516,6 +528,7 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
               subgrid: sg,
               grid: extractedGrid,
               pic: extractedPic,
+              csvFileName: extractedCsvName || undefined,
               imageFilenames: [],
               poiCount: extractedPoi,
               imagesProcessed: extractedPoi,
@@ -616,6 +629,9 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
 
           dailyData.push({
             id: `staging-d-${runKey}`,
+            // Real raw CSV name, so the registry shows `20220904.csv` rather
+            // than a synthetic `daily-csv-<timestamp>-…` id.
+            csvFileName: (g.csvFileName || runKey.replace(/^[^_]*_/, '')) || undefined,
             date: dateFormatted,
             grid: g.grid,
             subgrid: sg,
@@ -948,6 +964,8 @@ export async function saveToStagingSupabase(record: {
   captureEquipment?: string;
   pic?: string;
   publishToWebGIS?: string;
+  /** Real raw CSV file name, used as the staging batch id for this run. */
+  csvFileName?: string;
   panoramas?: PanoramaItem[];
   rawRows?: PanoramaItem[];
   productionRunId?: string | null;
@@ -970,6 +988,12 @@ export async function saveToStagingSupabase(record: {
     }
 
     const currentPid = getServiceProjectId();
+    // The staging batch id is what groups panoramas back into one survey record
+    // on read. Use the operator's real raw CSV name when it is known — a
+    // synthetic `daily-csv-<timestamp>-…` id would become the record name shown
+    // in the registry. `Project-OUT/Grid <n>/<subgrid>/<date>` file names also
+    // survive here, so the run is identifiable straight from the NAS layout.
+    const batchId = (record.csvFileName || record.imageFilename || record.id || 'batch').toString().trim();
     const itemsToInsert = rawList.map((p: any) => {
       const filename = p.filename || p.imageFilename || record.imageFilename || '';
       const sgKey = record.subgrid ? record.subgrid.toUpperCase() : extractSubgrid(filename);
@@ -1007,7 +1031,7 @@ export async function saveToStagingSupabase(record: {
         filename,
         image_url: filename,
         captured_at: capturedAtIso,
-        description: `Staged Batch (${record.subgrid || filename}) [id:${record.id || 'batch'}] [pic:${record.pic || p.pic || 'Unassigned'}] [grid:${record.grid || '1'}] [poi:${record.poiCount || rawList.length}] [km:${record.kmProcessed || 0}] [eq:${record.captureEquipment || 'MMS'}] [pub:${record.publishToWebGIS || 'in process'}]`,
+        description: `Staged Batch (${record.subgrid || filename}) [id:${batchId}] [csv:${record.csvFileName || batchId}] [pic:${record.pic || p.pic || 'Unassigned'}] [grid:${record.grid || '1'}] [poi:${record.poiCount || rawList.length}] [km:${record.kmProcessed || 0}] [eq:${record.captureEquipment || 'MMS'}] [pub:${record.publishToWebGIS || 'in process'}]`,
         latitude,
         longitude,
         heading: Number(p.bearing ?? p.heading ?? 0),
@@ -1379,6 +1403,7 @@ export async function persistBatchLogToSupabase(batch: BatchLog, settings?: any)
 }
 
 const DATASETS_TABLE = 'datasets';
+const SUBGRIDS_TABLE = 'subgrids';
 const STAGING_PANORAMAS_TABLE = 'staging_panoramas';
 
 export interface StagingPanoramaRow {
@@ -1450,6 +1475,49 @@ export async function fetchDatasetsFromSupabase(): Promise<DatasetRecord[]> {
     console.warn('fetchDatasetsFromSupabase catch:', err);
   }
   return getLocalDatasets();
+}
+
+/**
+ * Subgrid index facts the survey registry needs but the capture reader does
+ * not carry: the authoritative `poi_count` for a subgrid, and the grid the
+ * subgrid belongs to.
+ */
+export interface SubgridIndexEntry {
+  /** Authoritative point count for the subgrid, 0 when unknown. */
+  points: number;
+  /** Grid the subgrid is flown on, when the index records one. */
+  grid?: string;
+}
+
+export async function fetchSubgridIndexFromSupabase(): Promise<Record<string, SubgridIndexEntry>> {
+  const index: Record<string, SubgridIndexEntry> = {};
+  try {
+    const result = await withRetry(
+      async () => {
+        const res = await scoped(
+          supabase.from(SUBGRIDS_TABLE).select('subgrid_code, poi_count, grid_id, grid')
+        );
+        if (res.error) throw new Error(res.error.message);
+        return res;
+      },
+      { retries: 1 }
+    );
+    const { data, error } = result as { data: Array<any> | null; error: any };
+    if (error || !Array.isArray(data)) return index;
+    data.forEach((row: any) => {
+      const code = (row?.subgrid_code || '').toString().trim().toUpperCase();
+      if (!code) return;
+      const points = Number(row?.poi_count);
+      const grid = row?.grid_id ?? row?.grid;
+      index[code] = {
+        points: Number.isFinite(points) ? points : 0,
+        grid: grid === null || grid === undefined || grid === '' ? undefined : String(grid).trim()
+      };
+    });
+  } catch (err) {
+    console.warn('fetchSubgridIndexFromSupabase:', err);
+  }
+  return index;
 }
 
 export async function saveDatasetToSupabase(dataset: DatasetRecord): Promise<DatasetRecord | null> {
