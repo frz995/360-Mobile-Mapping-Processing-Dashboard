@@ -1575,11 +1575,76 @@ export function getGeometryBbox(geometry: any): [number, number, number, number]
 }
 
 /**
+ * Resolves a subgrid cell box from the catalog grid polygons by point-in-cell
+ * containment instead of property-name matching. Grid layers in the wild name
+ * their cell column inconsistently (GRID_NAME, N93E70, KOTAK, ...), and a name
+ * miss silently degrades every downstream clip to a derived 5 km box that does
+ * not line up with the cell the map actually draws - which is how coverage gaps
+ * end up rendered outside the grid square.
+ *
+ * Only Polygon/MultiPolygon features of plausible cell size (0.002deg - 0.12deg
+ * per side, i.e. ~220 m to ~13 km) are eligible, so road-plan lines and
+ * district/state boundaries can never claim a vote. Each point votes for the
+ * SMALLEST cell containing it, so a nested district layer cannot outvote the
+ * grid polygon that wraps around it. Returns null unless a clear majority of
+ * the subgrid's points land in the same cell, leaving the dictionary and
+ * derived fallbacks untouched.
+ */
+function findSubgridCellBboxByContainment(
+  points: Array<{ lng: number; lat: number }>,
+  catalogLayers: any[]
+): [number, number, number, number] | null {
+  const pts: Array<[number, number]> = [];
+  (points || []).forEach((p) => {
+    if (p && Number.isFinite(p.lng) && Number.isFinite(p.lat)) pts.push([p.lng, p.lat]);
+  });
+  if (pts.length === 0 || !Array.isArray(catalogLayers)) return null;
+
+  // Dedupe identical cells: the same grid is often loaded in more than one layer.
+  const cells = new Map<string, { bbox: [number, number, number, number]; area: number; votes: number }>();
+  for (const layer of catalogLayers) {
+    for (const feat of getCatalogLayerFeatures(layer)) {
+      const geom = feat?.geometry;
+      if (!geom || (geom.type !== 'Polygon' && geom.type !== 'MultiPolygon')) continue;
+      const bbox = getGeometryBbox(geom);
+      if (!bbox) continue;
+      const w = Math.abs(bbox[2] - bbox[0]);
+      const h = Math.abs(bbox[3] - bbox[1]);
+      if (w < 0.002 || h < 0.002 || w > 0.12 || h > 0.12) continue;
+      const key = bbox.map((v) => v.toFixed(6)).join(',');
+      if (!cells.has(key)) cells.set(key, { bbox, area: w * h, votes: 0 });
+    }
+  }
+  if (cells.size === 0) return null;
+
+  for (const pt of pts) {
+    let best: { bbox: [number, number, number, number]; area: number; votes: number } | null = null;
+    for (const cell of cells.values()) {
+      const [minX, minY, maxX, maxY] = cell.bbox;
+      if (pt[0] < minX || pt[0] > maxX || pt[1] < minY || pt[1] > maxY) continue;
+      if (!best || cell.area < best.area) best = cell;
+    }
+    if (best) best.votes++;
+  }
+
+  let winner: { bbox: [number, number, number, number]; area: number; votes: number } | null = null;
+  for (const cell of cells.values()) {
+    if (cell.votes > 0 && (!winner || cell.votes > winner.votes)) winner = cell;
+  }
+  if (!winner) return null;
+  // A tie or a bare majority means the data is mis-assigned or straddles cells;
+  // keep the dictionary/derived behaviour instead of picking an arbitrary cell.
+  return winner.votes * 2 > pts.length ? winner.bbox : null;
+}
+
+/**
  * Derives a standard 5x5 km bounding box [minLng, minLat, maxLng, maxLat] centered on the subgrid.
  * At Malaysia latitudes (~2° to 6° N), 5 km corresponds to ~0.0450° (half-width ±0.0225°).
  *
  * Search priority:
  * 1. Exact polygon feature in loaded catalog vector layers (GeoJSON grid).
+ * 1b. Cell polygon resolved by point-in-cell containment, for grid layers whose
+ *     cell property name is not one of the recognized aliases.
  * 2. SUBGRID_COORDINATES runtime dictionary.
  * 3. Average coordinates of captured survey points.
  * 4. Extrapolation from any known adjacent subgrid in the N{row}E{col} coordinate grid.
@@ -1610,6 +1675,12 @@ export function getSubgridBbox(
         }
       }
     }
+  }
+
+  // 1b. Cell geometry by containment (independent of the cell property name)
+  if (points && points.length > 0) {
+    const spatial = findSubgridCellBboxByContainment(points, catalogLayers);
+    if (spatial) return spatial;
   }
 
   // 2. SUBGRID_COORDINATES runtime dictionary

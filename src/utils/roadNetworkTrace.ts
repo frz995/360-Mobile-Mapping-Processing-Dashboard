@@ -442,6 +442,127 @@ export function isCaptureCovering(
 }
 
 /**
+ * Drops single-probe flicker from a coverage sample array. A lone sample whose
+ * two neighbours both hold the opposite value is a GPS dropout, not a real
+ * covered/uncovered stretch, so it is flipped. Without this, one bad fix carves
+ * a red dash out of surveyed road (and a green dash out of a genuine gap),
+ * which is what made the coverage gap line look speckled.
+ */
+function smoothIsolatedProbes(cov: boolean[]): void {
+  for (let k = 1; k < cov.length - 1; k++) {
+    if (cov[k] !== cov[k - 1] && cov[k] !== cov[k + 1]) cov[k] = !cov[k];
+  }
+}
+
+/** Gap boundaries are resolved to within this many metres of the true edge. */
+const BOUNDARY_EPS_M = 0.25;
+
+/**
+ * Bisects the segment between two neighbouring probes that disagree on coverage
+ * and returns the boundary parameter on the UNCOVERED side. This puts the red
+ * gap edge exactly where the captured panotrack stops (within
+ * `BOUNDARY_EPS_M`) instead of at a probe, so the drawn gap matches the real
+ * uncovered length rather than the probe grid. Works in both directions:
+ * `coveredAtLo` says which end of the bracket is the covered one.
+ */
+function bisectCoverageBoundary(
+  a: LonLat,
+  b: LonLat,
+  segDir: [number, number] | null,
+  index: CaptureIndex,
+  toleranceM: number,
+  tLo: number,
+  coveredAtLo: boolean,
+  tHi: number,
+  segLenM: number
+): number {
+  let lo = tLo;
+  let hi = tHi;
+  for (let i = 0; i < 24 && (hi - lo) * segLenM > BOUNDARY_EPS_M; i++) {
+    const mid = (lo + hi) / 2;
+    const pt: LonLat = [a[0] + (b[0] - a[0]) * mid, a[1] + (b[1] - a[1]) * mid];
+    const covered = isCaptureCovering(pt, segDir, index, toleranceM);
+    if (covered === coveredAtLo) lo = mid;
+    else hi = mid;
+  }
+  return coveredAtLo ? hi : lo;
+}
+
+interface RunSlice {
+  pts: LonLat[];
+  covered: boolean;
+  lengthM: number;
+}
+
+/**
+ * Coalesces run slices into continuous intervals:
+ * 1. Bridges camera frame-spacing gaps (<= 14m) along surveyed roads to prevent
+ *    dashed/speckled red lines.
+ * 2. Prunes isolated micro-stubs (< 15m) surrounded by gaps on unsurveyed roads.
+ *
+ * Terminal stubs are deliberately NOT repainted. A covered stretch that ends
+ * where the panotrack ends is real coverage, so flipping it to uncovered (the
+ * old 25m "junction bleed") drew red lines inside driven road. Cross-street
+ * passes are kept out of side streets by the directional alignment test in
+ * `isCaptureCovering`, not by overwriting verified coverage.
+ */
+function coalesceRunSlices(slices: RunSlice[], toleranceM: number): void {
+  if (slices.length < 2) return;
+
+  const maxBridgeGapM = Math.max(14, toleranceM * 1.15);
+  const maxStubM = 15;
+
+  const hasGaps = slices.some((s) => !s.covered);
+  const hasCovered = slices.some((s) => s.covered);
+  if (!hasGaps || !hasCovered) return;
+
+  // 1. Bridge internal gaps between covered sections along surveyed roads
+  // Gaps shorter than maxBridgeGapM (e.g. 14m) between covered segments are camera frame dropouts
+  let i = 0;
+  while (i < slices.length) {
+    if (slices[i].covered) {
+      i++;
+      continue;
+    }
+    let j = i;
+    let gapM = 0;
+    while (j < slices.length && !slices[j].covered) {
+      gapM += slices[j].lengthM;
+      j++;
+    }
+    const isInternal = i > 0 && j < slices.length;
+    if (isInternal && gapM <= maxBridgeGapM) {
+      for (let k = i; k < j; k++) {
+        slices[k].covered = true;
+      }
+    }
+    i = j;
+  }
+
+  // 2. Prune internal isolated covered speckles surrounded by gaps on unsurveyed roads
+  let m = 0;
+  while (m < slices.length) {
+    if (!slices[m].covered) {
+      m++;
+      continue;
+    }
+    let n = m;
+    let covM = 0;
+    while (n < slices.length && slices[n].covered) {
+      covM += slices[n].lengthM;
+      n++;
+    }
+    const isInternalCov = m > 0 && n < slices.length;
+    if (isInternalCov && covM < maxStubM) {
+      for (let k = m; k < n; k++) {
+        slices[k].covered = false;
+      }
+    }
+    m = n;
+  }
+}
+
+/**
  * Classifies the segments of each plan run against captured tracks.
  * Slices the existing plan run polylines into uncovered stretches without
  * densifying or rebuilding new geometry (no junction welds, no walk-chains),
@@ -476,9 +597,8 @@ export function computePlanCoverage(
       return;
     }
 
+    const runSlices: RunSlice[] = [];
     let runPlanM = 0;
-    let runCovM = 0;
-    let currentSlice: LonLat[] | null = null;
 
     for (let i = 0; i < run.length - 1; i++) {
       const a = run[i];
@@ -488,82 +608,83 @@ export function computePlanCoverage(
       runPlanM += segLen;
       const segDir = segmentUnitVector(a, b);
 
-      if (segLen <= toleranceM) {
-        const mid: LonLat = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
-        const covMid = isCaptureCovering(mid, segDir, index, toleranceM);
+      const probeStep = Math.max(1, Math.min(25, toleranceM));
+      const steps = Math.max(2, Math.ceil(segLen / probeStep));
+      const cov: boolean[] = [];
+      for (let k = 0; k <= steps; k++) {
+        const t = k / steps;
+        const pt: LonLat = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+        cov.push(isCaptureCovering(pt, segDir, index, toleranceM));
+      }
+      smoothIsolatedProbes(cov);
 
-        if (covMid) {
-          runCovM += segLen;
-          if (currentSlice) {
-            if (currentSlice.length >= 2) uncoveredRuns.push(currentSlice);
-            currentSlice = null;
-          }
-        } else {
-          if (currentSlice) {
-            currentSlice.push([b[0], b[1]]);
-          } else {
-            currentSlice = [[a[0], a[1]], [b[0], b[1]]];
+      if (cov.every(Boolean)) {
+        runSlices.push({
+          pts: [[a[0], a[1]], [b[0], b[1]]],
+          covered: true,
+          lengthM: segLen
+        });
+      } else if (cov.every((c) => !c)) {
+        runSlices.push({
+          pts: [[a[0], a[1]], [b[0], b[1]]],
+          covered: false,
+          lengthM: segLen
+        });
+      } else {
+        let curStartT = 0;
+        let curCovered = cov[0];
+        for (let k = 0; k < steps; k++) {
+          if (cov[k] !== cov[k + 1]) {
+            const transT = bisectCoverageBoundary(
+              a, b, segDir, index, toleranceM, k / steps, cov[k], (k + 1) / steps, segLen
+            );
+            const startPt: LonLat = [a[0] + (b[0] - a[0]) * curStartT, a[1] + (b[1] - a[1]) * curStartT];
+            const transPt: LonLat = [a[0] + (b[0] - a[0]) * transT, a[1] + (b[1] - a[1]) * transT];
+            const len = distM(startPt, transPt);
+            if (len > 0.01) {
+              runSlices.push({ pts: [startPt, transPt], covered: curCovered, lengthM: len });
+            }
+            curStartT = transT;
+            curCovered = cov[k + 1];
           }
         }
+        const startPt: LonLat = [a[0] + (b[0] - a[0]) * curStartT, a[1] + (b[1] - a[1]) * curStartT];
+        const endPt: LonLat = [b[0], b[1]];
+        const len = distM(startPt, endPt);
+        if (len > 0.01) {
+          runSlices.push({ pts: [startPt, endPt], covered: curCovered, lengthM: len });
+        }
+      }
+    }
+
+    // Coalesce run slices: bridge frame-spacing gaps, prune terminal junction bleed,
+    // and eliminate speckles so roads are solid, unbroken lines.
+    coalesceRunSlices(runSlices, toleranceM);
+
+    // Recompute accurate covered metres from coalesced slices
+    const runCovM = runSlices.filter((s) => s.covered).reduce((sum, s) => sum + s.lengthM, 0);
+
+    let currentSlice: LonLat[] | null = null;
+
+    for (const slice of runSlices) {
+      if (slice.covered) {
+        if (currentSlice) {
+          if (currentSlice.length >= 2) uncoveredRuns.push(currentSlice);
+          currentSlice = null;
+        }
       } else {
-        const mid: LonLat = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
-        const midCovered = isCaptureCovering(mid, segDir, index, toleranceM);
-
-        if (!midCovered) {
-          // If the midpoint is not captured, the survey vehicle did not drive on
-          // this road segment (any capture near an endpoint is merely junction bleed
-          // from a cross street). The segment is completely unsurveyed.
-          if (currentSlice) {
-            currentSlice.push([b[0], b[1]]);
-          } else {
-            currentSlice = [[a[0], a[1]], [b[0], b[1]]];
-          }
+        if (!currentSlice) {
+          currentSlice = slice.pts.slice();
         } else {
-          // Midpoint is captured: the vehicle drove along this segment.
-          const probeStep = Math.min(25, toleranceM);
-          const steps = Math.max(2, Math.ceil(segLen / probeStep));
-          const cov: boolean[] = [];
-          for (let k = 0; k <= steps; k++) {
-            const t = k / steps;
-            const pt: LonLat = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
-            cov.push(isCaptureCovering(pt, segDir, index, toleranceM));
-          }
-
-          const allCovered = cov.every(Boolean);
-          if (allCovered) {
-            runCovM += segLen;
-            if (currentSlice) {
-              if (currentSlice.length >= 2) uncoveredRuns.push(currentSlice);
-              currentSlice = null;
+          const lastPt = currentSlice[currentSlice.length - 1];
+          const firstPt = slice.pts[0];
+          if (distM(lastPt, firstPt) < 0.1) {
+            for (let p = 1; p < slice.pts.length; p++) {
+              currentSlice.push(slice.pts[p]);
             }
           } else {
-            // Partial survey transition along this segment
-            const coveredCount = cov.filter(Boolean).length;
-            runCovM += segLen * (coveredCount / (steps + 1));
-
-            for (let k = 0; k < steps; k++) {
-              if (cov[k] && !cov[k + 1]) {
-                const t = (k + 0.5) / steps;
-                const transPt: LonLat = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
-                if (currentSlice && currentSlice.length >= 2) uncoveredRuns.push(currentSlice);
-                currentSlice = [transPt];
-              } else if (!cov[k] && cov[k + 1]) {
-                const t = (k + 0.5) / steps;
-                const transPt: LonLat = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
-                if (currentSlice) {
-                  currentSlice.push(transPt);
-                  if (currentSlice.length >= 2) uncoveredRuns.push(currentSlice);
-                  currentSlice = null;
-                }
-              }
-            }
-            if (!cov[steps]) {
-              if (currentSlice) {
-                currentSlice.push([b[0], b[1]]);
-              } else {
-                currentSlice = [[a[0], a[1]], [b[0], b[1]]];
-              }
-            }
+            if (currentSlice.length >= 2) uncoveredRuns.push(currentSlice);
+            currentSlice = slice.pts.slice();
           }
         }
       }

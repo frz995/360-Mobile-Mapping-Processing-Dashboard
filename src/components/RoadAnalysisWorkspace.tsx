@@ -1296,6 +1296,31 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
     }
   }, [planSource, selectedDistrictIds, userKey, coverage.clear]);
 
+  // Keep a displayed segmentation alive across data reloads. The segmentation
+  // hook drops its per-subgrid cache when the survey data really changes, so
+  // re-run the active scope against the fresh plan runs instead of leaving a
+  // stale overlay on the map. Deps are all memo-stable, and re-segmenting does
+  // not change any of them, so this cannot retrigger itself.
+  useEffect(() => {
+    if (coverage.activeScope === 'subgrid' && coverage.activeSubgridId) {
+      const plan = tracePlans.find((p) => p.subgrid === coverage.activeSubgridId);
+      coverage.segmentSubgrid(coverage.activeSubgridId, plan?.planRuns ?? []);
+      return;
+    }
+    if (coverage.activeScope === 'all' && planSource !== 'system' && activePlanRuns.length > 0) {
+      coverage.segmentAll(activePlanRuns, tracePlans);
+    }
+  }, [
+    coverage.inputRevision,
+    coverage.activeScope,
+    coverage.activeSubgridId,
+    coverage.segmentSubgrid,
+    coverage.segmentAll,
+    tracePlans,
+    activePlanRuns,
+    planSource
+  ]);
+
   // Per-subgrid verdicts populated on-demand as subgrids are segmented.
   const traceVerdictBySubgrid = useMemo(() => {
     const byKey: Record<string, SubgridTraceResult> = {};

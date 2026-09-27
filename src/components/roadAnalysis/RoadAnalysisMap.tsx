@@ -109,10 +109,100 @@ function scheduleCatalogGeometryLoad(
   }
 }
 
+function stitchConnectedRuns(runs: LonLat[][]): LonLat[][] {
+  if (!runs || runs.length <= 1) return runs || [];
+  const valid = runs.filter((r) => Array.isArray(r) && r.length >= 2);
+  if (valid.length <= 1) return valid;
+
+  const coordKey = (p: LonLat) => `${p[0].toFixed(6)},${p[1].toFixed(6)}`;
+  const pool = valid.map((r) => r.slice());
+  const used = new Uint8Array(pool.length);
+
+  const endpointMap = new Map<string, number[]>();
+  for (let i = 0; i < pool.length; i++) {
+    const sKey = coordKey(pool[i][0]);
+    const eKey = coordKey(pool[i][pool[i].length - 1]);
+    const sList = endpointMap.get(sKey);
+    if (sList) sList.push(i);
+    else endpointMap.set(sKey, [i]);
+    const eList = endpointMap.get(eKey);
+    if (eList) eList.push(i);
+    else endpointMap.set(eKey, [i]);
+  }
+
+  const stitched: LonLat[][] = [];
+
+  for (let i = 0; i < pool.length; i++) {
+    if (used[i]) continue;
+    used[i] = 1;
+    let chain = pool[i];
+
+    // Extend forward
+    let extended = true;
+    while (extended) {
+      extended = false;
+      const endKey = coordKey(chain[chain.length - 1]);
+      const matches = endpointMap.get(endKey);
+      if (matches) {
+        for (const j of matches) {
+          if (used[j]) continue;
+          const cand = pool[j];
+          if (coordKey(cand[0]) === endKey) {
+            used[j] = 1;
+            for (let k = 1; k < cand.length; k++) chain.push(cand[k]);
+            extended = true;
+            break;
+          } else if (coordKey(cand[cand.length - 1]) === endKey) {
+            used[j] = 1;
+            for (let k = cand.length - 2; k >= 0; k--) chain.push(cand[k]);
+            extended = true;
+            break;
+          }
+        }
+      }
+    }
+
+    // Extend backward
+    extended = true;
+    while (extended) {
+      extended = false;
+      const startKey = coordKey(chain[0]);
+      const matches = endpointMap.get(startKey);
+      if (matches) {
+        for (const j of matches) {
+          if (used[j]) continue;
+          const cand = pool[j];
+          if (coordKey(cand[cand.length - 1]) === startKey) {
+            used[j] = 1;
+            const newChain = cand.slice();
+            for (let k = 1; k < chain.length; k++) newChain.push(chain[k]);
+            chain = newChain;
+            extended = true;
+            break;
+          } else if (coordKey(cand[0]) === startKey) {
+            used[j] = 1;
+            const newChain: LonLat[] = [];
+            for (let k = cand.length - 1; k >= 0; k--) newChain.push(cand[k]);
+            for (let k = 1; k < chain.length; k++) newChain.push(chain[k]);
+            chain = newChain;
+            extended = true;
+            break;
+          }
+        }
+      }
+    }
+
+    stitched.push(chain);
+  }
+
+  return stitched;
+}
+
 function coverageLineFc(runs: LonLat[][]): GeoJSON.FeatureCollection {
+  const stitched = stitchConnectedRuns(runs);
   return {
     type: 'FeatureCollection',
-    features: (runs || [])
+    features: (stitched || [])
       .filter((r) => Array.isArray(r) && r.length >= 2)
       .map((r) => ({
         type: 'Feature' as const,
@@ -1017,6 +1107,7 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
       id: 'ra-coverage-casing',
       type: 'line',
       source: 'ra-coverage',
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
       paint: {
         'line-color': '#0b1220',
         'line-width': 6.5,

@@ -817,4 +817,96 @@ describe('geojsonJson-only catalog grid layers', () => {
   });
 });
 
+describe('property-name-independent subgrid cell resolution', () => {
+  // Real grid layers often label cells with a column this module does not know
+  // (KOTAK, GRID_NAME, ...). When the name match fails, the cell must still be
+  // resolved from the geometry, otherwise coverage is clipped to a derived 5 km
+  // box that does not line up with the grid square drawn on the map.
+  const cell = (minX: number, minY: number, size = 0.045) => ({
+    type: 'Feature',
+    properties: { KOTAK: 'unreadable', LOKASI: 'x' },
+    geometry: {
+      type: 'Polygon',
+      coordinates: [[[minX, minY], [minX + size, minY], [minX + size, minY + size], [minX, minY + size], [minX, minY]]]
+    }
+  });
+  const layer = (features: any[]) => ({ id: 'grid', name: 'Grid_5km', geojson: { type: 'FeatureCollection', features } });
+
+  it('resolves the cell by containment when the cell property name is unrecognised', () => {
+    const bbox = getSubgridBbox(
+      'N102E73',
+      [{ lng: 102.02, lat: 2.02 }, { lng: 102.03, lat: 2.03 }],
+      [layer([cell(102.0, 2.0), cell(102.045, 2.0)])]
+    );
+    expect(bbox[0]).toBeCloseTo(102.0, 6);
+    expect(bbox[1]).toBeCloseTo(2.0, 6);
+    expect(bbox[2]).toBeCloseTo(102.045, 6);
+    expect(bbox[3]).toBeCloseTo(2.045, 6);
+  });
+
+  it('prefers the smallest containing cell when a district polygon wraps the grid cell', () => {
+    const district = {
+      type: 'Feature',
+      properties: { NAME: 'MUKIM BATU' },
+      geometry: {
+        type: 'Polygon',
+        coordinates: [[[101.9, 1.9], [102.2, 1.9], [102.2, 2.2], [101.9, 2.2], [101.9, 1.9]]]
+      }
+    };
+    const bbox = getSubgridBbox(
+      'N102E73',
+      [{ lng: 102.02, lat: 2.02 }, { lng: 102.03, lat: 2.03 }],
+      [layer([district, cell(102.0, 2.0)])]
+    );
+    expect(bbox[0]).toBeCloseTo(102.0, 6);
+    expect(bbox[3]).toBeCloseTo(2.045, 6);
+  });
+
+  it('ignores road-plan line features that happen to contain a survey point', () => {
+    const road = {
+      type: 'Feature',
+      properties: { LAYER: 'ROAD' },
+      geometry: { type: 'LineString', coordinates: [[102.0, 2.0], [102.045, 2.045]] }
+    };
+    const bbox = getSubgridBbox('N102E73', [{ lng: 102.02, lat: 2.02 }], [layer([road, cell(102.0, 2.0)])]);
+    expect(bbox[0]).toBeCloseTo(102.0, 6);
+    expect(bbox[2]).toBeCloseTo(102.045, 6);
+  });
+
+  it('keeps the derived 5 km box when no catalog cell contains the points', () => {
+    const bbox = getSubgridBbox(
+      'N102E73',
+      [{ lng: 102.02, lat: 2.02 }, { lng: 102.03, lat: 2.03 }],
+      [layer([cell(103.0, 3.0)])]
+    );
+    expect(bbox[0]).toBeCloseTo(102.0025, 4);
+    expect(bbox[2]).toBeCloseTo(102.0475, 4);
+  });
+
+  it('keeps the derived 5 km box when the points are split across two cells', () => {
+    const bbox = getSubgridBbox(
+      'N102E73',
+      [{ lng: 102.02, lat: 2.02 }, { lng: 102.06, lat: 2.02 }],
+      [layer([cell(102.0, 2.0), cell(102.045, 2.0)])]
+    );
+    expect(bbox[0]).toBeCloseTo(102.0175, 4);
+    expect(bbox[2]).toBeCloseTo(102.0625, 4);
+  });
+
+  it('still prefers an exact name match over containment', () => {
+    const named = {
+      type: 'Feature',
+      properties: { NAME: 'N102E73' },
+      geometry: {
+        type: 'Polygon',
+        coordinates: [[[102.0, 2.0], [102.045, 2.0], [102.045, 2.045], [102.0, 2.045], [102.0, 2.0]]]
+      }
+    };
+    // The named cell sits east of the surveyed points, so a containment-first
+    // implementation would answer with the cell at 102.045 instead.
+    const bbox = getSubgridBbox('N102E73', [{ lng: 102.01, lat: 2.01 }], [layer([named])]);
+    expect(bbox[0]).toBeCloseTo(102.0, 6);
+  });
+});
+
 

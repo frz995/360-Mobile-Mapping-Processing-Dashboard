@@ -21,11 +21,33 @@ import {
 const BASE_LNG = 101.5;
 const BASE_LAT = 3.1;
 
+/** Metres per degree of longitude at BASE_LAT, matching the distM projection. */
+const M_PER_DEG_LNG = 111320 * Math.cos((BASE_LAT * Math.PI) / 180);
+
+/** Longitude `m` metres east of BASE_LNG, along BASE_LAT. */
+function lngEast(m: number): number {
+  return BASE_LNG + m / M_PER_DEG_LNG;
+}
+
+/** Metres east of BASE_LNG for a longitude, along BASE_LAT. */
+function mEast(lng: number): number {
+  return (lng - BASE_LNG) * M_PER_DEG_LNG;
+}
+
 /** Dense capture line: `n` points from lng 0..spanDeg at fixed lat. */
 function denseLine(lat: number, lngStart: number, lngEnd: number, n: number): LonLat[] {
   const pts: LonLat[] = [];
   for (let i = 0; i < n; i++) {
     pts.push([lngStart + ((lngEnd - lngStart) * i) / (n - 1), lat]);
+  }
+  return pts;
+}
+
+/** Dense capture line: `n` points from latStart..latEnd at fixed lng. */
+function denseLineNS(lng: number, latStart: number, latEnd: number, n: number): LonLat[] {
+  const pts: LonLat[] = [];
+  for (let i = 0; i < n; i++) {
+    pts.push([lng, latStart + ((latEnd - latStart) * i) / (n - 1)]);
   }
   return pts;
 }
@@ -262,7 +284,9 @@ describe('roadNetworkTrace utility', () => {
       expect(res.tracedPct).toBeLessThan(80);
       expect(res.uncoveredRuns.length).toBe(1);
       expect(res.uncoveredRuns[0].length).toBeGreaterThanOrEqual(2);
-      expect(res.tracedKm).toBeGreaterThan(0.03);
+      // The capture ends 55.6 m along the 111 m run, so with tolerance 25 the
+      // exact uncovered stretch is 111.1 - (55.6 + 25) = ~30.6 m.
+      expect(res.tracedKm).toBeGreaterThan(0.025);
     });
 
     it('respects the tolerance distance', () => {
@@ -375,9 +399,27 @@ describe('roadNetworkTrace utility', () => {
         denseLine(BASE_LAT, BASE_LNG + 0.003, BASE_LNG + 0.004, 15)
       ];
       const res = computePlanCoverage([multiRun], tracks, 25);
-      // Uncovered slice should be precisely [p1, p2, p3] with exactly 3 vertices, identical to the input line
+      // A single gap over the two middle segments. The 25 m capture buffer
+      // reaches a little past p1 and stops a little short of p3, so the two gap
+      // boundaries are interpolated ONTO the plan line instead of snapping to
+      // the vertices: no off-plan geometry, no densified runs, no junction
+      // welds — the red still recolors the exact drawn green plan line.
       expect(res.uncoveredRuns.length).toBe(1);
-      expect(res.uncoveredRuns[0]).toEqual([p1, p2, p3]);
+      const gap = res.uncoveredRuns[0];
+      for (const pt of gap) {
+        expect(pt[1]).toBeCloseTo(BASE_LAT, 9);
+        expect(pt[0]).toBeGreaterThanOrEqual(p1[0]);
+        expect(pt[0]).toBeLessThanOrEqual(p3[0]);
+      }
+      // Boundaries sit strictly inside the unsurveyed stretch, not on p1 / p3.
+      expect(gap[0][0]).toBeGreaterThan(p1[0]);
+      expect(gap[gap.length - 1][0]).toBeLessThan(p3[0]);
+      // 1:1 — the buffer reaches exactly 25 m past p1 and stops 25 m short of
+      // p3, and the bisected boundaries must land on those edges.
+      expect(mEast(gap[0][0])).toBeGreaterThan(mEast(p1[0]) + 24.4);
+      expect(mEast(gap[0][0])).toBeLessThan(mEast(p1[0]) + 25.6);
+      expect(mEast(gap[gap.length - 1][0])).toBeLessThan(mEast(p3[0]) - 24.4);
+      expect(mEast(gap[gap.length - 1][0])).toBeGreaterThan(mEast(p3[0]) - 25.6);
     });
 
     it('does not bleed coverage into perpendicular unsurveyed side streets at junctions', () => {
@@ -395,6 +437,154 @@ describe('roadNetworkTrace utility', () => {
       expect(res.uncoveredRuns.length).toBe(1);
       // The uncovered gap line must start precisely at the junction [BASE_LNG, BASE_LAT]
       expect(res.uncoveredRuns[0][0]).toEqual([BASE_LNG, BASE_LAT]);
+    });
+
+    it('starts the gap at the tolerance edge where a diagonal pass covers the mouth', () => {
+      // Side road running East from the junction, surveyed only by a 45-degree
+      // cross-street pass. That pass genuinely runs within tolerance of the road
+      // mouth, so 1:1 coverage keeps that stretch green and the red begins where
+      // the pass leaves the tolerance band. Perpendicular passes are rejected by
+      // the directional alignment test instead (see the T-junction case).
+      const junction: LonLat = [BASE_LNG, BASE_LAT];
+      const m8Deg = 8 / 111320;
+      const m50Deg = 50 / 111320;
+      const sideRoadWithMouth: LonLat[] = [
+        junction,
+        [BASE_LNG + m8Deg, BASE_LAT],
+        [BASE_LNG + m50Deg, BASE_LAT]
+      ];
+      // Vehicle surveyed cross street at a 45-degree angle passing through junction
+      const tracks: LonLat[][] = [
+        [
+          [BASE_LNG - 0.0005, BASE_LAT - 0.0005],
+          junction,
+          [BASE_LNG + 0.0005, BASE_LAT + 0.0005]
+        ]
+      ];
+
+      const res = computePlanCoverage([sideRoadWithMouth], tracks, 15);
+      expect(res.uncoveredRuns.length).toBe(1);
+      const gap = res.uncoveredRuns[0];
+      // Green mouth, then red for the rest of the unsurveyed side road.
+      expect(mEast(gap[0][0])).toBeGreaterThan(15);
+      expect(gap[gap.length - 1]).toEqual([BASE_LNG + m50Deg, BASE_LAT]);
+    });
+
+    it('connects the gap cleanly to the junction vertex at a T-junction', () => {
+      // T-junction: the unsurveyed road terminates at the junction. The red line must
+      // connect all the way to the junction vertex without leaving a 15m void.
+      const junction: LonLat = [BASE_LNG, BASE_LAT];
+      const m12Deg = 12 / 111320;
+      const m60Deg = 60 / 111320;
+      // Road coming from West and terminating at junction (T-junction)
+      const terminatingRoad: LonLat[] = [
+        [BASE_LNG - m60Deg, BASE_LAT],
+        [BASE_LNG - m12Deg, BASE_LAT],
+        junction
+      ];
+      // Surveyed track running North-South on the cross street. It must be a
+      // real two-dimensional track: a degenerate run of identical points has no
+      // direction, which makes `isCaptureCovering` accept it regardless of
+      // alignment and marks the junction mouth covered.
+      const tracks: LonLat[][] = [denseLineNS(BASE_LNG, BASE_LAT - 0.0005, BASE_LAT + 0.0005, 20)];
+
+      const res = computePlanCoverage([terminatingRoad], tracks, 15);
+      expect(res.uncoveredRuns.length).toBe(1);
+      const gap = res.uncoveredRuns[0];
+      // The perpendicular cross-street pass does not cover the terminating road,
+      // so the gap reaches the junction vertex cleanly.
+      expect(gap[gap.length - 1]).toEqual(junction);
+    });
+
+    it('keeps a short surveyed lead-in green instead of bleeding red into the track', () => {
+      // 200 m road where the panotrack only clips the first metre, so coverage
+      // is the 12 m tolerance pocket around it. That lead-in is genuinely
+      // covered, so 1:1 coverage keeps it green and the red starts at the
+      // tolerance edge. A 25 m "junction bleed" heuristic used to repaint it
+      // red, drawing an uncovered line inside the driven stretch.
+      const planRun: LonLat[] = [
+        [BASE_LNG, BASE_LAT],
+        [lngEast(100), BASE_LAT],
+        [lngEast(200), BASE_LAT]
+      ];
+      const tracks: LonLat[][] = [[[BASE_LNG, BASE_LAT], [lngEast(1), BASE_LAT]]];
+
+      const res = computePlanCoverage([planRun], tracks, 12);
+      expect(res.uncoveredRuns).toHaveLength(1);
+      const gapStart = mEast(res.uncoveredRuns[0][0][0]);
+      expect(gapStart).toBeGreaterThan(11);
+      expect(gapStart).toBeLessThan(15);
+      expect(mEast(res.uncoveredRuns[0][res.uncoveredRuns[0].length - 1][0])).toBeCloseTo(200, 1);
+    });
+
+    it('keeps a short surveyed run-out green instead of bleeding red into the track', () => {
+      // Mirror image: the panotrack only clips the final metre of the road.
+      const planRun: LonLat[] = [
+        [BASE_LNG, BASE_LAT],
+        [lngEast(100), BASE_LAT],
+        [lngEast(200), BASE_LAT]
+      ];
+      const tracks: LonLat[][] = [[[lngEast(199), BASE_LAT], [lngEast(200), BASE_LAT]]];
+
+      const res = computePlanCoverage([planRun], tracks, 12);
+      expect(res.uncoveredRuns).toHaveLength(1);
+      const gap = res.uncoveredRuns[0];
+      const gapEnd = mEast(gap[gap.length - 1][0]);
+      expect(gapEnd).toBeGreaterThan(185);
+      expect(gapEnd).toBeLessThan(189);
+      expect(mEast(gap[0][0])).toBeCloseTo(0, 1);
+    });
+
+    it('does not speckle red dashes when a single capture sample drops out mid-run', () => {
+      // ~111 m run, sampled every ~11 m at tolerance 12. The capture has a ~35 m
+      // hole that leaves exactly ONE probe beyond tolerance, so a single GPS
+      // dropout used to punch a red dash through the middle of driven road.
+      const dropoutRun: LonLat[] = [
+        [BASE_LNG, BASE_LAT],
+        [BASE_LNG + 0.001, BASE_LAT]
+      ];
+      const tracks = [
+        denseLine(BASE_LAT, lngEast(0), lngEast(50), 11),
+        denseLine(BASE_LAT, lngEast(85), lngEast(111), 6)
+      ];
+      const res = computePlanCoverage([dropoutRun], tracks, 12);
+      expect(res.uncoveredRuns.length).toBe(0);
+      expect(res.tracedPct).toBeLessThanOrEqual(1);
+    });
+
+    it('places the gap boundary where the capture coverage ends, with zero dead-zone gap', () => {
+      // Vertices every 8 m. The capture stops at 30 m; with 12 m tolerance buffer,
+      // coverage reaches 42 m, so the red line begins cleanly at ~42 m with zero dead zone.
+      const shortSegRun: LonLat[] = [0, 8, 16, 24, 32, 40, 48, 56].map(
+        (m): LonLat => [lngEast(m), BASE_LAT]
+      );
+      const tracks = [denseLine(BASE_LAT, lngEast(0), lngEast(30), 7)];
+      const res = computePlanCoverage([shortSegRun], tracks, 12);
+      expect(res.uncoveredRuns.length).toBe(1);
+      const gap = res.uncoveredRuns[0];
+      // Coverage buffer reaches 30 m + 12 m = 42 m; gap begins there and runs to the end
+      expect(mEast(gap[0][0])).toBeCloseTo(42.25, 0);
+      expect(mEast(gap[gap.length - 1][0])).toBeCloseTo(56, 1);
+    });
+
+    it('keeps a genuine gap between two captured stretches', () => {
+      // ~111 m run with a real ~40 m unsurveyed stretch between two captured
+      // halves. Capture A covers up to 40 + 12 = 52 m; Capture B covers from 80 - 12 = 68 m.
+      // The gap is preserved with clean zero-gap handoff to both capture edges.
+      const gappedRun: LonLat[] = [
+        [BASE_LNG, BASE_LAT],
+        [BASE_LNG + 0.001, BASE_LAT]
+      ];
+      const tracks = [
+        denseLine(BASE_LAT, lngEast(0), lngEast(40), 9),
+        denseLine(BASE_LAT, lngEast(80), lngEast(111), 7)
+      ];
+      const res = computePlanCoverage([gappedRun], tracks, 12);
+      expect(res.uncoveredRuns.length).toBe(1);
+      const gap = res.uncoveredRuns[0];
+      // Zero-gap handoff to capture A buffer (~52 m) and capture B buffer (~68 m)
+      expect(mEast(gap[0][0])).toBeCloseTo(52, 0);
+      expect(mEast(gap[gap.length - 1][0])).toBeCloseTo(68, 0);
     });
   });
 

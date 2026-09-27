@@ -21,6 +21,13 @@ export interface CoverageSegmentationState {
   activeScope: CoverageScope;
   activeSubgridId: string | null;
   subgridResults: Record<string, PlanCoverage>;
+  /**
+   * Bumped only when the captured-track CONTENT actually changes (a re-fetch
+   * that returns identical data does not count). The caller re-runs the active
+   * scope when this moves, so a data reload refreshes the overlay instead of
+   * wiping it.
+   */
+  inputRevision: number;
   segmentSubgrid: (subgridId: string, subgridRuns: LonLat[][]) => void;
   segmentAll: (allRuns: LonLat[][], subgridPlans?: Array<{ subgrid: string; planRuns: LonLat[][] }>) => void;
   clear: () => void;
@@ -30,6 +37,30 @@ export interface CoverageSegmentationState {
  *  to stay well under a frame); larger networks go through the module worker
  *  so the UI thread never freezes while progress streams back. */
 const INLINE_THRESHOLD_RUNS = 2000;
+
+/**
+ * Content fingerprint of the captured track network. The array identity churns
+ * on every data reload (Supabase sync, Refresh, parent prop churn), so comparing
+ * references made this hook discard a perfectly valid segmentation a few
+ * seconds after it was produced. Hashing the coordinates instead makes "did the
+ * survey data actually change" answerable.
+ */
+function trackSignature(tracks: LonLat[][]): string {
+  let h = 2166136261;
+  let coords = 0;
+  for (let i = 0; i < tracks.length; i++) {
+    const track = tracks[i];
+    coords += track.length;
+    h = Math.imul(h ^ i, 16777619);
+    for (let j = 0; j < track.length; j++) {
+      const c = track[j];
+      // Quantised to ~0.1 m so float noise from a re-fetch is not read as a change.
+      h = Math.imul(h ^ Math.round(c[0] * 1e6), 16777619);
+      h = Math.imul(h ^ Math.round(c[1] * 1e6), 16777619);
+    }
+  }
+  return `${tracks.length}:${coords}:${h >>> 0}`;
+}
 
 let coverageWorker: Worker | null = null;
 let coverageWorkerCount = 0;
@@ -74,7 +105,8 @@ export function useCoverageSegmentation(
     coverage: null,
     activeScope: 'none',
     activeSubgridId: null,
-    subgridResults: {}
+    subgridResults: {},
+    inputRevision: 0
   });
 
   /** Detaches the active worker request's listeners (started a new one, or unmounted). */
@@ -93,10 +125,27 @@ export function useCoverageSegmentation(
         coverage: null,
         activeScope: 'none',
         activeSubgridId: null,
-        subgridResults: {}
+        subgridResults: {},
+        inputRevision: prev.inputRevision
       };
     });
   }, []);
+
+  const inputSignature = useMemo(() => trackSignature(capturedTracks), [capturedTracks]);
+
+  // When the survey data really changes (e.g. Supabase sync lands, Refresh is
+  // pressed), the cached per-subgrid results are stale and must go, but the
+  // displayed result stays: the caller watches inputRevision and re-runs the
+  // active scope against the fresh plan runs. Clearing here as well would only
+  // blank the overlay for a frame before it came back.
+  const prevInputRef = useRef({ signature: inputSignature, toleranceM });
+  useEffect(() => {
+    const prev = prevInputRef.current;
+    if (prev.signature === inputSignature && prev.toleranceM === toleranceM) return;
+    prevInputRef.current = { signature: inputSignature, toleranceM };
+    subgridResultsRef.current = {};
+    setState((s) => ({ ...s, subgridResults: {}, inputRevision: s.inputRevision + 1 }));
+  }, [inputSignature, toleranceM]);
 
   const segmentSubgrid = useCallback((subgridId: string, subgridRuns: LonLat[][]) => {
     const { capturedTracks: tracks, toleranceM: tol } = inputRef.current;
@@ -161,14 +210,15 @@ export function useCoverageSegmentation(
         });
       }
       subgridResultsRef.current = newSubgridResults;
-      setState({
+      setState((prev) => ({
         phase: 'done',
         progress: null,
         coverage,
         activeScope: 'all',
         activeSubgridId: null,
-        subgridResults: newSubgridResults
-      });
+        subgridResults: newSubgridResults,
+        inputRevision: prev.inputRevision
+      }));
     };
 
     const worker = getCoverageWorker();
