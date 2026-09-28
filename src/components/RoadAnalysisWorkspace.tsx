@@ -16,10 +16,21 @@ import {
   Share2,
   Search,
   Cuboid,
+  Compass,
+  Info,
   X
 } from 'lucide-react';
 import type { Map as MaplibreMap } from 'maplibre-gl';
 import { RoadAnalysis3DStudio } from './roadAnalysis/RoadAnalysis3DStudio';
+import { ProjectExplorerPanel } from './roadAnalysis/ProjectExplorerPanel';
+import {
+  calculateBufferAnalytics,
+  haversineMeters,
+  type BufferAnalytics,
+  type ExplorerChoroplethPalette,
+  type MeshCellData
+} from '../utils/projectExplorerGeometry';
+import { toast } from './common/toast';
 import { type LightingPreset, type ColorThemePreset } from '../utils/map3DLighting';
 import { UnderlineTabStrip, StatusDot, type ChromeTab } from './production/chrome';
 import {
@@ -707,6 +718,27 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
   const [showLabels, setShowLabels] = useState<boolean>(true);
   const [atmosphereTint, setAtmosphereTint] = useState<boolean>(true);
 
+  // Project Explorer state: live buffer radius slider, center pin, urban density analytics
+  const [showProjectExplorer, setShowProjectExplorer] = useState<boolean>(false);
+  const [explorerCenter, setExplorerCenter] = useState<[number, number] | null>(null);
+  const [explorerCenterB, setExplorerCenterB] = useState<[number, number] | null>(null);
+  const [explorerRadius, setExplorerRadius] = useState<number>(5000);
+  const [explorerPalette, setExplorerPalette] = useState<ExplorerChoroplethPalette>('greens');
+  const [isCompareMode, setIsCompareMode] = useState<boolean>(false);
+  const [activePinFocus, setActivePinFocus] = useState<'A' | 'B'>('A');
+  const [colorByMetric, setColorByMetric] = useState<string>('density');
+  const [hasExplored, setHasExplored] = useState<boolean>(false);
+  const [selectedExplorerGrid, setSelectedExplorerGrid] = useState<MeshCellData | any | null>(null);
+  const [centerTopNotice, setCenterTopNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!centerTopNotice) return;
+    const timer = window.setTimeout(() => {
+      setCenterTopNotice(null);
+    }, 4500);
+    return () => window.clearTimeout(timer);
+  }, [centerTopNotice]);
+
   const [isSaving, setIsSaving] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const [hasUnsavedEdits, setHasUnsavedEdits] = useState<boolean>(false);
@@ -1221,6 +1253,31 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
   // welding, or snapping, so road geometries remain clean and faithful to the source data.
   const activePlanRuns = roadPlanInput.runs;
 
+  // Whether an explicit road plan source has been loaded and activated
+  const isRoadPlanActive = useMemo(() => {
+    if (!showRoadLines) return false;
+    if (planSource === 'extracted') {
+      return extractedRuns.runs.length > 0 && systemStyles?.roadPlan?.visible !== false;
+    }
+    if (planSource === 'manual') {
+      if (catalogPlanLayerId) {
+        const activeLayer = catalogLayers.find((l) => l.id === catalogPlanLayerId);
+        return Boolean(activeLayer && activeLayer.visible !== false && activePlanRuns.length > 0);
+      }
+      return Boolean(manualGeoJson && activePlanRuns.length > 0);
+    }
+    return false;
+  }, [
+    showRoadLines,
+    planSource,
+    extractedRuns.runs.length,
+    systemStyles?.roadPlan?.visible,
+    catalogPlanLayerId,
+    catalogLayers,
+    activePlanRuns.length,
+    manualGeoJson
+  ]);
+
   // Plan length is measured PER run (each disconnected road segment summed
   // independently). Flattening the runs into one array and measuring
   // consecutive points creates phantom distances between the end of one run
@@ -1250,6 +1307,124 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
       catalogLayers
     );
   }, [capturedPoints, internalDailyData, internalBatchLogs, activePlanRuns, capturedTracks.length, catalogLayers]);
+
+  // ── Project Explorer: Spatial Buffer Analytics & Urban Classification ──
+  const bufferAnalytics = useMemo<BufferAnalytics>(() => {
+    let center = explorerCenter;
+    let radius = explorerRadius;
+
+    if (selectedExplorerGrid?.bbox) {
+      const b = selectedExplorerGrid.bbox;
+      center = [(b[0] + b[2]) / 2, (b[1] + b[3]) / 2];
+      radius = Math.max(1000, Math.round(haversineMeters([b[0], b[1]], [b[2], b[3]]) / 2));
+    } else if (!center) {
+      if (regionGeo?.bbox) {
+        center = [
+          (regionGeo.bbox[0] + regionGeo.bbox[2]) / 2,
+          (regionGeo.bbox[1] + regionGeo.bbox[3]) / 2
+        ];
+      } else if (activePlanRuns.length > 0 && activePlanRuns[0].length > 0) {
+        center = activePlanRuns[0][0];
+      } else if (capturedPoints.length > 0) {
+        const p: any = capturedPoints[0];
+        const lng = Array.isArray(p) ? p[0] : (p?.lng ?? p?.lon ?? p?.longitude);
+        const lat = Array.isArray(p) ? p[1] : (p?.lat ?? p?.latitude);
+        if (Number.isFinite(lng) && Number.isFinite(lat)) {
+          center = [Number(lng), Number(lat)];
+        }
+      }
+    }
+    const targetCenter = center || [101.9758, 4.2105];
+    const baseAnalytics = calculateBufferAnalytics(
+      targetCenter,
+      radius,
+      activePlanRuns,
+      capturedPoints,
+      explorerPalette,
+      capturedTracks
+    );
+
+    if (selectedExplorerGrid) {
+      return {
+        ...baseAnalytics,
+        roadLengthKm: selectedExplorerGrid.planKm ?? baseAnalytics.roadLengthKm,
+        roadDensityKmPerKm2: selectedExplorerGrid.density ?? baseAnalytics.roadDensityKmPerKm2,
+        areaKm2: selectedExplorerGrid.areaKm2 ?? baseAnalytics.areaKm2
+      };
+    }
+
+    return baseAnalytics;
+  }, [
+    explorerCenter,
+    selectedExplorerGrid,
+    regionGeo?.bbox,
+    activePlanRuns,
+    capturedPoints,
+    explorerRadius,
+    explorerPalette,
+    capturedTracks
+  ]);
+
+  const bufferAnalyticsB = useMemo<BufferAnalytics | null>(() => {
+    if (!isCompareMode) return null;
+    let center = explorerCenterB;
+    if (!center && explorerCenter) {
+      center = [explorerCenter[0] + 0.035, explorerCenter[1] + 0.018];
+    }
+    if (!center) return null;
+    return calculateBufferAnalytics(
+      center,
+      explorerRadius,
+      activePlanRuns,
+      capturedPoints,
+      explorerPalette,
+      capturedTracks
+    );
+  }, [isCompareMode, explorerCenterB, explorerCenter, explorerRadius, activePlanRuns, capturedPoints, explorerPalette, capturedTracks]);
+
+  const handleResetExplorer = useCallback(() => {
+    setSelectedExplorerGrid(null);
+    setExplorerRadius(5000);
+    setIsCompareMode(false);
+    setActivePinFocus('A');
+    if (regionGeo?.bbox) {
+      setExplorerCenter([
+        (regionGeo.bbox[0] + regionGeo.bbox[2]) / 2,
+        (regionGeo.bbox[1] + regionGeo.bbox[3]) / 2
+      ]);
+    } else if (liveMapRef.current) {
+      const c = liveMapRef.current.getCenter();
+      setExplorerCenter([c.lng, c.lat]);
+    }
+  }, [regionGeo?.bbox]);
+
+  const handleExploreUrbanArea = useCallback(() => {
+    setHasExplored(true);
+    let target = explorerCenter;
+    if (!target) {
+      if (regionGeo?.bbox) {
+        target = [
+          (regionGeo.bbox[0] + regionGeo.bbox[2]) / 2,
+          (regionGeo.bbox[1] + regionGeo.bbox[3]) / 2
+        ];
+      } else if (liveMapRef.current) {
+        const c = liveMapRef.current.getCenter();
+        target = [c.lng, c.lat];
+      } else if (activePlanRuns.length > 0 && activePlanRuns[0].length > 0) {
+        target = activePlanRuns[0][0];
+      } else {
+        target = [101.9758, 4.2105];
+      }
+      setExplorerCenter(target);
+    }
+    if (liveMapRef.current && target) {
+      liveMapRef.current.easeTo({
+        center: target,
+        zoom: Math.max(liveMapRef.current.getZoom(), 13.5),
+        duration: 1200
+      });
+    }
+  }, [explorerCenter, regionGeo?.bbox, activePlanRuns]);
 
   // ── Road Network Trace: per-subgrid plan built from dailyData surveys.
   // When a region is selected, the trace walks only subgrids whose captured
@@ -2263,7 +2438,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                         <span className="block text-[10px] text-text-muted mt-0.5">
                           {capturedPoints.length > 0
                             ? `${capturedPoints.length.toLocaleString()} captured points · ${capturedDistanceKm.toFixed(2)} km`
-                            : 'Built from real captured subgrid points in the selected area.'}
+                            : 'Built from verified captured subgrid points in the selected area.'}
                         </span>
                       </span>
                     </div>
@@ -3083,6 +3258,34 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                 }}
               >
               <div className="absolute inset-0 overflow-hidden">
+                {/* Center Top Basemap Notice Banner */}
+                {centerTopNotice && (
+                  <div
+                    className="absolute top-4 left-1/2 -translate-x-1/2 z-[1100] flex items-center gap-2.5 px-3.5 py-2 rounded-xl border backdrop-blur-md shadow-2xl transition-all duration-300 animate-in fade-in slide-in-from-top-3 select-none"
+                    style={{
+                      backgroundColor: 'rgba(15, 23, 42, 0.94)',
+                      borderColor: 'rgba(56, 189, 248, 0.45)',
+                      boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.6), 0 0 15px rgba(56, 189, 248, 0.25)'
+                    }}
+                  >
+                    <div className="w-5 h-5 rounded-full bg-sky-500/20 border border-sky-400 flex items-center justify-center shrink-0">
+                      <Info size={12} className="text-sky-400" />
+                    </div>
+                    <span className="text-xs font-semibold text-slate-100 tracking-wide">
+                      {centerTopNotice}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setCenterTopNotice(null)}
+                      className="p-1 rounded-md text-slate-400 hover:text-slate-200 hover:bg-white/10 transition-colors cursor-pointer ml-1"
+                      title="Dismiss"
+                      aria-label="Close notice"
+                    >
+                      <X size={13} />
+                    </button>
+                  </div>
+                )}
+
                 {/* Top-Left Floating Map Controls Box Card */}
                 <div
                   style={{
@@ -3169,10 +3372,62 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                       Studio
                     </button>
                   )}
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!showProjectExplorer) {
+                        if (!isRoadPlanActive) {
+                          setCenterTopNotice('please click road plan to continue');
+                          toast.info('please click road plan to continue');
+                          addNotification?.({
+                            id: `road-plan-req-${Date.now()}`,
+                            title: 'Road Plan Required',
+                            message: 'please click road plan to continue',
+                            category: 'WARNING',
+                            read: false
+                          });
+                          return;
+                        }
+                      }
+                      setShowProjectExplorer((prev) => {
+                        const next = !prev;
+                        if (!next) {
+                          setSelectedExplorerGrid(null);
+                        } else if (!explorerCenter) {
+                          if (regionGeo?.bbox) {
+                            setExplorerCenter([
+                              (regionGeo.bbox[0] + regionGeo.bbox[2]) / 2,
+                              (regionGeo.bbox[1] + regionGeo.bbox[3]) / 2
+                            ]);
+                          } else if (liveMapRef.current) {
+                            const c = liveMapRef.current.getCenter();
+                            setExplorerCenter([c.lng, c.lat]);
+                          } else if (activePlanRuns.length > 0 && activePlanRuns[0].length > 0) {
+                            setExplorerCenter(activePlanRuns[0][0]);
+                          } else {
+                            setExplorerCenter([101.9758, 4.2105]);
+                          }
+                        }
+                        return next;
+                      });
+                    }}
+                    style={{
+                      backgroundColor: showProjectExplorer ? 'rgba(56, 189, 248, 0.18)' : 'var(--bg-inner)',
+                      borderColor: showProjectExplorer ? 'rgba(56, 189, 248, 0.45)' : 'var(--border-subtle)',
+                      color: showProjectExplorer ? 'var(--sky, #38bdf8)' : 'var(--text-muted)'
+                    }}
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-all cursor-pointer hover:border-sky-400/50"
+                    title={showProjectExplorer ? 'Project Explorer: Active (click to close)' : 'Project Explorer: Inactive (click to launch buffer spotlight and urban analysis)'}
+                  >
+                    <Compass size={13} className="shrink-0" />
+                    Explorer
+                  </button>
                 </div>
 
-                {/* Top-Right Floating Details Card (System Design, No Colored Text Box) */}
-                {showDetailsCard ? (
+                {/* Top-Right Floating Details Card (Compare Tab Only) */}
+                {activeTab === 'compare' && (
+                  showDetailsCard ? (
                   <div
                     style={{
                       backgroundColor: 'var(--bg-card)',
@@ -3402,7 +3657,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                     <Route size={12} className="text-text-muted" />
                     Details
                   </button>
-                )}
+                ))}
 
                 {/* 3D Map Studio: dynamic lighting & color themes */}
                 {show3D && show3DStudio && (
@@ -3444,6 +3699,40 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                   />
                 )}
 
+                {/* Project Explorer Panel */}
+                {showProjectExplorer && (
+                  <ProjectExplorerPanel
+                    active={showProjectExplorer}
+                    onClose={() => setShowProjectExplorer(false)}
+                    centerA={explorerCenter}
+                    onCenterAChange={(c) => setExplorerCenter(c)}
+                    centerB={explorerCenterB}
+                    onCenterBChange={(c) => setExplorerCenterB(c)}
+                    radius={explorerRadius}
+                    onRadiusChange={(r) => setExplorerRadius(r)}
+                    analyticsA={bufferAnalytics}
+                    analyticsB={bufferAnalyticsB}
+                    palette={explorerPalette}
+                    onPaletteChange={(p) => setExplorerPalette(p)}
+                    colorByMetric={colorByMetric}
+                    onColorByMetricChange={(m) => setColorByMetric(m)}
+                    isCompareMode={isCompareMode}
+                    onToggleCompareMode={(cmp) => {
+                      setIsCompareMode(cmp);
+                      if (cmp && !explorerCenterB && explorerCenter) {
+                        setExplorerCenterB([explorerCenter[0] + 0.035, explorerCenter[1] + 0.018]);
+                      }
+                    }}
+                    activePinFocus={activePinFocus}
+                    onSelectPinFocus={(p: 'A' | 'B') => setActivePinFocus(p)}
+                    onReset={handleResetExplorer}
+                    onExploreUrbanArea={handleExploreUrbanArea}
+                    hasExplored={hasExplored}
+                    selectedGrid={selectedExplorerGrid}
+                    onClearGridSelection={() => setSelectedExplorerGrid(null)}
+                  />
+                )}
+
                 <RoadAnalysisMap
                   active
                   showRoadLines={showRoadLines}
@@ -3455,6 +3744,19 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                   isOrbiting={isOrbiting}
                   showLabels={showLabels}
                   atmosphereTint={atmosphereTint}
+                  projectExplorerActive={showProjectExplorer}
+                  selectedExplorerGrid={selectedExplorerGrid}
+                  onSelectExplorerGrid={setSelectedExplorerGrid}
+                  projectExplorerCenter={explorerCenter}
+                  projectExplorerCenterB={explorerCenterB}
+                  projectExplorerRadius={explorerRadius}
+                  projectExplorerPalette={explorerPalette}
+                  projectExplorerColorByMetric={colorByMetric}
+                  subgridMetrics={subgridMetrics}
+                  projectExplorerRoadsGeojson={showProjectExplorer ? bufferAnalytics.clippedRoadsGeojson : null}
+                  onProjectExplorerCenterChange={(c) => setExplorerCenter(c)}
+                  onProjectExplorerCenterBChange={(c) => setExplorerCenterB(c)}
+                  isCompareMode={isCompareMode}
                   onPitchChange={(p) => setCurrentPitch(p)}
                   style={mapStyle}
                   bbox={regionGeo?.bbox ?? null}

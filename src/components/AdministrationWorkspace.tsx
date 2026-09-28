@@ -1096,7 +1096,7 @@ export const AdministrationWorkspace: React.FC<AdministrationWorkspaceProps> = (
                   Database &amp; Platform Health Diagnostics
                 </h3>
                 <p className="text-xs text-text-muted mt-0.5">
-                  Live connection latency, PostGIS status, and storage layer health.
+                  Connection latency, PostGIS status, and storage layer health.
                 </p>
               </div>
               <button

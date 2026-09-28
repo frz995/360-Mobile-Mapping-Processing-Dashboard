@@ -533,7 +533,7 @@ export const MultiPCStationBoard: React.FC<MultiPCStationBoardProps> = ({
             ) : (
               <>
                 Track progress across the four processing stations for{' '}
-                <span className="font-mono text-text-base">{cleanSg}</span>. Connect workstation agents for live updates.
+                <span className="font-mono text-text-base">{cleanSg}</span>. Connect workstation agents for current updates.
               </>
             )}
           </p>
@@ -580,7 +580,7 @@ export const MultiPCStationBoard: React.FC<MultiPCStationBoardProps> = ({
                     </div>
                   </div>
                   {st.agentOnline ? (
-                    <span title={`Agent live · pulse ${relativeTime(st.lastPulseAt)}`} className="flex shrink-0">
+                    <span title={`Agent online · pulse ${relativeTime(st.lastPulseAt)}`} className="flex shrink-0">
                       <Wifi size={13} className="text-emerald-400" />
                     </span>
                   ) : (
@@ -597,7 +597,7 @@ export const MultiPCStationBoard: React.FC<MultiPCStationBoardProps> = ({
 
                 <span
                   className={`self-start inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider ${pill.cls}`}
-                  title={st.source === 'agent' ? 'State comes live from the station agent' : st.source === 'snapshot' ? 'Agent offline — showing last persisted state' : 'Waiting for this PC\'s station agent'}
+                  title={st.source === 'agent' ? 'State comes directly from the station agent' : st.source === 'snapshot' ? 'Agent offline — showing last persisted state' : 'Waiting for this PC\'s station agent'}
                 >
                   {pill.icon}
                   <span>{pill.label}</span>

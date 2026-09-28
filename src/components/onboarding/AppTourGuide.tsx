@@ -11,7 +11,7 @@ export const TOUR_STEPS: TourStepItem[] = [
   {
     step: 1,
     title: '1. Executive KPI Summary Cards',
-    desc: 'Real-time monitoring of total trajectory distance (KM), 360° panorama frame counts, active survey subgrids, and overall defect SLA pass rates.',
+    desc: 'Current monitoring of total trajectory distance (KM), 360° panorama frame counts, active survey subgrids, and overall defect SLA pass rates.',
     highlight: 'Top executive summary cards'
   },
   {
@@ -29,13 +29,13 @@ export const TOUR_STEPS: TourStepItem[] = [
   {
     step: 4,
     title: '4. Daily Survey Progress & Supabase DB Control',
-    desc: 'Filter daily survey passes by column (Date, PIC, Subgrid), perform passcode-protected record edits or deletions, and publish live records to Supabase PostgreSQL.',
+    desc: 'Filter daily survey passes by column (Date, PIC, Subgrid), perform passcode-protected record edits or deletions, and publish records to Supabase PostgreSQL.',
     highlight: 'Daily progress data table'
   },
   {
     step: 5,
-    title: '5. Audit Trail Logs & Real-Time Notifications',
-    desc: 'Inspect chronological system activity logs (create, edit, delete, publish, error) with date-range filters, and monitor live database publish notifications.',
+    title: '5. Audit Trail Logs & Notifications',
+    desc: 'Inspect chronological system activity logs (create, edit, delete, publish, error) with date-range filters, and monitor database publish notifications.',
     highlight: 'Header Audit Log & Notification controls'
   },
   {

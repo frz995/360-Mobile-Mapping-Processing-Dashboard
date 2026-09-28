@@ -222,7 +222,7 @@ export type PipelineStageKey =
 
 export interface PipelineStageResult {
   key: PipelineStageKey;
-  labelKey: string;
+  label: string;
   status: PipelineStageStatus;
   pct?: number;
   note?: string;

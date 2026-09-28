@@ -66,7 +66,7 @@ export function QCAuditModal({ subgrid, poiCount, availableCount, availableFilen
 
   const copyMissingList = () => {
     if (!canAudit) {
-      toast.error('Audit not verified: no real survey track and imagery inventory to compare.');
+      toast.error('Audit not verified: no verified survey track and imagery inventory to compare.');
       return;
     }
     if (missingFilenames.length === 0) {
@@ -95,7 +95,7 @@ imagery inventory. No storage bucket is scanned by this report.
 MISSING FILENAMES (${canAudit ? missingFilenames.length : 'not determined'}):
 -----------------------------------------------------
 ${!canAudit
-      ? 'Audit could not be run: a real survey track filename list and a real\nimagery inventory list are both required. Nothing was inferred.'
+      ? 'Audit could not be run: a verified survey track filename list and a verified\nimagery inventory list are both required. Nothing was inferred.'
       : (missingFilenames.length > 0 ? missingFilenames.join('\n') : 'None - every survey track frame has a matching loaded image.')}
 `;
     const blob = new Blob([reportText], { type: 'text/plain;charset=utf-8' });
@@ -237,7 +237,7 @@ ${!canAudit
               {availableTotal === 0 && realAvailable.length === 0 && availableCount === 0 && (
                 ' No imagery filenames are loaded.'
               )}
-              {' '}Run a live NAS scan for this subgrid to populate both.
+              {' '}Run a NAS scan for this subgrid to populate both.
             </p>
           </div>
         )}
@@ -263,7 +263,7 @@ ${!canAudit
                   <span className="text-[11px] text-text-muted">
                     {canAudit
                       ? 'Try changing search or tab filters.'
-                      : 'This audit was not run because no real filename lists were loaded.'}
+                      : 'This audit was not run because no verified filename lists were loaded.'}
                   </span>
                 </>
               )}

@@ -843,7 +843,7 @@ export async function publishToSupabase(record: {
       // Publishing requires the real frame inventory from a NAS scan.
       return {
         success: false,
-        message: 'Publication blocked: no real frame inventory for this run. Run a live NAS scan so the actual panorama filenames are loaded, then publish.'
+        message: 'Publication blocked: no verified frame inventory for this run. Run a NAS scan so the actual panorama filenames are loaded, then publish.'
       };
     }
 

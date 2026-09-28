@@ -325,7 +325,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
             bbox: boundary.bbox
           }, '*');
           if (boundary.focusActive) {
-            // Passive live preview: do NOT auto-FOCUS_BOUNDARY — that direct
+            // Passive preview: do NOT auto-FOCUS_BOUNDARY — that direct
             // fitBounds (fired at load + retries) overrode the map's two-stage
             // intro zoom choreography. The dim overlay still reflects the
             // setting; the intro camera lands on the panotrack extent.
@@ -551,7 +551,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
     return (projectSettings as any)?.projectBoundary?.bbox || null;
   }, [selectedDistrictIds, currentRegion, projectSettings]);
 
-  // Preview combined boundary (Region or Selected Districts) on live WebGIS preview iframe
+  // Preview combined boundary (Region or Selected Districts) on the WebGIS preview iframe
   const previewBoundary = React.useCallback(async (region: any, districtIds: string[]) => {
     const iframe = previewIframeRef.current;
     if (!iframe || !iframe.contentWindow) return;
@@ -986,7 +986,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({
                 </h4>
                 <p className="text-[11px] text-text-muted mt-0.5">
                   {isGuest
-                    ? 'You are viewing live system performance and parameters in guest viewer mode. System parameter changes require Administrator authorization.'
+                    ? 'You are viewing current system performance and parameters in guest viewer mode. System parameter changes require Administrator authorization.'
                     : (
                       <>Current account role: <span className="font-sans font-semibold text-text-base">{userEffectiveRole}</span>. Configuration controls are restricted to Administrators.</>
                     )}
@@ -1939,7 +1939,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                       </div>
 
                       <div>
-                        <label className={labelClass}>Live Heading Yaw Sync</label>
+                        <label className={labelClass}>Heading Yaw Sync</label>
                         <div className={`flex items-center justify-between p-2 rounded-lg border ${inputBg}`}>
                           <span className="text-[11px] text-text-base font-medium">Vehicle Azimuth Alignment</span>
                           <input
@@ -1953,7 +1953,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                     </div>
                   </div>
 
-                  {/* SUB-CARD D: STORAGE & MULTI-RESOLUTION LIVE DIAGNOSTICS SUITE */}
+                  {/* SUB-CARD D: STORAGE & MULTI-RESOLUTION DIAGNOSTICS SUITE */}
                   <div className={`p-4 rounded-xl border space-y-4 ${innerCardBg}`}>
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div>
@@ -2110,7 +2110,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                       )}
                     </div>
 
-                    {/* LIVE PROBE RESULT CARD */}
+                    {/* PROBE RESULT CARD */}
                     {cfTestResult && (
                       <div className={`p-3.5 rounded-xl border animate-in fade-in slide-in-from-top-2 ${cfTestResult.ok
                         ? 'bg-emerald-950/30 border-emerald-800/60 text-emerald-200'
@@ -2164,7 +2164,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                             )}
                           </div>
 
-                          {/* LIVE THUMBNAIL PREVIEW IF ACCESSIBLE */}
+                          {/* THUMBNAIL PREVIEW IF ACCESSIBLE */}
                           <div className="shrink-0 flex flex-col items-center gap-1">
                             <a
                               href={cfTestResult.imageUrl}
@@ -2185,7 +2185,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                                 <ExternalLink size={14} className="text-white" />
                               </div>
                             </a>
-                            <span className="text-[9px] text-text-muted">Live 360° Preview</span>
+                            <span className="text-[9px] text-text-muted">360° Preview</span>
                           </div>
                         </div>
                       </div>
@@ -2193,20 +2193,20 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                   </div>
                 </div>
 
-                {/* SECTION 4: BASEMAP & SPATIAL LAYER MANAGEMENT WITH LIVE PREVIEW */}
+                {/* SECTION 4: BASEMAP & SPATIAL LAYER MANAGEMENT WITH PREVIEW */}
                 <div className={`p-5 rounded-xl border space-y-5 ${cardBg}`}>
                   <div className={`flex flex-wrap items-center justify-between gap-3 pb-3 border-b ${themeMode === 'light' ? 'border-slate-200' : 'border-subtle'}`}>
                     <div className="flex items-center gap-2">
                       <Map size={17} className="text-sky-400" />
                       <div>
                         <h3 className={`text-sm font-bold uppercase tracking-wide ${themeMode === 'light' ? 'text-slate-900' : 'text-text-base'}`}>4. Basemap & Spatial Layer Management</h3>
-                        <p className={`text-[11px] mt-0.5 ${themeMode === 'light' ? 'text-text-muted' : 'text-text-muted'}`}>Configure default GIS basemaps, trajectory theme colors, line widths, and inspect changes on the live map preview before applying to the dashboard.</p>
+                        <p className={`text-[11px] mt-0.5 ${themeMode === 'light' ? 'text-text-muted' : 'text-text-muted'}`}>Configure default GIS basemaps, trajectory theme colors, line widths, and inspect changes on the map preview before applying to the dashboard.</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-1.5">
                       <span className={`px-2.5 py-1 rounded-full text-[10px] font-sans font-bold flex items-center gap-1.5 ${themeMode === 'light' ? 'bg-sky-50 text-sky-700 border border-sky-200' : 'bg-sky-500/10 text-sky-400 border border-sky-500/20'}`}>
                         <Palette size={12} />
-                        Live Preview Engine
+                        Preview Engine
                       </span>
                     </div>
                   </div>
@@ -2635,7 +2635,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                         </div>
                       </div>
 
-                      {/* SUB-CARD C: PROJECT GEOGRAPHIC BOUNDARY (PREVIEWED ON LIVE MAP) */}
+                      {/* SUB-CARD C: PROJECT GEOGRAPHIC BOUNDARY (PREVIEWED ON MAP) */}
                       <div className={`p-4 rounded-xl border space-y-3 ${innerCardBg}`}>
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <h4 className={`text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 ${themeMode === 'light' ? 'text-slate-800' : 'text-text-base'}`}>
@@ -2667,7 +2667,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                                 ))}
                             </select>
                             <p className={helperClass}>
-                              Selecting a region previews it live on the map to the right. Click <strong className="text-text-muted">Apply</strong> to commit it as the project boundary.
+                              Selecting a region previews it on the map to the right. Click <strong className="text-text-muted">Apply</strong> to commit it as the project boundary.
                             </p>
                           </div>
 
@@ -2858,13 +2858,13 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                       </div>
                     </div>
 
-                    {/* RIGHT COLUMN: REAL-TIME LIVE MAP DASHBOARD PREVIEW (7 COLS - SPACIOUS) */}
+                    {/* RIGHT COLUMN: MAP DASHBOARD PREVIEW (7 COLS - SPACIOUS) */}
                     <div className="lg:col-span-7 flex flex-col min-h-[190px] sm:min-h-[420px] lg:min-h-[580px]">
                       <div className={`p-4 rounded-xl border flex-1 flex flex-col space-y-3 ${innerCardBg}`}>
                         <div className="flex items-center justify-between">
                           <h4 className={`text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 ${themeMode === 'light' ? 'text-slate-800' : 'text-text-base'}`}>
                             <Navigation size={14} className="text-text-muted" />
-                            Live Map Dashboard Preview
+                            Map Dashboard Preview
                           </h4>
                         </div>
 
@@ -2900,11 +2900,11 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                               setTimeout(sendPreviewData, 1200);
                             }}
                             className="absolute inset-0 w-full h-full border-0"
-                            title="WebGIS Live Map Preview"
+                            title="WebGIS Map Preview"
                             allow="geolocation; camera; accelerometer; gyroscope"
                           />
 
-                          {/* Bottom-Right Live Cursor Coordinate Badge */}
+                          {/* Bottom-Right Cursor Coordinate Badge */}
                           <div className="absolute bottom-3 right-3 z-20 pointer-events-none">
                             <div className={`backdrop-blur-md border rounded-lg px-2.5 py-1 text-[10px] shadow-xl flex items-center gap-1.5 font-sans ${themeMode === 'light' ? 'bg-white/95 border-slate-200 text-slate-800' : 'bg-app border-subtle text-text-base'}`}>
                               <span className="text-sky-500 font-semibold">{projectSettings.spatialSrid || 'EPSG:4326'}</span>
@@ -2914,7 +2914,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                                   {previewCoords.lat.toFixed(4)}° N, {previewCoords.lng.toFixed(4)}° E
                                 </span>
                               ) : (
-                                <span className="text-text-muted italic">Live GIS Map</span>
+                                <span className="text-text-muted italic">GIS Map</span>
                               )}
                             </div>
                           </div>
@@ -2927,7 +2927,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                                 type="button"
                                 onClick={() => {
                                   setPreviewRefreshKey(k => k + 1);
-                                  showToast('Refreshing Live Map Preview...');
+                                  showToast('Refreshing Map Preview...');
                                 }}
                                 title="Refresh WebGIS Map Preview"
                                 className={`px-2.5 py-1 rounded-xl backdrop-blur-xl border cursor-pointer shadow-xl transition-all active:scale-95 flex items-center gap-1.5 text-[10px] font-semibold ${themeMode === 'light' ? 'bg-white/95 hover:bg-slate-100 text-sky-600 border-slate-300' : 'bg-app hover:bg-inner text-sky-400 border-subtle'}`}
@@ -2946,7 +2946,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                               </a>
                             </div>
 
-                            {/* Live Legend Chips */}
+                            {/* Legend Chips */}
                             <div className="flex flex-wrap items-center gap-1 pointer-events-auto">
                               <span className={`px-2 py-0.5 rounded-md text-[9px] font-semibold backdrop-blur-md border flex items-center gap-1.5 shadow-md ${themeMode === 'light' ? 'bg-white/95 border-slate-300 text-slate-800' : 'bg-app border-subtle text-text-base'}`}>
                                 <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: projectSettings.publishedTrackColor || '#10B981' }} />
@@ -3267,7 +3267,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
                         sendPreviewData();
                         onSaveAllSettings?.();
                         addAuditLog?.('SETTINGS', 'Saved Project Settings', 'Updated project parameters, basemap, security and SLA benchmarks.', 'success');
-                        showToast('Project & Security Settings saved and synchronized live!');
+                        showToast('Project & Security Settings saved and synchronized!');
                       }}
                       className={`px-5 py-2.5 rounded-lg text-xs font-bold transition-all shadow-md flex items-center gap-2 ${isAdmin
                         ? 'bg-sky-600 hover:bg-sky-500 text-text-base cursor-pointer active:scale-95'
@@ -3283,7 +3283,7 @@ CREATE TABLE IF NOT EXISTS ${projectSettings.deletionRequestsTable || 'deletion_
             )}
 
             {/* ======================================================== */}
-            {/* TAB 2: MODERN THEME PACKAGES CANVAS & REAL LIVE PREVIEW */}
+            {/* TAB 2: MODERN THEME PACKAGES CANVAS & PREVIEW */}
             {/* ======================================================== */}
             {activeTab === 'theme-pack' && (
               <ThemeManagementCanvas

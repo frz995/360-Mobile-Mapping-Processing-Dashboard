@@ -1,11 +1,11 @@
 // =====================================================================
 // Dynamic Processing Pipeline (Phase 1)
-// Computes the 9 project-level pipeline stages entirely from real
+// Computes the 9 project-level pipeline stages entirely from verified
 // dataset / processing-job / QA / staging state. No status is hardcoded:
 // every stage is derived from the input collections on each call.
 //
 // Stages (per product):
-// 1 Data Ingestion         <- RAW datasets registered
+// 1 Raw Intake            <- RAW datasets registered
 // 2 Image Validation       <- RAW/processed datasets present, none failed
 // 3 Metadata Validation    <- PROCESSED datasets imported
 // 4 External Stitching     <- STITCH jobs/datasets
@@ -35,7 +35,7 @@ export interface PipelineStageCtx {
 
 export interface PipelineStageDef {
   key: PipelineStageKey;
-  labelKey: string;
+  label: string;
   hint?: string;
   jobTypes?: readonly string[];
   derive: (ctx: PipelineStageCtx) => { status: PipelineStageStatus; pct?: number; note?: string };
@@ -68,7 +68,7 @@ function stagingPublished(aggregates: StagingAggregate[], datasets: DatasetRecor
 export const PIPELINE_STAGE_DEFS: PipelineStageDef[] = [
   {
     key: 'ingestion',
-    labelKey: 'pipelineStageIngestion',
+    label: 'Raw Intake',
     hint: 'RAW datasets registered',
     derive: ({ datasets }) =>
       anyDataset(datasets, 'RAW')
@@ -77,7 +77,7 @@ export const PIPELINE_STAGE_DEFS: PipelineStageDef[] = [
   },
   {
     key: 'image_validation',
-    labelKey: 'pipelineStageImageValidation',
+    label: 'Image validation',
     derive: ({ datasets }) => {
       if (datasets.some((d) => d.status === 'FAILED')) return { status: 'FAILED' };
       if (datasets.length > 0) return { status: 'COMPLETE' };
@@ -86,7 +86,7 @@ export const PIPELINE_STAGE_DEFS: PipelineStageDef[] = [
   },
   {
     key: 'metadata_validation',
-    labelKey: 'pipelineStageMetadataValidation',
+    label: 'Metadata validation',
     derive: ({ datasets }) =>
       datasets.some(
         (d) =>
@@ -98,7 +98,7 @@ export const PIPELINE_STAGE_DEFS: PipelineStageDef[] = [
   },
   {
     key: 'privacy_blur',
-    labelKey: 'pipelineStagePrivacyBlur',
+    label: 'Privacy blur',
     hint: 'BLUR',
     jobTypes: ['BLUR'],
     derive: ({ jobs }) => {
@@ -111,7 +111,7 @@ export const PIPELINE_STAGE_DEFS: PipelineStageDef[] = [
   },
   {
     key: 'stitching',
-    labelKey: 'pipelineStageStitching',
+    label: 'Stitching',
     hint: 'STITCH',
     jobTypes: ['STITCH'],
     derive: ({ jobs }) => {
@@ -126,7 +126,7 @@ export const PIPELINE_STAGE_DEFS: PipelineStageDef[] = [
   },
   {
     key: 'data_staging',
-    labelKey: 'pipelineStageDataStaging',
+    label: 'Data staging',
     hint: 'csvpanotrack → staging_panoramas',
     derive: ({ stagingAggregates, datasets, bucketFrames }) => {
       if (!stagingAggregates || stagingAggregates.length === 0) return { status: 'WAITING' };
@@ -140,7 +140,7 @@ export const PIPELINE_STAGE_DEFS: PipelineStageDef[] = [
   },
   {
     key: 'qaqc',
-    labelKey: 'pipelineStageQaqc',
+    label: 'Acceptance QA',
     hint: 'QA_PENDING / APPROVED / REJECTED',
     jobTypes: ['QAQC'],
     derive: ({ jobs }) => {
@@ -164,14 +164,14 @@ export const PIPELINE_STAGE_DEFS: PipelineStageDef[] = [
   },
   {
     key: 'publish',
-    labelKey: 'pipelineStagePublish',
+    label: 'Deliverable pack',
     hint: 'DELIVERABLE datasets',
     derive: ({ datasets }) =>
       anyDataset(datasets, 'DELIVERABLE') ? { status: 'COMPLETE' } : { status: 'WAITING' }
   },
   {
     key: 'final_export',
-    labelKey: 'pipelineStageFinalExport',
+    label: 'Final export',
     hint: 'EXPORT / REPORT',
     jobTypes: ['EXPORT', 'REPORT'],
     derive: ({ jobs, datasets }) => {
@@ -188,7 +188,7 @@ export const PIPELINE_STAGE_DEFS: PipelineStageDef[] = [
 export function buildPipelineStages(ctx: PipelineStageCtx): PipelineStageResult[] {
   return PIPELINE_STAGE_DEFS.map((def) => {
     const r = def.derive(ctx);
-    return { key: def.key, labelKey: def.labelKey, status: r.status, pct: r.pct, note: r.note };
+    return { key: def.key, label: def.label, status: r.status, pct: r.pct, note: r.note };
   });
 }
 

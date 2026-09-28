@@ -63,7 +63,7 @@ export const WebGISHandoffCard: React.FC<WebGISHandoffCardProps> = ({
               </span>
             </div>
             <p className="text-xs text-text-muted mt-0.5">
-              Production complete on NAS. Follow the 3-step handoff to publish to live WebGIS map.
+              Production complete on NAS. Follow the 3-step handoff to publish to the WebGIS map.
             </p>
           </div>
         </div>
@@ -71,7 +71,7 @@ export const WebGISHandoffCard: React.FC<WebGISHandoffCardProps> = ({
         {publishedPoints > 0 ? (
           <span className="flex items-center gap-1.5 text-xs font-semibold text-emerald-400 bg-emerald-500/10 px-3 py-1.5 rounded-lg border border-emerald-500/20">
             <CheckCircle2 size={14} />
-            Live in WebGIS ({publishedPoints} points)
+            In WebGIS ({publishedPoints} points)
           </span>
         ) : (
           <span className="flex items-center gap-1.5 text-xs font-medium text-text-muted bg-inner px-2.5 py-1 rounded-lg border border-subtle">
@@ -159,9 +159,9 @@ export const WebGISHandoffCard: React.FC<WebGISHandoffCardProps> = ({
                 <span className="text-[11px] text-text-muted font-medium">Ready when 1 & 2 done</span>
               )}
             </div>
-            <h4 className="text-xs font-bold text-text-base">Publish Live on Map</h4>
+            <h4 className="text-xs font-bold text-text-base">Publish on Map</h4>
             <p className="text-[11px] text-text-muted leading-relaxed">
-              Verify 100% storage match between CSV trajectory and cloud bucket, then commit to live map.
+              Verify 100% storage match between CSV trajectory and cloud bucket, then commit to the map.
             </p>
           </div>
 

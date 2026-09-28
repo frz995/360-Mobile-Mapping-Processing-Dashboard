@@ -3042,7 +3042,7 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
                 <div className="flex flex-wrap items-center gap-2.5">
                   <button
                     onClick={async () => {
-                      setPublishMessage({ text: 'Syncing live records from Supabase mobilemapping database...', type: 'success' });
+                      setPublishMessage({ text: 'Syncing current records from Supabase mobilemapping database...', type: 'success' });
                       const { dailyData: sDaily, batchLogs: sBatches, error } = await fetchSupabaseData();
                       if (error) {
                         setPublishMessage({ text: 'Error syncing with Supabase: ' + error, type: 'error' });
@@ -3055,7 +3055,7 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
                       }
                     }}
                     className="flex items-center gap-2 bg-card hover:bg-inner border border-subtle text-text-base px-3.5 py-2 rounded-xl transition-all text-xs font-semibold cursor-pointer shadow-sm"
-                    title="Sync latest live records from Supabase mobilemapping database"
+                    title="Sync latest records from Supabase mobilemapping database"
                   >
                     <RefreshCw size={13} className="text-sky-400" />
                     <span>Sync Now</span>
@@ -3777,7 +3777,7 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
                             <span>Record Trajectory & Spatial Map View</span>
                           </div>
                           <span className="px-2.5 py-1 rounded-md bg-sky-500/10 text-sky-300 border border-sky-500/20 text-[11px] font-semibold flex items-center gap-1.5">
-                            <span className="w-1.5 h-1.5 rounded-full bg-sky-400" /> Live Spatial Preview
+                            <span className="w-1.5 h-1.5 rounded-full bg-sky-400" /> Spatial Preview
                           </span>
                         </div>
                         <div className="flex-1 relative min-h-[550px]">
@@ -3847,7 +3847,7 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
                         <span className="text-[11px]">
                           This run reports {((imagesListModal.count > 0 ? imagesListModal.count : 0)).toLocaleString()} frames,
                           but their filenames are not loaded, so they cannot be listed.
-                          Run a live NAS scan to populate them.
+                          Run a NAS scan to populate them.
                         </span>
                       </div>
                     ) : (
@@ -4453,7 +4453,7 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
                         <span>Interactive Trajectory Map Preview</span>
                       </div>
                       <span className="px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 text-[10px] font-semibold flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Live Preview
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Preview
                       </span>
                     </div>
                     {(() => {

@@ -118,9 +118,6 @@ export function WorkspacePlaceholder({ workspace, translate }: WorkspacePlacehol
         </div>
         <h3 className="text-sm font-semibold text-text-base">{translate('workspaceComingSoon')}</h3>
         <p className="text-xs text-text-muted max-w-md leading-relaxed">{translate('workspaceComingSoonDesc')}</p>
-        {workspace.tag === 'planned' && (
-          <p className="text-[11px] text-sky-400/80 font-medium">{translate('workspacePlannedRoadmap')}</p>
-        )}
       </div>
     </div>
   );

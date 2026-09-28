@@ -163,7 +163,7 @@ export const LedgerPanel: React.FC<LedgerPanelProps> = ({
         <div className="p-4 rounded-xl border border-subtle bg-inner space-y-2">
           <h4 className="font-bold text-text-base flex items-center justify-between">
             <span>Survey Coverage Breakdown</span>
-            <span className="text-[10px] font-sans text-text-muted">Live PostGIS</span>
+            <span className="text-[10px] font-sans text-text-muted">PostGIS</span>
           </h4>
           <div className="space-y-1.5 text-text-muted">
             <div className="flex justify-between">

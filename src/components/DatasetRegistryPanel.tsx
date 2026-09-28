@@ -216,10 +216,10 @@ export const DatasetRegistryPanel: React.FC<DatasetRegistryPanelProps> = ({
         ))}
       </div>
 
-      {/* Summary Telemetry Strip */}
+      {/* Summary strip */}
       <div className="bg-card border border-subtle rounded-xl px-4 py-2.5 shadow-sm text-xs flex flex-wrap items-center gap-x-4 gap-y-2">
         <span className="text-[11px] font-bold text-text-muted shrink-0 uppercase tracking-wider">
-          {translate('dataRegistryTelemetry')}
+          {translate('dataRegistrySummary')}
         </span>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
           <span>

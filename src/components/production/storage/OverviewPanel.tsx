@@ -338,7 +338,7 @@ export const OverviewPanel: React.FC<OverviewPanelProps> = ({
                 </p>
               </div>
 
-              {/* Live Test Ping Section */}
+              {/* Test Ping Section */}
               <div className="p-3 rounded-lg bg-inner border border-subtle flex items-center justify-between gap-3">
                 <div>
                   <div className="text-xs font-semibold text-text-base flex items-center gap-1.5">

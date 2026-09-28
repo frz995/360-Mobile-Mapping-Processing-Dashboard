@@ -72,7 +72,7 @@ export function SubgridImagesListModal({ modal, onClose }: SubgridImagesListModa
               <span className="text-[11px]">
                 This batch reports {((modal.count > 0 ? modal.count : 0)).toLocaleString()} frames,
                 but their filenames are not loaded, so they cannot be listed.
-                Run a live NAS scan to populate them.
+                Run a NAS scan to populate them.
               </span>
             </div>
           ) : (

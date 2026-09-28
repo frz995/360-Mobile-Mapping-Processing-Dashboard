@@ -880,7 +880,7 @@ export const DeletionSelectionMap: React.FC<DeletionSelectionMapProps> = ({
               ref={iframeRef}
               src={staticSrc}
               onLoad={handleIframeLoad}
-              title="Current Live WebGIS"
+              title="Current WebGIS"
               className="w-full h-[calc(100%+76px)] -mt-[76px] border-0"
               allow="geolocation; camera; microphone"
             />

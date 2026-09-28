@@ -8,22 +8,22 @@ import {
   AlertTriangle,
   CheckCircle,
   Activity,
-    Camera,
+  Camera,
   Edit2,
   X,
   Folder,
-    FileText,
+  FileText,
   RefreshCw,
   Database,
   User,
-      ShieldCheck,
+  ShieldCheck,
   Maximize2,
   Filter,
-            Loader2,
+  Loader2,
   Play,
   StopCircle,
   ArrowLeft,
-  } from 'lucide-react';
+} from 'lucide-react';
 import { supabase, fetchSupabaseData, fetchProjectSettingsFromSupabase, updateDefectStatusInSupabase, saveQaAuditRunToSupabase, saveAuditLogToSupabase, saveNotificationToSupabase, saveProjectSettingsToSupabase, resolvePanoramaUrl, resolvePanoramaConfigUrl, getDatabaseTableMapping, SUBGRID_COORDINATES, saveProcessingJobToSupabase, pruneBloatedUserMetadata, fetchDeletionRequestsFromSupabase, configureSupabaseBackend } from './services/supabase';
 import type { ExtendedProjectSettings, QAQCAuditRunRecord } from './types/admin';
 import { MapComponent } from './components/MapComponent';
@@ -517,7 +517,7 @@ export default function App() {
     document.documentElement.classList.toggle('light-mode', isLightTheme(currentTheme));
     try {
       localStorage.setItem('app_dashboard_theme', currentTheme);
-    } catch {}
+    } catch { }
 
     // Restore style widget custom properties from localStorage
     const radiusMap: Record<string, string> = { sharp: '4px', default: '12px', rounded: '16px', pill: '24px' };
@@ -970,7 +970,7 @@ export default function App() {
       document.documentElement.classList.toggle('light-mode', isLightTheme(projectTheme));
       try {
         localStorage.setItem('app_dashboard_theme', projectTheme);
-      } catch {}
+      } catch { }
       window.dispatchEvent(new CustomEvent('app-theme-changed', { detail: projectTheme }));
     }
   }, [activeProject, setProjectSettings]);
@@ -1614,7 +1614,7 @@ export default function App() {
       }).catch(err => console.warn('Re-sync error on settings save:', err));
       setSettingsSaveToast({
         show: true,
-        message: 'Project & Database settings saved and synchronized live!'
+        message: 'Project & Database settings saved and synchronized!'
       });
       setTimeout(() => {
         setSettingsSaveToast(null);
@@ -2912,1187 +2912,1186 @@ export default function App() {
           )}
 
           <WorkspaceErrorBoundary resetKey={currentPage}>
-          <React.Suspense fallback={<ContentLoading label="Loading workspace..." variant="spinner" sublabel="Preparing your module" />}>
-          <div
-            className={`flex flex-col md:flex-1 md:min-h-0 md:overflow-hidden ${
-              currentPage === 'dashboard'
-                ? 'relative'
-                : 'absolute inset-0 pointer-events-none opacity-0 -z-50 invisible'
-            }`}
-            aria-hidden={currentPage !== 'dashboard'}
-          >
-            <div key="dashboard-canvas" className="flex flex-col gap-3 md:flex-1 md:min-h-0 md:overflow-hidden animate-workspace-focus dashboard-density-grid">
-              {/* TOP ROW: EXECUTIVE KPI SUMMARY (4 Cards) */}
-              <DashboardKpiSummary
-                tourStep={tourStep}
-                t={t}
-                isDataLoading={isDataLoading}
-                totalKm={totalKm}
-                progressPercent={progressPercent}
-                targetKm={targetKm}
-                lastUpdateDate={lastUpdateDate}
-                totalImages={totalImages}
-                ongoingMasterlistCount={ongoingMasterlistCount}
-                stagedDailyBatchesCount={stagedDailyBatchesCount}
-                pipelineHealthPercent={pipelineHealthPercent}
-                totalDefects={totalDefects}
-              />
+            <React.Suspense fallback={<ContentLoading label="Loading workspace..." variant="spinner" sublabel="Preparing your module" />}>
+              <div
+                className={`flex flex-col md:flex-1 md:min-h-0 md:overflow-hidden ${currentPage === 'dashboard'
+                    ? 'relative'
+                    : 'absolute inset-0 pointer-events-none opacity-0 -z-50 invisible'
+                  }`}
+                aria-hidden={currentPage !== 'dashboard'}
+              >
+                <div key="dashboard-canvas" className="flex flex-col gap-3 md:flex-1 md:min-h-0 md:overflow-hidden animate-workspace-focus dashboard-density-grid">
+                  {/* TOP ROW: EXECUTIVE KPI SUMMARY (4 Cards) */}
+                  <DashboardKpiSummary
+                    tourStep={tourStep}
+                    t={t}
+                    isDataLoading={isDataLoading}
+                    totalKm={totalKm}
+                    progressPercent={progressPercent}
+                    targetKm={targetKm}
+                    lastUpdateDate={lastUpdateDate}
+                    totalImages={totalImages}
+                    ongoingMasterlistCount={ongoingMasterlistCount}
+                    stagedDailyBatchesCount={stagedDailyBatchesCount}
+                    pipelineHealthPercent={pipelineHealthPercent}
+                    totalDefects={totalDefects}
+                  />
 
-              {/* OPERATIONAL COMMAND & ACTION CENTER */}
-              <OperationalActionCenter
-                batchLogs={batchLogs}
-                dailyData={dailyData}
-                qaDefectsCount={totalDefects}
-                isGuestUser={isGuestUser}
-                canHandleApprovals={canHandleApprovals}
-                onOpenQAQCWorkbench={(subgridKey) => {
-                  setQaqcWorkbenchSubgrid(subgridKey || null);
-                  setIsQAQCRunnerModalOpen(true);
-                }}
-                onOpenDefectsGallery={(subgridKey) => {
-                  if (subgridKey) setSelectedDefectSubgrid(subgridKey);
-                  setIsDefectsGalleryOpen(true);
-                }}
-                onNavigate={(ws, params) => {
-                  if (ws === 'administration' && params && params.tab) {
-                    persistWorkspaceTab('administration', params.tab);
-                  }
-                  goToWorkspace(ws);
-                  if (ws === 'data' && params) {
-                    if (params.tab && params.tab !== 'approvals') setDataManagementTab(params.tab);
-                    if (params.search !== undefined) setDataManagementSearch(params.search);
-                  }
-                }}
-                onGeneratePdfReport={generateExecutivePdfReport}
-                onRetryJob={async (job) => {
-                  if (job.id) {
-                    await saveProcessingJobToSupabase({ ...job, status: 'QUEUED', progress: 0 });
-                    if (addNotification) {
-                      addNotification({
-                        title: 'Job Retried',
-                        message: `Job ${job.name || job.id} queued for retry.`,
-                        category: 'SYSTEM'
-                      });
-                    }
-                  }
-                }}
-              />
-
-              {/* MIDDLE & BOTTOM GRID: LEFT (COVERAGE MAP) & RIGHT (CONTROL + INSPECTOR) */}
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 lg:flex-1 lg:min-h-0 lg:overflow-hidden dashboard-split-grid dashboard-density-grid">
-
-                {/* LEFT COLUMN: INTERACTIVE COVERAGE MAP (7 Cols) */}
-                <div className={`col-span-1 lg:col-span-7 map-column min-h-[340px] sm:min-h-[440px] lg:min-h-0 bg-card border border-subtle backdrop-blur-md rounded-xl flex flex-col overflow-hidden relative transition-all duration-300 ${tourStep === 2 ? 'ring-2 ring-sky-400/90 shadow-[0_0_35px_rgba(56,189,248,0.4)] z-30 relative scale-[1.002]' : tourStep !== null ? 'opacity-30 blur-[1.5px] pointer-events-none' : ''
-                  }`}>
-                  {/* Header */}
-                  <div className="p-2 sm:p-3 border-b border-subtle flex flex-row flex-wrap items-center justify-between gap-1.5 sm:gap-2 shrink-0 bg-card min-w-0">
-                    <span className="text-xs font-bold uppercase tracking-wider text-text-base truncate flex-1 min-w-0">
-                      INTERACTIVE COVERAGE MAP
-                    </span>
-                    <div className="flex items-center gap-1.5 sm:gap-2 flex-none ml-auto">
-                      <button
-                        onClick={generateExecutivePdfReport}
-                        className="px-2 sm:px-3 py-1 bg-card hover:bg-inner text-text-base hover:text-text-base border border-subtle text-[10px] sm:text-[11px] font-medium rounded-lg transition-all uppercase tracking-tight cursor-pointer flex items-center justify-center gap-1.5 shadow-sm active:scale-95 whitespace-nowrap"
-                        title="Generate printable Executive PDF Summary Report"
-                      >
-                        <FileText size={12} className="shrink-0" />
-                        <span className="hidden xs:inline">GENERATE PDF REPORT</span>
-                        <span className="xs:hidden">PDF REPORT</span>
-                      </button>
-                      <button
-                        onClick={() => {
-                          const next = !isDrawingBBox;
-                          setIsDrawingBBox(next);
-                          const iframes = document.querySelectorAll<HTMLIFrameElement>('iframe');
-                          iframes.forEach(f => {
-                            try {
-                              f.contentWindow?.postMessage({ type: 'TOGGLE_BBOX_DRAW', isDrawing: next }, '*');
-                            } catch (err) { }
-                          });
-                        }}
-                        className={`px-2 sm:px-3 py-1 text-[10px] sm:text-[11px] font-medium rounded-lg border transition-all uppercase tracking-tight flex items-center justify-center gap-1.5 cursor-pointer shadow-sm active:scale-95 whitespace-nowrap ${isDrawingBBox
-                          ? 'bg-card border-slate-400 text-text-base'
-                          : 'bg-card hover:bg-inner text-text-base border-subtle hover:border-subtle'
-                          }`}
-                        title="Toggle spatial bounding box rectangle filter on map"
-                      >
-                        <Maximize2 size={12} className="shrink-0" />
-                        <span>{isDrawingBBox ? 'CLEAR BBOX' : 'BBOX FILTER'}</span>
-                      </button>
-                      {!isGuestUser && (
-                        <button
-                          onClick={() => setShareMapOpen(true)}
-                          className="px-2 sm:px-3 py-1 bg-card hover:bg-inner text-text-base border border-subtle text-[10px] sm:text-[11px] font-medium rounded-lg transition-all uppercase tracking-tight cursor-pointer flex items-center justify-center gap-1.5 shadow-sm active:scale-95 whitespace-nowrap"
-                          title="Create a public read-only share link for this survey map"
-                        >
-                          <Share2 size={12} className="shrink-0" />
-                          <span>SHARE MAP</span>
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Embedded WebGIS Map */}
-                  <div className="flex-1 relative overflow-hidden bg-app">
-                    {/* Resize veil: masks the iframe's tile/3D repaint while the
-                        nav rail width animates (prevents map flicker on expand/collapse). */}
-                    <div className={`absolute inset-0 z-10 bg-app pointer-events-none select-none transition-opacity duration-200 ${mapVeilActive ? 'opacity-100' : 'opacity-0'}`} />
-                    {/* Minimalist Trajectory Filter Button & Popup Menu (bottom-left) */}
-                    <div className="absolute bottom-3 left-3 z-10 pointer-events-auto flex flex-col items-start gap-2">
-                      {/* Popup Panel (shown when isStatusFilterOpen === true) */}
-                      {isStatusFilterOpen && (
-                        <div className="bg-app backdrop-blur-xl border border-subtle rounded-xl p-2.5 text-[11px] space-y-1.5 shadow-2xl min-w-[200px] animate-in fade-in slide-in-from-bottom-2 duration-150">
-                          <div className="flex items-center justify-between border-b border-subtle pb-1.5 mb-1 px-1">
-                            <span className="font-semibold text-[10px] text-sky-400 uppercase tracking-wider flex items-center gap-1.5">
-                              <Filter size={12} />
-                              Trajectory Status
-                            </span>
-                            <button
-                              onClick={() => setIsStatusFilterOpen(false)}
-                              className="text-text-muted hover:text-text-base text-xs px-1 cursor-pointer transition-colors"
-                            >
-                              ✕
-                            </button>
-                          </div>
-
-                          <label className="flex items-center justify-between px-2 py-1 rounded-md hover:bg-inner text-text-base hover:text-text-base cursor-pointer select-none transition-colors">
-                            <span className="text-[11px] font-medium text-text-base">Show Panotrack Layer</span>
-                            <input
-                              type="checkbox"
-                              checked={showPanotrackData}
-                              onChange={(e) => {
-                                const val = e.target.checked;
-                                setShowPanotrackData(val);
-                                const iframes = document.querySelectorAll('iframe');
-                                iframes.forEach(f => {
-                                  try {
-                                    f.contentWindow?.postMessage({ type: 'FILTER_STATUS_TYPES', statusFilters, showPanotrackData: val }, '*');
-                                  } catch (err) { }
-                                });
-                              }}
-                              className="rounded text-sky-500 focus:ring-0 cursor-pointer accent-sky-500 w-3.5 h-3.5"
-                            />
-                          </label>
-
-                          <div className="border-t border-subtle pt-1 space-y-0.5">
-                            <label className="flex items-center justify-between px-2 py-1 rounded-md hover:bg-inner text-text-base hover:text-text-base cursor-pointer select-none transition-colors">
-                              <div className="flex items-center gap-2">
-                                <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
-                                <span className="text-[11px]">Published to WebGIS</span>
-                              </div>
-                              <input
-                                type="checkbox"
-                                checked={statusFilters.published}
-                                disabled={!showPanotrackData}
-                                onChange={(e) => {
-                                  const next = { ...statusFilters, published: e.target.checked };
-                                  setStatusFilters(next);
-                                  const iframes = document.querySelectorAll('iframe');
-                                  iframes.forEach(f => {
-                                    try {
-                                      f.contentWindow?.postMessage({ type: 'FILTER_STATUS_TYPES', statusFilters: next, showPanotrackData }, '*');
-                                    } catch (err) { }
-                                  });
-                                }}
-                                className="rounded text-sky-500 focus:ring-0 cursor-pointer accent-sky-500 w-3.5 h-3.5"
-                              />
-                            </label>
-
-                            <label className="flex items-center justify-between px-2 py-1 rounded-md hover:bg-inner text-text-base hover:text-text-base cursor-pointer select-none transition-colors">
-                              <div className="flex items-center gap-2">
-                                <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" />
-                                <span className="text-[11px]">Defect / Flags</span>
-                              </div>
-                              <input
-                                type="checkbox"
-                                checked={statusFilters.defect}
-                                disabled={!showPanotrackData}
-                                onChange={(e) => {
-                                  const next = { ...statusFilters, defect: e.target.checked };
-                                  setStatusFilters(next);
-                                  const iframes = document.querySelectorAll('iframe');
-                                  iframes.forEach(f => {
-                                    try {
-                                      f.contentWindow?.postMessage({ type: 'FILTER_STATUS_TYPES', statusFilters: next, showPanotrackData }, '*');
-                                    } catch (err) { }
-                                  });
-                                }}
-                                className="rounded text-sky-500 focus:ring-0 cursor-pointer accent-sky-500 w-3.5 h-3.5"
-                              />
-                            </label>
-
-                            <label className="flex items-center justify-between px-2 py-1 rounded-md hover:bg-inner text-text-base hover:text-text-base cursor-pointer select-none transition-colors">
-                              <div className="flex items-center gap-2">
-                                <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
-                                <span className="text-[11px]">Staging</span>
-                              </div>
-                              <input
-                                type="checkbox"
-                                checked={statusFilters.stitching}
-                                disabled={!showPanotrackData}
-                                onChange={(e) => {
-                                  const next = { ...statusFilters, stitching: e.target.checked };
-                                  setStatusFilters(next);
-                                  const iframes = document.querySelectorAll('iframe');
-                                  iframes.forEach(f => {
-                                    try {
-                                      f.contentWindow?.postMessage({ type: 'FILTER_STATUS_TYPES', statusFilters: next, showPanotrackData }, '*');
-                                    } catch (err) { }
-                                  });
-                                }}
-                                className="rounded text-sky-500 focus:ring-0 cursor-pointer accent-sky-500 w-3.5 h-3.5"
-                              />
-                            </label>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Minimalist Trajectory Status Trigger Button */}
-                      <button
-                        onClick={() => setIsStatusFilterOpen(prev => !prev)}
-                        className={`px-2.5 py-1.5 rounded-xl border shadow-lg flex items-center gap-2 text-[11px] font-semibold transition-all duration-200 cursor-pointer select-none relative active:scale-95 ${isStatusFilterOpen
-                          ? 'bg-sky-600 text-text-base border-sky-400 shadow-sky-950/50'
-                          : 'bg-app hover:bg-inner text-text-base border-subtle hover:border-subtle'
-                          }`}
-                        title="Filter Trajectory Status"
-                      >
-                        <Filter size={13} className={isStatusFilterOpen ? 'text-text-base' : 'text-sky-400'} />
-                        <span className="hidden sm:inline">Trajectory Status</span>
-                        {(!statusFilters.published || !statusFilters.defect || !statusFilters.stitching || !showPanotrackData) && (
-                          <span className="w-1.5 h-1.5 rounded-full bg-sky-400 shrink-0" />
-                        )}
-                      </button>
-                    </div>
-
-                    {/* Derived active subgrid item details for clicked row */}
-                    {(() => {
-                      const isDailySelected = Boolean(selectedDailyRunId);
-                      const activeBatchLog = batchLogs.find(b =>
-                        (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === (selectedSubgridFilter || '').toUpperCase().trim()
-                      );
-                      const activeDailyLog = selectedDailyRunId
-                        ? dailyData.find(d => getItemId(d) === selectedDailyRunId || d.id === selectedDailyRunId)
-                        : (selectedDateFilter
-                          ? dailyData.find(d =>
-                            (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim() === (selectedSubgridFilter || '').toUpperCase().trim() &&
-                            (d.date === selectedDateFilter || formatDisplayDate(d.date) === formatDisplayDate(selectedDateFilter))
-                          )
-                          : null);
-
-                      const getSubgridCoords = () => {
-                        const firstPan = activeDailyLog?.panoramas?.[0] || (activeDailyLog as any)?.points?.[0] || activeBatchLog?.panoramas?.[0];
-                        const lat = firstPan?.latitude ?? (firstPan as any)?.lat ?? (SUBGRID_COORDINATES[selectedSubgridFilter || '']?.[1] ?? 0);
-                        const lng = firstPan?.longitude ?? (firstPan as any)?.lon ?? (firstPan as any)?.lng ?? (SUBGRID_COORDINATES[selectedSubgridFilter || '']?.[0] ?? 0);
-                        return { lat, lng };
-                      };
-
-                      const activeCoords = getSubgridCoords();
-                      const activeKm = isDailySelected && activeDailyLog
-                        ? (activeDailyLog.kmProcessed?.toFixed(1) || '0.0')
-                        : (activeBatchLog?.kmProcessed ? activeBatchLog.kmProcessed.toFixed(1) : '0.0');
-                      const activeImages = isDailySelected && activeDailyLog
-                        ? (activeDailyLog.imagesProcessed || activeDailyLog.availableImagesCount || activeDailyLog.poiCount || 0)
-                        : (activeBatchLog?.images || getPOICount(activeBatchLog) || 0);
-                      const activeDefects = isDailySelected && activeDailyLog
-                        ? ((activeDailyLog.imagesDefected ?? activeDailyLog.defectCount) || 0)
-                        : (activeBatchLog?.defects || 0);
-                      const activePic = (isDailySelected && activeDailyLog ? activeDailyLog.pic : activeBatchLog?.pic) || 'Unassigned';
-
-                      const isPublished = isDailySelected && activeDailyLog
-                        ? (activeDailyLog.publishToWebGIS === 'yes' || activeDailyLog.isSyncedWithSupabase === true)
-                        : (activeBatchLog?.status === 'Complete' || activeBatchLog?.publishToWebGIS === 'yes');
-
-                      const activeStatusText = isDailySelected && activeDailyLog
-                        ? (activeDailyLog.publishToWebGIS === 'yes'
-                          ? 'Published to WebGIS'
-                          : ((activeDailyLog.qaqcStatus && activeDailyLog.qaqcStatus !== 'Not yet on WebGIS' ? activeDailyLog.qaqcStatus : null) || (activeDefects > 0 ? `QAQC Flagged (${activeDefects} Defects)` : 'Staging')))
-                        : (activeBatchLog?.status === 'Complete' ? 'Published to WebGIS' : 'Staging');
-
-                      return selectedSubgridFilter ? (
-                        <div className="absolute top-3 right-3 z-20 bg-card backdrop-blur-md border border-subtle rounded-xl p-3 text-xs text-text-base shadow-2xl max-w-xs space-y-1.5 animate-in fade-in zoom-in-95 duration-200">
-                          <div className="flex items-center justify-between font-bold pb-1 border-b border-subtle">
-                            <span className="text-sky-400 font-sans text-xs">
-                              Subgrid ID: {selectedSubgridFilter} {isDailySelected && activeDailyLog ? `(${formatDisplayDate(activeDailyLog.date)})` : (selectedDateFilter ? `(${selectedDateFilter})` : '')}
-                            </span>
-                            <button
-                              onClick={() => {
-                                if (selectedDailyRunId) {
-                                  setSelectedDailyRunId(null);
-                                  setSelectedSubgridFilter(null);
-                                  setSelectedDateFilter(null);
-                                  const iframes = document.querySelectorAll('iframe');
-                                  iframes.forEach(f => {
-                                    try {
-                                      f.contentWindow?.postMessage({ type: 'FILTER_SUBGRID', subgrid: '', date: '', isSingleRun: false, runId: null }, '*');
-                                    } catch (_) { }
-                                  });
-                                } else if (selectedSubgridFilter) {
-                                  toggleSubgridFilter(selectedSubgridFilter);
-                                }
-                              }}
-                              className="text-text-muted hover:text-text-base p-0.5 rounded cursor-pointer transition-colors"
-                              title="Close filter"
-                            >
-                              ✕
-                            </button>
-                          </div>
-                          <div className="text-text-base font-sans text-[11px] flex justify-between gap-4"><span className="text-text-muted">Coordinates:</span> <span>{activeCoords.lat && activeCoords.lng ? `${activeCoords.lat.toFixed(4)}° N, ${activeCoords.lng.toFixed(4)}° E` : '—'}</span></div>
-                          <div className="text-text-base text-[11px] flex justify-between gap-4"><span className="text-text-muted">Distance from start:</span> <span className="font-semibold text-text-base">{activeKm} km</span></div>
-                          <div className="text-text-base text-[11px] flex justify-between gap-4"><span className="text-text-muted">Image Count:</span> <span className="font-semibold text-text-base">{activeImages}</span></div>
-                          <div className="text-text-base text-[11px] flex justify-between items-center gap-4">
-                            <span className="text-text-muted">Defect Images:</span>
-                            <button
-                              onClick={() => {
-                                const validFn = activeDailyLog?.panoramas?.[0]?.filename || activeBatchLog?.imageFilename || '';
-                                const imgUrl = validFn ? resolvePanoramaUrl(validFn, projectSettings) : '';
-                                setActivePanoramaFilename(validFn);
-                                setActivePanoramaUrl(imgUrl);
-                                setHasSelectedPoint(Boolean(activeCoords.lat && activeCoords.lng));
-                                if (activeCoords.lat && activeCoords.lng) {
-                                  setInspectorCoords(activeCoords);
-                                }
-                                if (selectedSubgridFilter) {
-                                  setInspectorSubgrid(selectedSubgridFilter);
-                                }
-                              }}
-                              className={`font-semibold px-2 py-0.5 rounded border text-[10px] cursor-pointer transition-all flex items-center gap-1.5 group shadow-sm active:scale-95 ${activeDefects > 0
-                                ? 'text-amber-400 bg-amber-500/10 hover:bg-amber-500/25 border-amber-500/30 hover:border-amber-500/60'
-                                : 'text-text-muted bg-slate-500/10 border-subtle/20'
-                                }`}
-                              title="Click to filter & select defect data"
-                            >
-                              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${activeDefects > 0 ? 'bg-amber-400' : 'bg-slate-400'}`}></span>
-                              <span>{activeDefects} Flagged</span>
-                              <Filter size={10} className="group-hover:scale-110 transition-transform shrink-0" />
-                            </button>
-                          </div>
-                          <div className="text-text-base text-[11px] flex justify-between gap-4"><span className="text-text-muted">PIC:</span> <span className="font-semibold text-emerald-400">{activePic}</span></div>
-                          <div className="text-text-base text-[11px] flex justify-between items-center pt-1 border-t border-subtle">
-                            <span className="text-text-muted">Staging Processing Status:</span>
-                            <span className={`font-semibold px-2 py-0.5 rounded border text-[10px] ${isPublished
-                              ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
-                              : 'text-amber-400 bg-amber-500/10 border-amber-500/20'
-                              }`}>
-                              {activeStatusText}
-                            </span>
-                          </div>
-                        </div>
-                      ) : null;
-                    })()}
-
-                    <MapComponent
-                      layerCatalog={layerCatalog}
-                      refreshKey={mapRefreshKey}
-                      prepareKey={mapPrepareKey}
-                      onManualRefresh={handleRefreshMap}
-                      selectedSubgridFilter={selectedSubgridFilter}
-                      selectedDailyRunId={selectedDailyRunId}
-                      selectedDateFilter={selectedDateFilter}
-                      stagedItems={
-                        selectedDailyRunId
-                          ? dailyData.filter(d => getItemId(d) === selectedDailyRunId)
-                          : (selectedSubgridFilter
-                            ? dailyData.filter(d => (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim() === (selectedSubgridFilter || '').toUpperCase().trim())
-                            : dailyData)
+                  {/* OPERATIONAL COMMAND & ACTION CENTER */}
+                  <OperationalActionCenter
+                    batchLogs={batchLogs}
+                    dailyData={dailyData}
+                    qaDefectsCount={totalDefects}
+                    isGuestUser={isGuestUser}
+                    canHandleApprovals={canHandleApprovals}
+                    onOpenQAQCWorkbench={(subgridKey) => {
+                      setQaqcWorkbenchSubgrid(subgridKey || null);
+                      setIsQAQCRunnerModalOpen(true);
+                    }}
+                    onOpenDefectsGallery={(subgridKey) => {
+                      if (subgridKey) setSelectedDefectSubgrid(subgridKey);
+                      setIsDefectsGalleryOpen(true);
+                    }}
+                    onNavigate={(ws, params) => {
+                      if (ws === 'administration' && params && params.tab) {
+                        persistWorkspaceTab('administration', params.tab);
                       }
-                      projectSettings={projectSettings}
-                      defectsList={allKnownDefects}
-                      iframeRefCb={(el) => { inspectionMapIframeRef.current = el; }}
-                    />
-                    <ShareMapDialog
-                      open={shareMapOpen}
-                      kind="webgis"
-                      defaultTitle={`${projectSettings?.projectName || 'GeoSphere 360'} — Survey Map`}
-                      buildSnapshot={() => buildWebgisSnapshot(dailyData, projectSettings)}
-                      basemap={projectSettings?.defaultBasemap || 'ofm-positron'}
-                      createdBy={authSession?.user?.id || null}
-                      onClose={() => setShareMapOpen(false)}
-                    />
-                  </div>
-                </div>
+                      goToWorkspace(ws);
+                      if (ws === 'data' && params) {
+                        if (params.tab && params.tab !== 'approvals') setDataManagementTab(params.tab);
+                        if (params.search !== undefined) setDataManagementSearch(params.search);
+                      }
+                    }}
+                    onGeneratePdfReport={generateExecutivePdfReport}
+                    onRetryJob={async (job) => {
+                      if (job.id) {
+                        await saveProcessingJobToSupabase({ ...job, status: 'QUEUED', progress: 0 });
+                        if (addNotification) {
+                          addNotification({
+                            title: 'Job Retried',
+                            message: `Job ${job.name || job.id} queued for retry.`,
+                            category: 'SYSTEM'
+                          });
+                        }
+                      }
+                    }}
+                  />
 
-                {/* RIGHT COLUMN: PROCESSING CONTROL & 360 QA INSPECTOR (5 Cols) */}
-                <div className="col-span-1 lg:col-span-5 panel-column flex flex-col gap-3 min-h-[420px] sm:min-h-[520px] lg:min-h-0">
+                  {/* MIDDLE & BOTTOM GRID: LEFT (COVERAGE MAP) & RIGHT (CONTROL + INSPECTOR) */}
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 lg:flex-1 lg:min-h-0 lg:overflow-hidden dashboard-split-grid dashboard-density-grid">
 
-                  {/* TOP RIGHT PANEL: WEBGIS DATABASE & ADMIN */}
-                  <div className={`flex-none lg:flex-1 bg-card border border-subtle backdrop-blur-md rounded-xl flex flex-col overflow-hidden transition-all duration-700 ${focusedSection === 'processing'
-                    ? 'relative z-30 ring-4 ring-emerald-400 shadow-[0_0_50px_rgba(52,211,153,0.5)] scale-[1.005]'
-                    : focusedSection
-                      ? 'filter blur-[4px] opacity-25 pointer-events-none'
-                      : ''
-                    }`}>
-                    <div className="p-2.5 sm:p-3 border-b border-subtle flex flex-wrap items-center justify-between gap-2 shrink-0 bg-card">
-                      <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
-                        <span className="text-xs font-bold uppercase tracking-wider text-text-base flex items-center gap-1.5 sm:gap-2">
-                          <Database size={14} className="text-text-base shrink-0" />
-                          <span>{t('processingControlTitle')}</span>
+                    {/* LEFT COLUMN: INTERACTIVE COVERAGE MAP (7 Cols) */}
+                    <div className={`col-span-1 lg:col-span-7 map-column min-h-[340px] sm:min-h-[440px] lg:min-h-0 bg-card border border-subtle backdrop-blur-md rounded-xl flex flex-col overflow-hidden relative transition-all duration-300 ${tourStep === 2 ? 'ring-2 ring-sky-400/90 shadow-[0_0_35px_rgba(56,189,248,0.4)] z-30 relative scale-[1.002]' : tourStep !== null ? 'opacity-30 blur-[1.5px] pointer-events-none' : ''
+                      }`}>
+                      {/* Header */}
+                      <div className="p-2 sm:p-3 border-b border-subtle flex flex-row flex-wrap items-center justify-between gap-1.5 sm:gap-2 shrink-0 bg-card min-w-0">
+                        <span className="text-xs font-bold uppercase tracking-wider text-text-base truncate flex-1 min-w-0">
+                          INTERACTIVE COVERAGE MAP
                         </span>
-                        <div className="flex bg-inner border border-subtle rounded-lg p-0.5 text-[10px]">
+                        <div className="flex items-center gap-1.5 sm:gap-2 flex-none ml-auto">
                           <button
-                            onClick={() => setActiveTab('batches')}
-                            className={`px-2 py-0.5 rounded font-semibold transition-colors cursor-pointer ${activeTab === 'batches' ? 'bg-card text-text-base shadow-sm' : 'text-text-muted hover:text-text-base'}`}
+                            onClick={generateExecutivePdfReport}
+                            className="px-2 sm:px-3 py-1 bg-card hover:bg-inner text-text-base hover:text-text-base border border-subtle text-[10px] sm:text-[11px] font-medium rounded-lg transition-all uppercase tracking-tight cursor-pointer flex items-center justify-center gap-1.5 shadow-sm active:scale-95 whitespace-nowrap"
+                            title="Generate printable Executive PDF Summary Report"
                           >
-                            Overall Progress ({activeBatchLogs.length})
+                            <FileText size={12} className="shrink-0" />
+                            <span className="hidden xs:inline">GENERATE PDF REPORT</span>
+                            <span className="xs:hidden">PDF REPORT</span>
                           </button>
                           <button
-                            onClick={() => setActiveTab('daily')}
-                            className={`px-2 py-0.5 rounded font-semibold transition-colors cursor-pointer ${activeTab === 'daily' ? 'bg-card text-text-base shadow-sm' : 'text-text-muted hover:text-text-base'}`}
-                          >
-                            Daily Progress ({dailyData.length})
-                          </button>
-                        </div>
-
-                        {/* Simple Icon-Only Filter Button */}
-                        <button
-                          onClick={() => setIsDashFilterOpen(prev => !prev)}
-                          className={`p-1 rounded-lg border transition-all cursor-pointer ${hasActiveDashFilters
-                            ? 'bg-sky-600 border-sky-500 text-text-base shadow-sm'
-                            : isDashFilterOpen
-                              ? 'bg-card border-subtle text-sky-400'
-                              : 'bg-card border-subtle text-text-muted hover:text-text-base hover:bg-card'
-                            }`}
-                          title="Filter Daily Progress columns"
-                        >
-                          <Filter size={13} />
-                        </button>
-                      </div>
-                      <button
-                        onClick={() => goToWorkspace('data')}
-                        className="px-2.5 sm:px-3 py-1.5 bg-card hover:bg-inner text-text-base hover:text-text-base border border-subtle text-[10px] sm:text-[11px] font-medium rounded-lg transition-all uppercase tracking-tight cursor-pointer shadow-sm shrink-0 self-center whitespace-nowrap"
-                      >
-                        RE-UPLOAD CSV
-                      </button>
-                    </div>
-
-                    {/* Compact Inline Filter Bar for Daily Progress */}
-                    {isDashFilterOpen && (
-                      <div className="px-3 py-2 bg-card border-b border-subtle flex flex-wrap items-center justify-between gap-2 text-[10px] animate-in fade-in duration-150">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <div className="flex items-center gap-1">
-                            <span className="text-text-muted font-medium">Grid:</span>
-                            <select
-                              value={dashDailyFilters.grid}
-                              onChange={(e) => setDashDailyFilters(prev => ({ ...prev, grid: e.target.value }))}
-                              className="bg-card border border-subtle text-text-base rounded px-1.5 py-0.5 focus:outline-none focus:border-sky-500"
-                            >
-                              <option value="">All</option>
-                              {Array.from(new Set(dailyData.map(d => d.grid).filter(Boolean))).sort().map(g => (
-                                <option key={g} value={g}>{g}</option>
-                              ))}
-                            </select>
-                          </div>
-
-                          <div className="flex items-center gap-1">
-                            <span className="text-text-muted font-medium">Subgrid:</span>
-                            <select
-                              value={dashDailyFilters.subgrid}
-                              onChange={(e) => setDashDailyFilters(prev => ({ ...prev, subgrid: e.target.value }))}
-                              className="bg-card border border-subtle text-text-base rounded px-1.5 py-0.5 focus:outline-none focus:border-sky-500"
-                            >
-                              <option value="">All</option>
-                              {Array.from(new Set(dailyData.map(d => (d.subgrid || '').toUpperCase().trim()).filter(Boolean))).sort().map(sg => (
-                                <option key={sg} value={sg}>{sg}</option>
-                              ))}
-                            </select>
-                          </div>
-
-                          <div className="flex items-center gap-1">
-                            <span className="text-text-muted font-medium">PIC:</span>
-                            <select
-                              value={dashDailyFilters.pic}
-                              onChange={(e) => setDashDailyFilters(prev => ({ ...prev, pic: e.target.value }))}
-                              className="bg-card border border-subtle text-text-base rounded px-1.5 py-0.5 focus:outline-none focus:border-sky-500"
-                            >
-                              <option value="">All</option>
-                              {Array.from(new Set(dailyData.map(d => d.pic).filter(Boolean))).sort().map(p => (
-                                <option key={p} value={p}>{p}</option>
-                              ))}
-                            </select>
-                          </div>
-
-                          <div className="flex items-center gap-1">
-                            <span className="text-text-muted font-medium">Equipment:</span>
-                            <select
-                              value={dashDailyFilters.equipment}
-                              onChange={(e) => setDashDailyFilters(prev => ({ ...prev, equipment: e.target.value }))}
-                              className="bg-card border border-subtle text-text-base rounded px-1.5 py-0.5 focus:outline-none focus:border-sky-500"
-                            >
-                              <option value="">All</option>
-                              {Array.from(new Set(dailyData.map(d => d.captureEquipment || 'MMS').filter(Boolean))).sort().map(eq => (
-                                <option key={eq} value={eq}>{eq}</option>
-                              ))}
-                            </select>
-                          </div>
-                        </div>
-
-                        {hasActiveDashFilters && (
-                          <button
-                            onClick={() => setDashDailyFilters({ grid: '', subgrid: '', pic: '', equipment: '' })}
-                            className="text-red-400 hover:text-red-300 text-[10px] font-semibold cursor-pointer flex items-center gap-1"
-                            title="Clear dashboard filters"
-                          >
-                            <X size={12} /> Clear
-                          </button>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Table */}
-                    <DashboardBatchTable
-                      activeTab={activeTab}
-                      isDataLoading={isDataLoading}
-                      activeBatchLogs={activeBatchLogs}
-                      dailyData={dailyData}
-                      filteredDailyData={filteredDailyData}
-                      selectedSubgridFilter={selectedSubgridFilter}
-                      toggleSubgridFilter={toggleSubgridFilter}
-                      dailyDataBySubgrid={dailyDataBySubgrid}
-                      setImagesListModal={setImagesListModal}
-                      qaqcWorkerState={qaqcWorkerState}
-                      qaqcAuditRuns={qaqcAuditRuns}
-                      setSelectedDefectSubgrid={setSelectedDefectSubgrid}
-                      setDefectGalleryContext={setDefectGalleryContext}
-                      setIsDefectsGalleryOpen={setIsDefectsGalleryOpen}
-                      setIsQAQCRunnerModalOpen={setIsQAQCRunnerModalOpen}
-                      selectedDailyRunId={selectedDailyRunId}
-                      handleSelectDailyRun={handleSelectDailyRun}
-                      activeAuthUserName={activeAuthUserName}
-                      t={t}
-                    />
-                  </div>
-
-                  {/* 360 INSPECTOR VIEWER & QAQC CARD */}
-                  <div className={`flex-1 bg-card border border-subtle backdrop-blur-md rounded-xl flex flex-col overflow-hidden transition-all duration-700 ${focusedSection === 'qa'
-                    ? 'relative z-30 ring-4 ring-indigo-400 shadow-[0_0_50px_rgba(129,140,248,0.5)] scale-[1.005]'
-                    : focusedSection
-                      ? 'filter blur-[4px] opacity-25 pointer-events-none'
-                      : ''
-                    }`}>
-
-                    {/* Card Header */}
-                    <div className="px-3.5 py-2 border-b border-subtle bg-card flex flex-wrap items-center justify-between shrink-0 gap-2">
-                      <span className="text-xs font-bold uppercase tracking-wider text-text-base flex items-center gap-2 shrink-0">
-                        <Camera size={14} className="text-accent" />
-                        <span>360 INSPECTOR VIEWER & ACQUISITION QC</span>
-                      </span>
-
-                      <div className="flex items-center gap-2 min-w-0">
-                        {qaqcWorkerState.isRunning ? (
-                          <div className="flex items-center gap-2.5 px-3 py-1 bg-inner border border-subtle rounded-xl text-xs shadow-sm animate-in fade-in duration-200">
-                            <span className="relative flex h-2 w-2 shrink-0">
-                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-75"></span>
-                              <span className="relative inline-flex rounded-full h-2 w-2 bg-accent"></span>
-                            </span>
-                            <span className="text-xs font-medium text-text-base whitespace-nowrap">
-                              QA/QC: <span className="font-sans font-bold text-accent">{qaqcWorkerState.subgrid || 'General'}</span>
-                            </span>
-                            <div className="w-16 h-1.5 bg-card rounded-full overflow-hidden border border-subtle/80 shrink-0">
-                              <div
-                                className="h-full bg-accent transition-all duration-150"
-                                style={{
-                                  width: `${Math.min(100, Math.round(((qaqcWorkerState.currentIndex + 1) / (qaqcWorkerState.totalStations || 1)) * 100))}%`
-                                }}
-                              />
-                            </div>
-                            <span className="text-xs font-semibold tabular-nums text-text-base shrink-0 font-sans">
-                              {Math.min(100, Math.round(((qaqcWorkerState.currentIndex + 1) / (qaqcWorkerState.totalStations || 1)) * 100))}%
-                            </span>
-                            <span className="text-[11px] text-text-muted tabular-nums shrink-0 font-sans">
-                              ({Math.min(qaqcWorkerState.totalStations || 1, qaqcWorkerState.currentIndex + 1)}/{qaqcWorkerState.totalStations || 1})
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => setIsQAQCRunnerModalOpen(true)}
-                              className="px-2 py-0.5 bg-card hover:bg-card text-text-base hover:text-text-base border border-subtle rounded text-[10px] font-medium transition-all cursor-pointer flex items-center gap-1 shadow-sm active:scale-95 shrink-0"
-                            >
-                              <Activity size={10} className="animate-spin text-sky-400" />
-                              <span>Open HUD</span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={abortQAQCInspection}
-                              className="px-2 py-0.5 bg-card hover:bg-red-950/30 text-text-base hover:text-rose-400 border border-subtle hover:border-red-800/50 rounded text-[10px] font-medium transition-all cursor-pointer flex items-center gap-1 shadow-sm active:scale-95 shrink-0"
-                              title="Abort inspection"
-                            >
-                              <StopCircle size={10} />
-                              <span>Abort</span>
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            type="button"
                             onClick={() => {
-                              setIsQAQCRunnerModalOpen(true);
+                              const next = !isDrawingBBox;
+                              setIsDrawingBBox(next);
+                              const iframes = document.querySelectorAll<HTMLIFrameElement>('iframe');
+                              iframes.forEach(f => {
+                                try {
+                                  f.contentWindow?.postMessage({ type: 'TOGGLE_BBOX_DRAW', isDrawing: next }, '*');
+                                } catch (err) { }
+                              });
                             }}
-                            title="Launch Full Canvas QA/QC Inspection Workbench with Target Selection Hub"
-                            className="px-3 py-1.5 bg-card hover:bg-card text-text-base hover:text-text-base border border-subtle text-[11px] font-medium rounded-lg transition-all cursor-pointer shadow-sm flex items-center gap-1.5 active:scale-95"
+                            className={`px-2 sm:px-3 py-1 text-[10px] sm:text-[11px] font-medium rounded-lg border transition-all uppercase tracking-tight flex items-center justify-center gap-1.5 cursor-pointer shadow-sm active:scale-95 whitespace-nowrap ${isDrawingBBox
+                              ? 'bg-card border-slate-400 text-text-base'
+                              : 'bg-card hover:bg-inner text-text-base border-subtle hover:border-subtle'
+                              }`}
+                            title="Toggle spatial bounding box rectangle filter on map"
                           >
-                            <Play size={11} className="fill-current text-text-base" />
-                            <span>Run Batch Acquisition QC</span>
+                            <Maximize2 size={12} className="shrink-0" />
+                            <span>{isDrawingBBox ? 'CLEAR BBOX' : 'BBOX FILTER'}</span>
                           </button>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Card Body */}
-                    <div className="flex-1 flex flex-col lg:flex-row gap-2.5 p-2.5 min-h-0">
-                      {/* Left: 360 Panorama Canvas + Floating HUD Overlay */}
-                      <div className="flex-1 bg-app rounded-lg border border-subtle relative overflow-hidden group flex flex-col min-w-0 min-h-[280px] sm:min-h-[340px] lg:min-h-0">
-                        {hasSelectedPoint && (
-                          <button
-                            onClick={clearMapSelection}
-                            title="Return to map (clear 360 selection)"
-                            className="absolute top-2 right-2 z-20 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-900/80 border border-subtle text-[10px] font-bold uppercase tracking-wide text-text-base hover:bg-slate-800 hover:border-sky-500/40 transition-colors cursor-pointer shadow"
-                          >
-                            <X size={12} /> Return to Map
-                          </button>
-                        )}
-                        {hasSelectedPoint ? (
-                          <>
-                            {(() => {
-                              const targetSubgrid = inspectorSubgrid || selectedSubgridFilter || '';
-                              const targetFilename = activePanoramaFilename || '';
-
-                              const provider = projectSettings?.storageProvider || import.meta.env.VITE_STORAGE_PROVIDER || 'supabase';
-                              const isMultiResStrategy = projectSettings?.imageStorageStrategy === 'multires_tiles' ||
-                                projectSettings?.imageStorageStrategy === 'multi_resolution' ||
-                                projectSettings?.panoramaMode === 'multi_res';
-                              const hasCdnDomain = Boolean(
-                                projectSettings?.r2Domain || import.meta.env.VITE_R2_DOMAIN || projectSettings?.customCdnUrl
-                              );
-
-                              const shouldUseMultiRes = isMultiResStrategy && hasCdnDomain && (
-                                provider === 'cloudflare_r2' ||
-                                provider === 'custom_cdn' ||
-                                provider === 'aws_s3' ||
-                                provider === 'wasabi' ||
-                                provider === 'gcs' ||
-                                provider === 'azure_blob' ||
-                                provider === 'nas_local'
-                              );
-
-                              const dynamicConfigUrl = shouldUseMultiRes && targetFilename
-                                ? resolvePanoramaConfigUrl(targetFilename, projectSettings, targetSubgrid)
-                                : '';
-                              const dynamicPanoUrl = targetFilename
-                                ? resolvePanoramaUrl(targetFilename, projectSettings, { subgrid: targetSubgrid })
-                                : activePanoramaUrl;
-
-                              return (
-                                <PhotoSphereViewerComponent
-                                  ref={dashboardPsvRef}
-                                  key={`pano-psv-${provider}`}
-                                  configUrl={shouldUseMultiRes && dynamicConfigUrl ? dynamicConfigUrl : undefined}
-                                  panoramaUrl={dynamicPanoUrl || undefined}
-                                  initialYaw={panoramaTelemetry.yaw}
-                                  initialFov={projectSettings?.defaultFov}
-                                  onPositionChange={(pos) => {
-                                    // Live heading-cone sync: broadcast 360 camera rotation to the
-                                    // embedded WebGIS map so its sonar/heading cone follows the view.
-                                    // NOTE: React state (panoramaTelemetry) is intentionally NOT updated
-                                    // here — rotation would re-render the entire dashboard. The live
-                                    // heading is published via the heading store (see
-                                    // PhotoSphereViewerComponent) for the HUD readout without App re-render.
-                                    const yawDeg = Math.round(pos.yaw * 100) / 100;
-                                    const pitchDeg = Math.round(pos.pitch * 100) / 100;
-                                    const cameraMsg = {
-                                      type: 'CAMERA_ROTATED',
-                                      source: 'parent',
-                                      yaw: yawDeg,
-                                      pitch: pitchDeg
-                                    };
-                                    const mapIframe = inspectionMapIframeRef.current;
-                                    if (mapIframe?.contentWindow) {
-                                      try {
-                                        mapIframe.contentWindow.postMessage(cameraMsg, '*');
-                                      } catch (_) { }
-                                    }
-                                  }}
-                                  className="w-full h-full"
-                                />
-                              );
-                            })()}
-
-                            {/* Dashboard-only Compact Floating HUD */}
-                            <WebGISHUDViewerOverlay
-                              imageName={activePanoramaFilename || 'Inspection Node'}
-                              currentIndex={
-                                (() => {
-                                  const cleanSg = (inspectorSubgrid || selectedSubgridFilter || '').toUpperCase().trim();
-                                  const stations = getStationsForSubgrid(cleanSg, selectedDailyRunId);
-
-                                  // 1. Match by exact filename in the sorted stations list
-                                  const currentClean = (activePanoramaFilename || '').split('/').pop()?.toLowerCase().trim();
-                                  const foundIdx = stations.findIndex(
-                                    (s) => (s.filename || '').split('/').pop()?.toLowerCase().trim() === currentClean
-                                  );
-                                  if (foundIdx >= 0) return foundIdx;
-
-                                  // 2. Fallback: Parse sequence number (1-based -> 0-based)
-                                  const match = (activePanoramaFilename || '').match(/(\d+)\.jpg$/i);
-                                  return match ? Math.max(0, parseInt(match[1], 10) - 1) : 0;
-                                })()
-                              }
-                              totalFrames={
-                                (() => {
-                                  const cleanSg = (inspectorSubgrid || selectedSubgridFilter || '').toUpperCase().trim();
-                                  const stations = getStationsForSubgrid(cleanSg, selectedDailyRunId);
-                                  if (stations.length > 0) return stations.length;
-                                  const currentItem = dailyData.find(
-                                    (d) => (extractSubgridName(d.subgrid) || '').toUpperCase() === cleanSg
-                                  );
-                                  return currentItem ? getImagesProcessedCount(currentItem) : totalImages;
-                                })()
-                              }
-                              coordinates={inspectorCoords}
-                              heading={panoramaTelemetry.yaw}
-                              gpsAccuracy="0.0m"
-                              equipType={projectSettings?.defaultEquipment || 'MMS 360'}
-                              onIndexChange={(newIdx: number) => {
-                                const cleanSg = (inspectorSubgrid || selectedSubgridFilter || '').toUpperCase().trim();
-
-                                // Retrieve sorted sequential station track
-                                const stations = getStationsForSubgrid(cleanSg, selectedDailyRunId);
-                                // With no real station records there is nothing to step to.
-                                // Synthesising "<subgrid>-0001.jpg" and a bearing here would
-                                // push an invented panorama into app state, the map iframe
-                                // and the 360 camera, so refuse instead.
-                                if (stations.length === 0) return;
-
-                                // Clamp strictly to array boundaries
-                                const targetIdx = Math.max(0, Math.min(newIdx, stations.length - 1));
-                                const targetStation = stations[targetIdx];
-                                if (!targetStation) return;
-
-                                const nextFn = targetStation.filename || (targetStation.image_url ? targetStation.image_url.split('?')[0].split('/').pop() || '' : '');
-                                const nextUrl = nextFn ? resolvePanoramaUrl(nextFn, projectSettings, { subgrid: cleanSg }) : (targetStation?.image_url || '');
-                                const nextLat = Number(targetStation?.latitude ?? (targetStation as any)?.lat ?? inspectorCoords.lat);
-                                const nextLng = Number(targetStation?.longitude ?? (targetStation as any)?.lng ?? (targetStation as any)?.lon ?? inspectorCoords.lng);
-                                // Hold the current heading rather than inventing one, so the
-                                // camera does not swing to a fabricated bearing.
-                                const nextBearing = targetStation?.bearing ?? (targetStation as any)?.heading ?? panoramaTelemetry.yaw;
-
-                                // Preload adjacent stations into browser cache for instant 0ms stepping
-                                const aheadStation = stations[targetIdx + 1];
-                                if (aheadStation) {
-                                  const aheadFn = aheadStation.filename || (aheadStation.image_url ? aheadStation.image_url.split('?')[0].split('/').pop() : '');
-                                  const url = aheadFn ? resolvePanoramaUrl(aheadFn, projectSettings, { subgrid: cleanSg }) : aheadStation.image_url;
-                                  if (url) { const img = new Image(); img.src = url; }
-                                }
-                                const behindStation = stations[targetIdx - 1];
-                                if (behindStation) {
-                                  const behindFn = behindStation.filename || (behindStation.image_url ? behindStation.image_url.split('?')[0].split('/').pop() : '');
-                                  const url = behindFn ? resolvePanoramaUrl(behindFn, projectSettings, { subgrid: cleanSg }) : behindStation.image_url;
-                                  if (url) { const img = new Image(); img.src = url; }
-                                }
-
-                                // Update Dashboard State
-                                setActivePanoramaFilename(nextFn);
-                                setActivePanoramaUrl(nextUrl);
-                                if (nextLat !== 0 && nextLng !== 0) {
-                                  setInspectorCoords({ lat: nextLat, lng: nextLng });
-                                }
-
-                                // Synchronize Map Marker & View
-                                const pointPayload = {
-                                  filename: nextFn,
-                                  image_url: nextUrl,
-                                  config_url: nextFn ? resolvePanoramaConfigUrl(nextFn, projectSettings, cleanSg) : '',
-                                  subgrid: cleanSg,
-                                  lat: nextLat,
-                                  lng: nextLng,
-                                  lon: nextLng,
-                                  bearing: nextBearing,
-                                  index: targetIdx + 1
-                                };
-
-                                // Keep the live 360 camera facing the station heading.
-                                if (typeof nextBearing === 'number' && isFinite(nextBearing)) {
-                                  dashboardPsvRef.current?.setPosition({ yaw: nextBearing });
-                                }
-
-                                const iframes = document.querySelectorAll('iframe');
-                                iframes.forEach((f) => {
-                                  try {
-                                    f.contentWindow?.postMessage(
-                                      {
-                                        type: 'SET_PANORAMA',
-                                        point: pointPayload
-                                      },
-                                      '*'
-                                    );
-                                    f.contentWindow?.postMessage(
-                                      {
-                                        type: 'MAP_POINT_SELECTED',
-                                        point: pointPayload
-                                      },
-                                      '*'
-                                    );
-                                    f.contentWindow?.postMessage(
-                                      {
-                                        type: 'SET_CAMERA_HEADING',
-                                        heading: nextBearing
-                                      },
-                                      '*'
-                                    );
-                                  } catch (e) { }
-                                });
-                              }}
-                              onZoomIn={() => dashboardPsvRef.current?.zoomIn()}
-                              onZoomOut={() => dashboardPsvRef.current?.zoomOut()}
-                              onFullscreen={() => dashboardPsvRef.current?.toggleFullscreen()}
-                            />
-                          </>
-                        ) : (
-                          <div className="w-full h-full bg-card flex flex-col items-center justify-center p-4 text-center select-none">
-                            <Maximize2 size={38} className="text-text-muted mb-2.5 stroke-[1.5]" />
-                            <h4 className="text-xs sm:text-sm font-medium text-text-base tracking-tight">
-                              Select a location on the map
-                            </h4>
-                            <p className="text-[11px] text-text-muted mt-1">
-                              to view 360° imagery
-                            </p>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Right: Operator QA Defect Flags Panel */}
-                      <div className="w-full lg:w-56 shrink-0 bg-card rounded-lg border border-subtle p-3 flex flex-col lg:justify-between overflow-y-auto">
-                        <div>
-                          <div className="flex items-center justify-between gap-1 pb-2 border-b border-subtle mb-2.5">
-                            <span className="text-[11px] font-bold text-text-base uppercase tracking-tight flex items-center gap-1.5 whitespace-nowrap">
-                              <ShieldCheck size={14} className="text-sky-400 shrink-0" />
-                              <span>OPERATOR QA</span>
-                            </span>
-                            <span className="text-[9px] font-semibold text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20 shrink-0">
-                              Reviewing
-                            </span>
-                          </div>
-
-                          {/* Info Card */}
-                          <div className="bg-app rounded-md p-2 border border-subtle space-y-1.5 text-[10px] mb-3">
-                            <div className="flex items-center justify-between text-text-muted gap-2">
-                              <span className="shrink-0">Subgrid:</span>
-                              <span className="font-semibold text-sky-400 truncate text-right">
-                                {hasSelectedPoint ? (inspectorSubgrid || selectedSubgridFilter || '-') : '-'}
-                              </span>
-                            </div>
-                            <div className="flex items-center justify-between text-text-muted gap-2">
-                              <span className="shrink-0">Equipment:</span>
-                              <span className="font-medium text-text-base text-right whitespace-nowrap">
-                                {hasSelectedPoint ? 'MMS 360' : '-'}
-                              </span>
-                            </div>
-                            <div className="flex items-center justify-between text-text-muted gap-2">
-                              <span className="shrink-0">Coordinates:</span>
-                              <span className="font-sans text-text-base text-[9px] whitespace-nowrap text-right">
-                                {hasSelectedPoint ? `${inspectorCoords.lat.toFixed(4)}, ${inspectorCoords.lng.toFixed(4)}` : '-'}
-                              </span>
-                            </div>
-                            <div className="flex items-center justify-between text-text-muted gap-2">
-                              <span className="shrink-0">PIC:</span>
-                              <span className="font-semibold text-emerald-400 text-right whitespace-nowrap">
-                                {hasSelectedPoint ? (batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === (inspectorSubgrid || selectedSubgridFilter || '').toUpperCase().trim())?.pic || '-') : '-'}
-                              </span>
-                            </div>
-                            {isQaLocked && (
-                              <div className="flex flex-col gap-0.5 pt-1 border-t border-subtle">
-                                <div className="flex items-center justify-between text-[9.5px]">
-                                  <span className="text-text-muted font-medium">QA Status:</span>
-                                  <span className={`font-bold font-sans ${qaQuestionnaireAnswer === 'yes' ? 'text-amber-400' : 'text-emerald-400'}`}>
-                                    {qaQuestionnaireAnswer === 'yes' ? 'DEFECT CONFIRMED' : 'PASSED'}
-                                  </span>
-                                </div>
-                                <div className="flex items-center justify-between text-[9px]">
-                                  <span className="text-text-muted">Defect Choices:</span>
-                                  <span className="text-amber-300/90 font-medium truncate text-right max-w-[110px]">
-                                    {Object.entries(selectedQaFlags).filter(([_, v]) => v).map(([k]) => k === 'blurry' ? 'Blurry' : k === 'obstruction' ? 'Obstruction' : 'Bad GPS').join(', ') || 'None'}
-                                  </span>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-
-                          {/* QA Action Flags */}
-                          <div className="space-y-1.5">
-                            <div className="flex items-center justify-between mb-1">
-                              <span className="text-[9px] font-bold uppercase tracking-wider text-text-muted block">
-                                QA Defect Flags
-                              </span>
-                              {isGuestUser ? (
-                                <span className="text-[8.5px] font-semibold text-amber-500/80 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded">Guest</span>
-                              ) : isQaLocked ? (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const defaultSg = (dailyData[0]?.subgrid) || (batchLogs[0]?.subgrid) || '';
-                                    const itemKey = activePanoramaFilename || inspectorSubgrid || selectedSubgridFilter || defaultSg;
-                                    const sg = inspectorSubgrid || selectedSubgridFilter || defaultSg;
-                                    saveSubgridQa(itemKey, selectedQaFlags, qaQuestionnaireAnswer, false);
-                                    const targetLog = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === sg.toUpperCase().trim());
-                                    updateDefectStatusInSupabase(itemKey, targetLog?.defects || 0, 'Editing QA', { selectedQaFlags, answer: qaQuestionnaireAnswer, action: 'EDIT_QA', filename: activePanoramaFilename, subgrid: sg });
-                                  }}
-                                  className="text-[8.5px] font-semibold text-sky-400 hover:text-sky-300 bg-sky-500/10 hover:bg-sky-500/20 px-1.5 py-0.5 rounded border border-sky-500/30 flex items-center gap-1 cursor-pointer transition-all shadow-sm active:scale-95"
-                                  title="Click to unlock & edit QA defect choices"
-                                >
-                                  <Edit2 size={10} /> Edit QA
-                                </button>
-                              ) : (
-                                <span className="text-[8.5px] text-text-muted font-sans">Toggle to Flag</span>
-                              )}
-                            </div>
-
-                            {isGuestUser ? (
-                              <div className="space-y-1.5 pointer-events-none opacity-40 select-none">
-                                {[
-                                  { label: projectSettings.qaFlag1 || 'Blurry Frame', color: 'red' },
-                                  { label: projectSettings.qaFlag2 || 'Lens Obstruction', color: 'amber' },
-                                  { label: projectSettings.qaFlag3 || 'Bad GPS Signal', color: 'sky' },
-                                ].map(({ label, color }) => (
-                                  <div key={label} className={`w-full py-1.5 px-2 rounded-md text-[10px] font-medium text-left flex items-center justify-between border bg-inner border-subtle text-text-muted cursor-not-allowed`}>
-                                    <span className="flex items-center gap-1.5 truncate">
-                                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 bg-${color}-400`}></span>
-                                      <span className="truncate">{label}</span>
-                                    </span>
-                                    <span className="text-[9px] font-sans shrink-0 ml-1 text-text-muted">Flag</span>
-                                  </div>
-                                ))}
-                                <p className="text-[9px] text-amber-500/70 text-center pt-1 italic">QA editing disabled for guests</p>
-                              </div>
-                            ) : (
-                              <>
-                                {(!isQaLocked || selectedQaFlags.blurry) && (
-                                  <button
-                                    type="button"
-                                    disabled={isQaLocked}
-                                    onClick={() => {
-                                      if (isQaLocked) return;
-                                      const defaultSg = (dailyData[0]?.subgrid) || (batchLogs[0]?.subgrid) || '';
-                                      const itemKey = activePanoramaFilename || inspectorSubgrid || selectedSubgridFilter || defaultSg;
-                                      const sg = inspectorSubgrid || selectedSubgridFilter || defaultSg;
-                                      const nextFlags = { ...selectedQaFlags, blurry: !selectedQaFlags.blurry };
-                                      saveSubgridQa(itemKey, nextFlags, qaQuestionnaireAnswer, false);
-                                      const targetLog = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === sg.toUpperCase().trim());
-                                      updateDefectStatusInSupabase(itemKey, targetLog?.defects || 0, 'Reviewing', { selectedQaFlags: nextFlags, flag: projectSettings.qaFlag1 || 'Blurry Frame', filename: activePanoramaFilename, subgrid: sg });
-                                    }}
-                                    className={`w-full py-1.5 px-2 rounded-md text-[10px] font-medium text-left flex items-center justify-between transition-all border ${isQaLocked ? 'opacity-90 cursor-default' : 'cursor-pointer active:scale-95'
-                                      } ${selectedQaFlags.blurry
-                                        ? 'bg-red-500/25 border-red-500 text-red-300 ring-1 ring-red-500/50 shadow-md'
-                                        : 'bg-inner hover:bg-red-500/10 hover:border-red-500/50 border-subtle text-text-base hover:text-red-400'
-                                      }`}
-                                  >
-                                    <span className="flex items-center gap-1.5 truncate">
-                                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${selectedQaFlags.blurry ? 'bg-red-300 ring-2 ring-red-400' : 'bg-red-400'}`}></span>
-                                      <span className="truncate">{projectSettings.qaFlag1 || 'Blurry Frame'}</span>
-                                    </span>
-                                    <span className={`text-[9px] font-sans shrink-0 ml-1 ${selectedQaFlags.blurry ? 'text-red-300 font-bold' : 'text-text-muted group-hover:text-red-400'}`}>Flag</span>
-                                  </button>
-                                )}
-
-                                {(!isQaLocked || selectedQaFlags.obstruction) && (
-                                  <button
-                                    type="button"
-                                    disabled={isQaLocked}
-                                    onClick={() => {
-                                      if (isQaLocked) return;
-                                      const defaultSg = (dailyData[0]?.subgrid) || (batchLogs[0]?.subgrid) || '';
-                                      const itemKey = activePanoramaFilename || inspectorSubgrid || selectedSubgridFilter || defaultSg;
-                                      const sg = inspectorSubgrid || selectedSubgridFilter || defaultSg;
-                                      const nextFlags = { ...selectedQaFlags, obstruction: !selectedQaFlags.obstruction };
-                                      saveSubgridQa(itemKey, nextFlags, qaQuestionnaireAnswer, false);
-                                      const targetLog = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === sg.toUpperCase().trim());
-                                      updateDefectStatusInSupabase(itemKey, targetLog?.defects || 0, 'Reviewing', { selectedQaFlags: nextFlags, flag: projectSettings.qaFlag2 || 'Lens Obstruction', filename: activePanoramaFilename, subgrid: sg });
-                                    }}
-                                    className={`w-full py-1.5 px-2 rounded-md text-[10px] font-medium text-left flex items-center justify-between transition-all border ${isQaLocked ? 'opacity-90 cursor-default' : 'cursor-pointer active:scale-95'
-                                      } ${selectedQaFlags.obstruction
-                                        ? 'bg-amber-500/25 border-amber-500 text-amber-300 ring-1 ring-amber-500/50 shadow-md'
-                                        : 'bg-inner hover:bg-amber-500/10 hover:border-amber-500/50 border-subtle text-text-base hover:text-amber-400'
-                                      }`}
-                                  >
-                                    <span className="flex items-center gap-1.5 truncate">
-                                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${selectedQaFlags.obstruction ? 'bg-amber-300 ring-2 ring-amber-400' : 'bg-amber-400'}`}></span>
-                                      <span className="truncate">{projectSettings.qaFlag2 || 'Lens Obstruction'}</span>
-                                    </span>
-                                    <span className={`text-[9px] font-sans shrink-0 ml-1 ${selectedQaFlags.obstruction ? 'text-amber-300 font-bold' : 'text-text-muted group-hover:text-amber-400'}`}>Flag</span>
-                                  </button>
-                                )}
-
-                                {(!isQaLocked || selectedQaFlags.badGps) && (
-                                  <button
-                                    type="button"
-                                    disabled={isQaLocked}
-                                    onClick={() => {
-                                      if (isQaLocked) return;
-                                      const defaultSg = (dailyData[0]?.subgrid) || (batchLogs[0]?.subgrid) || '';
-                                      const itemKey = activePanoramaFilename || inspectorSubgrid || selectedSubgridFilter || defaultSg;
-                                      const sg = inspectorSubgrid || selectedSubgridFilter || defaultSg;
-                                      const nextFlags = { ...selectedQaFlags, badGps: !selectedQaFlags.badGps };
-                                      saveSubgridQa(itemKey, nextFlags, qaQuestionnaireAnswer, false);
-                                      const targetLog = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === sg.toUpperCase().trim());
-                                      updateDefectStatusInSupabase(itemKey, targetLog?.defects || 0, 'Reviewing', { selectedQaFlags: nextFlags, flag: projectSettings.qaFlag3 || 'Bad GPS Signal', filename: activePanoramaFilename, subgrid: sg });
-                                    }}
-                                    className={`w-full py-1.5 px-2 rounded-md text-[10px] font-medium text-left flex items-center justify-between transition-all border ${isQaLocked ? 'opacity-90 cursor-default' : 'cursor-pointer active:scale-95'
-                                      } ${selectedQaFlags.badGps
-                                        ? 'bg-sky-500/25 border-sky-500 text-sky-300 ring-1 ring-sky-500/50 shadow-md'
-                                        : 'bg-inner hover:bg-sky-500/10 hover:border-sky-500/50 border-subtle text-text-base hover:text-sky-400'
-                                      }`}
-                                  >
-                                    <span className="flex items-center gap-1.5 truncate">
-                                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${selectedQaFlags.badGps ? 'bg-sky-300 ring-2 ring-sky-400' : 'bg-sky-400'}`}></span>
-                                      <span className="truncate">{projectSettings.qaFlag3 || 'Bad GPS Signal'}</span>
-                                    </span>
-                                    <span className={`text-[9px] font-sans shrink-0 ml-1 ${selectedQaFlags.badGps ? 'text-sky-300 font-bold' : 'text-text-muted group-hover:text-sky-400'}`}>Flag</span>
-                                  </button>
-                                )}
-                              </>
-                            )}
-                          </div>
-
-                          {/* QA Questionnaire Box */}
-                          {!isGuestUser && !isQaLocked && (selectedQaFlags.blurry || selectedQaFlags.obstruction || selectedQaFlags.badGps) && (
-                            <div className="bg-app rounded-md p-2 border border-subtle space-y-1.5 text-[10px] mt-2.5 animate-in fade-in slide-in-from-top-2 duration-200">
-                              <div className="flex items-center justify-between text-text-base font-medium">
-                                <span>Update Status?</span>
-                                <span className="text-[9px] text-text-muted font-sans">
-                                  {qaQuestionnaireAnswer === 'yes' ? 'DEFECT CONFIRMED' : qaQuestionnaireAnswer === 'no' ? 'NO DEFECT' : 'SELECT RESPONSE'}
-                                </span>
-                              </div>
-                              <div className="grid grid-cols-2 gap-1.5 pt-0.5">
-                                <button
-                                  type="button"
-                                  disabled={isQaLocked}
-                                  onClick={() => {
-                                    const defaultSg = (dailyData[0]?.subgrid) || (batchLogs[0]?.subgrid) || '';
-                                    const itemKey = activePanoramaFilename || inspectorSubgrid || selectedSubgridFilter || defaultSg;
-                                    const sg = inspectorSubgrid || selectedSubgridFilter || defaultSg;
-                                    saveSubgridQa(itemKey, selectedQaFlags, 'yes', true);
-                                    const targetLog = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === sg.toUpperCase().trim());
-                                    const newDefects = (targetLog?.defects || 0) + 1;
-                                    setBatchLogs(prev => prev.map(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === sg.toUpperCase().trim() ? { ...b, defects: newDefects } : b));
-                                    updateDefectStatusInSupabase(itemKey, newDefects, 'Flagged (Defect Confirmed)', { selectedQaFlags, answer: 'YES', filename: activePanoramaFilename, subgrid: sg });
-                                  }}
-                                  className={`py-1.5 px-2 rounded border text-[10px] font-bold text-center transition-all flex items-center justify-center gap-1.5 ${isQaLocked ? 'cursor-not-allowed opacity-90' : 'cursor-pointer active:scale-95'
-                                    } ${qaQuestionnaireAnswer === 'yes'
-                                      ? 'bg-emerald-500 text-text-base border-emerald-400 shadow-md ring-1 ring-emerald-400/50'
-                                      : 'bg-emerald-600/20 hover:bg-emerald-600/35 text-emerald-400 border-emerald-500/30'
-                                    }`}
-                                >
-                                  <CheckCircle size={11} className="shrink-0" /> YES
-                                </button>
-
-                                <button
-                                  type="button"
-                                  disabled={isQaLocked}
-                                  onClick={() => {
-                                    const defaultSg = (dailyData[0]?.subgrid) || (batchLogs[0]?.subgrid) || '';
-                                    const itemKey = activePanoramaFilename || inspectorSubgrid || selectedSubgridFilter || defaultSg;
-                                    const sg = inspectorSubgrid || selectedSubgridFilter || defaultSg;
-                                    saveSubgridQa(itemKey, selectedQaFlags, 'no', true);
-                                    const targetLog = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === sg.toUpperCase().trim());
-                                    const currentDefects = targetLog?.defects || 0;
-                                    updateDefectStatusInSupabase(itemKey, currentDefects, 'Passed (No Defect)', { selectedQaFlags, answer: 'NO', filename: activePanoramaFilename, subgrid: sg });
-                                  }}
-                                  className={`py-1.5 px-2 rounded border text-[10px] font-bold text-center transition-all flex items-center justify-center gap-1.5 ${isQaLocked ? 'cursor-not-allowed opacity-90' : 'cursor-pointer active:scale-95'
-                                    } ${qaQuestionnaireAnswer === 'no'
-                                      ? 'bg-rose-500 text-text-base border-rose-400 shadow-md ring-1 ring-rose-400/50'
-                                      : 'bg-rose-600/20 hover:bg-rose-600/35 text-rose-400 border-rose-500/30'
-                                    }`}
-                                >
-                                  <X size={11} className="shrink-0" /> NO
-                                </button>
-                              </div>
-                            </div>
+                          {!isGuestUser && (
+                            <button
+                              onClick={() => setShareMapOpen(true)}
+                              className="px-2 sm:px-3 py-1 bg-card hover:bg-inner text-text-base border border-subtle text-[10px] sm:text-[11px] font-medium rounded-lg transition-all uppercase tracking-tight cursor-pointer flex items-center justify-center gap-1.5 shadow-sm active:scale-95 whitespace-nowrap"
+                              title="Create a public read-only share link for this survey map"
+                            >
+                              <Share2 size={12} className="shrink-0" />
+                              <span>SHARE MAP</span>
+                            </button>
                           )}
                         </div>
                       </div>
+
+                      {/* Embedded WebGIS Map */}
+                      <div className="flex-1 relative overflow-hidden bg-app">
+                        {/* Resize veil: masks the iframe's tile/3D repaint while the
+                        nav rail width animates (prevents map flicker on expand/collapse). */}
+                        <div className={`absolute inset-0 z-10 bg-app pointer-events-none select-none transition-opacity duration-200 ${mapVeilActive ? 'opacity-100' : 'opacity-0'}`} />
+                        {/* Minimalist Trajectory Filter Button & Popup Menu (bottom-left) */}
+                        <div className="absolute bottom-3 left-3 z-10 pointer-events-auto flex flex-col items-start gap-2">
+                          {/* Popup Panel (shown when isStatusFilterOpen === true) */}
+                          {isStatusFilterOpen && (
+                            <div className="bg-app backdrop-blur-xl border border-subtle rounded-xl p-2.5 text-[11px] space-y-1.5 shadow-2xl min-w-[200px] animate-in fade-in slide-in-from-bottom-2 duration-150">
+                              <div className="flex items-center justify-between border-b border-subtle pb-1.5 mb-1 px-1">
+                                <span className="font-semibold text-[10px] text-sky-400 uppercase tracking-wider flex items-center gap-1.5">
+                                  <Filter size={12} />
+                                  Trajectory Status
+                                </span>
+                                <button
+                                  onClick={() => setIsStatusFilterOpen(false)}
+                                  className="text-text-muted hover:text-text-base text-xs px-1 cursor-pointer transition-colors"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+
+                              <label className="flex items-center justify-between px-2 py-1 rounded-md hover:bg-inner text-text-base hover:text-text-base cursor-pointer select-none transition-colors">
+                                <span className="text-[11px] font-medium text-text-base">Show Panotrack Layer</span>
+                                <input
+                                  type="checkbox"
+                                  checked={showPanotrackData}
+                                  onChange={(e) => {
+                                    const val = e.target.checked;
+                                    setShowPanotrackData(val);
+                                    const iframes = document.querySelectorAll('iframe');
+                                    iframes.forEach(f => {
+                                      try {
+                                        f.contentWindow?.postMessage({ type: 'FILTER_STATUS_TYPES', statusFilters, showPanotrackData: val }, '*');
+                                      } catch (err) { }
+                                    });
+                                  }}
+                                  className="rounded text-sky-500 focus:ring-0 cursor-pointer accent-sky-500 w-3.5 h-3.5"
+                                />
+                              </label>
+
+                              <div className="border-t border-subtle pt-1 space-y-0.5">
+                                <label className="flex items-center justify-between px-2 py-1 rounded-md hover:bg-inner text-text-base hover:text-text-base cursor-pointer select-none transition-colors">
+                                  <div className="flex items-center gap-2">
+                                    <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                                    <span className="text-[11px]">Published to WebGIS</span>
+                                  </div>
+                                  <input
+                                    type="checkbox"
+                                    checked={statusFilters.published}
+                                    disabled={!showPanotrackData}
+                                    onChange={(e) => {
+                                      const next = { ...statusFilters, published: e.target.checked };
+                                      setStatusFilters(next);
+                                      const iframes = document.querySelectorAll('iframe');
+                                      iframes.forEach(f => {
+                                        try {
+                                          f.contentWindow?.postMessage({ type: 'FILTER_STATUS_TYPES', statusFilters: next, showPanotrackData }, '*');
+                                        } catch (err) { }
+                                      });
+                                    }}
+                                    className="rounded text-sky-500 focus:ring-0 cursor-pointer accent-sky-500 w-3.5 h-3.5"
+                                  />
+                                </label>
+
+                                <label className="flex items-center justify-between px-2 py-1 rounded-md hover:bg-inner text-text-base hover:text-text-base cursor-pointer select-none transition-colors">
+                                  <div className="flex items-center gap-2">
+                                    <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" />
+                                    <span className="text-[11px]">Defect / Flags</span>
+                                  </div>
+                                  <input
+                                    type="checkbox"
+                                    checked={statusFilters.defect}
+                                    disabled={!showPanotrackData}
+                                    onChange={(e) => {
+                                      const next = { ...statusFilters, defect: e.target.checked };
+                                      setStatusFilters(next);
+                                      const iframes = document.querySelectorAll('iframe');
+                                      iframes.forEach(f => {
+                                        try {
+                                          f.contentWindow?.postMessage({ type: 'FILTER_STATUS_TYPES', statusFilters: next, showPanotrackData }, '*');
+                                        } catch (err) { }
+                                      });
+                                    }}
+                                    className="rounded text-sky-500 focus:ring-0 cursor-pointer accent-sky-500 w-3.5 h-3.5"
+                                  />
+                                </label>
+
+                                <label className="flex items-center justify-between px-2 py-1 rounded-md hover:bg-inner text-text-base hover:text-text-base cursor-pointer select-none transition-colors">
+                                  <div className="flex items-center gap-2">
+                                    <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
+                                    <span className="text-[11px]">Staging</span>
+                                  </div>
+                                  <input
+                                    type="checkbox"
+                                    checked={statusFilters.stitching}
+                                    disabled={!showPanotrackData}
+                                    onChange={(e) => {
+                                      const next = { ...statusFilters, stitching: e.target.checked };
+                                      setStatusFilters(next);
+                                      const iframes = document.querySelectorAll('iframe');
+                                      iframes.forEach(f => {
+                                        try {
+                                          f.contentWindow?.postMessage({ type: 'FILTER_STATUS_TYPES', statusFilters: next, showPanotrackData }, '*');
+                                        } catch (err) { }
+                                      });
+                                    }}
+                                    className="rounded text-sky-500 focus:ring-0 cursor-pointer accent-sky-500 w-3.5 h-3.5"
+                                  />
+                                </label>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Minimalist Trajectory Status Trigger Button */}
+                          <button
+                            onClick={() => setIsStatusFilterOpen(prev => !prev)}
+                            className={`px-2.5 py-1.5 rounded-xl border shadow-lg flex items-center gap-2 text-[11px] font-semibold transition-all duration-200 cursor-pointer select-none relative active:scale-95 ${isStatusFilterOpen
+                              ? 'bg-sky-600 text-text-base border-sky-400 shadow-sky-950/50'
+                              : 'bg-app hover:bg-inner text-text-base border-subtle hover:border-subtle'
+                              }`}
+                            title="Filter Trajectory Status"
+                          >
+                            <Filter size={13} className={isStatusFilterOpen ? 'text-text-base' : 'text-sky-400'} />
+                            <span className="hidden sm:inline">Trajectory Status</span>
+                            {(!statusFilters.published || !statusFilters.defect || !statusFilters.stitching || !showPanotrackData) && (
+                              <span className="w-1.5 h-1.5 rounded-full bg-sky-400 shrink-0" />
+                            )}
+                          </button>
+                        </div>
+
+                        {/* Derived active subgrid item details for clicked row */}
+                        {(() => {
+                          const isDailySelected = Boolean(selectedDailyRunId);
+                          const activeBatchLog = batchLogs.find(b =>
+                            (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === (selectedSubgridFilter || '').toUpperCase().trim()
+                          );
+                          const activeDailyLog = selectedDailyRunId
+                            ? dailyData.find(d => getItemId(d) === selectedDailyRunId || d.id === selectedDailyRunId)
+                            : (selectedDateFilter
+                              ? dailyData.find(d =>
+                                (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim() === (selectedSubgridFilter || '').toUpperCase().trim() &&
+                                (d.date === selectedDateFilter || formatDisplayDate(d.date) === formatDisplayDate(selectedDateFilter))
+                              )
+                              : null);
+
+                          const getSubgridCoords = () => {
+                            const firstPan = activeDailyLog?.panoramas?.[0] || (activeDailyLog as any)?.points?.[0] || activeBatchLog?.panoramas?.[0];
+                            const lat = firstPan?.latitude ?? (firstPan as any)?.lat ?? (SUBGRID_COORDINATES[selectedSubgridFilter || '']?.[1] ?? 0);
+                            const lng = firstPan?.longitude ?? (firstPan as any)?.lon ?? (firstPan as any)?.lng ?? (SUBGRID_COORDINATES[selectedSubgridFilter || '']?.[0] ?? 0);
+                            return { lat, lng };
+                          };
+
+                          const activeCoords = getSubgridCoords();
+                          const activeKm = isDailySelected && activeDailyLog
+                            ? (activeDailyLog.kmProcessed?.toFixed(1) || '0.0')
+                            : (activeBatchLog?.kmProcessed ? activeBatchLog.kmProcessed.toFixed(1) : '0.0');
+                          const activeImages = isDailySelected && activeDailyLog
+                            ? (activeDailyLog.imagesProcessed || activeDailyLog.availableImagesCount || activeDailyLog.poiCount || 0)
+                            : (activeBatchLog?.images || getPOICount(activeBatchLog) || 0);
+                          const activeDefects = isDailySelected && activeDailyLog
+                            ? ((activeDailyLog.imagesDefected ?? activeDailyLog.defectCount) || 0)
+                            : (activeBatchLog?.defects || 0);
+                          const activePic = (isDailySelected && activeDailyLog ? activeDailyLog.pic : activeBatchLog?.pic) || 'Unassigned';
+
+                          const isPublished = isDailySelected && activeDailyLog
+                            ? (activeDailyLog.publishToWebGIS === 'yes' || activeDailyLog.isSyncedWithSupabase === true)
+                            : (activeBatchLog?.status === 'Complete' || activeBatchLog?.publishToWebGIS === 'yes');
+
+                          const activeStatusText = isDailySelected && activeDailyLog
+                            ? (activeDailyLog.publishToWebGIS === 'yes'
+                              ? 'Published to WebGIS'
+                              : ((activeDailyLog.qaqcStatus && activeDailyLog.qaqcStatus !== 'Not yet on WebGIS' ? activeDailyLog.qaqcStatus : null) || (activeDefects > 0 ? `QAQC Flagged (${activeDefects} Defects)` : 'Staging')))
+                            : (activeBatchLog?.status === 'Complete' ? 'Published to WebGIS' : 'Staging');
+
+                          return selectedSubgridFilter ? (
+                            <div className="absolute top-3 right-3 z-20 bg-card backdrop-blur-md border border-subtle rounded-xl p-3 text-xs text-text-base shadow-2xl max-w-xs space-y-1.5 animate-in fade-in zoom-in-95 duration-200">
+                              <div className="flex items-center justify-between font-bold pb-1 border-b border-subtle">
+                                <span className="text-sky-400 font-sans text-xs">
+                                  Subgrid ID: {selectedSubgridFilter} {isDailySelected && activeDailyLog ? `(${formatDisplayDate(activeDailyLog.date)})` : (selectedDateFilter ? `(${selectedDateFilter})` : '')}
+                                </span>
+                                <button
+                                  onClick={() => {
+                                    if (selectedDailyRunId) {
+                                      setSelectedDailyRunId(null);
+                                      setSelectedSubgridFilter(null);
+                                      setSelectedDateFilter(null);
+                                      const iframes = document.querySelectorAll('iframe');
+                                      iframes.forEach(f => {
+                                        try {
+                                          f.contentWindow?.postMessage({ type: 'FILTER_SUBGRID', subgrid: '', date: '', isSingleRun: false, runId: null }, '*');
+                                        } catch (_) { }
+                                      });
+                                    } else if (selectedSubgridFilter) {
+                                      toggleSubgridFilter(selectedSubgridFilter);
+                                    }
+                                  }}
+                                  className="text-text-muted hover:text-text-base p-0.5 rounded cursor-pointer transition-colors"
+                                  title="Close filter"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                              <div className="text-text-base font-sans text-[11px] flex justify-between gap-4"><span className="text-text-muted">Coordinates:</span> <span>{activeCoords.lat && activeCoords.lng ? `${activeCoords.lat.toFixed(4)}° N, ${activeCoords.lng.toFixed(4)}° E` : '—'}</span></div>
+                              <div className="text-text-base text-[11px] flex justify-between gap-4"><span className="text-text-muted">Distance from start:</span> <span className="font-semibold text-text-base">{activeKm} km</span></div>
+                              <div className="text-text-base text-[11px] flex justify-between gap-4"><span className="text-text-muted">Image Count:</span> <span className="font-semibold text-text-base">{activeImages}</span></div>
+                              <div className="text-text-base text-[11px] flex justify-between items-center gap-4">
+                                <span className="text-text-muted">Defect Images:</span>
+                                <button
+                                  onClick={() => {
+                                    const validFn = activeDailyLog?.panoramas?.[0]?.filename || activeBatchLog?.imageFilename || '';
+                                    const imgUrl = validFn ? resolvePanoramaUrl(validFn, projectSettings) : '';
+                                    setActivePanoramaFilename(validFn);
+                                    setActivePanoramaUrl(imgUrl);
+                                    setHasSelectedPoint(Boolean(activeCoords.lat && activeCoords.lng));
+                                    if (activeCoords.lat && activeCoords.lng) {
+                                      setInspectorCoords(activeCoords);
+                                    }
+                                    if (selectedSubgridFilter) {
+                                      setInspectorSubgrid(selectedSubgridFilter);
+                                    }
+                                  }}
+                                  className={`font-semibold px-2 py-0.5 rounded border text-[10px] cursor-pointer transition-all flex items-center gap-1.5 group shadow-sm active:scale-95 ${activeDefects > 0
+                                    ? 'text-amber-400 bg-amber-500/10 hover:bg-amber-500/25 border-amber-500/30 hover:border-amber-500/60'
+                                    : 'text-text-muted bg-slate-500/10 border-subtle/20'
+                                    }`}
+                                  title="Click to filter & select defect data"
+                                >
+                                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${activeDefects > 0 ? 'bg-amber-400' : 'bg-slate-400'}`}></span>
+                                  <span>{activeDefects} Flagged</span>
+                                  <Filter size={10} className="group-hover:scale-110 transition-transform shrink-0" />
+                                </button>
+                              </div>
+                              <div className="text-text-base text-[11px] flex justify-between gap-4"><span className="text-text-muted">PIC:</span> <span className="font-semibold text-emerald-400">{activePic}</span></div>
+                              <div className="text-text-base text-[11px] flex justify-between items-center pt-1 border-t border-subtle">
+                                <span className="text-text-muted">Staging Processing Status:</span>
+                                <span className={`font-semibold px-2 py-0.5 rounded border text-[10px] ${isPublished
+                                  ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
+                                  : 'text-amber-400 bg-amber-500/10 border-amber-500/20'
+                                  }`}>
+                                  {activeStatusText}
+                                </span>
+                              </div>
+                            </div>
+                          ) : null;
+                        })()}
+
+                        <MapComponent
+                          layerCatalog={layerCatalog}
+                          refreshKey={mapRefreshKey}
+                          prepareKey={mapPrepareKey}
+                          onManualRefresh={handleRefreshMap}
+                          selectedSubgridFilter={selectedSubgridFilter}
+                          selectedDailyRunId={selectedDailyRunId}
+                          selectedDateFilter={selectedDateFilter}
+                          stagedItems={
+                            selectedDailyRunId
+                              ? dailyData.filter(d => getItemId(d) === selectedDailyRunId)
+                              : (selectedSubgridFilter
+                                ? dailyData.filter(d => (extractSubgridName(d.subgrid) || d.subgrid || '').toUpperCase().trim() === (selectedSubgridFilter || '').toUpperCase().trim())
+                                : dailyData)
+                          }
+                          projectSettings={projectSettings}
+                          defectsList={allKnownDefects}
+                          iframeRefCb={(el) => { inspectionMapIframeRef.current = el; }}
+                        />
+                        <ShareMapDialog
+                          open={shareMapOpen}
+                          kind="webgis"
+                          defaultTitle={`${projectSettings?.projectName || 'GeoSphere 360'} — Survey Map`}
+                          buildSnapshot={() => buildWebgisSnapshot(dailyData, projectSettings)}
+                          basemap={projectSettings?.defaultBasemap || 'ofm-positron'}
+                          createdBy={authSession?.user?.id || null}
+                          onClose={() => setShareMapOpen(false)}
+                        />
+                      </div>
+                    </div>
+
+                    {/* RIGHT COLUMN: PROCESSING CONTROL & 360 QA INSPECTOR (5 Cols) */}
+                    <div className="col-span-1 lg:col-span-5 panel-column flex flex-col gap-3 min-h-[420px] sm:min-h-[520px] lg:min-h-0">
+
+                      {/* TOP RIGHT PANEL: WEBGIS DATABASE & ADMIN */}
+                      <div className={`flex-none lg:flex-1 bg-card border border-subtle backdrop-blur-md rounded-xl flex flex-col overflow-hidden transition-all duration-700 ${focusedSection === 'processing'
+                        ? 'relative z-30 ring-4 ring-emerald-400 shadow-[0_0_50px_rgba(52,211,153,0.5)] scale-[1.005]'
+                        : focusedSection
+                          ? 'filter blur-[4px] opacity-25 pointer-events-none'
+                          : ''
+                        }`}>
+                        <div className="p-2.5 sm:p-3 border-b border-subtle flex flex-wrap items-center justify-between gap-2 shrink-0 bg-card">
+                          <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+                            <span className="text-xs font-bold uppercase tracking-wider text-text-base flex items-center gap-1.5 sm:gap-2">
+                              <Database size={14} className="text-text-base shrink-0" />
+                              <span>{t('processingControlTitle')}</span>
+                            </span>
+                            <div className="flex bg-inner border border-subtle rounded-lg p-0.5 text-[10px]">
+                              <button
+                                onClick={() => setActiveTab('batches')}
+                                className={`px-2 py-0.5 rounded font-semibold transition-colors cursor-pointer ${activeTab === 'batches' ? 'bg-card text-text-base shadow-sm' : 'text-text-muted hover:text-text-base'}`}
+                              >
+                                Overall Progress ({activeBatchLogs.length})
+                              </button>
+                              <button
+                                onClick={() => setActiveTab('daily')}
+                                className={`px-2 py-0.5 rounded font-semibold transition-colors cursor-pointer ${activeTab === 'daily' ? 'bg-card text-text-base shadow-sm' : 'text-text-muted hover:text-text-base'}`}
+                              >
+                                Daily Progress ({dailyData.length})
+                              </button>
+                            </div>
+
+                            {/* Simple Icon-Only Filter Button */}
+                            <button
+                              onClick={() => setIsDashFilterOpen(prev => !prev)}
+                              className={`p-1 rounded-lg border transition-all cursor-pointer ${hasActiveDashFilters
+                                ? 'bg-sky-600 border-sky-500 text-text-base shadow-sm'
+                                : isDashFilterOpen
+                                  ? 'bg-card border-subtle text-sky-400'
+                                  : 'bg-card border-subtle text-text-muted hover:text-text-base hover:bg-card'
+                                }`}
+                              title="Filter Daily Progress columns"
+                            >
+                              <Filter size={13} />
+                            </button>
+                          </div>
+                          <button
+                            onClick={() => goToWorkspace('data')}
+                            className="px-2.5 sm:px-3 py-1.5 bg-card hover:bg-inner text-text-base hover:text-text-base border border-subtle text-[10px] sm:text-[11px] font-medium rounded-lg transition-all uppercase tracking-tight cursor-pointer shadow-sm shrink-0 self-center whitespace-nowrap"
+                          >
+                            RE-UPLOAD CSV
+                          </button>
+                        </div>
+
+                        {/* Compact Inline Filter Bar for Daily Progress */}
+                        {isDashFilterOpen && (
+                          <div className="px-3 py-2 bg-card border-b border-subtle flex flex-wrap items-center justify-between gap-2 text-[10px] animate-in fade-in duration-150">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <div className="flex items-center gap-1">
+                                <span className="text-text-muted font-medium">Grid:</span>
+                                <select
+                                  value={dashDailyFilters.grid}
+                                  onChange={(e) => setDashDailyFilters(prev => ({ ...prev, grid: e.target.value }))}
+                                  className="bg-card border border-subtle text-text-base rounded px-1.5 py-0.5 focus:outline-none focus:border-sky-500"
+                                >
+                                  <option value="">All</option>
+                                  {Array.from(new Set(dailyData.map(d => d.grid).filter(Boolean))).sort().map(g => (
+                                    <option key={g} value={g}>{g}</option>
+                                  ))}
+                                </select>
+                              </div>
+
+                              <div className="flex items-center gap-1">
+                                <span className="text-text-muted font-medium">Subgrid:</span>
+                                <select
+                                  value={dashDailyFilters.subgrid}
+                                  onChange={(e) => setDashDailyFilters(prev => ({ ...prev, subgrid: e.target.value }))}
+                                  className="bg-card border border-subtle text-text-base rounded px-1.5 py-0.5 focus:outline-none focus:border-sky-500"
+                                >
+                                  <option value="">All</option>
+                                  {Array.from(new Set(dailyData.map(d => (d.subgrid || '').toUpperCase().trim()).filter(Boolean))).sort().map(sg => (
+                                    <option key={sg} value={sg}>{sg}</option>
+                                  ))}
+                                </select>
+                              </div>
+
+                              <div className="flex items-center gap-1">
+                                <span className="text-text-muted font-medium">PIC:</span>
+                                <select
+                                  value={dashDailyFilters.pic}
+                                  onChange={(e) => setDashDailyFilters(prev => ({ ...prev, pic: e.target.value }))}
+                                  className="bg-card border border-subtle text-text-base rounded px-1.5 py-0.5 focus:outline-none focus:border-sky-500"
+                                >
+                                  <option value="">All</option>
+                                  {Array.from(new Set(dailyData.map(d => d.pic).filter(Boolean))).sort().map(p => (
+                                    <option key={p} value={p}>{p}</option>
+                                  ))}
+                                </select>
+                              </div>
+
+                              <div className="flex items-center gap-1">
+                                <span className="text-text-muted font-medium">Equipment:</span>
+                                <select
+                                  value={dashDailyFilters.equipment}
+                                  onChange={(e) => setDashDailyFilters(prev => ({ ...prev, equipment: e.target.value }))}
+                                  className="bg-card border border-subtle text-text-base rounded px-1.5 py-0.5 focus:outline-none focus:border-sky-500"
+                                >
+                                  <option value="">All</option>
+                                  {Array.from(new Set(dailyData.map(d => d.captureEquipment || 'MMS').filter(Boolean))).sort().map(eq => (
+                                    <option key={eq} value={eq}>{eq}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            </div>
+
+                            {hasActiveDashFilters && (
+                              <button
+                                onClick={() => setDashDailyFilters({ grid: '', subgrid: '', pic: '', equipment: '' })}
+                                className="text-red-400 hover:text-red-300 text-[10px] font-semibold cursor-pointer flex items-center gap-1"
+                                title="Clear dashboard filters"
+                              >
+                                <X size={12} /> Clear
+                              </button>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Table */}
+                        <DashboardBatchTable
+                          activeTab={activeTab}
+                          isDataLoading={isDataLoading}
+                          activeBatchLogs={activeBatchLogs}
+                          dailyData={dailyData}
+                          filteredDailyData={filteredDailyData}
+                          selectedSubgridFilter={selectedSubgridFilter}
+                          toggleSubgridFilter={toggleSubgridFilter}
+                          dailyDataBySubgrid={dailyDataBySubgrid}
+                          setImagesListModal={setImagesListModal}
+                          qaqcWorkerState={qaqcWorkerState}
+                          qaqcAuditRuns={qaqcAuditRuns}
+                          setSelectedDefectSubgrid={setSelectedDefectSubgrid}
+                          setDefectGalleryContext={setDefectGalleryContext}
+                          setIsDefectsGalleryOpen={setIsDefectsGalleryOpen}
+                          setIsQAQCRunnerModalOpen={setIsQAQCRunnerModalOpen}
+                          selectedDailyRunId={selectedDailyRunId}
+                          handleSelectDailyRun={handleSelectDailyRun}
+                          activeAuthUserName={activeAuthUserName}
+                          t={t}
+                        />
+                      </div>
+
+                      {/* 360 INSPECTOR VIEWER & QAQC CARD */}
+                      <div className={`flex-1 bg-card border border-subtle backdrop-blur-md rounded-xl flex flex-col overflow-hidden transition-all duration-700 ${focusedSection === 'qa'
+                        ? 'relative z-30 ring-4 ring-indigo-400 shadow-[0_0_50px_rgba(129,140,248,0.5)] scale-[1.005]'
+                        : focusedSection
+                          ? 'filter blur-[4px] opacity-25 pointer-events-none'
+                          : ''
+                        }`}>
+
+                        {/* Card Header */}
+                        <div className="px-3.5 py-2 border-b border-subtle bg-card flex flex-wrap items-center justify-between shrink-0 gap-2">
+                          <span className="text-xs font-bold uppercase tracking-wider text-text-base flex items-center gap-2 shrink-0">
+                            <Camera size={14} className="text-accent" />
+                            <span>360 INSPECTOR VIEWER & ACQUISITION QC</span>
+                          </span>
+
+                          <div className="flex items-center gap-2 min-w-0">
+                            {qaqcWorkerState.isRunning ? (
+                              <div className="flex items-center gap-2.5 px-3 py-1 bg-inner border border-subtle rounded-xl text-xs shadow-sm animate-in fade-in duration-200">
+                                <span className="relative flex h-2 w-2 shrink-0">
+                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-75"></span>
+                                  <span className="relative inline-flex rounded-full h-2 w-2 bg-accent"></span>
+                                </span>
+                                <span className="text-xs font-medium text-text-base whitespace-nowrap">
+                                  QA/QC: <span className="font-sans font-bold text-accent">{qaqcWorkerState.subgrid || 'General'}</span>
+                                </span>
+                                <div className="w-16 h-1.5 bg-card rounded-full overflow-hidden border border-subtle/80 shrink-0">
+                                  <div
+                                    className="h-full bg-accent transition-all duration-150"
+                                    style={{
+                                      width: `${Math.min(100, Math.round(((qaqcWorkerState.currentIndex + 1) / (qaqcWorkerState.totalStations || 1)) * 100))}%`
+                                    }}
+                                  />
+                                </div>
+                                <span className="text-xs font-semibold tabular-nums text-text-base shrink-0 font-sans">
+                                  {Math.min(100, Math.round(((qaqcWorkerState.currentIndex + 1) / (qaqcWorkerState.totalStations || 1)) * 100))}%
+                                </span>
+                                <span className="text-[11px] text-text-muted tabular-nums shrink-0 font-sans">
+                                  ({Math.min(qaqcWorkerState.totalStations || 1, qaqcWorkerState.currentIndex + 1)}/{qaqcWorkerState.totalStations || 1})
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => setIsQAQCRunnerModalOpen(true)}
+                                  className="px-2 py-0.5 bg-card hover:bg-card text-text-base hover:text-text-base border border-subtle rounded text-[10px] font-medium transition-all cursor-pointer flex items-center gap-1 shadow-sm active:scale-95 shrink-0"
+                                >
+                                  <Activity size={10} className="animate-spin text-sky-400" />
+                                  <span>Open HUD</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={abortQAQCInspection}
+                                  className="px-2 py-0.5 bg-card hover:bg-red-950/30 text-text-base hover:text-rose-400 border border-subtle hover:border-red-800/50 rounded text-[10px] font-medium transition-all cursor-pointer flex items-center gap-1 shadow-sm active:scale-95 shrink-0"
+                                  title="Abort inspection"
+                                >
+                                  <StopCircle size={10} />
+                                  <span>Abort</span>
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setIsQAQCRunnerModalOpen(true);
+                                }}
+                                title="Launch Full Canvas QA/QC Inspection Workbench with Target Selection Hub"
+                                className="px-3 py-1.5 bg-card hover:bg-card text-text-base hover:text-text-base border border-subtle text-[11px] font-medium rounded-lg transition-all cursor-pointer shadow-sm flex items-center gap-1.5 active:scale-95"
+                              >
+                                <Play size={11} className="fill-current text-text-base" />
+                                <span>Run Batch Acquisition QC</span>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Card Body */}
+                        <div className="flex-1 flex flex-col lg:flex-row gap-2.5 p-2.5 min-h-0">
+                          {/* Left: 360 Panorama Canvas + Floating HUD Overlay */}
+                          <div className="flex-1 bg-app rounded-lg border border-subtle relative overflow-hidden group flex flex-col min-w-0 min-h-[280px] sm:min-h-[340px] lg:min-h-0">
+                            {hasSelectedPoint && (
+                              <button
+                                onClick={clearMapSelection}
+                                title="Return to map (clear 360 selection)"
+                                className="absolute top-2 right-2 z-20 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-900/80 border border-subtle text-[10px] font-bold uppercase tracking-wide text-text-base hover:bg-slate-800 hover:border-sky-500/40 transition-colors cursor-pointer shadow"
+                              >
+                                <X size={12} /> Return to Map
+                              </button>
+                            )}
+                            {hasSelectedPoint ? (
+                              <>
+                                {(() => {
+                                  const targetSubgrid = inspectorSubgrid || selectedSubgridFilter || '';
+                                  const targetFilename = activePanoramaFilename || '';
+
+                                  const provider = projectSettings?.storageProvider || import.meta.env.VITE_STORAGE_PROVIDER || 'supabase';
+                                  const isMultiResStrategy = projectSettings?.imageStorageStrategy === 'multires_tiles' ||
+                                    projectSettings?.imageStorageStrategy === 'multi_resolution' ||
+                                    projectSettings?.panoramaMode === 'multi_res';
+                                  const hasCdnDomain = Boolean(
+                                    projectSettings?.r2Domain || import.meta.env.VITE_R2_DOMAIN || projectSettings?.customCdnUrl
+                                  );
+
+                                  const shouldUseMultiRes = isMultiResStrategy && hasCdnDomain && (
+                                    provider === 'cloudflare_r2' ||
+                                    provider === 'custom_cdn' ||
+                                    provider === 'aws_s3' ||
+                                    provider === 'wasabi' ||
+                                    provider === 'gcs' ||
+                                    provider === 'azure_blob' ||
+                                    provider === 'nas_local'
+                                  );
+
+                                  const dynamicConfigUrl = shouldUseMultiRes && targetFilename
+                                    ? resolvePanoramaConfigUrl(targetFilename, projectSettings, targetSubgrid)
+                                    : '';
+                                  const dynamicPanoUrl = targetFilename
+                                    ? resolvePanoramaUrl(targetFilename, projectSettings, { subgrid: targetSubgrid })
+                                    : activePanoramaUrl;
+
+                                  return (
+                                    <PhotoSphereViewerComponent
+                                      ref={dashboardPsvRef}
+                                      key={`pano-psv-${provider}`}
+                                      configUrl={shouldUseMultiRes && dynamicConfigUrl ? dynamicConfigUrl : undefined}
+                                      panoramaUrl={dynamicPanoUrl || undefined}
+                                      initialYaw={panoramaTelemetry.yaw}
+                                      initialFov={projectSettings?.defaultFov}
+                                      onPositionChange={(pos) => {
+                                        // Live heading-cone sync: broadcast 360 camera rotation to the
+                                        // embedded WebGIS map so its sonar/heading cone follows the view.
+                                        // NOTE: React state (panoramaTelemetry) is intentionally NOT updated
+                                        // here — rotation would re-render the entire dashboard. The live
+                                        // heading is published via the heading store (see
+                                        // PhotoSphereViewerComponent) for the HUD readout without App re-render.
+                                        const yawDeg = Math.round(pos.yaw * 100) / 100;
+                                        const pitchDeg = Math.round(pos.pitch * 100) / 100;
+                                        const cameraMsg = {
+                                          type: 'CAMERA_ROTATED',
+                                          source: 'parent',
+                                          yaw: yawDeg,
+                                          pitch: pitchDeg
+                                        };
+                                        const mapIframe = inspectionMapIframeRef.current;
+                                        if (mapIframe?.contentWindow) {
+                                          try {
+                                            mapIframe.contentWindow.postMessage(cameraMsg, '*');
+                                          } catch (_) { }
+                                        }
+                                      }}
+                                      className="w-full h-full"
+                                    />
+                                  );
+                                })()}
+
+                                {/* Dashboard-only Compact Floating HUD */}
+                                <WebGISHUDViewerOverlay
+                                  imageName={activePanoramaFilename || 'Inspection Node'}
+                                  currentIndex={
+                                    (() => {
+                                      const cleanSg = (inspectorSubgrid || selectedSubgridFilter || '').toUpperCase().trim();
+                                      const stations = getStationsForSubgrid(cleanSg, selectedDailyRunId);
+
+                                      // 1. Match by exact filename in the sorted stations list
+                                      const currentClean = (activePanoramaFilename || '').split('/').pop()?.toLowerCase().trim();
+                                      const foundIdx = stations.findIndex(
+                                        (s) => (s.filename || '').split('/').pop()?.toLowerCase().trim() === currentClean
+                                      );
+                                      if (foundIdx >= 0) return foundIdx;
+
+                                      // 2. Fallback: Parse sequence number (1-based -> 0-based)
+                                      const match = (activePanoramaFilename || '').match(/(\d+)\.jpg$/i);
+                                      return match ? Math.max(0, parseInt(match[1], 10) - 1) : 0;
+                                    })()
+                                  }
+                                  totalFrames={
+                                    (() => {
+                                      const cleanSg = (inspectorSubgrid || selectedSubgridFilter || '').toUpperCase().trim();
+                                      const stations = getStationsForSubgrid(cleanSg, selectedDailyRunId);
+                                      if (stations.length > 0) return stations.length;
+                                      const currentItem = dailyData.find(
+                                        (d) => (extractSubgridName(d.subgrid) || '').toUpperCase() === cleanSg
+                                      );
+                                      return currentItem ? getImagesProcessedCount(currentItem) : totalImages;
+                                    })()
+                                  }
+                                  coordinates={inspectorCoords}
+                                  heading={panoramaTelemetry.yaw}
+                                  gpsAccuracy="0.0m"
+                                  equipType={projectSettings?.defaultEquipment || 'MMS 360'}
+                                  onIndexChange={(newIdx: number) => {
+                                    const cleanSg = (inspectorSubgrid || selectedSubgridFilter || '').toUpperCase().trim();
+
+                                    // Retrieve sorted sequential station track
+                                    const stations = getStationsForSubgrid(cleanSg, selectedDailyRunId);
+                                    // With no real station records there is nothing to step to.
+                                    // Synthesising "<subgrid>-0001.jpg" and a bearing here would
+                                    // push an invented panorama into app state, the map iframe
+                                    // and the 360 camera, so refuse instead.
+                                    if (stations.length === 0) return;
+
+                                    // Clamp strictly to array boundaries
+                                    const targetIdx = Math.max(0, Math.min(newIdx, stations.length - 1));
+                                    const targetStation = stations[targetIdx];
+                                    if (!targetStation) return;
+
+                                    const nextFn = targetStation.filename || (targetStation.image_url ? targetStation.image_url.split('?')[0].split('/').pop() || '' : '');
+                                    const nextUrl = nextFn ? resolvePanoramaUrl(nextFn, projectSettings, { subgrid: cleanSg }) : (targetStation?.image_url || '');
+                                    const nextLat = Number(targetStation?.latitude ?? (targetStation as any)?.lat ?? inspectorCoords.lat);
+                                    const nextLng = Number(targetStation?.longitude ?? (targetStation as any)?.lng ?? (targetStation as any)?.lon ?? inspectorCoords.lng);
+                                    // Hold the current heading rather than inventing one, so the
+                                    // camera does not swing to a fabricated bearing.
+                                    const nextBearing = targetStation?.bearing ?? (targetStation as any)?.heading ?? panoramaTelemetry.yaw;
+
+                                    // Preload adjacent stations into browser cache for instant 0ms stepping
+                                    const aheadStation = stations[targetIdx + 1];
+                                    if (aheadStation) {
+                                      const aheadFn = aheadStation.filename || (aheadStation.image_url ? aheadStation.image_url.split('?')[0].split('/').pop() : '');
+                                      const url = aheadFn ? resolvePanoramaUrl(aheadFn, projectSettings, { subgrid: cleanSg }) : aheadStation.image_url;
+                                      if (url) { const img = new Image(); img.src = url; }
+                                    }
+                                    const behindStation = stations[targetIdx - 1];
+                                    if (behindStation) {
+                                      const behindFn = behindStation.filename || (behindStation.image_url ? behindStation.image_url.split('?')[0].split('/').pop() : '');
+                                      const url = behindFn ? resolvePanoramaUrl(behindFn, projectSettings, { subgrid: cleanSg }) : behindStation.image_url;
+                                      if (url) { const img = new Image(); img.src = url; }
+                                    }
+
+                                    // Update Dashboard State
+                                    setActivePanoramaFilename(nextFn);
+                                    setActivePanoramaUrl(nextUrl);
+                                    if (nextLat !== 0 && nextLng !== 0) {
+                                      setInspectorCoords({ lat: nextLat, lng: nextLng });
+                                    }
+
+                                    // Synchronize Map Marker & View
+                                    const pointPayload = {
+                                      filename: nextFn,
+                                      image_url: nextUrl,
+                                      config_url: nextFn ? resolvePanoramaConfigUrl(nextFn, projectSettings, cleanSg) : '',
+                                      subgrid: cleanSg,
+                                      lat: nextLat,
+                                      lng: nextLng,
+                                      lon: nextLng,
+                                      bearing: nextBearing,
+                                      index: targetIdx + 1
+                                    };
+
+                                    // Keep the live 360 camera facing the station heading.
+                                    if (typeof nextBearing === 'number' && isFinite(nextBearing)) {
+                                      dashboardPsvRef.current?.setPosition({ yaw: nextBearing });
+                                    }
+
+                                    const iframes = document.querySelectorAll('iframe');
+                                    iframes.forEach((f) => {
+                                      try {
+                                        f.contentWindow?.postMessage(
+                                          {
+                                            type: 'SET_PANORAMA',
+                                            point: pointPayload
+                                          },
+                                          '*'
+                                        );
+                                        f.contentWindow?.postMessage(
+                                          {
+                                            type: 'MAP_POINT_SELECTED',
+                                            point: pointPayload
+                                          },
+                                          '*'
+                                        );
+                                        f.contentWindow?.postMessage(
+                                          {
+                                            type: 'SET_CAMERA_HEADING',
+                                            heading: nextBearing
+                                          },
+                                          '*'
+                                        );
+                                      } catch (e) { }
+                                    });
+                                  }}
+                                  onZoomIn={() => dashboardPsvRef.current?.zoomIn()}
+                                  onZoomOut={() => dashboardPsvRef.current?.zoomOut()}
+                                  onFullscreen={() => dashboardPsvRef.current?.toggleFullscreen()}
+                                />
+                              </>
+                            ) : (
+                              <div className="w-full h-full bg-card flex flex-col items-center justify-center p-4 text-center select-none">
+                                <Maximize2 size={38} className="text-text-muted mb-2.5 stroke-[1.5]" />
+                                <h4 className="text-xs sm:text-sm font-medium text-text-base tracking-tight">
+                                  Select a location on the map
+                                </h4>
+                                <p className="text-[11px] text-text-muted mt-1">
+                                  to view 360° imagery
+                                </p>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Right: Operator QA Defect Flags Panel */}
+                          <div className="w-full lg:w-56 shrink-0 bg-card rounded-lg border border-subtle p-3 flex flex-col lg:justify-between overflow-y-auto">
+                            <div>
+                              <div className="flex items-center justify-between gap-1 pb-2 border-b border-subtle mb-2.5">
+                                <span className="text-[11px] font-bold text-text-base uppercase tracking-tight flex items-center gap-1.5 whitespace-nowrap">
+                                  <ShieldCheck size={14} className="text-sky-400 shrink-0" />
+                                  <span>OPERATOR QA</span>
+                                </span>
+                                <span className="text-[9px] font-semibold text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20 shrink-0">
+                                  Reviewing
+                                </span>
+                              </div>
+
+                              {/* Info Card */}
+                              <div className="bg-app rounded-md p-2 border border-subtle space-y-1.5 text-[10px] mb-3">
+                                <div className="flex items-center justify-between text-text-muted gap-2">
+                                  <span className="shrink-0">Subgrid:</span>
+                                  <span className="font-semibold text-sky-400 truncate text-right">
+                                    {hasSelectedPoint ? (inspectorSubgrid || selectedSubgridFilter || '-') : '-'}
+                                  </span>
+                                </div>
+                                <div className="flex items-center justify-between text-text-muted gap-2">
+                                  <span className="shrink-0">Equipment:</span>
+                                  <span className="font-medium text-text-base text-right whitespace-nowrap">
+                                    {hasSelectedPoint ? 'MMS 360' : '-'}
+                                  </span>
+                                </div>
+                                <div className="flex items-center justify-between text-text-muted gap-2">
+                                  <span className="shrink-0">Coordinates:</span>
+                                  <span className="font-sans text-text-base text-[9px] whitespace-nowrap text-right">
+                                    {hasSelectedPoint ? `${inspectorCoords.lat.toFixed(4)}, ${inspectorCoords.lng.toFixed(4)}` : '-'}
+                                  </span>
+                                </div>
+                                <div className="flex items-center justify-between text-text-muted gap-2">
+                                  <span className="shrink-0">PIC:</span>
+                                  <span className="font-semibold text-emerald-400 text-right whitespace-nowrap">
+                                    {hasSelectedPoint ? (batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === (inspectorSubgrid || selectedSubgridFilter || '').toUpperCase().trim())?.pic || '-') : '-'}
+                                  </span>
+                                </div>
+                                {isQaLocked && (
+                                  <div className="flex flex-col gap-0.5 pt-1 border-t border-subtle">
+                                    <div className="flex items-center justify-between text-[9.5px]">
+                                      <span className="text-text-muted font-medium">QA Status:</span>
+                                      <span className={`font-bold font-sans ${qaQuestionnaireAnswer === 'yes' ? 'text-amber-400' : 'text-emerald-400'}`}>
+                                        {qaQuestionnaireAnswer === 'yes' ? 'DEFECT CONFIRMED' : 'PASSED'}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center justify-between text-[9px]">
+                                      <span className="text-text-muted">Defect Choices:</span>
+                                      <span className="text-amber-300/90 font-medium truncate text-right max-w-[110px]">
+                                        {Object.entries(selectedQaFlags).filter(([_, v]) => v).map(([k]) => k === 'blurry' ? 'Blurry' : k === 'obstruction' ? 'Obstruction' : 'Bad GPS').join(', ') || 'None'}
+                                      </span>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* QA Action Flags */}
+                              <div className="space-y-1.5">
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="text-[9px] font-bold uppercase tracking-wider text-text-muted block">
+                                    QA Defect Flags
+                                  </span>
+                                  {isGuestUser ? (
+                                    <span className="text-[8.5px] font-semibold text-amber-500/80 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded">Guest</span>
+                                  ) : isQaLocked ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const defaultSg = (dailyData[0]?.subgrid) || (batchLogs[0]?.subgrid) || '';
+                                        const itemKey = activePanoramaFilename || inspectorSubgrid || selectedSubgridFilter || defaultSg;
+                                        const sg = inspectorSubgrid || selectedSubgridFilter || defaultSg;
+                                        saveSubgridQa(itemKey, selectedQaFlags, qaQuestionnaireAnswer, false);
+                                        const targetLog = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === sg.toUpperCase().trim());
+                                        updateDefectStatusInSupabase(itemKey, targetLog?.defects || 0, 'Editing QA', { selectedQaFlags, answer: qaQuestionnaireAnswer, action: 'EDIT_QA', filename: activePanoramaFilename, subgrid: sg });
+                                      }}
+                                      className="text-[8.5px] font-semibold text-sky-400 hover:text-sky-300 bg-sky-500/10 hover:bg-sky-500/20 px-1.5 py-0.5 rounded border border-sky-500/30 flex items-center gap-1 cursor-pointer transition-all shadow-sm active:scale-95"
+                                      title="Click to unlock & edit QA defect choices"
+                                    >
+                                      <Edit2 size={10} /> Edit QA
+                                    </button>
+                                  ) : (
+                                    <span className="text-[8.5px] text-text-muted font-sans">Toggle to Flag</span>
+                                  )}
+                                </div>
+
+                                {isGuestUser ? (
+                                  <div className="space-y-1.5 pointer-events-none opacity-40 select-none">
+                                    {[
+                                      { label: projectSettings.qaFlag1 || 'Blurry Frame', color: 'red' },
+                                      { label: projectSettings.qaFlag2 || 'Lens Obstruction', color: 'amber' },
+                                      { label: projectSettings.qaFlag3 || 'Bad GPS Signal', color: 'sky' },
+                                    ].map(({ label, color }) => (
+                                      <div key={label} className={`w-full py-1.5 px-2 rounded-md text-[10px] font-medium text-left flex items-center justify-between border bg-inner border-subtle text-text-muted cursor-not-allowed`}>
+                                        <span className="flex items-center gap-1.5 truncate">
+                                          <span className={`w-1.5 h-1.5 rounded-full shrink-0 bg-${color}-400`}></span>
+                                          <span className="truncate">{label}</span>
+                                        </span>
+                                        <span className="text-[9px] font-sans shrink-0 ml-1 text-text-muted">Flag</span>
+                                      </div>
+                                    ))}
+                                    <p className="text-[9px] text-amber-500/70 text-center pt-1 italic">QA editing disabled for guests</p>
+                                  </div>
+                                ) : (
+                                  <>
+                                    {(!isQaLocked || selectedQaFlags.blurry) && (
+                                      <button
+                                        type="button"
+                                        disabled={isQaLocked}
+                                        onClick={() => {
+                                          if (isQaLocked) return;
+                                          const defaultSg = (dailyData[0]?.subgrid) || (batchLogs[0]?.subgrid) || '';
+                                          const itemKey = activePanoramaFilename || inspectorSubgrid || selectedSubgridFilter || defaultSg;
+                                          const sg = inspectorSubgrid || selectedSubgridFilter || defaultSg;
+                                          const nextFlags = { ...selectedQaFlags, blurry: !selectedQaFlags.blurry };
+                                          saveSubgridQa(itemKey, nextFlags, qaQuestionnaireAnswer, false);
+                                          const targetLog = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === sg.toUpperCase().trim());
+                                          updateDefectStatusInSupabase(itemKey, targetLog?.defects || 0, 'Reviewing', { selectedQaFlags: nextFlags, flag: projectSettings.qaFlag1 || 'Blurry Frame', filename: activePanoramaFilename, subgrid: sg });
+                                        }}
+                                        className={`w-full py-1.5 px-2 rounded-md text-[10px] font-medium text-left flex items-center justify-between transition-all border ${isQaLocked ? 'opacity-90 cursor-default' : 'cursor-pointer active:scale-95'
+                                          } ${selectedQaFlags.blurry
+                                            ? 'bg-red-500/25 border-red-500 text-red-300 ring-1 ring-red-500/50 shadow-md'
+                                            : 'bg-inner hover:bg-red-500/10 hover:border-red-500/50 border-subtle text-text-base hover:text-red-400'
+                                          }`}
+                                      >
+                                        <span className="flex items-center gap-1.5 truncate">
+                                          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${selectedQaFlags.blurry ? 'bg-red-300 ring-2 ring-red-400' : 'bg-red-400'}`}></span>
+                                          <span className="truncate">{projectSettings.qaFlag1 || 'Blurry Frame'}</span>
+                                        </span>
+                                        <span className={`text-[9px] font-sans shrink-0 ml-1 ${selectedQaFlags.blurry ? 'text-red-300 font-bold' : 'text-text-muted group-hover:text-red-400'}`}>Flag</span>
+                                      </button>
+                                    )}
+
+                                    {(!isQaLocked || selectedQaFlags.obstruction) && (
+                                      <button
+                                        type="button"
+                                        disabled={isQaLocked}
+                                        onClick={() => {
+                                          if (isQaLocked) return;
+                                          const defaultSg = (dailyData[0]?.subgrid) || (batchLogs[0]?.subgrid) || '';
+                                          const itemKey = activePanoramaFilename || inspectorSubgrid || selectedSubgridFilter || defaultSg;
+                                          const sg = inspectorSubgrid || selectedSubgridFilter || defaultSg;
+                                          const nextFlags = { ...selectedQaFlags, obstruction: !selectedQaFlags.obstruction };
+                                          saveSubgridQa(itemKey, nextFlags, qaQuestionnaireAnswer, false);
+                                          const targetLog = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === sg.toUpperCase().trim());
+                                          updateDefectStatusInSupabase(itemKey, targetLog?.defects || 0, 'Reviewing', { selectedQaFlags: nextFlags, flag: projectSettings.qaFlag2 || 'Lens Obstruction', filename: activePanoramaFilename, subgrid: sg });
+                                        }}
+                                        className={`w-full py-1.5 px-2 rounded-md text-[10px] font-medium text-left flex items-center justify-between transition-all border ${isQaLocked ? 'opacity-90 cursor-default' : 'cursor-pointer active:scale-95'
+                                          } ${selectedQaFlags.obstruction
+                                            ? 'bg-amber-500/25 border-amber-500 text-amber-300 ring-1 ring-amber-500/50 shadow-md'
+                                            : 'bg-inner hover:bg-amber-500/10 hover:border-amber-500/50 border-subtle text-text-base hover:text-amber-400'
+                                          }`}
+                                      >
+                                        <span className="flex items-center gap-1.5 truncate">
+                                          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${selectedQaFlags.obstruction ? 'bg-amber-300 ring-2 ring-amber-400' : 'bg-amber-400'}`}></span>
+                                          <span className="truncate">{projectSettings.qaFlag2 || 'Lens Obstruction'}</span>
+                                        </span>
+                                        <span className={`text-[9px] font-sans shrink-0 ml-1 ${selectedQaFlags.obstruction ? 'text-amber-300 font-bold' : 'text-text-muted group-hover:text-amber-400'}`}>Flag</span>
+                                      </button>
+                                    )}
+
+                                    {(!isQaLocked || selectedQaFlags.badGps) && (
+                                      <button
+                                        type="button"
+                                        disabled={isQaLocked}
+                                        onClick={() => {
+                                          if (isQaLocked) return;
+                                          const defaultSg = (dailyData[0]?.subgrid) || (batchLogs[0]?.subgrid) || '';
+                                          const itemKey = activePanoramaFilename || inspectorSubgrid || selectedSubgridFilter || defaultSg;
+                                          const sg = inspectorSubgrid || selectedSubgridFilter || defaultSg;
+                                          const nextFlags = { ...selectedQaFlags, badGps: !selectedQaFlags.badGps };
+                                          saveSubgridQa(itemKey, nextFlags, qaQuestionnaireAnswer, false);
+                                          const targetLog = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === sg.toUpperCase().trim());
+                                          updateDefectStatusInSupabase(itemKey, targetLog?.defects || 0, 'Reviewing', { selectedQaFlags: nextFlags, flag: projectSettings.qaFlag3 || 'Bad GPS Signal', filename: activePanoramaFilename, subgrid: sg });
+                                        }}
+                                        className={`w-full py-1.5 px-2 rounded-md text-[10px] font-medium text-left flex items-center justify-between transition-all border ${isQaLocked ? 'opacity-90 cursor-default' : 'cursor-pointer active:scale-95'
+                                          } ${selectedQaFlags.badGps
+                                            ? 'bg-sky-500/25 border-sky-500 text-sky-300 ring-1 ring-sky-500/50 shadow-md'
+                                            : 'bg-inner hover:bg-sky-500/10 hover:border-sky-500/50 border-subtle text-text-base hover:text-sky-400'
+                                          }`}
+                                      >
+                                        <span className="flex items-center gap-1.5 truncate">
+                                          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${selectedQaFlags.badGps ? 'bg-sky-300 ring-2 ring-sky-400' : 'bg-sky-400'}`}></span>
+                                          <span className="truncate">{projectSettings.qaFlag3 || 'Bad GPS Signal'}</span>
+                                        </span>
+                                        <span className={`text-[9px] font-sans shrink-0 ml-1 ${selectedQaFlags.badGps ? 'text-sky-300 font-bold' : 'text-text-muted group-hover:text-sky-400'}`}>Flag</span>
+                                      </button>
+                                    )}
+                                  </>
+                                )}
+                              </div>
+
+                              {/* QA Questionnaire Box */}
+                              {!isGuestUser && !isQaLocked && (selectedQaFlags.blurry || selectedQaFlags.obstruction || selectedQaFlags.badGps) && (
+                                <div className="bg-app rounded-md p-2 border border-subtle space-y-1.5 text-[10px] mt-2.5 animate-in fade-in slide-in-from-top-2 duration-200">
+                                  <div className="flex items-center justify-between text-text-base font-medium">
+                                    <span>Update Status?</span>
+                                    <span className="text-[9px] text-text-muted font-sans">
+                                      {qaQuestionnaireAnswer === 'yes' ? 'DEFECT CONFIRMED' : qaQuestionnaireAnswer === 'no' ? 'NO DEFECT' : 'SELECT RESPONSE'}
+                                    </span>
+                                  </div>
+                                  <div className="grid grid-cols-2 gap-1.5 pt-0.5">
+                                    <button
+                                      type="button"
+                                      disabled={isQaLocked}
+                                      onClick={() => {
+                                        const defaultSg = (dailyData[0]?.subgrid) || (batchLogs[0]?.subgrid) || '';
+                                        const itemKey = activePanoramaFilename || inspectorSubgrid || selectedSubgridFilter || defaultSg;
+                                        const sg = inspectorSubgrid || selectedSubgridFilter || defaultSg;
+                                        saveSubgridQa(itemKey, selectedQaFlags, 'yes', true);
+                                        const targetLog = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === sg.toUpperCase().trim());
+                                        const newDefects = (targetLog?.defects || 0) + 1;
+                                        setBatchLogs(prev => prev.map(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === sg.toUpperCase().trim() ? { ...b, defects: newDefects } : b));
+                                        updateDefectStatusInSupabase(itemKey, newDefects, 'Flagged (Defect Confirmed)', { selectedQaFlags, answer: 'YES', filename: activePanoramaFilename, subgrid: sg });
+                                      }}
+                                      className={`py-1.5 px-2 rounded border text-[10px] font-bold text-center transition-all flex items-center justify-center gap-1.5 ${isQaLocked ? 'cursor-not-allowed opacity-90' : 'cursor-pointer active:scale-95'
+                                        } ${qaQuestionnaireAnswer === 'yes'
+                                          ? 'bg-emerald-500 text-text-base border-emerald-400 shadow-md ring-1 ring-emerald-400/50'
+                                          : 'bg-emerald-600/20 hover:bg-emerald-600/35 text-emerald-400 border-emerald-500/30'
+                                        }`}
+                                    >
+                                      <CheckCircle size={11} className="shrink-0" /> YES
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      disabled={isQaLocked}
+                                      onClick={() => {
+                                        const defaultSg = (dailyData[0]?.subgrid) || (batchLogs[0]?.subgrid) || '';
+                                        const itemKey = activePanoramaFilename || inspectorSubgrid || selectedSubgridFilter || defaultSg;
+                                        const sg = inspectorSubgrid || selectedSubgridFilter || defaultSg;
+                                        saveSubgridQa(itemKey, selectedQaFlags, 'no', true);
+                                        const targetLog = batchLogs.find(b => (extractSubgridName(b.subgrid || b.imageFilename) || '').toUpperCase().trim() === sg.toUpperCase().trim());
+                                        const currentDefects = targetLog?.defects || 0;
+                                        updateDefectStatusInSupabase(itemKey, currentDefects, 'Passed (No Defect)', { selectedQaFlags, answer: 'NO', filename: activePanoramaFilename, subgrid: sg });
+                                      }}
+                                      className={`py-1.5 px-2 rounded border text-[10px] font-bold text-center transition-all flex items-center justify-center gap-1.5 ${isQaLocked ? 'cursor-not-allowed opacity-90' : 'cursor-pointer active:scale-95'
+                                        } ${qaQuestionnaireAnswer === 'no'
+                                          ? 'bg-rose-500 text-text-base border-rose-400 shadow-md ring-1 ring-rose-400/50'
+                                          : 'bg-rose-600/20 hover:bg-rose-600/35 text-rose-400 border-rose-500/30'
+                                        }`}
+                                    >
+                                      <X size={11} className="shrink-0" /> NO
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
-            </div>
-          </div>
-          {currentPage === 'project' ? (
-            <ProjectWorkspace
-              key="workspace-project"
-              isGuestUser={isGuestUser}
-              translate={t}
-              activeProject={activeProject}
-              projectList={projectList}
-              projectsLoaded={projectsLoaded}
-              totalKm={totalKm}
-              projectSettings={projectSettings}
-              onLoadProject={handleLoadProject}
-              onCreateProject={handleCreateProject}
-              onUpdateProject={handleUpdateProject}
-              onRefreshProjects={refreshProjects}
-              onDeleteProject={handleDeleteProject}
-              onBackToDashboard={() => goToWorkspace('dashboard')}
-            />
-          ) : currentPage === 'data' ? (
-            <div className="flex flex-col md:flex-1 md:min-h-0 md:overflow-hidden animate-in fade-in duration-500">
-              <DataManagementPage
-                dailyData={dailyData}
-                setDailyData={setDailyData}
-                batchLogs={batchLogs}
-                setBatchLogs={setBatchLogs}
-                layerCatalog={layerCatalog}
-                setLayerCatalog={setLayerCatalog}
-                onBackToDashboard={() => goToWorkspace('dashboard')}
-                mapRefreshKey={mapRefreshKey}
-                onRefreshMap={handleRefreshMap}
+              {currentPage === 'project' ? (
+                <ProjectWorkspace
+                  key="workspace-project"
+                  isGuestUser={isGuestUser}
+                  translate={t}
+                  activeProject={activeProject}
+                  projectList={projectList}
+                  projectsLoaded={projectsLoaded}
+                  totalKm={totalKm}
+                  projectSettings={projectSettings}
+                  onLoadProject={handleLoadProject}
+                  onCreateProject={handleCreateProject}
+                  onUpdateProject={handleUpdateProject}
+                  onRefreshProjects={refreshProjects}
+                  onDeleteProject={handleDeleteProject}
+                  onBackToDashboard={() => goToWorkspace('dashboard')}
+                />
+              ) : currentPage === 'data' ? (
+                <div className="flex flex-col md:flex-1 md:min-h-0 md:overflow-hidden animate-in fade-in duration-500">
+                  <DataManagementPage
+                    dailyData={dailyData}
+                    setDailyData={setDailyData}
+                    batchLogs={batchLogs}
+                    setBatchLogs={setBatchLogs}
+                    layerCatalog={layerCatalog}
+                    setLayerCatalog={setLayerCatalog}
+                    onBackToDashboard={() => goToWorkspace('dashboard')}
+                    mapRefreshKey={mapRefreshKey}
+                    onRefreshMap={handleRefreshMap}
+                    authSession={authSession}
+                    onSignOut={handleSignOut}
+                    addNotification={addNotification}
+                    addAuditLog={addAuditLog}
+                    isGuestUser={isGuestUser}
+                    projectSettings={projectSettings}
+                    qaSubgridRecords={qaSubgridRecords}
+                    translate={t}
+                    initialTab={dataManagementTab}
+                    initialSearch={dataManagementSearch}
+                    canHandleApprovals={canHandleApprovals}
+                  />
+                </div>
+              ) : currentPage === 'settings' ? (
+                <div className="flex flex-col md:flex-1 md:min-h-0 md:overflow-hidden animate-in fade-in duration-500">
+                  <div className="flex-1 min-h-0 md:overflow-y-auto">
+                    <AdminSettingsView
+                      projectSettings={settingsDraft as any}
+                      setProjectSettings={handleSettingsDraftChange as any}
+                      committedSettings={projectSettings as any}
+                      themeMode={themeMode}
+                      dailyData={dailyData}
+                      batchLogs={batchLogs}
+                      auditLogs={auditLogs}
+                      onSaveAllSettings={handleSaveAllSettings}
+                      onRefreshMap={handleRefreshMap}
+                      onGeneratePdfReport={generateExecutivePdfReport}
+                      authSession={authSession}
+                      addNotification={addNotification}
+                      addAuditLog={addAuditLog}
+                    />
+                  </div>
+                </div>
+              ) : null}
+              <WorkspaceRouter
+                currentPage={currentPage}
+                projectSettings={projectSettings}
+                setProjectSettings={setProjectSettings}
                 authSession={authSession}
-                onSignOut={handleSignOut}
+                isGuestUser={isGuestUser}
                 addNotification={addNotification}
                 addAuditLog={addAuditLog}
-                isGuestUser={isGuestUser}
-                projectSettings={projectSettings}
-                qaSubgridRecords={qaSubgridRecords}
+                goToWorkspace={goToWorkspace}
                 translate={t}
-                initialTab={dataManagementTab}
-                initialSearch={dataManagementSearch}
-                canHandleApprovals={canHandleApprovals}
+                storageFocusPath={storageFocusPath}
+                openStorageAtPath={openStorageAtPath}
+                activeBatchLogs={activeBatchLogs}
+                dailyData={dailyData}
+                handleRefreshMap={handleRefreshMap}
+                auditLogs={auditLogs}
+                allKnownDefects={allKnownDefects}
               />
-            </div>
-          ) : currentPage === 'settings' ? (
-            <div className="flex flex-col md:flex-1 md:min-h-0 md:overflow-hidden animate-in fade-in duration-500">
-              <div className="flex-1 min-h-0 md:overflow-y-auto">
-                <AdminSettingsView
-                  projectSettings={settingsDraft as any}
-                  setProjectSettings={handleSettingsDraftChange as any}
-                  committedSettings={projectSettings as any}
-                  themeMode={themeMode}
-                  dailyData={dailyData}
-                  batchLogs={batchLogs}
-                  auditLogs={auditLogs}
-                  onSaveAllSettings={handleSaveAllSettings}
-                  onRefreshMap={handleRefreshMap}
-                  onGeneratePdfReport={generateExecutivePdfReport}
-                  authSession={authSession}
-                  addNotification={addNotification}
-                  addAuditLog={addAuditLog}
-                />
-              </div>
-            </div>
-          ) : null}
-            <WorkspaceRouter
-              currentPage={currentPage}
-              projectSettings={projectSettings}
-              setProjectSettings={setProjectSettings}
-              authSession={authSession}
-              isGuestUser={isGuestUser}
-              addNotification={addNotification}
-              addAuditLog={addAuditLog}
-              goToWorkspace={goToWorkspace}
-              translate={t}
-              storageFocusPath={storageFocusPath}
-              openStorageAtPath={openStorageAtPath}
-              activeBatchLogs={activeBatchLogs}
-              dailyData={dailyData}
-              handleRefreshMap={handleRefreshMap}
-              auditLogs={auditLogs}
-              allKnownDefects={allKnownDefects}
-            />
-          </React.Suspense>
+            </React.Suspense>
           </WorkspaceErrorBoundary>
         </main>
 
@@ -4102,7 +4101,7 @@ export default function App() {
           onClose={() => setImagesListModal(null)}
         />
 
-                <AppTourGuide
+        <AppTourGuide
           tourStep={tourStep}
           setTourStep={setTourStep}
           tourFirstRunOpen={tourFirstRunOpen}
@@ -4139,45 +4138,45 @@ export default function App() {
         {
           isQAQCRunnerModalOpen && (
             <React.Suspense fallback={<ContentLoading label="Loading QA/QC Workbench..." variant="spinner" />}>
-            <QAQCWorkbench
-              isOpen={isQAQCRunnerModalOpen}
-              workerState={qaqcWorkerState}
-              dailyData={dailyData}
-              batchLogs={batchLogs}
-              projectSettings={projectSettings}
-              qaqcAuditRuns={qaqcAuditRuns}
-              defectsList={allKnownDefects}
-              initialSubgrid={qaqcWorkbenchSubgrid || selectedSubgridFilter || qaqcWorkerState.subgrid || undefined}
-              initialRunId={selectedDailyRunId || qaqcWorkerState.runId || undefined}
-              activeUserName={activeAuthUserName || (authSession?.user?.email ? authSession.user.email.split('@')[0] : '') || 'Operator'}
-              surveyDate={selectedDateFilter || undefined}
-              getStationsForSubgrid={getStationsForSubgrid}
-              onStartInspection={handleStartInspectionFromWorkbench}
-              onPause={pauseQAQCInspection}
-              onResume={resumeQAQCInspection}
-              onAbort={abortQAQCInspection}
-              onSignOffAndPublish={async (sg: string, runId?: string | null) => {
-                setDailyData((prev: any[]) => prev.map((d: any) => {
-                  const isMatch = (runId && getItemId(d) === runId) || (extractSubgridName(d.subgrid || '')?.toUpperCase() === sg.toUpperCase());
-                  return isMatch ? { ...d, publishToWebGIS: 'yes', qaqcStatus: 'QA/QC Approved' } : d;
-                }));
-                try {
-                  const cleanSg = sg.replace(/\s+/g, '_');
-                  await supabase.from(projectSettings?.stagingTable || 'data_staging')
-                    .update({ publish_to_webgis: 'yes', qa_status: 'QA/QC Approved', updated_at: new Date().toISOString() })
-                    .ilike('subgrid', cleanSg);
-                } catch (err) {
-                  console.warn('Sign-off push to Supabase failed:', err);
-                }
-              }}
-              onClose={() => {
-                setIsQAQCRunnerModalOpen(false);
-              }}
-              onOpenDefectsGallery={(sg) => {
-                setSelectedDefectSubgrid(sg);
-                setIsDefectsGalleryOpen(true);
-              }}
-            />
+              <QAQCWorkbench
+                isOpen={isQAQCRunnerModalOpen}
+                workerState={qaqcWorkerState}
+                dailyData={dailyData}
+                batchLogs={batchLogs}
+                projectSettings={projectSettings}
+                qaqcAuditRuns={qaqcAuditRuns}
+                defectsList={allKnownDefects}
+                initialSubgrid={qaqcWorkbenchSubgrid || selectedSubgridFilter || qaqcWorkerState.subgrid || undefined}
+                initialRunId={selectedDailyRunId || qaqcWorkerState.runId || undefined}
+                activeUserName={activeAuthUserName || (authSession?.user?.email ? authSession.user.email.split('@')[0] : '') || 'Operator'}
+                surveyDate={selectedDateFilter || undefined}
+                getStationsForSubgrid={getStationsForSubgrid}
+                onStartInspection={handleStartInspectionFromWorkbench}
+                onPause={pauseQAQCInspection}
+                onResume={resumeQAQCInspection}
+                onAbort={abortQAQCInspection}
+                onSignOffAndPublish={async (sg: string, runId?: string | null) => {
+                  setDailyData((prev: any[]) => prev.map((d: any) => {
+                    const isMatch = (runId && getItemId(d) === runId) || (extractSubgridName(d.subgrid || '')?.toUpperCase() === sg.toUpperCase());
+                    return isMatch ? { ...d, publishToWebGIS: 'yes', qaqcStatus: 'QA/QC Approved' } : d;
+                  }));
+                  try {
+                    const cleanSg = sg.replace(/\s+/g, '_');
+                    await supabase.from(projectSettings?.stagingTable || 'data_staging')
+                      .update({ publish_to_webgis: 'yes', qa_status: 'QA/QC Approved', updated_at: new Date().toISOString() })
+                      .ilike('subgrid', cleanSg);
+                  } catch (err) {
+                    console.warn('Sign-off push to Supabase failed:', err);
+                  }
+                }}
+                onClose={() => {
+                  setIsQAQCRunnerModalOpen(false);
+                }}
+                onOpenDefectsGallery={(sg) => {
+                  setSelectedDefectSubgrid(sg);
+                  setIsDefectsGalleryOpen(true);
+                }}
+              />
             </React.Suspense>
           )
         }

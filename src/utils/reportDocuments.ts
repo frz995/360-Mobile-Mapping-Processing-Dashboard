@@ -464,7 +464,7 @@ export function buildSubgridReportHtml(analytics: SurveyAnalytics, meta?: Report
         <thead><tr><th>Metric</th><th>Figure</th><th>Remark</th></tr></thead>
         <tbody>
           <tr><td>Subgrids</td><td><strong>${t.subgrids}</strong></td><td class="sub">survey parcels in scope</td></tr>
-          <tr><td>Published</td><td><strong>${t.published}</strong></td><td class="sub">reconciled and live</td></tr>
+          <tr><td>Published</td><td><strong>${t.published}</strong></td><td class="sub">reconciled and published</td></tr>
           <tr><td>Staged</td><td><strong>${t.staged}</strong></td><td class="sub">awaiting publication</td></tr>
           <tr><td>Partial</td><td><strong>${t.partial}</strong></td><td class="sub">incomplete delivery</td></tr>
           <tr><td>Frames produced</td><td><strong>${t.frames.toLocaleString()}</strong></td><td class="sub">against ${t.captureFrames.toLocaleString()} RAW captures</td></tr>

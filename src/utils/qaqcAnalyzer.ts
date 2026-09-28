@@ -124,7 +124,7 @@ export function detectBadGps(
   if (!currentPoint) {
     return {
       isBadGps: true,
-      reason: 'No point telemetry provided (null station)',
+      reason: 'No point readings provided (null station)',
       distanceMeters: 0
     };
   }

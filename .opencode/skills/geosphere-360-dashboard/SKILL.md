@@ -57,10 +57,13 @@ for release-sized changes.
   switch on `currentPage`, and the dashboard home. Search it before assuming a new file.
 - `src/workspaces.tsx` — `WORKSPACES` / `WORKSPACE_CATEGORIES` metadata + `WorkspacePlaceholder`.
 - `src/workspaces.tsx`, `src/utils/*Router*`, `src/types/navigation.ts` — workspace keys/routing.
-- `src/components/` — `dashboard/`, `production/` (incl. `production/processing/`),
+- `src/components/` — `dashboard/`, `production/` (incl. `production/hub/`, `production/analytics/`,
+  `production/storage/`),
   `roadAnalysis/`, `operations/`, `reports/`, `common/`, `modals/`, `boundary/`, `showcase/`.
-  Workspace roots: `ProjectWorkspace`, `ProcessingCenterWorkspace`, `ImageProductionWorkspace`,
-  `AdministrationWorkspace`, `AdminSettingsView`, `DataManagementPage`, `RoadAnalysisWorkspace`.
+  Workspace roots: `ProjectWorkspace`, `ProductionHubWorkspace` (serves the `production`,
+  `processing` and `lineage` keys), `AdministrationWorkspace`, `AdminSettingsView`,
+  `DataManagementPage`, `RoadAnalysisWorkspace`, `AnalyticsWorkspace`, `ReportsWorkspace`,
+  `NASStorageWorkspace`, `PcMonitoringStation`.
 - `src/services/` — `supabase.ts` (source of truth, storage verification), `projects.ts`,
   `productionApi.ts`, `roadExtraction.ts`, `storageInventory.ts`.
 - `src/hooks/`, `src/workers/qaqc.worker.ts`, `src/lib/` (`authz`, `i18n`, `quiet`, `retry`, `sentry`).
@@ -88,8 +91,8 @@ Rules live in `src/index.css` (~L1145+). Additive only — never unscope a rule 
 sitting inside a height-bounded `flex-1 min-h-0` chain will clip its content and block
 `main` from scrolling to it (symptom: "half the content, can't scroll"). Fix by making
 the clip mobile-only (`overflow-hidden` → `md:overflow-hidden`), and add `min-w-0` so flex
-children can shrink instead of forcing overflow. Known converted cards: `ProcessingCenterWorkspace`,
-`ImageProductionWorkspace`, `AdministrationWorkspace`, `AdminSettingsView`.
+children can shrink instead of forcing overflow. Known converted cards:
+`ProductionHubWorkspace`, `AdministrationWorkspace`, `AdminSettingsView`.
 
 **Dense tables — don't rely on shrinking.** Wrap the table in `overflow-x-auto` (or
 `overflow-auto` + `max-h-[60vh]` for tall multi-row tables) and give the `<table>` a

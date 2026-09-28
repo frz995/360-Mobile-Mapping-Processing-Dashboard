@@ -15,7 +15,7 @@ describe('detectBadGps', () => {
   it('flags null current point', () => {
     const r = detectBadGps(null)
     expect(r.isBadGps).toBe(true)
-    expect(r.reason).toMatch(/No point telemetry/)
+    expect(r.reason).toMatch(/No point readings/)
   })
 
   it('flags empty current point', () => {

@@ -3,7 +3,7 @@
 //
 // Hosts a dedicated print-preview map (reusing <RoadAnalysisMap /> for
 // 100% identical overlays) that the user can fit to:
-//   1. The CURRENT LIVE MAP EXTENT  (reads the live map bounds via a ref)
+//   1. The CURRENT MAP EXTENT  (reads the live map bounds via a ref)
 //   2. A USER-DRAWN BOUNDING BOX   (custom pointer interaction + temp layer)
 //   3. THE FULL SELECTED REGION    (district / points / roads union)
 // Then captures the preview canvas at A4-landscape resolution and opens a
@@ -337,7 +337,7 @@ export const RoadAnalysisPrintPanel: React.FC<RoadAnalysisPrintPanelProps> = ({
       onNotify?.({
         id: `print-live-missing-${Date.now()}`,
         title: 'Print Extent',
-        message: 'The live map is not ready yet. Wait a moment and try again.',
+        message: 'The map is not ready yet. Wait a moment and try again.',
         category: 'WARNING',
         read: false
       });
@@ -479,7 +479,7 @@ export const RoadAnalysisPrintPanel: React.FC<RoadAnalysisPrintPanelProps> = ({
     <div class="notes-box">
       <div class="notes-title">Project Notes</div>
       Road network plan compared against captured Panotrack survey points per subgrid allocation.
-      Boundary, road-plan and imported-layer symbology reflects the live workspace style settings.
+      Boundary, road-plan and imported-layer symbology reflects the current workspace style settings.
     </div>
   </div>
 
@@ -574,7 +574,7 @@ export const RoadAnalysisPrintPanel: React.FC<RoadAnalysisPrintPanelProps> = ({
 
   return (
     <div className="flex-1 min-h-0 relative overflow-hidden flex flex-col">
-      {/* Print Preview Map (reuses the same overlay renderer as the live map) */}
+      {/* Print Preview Map (reuses the same overlay renderer as the main map) */}
       <div className="flex-1 min-h-0 relative overflow-hidden">
         <RoadAnalysisMap
           active
@@ -631,7 +631,7 @@ export const RoadAnalysisPrintPanel: React.FC<RoadAnalysisPrintPanelProps> = ({
           >
             <Info size={11} className="text-sky-400 shrink-0" />
             <span>
-              {mode === 'live' ? 'Live extent' : mode === 'draw' ? 'Drawn bbox' : 'Full region'} ·{' '}
+              {mode === 'live' ? 'Current extent' : mode === 'draw' ? 'Drawn bbox' : 'Full region'} ·{' '}
               {printBbox[0].toFixed(4)}, {printBbox[1].toFixed(4)} → {printBbox[2].toFixed(4)}, {printBbox[3].toFixed(4)}
             </span>
           </div>

@@ -253,6 +253,79 @@ function parseXmlString(text: string): Document {
 }
 
 /**
+ * Strip oversized "envelope" polygon features from a GeoJSON FeatureCollection.
+ * Grid catalog layers often include a single large bounding-box polygon that
+ * wraps all the grid cells — this causes a visible rectangle artifact on the map.
+ */
+export function stripEnvelopeFeatures(fc: any): any {
+  if (!fc || fc.type !== 'FeatureCollection' || !Array.isArray(fc.features)) return fc;
+  const polyFeats = fc.features.filter((f: any) => {
+    const gt = f?.geometry?.type;
+    return gt === 'Polygon' || gt === 'MultiPolygon';
+  });
+  if (polyFeats.length < 2) return fc; // single polygon cannot be an envelope wrapping other features
+
+  // Compute bbox area for each polygon feature
+  let fcMinX = Infinity, fcMinY = Infinity, fcMaxX = -Infinity, fcMaxY = -Infinity;
+  const areas: { feat: any; area: number; bbox: [number, number, number, number] }[] = [];
+
+  for (const f of polyFeats) {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    const walkCoords = (coords: any) => {
+      if (!Array.isArray(coords)) return;
+      if (typeof coords[0] === 'number') {
+        if (coords[0] < minX) minX = coords[0];
+        if (coords[0] > maxX) maxX = coords[0];
+        if (coords[1] < minY) minY = coords[1];
+        if (coords[1] > maxY) maxY = coords[1];
+        return;
+      }
+      for (const c of coords) walkCoords(c);
+    };
+    walkCoords(f.geometry.coordinates);
+    if (minX < fcMinX) fcMinX = minX;
+    if (maxX > fcMaxX) fcMaxX = maxX;
+    if (minY < fcMinY) fcMinY = minY;
+    if (maxY > fcMaxY) fcMaxY = maxY;
+    const a = (maxX - minX) * (maxY - minY);
+    areas.push({ feat: f, area: Number.isFinite(a) ? a : 0, bbox: [minX, minY, maxX, maxY] });
+  }
+
+  // Median area
+  const sorted = areas.map((a) => a.area).sort((a, b) => a - b);
+  const median = sorted[Math.floor(sorted.length / 2)];
+  if (median <= 0) return fc;
+
+  const fcW = fcMaxX - fcMinX;
+  const fcH = fcMaxY - fcMinY;
+  const totalArea = fcW * fcH;
+
+  // Identify envelope features:
+  // 1. Area > 2.5× median (an envelope feature wrapping multiple grid cells)
+  // 2. OR feature bbox covers > 80% of the entire dataset extent
+  // 3. OR feature width and height both span >= 95% of the total dataset extent
+  const envelopeSet = new Set<any>();
+  for (const { feat, area, bbox } of areas) {
+    const [minX, minY, maxX, maxY] = bbox;
+    const w = maxX - minX;
+    const h = maxY - minY;
+    if (area > median * 2.5) {
+      envelopeSet.add(feat);
+    } else if (totalArea > 0 && area > totalArea * 0.8) {
+      envelopeSet.add(feat);
+    } else if (fcW > 0 && fcH > 0 && w >= fcW * 0.95 && h >= fcH * 0.95) {
+      envelopeSet.add(feat);
+    }
+  }
+  if (envelopeSet.size === 0) return fc;
+
+  return {
+    ...fc,
+    features: fc.features.filter((f: any) => !envelopeSet.has(f))
+  };
+}
+
+/**
  * Single-pass import statistics: bounding box, geometry classification, line
  * count, and total line kilometres are all computed in ONE traversal of the
  * GeoJSON tree, WITHOUT materializing a duplicate copy of the coordinates for
@@ -779,6 +852,9 @@ export function buildImportResult(
 
   // Automatic coordinate system detection and Web Mercator reprojection
   geojson = normalizeGeoJsonCoordinates(geojson, warnings);
+
+  // Strip oversized envelope polygon features (outer boundary rectangle wrapping grid cells)
+  geojson = stripEnvelopeFeatures(geojson);
 
   const features = Array.isArray(geojson.features) ? geojson.features : [];
   if (features.length === 0) {

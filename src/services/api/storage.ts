@@ -319,7 +319,7 @@ export async function testCloudflareStorageHealth(
       latencyMs: 0,
       imageUrl: '',
       corsOk: false,
-      error: 'A real frame filename is required to probe storage. Nothing is probed, because a made-up name would return 404 for a healthy bucket.'
+      error: 'A verified frame filename is required to probe storage. Nothing is probed, because a made-up name would return 404 for a healthy bucket.'
     };
   }
   const testSettings = {

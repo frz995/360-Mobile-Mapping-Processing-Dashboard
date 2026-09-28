@@ -5,7 +5,6 @@ import {
   AlertTriangle,
   Download,
   Search,
-  Sparkles,
   ArrowRight,
   Layers,
   FolderOpen,
@@ -164,7 +163,6 @@ export interface IntakePairingStationProps {
   setTotalFrames: (n: number) => void;
   pairedRecords: PairedFrameRecord[];
   setPairedRecords: (records: PairedFrameRecord[]) => void;
-  onAdvanceToNextStation: () => void;
   addNotification?: (item: any) => void;
   addAuditLog?: (type: any, title: string, details: string, status?: any) => void;
   translate?: (key: string) => string;
@@ -185,7 +183,6 @@ export const IntakePairingStation: React.FC<IntakePairingStationProps> = ({
   setTotalFrames,
   pairedRecords,
   setPairedRecords,
-  onAdvanceToNextStation,
   addNotification,
   addAuditLog,
   sessionSource,
@@ -197,13 +194,15 @@ export const IntakePairingStation: React.FC<IntakePairingStationProps> = ({
   const [hasScannedSubgrids, setHasScannedSubgrids] = useState<boolean>(false);
   const [isCustomSubgrid, setIsCustomSubgrid] = useState<boolean>(() => !DEFAULT_AVAILABLE_SUBGRIDS.some((s) => s.code === subgrid));
   const [isScanningFolders, setIsScanningFolders] = useState<boolean>(false);
+  const [isLoadingPairing, setIsLoadingPairing] = useState<boolean>(false);
+  const [pairingProgressText, setPairingProgressText] = useState<string>('Loading & pairing records...');
   const [subgridFolders, setSubgridFolders] = useState<SurveyFolderMeta[]>(() => getFoldersForSubgrid(subgrid));
   const [selectedFolderId, setSelectedFolderId] = useState<string>(() => sessionSource?.selectedFolderId || '__none__');
   const [customFolderName, setCustomFolderName] = useState<string>(() => sessionSource?.customFolderName || '');
   const [rawFolderPath, setRawFolderPath] = useState<string>(
     `/03_Stitching/Project-OUT/Grid 1/${subgrid || '{subgrid}'}/{survey-run}/`
   );
-  // The metadata CSV name is only ever set from a live NAS scan or a verified
+  // The metadata CSV name is only ever set from a current NAS scan or a verified
   // disk read below — never from the session cache, which can name a file that
   // no longer exists.
   const [csvFileName, setCsvFileName] = useState<string>('');
@@ -474,6 +473,8 @@ export const IntakePairingStation: React.FC<IntakePairingStationProps> = ({
   // Helper to read actual survey CSV from NAS 01_Metadata. `silent` skips the
   // outcome notification (used by the session-restore auto-refresh).
   const readSurveyCsv = async (sg: string, folderId: string, csvName: string, silent = false): Promise<boolean> => {
+    setIsLoadingPairing(true);
+    setPairingProgressText(`Reading ${csvName || 'survey CSV'} & verifying images...`);
     try {
       const res = await fetchDashboardApi(`/api/nas-scan?action=read-csv&subgrid=${encodeURIComponent(sg)}&folder=${encodeURIComponent(folderId)}&csv=${encodeURIComponent(csvName)}`);
       if (!res.ok) return false;
@@ -501,6 +502,8 @@ export const IntakePairingStation: React.FC<IntakePairingStationProps> = ({
       return true;
     } catch {
       // ignore
+    } finally {
+      setIsLoadingPairing(false);
     }
     return false;
   };
@@ -528,184 +531,152 @@ export const IntakePairingStation: React.FC<IntakePairingStationProps> = ({
     }
   };
 
-  // Auto-pair records from the selected data folder by reading actual survey CSV on disk
-  const handleAutoPairFromFolder = async () => {
-    const cleanSg = subgrid.trim().toUpperCase();
-    if (!cleanSg) {
-      addNotification?.({
-        type: 'warning',
-        title: 'No Subgrid Set',
-        message: 'Enter or select a subgrid code before auto-pairing.'
-      });
-      return;
-    }
-    const folderId = selectedFolderId !== '__none__' && selectedFolderId !== '__custom__' ? selectedFolderId : (subgridFolders[0]?.id || '');
-    const csvTarget = activeFolderMeta.csvName || (folderId ? `${folderId}.csv` : '');
-
-    if (!csvTarget) {
-      addNotification?.({
-        type: 'warning',
-        title: 'No Survey CSV Selected',
-        message: `No stitched run with a survey CSV is selected for ${cleanSg}. Choose a run, or upload a CSV.`
-      });
-      return;
-    }
-
-    const success = await readSurveyCsv(cleanSg, folderId, csvTarget);
-    if (success) {
-      addNotification?.({
-        title: 'Survey Data Loaded',
-        message: `Read real coordinate records from ${csvTarget} for ${cleanSg}.`,
-        category: 'SYSTEM',
-        read: false
-      });
-      return;
-    }
-
-    addNotification?.({
-      type: 'warning',
-      title: 'Survey CSV Not Found On Disk',
-      message: `Could not read ${csvTarget} from 01_Metadata for ${cleanSg}. Upload a CSV using the file picker instead.`
-    });
-  };
-
   // CSV File Upload Handler
   const handleCsvFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setCsvFileName(file.name);
+    setIsLoadingPairing(true);
+    setPairingProgressText(`Parsing ${file.name} & verifying images...`);
 
     const reader = new FileReader();
     reader.onload = async (event) => {
-      const text = event.target?.result as string;
-      if (!text) return;
+      try {
+        const text = event.target?.result as string;
+        if (!text) return;
 
-      const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-      if (lines.length < 2) {
-        addNotification?.({
-          type: 'warning',
-          title: 'CSV Has No Data Rows',
-          message: `${file.name} contains a header but no records.`
-        });
-        return;
-      }
-
-      const header = lines[0].toLowerCase().split(/[,\t]/).map((h) => h.trim());
-      const latIdx = header.findIndex((h) => h.includes('lat'));
-      const lonIdx = header.findIndex((h) => h.includes('lon') || h.includes('lng'));
-      const fileIdx = header.findIndex((h) => h.includes('file') || h.includes('name') || h.includes('img'));
-      const headIdx = header.findIndex((h) => h.includes('head') || h.includes('yaw') || h.includes('azimuth'));
-      const timeIdx = header.findIndex((h) => h.includes('time') || h.includes('date'));
-      const distIdx = header.findIndex((h) => h.includes('distance'));
-
-      // Coordinates are mandatory. Without them nothing is paired — inventing a
-      // track here would publish fabricated geometry to PostGIS downstream.
-      if (latIdx < 0 || lonIdx < 0) {
-        addNotification?.({
-          type: 'warning',
-          title: 'CSV Missing Coordinate Columns',
-          message: `${file.name} needs a latitude and a longitude column. Found headers: ${header.join(', ') || 'none'}. No records were created.`
-        });
-        return;
-      }
-
-      const cleanSg = subgrid.trim().toUpperCase();
-      const parsed: PairedFrameRecord[] = [];
-      let skipped = 0;
-      let seq = 0;
-
-      for (let i = 1; i < lines.length; i++) {
-        const parts = lines[i].split(/[,\t]/).map((p) => p.trim());
-        if (parts.length < 2) continue;
-
-        const lat = Number.parseFloat(parts[latIdx]);
-        const lon = Number.parseFloat(parts[lonIdx]);
-        if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
-          skipped += 1;
-          continue;
+        const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+        if (lines.length < 2) {
+          addNotification?.({
+            type: 'warning',
+            title: 'CSV Has No Data Rows',
+            message: `${file.name} contains a header but no records.`
+          });
+          return;
         }
 
-        seq += 1;
-        const seqStr = String(seq).padStart(4, '0');
-        const heading = headIdx >= 0 ? Number.parseFloat(parts[headIdx]) : NaN;
-        const srcName = fileIdx >= 0 && parts[fileIdx] ? parts[fileIdx] : '';
-        // The CSV's own filename is the canonical metadata name (rename
-        // target); the row-index name is only a fallback for bare CSVs.
-        const targetName = srcName || (cleanSg.length > 0 ? `${cleanSg}-${seqStr}.jpg` : '');
-        const distRaw = distIdx >= 0 && parts[distIdx] ? Number.parseFloat(parts[distIdx]) : NaN;
-        const distanceToPrevious = Number.isFinite(distRaw) ? distRaw : null;
+        const header = lines[0].toLowerCase().split(/[,\t]/).map((h) => h.trim());
+        const latIdx = header.findIndex((h) => h.includes('lat'));
+        const lonIdx = header.findIndex((h) => h.includes('lon') || h.includes('lng'));
+        const fileIdx = header.findIndex((h) => h.includes('file') || h.includes('name') || h.includes('img'));
+        const headIdx = header.findIndex((h) => h.includes('head') || h.includes('yaw') || h.includes('azimuth'));
+        const timeIdx = header.findIndex((h) => h.includes('time') || h.includes('date'));
+        const distIdx = header.findIndex((h) => h.includes('distance'));
 
-        parsed.push({
-          index: seq,
-          sourceFilename: srcName,
-          targetFilename: targetName,
-          timestamp: timeIdx >= 0 ? parts[timeIdx] : '',
-          latitude: Number.parseFloat(lat.toFixed(6)),
-          longitude: Number.parseFloat(lon.toFixed(6)),
-          heading: Number.isFinite(heading) ? Number.parseFloat(heading.toFixed(1)) : null,
-          distanceToPrevious,
-          isMatched: Boolean(srcName) && cleanSg.length > 0
+        // Coordinates are mandatory. Without them nothing is paired — inventing a
+        // track here would publish fabricated geometry to PostGIS downstream.
+        if (latIdx < 0 || lonIdx < 0) {
+          addNotification?.({
+            type: 'warning',
+            title: 'CSV Missing Coordinate Columns',
+            message: `${file.name} needs a latitude and a longitude column. Found headers: ${header.join(', ') || 'none'}. No records were created.`
+          });
+          return;
+        }
+
+        const cleanSg = subgrid.trim().toUpperCase();
+        const parsed: PairedFrameRecord[] = [];
+        let skipped = 0;
+        let seq = 0;
+
+        for (let i = 1; i < lines.length; i++) {
+          const parts = lines[i].split(/[,\t]/).map((p) => p.trim());
+          if (parts.length < 2) continue;
+
+          const lat = Number.parseFloat(parts[latIdx]);
+          const lon = Number.parseFloat(parts[lonIdx]);
+          if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+            skipped += 1;
+            continue;
+          }
+
+          seq += 1;
+          const seqStr = String(seq).padStart(4, '0');
+          const heading = headIdx >= 0 ? Number.parseFloat(parts[headIdx]) : NaN;
+          const srcName = fileIdx >= 0 && parts[fileIdx] ? parts[fileIdx] : '';
+          // The CSV's own filename is the canonical metadata name (rename
+          // target); the row-index name is only a fallback for bare CSVs.
+          const targetName = srcName || (cleanSg.length > 0 ? `${cleanSg}-${seqStr}.jpg` : '');
+          const distRaw = distIdx >= 0 && parts[distIdx] ? Number.parseFloat(parts[distIdx]) : NaN;
+          const distanceToPrevious = Number.isFinite(distRaw) ? distRaw : null;
+
+          parsed.push({
+            index: seq,
+            sourceFilename: srcName,
+            targetFilename: targetName,
+            timestamp: timeIdx >= 0 ? parts[timeIdx] : '',
+            latitude: Number.parseFloat(lat.toFixed(6)),
+            longitude: Number.parseFloat(lon.toFixed(6)),
+            heading: Number.isFinite(heading) ? Number.parseFloat(heading.toFixed(1)) : null,
+            distanceToPrevious,
+            isMatched: Boolean(srcName) && cleanSg.length > 0
+          });
+        }
+
+        if (parsed.length === 0) {
+          addNotification?.({
+            type: 'warning',
+            title: 'No Usable Coordinate Rows',
+            message: `None of the ${lines.length - 1} row(s) in ${file.name} parsed as a valid latitude/longitude pair.`
+          });
+          return;
+        }
+
+        // Try to verify the uploaded CSV against the actual survey folder on
+        // disk; without a folder listing the filename presence is all that can
+        // be asserted and the mismatch panel says verification is pending.
+        const folderId = selectedFolderId !== '__none__' && selectedFolderId !== '__custom__' ? selectedFolderId : (subgridFolders[0]?.id || '');
+        const images = await fetchFolderImages(cleanSg, folderId);
+        let finalRecords = parsed;
+        if (images !== null) {
+          const result = applyPairing(parsed, images);
+          finalRecords = result.records;
+          setFolderImages(images);
+          setUnpairedImages(result.unpairedImages);
+        } else {
+          setFolderImages(null);
+          setUnpairedImages([]);
+        }
+
+        setPairedRecords(finalRecords);
+        setTotalFrames(finalRecords.length);
+        notifyPairingOutcome(finalRecords, images);
+
+        const renamed = finalRecords.filter((r) => r.isMatched).length;
+        void appendStageEventToSupabase({
+          subgrid: cleanSg,
+          stage: 'intake',
+          event: 'COMPLETED',
+          via: 'operator',
+          detail: `${finalRecords.length} coordinate record(s) parsed from ${file.name}${
+            renamed < finalRecords.length ? `, ${finalRecords.length - renamed} unpaired` : ''
+          }`,
+          counts: { total: finalRecords.length, matched: renamed },
+          updated_by: 'Operator'
         });
-      }
 
-      if (parsed.length === 0) {
+        addAuditLog?.(
+          'IMPORT',
+          'Survey CSV Ingested',
+          `Parsed ${finalRecords.length} coordinate record(s) from ${file.name}${
+            skipped ? `, skipped ${skipped} without a usable fix` : ''
+          }${renamed < finalRecords.length ? `, ${finalRecords.length - renamed} unpaired` : ''}.`,
+          'success'
+        );
         addNotification?.({
-          type: 'warning',
-          title: 'No Usable Coordinate Rows',
-          message: `None of the ${lines.length - 1} row(s) in ${file.name} parsed as a valid latitude/longitude pair.`
+          title: 'Survey CSV Parsed',
+          message: `${finalRecords.length} record(s) loaded from ${file.name}.${
+            skipped ? ` ${skipped} row(s) had no usable coordinates and were skipped.` : ''
+          }`,
+          category: 'SYSTEM',
+          read: false
         });
-        return;
+      } finally {
+        setIsLoadingPairing(false);
       }
-
-      // Try to verify the uploaded CSV against the actual survey folder on
-      // disk; without a folder listing the filename presence is all that can
-      // be asserted and the mismatch panel says verification is pending.
-      const folderId = selectedFolderId !== '__none__' && selectedFolderId !== '__custom__' ? selectedFolderId : (subgridFolders[0]?.id || '');
-      const images = await fetchFolderImages(cleanSg, folderId);
-      let finalRecords = parsed;
-      if (images !== null) {
-        const result = applyPairing(parsed, images);
-        finalRecords = result.records;
-        setFolderImages(images);
-        setUnpairedImages(result.unpairedImages);
-      } else {
-        setFolderImages(null);
-        setUnpairedImages([]);
-      }
-
-      setPairedRecords(finalRecords);
-      setTotalFrames(finalRecords.length);
-      notifyPairingOutcome(finalRecords, images);
-
-      const renamed = finalRecords.filter((r) => r.isMatched).length;
-      void appendStageEventToSupabase({
-        subgrid: cleanSg,
-        stage: 'intake',
-        event: 'COMPLETED',
-        via: 'operator',
-        detail: `${finalRecords.length} coordinate record(s) parsed from ${file.name}${
-          renamed < finalRecords.length ? `, ${finalRecords.length - renamed} unpaired` : ''
-        }`,
-        counts: { total: finalRecords.length, matched: renamed },
-        updated_by: 'Operator'
-      });
-
-      addAuditLog?.(
-        'IMPORT',
-        'Survey CSV Ingested',
-        `Parsed ${finalRecords.length} coordinate record(s) from ${file.name}${
-          skipped ? `, skipped ${skipped} without a usable fix` : ''
-        }${renamed < finalRecords.length ? `, ${finalRecords.length - renamed} unpaired` : ''}.`,
-        'success'
-      );
-      addNotification?.({
-        title: 'Survey CSV Parsed',
-        message: `${finalRecords.length} record(s) loaded from ${file.name}.${
-          skipped ? ` ${skipped} row(s) had no usable coordinates and were skipped.` : ''
-        }`,
-        category: 'SYSTEM',
-        read: false
-      });
+    };
+    reader.onerror = () => {
+      setIsLoadingPairing(false);
     };
     reader.readAsText(file);
   };
@@ -873,7 +844,9 @@ export const IntakePairingStation: React.FC<IntakePairingStationProps> = ({
         ? 'summed from metadata distance-to-previous (m → km)'
         : 'summed from paired coordinates';
   const gpsSyncLabel =
-    pairedRecords.length === 0
+    isLoadingPairing
+      ? 'Syncing & Verifying...'
+      : pairedRecords.length === 0
       ? 'Awaiting CSV / Sequence'
       : folderImages === null
         ? matchedCount === pairedRecords.length
@@ -924,25 +897,14 @@ export const IntakePairingStation: React.FC<IntakePairingStationProps> = ({
 
   return (
     <div className="flex flex-col gap-5">
-      {/* Header toolbar — one surface, one primary action */}
-      <div className="pb-3 border-b border-subtle flex items-center justify-between flex-wrap gap-3">
-        <div className="min-w-0">
-          <h3 className="text-sm font-semibold text-text-base tracking-tight">
-            Stitched Panorama Intake &amp; Spatial Pairing
-          </h3>
-          <p className="text-xs text-text-muted mt-0.5 leading-relaxed max-w-2xl">
-            Prepare survey source data and pair metadata with the selected imagery.
-          </p>
-        </div>
-
-        <button
-          onClick={handleAutoPairFromFolder}
-          className="px-3.5 py-1.5 bg-text-base text-card hover:opacity-90 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-opacity cursor-pointer shrink-0"
-          title="Populate 1-to-1 pairing sequence from active survey folder"
-        >
-          <Sparkles size={13} />
-          <span>Auto-Pair Survey Sequence</span>
-        </button>
+      {/* Header toolbar */}
+      <div className="pb-3 border-b border-subtle">
+        <h3 className="text-sm font-semibold text-text-base tracking-tight">
+          Stitched Panorama Intake &amp; Spatial Pairing
+        </h3>
+        <p className="text-xs text-text-muted mt-0.5 leading-relaxed max-w-2xl">
+          Prepare survey source data and pair metadata with the selected imagery.
+        </p>
       </div>
 
       {/* Survey source — bare form grid under a section label */}
@@ -1177,7 +1139,7 @@ export const IntakePairingStation: React.FC<IntakePairingStationProps> = ({
       <div className="space-y-3">
         <SectionLabel
           icon={<Layers size={12} />}
-          note={`${filteredRecords.length} records`}
+          note={isLoadingPairing ? 'Loading…' : `${filteredRecords.length} records`}
           actions={
             <>
               <div className="relative">
@@ -1213,12 +1175,24 @@ export const IntakePairingStation: React.FC<IntakePairingStationProps> = ({
         </SectionLabel>
 
         <div className="rounded-xl border border-subtle bg-card overflow-hidden flex flex-col">
-          {filteredRecords.length === 0 ? (
+          {isLoadingPairing ? (
+            <div className="py-16 px-4 text-center flex flex-col items-center justify-center gap-3 text-text-muted">
+              <Loader2 size={32} className="animate-spin text-text-base opacity-75" />
+              <div className="space-y-1">
+                <p className="text-xs font-semibold text-text-base">
+                  {pairingProgressText || 'Loading & pairing survey records...'}
+                </p>
+                <p className="text-[11px] text-text-muted max-w-sm">
+                  Fetching coordinate fixes and verifying against stitched imagery on disk.
+                </p>
+              </div>
+            </div>
+          ) : filteredRecords.length === 0 ? (
             <div className="py-12 px-4 text-center flex flex-col items-center justify-center gap-2 text-text-muted">
               <Layers size={32} className="opacity-40" />
               <p className="text-xs font-medium">No pairing records loaded yet.</p>
               <p className="text-[11px] max-w-sm">
-                Upload a survey CSV or run <span className="font-semibold text-text-base">Auto-Pair Survey Sequence</span> to verify filename-to-GPS alignment.
+                Upload a survey CSV or select a survey folder to verify filename-to-GPS alignment.
               </p>
             </div>
           ) : (
@@ -1303,19 +1277,17 @@ export const IntakePairingStation: React.FC<IntakePairingStationProps> = ({
 
           <div className="p-3 border-t border-divider flex items-center justify-between gap-3 flex-wrap">
             <span className="text-[11px] text-text-muted">
-              {pairedRecords.length > 0
-                ? `Ready to dispatch ${pairedRecords.length} verified records to Multi-PC Station Board.`
-                : 'Configure subgrid and pair frames to proceed.'}
+              {isLoadingPairing ? (
+                <span className="inline-flex items-center gap-1.5 text-text-muted">
+                  <Loader2 size={11} className="animate-spin text-text-base" />
+                  <span>Loading and verifying survey records...</span>
+                </span>
+              ) : pairedRecords.length > 0 ? (
+                `${pairedRecords.length} verified record(s) loaded and paired.`
+              ) : (
+                'Configure subgrid and select or upload a survey CSV to pair frames.'
+              )}
             </span>
-
-            <button
-              onClick={onAdvanceToNextStation}
-              disabled={pairedRecords.length === 0}
-              className="px-4 py-2 bg-text-base text-card hover:opacity-90 font-semibold text-xs rounded-lg flex items-center gap-2 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-            >
-              <span>Proceed to 4-PC Assembly Board</span>
-              <ArrowRight size={14} />
-            </button>
           </div>
         </div>
       </div>

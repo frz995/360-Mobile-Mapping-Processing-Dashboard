@@ -108,14 +108,14 @@ export const AppHeader = ({
             : ''
         }`}
       >
-        {/* LIVE WEBGIS LINK */}
+        {/* WEBGIS LINK */}
         <a
           href={liveWebgisUrl || ''}
           target="_blank"
           rel="noopener noreferrer"
           className="p-1.5 hover:text-sky-400 transition-colors cursor-pointer relative flex items-center justify-center text-text-muted"
-          title="Open Live WebGIS"
-          aria-label="Open Live WebGIS"
+          title="Open WebGIS"
+          aria-label="Open WebGIS"
         >
           <ExternalLink size={18} />
         </a>

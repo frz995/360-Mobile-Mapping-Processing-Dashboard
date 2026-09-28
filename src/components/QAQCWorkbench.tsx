@@ -960,7 +960,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
         isSingleRun: isSingleDailyRun
       }, '*');
 
-      // 3. Dispatch Live Defects
+      // 3. Dispatch Defects
       mapIframeRef.current.contentWindow.postMessage({
         type: 'QAQC_DEFECTS_RESET'
       }, '*');
@@ -2102,7 +2102,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                       initialYaw={activeDisplayBearing ?? 0}
                       initialFov={projectSettings?.defaultFov}
                       onPositionChange={(pos) => {
-                        // Live heading-cone sync: reflect 360 rotation onto the embedded WebGIS map.
+                        // Heading-cone sync: reflect 360 rotation onto the embedded WebGIS map.
                         const yawDeg = Math.round(pos.yaw * 100) / 100;
                         const pitchDeg = Math.round(pos.pitch * 100) / 100;
                         if (mapIframeRef.current?.contentWindow) {
@@ -2264,14 +2264,14 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                       <ChevronRight size={24} className="shrink-0 translate-x-0.5" />
                     </button>
 
-                    {/* Return to Live Telemetry Button */}
+                    {/* Return to Telemetry Button */}
                     {selectedStationIndex !== null && isRunning && (
                       <button
                         onClick={() => setSelectedStationIndex(null)}
                         className="absolute bottom-14 left-1/2 -translate-x-1/2 bg-card hover:bg-inner text-text-base border border-subtle px-4 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer shadow-lg flex items-center gap-1.5 active:scale-95 whitespace-nowrap z-20"
                       >
                         <RotateCcw size={13} />
-                        <span>Return to Live #{currentIndex + 1}</span>
+                        <span>Return to #{currentIndex + 1}</span>
                       </button>
                     )}
                   </>
@@ -2349,7 +2349,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
                   <div className="h-9 px-3 bg-inner/90 border-b border-subtle flex items-center justify-between shrink-0 text-xs">
                     <div className="flex items-center gap-2 min-w-0">
                       <span className="w-2 h-2 rounded-full bg-sky-400 animate-pulse shrink-0" />
-                      <span className="font-semibold text-text-base truncate text-xs">Live Map Follower</span>
+                      <span className="font-semibold text-text-base truncate text-xs">Map Follower</span>
                     </div>
                     <div className="flex items-center gap-1">
                       <button
@@ -2462,7 +2462,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
               {filteredHistory.length === 0 ? (
                 <div className="p-8 text-center text-text-muted space-y-2 text-xs">
                   <ShieldCheck size={22} className="mx-auto text-text-muted/60" />
-                  <p>{filterMode === 'flagged' ? 'No defects flagged' : 'Awaiting station telemetry...'}</p>
+                  <p>{filterMode === 'flagged' ? 'No defects flagged' : 'Awaiting station readings...'}</p>
                 </div>
               ) : (
                 filteredHistory.map((item) => {
@@ -2549,7 +2549,7 @@ export const QAQCWorkbench: React.FC<QAQCWorkbenchProps> = ({
         isOpen={workbenchTab === 'thresholds'}
         onClose={() => setWorkbenchTab('console')}
         title="Quality Thresholds Studio"
-        subtitle="Interactive calibration of Blur, Obstruction, and GPS Telemetry"
+        subtitle="Interactive calibration of Blur, Obstruction, and GPS Readings"
         badge={
           <span className="px-2.5 py-0.5 rounded-full text-[10px] font-sans text-text-muted bg-inner border border-subtle">
             {(localThresholds.deliverableModel || projectSettings?.deliverableModel || 'masked_car') === 'generative_fill' ? 'Generative (80% ROI)' : 'Masked (52% ROI)'}

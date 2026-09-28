@@ -1509,3 +1509,111 @@ select:-webkit-autofill:focus {
   }
 }
 
+
+/* ========================================================================= */
+/* EXPLORER CARD: Spin-Rise Entrance + Tab Switch Animations                 */
+/* ========================================================================= */
+
+@keyframes explorerCardSpinRise {
+  0% {
+    opacity: 0;
+    transform: translateY(40px) rotateY(-12deg) rotateX(4deg) scale(0.92);
+    filter: blur(3px);
+  }
+  40% {
+    opacity: 0.7;
+    transform: translateY(12px) rotateY(-4deg) rotateX(1.5deg) scale(0.97);
+    filter: blur(1px);
+  }
+  70% {
+    opacity: 0.95;
+    transform: translateY(-2px) rotateY(1deg) rotateX(-0.5deg) scale(1.005);
+    filter: blur(0px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) rotateY(0deg) rotateX(0deg) scale(1);
+    filter: blur(0px);
+  }
+}
+
+.animate-explorer-spin-rise {
+  animation: explorerCardSpinRise 0.65s cubic-bezier(0.22, 1, 0.36, 1) both;
+  transform-origin: right center;
+  perspective: 900px;
+}
+
+@keyframes explorerTabFlip {
+  0% {
+    opacity: 0;
+    transform: translateY(14px) rotateX(6deg) scale(0.96);
+    filter: blur(1.5px);
+  }
+  50% {
+    opacity: 0.8;
+    transform: translateY(-1px) rotateX(-1deg) scale(1.005);
+    filter: blur(0px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) rotateX(0deg) scale(1);
+    filter: blur(0px);
+  }
+}
+
+.animate-explorer-tab-flip {
+  animation: explorerTabFlip 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+  transform-origin: top center;
+}
+
+/* ========================================================================= */
+/* DONUT CHART: Hover Glow and Scale on Slices                               */
+/* ========================================================================= */
+
+.explorer-donut-slice {
+  cursor: pointer;
+  transition: stroke-width 0.2s ease, filter 0.2s ease, opacity 0.2s ease;
+}
+
+.explorer-donut-slice:hover {
+  stroke-width: 14 !important;
+  filter: drop-shadow(0 0 6px currentColor) brightness(1.15);
+}
+
+.explorer-donut-ring:hover .explorer-donut-slice:not(:hover) {
+  opacity: 0.45;
+  stroke-width: 10 !important;
+}
+
+.explorer-legend-row {
+  transition: background-color 0.15s ease, transform 0.15s ease;
+  border-radius: 6px;
+  padding: 1px 4px;
+  margin: -1px -4px;
+}
+
+.explorer-legend-row:hover {
+  background-color: rgba(255, 255, 255, 0.06);
+  transform: translateX(2px);
+}
+
+/* ========================================================================= */
+/* STACKED BAR: Hover Highlight                                              */
+/* ========================================================================= */
+
+.explorer-bar-segment {
+  cursor: pointer;
+  transition: filter 0.18s ease, stroke 0.18s ease;
+  stroke: transparent;
+  stroke-width: 0;
+}
+
+.explorer-bar-segment:hover {
+  filter: brightness(1.3) drop-shadow(0 2px 6px rgba(0, 0, 0, 0.5));
+  stroke: rgba(255, 255, 255, 0.35);
+  stroke-width: 1.5;
+}
+
+.explorer-bar-column:hover .explorer-bar-segment:not(:hover) {
+  filter: brightness(0.6) saturate(0.7);
+}

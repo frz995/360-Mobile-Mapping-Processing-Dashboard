@@ -59,10 +59,10 @@ describe('PcMonitoringStation', () => {
 
   afterEach(cleanup)
 
-  it('renders four live telemetry cards with agent metrics', () => {
+  it('renders four station metric cards with agent metrics', () => {
     const ws = setup()
     render(<PcMonitoringStation userLabel="QA Lead" projectSettings={{ workstationsConfig: ws }} />)
-    expect(screen.getByText(/4\/4 agents live/)).toBeInTheDocument()
+    expect(screen.getByText(/4\/4 agents online/)).toBeInTheDocument()
     expect(screen.getAllByText('34%').length).toBe(4) // CPU on every card
     expect(screen.getAllByText('11%').length).toBe(4) // GPU
     expect(screen.getAllByText('40%').length).toBe(4) // RAM 12.8/32
@@ -80,7 +80,7 @@ describe('PcMonitoringStation', () => {
     const iframes = container.querySelectorAll('iframe')
     expect(iframes).toHaveLength(2)
     expect(iframes[0].getAttribute('src')).toContain('10.20.30.11:6080/vnc.html')
-    expect(screen.getAllByText(/Embedded live view is not enabled/i).length).toBe(2)
+    expect(screen.getAllByText(/Embedded remote view is not enabled/i).length).toBe(2)
     expect(screen.getByText(/2\/4 VNC enabled/)).toBeInTheDocument()
   })
 

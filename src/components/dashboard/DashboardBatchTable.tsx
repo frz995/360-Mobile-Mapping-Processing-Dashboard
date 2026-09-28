@@ -252,7 +252,7 @@ export const DashboardBatchTable: React.FC<DashboardBatchTableProps> = ({
                             setIsQAQCRunnerModalOpen(true);
                           }}
                           className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-sky-500/15 text-sky-400 border border-sky-500/30 inline-flex items-center gap-1.5 whitespace-nowrap animate-pulse shadow-sm hover:scale-105 transition-transform cursor-pointer"
-                          title="Click to open QA/QC Live HUD"
+                          title="Click to open QA/QC HUD"
                         >
                           <Activity size={10} className="text-sky-400 animate-spin" />
                           QAQC In Progress ({qaqcWorkerState.currentIndex + 1}/{qaqcWorkerState.totalStations})
@@ -455,7 +455,7 @@ export const DashboardBatchTable: React.FC<DashboardBatchTableProps> = ({
                                 setIsQAQCRunnerModalOpen(true);
                               }}
                               className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-sky-500/15 text-sky-400 border border-sky-500/30 inline-flex items-center gap-1.5 whitespace-nowrap animate-pulse shadow-sm hover:scale-105 transition-transform cursor-pointer"
-                              title="Click to view live QA/QC inspection HUD"
+                              title="Click to view QA/QC inspection HUD"
                             >
                               <Activity size={10} className="text-sky-400 animate-spin" />
                               QAQC In Progress ({qaqcWorkerState.currentIndex + 1}/{qaqcWorkerState.totalStations})

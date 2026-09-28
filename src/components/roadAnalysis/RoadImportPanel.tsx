@@ -16,6 +16,7 @@ import {
   analyzeImportGeometry,
   isImportMemoryError,
   IMPORT_MEMORY_ERROR_MESSAGE,
+  stripEnvelopeFeatures,
   type CatalogVectorLayer,
   type GisImportResult,
   type GisGeometryType
@@ -141,14 +142,16 @@ export const RoadImportPanel: React.FC<RoadImportPanelProps> = ({
       return;
     }
     const useClip = previewMode === 'clipped' && clippedFc;
+    const rawGeo = useClip ? clippedFc : pendingParsed.geojson;
+    const cleanGeo = stripEnvelopeFeatures(rawGeo);
     onPreviewChange?.({
       mode: previewMode,
       color: PREVIEW_COLORS[previewMode],
-      geojson: useClip ? clippedFc : pendingParsed.geojson,
+      geojson: cleanGeo,
       geojsonJson: useClip ? undefined : pendingParsed.geojsonJson,
       featureCount: useClip
         ? clippedFeatureCount
-        : pendingParsed.featureCount,
+        : (cleanGeo?.features?.length ?? pendingParsed.featureCount),
       name: pendingParsed.filename || 'Import preview',
       format: pendingParsed.format
     });
@@ -196,6 +199,7 @@ export const RoadImportPanel: React.FC<RoadImportPanelProps> = ({
         geojsonJson: result.geojsonJson,
         color,
         opacity: 0.85,
+        fillOpacity: 0, // Default to hollow (stroke only) so district boundaries and polygon layers do not fill the map
         strokeWidth: stats?.geometryType === 'LineString' || result.geometryType === 'LineString' ? 3.5 : 2,
         pointRadius: 5,
         visible: true,

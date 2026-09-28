@@ -28,7 +28,7 @@ All views must strictly inherit the 7 built-in themes defined in `src/themes.css
 - **Component Language:** Use pill badges with `<StatusDot />`, subtle borders (`border border-subtle`), rounded corners (`rounded-xl` / `rounded-2xl`), and glassmorphic overlays (`backdrop-blur-md`).
 
 ### 2.3 Canonical Workspace Header & Canvas Standard
-Every workspace (`RoadAnalysisWorkspace`, `LineageWorkspace`, `AnalyticsWorkspace`, `ReportsWorkspace`, `NASStorageWorkspace`) must adhere to this exact structural hierarchy:
+Every workspace (`RoadAnalysisWorkspace`, `AnalyticsWorkspace`, `ReportsWorkspace`, `NASStorageWorkspace`, `ProductionHubWorkspace`) must adhere to this exact structural hierarchy:
 
 ```tsx
 <div className="flex-1 flex flex-col min-h-0 overflow-hidden animate-in fade-in duration-500">

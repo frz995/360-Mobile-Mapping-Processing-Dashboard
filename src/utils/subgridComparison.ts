@@ -1,6 +1,7 @@
 import { calculateGeodesicDistanceMeters, pathLengthLngLatKm } from './geo';
 import { extractSubgridName } from './subgrid';
 import { SUBGRID_COORDINATES } from '../services/supabase';
+import { stripEnvelopeFeatures } from './gisImportParser';
 
 export interface SubgridRelationNotice {
   type: 'INTERSECT' | 'MISMATCH' | 'METADATA_INCONSISTENCY';
@@ -654,6 +655,16 @@ export function clipGeoJsonToRegions(geojson: any, regionGeojson: any): any {
           type: 'FeatureCollection',
           features: [{ geometry: g }]
         });
+        // Skip envelope polygons that wrap the entire region/dataset
+        if (gBbox && regionBbox) {
+          const w = Math.abs(gBbox[2] - gBbox[0]);
+          const h = Math.abs(gBbox[3] - gBbox[1]);
+          const rw = Math.abs(regionBbox[2] - regionBbox[0]);
+          const rh = Math.abs(regionBbox[3] - regionBbox[1]);
+          if (w >= rw * 0.85 && h >= rh * 0.85) {
+            break;
+          }
+        }
         if (gBbox && bboxesOverlap(gBbox, regionBbox)) features.push(feat);
         break;
       }
@@ -661,7 +672,7 @@ export function clipGeoJsonToRegions(geojson: any, regionGeojson: any): any {
         features.push(feat);
     }
   }
-  return { type: 'FeatureCollection', features };
+  return stripEnvelopeFeatures({ type: 'FeatureCollection', features });
 }
 
 /**

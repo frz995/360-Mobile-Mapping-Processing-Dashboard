@@ -53,10 +53,10 @@ export const AboutPlatformModal: React.FC<AboutPlatformModalProps> = ({
               <span>System Purpose &amp; Domain Architecture</span>
             </h3>
             <p className="text-text-base text-[11.5px] leading-relaxed">
-              Engineered specifically for <strong>TNB 360° Mobile Mapping Operations</strong>, this WebGIS processing platform provides unified spatial trajectory analytics, automated subgrid deduplication, live Supabase PostGIS synchronization, and interactive 360° StreetView quality control inspection.
+              Engineered specifically for <strong>TNB 360° Mobile Mapping Operations</strong>, this WebGIS processing platform provides unified spatial trajectory analytics, automated subgrid deduplication, Supabase PostGIS synchronization, and interactive 360° StreetView quality control inspection.
             </p>
             <p className="text-text-base text-[11.5px] leading-relaxed">
-              The platform runs on <strong>two tracks</strong>: the <strong>WebGIS · Published View</strong> (what TNB sees live on the map — the dashboard, published panoramas, survey analytics and reports) and the <strong>Production Pipeline</strong> (the internal processing that builds it — RAW intake → blur → stitch → enhance → mask → acceptance QA → deliverable pack → published to WebGIS). Operators work in the Production Pipeline; the WebGIS view is the public, published result.
+              The platform runs on <strong>two tracks</strong>: the <strong>WebGIS · Published View</strong> (what TNB sees on the map — the dashboard, published panoramas, survey analytics and reports) and the <strong>Production Pipeline</strong> (the internal processing that builds it — RAW intake → blur → stitch → enhance → mask → acceptance QA → deliverable pack → published to WebGIS). Operators work in the Production Pipeline; the WebGIS view is the public, published result.
             </p>
           </div>
 

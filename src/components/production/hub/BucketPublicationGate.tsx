@@ -274,7 +274,7 @@ export const BucketPublicationGate: React.FC<BucketPublicationGateProps> = ({
     : '';
   const hasBatch = effectiveTotal > 0 && cleanSg.length > 0;
 
-  // A real frame name from the live NAS pairing, if one is loaded. Used instead
+  // A real frame name from the current NAS pairing, if one is loaded. Used instead
   // of a "<SUBGRID>-0001.jpg" guess so any sample URL we render can resolve to an
   // object that actually exists.
   const realSampleFilename = useMemo(() => {
@@ -1125,7 +1125,7 @@ pause
               !bucketConfig.isConfigured
                 ? 'No bucket or endpoint is configured for the active provider'
                 : !hasBatch
-                  ? 'Pair frames in Stitched Intake & Pairing to establish a real frame count'
+                  ? 'Pair frames in Stitched Intake & Pairing to establish a verified frame count'
                   : 'Generate and publish manifest.json for this subgrid'
             }
             className="px-3.5 py-1.5 bg-text-base text-card hover:opacity-90 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-opacity cursor-pointer disabled:opacity-40"
@@ -1240,8 +1240,8 @@ pause
                 </span>
               ),
               note: realSampleFilename
-                ? `Real frame: ${realSampleFilename}`
-                : 'Placeholder only. No real frame filename is loaded for this subgrid, so no sample object is requested.',
+    ? `Verified frame: ${realSampleFilename}`
+    : 'Placeholder only. No verified frame filename is loaded for this subgrid, so no sample object is requested.',
               actions: bucketConfig.sampleUrl && realSampleFilename ? <ExternalLink size={12} className="text-text-muted shrink-0" /> : undefined
             },
             {
@@ -1473,7 +1473,7 @@ pause
             Frame entries are enumerated from the actual bucket inventory when it has been verified; otherwise the
             manifest carries no frame list. Paths follow the configured pattern
             <span className="font-mono text-text-base"> {bucketConfig.pathPattern}</span>. Run Verify Inventory to
-            reconcile against the live bucket.
+            reconcile against the current bucket.
           </p>
         </div>
       </div>

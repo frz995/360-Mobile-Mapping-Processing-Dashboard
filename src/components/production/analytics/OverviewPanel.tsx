@@ -90,7 +90,7 @@ export function OverviewPanel({ analytics, translate }: OverviewPanelProps) {
             {t.published > 0 ? `${formatNumber(t.published)} Published` : `${formatNumber(t.staged)} Staged`}
           </div>
           <div className="text-[10px] text-text-muted font-mono mt-0.5">
-            {t.partial > 0 ? `${formatNumber(t.partial)} partial subgrid(s)` : 'Live / Verified'}
+            {t.partial > 0 ? `${formatNumber(t.partial)} partial subgrid(s)` : 'Current / Verified'}
           </div>
         </div>
       </div>

@@ -71,7 +71,7 @@ export const QAQCThresholdStudioView: React.FC<QAQCThresholdStudioViewProps> = (
     ? '/samples/sample_survey_generative.jpg'
     : '/samples/sample_survey_sharp.jpg';
 
-  // Simulated live scores for Blur
+  // Simulated scores for Blur
   const simulatedSharpScore = 84.6;
   const simulatedBlurScore = useMemo(() => {
     const score = Math.max(12.0, Math.round((84.6 / (1 + blurPreviewLevel * 0.75)) * 10) / 10);
@@ -183,7 +183,7 @@ export const QAQCThresholdStudioView: React.FC<QAQCThresholdStudioViewProps> = (
               }`}
             >
               <Navigation size={12} className="shrink-0" />
-              <span>GPS Telemetry</span>
+              <span>GPS Readings</span>
             </button>
           </div>
 
@@ -574,7 +574,7 @@ export const QAQCThresholdStudioView: React.FC<QAQCThresholdStudioViewProps> = (
             <span className="font-semibold text-[11px] text-text-base uppercase tracking-wider">
               {activeDefectTab === 'blur' && 'Focus Settings'}
               {activeDefectTab === 'obstruction' && 'Obstruction Settings'}
-              {activeDefectTab === 'gps' && 'GPS Telemetry Settings'}
+              {activeDefectTab === 'gps' && 'GPS Readings Settings'}
             </span>
           </div>
 

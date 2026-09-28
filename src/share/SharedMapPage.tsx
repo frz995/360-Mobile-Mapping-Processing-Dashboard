@@ -990,7 +990,7 @@ function LiveMapReference({
     <iframe
       ref={iframeRef}
       src={src}
-      title={`Shared ${share.kind === 'road' ? 'Road Analysis' : 'WebGIS'} map · live reference`}
+      title={`Shared ${share.kind === 'road' ? 'Road Analysis' : 'WebGIS'} map · direct reference`}
       className="absolute inset-0 w-full h-full border-0"
       allowFullScreen
     />

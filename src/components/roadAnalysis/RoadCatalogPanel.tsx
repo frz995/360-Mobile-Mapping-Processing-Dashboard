@@ -1550,7 +1550,7 @@ export const RoadCatalogPanel: React.FC<RoadCatalogPanelProps> = ({
                                   onUpdateCatalogLayer(layer.id, { fillOpacity: 0.35 })
                                 }
                                 className={`px-1.5 py-0.5 rounded text-[9px] font-medium transition-colors cursor-pointer ${
-                                  (layer.fillOpacity ?? 0.35) > 0
+                                  (layer.fillOpacity ?? 0) > 0
                                     ? 'bg-inner border border-subtle text-text-base font-semibold shadow-sm'
                                     : 'text-text-muted hover:text-text-base'
                                 }`}
@@ -1563,7 +1563,7 @@ export const RoadCatalogPanel: React.FC<RoadCatalogPanelProps> = ({
                                   onUpdateCatalogLayer(layer.id, { fillOpacity: 0 })
                                 }
                                 className={`px-1.5 py-0.5 rounded text-[9px] font-medium transition-colors cursor-pointer ${
-                                  (layer.fillOpacity ?? 0.35) === 0
+                                  (layer.fillOpacity ?? 0) === 0
                                     ? 'bg-inner border border-subtle text-text-base font-semibold shadow-sm'
                                     : 'text-text-muted hover:text-text-base'
                                 }`}
@@ -1573,7 +1573,7 @@ export const RoadCatalogPanel: React.FC<RoadCatalogPanelProps> = ({
                             </div>
                           </div>
 
-                          {(layer.fillOpacity ?? 0.35) > 0 && (
+                          {(layer.fillOpacity ?? 0) > 0 && (
                             <>
                               {/* Fill Color Swatches (sleek w-3 h-3) */}
                               <div className="flex flex-col gap-1">
@@ -1635,7 +1635,7 @@ export const RoadCatalogPanel: React.FC<RoadCatalogPanelProps> = ({
                                 <div className="flex items-center justify-between text-[9px]">
                                   <span className="text-text-muted font-medium">Fill Opacity</span>
                                   <span className="font-mono text-text-base font-semibold">
-                                    {Math.round((layer.fillOpacity ?? 0.35) * 100)}%
+                                    {Math.round((layer.fillOpacity ?? 0) * 100)}%
                                   </span>
                                 </div>
                                 <CommitSlider

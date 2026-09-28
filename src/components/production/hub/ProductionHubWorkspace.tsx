@@ -79,7 +79,7 @@ export const ProductionHubWorkspace: React.FC<ProductionHubWorkspaceProps> = ({
   // --- Hub working session: restore the operator's last activity ------------
   // Only navigation + survey-source *selection* is restored. NAS-derived facts
   // (pairing rows, frame totals) are deliberately NOT: they are re-derived from
-  // the live worker on every load, so a cached copy can only be stale. Legacy
+  // the running worker on every load, so a cached copy can only be stale. Legacy
   // payloads that did cache them are purged on sight.
   useEffect(() => {
     let disposed = false;
@@ -212,7 +212,6 @@ export const ProductionHubWorkspace: React.FC<ProductionHubWorkspaceProps> = ({
                 setTotalFrames={setTotalFrames}
                 pairedRecords={pairedRecords}
                 setPairedRecords={setPairedRecords}
-                onAdvanceToNextStation={() => setActiveStation('stations')}
                 addNotification={addNotification}
                 addAuditLog={addAuditLog}
                 translate={translate}

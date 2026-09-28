@@ -456,7 +456,7 @@ export const WebGISPublishGate: React.FC<WebGISPublishGateProps> = ({
               )}
 
               <p className="text-[11px] text-text-muted leading-relaxed">
-                This data will be promoted to the Data Management table as <strong className="text-text-base font-semibold">{cleanSg}</strong> in the Daily tab, and published to the live WebGIS map layer.
+                This data will be promoted to the Data Management table as <strong className="text-text-base font-semibold">{cleanSg}</strong> in the Daily tab, and published to the WebGIS map layer.
               </p>
             </div>
 

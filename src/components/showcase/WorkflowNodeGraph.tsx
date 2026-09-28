@@ -50,7 +50,7 @@ export const WorkflowNodeGraph: React.FC<WorkflowNodeGraphProps> = ({ onJumpToMo
             title: '3. Cloud Database & Storage',
             items: [
                 'PostgreSQL 15 + PostGIS 3.3 (Supabase)',
-                'Ingestion to staging_panoramas',
+                'Intake to staging_panoramas',
                 'Spatial validation & GPS sanitization',
                 'Object storage sync (/MMS_PIC/ bucket)',
             ],

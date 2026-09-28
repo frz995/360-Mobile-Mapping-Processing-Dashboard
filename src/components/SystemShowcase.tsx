@@ -475,9 +475,9 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                     x: 82,
                     y: 20,
                     title: 'CSV Trajectory Importer',
-                    tag: 'Ingestion Tool',
+                    tag: 'Intake Tool',
                     description: 'Parses csvpanotrack files, validates lat/lng coordinates and timestamps, and creates staging panorama points.',
-                    tip: 'Drag and drop field CSVs directly into the importer for instant batch ingestion.'
+                    tip: 'Drag and drop field CSVs directly into the importer for instant batch intake.'
                 }
             ]
         },
@@ -606,8 +606,8 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                     y: 35,
                     title: 'Workstation Handoff Kanban Board',
                     tag: 'Handoff Board',
-                    description: 'Real-time board tracking subgrids moving sequentially across Blurring, Stitching, Lightroom, and Photoshop workstations.',
-                    tip: 'Track subgrids moving across physical PCs in real-time.'
+                    description: 'Board tracking subgrids moving sequentially across Blurring, Stitching, Lightroom, and Photoshop workstations.',
+                    tip: 'Track subgrids moving across physical PCs as they progress.'
                 },
                 {
                     id: 'm3-lightroom',
@@ -615,7 +615,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                     y: 40,
                     title: 'Station 3 Lightroom Preset Enhancer',
                     tag: 'Color & Tone',
-                    description: 'Live interactive designer to test exposure, contrast, shadows, and dehaze adjustments before running batch Lightroom presets.',
+                    description: 'Interactive designer to test exposure, contrast, shadows, and dehaze adjustments before running batch Lightroom presets.',
                     tip: 'Use "Copy LR Preset Recipe" to apply identical settings in Adobe Lightroom Classic.'
                 },
                 {
@@ -685,7 +685,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                     y: 35,
                     title: 'Project Survey Reports & Progress Ledger',
                     tag: 'Survey Ledger',
-                    description: 'Live contract progress tracking against total mileage targets with subgrid summaries and daily operation records.',
+                    description: 'Contract progress tracking against total mileage targets with subgrid summaries and daily operation records.',
                     tip: 'Tracks contractor SLA defect rates against allowed threshold percentages.'
                 },
                 {
@@ -695,7 +695,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                     title: 'Survey Operations Analytics',
                     tag: 'Operations Overview',
                     description: 'Realtime charts of road capture analytics, publication status distribution (Published vs Partial), and daily throughput trends.',
-                    tip: 'Visualizes live database metrics without modifying raw imagery.'
+                    tip: 'Visualizes current database metrics without modifying raw imagery.'
                 },
                 {
                     id: 'm6-coverage',
@@ -733,7 +733,7 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
             category: 'Spatial Operations',
             title: 'GIS Workspace',
             subtitle: 'View, analyse and manage spatial datasets directly within the operational map',
-            description: 'The operational map of the project. Survey trajectories, subgrid boundaries and station points render on a vector basemap alongside the live status of incoming batches. Use the map to inspect progress by area, open a 360° frame from any route point, and jump into the workspace that manages the underlying data.',
+            description: 'The operational map of the project. Survey trajectories, subgrid boundaries and station points render on a vector basemap alongside the current status of incoming batches. Use the map to inspect progress by area, open a 360° frame from any route point, and jump into the workspace that manages the underlying data.',
             metricLabel: 'Total Distance Mapped',
             metricValue: `${computedDistance.toFixed(1)} km (${pctTarget}% · ${activeJobs} Active)`,
             statusBadge: 'Operational Map',
@@ -762,9 +762,9 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                     id: 'm1-kpi',
                     x: 25,
                     y: 12,
-                    title: 'Project Telemetry Overview',
+                    title: 'Project Overview',
                     tag: 'Project Metrics',
-                    description: 'Live figures for Total Distance Mapped (KM), Processed 360 Panoramas, Active Processing Jobs, and Overall Pipeline Health SLA.',
+                    description: 'Current figures for Total Distance Mapped (KM), Processed 360 Panoramas, Active Processing Jobs, and Overall Pipeline Health SLA.',
                     tip: 'Hover or click any metric card to inspect its underlying subgrid completion breakdown.'
                 },
                 {
@@ -772,8 +772,8 @@ export const SystemShowcase: React.FC<SystemShowcaseProps> = ({
                     x: 50,
                     y: 22,
                     title: 'Operational Action Center',
-                    tag: 'Live Work Stream',
-                    description: 'Live monitoring bar displaying ongoing workstation batches, QA defect flags requiring attention, and pending staging subgrids.',
+                    tag: 'Work Stream',
+                    description: 'Monitoring bar displaying ongoing workstation batches, QA defect flags requiring attention, and pending staging subgrids.',
                     tip: 'Click the direct action button to jump straight to the required defect table.'
                 },
                 {

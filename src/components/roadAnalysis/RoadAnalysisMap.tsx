@@ -9,7 +9,7 @@
 // `showRoadLines` toggle.
 // =====================================================================
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import type { StyleSpecification, Map as MaplibreMap } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
@@ -17,7 +17,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 // maplibre self-constructing its own worker path (which Vite dev serves with
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import type { CatalogVectorLayer } from '../../utils/gisImportParser';
-import { estimateGeometryBytes } from '../../utils/gisImportParser';
+import { estimateGeometryBytes, stripEnvelopeFeatures } from '../../utils/gisImportParser';
 import type { ImportPreview } from './RoadImportPanel';
 import { type SystemLayerStyles } from './RoadCatalogPanel';
 import { resolveSpatialSubgrid } from '../../utils/subgridComparison';
@@ -35,6 +35,12 @@ import {
   buildBuildingColorExpression,
   buildBuildingHeightExpression
 } from '../../utils/map3DLighting';
+import {
+  buildMaplibreChoroplethMeshExpression,
+  buildMeshRoadChoroplethGeojson,
+  type ExplorerChoroplethPalette,
+  type MeshCellData
+} from '../../utils/projectExplorerGeometry';
 
 const effectiveWorkerUrl = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_MAPLIBRE_WORKER_URL) || workerUrl;
 maplibregl.setWorkerUrl(effectiveWorkerUrl);
@@ -74,20 +80,27 @@ const PREVIEW_LAYER_IDS = [
  */
 function scheduleCatalogGeometryLoad(
   map: MaplibreMap,
-  pending: Array<{ srcId: string; geojson: any; geojsonJson?: string }>
+  pending: Array<{ srcId: string; geojson: any; geojsonJson?: string; isPolyType?: boolean }>
 ): void {
   const blobUrls: string[] = [];
   const flush = () => {
-    for (const { srcId, geojson, geojsonJson } of pending) {
+    for (const { srcId, geojson, geojsonJson, isPolyType } of pending) {
       const src = map.getSource(srcId);
       if (src && typeof (src as any).setData === 'function') {
-        // Feed MapLibre a blob URL STRING so its geojson worker fetches + parses
-        // the data off the UI thread — a 39 MB graph here would otherwise be
-        // structured-cloned on main. When the worker already serialized the
-        // dataset (heavy layers carry `geojsonJson`), reuse those bytes as-is
-        // instead of re-stringifying the object on the main thread.
-        const json = geojsonJson ? geojsonJson : JSON.stringify(geojson);
-        const url = URL.createObjectURL(new Blob([json], { type: 'application/geo+json' }));
+        let json = geojsonJson;
+        if (isPolyType) {
+          try {
+            const parsed = geojson || (geojsonJson ? JSON.parse(geojsonJson) : null);
+            if (parsed) {
+              const stripped = stripEnvelopeFeatures(parsed);
+              json = JSON.stringify(stripped);
+            }
+          } catch {}
+        }
+        if (!json && geojson) {
+          json = JSON.stringify(geojson);
+        }
+        const url = URL.createObjectURL(new Blob([json || '{"type":"FeatureCollection","features":[]}'], { type: 'application/geo+json' }));
         blobUrls.push(url);
         (src as any).setData(url);
       }
@@ -108,6 +121,8 @@ function scheduleCatalogGeometryLoad(
     requestAnimationFrame(afterPaint);
   }
 }
+
+
 
 function stitchConnectedRuns(runs: LonLat[][]): LonLat[][] {
   if (!runs || runs.length <= 1) return runs || [];
@@ -281,6 +296,32 @@ export interface RoadAnalysisMapProps {
   showLabels?: boolean;
   /** Toggle atmospheric ground tinting for Dawn/Dusk/Night lighting. Defaults to true. */
   atmosphereTint?: boolean;
+  /** Project Explorer: whether the buffer spotlight and density analysis is active */
+  projectExplorerActive?: boolean;
+  /** Project Explorer: center coordinate [lng, lat] of the buffer pin A */
+  projectExplorerCenter?: [number, number] | null;
+  /** Project Explorer: optional center coordinate [lng, lat] of buffer pin B in compare mode */
+  projectExplorerCenterB?: [number, number] | null;
+  /** Project Explorer: radius in meters */
+  projectExplorerRadius?: number;
+  /** Project Explorer: clipped road GeoJSON with density colors */
+  projectExplorerRoadsGeojson?: GeoJSON.FeatureCollection | null;
+  /** Project Explorer: callback when pin A is dragged or map is clicked */
+  onProjectExplorerCenterChange?: (center: [number, number]) => void;
+  /** Project Explorer: callback when pin B is dragged */
+  onProjectExplorerCenterBChange?: (center: [number, number]) => void;
+  /** Project Explorer: compare mode toggle */
+  isCompareMode?: boolean;
+  /** Project Explorer: active choropleth palette */
+  projectExplorerPalette?: ExplorerChoroplethPalette;
+  /** Subgrid metrics for mesh road density attribution */
+  subgridMetrics?: any[];
+  /** Project Explorer: Currently focused/selected subgrid cell data */
+  selectedExplorerGrid?: MeshCellData | any | null;
+  /** Project Explorer: Callback when user clicks a subgrid cell to focus and dim other areas */
+  onSelectExplorerGrid?: (grid: any | null) => void;
+  /** Project Explorer: active choropleth metric ('density' | 'complexity' | 'panotrack' | 'roads' | 'coverage') */
+  projectExplorerColorByMetric?: string;
 }
 
 const DEFAULT_CENTER: [number, number] = [101.9758, 4.2105];
@@ -288,19 +329,36 @@ const DEFAULT_ZOOM = 7;
 const DEFAULT_STYLE = 'https://tiles.openfreemap.org/styles/positron';
 
 /** Base system source ids created by this component. */
-const BASE_SOURCE_IDS = ['ra-dim', 'ra-districts', 'ra-captured', 'ra-roads', 'ra-coverage'] as const;
+const BASE_SOURCE_IDS = [
+  'ra-dim',
+  'ra-districts',
+  'ra-captured',
+  'ra-roads',
+  'ra-coverage',
+  'ra-explorer-mask',
+  'ra-explorer-stroke',
+  'ra-explorer-roads',
+  'ra-explorer-mesh',
+  'ra-explorer-selected-box'
+] as const;
 
 /** Base system layer ids created by this component. */
 const BASE_LAYER_IDS = [
   'ra-dim',
-  'ra-districts',
   'ra-districts-line',
+  'ra-explorer-mesh-fill',
+  'ra-explorer-mesh-line',
+  'ra-explorer-selected-fill',
+  'ra-explorer-selected-line',
   'ra-captured-clusters',
   'ra-captured-cluster-count',
   'ra-captured',
   'ra-roads',
   'ra-coverage-casing',
-  'ra-coverage-line'
+  'ra-coverage-line',
+  'ra-explorer-mask',
+  'ra-explorer-roads',
+  'ra-explorer-stroke'
 ] as const;
 
 const BUILDING_LAYER_ID = 'ra-buildings';
@@ -423,7 +481,8 @@ function computeStructuralFingerprint(layers: CatalogVectorLayer[]): string {
 function updateCatalogLayerStyle(
   map: MaplibreMap,
   catLayer: CatalogVectorLayer,
-  srcId: string
+  srcId: string,
+  isExplorerActive = false
 ): void {
   const sp = (id: string, prop: string, val: unknown) => {
     if (map.getLayer(id)) (map as any).setPaintProperty(id, prop, val);
@@ -439,7 +498,13 @@ function updateCatalogLayerStyle(
 
   // Polygon fill
   sp(`${srcId}-fill`, 'fill-color',   catLayer.fillColor || color);
-  sp(`${srcId}-fill`, 'fill-opacity',  catLayer.fillOpacity !== undefined ? catLayer.fillOpacity : opacity * 0.4);
+  sp(`${srcId}-fill`, 'fill-opacity',  catLayer.fillOpacity !== undefined ? catLayer.fillOpacity : 0);
+
+  // When Explorer is active, polygon fills and outlines are suppressed so the choropleth mesh displays cleanly
+  if (isExplorerActive) {
+    sl(`${srcId}-fill`, 'visibility', 'none');
+    sl(`${srcId}-poly-line`, 'visibility', 'none');
+  }
 
   // Polygon + standalone line
   for (const lid of [`${srcId}-poly-line`, `${srcId}-line`]) {
@@ -582,7 +647,8 @@ function startCameraFlight(
 function applySystemStyles(
   map: MaplibreMap,
   ss: SystemLayerStyles | undefined,
-  showRoadLines: boolean
+  showRoadLines: boolean,
+  isExplorerActive: boolean = false
 ): void {
   if (map.getLayer('ra-districts-line')) {
     const b = ss?.districtBoundary;
@@ -591,11 +657,18 @@ function applySystemStyles(
     map.setPaintProperty('ra-districts-line', 'line-width',    b?.strokeWidth ?? 2.5);
   }
   if (map.getLayer('ra-roads')) {
-    const rp = ss?.roadPlan;
-    const vis = showRoadLines && (rp?.visible !== false);
-    map.setPaintProperty('ra-roads', 'line-color',   rp?.color || '#10b981');
-    map.setPaintProperty('ra-roads', 'line-opacity',  vis ? (rp?.opacity ?? 0.85) : 0);
-    map.setPaintProperty('ra-roads', 'line-width',    rp?.strokeWidth ?? 3.5);
+    if (isExplorerActive) {
+      // In explorer mode: road color gray (#9ca3af), opacity 30%
+      map.setPaintProperty('ra-roads', 'line-color', '#9ca3af');
+      map.setPaintProperty('ra-roads', 'line-opacity', 0.30);
+      map.setPaintProperty('ra-roads', 'line-width', 1.8);
+    } else {
+      const rp = ss?.roadPlan;
+      const vis = showRoadLines && (rp?.visible !== false);
+      map.setPaintProperty('ra-roads', 'line-color',   rp?.color || '#10b981');
+      map.setPaintProperty('ra-roads', 'line-opacity',  vis ? (rp?.opacity ?? 0.85) : 0);
+      map.setPaintProperty('ra-roads', 'line-width',    rp?.strokeWidth ?? 3.5);
+    }
   }
   if (map.getLayer('ra-captured')) {
     const cp = ss?.capturedPoints;
@@ -633,7 +706,20 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
   coverageRuns = EMPTY_COVERAGE_RUNS,
   showCoverage = true,
   showLabels = true,
-  atmosphereTint = true
+  atmosphereTint = true,
+  projectExplorerActive = false,
+  projectExplorerCenter = null,
+  projectExplorerCenterB = null,
+  projectExplorerRadius = 1000,
+  projectExplorerRoadsGeojson = null,
+  onProjectExplorerCenterChange,
+  onProjectExplorerCenterBChange,
+  isCompareMode = false,
+  projectExplorerPalette = 'viridis',
+  subgridMetrics = [],
+  selectedExplorerGrid = null,
+  onSelectExplorerGrid,
+  projectExplorerColorByMetric = 'density'
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MaplibreMap | null>(null);
@@ -770,6 +856,22 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
   const showCoverageRef = useRef<boolean>(showCoverage ?? true);
   const showLabelsRef   = useRef<boolean>(showLabels ?? true);
   const atmosphereTintRef = useRef<boolean>(atmosphereTint ?? true);
+  const explorerMarkerRef = useRef<maplibregl.Marker | null>(null);
+  const explorerMarkerBRef = useRef<maplibregl.Marker | null>(null);
+  const projectExplorerActiveRef = useRef<boolean>(projectExplorerActive ?? false);
+  const projectExplorerCenterRef = useRef<[number, number] | null>(projectExplorerCenter ?? null);
+  const projectExplorerCenterBRef = useRef<[number, number] | null>(projectExplorerCenterB ?? null);
+  const projectExplorerRadiusRef = useRef<number>(projectExplorerRadius ?? 1000);
+  const projectExplorerRoadsGeojsonRef = useRef<GeoJSON.FeatureCollection | null>(projectExplorerRoadsGeojson ?? null);
+  const projectExplorerPaletteRef = useRef<ExplorerChoroplethPalette>(projectExplorerPalette ?? 'viridis');
+  const projectExplorerColorByMetricRef = useRef<string>(projectExplorerColorByMetric ?? 'density');
+  const subgridMetricsRef = useRef<any[]>(subgridMetrics ?? []);
+  const onProjectExplorerCenterChangeRef = useRef(onProjectExplorerCenterChange);
+  const onProjectExplorerCenterBChangeRef = useRef(onProjectExplorerCenterBChange);
+  const isCompareModeRef = useRef<boolean>(isCompareMode ?? false);
+  const selectedExplorerGridRef = useRef<any | null>(selectedExplorerGrid ?? null);
+  const onSelectExplorerGridRef = useRef(onSelectExplorerGrid);
+  const explorerMeshResultRef = useRef<any | null>(null);
 
   catalogLayersRef.current   = catalogLayers;
   systemStylesRef.current    = systemStyles;
@@ -784,6 +886,19 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
   showCoverageRef.current    = showCoverage ?? true;
   showLabelsRef.current      = showLabels ?? true;
   atmosphereTintRef.current  = atmosphereTint ?? true;
+  projectExplorerActiveRef.current = projectExplorerActive ?? false;
+  projectExplorerCenterRef.current = projectExplorerCenter ?? null;
+  projectExplorerCenterBRef.current = projectExplorerCenterB ?? null;
+  projectExplorerRadiusRef.current = projectExplorerRadius ?? 1000;
+  projectExplorerRoadsGeojsonRef.current = projectExplorerRoadsGeojson ?? null;
+  projectExplorerPaletteRef.current = projectExplorerPalette ?? 'viridis';
+  projectExplorerColorByMetricRef.current = projectExplorerColorByMetric ?? 'density';
+  subgridMetricsRef.current = subgridMetrics ?? [];
+  onProjectExplorerCenterChangeRef.current = onProjectExplorerCenterChange;
+  onProjectExplorerCenterBChangeRef.current = onProjectExplorerCenterBChange;
+  isCompareModeRef.current = isCompareMode ?? false;
+  selectedExplorerGridRef.current = selectedExplorerGrid ?? null;
+  onSelectExplorerGridRef.current = onSelectExplorerGrid;
 
   const buildOverlay = useCallback(() => {
     const map = mapRef.current;
@@ -830,12 +945,7 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
 
       map.addSource('ra-districts', { type: 'geojson', data: districtGeojson });
       addedSourceIdsRef.current.add('ra-districts');
-      map.addLayer({
-        id: 'ra-districts',
-        type: 'fill',
-        source: 'ra-districts',
-        paint: { 'fill-color': '#0b1220', 'fill-opacity': 0 }
-      });
+      // Removed transparent fill layer (was used only for clipping, not needed)
       map.addLayer({
         id: 'ra-districts-line',
         type: 'line',
@@ -848,8 +958,98 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
       });
     }
 
+    // 2b. Project Explorer: mesh polygon blocks clipped strictly to district boundary
+    if (!map.getSource('ra-explorer-mesh')) {
+      map.addSource('ra-explorer-mesh', { type: 'geojson', data: EMPTY_FC });
+    }
+    addedSourceIdsRef.current.add('ra-explorer-mesh');
+    if (!map.getLayer('ra-explorer-mesh-fill')) {
+      map.addLayer(
+        {
+          id: 'ra-explorer-mesh-fill',
+          type: 'fill',
+          source: 'ra-explorer-mesh',
+          layout: {
+            visibility: projectExplorerActiveRef.current ? 'visible' : 'none'
+          },
+          paint: {
+            'fill-color': buildMaplibreChoroplethMeshExpression(
+              projectExplorerPaletteRef.current,
+              projectExplorerColorByMetricRef.current || 'density',
+              0.82
+            ) as any,
+            'fill-opacity': 0.85
+          }
+        },
+        map.getLayer('ra-districts-line') ? 'ra-districts-line' : undefined
+      );
+    }
+    if (!map.getLayer('ra-explorer-mesh-line')) {
+      map.addLayer(
+        {
+          id: 'ra-explorer-mesh-line',
+          type: 'line',
+          source: 'ra-explorer-mesh',
+          layout: {
+            visibility: projectExplorerActiveRef.current ? 'visible' : 'none',
+            'line-cap': 'round',
+            'line-join': 'round'
+          },
+          paint: {
+            'line-color': '#ffffff', // Clean crisp white border separating each grid box
+            'line-width': 1.2,
+            'line-opacity': 0.85
+          }
+        },
+        map.getLayer('ra-districts-line') ? 'ra-districts-line' : undefined
+      );
+    }
+
+    // 2c. Dedicated Selected Grid Box (Bold Orange Highlight Border & Subtle Wash)
+    if (!map.getSource('ra-explorer-selected-box')) {
+      map.addSource('ra-explorer-selected-box', { type: 'geojson', data: EMPTY_FC });
+    }
+    addedSourceIdsRef.current.add('ra-explorer-selected-box');
+    if (!map.getLayer('ra-explorer-selected-fill')) {
+      map.addLayer(
+        {
+          id: 'ra-explorer-selected-fill',
+          type: 'fill',
+          source: 'ra-explorer-selected-box',
+          layout: {
+            visibility: projectExplorerActiveRef.current ? 'visible' : 'none'
+          },
+          paint: {
+            'fill-color': '#f97316',
+            'fill-opacity': 0.15
+          }
+        },
+        map.getLayer('ra-districts-line') ? 'ra-districts-line' : undefined
+      );
+    }
+    if (!map.getLayer('ra-explorer-selected-line')) {
+      map.addLayer(
+        {
+          id: 'ra-explorer-selected-line',
+          type: 'line',
+          source: 'ra-explorer-selected-box',
+          layout: {
+            visibility: projectExplorerActiveRef.current ? 'visible' : 'none',
+            'line-cap': 'round',
+            'line-join': 'round'
+          },
+          paint: {
+            'line-color': '#f97316', // Bold vibrant ORANGE selection box
+            'line-width': 4.0,
+            'line-opacity': 1.0
+          }
+        },
+        map.getLayer('ra-districts-line') ? 'ra-districts-line' : undefined
+      );
+    }
+
     // 3. User Catalog Vector Layers (rendered below baseline lines so road analysis remains clear)
-    const pendingCatalogGeometry: Array<{ srcId: string; geojson: any; geojsonJson?: string }> = [];
+    const pendingCatalogGeometry: Array<{ srcId: string; geojson: any; geojsonJson?: string; isPolyType?: boolean }> = [];
     catalogLayers.forEach((catLayer) => {
       if (!catLayer.visible || (!catLayer.geojson && !catLayer.geojsonJson)) return;
 
@@ -863,16 +1063,20 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
       // For non-heavy layers we parse the string immediately so the map renders;
       // heavy layers defer through the blob-URL idle-time loader.
       let initialData: any = EMPTY_FC;
+      const isPolyType = catLayer.geometryType === 'Polygon' || catLayer.geometryType === 'Mixed';
       if (heavy) {
         // Will be loaded via scheduleCatalogGeometryLoad below
         initialData = EMPTY_FC;
       } else if (catLayer.geojson) {
-        initialData = catLayer.geojson;
+        initialData = isPolyType ? stripEnvelopeFeatures(catLayer.geojson) : catLayer.geojson;
       } else if (catLayer.geojsonJson) {
-        try { initialData = JSON.parse(catLayer.geojsonJson); } catch { initialData = EMPTY_FC; }
+        try {
+          const parsed = JSON.parse(catLayer.geojsonJson);
+          initialData = isPolyType ? stripEnvelopeFeatures(parsed) : parsed;
+        } catch { initialData = EMPTY_FC; }
       }
       map.addSource(srcId, { type: 'geojson', data: initialData });
-      if (heavy) pendingCatalogGeometry.push({ srcId, geojson: catLayer.geojson, geojsonJson: catLayer.geojsonJson });
+      if (heavy) pendingCatalogGeometry.push({ srcId, geojson: catLayer.geojson, geojsonJson: catLayer.geojsonJson, isPolyType });
       addedSourceIdsRef.current.add(srcId);
       dynamicSourcesRef.current.push(srcId);
 
@@ -894,12 +1098,16 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
         const fillId = `${srcId}-fill`;
         const outlineId = `${srcId}-poly-line`;
         const fillColor = catLayer.fillColor || color;
-        const fillOpacity = catLayer.fillOpacity !== undefined ? catLayer.fillOpacity : opacity * 0.4;
+        const fillOpacity = catLayer.fillOpacity !== undefined ? catLayer.fillOpacity : 0;
+        const isExplorerActive = projectExplorerActiveRef.current;
 
         map.addLayer({
           id: fillId,
           type: 'fill',
           source: srcId,
+          layout: {
+            visibility: isExplorerActive ? 'none' : 'visible'
+          },
           paint: {
             'fill-color': fillColor,
             'fill-opacity': fillOpacity
@@ -917,6 +1125,9 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
           id: outlineId,
           type: 'line',
           source: srcId,
+          layout: {
+            visibility: isExplorerActive ? 'none' : 'visible'
+          },
           paint: linePaint
         });
         dynamicLayersRef.current.push(fillId, outlineId);
@@ -1004,12 +1215,15 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
       // Interactive popup on feature click
       clickableLayerIds.forEach((layerId) => {
         map.on('mouseenter', layerId, () => {
+          if (projectExplorerActiveRef.current) return;
           map.getCanvas().style.cursor = 'pointer';
         });
         map.on('mouseleave', layerId, () => {
+          if (projectExplorerActiveRef.current) return;
           map.getCanvas().style.cursor = '';
         });
         map.on('click', layerId, (e) => {
+          if (projectExplorerActiveRef.current) return;
           // If a point on ra-captured was clicked at this same location, suppress polygon popup
           if (map.getLayer('ra-captured')) {
             const renderedPoints = map.queryRenderedFeatures(e.point, { layers: ['ra-captured'] });
@@ -1070,7 +1284,23 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
     // 4. Extracted / Road Plan Lines (Option A / Option B roads)
     //    Always register the source & layer so subsequent updates can call .setData()
     //    with zero flicker, zero lag, and without tearing down other map layers.
-    const initialRoadsData = roadRuns.length > 0 ? extractLineStringRuns(roadRuns) : EMPTY_FC;
+    const isExplorerActive = projectExplorerActiveRef.current && showRoadLines;
+    let initialRoadsData = EMPTY_FC;
+    if (isExplorerActive) {
+      const { meshGeojson, annotatedRoadsGeojson } = buildMeshRoadChoroplethGeojson(
+        roadRuns,
+        districtGeojson,
+        catalogLayersRef.current,
+        subgridMetricsRef.current,
+        capturedPoints
+      );
+      initialRoadsData = annotatedRoadsGeojson;
+      // Populate mesh source immediately so clipped grid displays on frame 1 with zero lag
+      (map.getSource('ra-explorer-mesh') as any)?.setData(meshGeojson);
+    } else if (roadRuns.length > 0) {
+      initialRoadsData = extractLineStringRuns(roadRuns);
+    }
+
     const planVisible = showRoadLines && (systemStyles?.roadPlan?.visible !== false);
     const planColor = systemStyles?.roadPlan?.color || '#10b981';
     const planOpacity = planVisible ? (systemStyles?.roadPlan?.opacity ?? 0.85) : 0;
@@ -1088,11 +1318,18 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
         visibility: planVisible && roadRuns.length > 0 ? 'visible' : 'none'
       },
       paint: {
-        'line-color': planColor,
-        'line-width': planWidth,
-        'line-opacity': planOpacity
+        'line-color': isExplorerActive ? '#9ca3af' : planColor,
+        'line-width': isExplorerActive ? 1.8 : planWidth,
+        'line-opacity': isExplorerActive ? 0.30 : planOpacity
       }
     });
+
+    if (isExplorerActive) {
+      if (map.getLayer('ra-dim')) {
+        map.setPaintProperty('ra-dim', 'fill-color', '#030712');
+        map.setPaintProperty('ra-dim', 'fill-opacity', 0);
+      }
+    }
 
     // 4b. Coverage segmentation: plan stretches WITHOUT any panotrack within
     //     tolerance, drawn in red directly on the plan geometry. Always register
@@ -1378,7 +1615,7 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
     map.addLayer({
       id: 'ra-preview-fill', type: 'fill', source: PREVIEW_SRC,
       filter: ['match', ['geometry-type'], ['Polygon', 'MultiPolygon'], true, false],
-      paint: { 'fill-color': previewColor, 'fill-opacity': 0.35 }
+      paint: { 'fill-color': previewColor, 'fill-opacity': 0 }
     });
     map.addLayer({
       id: 'ra-preview-poly-line', type: 'line', source: PREVIEW_SRC,
@@ -1406,13 +1643,46 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
     });
     dynamicLayersRef.current.push(...PREVIEW_LAYER_IDS);
 
-    const previewFc = preview?.geojson;
+    // 6c. Project Explorer spotlight inverted mask, perimeter stroke, and choropleth roads
+    // 6c. Project Explorer spotlight inverted mask and boundary stroke
+    map.addSource('ra-explorer-mask', { type: 'geojson', data: EMPTY_FC });
+    map.addSource('ra-explorer-stroke', { type: 'geojson', data: EMPTY_FC });
+    addedSourceIdsRef.current.add('ra-explorer-mask');
+    addedSourceIdsRef.current.add('ra-explorer-stroke');
+
+    map.addLayer({
+      id: 'ra-explorer-mask',
+      type: 'fill',
+      source: 'ra-explorer-mask',
+      paint: {
+        'fill-color': '#030712',
+        'fill-opacity': 0
+      }
+    });
+
+    map.addLayer({
+      id: 'ra-explorer-stroke',
+      type: 'line',
+      source: 'ra-explorer-stroke',
+      layout: {
+        'line-cap': 'round',
+        'line-join': 'round'
+      },
+      paint: {
+        'line-color': '#38bdf8',
+        'line-width': 2.8,
+        'line-opacity': 0
+      }
+    });
+
+    const rawPreviewFc = preview?.geojson;
+    const previewFc = rawPreviewFc && Array.isArray(rawPreviewFc.features) ? stripEnvelopeFeatures(rawPreviewFc) : rawPreviewFc;
     if (previewFc && Array.isArray(previewFc.features) && previewFc.features.length > 0) {
       const heavy =
         previewFc.features.length >= HEAVY_CATALOG_FEATURE_COUNT ||
         estimateGeometryBytes(previewFc) > HEAVY_CATALOG_BYTES;
       if (heavy) {
-        pendingCatalogGeometry.push({ srcId: PREVIEW_SRC, geojson: previewFc, geojsonJson: preview?.geojsonJson });
+        pendingCatalogGeometry.push({ srcId: PREVIEW_SRC, geojson: previewFc, geojsonJson: preview?.geojsonJson, isPolyType: true });
       } else {
         (map.getSource(PREVIEW_SRC) as maplibregl.GeoJSONSource | undefined)?.setData(previewFc);
       }
@@ -1491,6 +1761,10 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
     if (!map || !styleLoadedRef.current) return;
     const roadSrc = map.getSource('ra-roads') as maplibregl.GeoJSONSource | undefined;
     if (!roadSrc?.setData) return;
+    if (projectExplorerActiveRef.current) {
+      // In explorer mode, road lines are managed by the explorer choropleth effect
+      return;
+    }
     const planVisible = showRoadLines && (systemStyles?.roadPlan?.visible !== false);
     const data = roadRuns.length > 0 ? extractLineStringRuns(roadRuns) : EMPTY_FC;
     roadSrc.setData(data);
@@ -1532,7 +1806,8 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
     if (!map || !styleLoadedRef.current) return;
     const src = map?.getSource?.(PREVIEW_SRC) as maplibregl.GeoJSONSource | undefined;
     const preview = catalogPreview;
-    const geojson = preview?.geojson;
+    const rawGeojson = preview?.geojson;
+    const geojson = rawGeojson && Array.isArray(rawGeojson.features) ? stripEnvelopeFeatures(rawGeojson) : rawGeojson;
 
     if (src?.setData) {
       const heavy =
@@ -1541,7 +1816,7 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
         (geojson.features.length >= HEAVY_CATALOG_FEATURE_COUNT ||
           estimateGeometryBytes(geojson) > HEAVY_CATALOG_BYTES);
       if (heavy) {
-        scheduleCatalogGeometryLoad(map, [{ srcId: PREVIEW_SRC, geojson }]);
+        scheduleCatalogGeometryLoad(map, [{ srcId: PREVIEW_SRC, geojson, isPolyType: true }]);
       } else {
         src.setData(geojson && Array.isArray(geojson.features) ? geojson : EMPTY_FC);
       }
@@ -1550,7 +1825,10 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
     const color = preview?.color || '#38bdf8';
     if (map.getLayer('ra-preview-line')) map.setPaintProperty('ra-preview-line', 'line-color', color);
     if (map.getLayer('ra-preview-point')) map.setPaintProperty('ra-preview-point', 'circle-color', color);
-    if (map.getLayer('ra-preview-fill')) map.setPaintProperty('ra-preview-fill', 'fill-color', color);
+    if (map.getLayer('ra-preview-fill')) {
+      map.setPaintProperty('ra-preview-fill', 'fill-color', color);
+      map.setPaintProperty('ra-preview-fill', 'fill-opacity', 0);
+    }
     if (map.getLayer('ra-preview-poly-line')) map.setPaintProperty('ra-preview-poly-line', 'line-color', color);
   }, [catalogPreview]);
 
@@ -1574,7 +1852,7 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
     // opacity sliders respond instantly instead of waiting for a full rebuild.
     for (const catLayer of catalogLayers) {
       if (!catLayer.geojson && !catLayer.geojsonJson) continue;
-      updateCatalogLayerStyle(map, catLayer, `ra-cat-${catLayer.id}`);
+      updateCatalogLayerStyle(map, catLayer, `ra-cat-${catLayer.id}`, projectExplorerActiveRef.current);
     }
   }, [catalogLayers]);
 
@@ -1582,7 +1860,7 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !styleLoadedRef.current) return;
-    applySystemStyles(map, systemStyles, showRoadLines);
+    applySystemStyles(map, systemStyles, showRoadLines, projectExplorerActiveRef.current);
   }, [systemStyles, showRoadLines]);
 
   // Zoom to layer bounding box when requested by catalog
@@ -1615,6 +1893,634 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
       }
     }
   }, [focusBbox]);
+
+  // ── 1. Memoize mesh and road GeoJSON so switching palettes or metrics NEVER re-runs heavy spatial clipping ──
+  const explorerMeshResult = useMemo(() => {
+    if (!projectExplorerActive || !showRoadLines) {
+      return null;
+    }
+    return buildMeshRoadChoroplethGeojson(
+      roadRuns,
+      districtGeojson,
+      catalogLayers,
+      subgridMetrics,
+      capturedPoints
+    );
+  }, [
+    projectExplorerActive,
+    showRoadLines,
+    roadRuns,
+    districtGeojson,
+    catalogLayers,
+    subgridMetrics,
+    capturedPoints
+  ]);
+  explorerMeshResultRef.current = explorerMeshResult;
+
+  // ── 2. Update mesh and road data ONLY when underlying geometry actually changes ──
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !styleLoadedRef.current) return;
+
+    const meshSrc = map.getSource('ra-explorer-mesh') as maplibregl.GeoJSONSource | undefined;
+    const roadsLineSrc = map.getSource('ra-roads') as maplibregl.GeoJSONSource | undefined;
+
+    if (!projectExplorerActive || !showRoadLines || !explorerMeshResult) {
+      meshSrc?.setData?.(EMPTY_FC);
+      if (map.getLayer('ra-explorer-mesh-fill')) {
+        map.setLayoutProperty('ra-explorer-mesh-fill', 'visibility', 'none');
+      }
+      if (map.getLayer('ra-explorer-mesh-line')) {
+        map.setLayoutProperty('ra-explorer-mesh-line', 'visibility', 'none');
+      }
+      return;
+    }
+
+    meshSrc?.setData?.(explorerMeshResult.meshGeojson);
+    roadsLineSrc?.setData?.(explorerMeshResult.annotatedRoadsGeojson);
+
+    // Road network lines set to gray with 30% opacity per user specification
+    if (map.getLayer('ra-roads')) {
+      map.setPaintProperty('ra-roads', 'line-color', '#9ca3af');
+      map.setPaintProperty('ra-roads', 'line-width', 1.8);
+      map.setPaintProperty('ra-roads', 'line-opacity', 0.30);
+    }
+
+    if (map.getLayer('ra-explorer-mesh-fill')) {
+      map.setLayoutProperty('ra-explorer-mesh-fill', 'visibility', 'visible');
+    }
+    if (map.getLayer('ra-explorer-mesh-line')) {
+      map.setPaintProperty('ra-explorer-mesh-line', 'line-color', '#ffffff');
+      map.setPaintProperty('ra-explorer-mesh-line', 'line-width', 1.2);
+      map.setPaintProperty('ra-explorer-mesh-line', 'line-opacity', 0.85);
+      map.setLayoutProperty('ra-explorer-mesh-line', 'visibility', 'visible');
+    }
+
+    // Suppress catalog layer polygon outlines and fills so they don't double-render over choropleth mesh outlines
+    catalogLayers.forEach((catLayer) => {
+      const outlineId = `ra-cat-${catLayer.id}-poly-line`;
+      const fillId = `ra-cat-${catLayer.id}-fill`;
+      if (map.getLayer(outlineId)) map.setLayoutProperty(outlineId, 'visibility', 'none');
+      if (map.getLayer(fillId)) map.setLayoutProperty(fillId, 'visibility', 'none');
+    });
+  }, [explorerMeshResult, projectExplorerActive, showRoadLines, catalogLayers]);
+
+  // ── 3. Dedicated Ultra-Fast Palette & Metric Choropleth Switcher (< 1ms GPU update, zero data re-parsing) ──
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !styleLoadedRef.current) return;
+    if (!projectExplorerActive || !showRoadLines) return;
+    if (!map.getLayer('ra-explorer-mesh-fill')) return;
+
+    const activePalette = projectExplorerPalette || 'greens';
+    const activeMetric = projectExplorerColorByMetric || 'density';
+
+    // Instant native GPU paint update - no GeoJSON transfer, no Web Worker re-tessellation
+    map.setPaintProperty(
+      'ra-explorer-mesh-fill',
+      'fill-color',
+      buildMaplibreChoroplethMeshExpression(activePalette, activeMetric, 0.82) as any
+    );
+  }, [projectExplorerPalette, projectExplorerColorByMetric, projectExplorerActive, showRoadLines]);
+
+  // ── Helper: Compute Full Extent of the Active Grid ──
+  const getFullGridExtent = useCallback((): [number, number, number, number] | null => {
+    const meshResult = explorerMeshResultRef.current;
+    if (meshResult?.meshGeojson?.features && meshResult.meshGeojson.features.length > 0) {
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const f of meshResult.meshGeojson.features) {
+        let b = f.properties?.bbox;
+        if (!b && f.properties?.bbox_str) {
+          try { b = JSON.parse(f.properties.bbox_str); } catch {}
+        }
+        if (Array.isArray(b) && b.length === 4) {
+          if (b[0] < minX) minX = b[0];
+          if (b[1] < minY) minY = b[1];
+          if (b[2] > maxX) maxX = b[2];
+          if (b[3] > maxY) maxY = b[3];
+        } else if (f.geometry?.coordinates?.[0]) {
+          f.geometry.coordinates[0].forEach((pt: [number, number]) => {
+            if (pt[0] < minX) minX = pt[0];
+            if (pt[1] < minY) minY = pt[1];
+            if (pt[0] > maxX) maxX = pt[0];
+            if (pt[1] > maxY) maxY = pt[1];
+          });
+        }
+      }
+      if (Number.isFinite(minX) && Number.isFinite(maxX)) {
+        return [minX, minY, maxX, maxY];
+      }
+    }
+    if (districtGeojson?.bbox && Array.isArray(districtGeojson.bbox) && districtGeojson.bbox.length === 4) {
+      return districtGeojson.bbox as [number, number, number, number];
+    }
+    if (bbox && Array.isArray(bbox) && bbox.length === 4) {
+      return bbox as [number, number, number, number];
+    }
+    return null;
+  }, [districtGeojson, bbox]);
+
+  // ── Breathable Smooth Camera Zoom In (Selected Subgrid) & Zoom Out (Full Grid Extent) ──
+  const prevSelectedSubgridRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !styleLoadedRef.current || !projectExplorerActive) return;
+
+    const currentSubgrid = selectedExplorerGrid?.subgrid ? String(selectedExplorerGrid.subgrid) : null;
+    const prevSubgrid = prevSelectedSubgridRef.current;
+    prevSelectedSubgridRef.current = currentSubgrid;
+
+    if (currentSubgrid === prevSubgrid) return;
+
+    const canvasWidth = map.getCanvas().clientWidth || 1000;
+    const rightPad = canvasWidth < 768 ? 40 : canvasWidth < 1200 ? 320 : 420;
+
+    if (currentSubgrid) {
+      // Zoom IN to the focused subgrid with breathable smooth camera
+      let targetBbox = selectedExplorerGrid.bbox;
+      if (!targetBbox && selectedExplorerGrid.bbox_str) {
+        try { targetBbox = JSON.parse(selectedExplorerGrid.bbox_str); } catch {}
+      }
+      if (!targetBbox && selectedExplorerGrid.rings?.[0]) {
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        selectedExplorerGrid.rings[0].forEach((pt: [number, number]) => {
+          if (pt[0] < minX) minX = pt[0];
+          if (pt[1] < minY) minY = pt[1];
+          if (pt[0] > maxX) maxX = pt[0];
+          if (pt[1] > maxY) maxY = pt[1];
+        });
+        if (Number.isFinite(minX) && Number.isFinite(maxX)) {
+          targetBbox = [minX, minY, maxX, maxY];
+        }
+      }
+
+      if (targetBbox && Array.isArray(targetBbox) && targetBbox.length === 4) {
+        const bounds: [[number, number], [number, number]] = [
+          [Math.min(targetBbox[0], targetBbox[2]), Math.min(targetBbox[1], targetBbox[3])],
+          [Math.max(targetBbox[0], targetBbox[2]), Math.max(targetBbox[1], targetBbox[3])]
+        ];
+
+        const camera = typeof map.cameraForBounds === 'function'
+          ? map.cameraForBounds(bounds, {
+              padding: { top: 80, bottom: 80, left: 60, right: rightPad },
+              maxZoom: 14.8
+            })
+          : null;
+
+        if (camera) {
+          map.flyTo({
+            center: camera.center,
+            zoom: Math.min(camera.zoom ?? 14.8, 14.8),
+            duration: 1500,
+            curve: 1.42,
+            speed: 0.85,
+            essential: true
+          });
+        } else {
+          map.fitBounds(bounds, {
+            padding: { top: 80, bottom: 80, left: 60, right: rightPad },
+            duration: 1500,
+            maxZoom: 14.8,
+            essential: true
+          });
+        }
+      }
+    } else if (prevSubgrid && !currentSubgrid) {
+      // User unclicked the subgrid -> Zoom OUT back to the full extent of the grid!
+      const fullGridBbox = getFullGridExtent();
+      if (fullGridBbox) {
+        const bounds: [[number, number], [number, number]] = [
+          [Math.min(fullGridBbox[0], fullGridBbox[2]), Math.min(fullGridBbox[1], fullGridBbox[3])],
+          [Math.max(fullGridBbox[0], fullGridBbox[2]), Math.max(fullGridBbox[1], fullGridBbox[3])]
+        ];
+
+        const camera = typeof map.cameraForBounds === 'function'
+          ? map.cameraForBounds(bounds, {
+              padding: { top: 70, bottom: 70, left: 60, right: rightPad },
+              maxZoom: 13.5
+            })
+          : null;
+
+        if (camera) {
+          map.flyTo({
+            center: camera.center,
+            zoom: Math.min(camera.zoom ?? 13.5, 13.5),
+            duration: 1600,
+            curve: 1.42,
+            speed: 0.85,
+            essential: true
+          });
+        } else {
+          map.fitBounds(bounds, {
+            padding: { top: 70, bottom: 70, left: 60, right: rightPad },
+            duration: 1600,
+            maxZoom: 13.5,
+            essential: true
+          });
+        }
+      }
+    }
+  }, [selectedExplorerGrid, projectExplorerActive, getFullGridExtent]);
+
+  // ── 3b. Focus selected subgrid with ORANGE box, NO DIMMING ──
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !styleLoadedRef.current) return;
+    if (!projectExplorerActive || !showRoadLines) return;
+    if (!map.getLayer('ra-explorer-mesh-fill')) return;
+
+    // Ensure all grid cells remain fully visible with their choropleth colors (NO DIMMING)
+    map.setPaintProperty('ra-explorer-mesh-fill', 'fill-opacity', 0.85);
+
+    // Keep base grid mesh lines crisp white
+    if (map.getLayer('ra-explorer-mesh-line')) {
+      map.setPaintProperty('ra-explorer-mesh-line', 'line-width', 1.2);
+      map.setPaintProperty('ra-explorer-mesh-line', 'line-color', '#ffffff');
+      map.setPaintProperty('ra-explorer-mesh-line', 'line-opacity', 0.85);
+    }
+
+    // Ensure ra-dim is never active
+    if (map.getLayer('ra-dim')) {
+      map.setPaintProperty('ra-dim', 'fill-opacity', 0);
+    }
+
+    // Update dedicated Orange selection box
+    const selectedSrc = map.getSource('ra-explorer-selected-box') as maplibregl.GeoJSONSource | undefined;
+    if (!selectedSrc) return;
+
+    if (selectedExplorerGrid) {
+      let rings = selectedExplorerGrid.rings;
+      if (!rings || rings.length === 0) {
+        let bbox = selectedExplorerGrid.bbox;
+        if (!bbox && selectedExplorerGrid.bbox_str) {
+          try { bbox = JSON.parse(selectedExplorerGrid.bbox_str); } catch {}
+        }
+        if (bbox && Array.isArray(bbox) && bbox.length === 4) {
+          rings = [[[bbox[0], bbox[1]], [bbox[2], bbox[1]], [bbox[2], bbox[3]], [bbox[0], bbox[3]], [bbox[0], bbox[1]]]];
+        }
+      }
+
+      if (rings && rings.length > 0) {
+        selectedSrc.setData({
+          type: 'FeatureCollection',
+          features: [{
+            type: 'Feature',
+            properties: { subgrid: selectedExplorerGrid.subgrid },
+            geometry: {
+              type: 'Polygon',
+              coordinates: rings
+            }
+          }]
+        });
+        if (map.getLayer('ra-explorer-selected-line')) {
+          map.setLayoutProperty('ra-explorer-selected-line', 'visibility', 'visible');
+        }
+        if (map.getLayer('ra-explorer-selected-fill')) {
+          map.setLayoutProperty('ra-explorer-selected-fill', 'visibility', 'visible');
+        }
+        return;
+      }
+    }
+
+    selectedSrc.setData(EMPTY_FC);
+    if (map.getLayer('ra-explorer-selected-line')) {
+      map.setLayoutProperty('ra-explorer-selected-line', 'visibility', 'none');
+    }
+    if (map.getLayer('ra-explorer-selected-fill')) {
+      map.setLayoutProperty('ra-explorer-selected-fill', 'visibility', 'none');
+    }
+  }, [selectedExplorerGrid, projectExplorerActive, showRoadLines]);
+
+  // ── 4. Deactivation cleanup & standard styling restore ──
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !styleLoadedRef.current) return;
+
+    const maskSrc = map.getSource('ra-explorer-mask') as maplibregl.GeoJSONSource | undefined;
+    const strokeSrc = map.getSource('ra-explorer-stroke') as maplibregl.GeoJSONSource | undefined;
+    const roadsSrc = map.getSource('ra-explorer-roads') as maplibregl.GeoJSONSource | undefined;
+    const meshSrc = map.getSource('ra-explorer-mesh') as maplibregl.GeoJSONSource | undefined;
+    const roadsLineSrc = map.getSource('ra-roads') as maplibregl.GeoJSONSource | undefined;
+
+    const planColor = systemStylesRef.current?.roadPlan?.color || '#10b981';
+    const planWidth = systemStylesRef.current?.roadPlan?.strokeWidth ?? 3.5;
+    const planOpacity = systemStylesRef.current?.roadPlan?.opacity ?? 0.85;
+
+    maskSrc?.setData?.(EMPTY_FC);
+    strokeSrc?.setData?.(EMPTY_FC);
+    roadsSrc?.setData?.(EMPTY_FC);
+
+    if (!projectExplorerActive || !showRoadLines) {
+      meshSrc?.setData?.(EMPTY_FC);
+
+      // Revert roads layer to standard line styling
+      if (map.getLayer('ra-roads')) {
+        const rp = systemStyles?.roadPlan;
+        const vis = showRoadLines && (rp?.visible !== false);
+        map.setPaintProperty('ra-roads', 'line-color', rp?.color || planColor);
+        map.setPaintProperty('ra-roads', 'line-width', rp?.strokeWidth ?? planWidth);
+        map.setPaintProperty('ra-roads', 'line-opacity', vis ? (rp?.opacity ?? planOpacity) : 0);
+      }
+      if (roadsLineSrc && roadRuns.length > 0) {
+        roadsLineSrc.setData(extractLineStringRuns(roadRuns));
+      }
+
+      // Hide mesh & selected box layers
+      if (map.getLayer('ra-explorer-mesh-fill')) {
+        map.setLayoutProperty('ra-explorer-mesh-fill', 'visibility', 'none');
+      }
+      if (map.getLayer('ra-explorer-mesh-line')) {
+        map.setLayoutProperty('ra-explorer-mesh-line', 'visibility', 'none');
+      }
+      if (map.getLayer('ra-explorer-selected-line')) {
+        map.setLayoutProperty('ra-explorer-selected-line', 'visibility', 'none');
+      }
+      if (map.getLayer('ra-explorer-selected-fill')) {
+        map.setLayoutProperty('ra-explorer-selected-fill', 'visibility', 'none');
+      }
+      const selectedSrc = map.getSource('ra-explorer-selected-box') as maplibregl.GeoJSONSource | undefined;
+      selectedSrc?.setData?.(EMPTY_FC);
+
+      // Restore catalog polygon outlines and fills
+      catalogLayers.forEach((catLayer) => {
+        const outlineId = `ra-cat-${catLayer.id}-poly-line`;
+        const fillId = `ra-cat-${catLayer.id}-fill`;
+        if (map.getLayer(outlineId)) map.setLayoutProperty(outlineId, 'visibility', 'visible');
+        if (map.getLayer(fillId)) map.setLayoutProperty(fillId, 'visibility', 'visible');
+      });
+
+      // Revert dimmed regions styling
+      if (map.getLayer('ra-dim')) {
+        map.setPaintProperty('ra-dim', 'fill-color', '#0b1220');
+        map.setPaintProperty('ra-dim', 'fill-opacity', 0);
+      }
+      if (map.getLayer('ra-explorer-mask')) {
+        map.setPaintProperty('ra-explorer-mask', 'fill-opacity', 0);
+      }
+      if (map.getLayer('ra-explorer-stroke')) {
+        map.setPaintProperty('ra-explorer-stroke', 'line-opacity', 0);
+      }
+    }
+  }, [projectExplorerActive, showRoadLines, roadRuns, catalogLayers, systemStyles]);
+
+  // ── Project Explorer Marker Cleanup (No circular buffer pins in subgrid focus mode) ──
+  useEffect(() => {
+    if (explorerMarkerRef.current) {
+      explorerMarkerRef.current.remove();
+      explorerMarkerRef.current = null;
+    }
+    if (explorerMarkerBRef.current) {
+      explorerMarkerBRef.current.remove();
+      explorerMarkerBRef.current = null;
+    }
+  }, [projectExplorerActive]);
+
+  // ── Project Explorer Grid Click, Hover Tooltip & Focus Interaction ──
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !projectExplorerActive) return;
+
+    let hoverPopup: maplibregl.Popup | null = null;
+
+    const handleMouseMove = (e: maplibregl.MapMouseEvent) => {
+      if (!projectExplorerActiveRef.current) {
+        map.getCanvas().style.cursor = '';
+        if (hoverPopup) {
+          hoverPopup.remove();
+          hoverPopup = null;
+        }
+        return;
+      }
+      if (!map.getLayer('ra-explorer-mesh-fill')) {
+        map.getCanvas().style.cursor = '';
+        return;
+      }
+
+      const meshLayers = ['ra-explorer-mesh-fill', 'ra-explorer-mesh-line'].filter((id) => map.getLayer(id));
+      if (meshLayers.length === 0) {
+        map.getCanvas().style.cursor = '';
+        return;
+      }
+
+      const features = map.queryRenderedFeatures(e.point, { layers: meshLayers });
+      if (!features || features.length === 0) {
+        map.getCanvas().style.cursor = '';
+        if (hoverPopup) {
+          hoverPopup.remove();
+          hoverPopup = null;
+        }
+        return;
+      }
+
+      // Over a grid cell -> change cursor to pointer
+      map.getCanvas().style.cursor = 'pointer';
+
+      const p = features[0].properties || {};
+      const subgrid = p.subgrid || 'GRID CELL';
+      const density = Number(p.density || 0).toFixed(2);
+      const planKm = Number(p.planKm || 0).toFixed(1);
+      const areaKm2 = Number(p.areaKm2 || 0).toFixed(1);
+      const complexity = Number(p.complexity || 0);
+      const panotrack = Number(p.panotrack || 0);
+      const coverage = Number(p.coverage || 0);
+
+      const activeMetric = projectExplorerColorByMetricRef.current || 'density';
+      let metricBadge = `${density} km/km²`;
+      let metricBadgeColor = '#34d399';
+      let metricBadgeBg = 'rgba(52, 211, 153, 0.18)';
+
+      if (activeMetric === 'complexity') {
+        metricBadge = `${complexity}/100 complexity`;
+        metricBadgeColor = '#CCADD8';
+        metricBadgeBg = 'rgba(204, 173, 216, 0.22)';
+      } else if (activeMetric === 'panotrack') {
+        metricBadge = `${panotrack} survey frames`;
+        metricBadgeColor = '#FF8890';
+        metricBadgeBg = 'rgba(255, 136, 144, 0.22)';
+      } else if (activeMetric === 'roads') {
+        metricBadge = `${planKm} km roads`;
+        metricBadgeColor = '#66E3C3';
+        metricBadgeBg = 'rgba(102, 227, 195, 0.22)';
+      } else if (activeMetric === 'coverage') {
+        metricBadge = `${coverage}% covered`;
+        metricBadgeColor = '#D3EEA5';
+        metricBadgeBg = 'rgba(211, 238, 165, 0.22)';
+      }
+
+      if (!hoverPopup) {
+        hoverPopup = new maplibregl.Popup({
+          closeButton: false,
+          closeOnClick: false,
+          offset: 14,
+          className: 'explorer-grid-tooltip'
+        });
+      }
+
+      hoverPopup
+        .setLngLat(e.lngLat)
+        .setHTML(`
+          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 7px 10px; background: rgba(12, 18, 30, 0.95); border: 1px solid rgba(255, 255, 255, 0.16); border-radius: 9px; color: #fff; font-size: 11px; backdrop-filter: blur(8px); box-shadow: 0 8px 24px rgba(0,0,0,0.6); pointer-events: none;">
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 3px;">
+              <span style="font-weight: 700; color: #34d399; font-size: 11px;">${subgrid}</span>
+              <span style="font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 4px; background: ${metricBadgeBg}; color: ${metricBadgeColor};">${metricBadge}</span>
+            </div>
+            <div style="color: #94a3b8; font-size: 10px; display: flex; gap: 10px;">
+              <span>Roads: <strong style="color: #f1f5f9;">${planKm} km</strong></span>
+              <span>Area: <strong style="color: #f1f5f9;">${areaKm2} km²</strong></span>
+            </div>
+            <div style="margin-top: 5px; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.08); font-size: 9.5px; color: #38bdf8; font-weight: 500;">
+              Click grid to focus & dim other area
+            </div>
+          </div>
+        `)
+        .addTo(map);
+    };
+
+    const handleMouseLeave = () => {
+      map.getCanvas().style.cursor = '';
+      if (hoverPopup) {
+        hoverPopup.remove();
+        hoverPopup = null;
+      }
+    };
+
+    const handleMapClick = (e: maplibregl.MapMouseEvent) => {
+      if (!projectExplorerActiveRef.current) return;
+      if (!map.getLayer('ra-explorer-mesh-fill')) return;
+
+      const meshLayers = ['ra-explorer-mesh-fill', 'ra-explorer-mesh-line'].filter((id) => map.getLayer(id));
+      if (meshLayers.length === 0) return;
+
+      const features = map.queryRenderedFeatures(e.point, { layers: meshLayers });
+      if (features && features.length > 0) {
+        const feat = features[0];
+        const p = feat.properties || {};
+        const subgridName = String(p.subgrid || '');
+        if (!subgridName) return;
+
+        // Find genuine cell data from the memoized explorerMeshResult GeoJSON (real WGS84 coordinates)
+        const meshResult = explorerMeshResultRef.current;
+        let matchedFeature: any = null;
+        if (meshResult?.meshGeojson?.features) {
+          matchedFeature = meshResult.meshGeojson.features.find(
+            (f: any) => String(f.properties?.subgrid || '') === subgridName
+          );
+          // Fallback spatial point test if subgrid name property differed
+          if (!matchedFeature) {
+            matchedFeature = meshResult.meshGeojson.features.find((f: any) => {
+              const geom = f.geometry;
+              if (geom?.type === 'Polygon' && Array.isArray(geom.coordinates?.[0])) {
+                let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+                geom.coordinates[0].forEach((pt: [number, number]) => {
+                  if (pt[0] < minX) minX = pt[0];
+                  if (pt[1] < minY) minY = pt[1];
+                  if (pt[0] > maxX) maxX = pt[0];
+                  if (pt[1] > maxY) maxY = pt[1];
+                });
+                return e.lngLat.lng >= minX && e.lngLat.lng <= maxX && e.lngLat.lat >= minY && e.lngLat.lat <= maxY;
+              }
+              return false;
+            });
+          }
+        }
+
+        let bbox: [number, number, number, number] | null = null;
+        let rings: [number, number][][] = [];
+
+        if (matchedFeature) {
+          const mp = matchedFeature.properties || {};
+          if (Array.isArray(mp.bbox) && mp.bbox.length === 4) {
+            bbox = mp.bbox as [number, number, number, number];
+          }
+          const mgeom = matchedFeature.geometry;
+          if (mgeom?.type === 'Polygon' && Array.isArray(mgeom.coordinates)) {
+            rings = mgeom.coordinates;
+          }
+        }
+
+        if (!bbox && p.bbox_str) {
+          try {
+            const parsed = JSON.parse(p.bbox_str);
+            if (Array.isArray(parsed) && parsed.length === 4) bbox = parsed as any;
+          } catch {}
+        }
+        if (!bbox && Array.isArray(p.bbox) && p.bbox.length === 4) {
+          bbox = p.bbox as any;
+        }
+
+        // If still no bbox, compute from rings
+        if (!bbox && rings.length > 0 && rings[0].length > 0) {
+          let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+          rings[0].forEach((pt: [number, number]) => {
+            if (pt[0] < minX) minX = pt[0];
+            if (pt[1] < minY) minY = pt[1];
+            if (pt[0] > maxX) maxX = pt[0];
+            if (pt[1] > maxY) maxY = pt[1];
+          });
+          if (Number.isFinite(minX) && Number.isFinite(maxX)) {
+            bbox = [minX, minY, maxX, maxY];
+          }
+        }
+
+        // Validate that bbox is valid WGS84 coordinates (-180..180, -90..90)
+        if (
+          bbox &&
+          (Math.abs(bbox[0]) > 180 || Math.abs(bbox[2]) > 180 || Math.abs(bbox[1]) > 90 || Math.abs(bbox[3]) > 90)
+        ) {
+          bbox = null;
+        }
+
+        const cellData = {
+          subgrid: subgridName,
+          density: Number(matchedFeature?.properties?.density ?? p.density ?? 0),
+          planKm: Number(matchedFeature?.properties?.planKm ?? p.planKm ?? 0),
+          areaKm2: Number(matchedFeature?.properties?.areaKm2 ?? p.areaKm2 ?? 0),
+          complexity: Number(matchedFeature?.properties?.complexity ?? p.complexity ?? 0),
+          panotrack: Number(matchedFeature?.properties?.panotrack ?? p.panotrack ?? 0),
+          coverage: Number(matchedFeature?.properties?.coverage ?? p.coverage ?? 0),
+          bbox,
+          rings
+        };
+
+        // If clicking the currently selected grid, toggle it OFF (deselect)
+        if (selectedExplorerGridRef.current && String(selectedExplorerGridRef.current.subgrid) === cellData.subgrid) {
+          onSelectExplorerGridRef.current?.(null);
+          onProjectExplorerCenterChangeRef.current?.(null as any);
+        } else {
+          // Select and focus on the grid!
+          onSelectExplorerGridRef.current?.(cellData);
+          if (bbox) {
+            const centerLng = (bbox[0] + bbox[2]) / 2;
+            const centerLat = (bbox[1] + bbox[3]) / 2;
+            onProjectExplorerCenterChangeRef.current?.([centerLng, centerLat]);
+          }
+        }
+        return;
+      }
+
+      // If clicked outside all grid cells -> deselect
+      if (selectedExplorerGridRef.current) {
+        onSelectExplorerGridRef.current?.(null);
+        onProjectExplorerCenterChangeRef.current?.(null as any);
+      }
+    };
+
+    map.on('mousemove', handleMouseMove);
+    map.on('mouseout', handleMouseLeave);
+    map.on('click', handleMapClick);
+
+    return () => {
+      map.getCanvas().style.cursor = '';
+      map.off('mousemove', handleMouseMove);
+      map.off('mouseout', handleMouseLeave);
+      map.off('click', handleMapClick);
+      if (hoverPopup) {
+        hoverPopup.remove();
+        hoverPopup = null;
+      }
+    };
+  }, [projectExplorerActive, ready]);
 
 function areStylesEqual(a?: string | StyleSpecification, b?: string | StyleSpecification): boolean {
   if (a === b) return true;
@@ -1692,6 +2598,14 @@ function areStylesEqual(a?: string | StyleSpecification, b?: string | StyleSpeci
       // live reference rather than the one captured at initialization to avoid
       // leaking the replaced map.
       const current = mapRef.current;
+      if (explorerMarkerRef.current) {
+        explorerMarkerRef.current.remove();
+        explorerMarkerRef.current = null;
+      }
+      if (explorerMarkerBRef.current) {
+        explorerMarkerBRef.current.remove();
+        explorerMarkerBRef.current = null;
+      }
       if (current) {
         current.remove();
         mapRef.current = null;
@@ -1724,6 +2638,14 @@ function areStylesEqual(a?: string | StyleSpecification, b?: string | StyleSpeci
       pitch: map.getPitch()
     };
     prevStyleRef.current = style;
+    if (explorerMarkerRef.current) {
+      explorerMarkerRef.current.remove();
+      explorerMarkerRef.current = null;
+    }
+    if (explorerMarkerBRef.current) {
+      explorerMarkerBRef.current.remove();
+      explorerMarkerBRef.current = null;
+    }
     map.remove();
     mapRef.current = null;
     styleLoadedRef.current = false;

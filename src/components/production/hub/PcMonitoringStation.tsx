@@ -70,7 +70,7 @@ function openRdpFile(ws: WorkstationStationConfig): void {
   URL.revokeObjectURL(url);
 }
 
-/** In-browser live desktop pane: noVNC/websockify served by the station PC. */
+/** In-browser remote desktop pane: noVNC/websockify served by the station PC. */
 function remotePaneUrl(ws: WorkstationStationConfig): string | null {
   if (ws.remoteChannel !== 'vnc') return null;
   const ip = ws.ipAddress || '';
@@ -168,11 +168,11 @@ export const PcMonitoringStation: React.FC<PcMonitoringStationProps> = ({
         <div className="min-w-0">
           <h3 className="text-sm font-semibold text-text-base tracking-tight">PC Monitoring</h3>
           <p className="text-xs text-text-muted mt-0.5 leading-relaxed max-w-3xl">
-            Live status, hardware usage, and remote access for all four production workstations.
+            Current status, hardware usage, and remote access for all four production workstations.
           </p>
         </div>
         <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted shrink-0">
-          {onlineCount}/4 agents live · {activeRemoteCount}/4 VNC enabled
+          {onlineCount}/4 agents online · {activeRemoteCount}/4 VNC enabled
         </span>
       </div>
 
@@ -193,7 +193,7 @@ export const PcMonitoringStation: React.FC<PcMonitoringStationProps> = ({
                 <div className="flex items-center gap-1.5 shrink-0">
                   <StatusDot tone={online ? 'text-emerald-400' : 'text-text-muted/60'} pulse={online} />
                   <span className={`text-[10px] font-bold ${online ? 'text-emerald-300' : 'text-text-muted'}`}>
-                    {online ? 'Live' : 'Down'}
+                    {online ? 'Online' : 'Offline'}
                   </span>
                 </div>
               </div>
@@ -255,10 +255,10 @@ export const PcMonitoringStation: React.FC<PcMonitoringStationProps> = ({
                   disabled={isGuestUser || !remotePaneUrl(ws)}
                   onClick={() => setFocusedStation(ws.id)}
                   className="flex-1 py-1.5 bg-text-base text-card hover:opacity-90 text-[11px] font-medium rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
-                  title={remotePaneUrl(ws) ? 'Live desktop in browser (noVNC)' : 'Enable VNC port for this station under Providers → Workstations'}
+                  title={remotePaneUrl(ws) ? 'Remote desktop in browser (noVNC)' : 'Enable VNC port for this station under Providers → Workstations'}
                 >
                   <Monitor size={12} />
-                  <span>Live view</span>
+                  <span>Remote view</span>
                 </button>
               </div>
             </div>
@@ -266,12 +266,12 @@ export const PcMonitoringStation: React.FC<PcMonitoringStationProps> = ({
         })}
       </div>
 
-      {/* === 4-up live desktop quad === */}
+      {/* === 4-up remote desktop quad === */}
       <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-text-muted pt-1">
-        <Server size={12} /> 4-PC Live Desktop (embedded VNC)
+        <Server size={12} /> 4-PC Remote Desktop (embedded VNC)
       </div>
       <p className="text-[11px] text-text-muted leading-relaxed">
-        Each cell below is the workstation&apos;s own noVNC/websockify live desktop served over the LAN
+        Each cell below is the workstation&apos;s own noVNC/websockify remote desktop served over the LAN
         (`Providers → Workstations` → enable *VNC Port* and pick *VNC* as the remote channel). Use
         `Open RDP` above for the full native console when precision is needed.
       </p>
@@ -302,7 +302,7 @@ export const PcMonitoringStation: React.FC<PcMonitoringStationProps> = ({
               {paneUrl ? (
                 <iframe
                   src={paneUrl}
-                  title={`${ws.name} live desktop`}
+                  title={`${ws.name} remote desktop`}
                   className="w-full h-64 lg:h-72 bg-black"
                   allow="fullscreen"
                 />
@@ -310,7 +310,7 @@ export const PcMonitoringStation: React.FC<PcMonitoringStationProps> = ({
                 <div className="w-full h-64 lg:h-72 bg-inner border-t border-subtle flex flex-col items-center justify-center gap-2 text-center px-6">
                   <Activity size={20} className="text-text-muted" />
                   <p className="text-[11px] text-text-muted leading-relaxed max-w-xs">
-                    Embedded live view is not enabled for this PC. Run **websockify + noVNC** on the workstation
+                    Embedded remote view is not enabled for this PC. Run **websockify + noVNC** on the workstation
                     (`pip install websockify` → `websockify --web /noVNC 5900:59xx` / port 6080), then set
                     **VNC Port** under Providers → Workstations.
                   </p>
@@ -378,7 +378,7 @@ function MonitorPaneOverlay({
           {paneUrl ? (
             <iframe
               src={paneUrl}
-              title={`${ws.name} live desktop`}
+              title={`${ws.name} remote desktop`}
               className="w-full h-full"
               allow="fullscreen"
             />

@@ -1,8 +1,8 @@
 # GeoSphere 360 Station Agent — per-PC telemetry for the 4-PC Flight Board.
 #
 # Runs on each workstation (PC 1-4) and answers two probes from the dashboard:
-#   GET /health       — same shape as the NAS GPU Worker /health (WorkerMonitorPanel
-#                       and ProvidersPanel pings keep working unchanged).
+#   GET /health       — same shape as the NAS GPU Worker /health, so existing
+#                       worker /health pings keep working unchanged.
 #   GET /api/station  — auto-detection payload consumed by the Flight Board:
 #                         task.processes    matched work processes (psutil)
 #                         task.started      true while any mapped process runs

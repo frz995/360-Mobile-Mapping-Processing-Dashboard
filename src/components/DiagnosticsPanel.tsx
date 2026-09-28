@@ -155,11 +155,11 @@ export const DiagnosticsPanel: React.FC<{ cardBg?: string }> = ({ cardBg = 'bg-c
         )}
       </div>
 
-      {/* Sentry / Telemetry Status */}
+      {/* Sentry / Monitoring Status */}
       <div className={`${cardBg} rounded-2xl p-4`}>
         <div className="flex items-center gap-2 mb-2">
           <Server size={16} className="text-sky-400" />
-          <h4 className="text-xs font-bold text-text-base uppercase tracking-wide">Telemetry Status</h4>
+          <h4 className="text-xs font-bold text-text-base uppercase tracking-wide">Monitoring Status</h4>
         </div>
         <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-mono bg-inner/60 border border-subtle">
           <span className={`w-2 h-2 rounded-full ${sentryActive ? 'bg-emerald-400' : 'bg-text-muted/40'}`} />

@@ -86,7 +86,7 @@ describe('MultiPCStationBoard (auto-detected flight board)', () => {
     expect(screen.getAllByText('Not started').length).toBe(4);
   });
 
-  it('flips a station to In progress with live counts when the agent reports a running process', async () => {
+  it('flips a station to In progress with current counts when the agent reports a running process', async () => {
     baseUrl({ stitch: obsFor('stitch', RUNNING) });
     await waitFor(() => {
       expect(screen.getAllByText('In progress').length).toBe(1);

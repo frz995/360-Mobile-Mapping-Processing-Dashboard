@@ -2,7 +2,7 @@
 // Station Agent API — probes the per-PC station agents (PC 1-4) that
 // power the 4-PC Multi-Station Flight Board's auto mode.
 // Wire contract: station-agent/README.md + docs/production_worker_api.md
-// (health section). LAN HTTP, same pattern as WorkerMonitorPanel.
+// (health section). LAN HTTP, same shape as the NAS GPU Worker /health.
 // =====================================================================
 
 import type {

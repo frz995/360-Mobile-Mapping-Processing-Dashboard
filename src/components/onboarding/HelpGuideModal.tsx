@@ -142,9 +142,9 @@ export const HelpGuideModal = ({
               </div>
 
               <div className="bg-card p-3.5 rounded-lg border border-subtle space-y-1">
-                <h4 className="font-semibold text-text-base text-xs">3. Real-Time Supabase PostgreSQL Sync</h4>
+                <h4 className="font-semibold text-text-base text-xs">3. Supabase PostgreSQL Sync</h4>
                 <p className="text-text-muted">
-                  Click <strong>Publish All to Database</strong> to synchronize processed subgrid trajectories directly to Supabase production tables with live notifications.
+                  Click <strong>Publish All to Database</strong> to synchronize processed subgrid trajectories directly to Supabase production tables with publish notifications.
                 </p>
               </div>
             </div>
@@ -160,7 +160,7 @@ export const HelpGuideModal = ({
               </div>
 
               <div className="bg-card p-3.5 rounded-lg border border-subtle space-y-1">
-                <h4 className="font-semibold text-text-base text-xs">2. Real-Time Publish Notifications</h4>
+                <h4 className="font-semibold text-text-base text-xs">2. Publish Notifications</h4>
                 <p className="text-text-muted">
                   The notification bell alerts you whenever survey runs or masterlists are published to Supabase, showing total items updated and timestamp.
                 </p>

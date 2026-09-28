@@ -569,6 +569,97 @@ html.showcase-active[data-theme] aside {
         inset -1px -1px 3px rgba(255, 255, 255, 0.04) !important;
 }
 
+/* 2b. Project Explorer Demographic Breakdown Bars (Arise Surface Effect) */
+[data-theme][data-surface="neumorphism"] .neu-bar-track {
+    background-color: rgba(0, 0, 0, 0.5) !important;
+    border: 1px solid rgba(255, 255, 255, 0.06) !important;
+    box-shadow:
+        inset 2px 2px 4px rgba(0, 0, 0, 0.8),
+        inset -1px -1px 2px var(--neu-shadow-light, rgba(255, 255, 255, 0.1)) !important;
+    overflow: hidden !important;
+}
+
+[data-theme][data-surface="neumorphism"] .neu-bar-fill {
+    box-shadow:
+        2px 0 6px rgba(0, 0, 0, 0.45),
+        inset 0 1px 1.5px rgba(255, 255, 255, 0.65),
+        inset 0 -1px 2px rgba(0, 0, 0, 0.35) !important;
+    position: relative;
+}
+
+[data-theme][data-surface="neumorphism"] .neu-bar-fill::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 50%;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.4) 0%, rgba(255, 255, 255, 0) 100%);
+    pointer-events: none;
+}
+
+/* 2c. Project Explorer Choropleth 5-Category Stepped Color Bar (Arise Surface Effect) */
+[data-theme][data-surface="neumorphism"] .neu-choropleth-bar {
+    box-shadow:
+        -3px -3px 8px var(--neu-shadow-light, rgba(255, 255, 255, 0.08)),
+        4px 5px 12px var(--neu-shadow-dark, rgba(0, 0, 0, 0.7)),
+        inset 0 1px 1px rgba(255, 255, 255, 0.5),
+        inset 0 -1px 2px rgba(0, 0, 0, 0.4) !important;
+    border-color: rgba(255, 255, 255, 0.25) !important;
+}
+
+[data-theme][data-surface="neumorphism"] .neu-choropleth-segment {
+    box-shadow:
+        inset 0 1px 1px rgba(255, 255, 255, 0.55),
+        inset 0 -1px 1.5px rgba(0, 0, 0, 0.35) !important;
+    position: relative;
+}
+
+[data-theme][data-surface="neumorphism"] .neu-choropleth-segment::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 48%;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.38) 0%, rgba(255, 255, 255, 0) 100%);
+    pointer-events: none;
+}
+
+/* Light Theme support for Project Explorer Arise Bars */
+[data-theme="daylight"][data-surface="neumorphism"] .neu-bar-track,
+[data-theme="alabaster"][data-surface="neumorphism"] .neu-bar-track,
+[data-theme="neumorph-clay"][data-surface="neumorphism"] .neu-bar-track,
+.light-mode[data-surface="neumorphism"] .neu-bar-track {
+    background-color: rgba(166, 175, 195, 0.28) !important;
+    border: 1px solid rgba(166, 175, 195, 0.4) !important;
+    box-shadow:
+        inset 2px 2px 4px rgba(166, 175, 195, 0.65),
+        inset -1.5px -1.5px 3px #ffffff !important;
+}
+
+[data-theme="daylight"][data-surface="neumorphism"] .neu-bar-fill,
+[data-theme="alabaster"][data-surface="neumorphism"] .neu-bar-fill,
+[data-theme="neumorph-clay"][data-surface="neumorphism"] .neu-bar-fill,
+.light-mode[data-surface="neumorphism"] .neu-bar-fill {
+    box-shadow:
+        2px 0 6px rgba(166, 175, 195, 0.5),
+        inset 0 1px 1px rgba(255, 255, 255, 0.95),
+        inset 0 -1px 2px rgba(0, 0, 0, 0.2) !important;
+}
+
+[data-theme="daylight"][data-surface="neumorphism"] .neu-choropleth-bar,
+[data-theme="alabaster"][data-surface="neumorphism"] .neu-choropleth-bar,
+[data-theme="neumorph-clay"][data-surface="neumorphism"] .neu-choropleth-bar,
+.light-mode[data-surface="neumorphism"] .neu-choropleth-bar {
+    box-shadow:
+        -4px -4px 10px #ffffff,
+        4px 5px 12px rgba(166, 175, 195, 0.48),
+        inset 0 1px 1px #ffffff,
+        inset 0 -1px 2px rgba(0, 0, 0, 0.15) !important;
+    border-color: rgba(255, 255, 255, 0.85) !important;
+}
+
 /* 3. DARK THEMES: Sunken Form Inputs & Textareas (Press Effect) */
 [data-theme][data-surface="neumorphism"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="button"]):not([type="submit"]):not([type="reset"]),
 [data-theme][data-surface="neumorphism"] textarea {
