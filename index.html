@@ -31,6 +31,77 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+
+    <!-- Google Structured Data (JSON-LD) for Search Site Name & Sitelinks -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "WebSite",
+          "@id": "https://app.geosphere.my/#website",
+          "url": "https://app.geosphere.my/",
+          "name": "GeoSphere 360",
+          "alternateName": [
+            "GeoSphere",
+            "GeoSphere 360 WebGIS",
+            "GeoSphere 360 Platform"
+          ],
+          "description": "Cloud-Native Workspace for Mobile Mapping Platform",
+          "publisher": {
+            "@id": "https://app.geosphere.my/#organization"
+          }
+        },
+        {
+          "@type": "Organization",
+          "@id": "https://app.geosphere.my/#organization",
+          "name": "GeoSphere 360",
+          "url": "https://app.geosphere.my/",
+          "logo": "https://app.geosphere.my/branding/geosphere-icon-white.png"
+        },
+        {
+          "@type": "ItemList",
+          "itemListElement": [
+            {
+              "@type": "SiteNavigationElement",
+              "position": 1,
+              "name": "Production Hub",
+              "description": "Integrated Mobile Mapping data ingestion, camera pairing, and batch processing center.",
+              "url": "https://app.geosphere.my/#production"
+            },
+            {
+              "@type": "SiteNavigationElement",
+              "position": 2,
+              "name": "QA/QC Workbench",
+              "description": "Interactive 360° panorama inspection, AI privacy blur verification, and photogrammetry quality control.",
+              "url": "https://app.geosphere.my/#qaqc"
+            },
+            {
+              "@type": "SiteNavigationElement",
+              "position": 3,
+              "name": "WebGIS Spatial Intelligence",
+              "description": "MapLibre-powered spatial GIS visualization, street trajectory alignment, and PostGIS layer management.",
+              "url": "https://app.geosphere.my/#webgis"
+            },
+            {
+              "@type": "SiteNavigationElement",
+              "position": 4,
+              "name": "Road Defect Analysis",
+              "description": "Automated road condition scoring, surface defect classification, and spatial asset extraction.",
+              "url": "https://app.geosphere.my/#road-analysis"
+            },
+            {
+              "@type": "SiteNavigationElement",
+              "position": 5,
+              "name": "Survey Analytics & Fleet",
+              "description": "Real-time survey distance coverage, capture station logs, and SLA operational metrics.",
+              "url": "https://app.geosphere.my/#analytics"
+            }
+          ]
+        }
+      ]
+    }
+    </script>
   </head>
   <body>
     <div id="root"></div>
