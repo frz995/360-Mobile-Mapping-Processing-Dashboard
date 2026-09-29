@@ -78,13 +78,13 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Install pytest
-        run: pip install pytest
+      - name: Install test dependencies
+        run: pip install pytest fastapi httpx
 
       - name: Compile check (worker + BFF)
-        run: python -m py_compile worker/runner.py worker/store.py worker/app.py worker/bff/app.py worker/tests/test_store.py worker/tests/test_worker_admission.py
+        run: python -m py_compile worker/runner.py worker/store.py worker/app.py worker/bff/app.py worker/tests/test_store.py worker/tests/test_worker_admission.py worker/tests/test_image_cache.py
 
-      - name: Run worker store tests
+      - name: Run worker unit tests
         run: |
           cd worker
-          PYTHONPATH=. python -m pytest tests/test_store.py -q
+          PYTHONPATH=. python -m pytest tests/test_store.py tests/test_worker_admission.py tests/test_image_cache.py -q

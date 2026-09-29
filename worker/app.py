@@ -8,12 +8,14 @@ import threading
 import time
 import uuid
 import logging
+import hashlib
 import mimetypes
+from email.utils import formatdate, parsedate_to_datetime
 from typing import Optional
 
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 
 from enhancement import apply_enhancement
@@ -140,6 +142,32 @@ def _guard(auth: Optional[str]) -> None:
         raise HTTPException(status_code=401, detail="Unauthorized.")
 
 
+def _is_not_modified(request: Request, etag: str, last_modified: str) -> bool:
+    """RFC 9110 conditional-request evaluation for GET.
+
+    FileResponse emits an ETag but never compares it, so a revalidating browser
+    re-downloaded every panorama. If-None-Match takes precedence over
+    If-Modified-Since, and a Range request must still be handled normally.
+    """
+    if "range" in {k.lower() for k in request.headers}:
+        return False
+    inm = request.headers.get("if-none-match")
+    if inm:
+        candidates = {tag.strip() for tag in inm.split(",")}
+        return "*" in candidates or etag in candidates
+    ims = request.headers.get("if-modified-since")
+    if not ims:
+        return False
+    try:
+        since = parsedate_to_datetime(ims)
+    except (TypeError, ValueError):
+        return False
+    if since is None:
+        return False
+    modified = parsedate_to_datetime(last_modified)
+    return modified.tzinfo is not None and since.tzinfo is not None and modified <= since
+
+
 @app.post("/api/jobs")
 def submit_job(body: JobSubmit, authorization: Optional[str] = Header(default=None)) -> dict:
     _guard(authorization)
@@ -158,7 +186,7 @@ def submit_job(body: JobSubmit, authorization: Optional[str] = Header(default=No
     from runner import QueueFullError
     job_id = body.job_id or str(uuid.uuid4())
     try:
-        registry.start(
+        duplicate_status = registry.start(
             job_id=job_id,
             job_type=body.job_type,
             source_dir=src,
@@ -173,6 +201,12 @@ def submit_job(body: JobSubmit, authorization: Optional[str] = Header(default=No
         )
     except QueueFullError as qe:
         raise HTTPException(status_code=429, detail=str(qe))
+
+    if duplicate_status is not None:
+        # A retry after a client-side timeout is not an error: the original
+        # submit is already running under this id. Re-admitting it would start a
+        # second worker thread over the same output folder.
+        return {"ok": True, "message": f"Job {job_id} is already {duplicate_status}; duplicate submit ignored."}
 
     return {"ok": True, "message": f"Job {job_id} accepted into the batch queue."}
 
@@ -289,12 +323,24 @@ def nas_scan_endpoint(
 
 
 @app.get("/api/images/{rel_path:path}")
-def serve_image(rel_path: str, authorization: Optional[str] = Header(default=None)) -> FileResponse:
+def serve_image(rel_path: str, request: Request, authorization: Optional[str] = Header(default=None)) -> Response:
     _guard(authorization)
     fs = resolve_fs(rel_path)
     if not os.path.isfile(fs):
         raise HTTPException(status_code=404, detail="Image not found.")
-    return FileResponse(fs, media_type=mimetypes.guess_type(fs)[0] or "application/octet-stream")
+    stat = os.stat(fs)
+    etag = f'"{hashlib.md5(f"{stat.st_mtime}-{stat.st_size}".encode()).hexdigest()}"'
+    last_modified = formatdate(stat.st_mtime, usegmt=True)
+    validators = {"ETag": etag, "Last-Modified": last_modified}
+
+    if _is_not_modified(request, etag, last_modified):
+        return Response(status_code=304, headers=validators)
+
+    return FileResponse(
+        fs,
+        media_type=mimetypes.guess_type(fs)[0] or "application/octet-stream",
+        headers=validators,
+    )
 
 
 # ---------------------------------------------------------------------------

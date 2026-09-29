@@ -1,9 +1,15 @@
+import { upstreamSignal, classifyUpstreamError } from '../_lib/upstream';
+
 function json(body, status) {
   return new Response(JSON.stringify(body), {
     status,
     headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }
   });
 }
+
+/** A recursive NAS walk is the slowest thing the worker does; keep the ceiling
+ *  above the browser's 10s budget so the client is the usual one to give up. */
+const SCAN_TIMEOUT_MS = 60_000;
 
 export async function onRequestGet({ request, env }) {
   const base = (env.NAS_API_URL || '').replace(/\/+$/, '');
@@ -19,7 +25,19 @@ export async function onRequestGet({ request, env }) {
       headers.set('CF-Access-Client-Id', env.CF_ACCESS_CLIENT_ID);
       headers.set('CF-Access-Client-Secret', env.CF_ACCESS_CLIENT_SECRET);
     }
-    const upstream = await fetch(target, { headers });
+    const { signal, state, dispose } = upstreamSignal(request, SCAN_TIMEOUT_MS);
+    let upstream;
+    try {
+      upstream = await fetch(target, { headers, signal });
+    } catch (err) {
+      const { status, message } = classifyUpstreamError(err, state);
+      return json(
+        { error: message || 'NAS worker is unreachable through the configured Cloudflare Tunnel.' },
+        status
+      );
+    } finally {
+      dispose();
+    }
     return new Response(upstream.body, {
       status: upstream.status,
       headers: {

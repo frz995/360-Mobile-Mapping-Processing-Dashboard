@@ -36,6 +36,12 @@ LOGGER = logging.getLogger("nas-worker.runner")
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png"}
 
+# A job in one of these states already owns a worker thread, so a second submit
+# of the same job_id is a duplicate rather than a resume. Defined once because
+# recovery, admission, cancellation and the duplicate guard must agree on which
+# states count as active; they drifted apart when spelled out inline.
+ACTIVE_STATUSES = ("QUEUED", "IN_PROGRESS")
+
 
 def _list_source(source_dir: str, subgrid: str | None, total_hint: int, recursive: bool = False) -> list[str]:
     if recursive:
@@ -139,7 +145,7 @@ class JobRegistry:
         with self._lock:
             for job_id, snapshot in self._journal.read_all().items():
                 job = hydrate_job(job_id, snapshot)
-                if job.get("status") in ("QUEUED", "IN_PROGRESS"):
+                if job.get("status") in ACTIVE_STATUSES:
                     job["status"] = "FAILED"
                     job["message"] = "Worker restarted — job interrupted (recoverable via re-run)"
                     job["completed_at"] = _now()
@@ -150,7 +156,7 @@ class JobRegistry:
     @property
     def active(self) -> dict[str, dict]:
         with self._lock:
-            return {k: v for k, v in self.jobs.items() if v["status"] in ("QUEUED", "IN_PROGRESS")}
+            return {k: v for k, v in self.jobs.items() if v["status"] in ACTIVE_STATUSES}
 
     @property
     def running(self) -> dict[str, dict]:
@@ -191,7 +197,7 @@ class JobRegistry:
     def cancel(self, job_id: str) -> bool:
         with self._lock:
             job = self.jobs.get(job_id)
-            if not job or job["status"] not in ("QUEUED", "IN_PROGRESS"):
+            if not job or job["status"] not in ACTIVE_STATUSES:
                 return False
             job["cancel"].set()
             job["status"] = "CANCELLED"
@@ -215,8 +221,26 @@ class JobRegistry:
         settings: dict,
         syncer: "Optional[syncmod.SupabaseSyncer]",
         project_id: str | None = None,
-    ) -> None:
+    ) -> Optional[str]:
+        """Admit a job and launch its worker thread.
+
+        Returns None when a new job was started, or the existing job's status
+        when `job_id` is already active. A client that retries a submit after a
+        timeout must get a success, not a second thread: re-submitting overwrote
+        the job record (and its `cancel` event) while the original thread was
+        still running, so a concurrent cancel was silently lost. Terminal jobs
+        stay restartable — that is the documented re-run-after-restart path, and
+        `_resume` skips frames whose output already exists.
+        """
         with self._lock:
+            existing = self.jobs.get(job_id)
+            if existing is not None and existing.get("status") in ACTIVE_STATUSES:
+                LOGGER.info(
+                    "job %s already %s; ignoring duplicate submit",
+                    job_id, existing.get("status"),
+                )
+                return existing.get("status")
+
             queued_count = sum(1 for j in self.jobs.values() if j.get("status") == "QUEUED")
             if queued_count >= self.max_queue_depth:
                 raise QueueFullError(
@@ -259,6 +283,7 @@ class JobRegistry:
                 LOGGER.exception("journal write failed for %s", job_id)
         thread = threading.Thread(target=self._worker, args=(job_id,), daemon=True)
         thread.start()
+        return None
 
     def _worker(self, job_id: str) -> None:
         job = self.get(job_id)

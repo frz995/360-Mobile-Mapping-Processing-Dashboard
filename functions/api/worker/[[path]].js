@@ -1,8 +1,26 @@
+import { upstreamSignal, classifyUpstreamError } from '../../_lib/upstream';
+
 function json(body, status) {
   return new Response(JSON.stringify(body), {
     status,
     headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }
   });
+}
+
+/** Per-route ceilings, deliberately above the browser's own budgets
+ *  (10s for normal calls, 120s for prepareRelease) so the client usually gives
+ *  up first and the proxy timeout is the backstop, not the normal path. */
+const DEFAULT_TIMEOUT_MS = 30_000;
+const ROUTE_TIMEOUTS = [
+  ['/api/releases/prepare', 150_000],
+  ['/api/nas-scan', 60_000]
+];
+
+function timeoutForRoute(pathname) {
+  for (const [prefix, ms] of ROUTE_TIMEOUTS) {
+    if (pathname === prefix || pathname.startsWith(`${prefix}/`)) return ms;
+  }
+  return DEFAULT_TIMEOUT_MS;
 }
 
 /** Raw, un-normalized pathname. `new URL()` collapses `.` and `%2e%2e`
@@ -50,15 +68,33 @@ export async function onRequest(context) {
       headers.set('CF-Access-Client-Secret', env.CF_ACCESS_CLIENT_SECRET);
     }
     const body = ['GET', 'HEAD'].includes(request.method) ? undefined : await request.arrayBuffer();
-    const upstream = await fetch(target, { method: request.method, headers, body });
-    return new Response(upstream.body, {
-      status: upstream.status,
-      headers: {
-        'Content-Type': upstream.headers.get('Content-Type') || 'application/json',
-        'Cache-Control': 'no-store'
-      }
-    });
-  } catch {
-    return json({ error: 'NAS worker is unreachable through the configured Cloudflare Tunnel.' }, 502);
+    // Carry the client's cancellation through to the NAS read. Without this the
+    // worker keeps walking the filesystem long after the browser gave up.
+    const { signal, state, dispose } = upstreamSignal(request, timeoutForRoute(target.pathname));
+    try {
+      const upstream = await fetch(target, { method: request.method, headers, body, signal });
+      return new Response(upstream.body, {
+        status: upstream.status,
+        headers: {
+          'Content-Type': upstream.headers.get('Content-Type') || 'application/json',
+          'Cache-Control': 'no-store'
+        }
+      });
+    } catch (err) {
+      const { status, message } = classifyUpstreamError(err, state);
+      return json(
+        { error: message || 'NAS worker is unreachable through the configured Cloudflare Tunnel.' },
+        status
+      );
+    } finally {
+      dispose();
+    }
+  } catch (err) {
+    // URL/method validation and request-body reads land here.
+    const { status, message } = classifyUpstreamError(err, null);
+    return json(
+      { error: message || 'NAS worker is unreachable through the configured Cloudflare Tunnel.' },
+      status
+    );
   }
 }

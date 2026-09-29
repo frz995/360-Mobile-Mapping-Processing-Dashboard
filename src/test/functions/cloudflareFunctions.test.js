@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // Cloudflare Pages Functions, and test-only imports must never be part of the
 // deployed function bundle.
 import { signAssetToken, verifyAssetToken } from '../../../functions/_lib/signing';
+import { upstreamSignal, classifyUpstreamError, PROXY_STATUS } from '../../../functions/_lib/upstream';
 import { onRequest as middleware } from '../../../functions/_middleware';
 import { onRequestGet as nasScan } from '../../../functions/api/nas-scan';
 import { onRequestGet as nasImage } from '../../../functions/api/nas-image';
@@ -359,5 +360,196 @@ describe('functions/api/worker proxy', () => {
     expect(target.toString()).toBe('https://nas-api.example.com/api/jobs?dry=1');
     expect(init.headers.get('Authorization')).toBe(`Bearer ${SECRET}`);
     expect(Buffer.from(init.body).toString()).toBe(JSON.stringify({ job_id: 'j1' }));
+  });
+});
+
+// --- cancellation ------------------------------------------------------
+//
+// The browser aborts slow calls (10s in productionApi.ts, 60s for images) but
+// these proxies used to hand no signal to fetch, so the NAS read kept running
+// with nobody waiting for it. These lock in that the client can now actually
+// stop the work, and that a disconnect is not misreported as an outage.
+
+/** A fetch that rejects the way a real one does once its signal fires. */
+function abortRejectingFetch(abortClient) {
+  return vi.fn(async (_url, init) => {
+    abortClient();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    if (init?.signal?.aborted) {
+      throw Object.assign(new Error('The operation was aborted'), { name: 'AbortError' });
+    }
+    return new Response('{}', { status: 200 });
+  });
+}
+
+describe('functions/_lib/upstream', () => {
+  it('aborts when the client disconnects', () => {
+    const client = new AbortController();
+    const { signal, state, dispose } = upstreamSignal({ signal: client.signal }, 60_000);
+    expect(signal.aborted).toBe(false);
+    client.abort();
+    expect(signal.aborted).toBe(true);
+    expect(state.clientClosed).toBe(true);
+    expect(state.timedOut).toBe(false);
+    dispose();
+  });
+
+  it('aborts when its own timeout elapses', () => {
+    vi.useFakeTimers();
+    const { signal, state, dispose } = upstreamSignal({ signal: new AbortController().signal }, 5_000);
+    vi.advanceTimersByTime(4_999);
+    expect(signal.aborted).toBe(false);
+    vi.advanceTimersByTime(2);
+    expect(signal.aborted).toBe(true);
+    expect(state.timedOut).toBe(true);
+    dispose();
+    vi.useRealTimers();
+  });
+
+  it('starts aborted when the client signal is already dead', () => {
+    // A proxy that inherited a dead signal would reject every request.
+    const client = new AbortController();
+    client.abort();
+    const { signal, state, dispose } = upstreamSignal({ signal: client.signal }, 60_000);
+    expect(signal.aborted).toBe(true);
+    expect(state.clientClosed).toBe(true);
+    dispose();
+  });
+
+  it('still times out when the request carries no signal', () => {
+    vi.useFakeTimers();
+    const { signal, state, dispose } = upstreamSignal({}, 1_000);
+    vi.advanceTimersByTime(1_001);
+    expect(signal.aborted).toBe(true);
+    expect(state.timedOut).toBe(true);
+    dispose();
+    vi.useRealTimers();
+  });
+
+  it('dispose clears the timer and detaches the client listener', () => {
+    vi.useFakeTimers();
+    const client = new AbortController();
+    const { signal, dispose } = upstreamSignal({ signal: client.signal }, 1_000);
+    dispose();
+    // A retained listener would keep this controller alive for the whole
+    // request and fire against an already-sent response.
+    client.abort();
+    expect(signal.aborted).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+    vi.useRealTimers();
+  });
+
+  it('maps its own timeout to 504 and a client hang-up to 499', () => {
+    const timeout = classifyUpstreamError(
+      Object.assign(new Error('aborted'), { name: 'TimeoutError' }),
+      { timedOut: true, clientClosed: false }
+    );
+    expect(timeout.status).toBe(PROXY_STATUS.UPSTREAM_TIMEOUT);
+
+    const closed = classifyUpstreamError(
+      Object.assign(new Error('aborted'), { name: 'AbortError' }),
+      { timedOut: false, clientClosed: true }
+    );
+    expect(closed.status).toBe(PROXY_STATUS.CLIENT_CLOSED);
+
+    // Client left first, so nobody is waiting for a 504 either.
+    const both = classifyUpstreamError(
+      Object.assign(new Error('aborted'), { name: 'AbortError' }),
+      { timedOut: true, clientClosed: true }
+    );
+    expect(both.status).toBe(PROXY_STATUS.CLIENT_CLOSED);
+  });
+
+  it('leaves a real transport failure as a 502 with no message override', () => {
+    const result = classifyUpstreamError(new TypeError('fetch failed'), {
+      timedOut: false,
+      clientClosed: false
+    });
+    expect(result.status).toBe(502);
+    expect(result.message).toBeNull();
+  });
+});
+
+describe('proxy cancellation', () => {
+  it('passes a signal to every live upstream proxy', async () => {
+    fetchMock.mockResolvedValue(
+      new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } })
+    );
+    await workerProxy(makeContext('https://app.pages.dev/api/worker/api/folders', BASE_ENV));
+    await nasScan(makeContext('https://app.pages.dev/api/nas-scan', BASE_ENV));
+    await stationAgent(
+      makeContext('https://app.pages.dev/api/station-agent?stationId=blur&resource=health', BASE_ENV)
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    for (const [, init] of fetchMock.mock.calls) {
+      expect(init.signal).toBeInstanceOf(AbortSignal);
+      expect(init.signal.aborted).toBe(false);
+    }
+  });
+
+  it('answers 499, not 502, when the client disconnects mid-flight', async () => {
+    const client = new AbortController();
+    const request = new Request('https://app.pages.dev/api/worker/api/folders', {
+      signal: client.signal
+    });
+    vi.stubGlobal('fetch', abortRejectingFetch(() => client.abort()));
+    const res = await workerProxy({ request, env: BASE_ENV, params: {} });
+    expect(res.status).toBe(499);
+    await expect(res.json()).resolves.toMatchObject({ error: 'Client closed the request.' });
+  });
+
+  it('applies the same disconnect handling to the image and agent proxies', async () => {
+    const routes = [
+      'https://app.pages.dev/api/nas-image?path=a.jpg',
+      'https://app.pages.dev/api/station-agent?stationId=blur&resource=report'
+    ];
+    for (const url of routes) {
+      const client = new AbortController();
+      // The signal must reach the Request the handler actually reads.
+      vi.stubGlobal('fetch', abortRejectingFetch(() => client.abort()));
+      const ctx = makeContext(url, BASE_ENV, { signal: client.signal });
+      const res = url.includes('nas-image') ? await nasImage(ctx) : await stationAgent(ctx);
+      expect(res.status).toBe(499);
+    }
+  });
+
+  it('still reports a real outage as 502', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      throw new TypeError('fetch failed');
+    }));
+    const res = await workerProxy(makeContext('https://app.pages.dev/api/worker/health', BASE_ENV));
+    expect(res.status).toBe(502);
+  });
+
+  it('answers 504 when the proxy timeout fires before the client gives up', async () => {
+    vi.useFakeTimers();
+    try {
+      // Never settles on its own: only the proxy's own timer can end it.
+      vi.stubGlobal('fetch', vi.fn((_url, init) => new Promise((_resolve, reject) => {
+        init.signal.addEventListener('abort', () =>
+          reject(Object.assign(new Error('aborted'), { name: 'TimeoutError' }))
+        );
+      })));
+      const pending = workerProxy(makeContext('https://app.pages.dev/api/worker/health', BASE_ENV));
+      await vi.advanceTimersByTimeAsync(30_000);
+      const res = await pending;
+      expect(res.status).toBe(504);
+      await expect(res.json()).resolves.toMatchObject({ error: 'Upstream service timed out.' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps the ETag pass-through while adding the signal', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response('bytes', {
+        status: 200,
+        headers: { 'Content-Type': 'image/jpeg', ETag: '"abc123"' }
+      })
+    );
+    const res = await nasImage(makeContext('https://app.pages.dev/api/nas-image?path=a.jpg', BASE_ENV));
+    expect(res.status).toBe(200);
+    expect(res.headers.get('etag')).toBe('"abc123"');
+    expect(fetchMock.mock.calls[0][1].signal).toBeInstanceOf(AbortSignal);
   });
 });

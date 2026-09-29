@@ -1,9 +1,16 @@
+import { upstreamSignal, classifyUpstreamError } from '../_lib/upstream';
+
 function json(body, status) {
   return new Response(JSON.stringify(body), {
     status,
     headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }
   });
 }
+
+/** A bucket sync can legitimately copy many images, so this sits above the
+ *  station board's 10s probe budget without capping real uploads. */
+const AGENT_TIMEOUT_MS = 120_000;
+const AGENT_HEALTH_TIMEOUT_MS = 15_000;
 
 function parseMap(raw) {
   if (!raw) return {};
@@ -55,9 +62,13 @@ export async function onRequest(context) {
     headers.set('CF-Access-Client-Secret', env.CF_ACCESS_CLIENT_SECRET);
   }
 
+  // The station board polls every 10s across four agents; an uncancellable
+  // health probe to a sleeping PC would pile up on the Pages side.
+  const budget = route.path === '/health' ? AGENT_HEALTH_TIMEOUT_MS : AGENT_TIMEOUT_MS;
+  const { signal, state, dispose } = upstreamSignal(request, budget);
   try {
     const body = route.method === 'POST' ? await request.arrayBuffer() : undefined;
-    const upstream = await fetch(`${origin}${route.path}`, { method: route.method, headers, body });
+    const upstream = await fetch(`${origin}${route.path}`, { method: route.method, headers, body, signal });
     return new Response(upstream.body, {
       status: upstream.status,
       headers: {
@@ -65,7 +76,13 @@ export async function onRequest(context) {
         'Cache-Control': 'no-store'
       }
     });
-  } catch {
-    return json({ error: `Station agent '${stationId}' is unreachable through its Cloudflare Tunnel.` }, 502);
+  } catch (err) {
+    const { status, message } = classifyUpstreamError(err, state);
+    return json(
+      { error: message || `Station agent '${stationId}' is unreachable through its Cloudflare Tunnel.` },
+      status
+    );
+  } finally {
+    dispose();
   }
 }

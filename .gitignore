@@ -53,4 +53,12 @@ tsconfig.node.tsbuildinfo
 scratch/
 git clone supabase.txt
 opencode.json
+dev-smoke.log
+
+# Exclude implementation plans, agent rules/issues, and internal documentation
+implementation_plan*.md
+.agents/
+docs/
+doc/
+*.docx
 
