@@ -1706,10 +1706,10 @@ export function getCatchmentTabData(
             title: 'Intersection topology',
             subtitleRight: '% of junction nodes',
             rows: [
-              { label: '4-way multi-road grid', percentage: analytics.complexityBreakdown.fourWayPct },
-              { label: '3-way T-junction connector', percentage: analytics.complexityBreakdown.threeWayPct },
-              { label: 'Complex 5+ way multi-junction', percentage: analytics.complexityBreakdown.multiWayPct },
-              { label: 'Dead-end / cul-de-sac', percentage: analytics.complexityBreakdown.deadEndPct }
+              { label: '4 way multi road grid', percentage: analytics.complexityBreakdown.fourWayPct },
+              { label: '3 way T junction connector', percentage: analytics.complexityBreakdown.threeWayPct },
+              { label: 'Complex 5+ way multi junction', percentage: analytics.complexityBreakdown.multiWayPct },
+              { label: 'Dead end / cul de sac', percentage: analytics.complexityBreakdown.deadEndPct }
             ]
           },
           {

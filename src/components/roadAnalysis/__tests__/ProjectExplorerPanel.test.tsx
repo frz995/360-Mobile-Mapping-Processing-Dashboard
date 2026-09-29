@@ -47,7 +47,7 @@ describe('ProjectExplorerPanel Component (Catchment Demographic Visualizer)', ()
     const complexityTab = screen.getByText('Complexity');
     fireEvent.click(complexityTab);
     expect(screen.getByText('Intersection topology')).toBeInTheDocument();
-    expect(screen.getAllByText('4-way multi-road grid').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('4 way multi road grid').length).toBeGreaterThan(0);
 
     const panotrackTab = screen.getByText('Panotrack');
     fireEvent.click(panotrackTab);
@@ -98,7 +98,7 @@ describe('ProjectExplorerPanel Component (Catchment Demographic Visualizer)', ()
 
     // Catchment chart display should immediately update to Complexity data
     expect(screen.getByText('Intersection topology')).toBeInTheDocument();
-    expect(screen.getAllByText('4-way multi-road grid').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('4 way multi road grid').length).toBeGreaterThan(0);
   });
 
   it('supports collapsing and expanding the Details card and renders both breakdowns simultaneously', () => {

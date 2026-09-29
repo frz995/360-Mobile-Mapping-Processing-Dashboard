@@ -1567,6 +1567,64 @@ select:-webkit-autofill:focus {
 }
 
 /* ========================================================================= */
+/* UTILITIES: Hide Scrollbars                                                */
+/* ========================================================================= */
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none !important;
+  scrollbar-width: none !important;
+}
+
+/* ========================================================================= */
+/* CHART ENTRANCE ANIMATIONS                                                 */
+/* ========================================================================= */
+
+@keyframes explorerDonutEntry {
+  from {
+    opacity: 0;
+    transform: rotate(-90deg) scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: rotate(-90deg) scale(1);
+  }
+}
+
+.explorer-donut-ring {
+  transform-origin: 50px 50px;
+  animation: explorerDonutEntry 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes explorerBarRise {
+  from {
+    opacity: 0;
+    transform: scaleY(0);
+  }
+  to {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+}
+
+.explorer-bar-column {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: explorerBarRise 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.explorer-bar-column:nth-child(1) { animation-delay: 0.04s; }
+.explorer-bar-column:nth-child(2) { animation-delay: 0.08s; }
+.explorer-bar-column:nth-child(3) { animation-delay: 0.12s; }
+.explorer-bar-column:nth-child(4) { animation-delay: 0.16s;
+}
+
+/* ========================================================================= */
 /* DONUT CHART: Hover Glow and Scale on Slices                               */
 /* ========================================================================= */
 

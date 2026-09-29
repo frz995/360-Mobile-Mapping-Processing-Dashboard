@@ -413,7 +413,10 @@ export const ProjectExplorerPanel: React.FC<ProjectExplorerPanelProps> = ({
               )}
 
               {/* Pill Tabs Row (Roads, Density, Complexity, Panotrack, Coverage) */}
-              <div className="flex items-center gap-1 mt-2.5 overflow-x-auto no-scrollbar pb-1">
+              <div
+                className="flex items-center gap-1 mt-2.5 overflow-x-auto no-scrollbar pb-1"
+                style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+              >
                 {CATCHMENT_TABS.map((tab) => {
                   const activeTab = selectedTab === tab.key;
                   return (
@@ -550,10 +553,16 @@ export const ProjectExplorerPanel: React.FC<ProjectExplorerPanelProps> = ({
 
                       {/* Center summary text */}
                       <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center px-1">
-                        <span className="text-[11px] font-bold font-mono tracking-tight text-[var(--text-primary,#EEF2F1)] leading-none truncate max-w-[56px]">
+                        <span
+                          className={`font-bold font-mono tracking-tight text-[var(--text-primary,#EEF2F1)] leading-tight ${
+                            String(currentTabContent.primaryValue).length > 10
+                              ? 'text-[8px] max-w-[62px]'
+                              : 'text-[10px] max-w-[56px] truncate'
+                          }`}
+                        >
                           {currentTabContent.primaryValue}
                         </span>
-                        <span className="text-[7.5px] text-[var(--text-muted,#9BAAA9)] font-mono uppercase tracking-wider mt-0.5 truncate max-w-[56px]">
+                        <span className="text-[7px] text-[var(--text-muted,#9BAAA9)] font-mono uppercase tracking-wider mt-0.5 truncate max-w-[56px]">
                           {currentTabContent.primaryUnit}
                         </span>
                       </div>
@@ -564,10 +573,10 @@ export const ProjectExplorerPanel: React.FC<ProjectExplorerPanelProps> = ({
                       {rows.map((row, idx) => {
                         const color = paletteColors[idx % paletteColors.length];
                         return (
-                          <div key={idx} className="flex items-center justify-between text-[10.5px] gap-1.5 explorer-legend-row">
+                          <div key={idx} className="flex items-center justify-between text-[9.5px] gap-1.5 explorer-legend-row">
                             <div className="flex items-center gap-1.5 min-w-0">
                               <span
-                                className="w-2 h-2 rounded-full shrink-0"
+                                className="w-1.5 h-1.5 rounded-full shrink-0"
                                 style={{ backgroundColor: color }}
                               />
                               <span
@@ -577,7 +586,7 @@ export const ProjectExplorerPanel: React.FC<ProjectExplorerPanelProps> = ({
                                 {row.label}
                               </span>
                             </div>
-                            <span className="font-mono text-[var(--text-muted,#9BAAA9)] shrink-0 font-medium text-[10px]">
+                            <span className="font-mono text-[var(--text-muted,#9BAAA9)] shrink-0 font-medium text-[9px]">
                               {row.displayValue ?? `${row.percentage}%`}
                             </span>
                           </div>
