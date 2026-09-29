@@ -18,7 +18,8 @@ import {
   Cuboid,
   Compass,
   Info,
-  X
+  X,
+  SlidersHorizontal
 } from 'lucide-react';
 import type { Map as MaplibreMap } from 'maplibre-gl';
 import { RoadAnalysis3DStudio } from './roadAnalysis/RoadAnalysis3DStudio';
@@ -429,6 +430,23 @@ function rasterStyle(tilesUrl: string) {
   };
 }
 
+export const BASEMAP_OPTIONS = [
+  { value: 'ofm-dark', label: 'Dark (OpenFreeMap)' },
+  { value: 'ofm-positron', label: 'Positron (OpenFreeMap)' },
+  { value: 'ofm-bright', label: 'Bright (OpenFreeMap)' },
+  { value: 'ofm-liberty', label: 'Liberty (OpenFreeMap)' },
+  { value: 'ofm-fiord', label: 'Fiord (OpenFreeMap)' },
+  { value: 'esri_satellite', label: 'Esri Satellite' },
+  { value: 'osm_standard', label: 'OpenStreetMap' },
+  { value: 'carto_dark', label: 'Carto Dark' },
+  { value: 'carto_light', label: 'Carto Light' },
+  { value: 'google-satellite', label: 'Google Satellite' },
+  { value: 'google-streets', label: 'Google Streets' },
+  { value: 'google-hybrid', label: 'Google Hybrid' },
+  { value: 'google-terrain', label: 'Google Terrain' },
+  { value: 'custom_tile', label: 'Custom XYZ' }
+];
+
 function basemapToMapStyle(key?: string, customUrl?: string) {
   switch (key) {
     case 'ofm-dark':
@@ -707,6 +725,23 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
     if (initialSaved?.mapBasemap) return initialSaved.mapBasemap;
     return defaultBasemapKey;
   });
+
+  const [showBasemapMenu, setShowBasemapMenu] = useState<boolean>(false);
+  const basemapMenuTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleBasemapMouseEnter = () => {
+    if (basemapMenuTimeoutRef.current) {
+      clearTimeout(basemapMenuTimeoutRef.current);
+      basemapMenuTimeoutRef.current = null;
+    }
+    setShowBasemapMenu(true);
+  };
+
+  const handleBasemapMouseLeave = () => {
+    basemapMenuTimeoutRef.current = setTimeout(() => {
+      setShowBasemapMenu(false);
+    }, 250);
+  };
 
   const [show3D, setShow3D] = useState<boolean>(false);
   const [show3DStudio, setShow3DStudio] = useState<boolean>(false);
@@ -3293,39 +3328,70 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                     borderColor: 'var(--border-subtle)',
                     boxShadow: 'var(--card-shadow)'
                   }}
-                  className="absolute top-3 left-3 z-[1000] flex items-center gap-1.5 p-1.5 rounded-xl border backdrop-blur-md shadow-lg transition-colors"
+                  className="absolute top-3 left-3 z-[1000] flex items-center gap-1 p-0.5 rounded-lg border backdrop-blur-md shadow-lg transition-colors"
                 >
-
-                  <div className="flex items-center gap-1.5 px-1">
-                    <Layers size={13} style={{ color: 'var(--text-muted)' }} className="shrink-0" />
-                    <select
-                      value={mapBasemap}
-                      onChange={(e) => handleBasemapChange(e.target.value)}
+                  {/* Basemap Selection Hover Button */}
+                  <div
+                    className="relative"
+                    onMouseEnter={handleBasemapMouseEnter}
+                    onMouseLeave={handleBasemapMouseLeave}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setShowBasemapMenu((prev) => !prev)}
                       style={{
-                        backgroundColor: 'var(--bg-inner)',
-                        borderColor: 'var(--border-subtle)',
-                        color: 'var(--text-primary)'
+                        backgroundColor: showBasemapMenu ? 'rgba(56, 189, 248, 0.18)' : 'var(--bg-inner)',
+                        borderColor: showBasemapMenu ? 'rgba(56, 189, 248, 0.45)' : 'var(--border-subtle)',
+                        color: showBasemapMenu ? 'var(--sky, #38bdf8)' : 'var(--text-muted)'
                       }}
-                      className="px-2.5 py-1 rounded-lg text-[11px] font-semibold border focus:outline-none focus:ring-1 focus:ring-sky-400/50 cursor-pointer shadow-sm transition-colors"
-                      title="Map basemap"
+                      className="w-7 h-7 flex items-center justify-center rounded-md border transition-all cursor-pointer hover:border-sky-400/50 hover:text-sky-400 shadow-sm"
+                      title={`Basemap: ${BASEMAP_OPTIONS.find((b) => b.value === mapBasemap)?.label || mapBasemap}`}
+                      aria-label="Select Basemap"
                     >
-                      <option value="ofm-dark" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}>Dark (OpenFreeMap)</option>
-                      <option value="ofm-positron" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}>Positron (OpenFreeMap)</option>
-                      <option value="ofm-bright" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}>Bright (OpenFreeMap)</option>
-                      <option value="ofm-liberty" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}>Liberty (OpenFreeMap)</option>
-                      <option value="ofm-fiord" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}>Fiord (OpenFreeMap)</option>
-                      <option value="esri_satellite" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}>Esri Satellite</option>
-                      <option value="osm_standard" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}>OpenStreetMap</option>
-                      <option value="carto_dark" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}>Carto Dark</option>
-                      <option value="carto_light" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}>Carto Light</option>
-                      <option value="google-satellite" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}>Google Satellite</option>
-                      <option value="google-streets" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}>Google Streets</option>
-                      <option value="google-hybrid" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}>Google Hybrid</option>
-                      <option value="google-terrain" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}>Google Terrain</option>
-                      <option value="custom_tile" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}>Custom XYZ</option>
-                    </select>
+                      <Layers size={13} className="shrink-0" />
+                    </button>
+
+                    {/* Hover Dropdown Menu */}
+                    {showBasemapMenu && (
+                      <div
+                        className="absolute top-full left-0 mt-1.5 z-[1050] w-56 rounded-xl border shadow-2xl backdrop-blur-md p-1.5 animate-in fade-in zoom-in-95 duration-150"
+                        style={{
+                          backgroundColor: 'var(--bg-card)',
+                          borderColor: 'var(--border-subtle)',
+                          boxShadow: '0 10px 30px rgba(0,0,0,0.45)'
+                        }}
+                      >
+                        <div className="px-2 py-1 mb-1 text-[10px] font-mono uppercase tracking-wider text-[var(--text-muted)] border-b border-[var(--border-subtle)]/50">
+                          Basemap Selection
+                        </div>
+                        <div className="max-h-60 overflow-y-auto space-y-0.5 no-scrollbar">
+                          {BASEMAP_OPTIONS.map((opt) => {
+                            const isSelected = mapBasemap === opt.value;
+                            return (
+                              <button
+                                key={opt.value}
+                                type="button"
+                                onClick={() => {
+                                  handleBasemapChange(opt.value);
+                                  setShowBasemapMenu(false);
+                                }}
+                                className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition-all text-left cursor-pointer ${
+                                  isSelected
+                                    ? 'bg-sky-500/15 text-sky-400 font-semibold'
+                                    : 'text-[var(--text-secondary,#a0aec0)] hover:bg-[var(--bg-inner)] hover:text-[var(--text-primary,#fff)]'
+                                }`}
+                              >
+                                <span className="truncate">{opt.label}</span>
+                                {isSelected && <Check size={12} className="shrink-0 ml-1.5 text-sky-400" />}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </div>
 
+                  {/* 2D / 3D Toggle Icon Button */}
                   <button
                     type="button"
                     onClick={() => {
@@ -3350,13 +3416,14 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                       borderColor: show3D ? 'rgba(56, 189, 248, 0.45)' : 'var(--border-subtle)',
                       color: show3D ? 'var(--sky, #38bdf8)' : 'var(--text-muted)'
                     }}
-                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-all cursor-pointer hover:border-sky-400/50"
-                    title={show3D ? '3D Buildings: ON (back to 2D)' : '3D Buildings: OFF (smoothly tilt to 3D surface view)'}
+                    className="w-7 h-7 flex items-center justify-center rounded-md border transition-all cursor-pointer hover:border-sky-400/50 hover:text-sky-400 shadow-sm"
+                    title={show3D ? '3D Buildings: ON (click to switch to 2D view)' : '2D Mode: ON (click to tilt to 3D surface view)'}
+                    aria-label="Toggle 2D / 3D Mode"
                   >
                     <Cuboid size={13} className="shrink-0" />
-                    {show3D ? '3D' : '2D'}
                   </button>
 
+                  {/* 3D Map Studio Icon Button (Only shown when 3D is active) */}
                   {show3D && (
                     <button
                       type="button"
@@ -3366,13 +3433,15 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                         borderColor: show3DStudio ? 'rgba(56, 189, 248, 0.5)' : 'var(--border-subtle)',
                         color: show3DStudio ? 'var(--sky, #38bdf8)' : 'var(--text-muted)'
                       }}
-                      className="flex items-center px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-all cursor-pointer hover:border-sky-400/50"
+                      className="w-7 h-7 flex items-center justify-center rounded-md border transition-all cursor-pointer hover:border-sky-400/50 hover:text-sky-400 shadow-sm"
                       title="Toggle 3D Map Studio (Lighting & Color Themes)"
+                      aria-label="Toggle 3D Studio"
                     >
-                      Studio
+                      <SlidersHorizontal size={13} className="shrink-0" />
                     </button>
                   )}
 
+                  {/* Explorer Icon Button */}
                   <button
                     type="button"
                     onClick={() => {
@@ -3417,11 +3486,11 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                       borderColor: showProjectExplorer ? 'rgba(56, 189, 248, 0.45)' : 'var(--border-subtle)',
                       color: showProjectExplorer ? 'var(--sky, #38bdf8)' : 'var(--text-muted)'
                     }}
-                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-all cursor-pointer hover:border-sky-400/50"
+                    className="w-7 h-7 flex items-center justify-center rounded-md border transition-all cursor-pointer hover:border-sky-400/50 hover:text-sky-400 shadow-sm"
                     title={showProjectExplorer ? 'Project Explorer: Active (click to close)' : 'Project Explorer: Inactive (click to launch buffer spotlight and urban analysis)'}
+                    aria-label="Toggle Project Explorer"
                   >
                     <Compass size={13} className="shrink-0" />
-                    Explorer
                   </button>
                 </div>
 
@@ -3899,6 +3968,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                       selectedStateName={selectedStateName}
                       districtNames={selectedDistrictsList.map((d) => d.name)}
                       basemapName={mapBasemap}
+                      isActive={activeTab === 'print'}
                       onNotify={addNotification}
                     />
                   </div>

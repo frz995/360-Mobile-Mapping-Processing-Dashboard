@@ -1582,46 +1582,59 @@ select:-webkit-autofill:focus {
 }
 
 /* ========================================================================= */
-/* CHART ENTRANCE ANIMATIONS                                                 */
+/* CHART ENTRANCE ANIMATIONS (GISCARTA D3/C3 Smooth Paced Transitions)      */
 /* ========================================================================= */
-
-@keyframes explorerDonutEntry {
-  from {
-    opacity: 0;
-    transform: rotate(-90deg) scale(0.85);
-  }
-  to {
-    opacity: 1;
-    transform: rotate(-90deg) scale(1);
-  }
-}
 
 .explorer-donut-ring {
   transform-origin: 50px 50px;
-  animation: explorerDonutEntry 0.85s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-@keyframes explorerBarRise {
-  from {
+@keyframes explorerCenterFade {
+  0% {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.explorer-donut-center {
+  animation: explorerCenterFade 0.65s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes explorerSegmentRise {
+  0% {
     opacity: 0;
     transform: scaleY(0);
   }
-  to {
+  20% {
+    opacity: 0.9;
+  }
+  100% {
     opacity: 1;
     transform: scaleY(1);
   }
 }
 
 .explorer-bar-column {
-  transform-box: fill-box;
-  transform-origin: 50% 100%;
-  animation: explorerBarRise 0.85s cubic-bezier(0.22, 1, 0.36, 1) both;
+  /* Group container for hover effects while sections animate 1 by 1 */
 }
 
-.explorer-bar-column:nth-child(1) { animation-delay: 0.08s; }
-.explorer-bar-column:nth-child(2) { animation-delay: 0.18s; }
-.explorer-bar-column:nth-child(3) { animation-delay: 0.28s; }
-.explorer-bar-column:nth-child(4) { animation-delay: 0.38s;
+@keyframes explorerBarLabelFade {
+  0% {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.explorer-bar-label {
+  animation: explorerBarLabelFade 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 /* ========================================================================= */
@@ -1648,7 +1661,14 @@ select:-webkit-autofill:focus {
   border-radius: 6px;
   padding: 1px 4px;
   margin: -1px -4px;
+  animation: explorerLegendFade 1.15s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
+
+.explorer-legend-row:nth-child(1) { animation-delay: 0.12s; }
+.explorer-legend-row:nth-child(2) { animation-delay: 0.24s; }
+.explorer-legend-row:nth-child(3) { animation-delay: 0.36s; }
+.explorer-legend-row:nth-child(4) { animation-delay: 0.48s; }
+.explorer-legend-row:nth-child(5) { animation-delay: 0.60s; }
 
 .explorer-legend-row:hover {
   background-color: rgba(255, 255, 255, 0.06);
@@ -1661,6 +1681,9 @@ select:-webkit-autofill:focus {
 
 .explorer-bar-segment {
   cursor: pointer;
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: explorerSegmentRise 0.65s cubic-bezier(0.16, 1, 0.3, 1) both;
   transition: filter 0.18s ease, stroke 0.18s ease;
   stroke: transparent;
   stroke-width: 1.5px;

@@ -20,7 +20,7 @@ interface WorkspaceSidebarNavProps {
 function activeButtonClass(active: boolean, isExpanded: boolean): string {
   return `sidebar-nav-item ${active ? 'sidebar-nav-active' : ''} transition-all duration-200 relative cursor-pointer flex items-center rounded-xl ${
     isExpanded ? 'w-full px-3 py-2.5 text-xs font-semibold gap-3 justify-start' : 'w-10 h-10 justify-center p-0 mx-auto'
-  } ${active ? 'text-sky-400 font-bold' : 'text-text-muted hover:text-text-base'}`;
+  } ${active ? 'text-text-base font-bold' : 'text-text-muted hover:text-text-base'}`;
 }
 
 function actionButtonClass(isExpanded: boolean): string {

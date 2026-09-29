@@ -45,6 +45,8 @@ export interface RoadAnalysisPrintPanelProps {
   selectedStateName?: string;
   districtNames?: string[];
   basemapName?: string;
+  /** Whether this panel is currently visible (active tab = print). */
+  isActive?: boolean;
   onNotify?: (item: any) => void;
 }
 
@@ -179,6 +181,7 @@ export const RoadAnalysisPrintPanel: React.FC<RoadAnalysisPrintPanelProps> = ({
   selectedStateName = 'Malaysia',
   districtNames = [],
   basemapName = 'basemap',
+  isActive = false,
   onNotify
 }) => {
   const [mode, setMode] = useState<ExtentMode>('region');
@@ -323,6 +326,30 @@ export const RoadAnalysisPrintPanel: React.FC<RoadAnalysisPrintPanelProps> = ({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapReady, regionBbox]);
+
+  // ── Auto-sync: when the Print tab becomes active, capture the live map's
+  //    current extent so the print preview immediately reflects what the user
+  //    was just looking at.
+  const prevActiveRef = useRef(false);
+  useEffect(() => {
+    const wasInactive = !prevActiveRef.current;
+    prevActiveRef.current = isActive;
+    if (!isActive || !wasInactive) return;
+    // Small delay to let the print map resize into its container first.
+    const timer = window.setTimeout(() => {
+      const liveMap = liveMapRef.current;
+      const printMap = mapInstanceRef.current;
+      if (!liveMap || !printMap) return;
+      const bounds = liveMap.getBounds();
+      const bbox: [number, number, number, number] = [
+        bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()
+      ];
+      setMode('live');
+      setPrintBbox(bbox);
+      printMap.fitBounds([[bbox[0], bbox[1]], [bbox[2], bbox[3]]], { padding: 36, maxZoom: 16 });
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [isActive, liveMapRef, mapInstanceRef]);
 
   // Always clear the temp bbox rectangle when leaving draw mode.
   useEffect(() => {

@@ -503,7 +503,40 @@ export const ProjectExplorerPanel: React.FC<ProjectExplorerPanelProps> = ({
                 const totalPct = rows.reduce((acc, r) => acc + Math.max(0, r.percentage), 0) || 100;
                 const R = 36;
                 const C = 2 * Math.PI * R;
-                let accumulatedOffset = 0;
+
+                // Precompute slices so we can generate keyframes and continuous 1-by-1 merge delays
+                let sliceOffset = 0;
+                const sliceData = rows
+                  .map((row, idx) => {
+                    const sliceLen = (Math.max(0, row.percentage) / totalPct) * C;
+                    if (sliceLen <= 0) return null;
+                    const gap = rows.filter((r) => r.percentage > 0).length > 1 ? 1.5 : 0;
+                    const targetLen = Math.max(0.5, sliceLen - gap);
+                    const dash = `${targetLen.toFixed(2)} ${(C - targetLen).toFixed(2)}`;
+                    const offset = -sliceOffset;
+                    sliceOffset += sliceLen;
+                    const color = paletteColors[idx % paletteColors.length];
+                    return {
+                      idx,
+                      sliceLen,
+                      targetLen,
+                      dash,
+                      offset,
+                      color,
+                      delay: idx * 0.22
+                    };
+                  })
+                  .filter(Boolean) as Array<{
+                    idx: number;
+                    sliceLen: number;
+                    targetLen: number;
+                    dash: string;
+                    offset: number;
+                    color: string;
+                    delay: number;
+                  }>;
+
+                const centerDelay = (sliceData.length * 0.22 + 0.1).toFixed(2);
 
                 return (
                   <div
@@ -515,7 +548,32 @@ export const ProjectExplorerPanel: React.FC<ProjectExplorerPanelProps> = ({
                   >
                     {/* Donut SVG Ring */}
                     <div className="relative w-24 h-24 shrink-0 flex items-center justify-center">
-                      <svg className="w-full h-full -rotate-90 explorer-donut-ring" viewBox="0 0 100 100">
+                      <svg
+                        key={`donut-${selectedTab}`}
+                        className="w-full h-full -rotate-90 explorer-donut-ring"
+                        viewBox="0 0 100 100"
+                      >
+                        {/* Dynamic keyframe styles per slice for continuous 1-by-1 merge */}
+                        <style>{`
+                          ${sliceData
+                            .map(
+                              (s) => `@keyframes explorerSliceSweep_${selectedTab}_${s.idx} {
+                                0% {
+                                  stroke-dasharray: 0 ${C.toFixed(2)};
+                                  opacity: 0;
+                                }
+                                10% {
+                                  opacity: 1;
+                                }
+                                100% {
+                                  stroke-dasharray: ${s.dash};
+                                  opacity: 1;
+                                }
+                              }`
+                            )
+                            .join('\n')}
+                        `}</style>
+
                         {/* Background track circle */}
                         <circle
                           cx="50"
@@ -525,34 +583,31 @@ export const ProjectExplorerPanel: React.FC<ProjectExplorerPanelProps> = ({
                           stroke="var(--bg-inner, rgba(255, 255, 255, 0.08))"
                           strokeWidth="11"
                         />
-                        {rows.map((row, idx) => {
-                          const sliceLen = (Math.max(0, row.percentage) / totalPct) * C;
-                          if (sliceLen <= 0) return null;
-                          const gap = rows.filter((r) => r.percentage > 0).length > 1 ? 1.5 : 0;
-                          const dash = `${Math.max(0.5, sliceLen - gap)} ${C - Math.max(0.5, sliceLen - gap)}`;
-                          const offset = -accumulatedOffset;
-                          accumulatedOffset += sliceLen;
-                          const color = paletteColors[idx % paletteColors.length];
-
-                          return (
-                            <circle
-                              key={idx}
-                              cx="50"
-                              cy="50"
-                              r={R}
-                              fill="transparent"
-                              stroke={color}
-                              strokeWidth="11"
-                              strokeDasharray={dash}
-                              strokeDashoffset={offset}
-                              className="transition-all duration-700 ease-out explorer-donut-slice"
-                            />
-                          );
-                        })}
+                        {sliceData.map((s) => (
+                          <circle
+                            key={s.idx}
+                            cx="50"
+                            cy="50"
+                            r={R}
+                            fill="transparent"
+                            stroke={s.color}
+                            strokeWidth="11"
+                            strokeDasharray={s.dash}
+                            strokeDashoffset={s.offset}
+                            className="explorer-donut-slice"
+                            style={{
+                              animation: `explorerSliceSweep_${selectedTab}_${s.idx} 0.65s cubic-bezier(0.16, 1, 0.3, 1) ${s.delay.toFixed(2)}s both`
+                            }}
+                          />
+                        ))}
                       </svg>
 
                       {/* Center summary text */}
-                      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center px-1">
+                      <div
+                        key={`center-${selectedTab}`}
+                        className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center px-1 explorer-donut-center"
+                        style={{ animationDelay: `${centerDelay}s` }}
+                      >
                         <span
                           className={`font-bold font-mono tracking-tight text-[var(--text-primary,#EEF2F1)] leading-tight ${
                             String(currentTabContent.primaryValue).length > 10
@@ -569,7 +624,7 @@ export const ProjectExplorerPanel: React.FC<ProjectExplorerPanelProps> = ({
                     </div>
 
                     {/* Donut Legend */}
-                    <div className="flex-1 space-y-1.5 min-w-0">
+                    <div key={`legend-${selectedTab}`} className="flex-1 space-y-1.5 min-w-0">
                       {rows.map((row, idx) => {
                         const color = paletteColors[idx % paletteColors.length];
                         return (
@@ -672,6 +727,7 @@ export const ProjectExplorerPanel: React.FC<ProjectExplorerPanelProps> = ({
                     {/* SVG Stacked Bar Chart */}
                     <div className="w-full overflow-hidden">
                       <svg
+                        key={`barchart-${selectedTab}`}
                         className="w-full h-auto select-none"
                         viewBox={`0 0 ${svgW} ${svgH}`}
                         style={{ overflow: 'visible' }}
@@ -750,6 +806,7 @@ export const ProjectExplorerPanel: React.FC<ProjectExplorerPanelProps> = ({
 
                           let currY = plotBaseY;
                           const totalColH = (colTotal / maxY) * plotH;
+                          const labelDelay = colIdx * 0.16 + segments.length * 0.20 + 0.05;
 
                           return (
                             <g key={colIdx} className="transition-all duration-200 explorer-bar-column">
@@ -760,6 +817,7 @@ export const ProjectExplorerPanel: React.FC<ProjectExplorerPanelProps> = ({
                                 const segY = currY - segH;
                                 currY = segY;
                                 const isTopSeg = segIdx === segments.length - 1 || currY <= plotBaseY - totalColH + 0.5;
+                                const segDelay = colIdx * 0.16 + segIdx * 0.20;
 
                                 return (
                                   <rect
@@ -772,6 +830,7 @@ export const ProjectExplorerPanel: React.FC<ProjectExplorerPanelProps> = ({
                                     rx={isTopSeg ? 3 : 0}
                                     ry={isTopSeg ? 3 : 0}
                                     className="explorer-bar-segment"
+                                    style={{ animationDelay: `${segDelay.toFixed(2)}s` }}
                                     onMouseEnter={() =>
                                       setHoveredStackSegment({
                                         zone: ringRow.label,
@@ -795,6 +854,8 @@ export const ProjectExplorerPanel: React.FC<ProjectExplorerPanelProps> = ({
                                 fontWeight="bold"
                                 fontFamily="monospace"
                                 fill="var(--text-primary, #EEF2F1)"
+                                className="explorer-bar-label"
+                                style={{ animationDelay: `${labelDelay.toFixed(2)}s` }}
                               >
                                 {colTotal}%
                               </text>
@@ -969,7 +1030,7 @@ export const ProjectExplorerPanel: React.FC<ProjectExplorerPanelProps> = ({
       {/* ── Bottom Floating Controls Bar (Sydney Explorer Style) ── */}
       <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[1001] pointer-events-auto select-none">
         <div
-          className="flex items-center gap-3 sm:gap-4 px-4 py-2 rounded-full border style-surface backdrop-blur-xl text-xs"
+          className="flex items-center gap-2.5 sm:gap-3 px-3 py-1.5 rounded-full border style-surface backdrop-blur-xl text-[11px]"
           style={{
             backgroundColor: 'var(--bg-card, rgba(12, 18, 30, 0.92))',
             borderColor: 'var(--border-subtle, rgba(255, 255, 255, 0.1))',
@@ -980,7 +1041,7 @@ export const ProjectExplorerPanel: React.FC<ProjectExplorerPanelProps> = ({
           {/* Active Focused Subgrid Pill or Guidance */}
           {selectedGrid ? (
             <div
-              className="flex items-center gap-2 px-3.5 py-1.5 rounded-full border font-semibold text-[11px] shadow-sm text-sky-300"
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border font-semibold text-[10.5px] shadow-sm text-sky-300"
               style={{
                 backgroundColor: 'var(--accent-bg, rgba(56, 189, 248, 0.2))',
                 borderColor: 'var(--accent, rgba(56, 189, 248, 0.4))'
@@ -1005,7 +1066,7 @@ export const ProjectExplorerPanel: React.FC<ProjectExplorerPanelProps> = ({
             </div>
           ) : (
             <div
-              className="flex items-center gap-2 px-3 py-1.5 rounded-full border text-[11px]"
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[10.5px]"
               style={{
                 backgroundColor: 'var(--bg-inner, rgba(255, 255, 255, 0.05))',
                 borderColor: 'var(--border-subtle, rgba(255, 255, 255, 0.1))',
@@ -1018,15 +1079,15 @@ export const ProjectExplorerPanel: React.FC<ProjectExplorerPanelProps> = ({
           )}
 
           {/* Colour by Custom Glassmorphic Dropdown */}
-          <div className="flex items-center gap-2 border-l border-[var(--divider,rgba(255,255,255,0.1))] pl-3">
-            <span className="text-[var(--text-muted,#9BAAA9)] text-[11px] font-medium hidden sm:inline">Colour by</span>
+          <div className="flex items-center gap-1.5 border-l border-[var(--divider,rgba(255,255,255,0.1))] pl-2.5">
+            <span className="text-[var(--text-muted,#9BAAA9)] text-[10.5px] font-medium hidden sm:inline">Colour by</span>
             <div className="relative" ref={dropdownRef}>
               <button
                 type="button"
                 onClick={() => setIsDropdownOpen(!isDropdownOpen)}
                 aria-expanded={isDropdownOpen}
                 aria-label="Colour by metric selection"
-                className="flex items-center gap-2 px-2.5 py-1 rounded-full border transition-all cursor-pointer text-[11px] font-semibold shadow-sm"
+                className="flex items-center gap-1.5 px-2 py-0.5 rounded-full border transition-all cursor-pointer text-[10.5px] font-semibold shadow-sm"
                 style={{
                   backgroundColor: 'var(--bg-inner, rgba(255, 255, 255, 0.1))',
                   borderColor: 'var(--border-subtle, rgba(255, 255, 255, 0.15))',
