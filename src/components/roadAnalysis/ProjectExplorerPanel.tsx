@@ -545,7 +545,7 @@ export const ProjectExplorerPanel: React.FC<ProjectExplorerPanelProps> = ({
                               strokeWidth="11"
                               strokeDasharray={dash}
                               strokeDashoffset={offset}
-                              className="transition-all duration-300 ease-out explorer-donut-slice"
+                              className="transition-all duration-700 ease-out explorer-donut-slice"
                             />
                           );
                         })}

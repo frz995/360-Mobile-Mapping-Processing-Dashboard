@@ -1562,7 +1562,7 @@ select:-webkit-autofill:focus {
 }
 
 .animate-explorer-tab-flip {
-  animation: explorerTabFlip 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: explorerTabFlip 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
   transform-origin: top center;
 }
 
@@ -1598,7 +1598,7 @@ select:-webkit-autofill:focus {
 
 .explorer-donut-ring {
   transform-origin: 50px 50px;
-  animation: explorerDonutEntry 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: explorerDonutEntry 0.85s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 @keyframes explorerBarRise {
@@ -1615,13 +1615,13 @@ select:-webkit-autofill:focus {
 .explorer-bar-column {
   transform-box: fill-box;
   transform-origin: 50% 100%;
-  animation: explorerBarRise 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: explorerBarRise 0.85s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-.explorer-bar-column:nth-child(1) { animation-delay: 0.04s; }
-.explorer-bar-column:nth-child(2) { animation-delay: 0.08s; }
-.explorer-bar-column:nth-child(3) { animation-delay: 0.12s; }
-.explorer-bar-column:nth-child(4) { animation-delay: 0.16s;
+.explorer-bar-column:nth-child(1) { animation-delay: 0.08s; }
+.explorer-bar-column:nth-child(2) { animation-delay: 0.18s; }
+.explorer-bar-column:nth-child(3) { animation-delay: 0.28s; }
+.explorer-bar-column:nth-child(4) { animation-delay: 0.38s;
 }
 
 /* ========================================================================= */
