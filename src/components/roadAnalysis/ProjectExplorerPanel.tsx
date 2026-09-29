@@ -643,17 +643,22 @@ export const ProjectExplorerPanel: React.FC<ProjectExplorerPanelProps> = ({
                       borderColor: 'var(--border-subtle, rgba(255, 255, 255, 0.08))'
                     }}
                   >
-                    {/* Active hover info banner */}
-                    {hoveredStackSegment ? (
-                      <div className="flex items-center justify-between px-2 py-1 rounded-md bg-white/5 border border-white/10 text-[10px]">
-                        <span className="text-[var(--text-primary,#EEF2F1)] font-medium truncate max-w-[200px]">
-                          {hoveredStackSegment.zone} · {hoveredStackSegment.label}
-                        </span>
-                        <span className="font-mono font-bold text-sky-400">
-                          {hoveredStackSegment.pct.toFixed(1)}%
-                        </span>
-                      </div>
-                    ) : null}
+                    {/* Active hover info banner (fixed-slot to eliminate layout-shift stutter on hover) */}
+                    <div
+                      className={`flex items-center justify-between px-2 py-1 rounded-md text-[10px] min-h-[26px] transition-opacity duration-150 ${
+                        hoveredStackSegment
+                          ? 'bg-white/5 border border-white/10 opacity-100'
+                          : 'opacity-0 border border-transparent pointer-events-none select-none'
+                      }`}
+                      aria-hidden={!hoveredStackSegment}
+                    >
+                      <span className="text-[var(--text-primary,#EEF2F1)] font-medium truncate max-w-[200px]">
+                        {hoveredStackSegment ? `${hoveredStackSegment.zone} · ${hoveredStackSegment.label}` : ''}
+                      </span>
+                      <span className="font-mono font-bold text-sky-400">
+                        {hoveredStackSegment ? `${hoveredStackSegment.pct.toFixed(1)}%` : ''}
+                      </span>
+                    </div>
 
                     {/* SVG Stacked Bar Chart */}
                     <div className="w-full overflow-hidden">
