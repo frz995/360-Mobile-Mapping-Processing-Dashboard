@@ -73,7 +73,6 @@ import {
 } from '../utils/subgridComparison';
 import { buildTracePlans, finalizeSubgridResult, type SubgridTraceResult, type LonLat } from '../utils/roadNetworkTrace';
 import { useCoverageSegmentation } from '../hooks/useCoverageSegmentation';
-import type { RoadPlanStitchInput } from '../hooks/useRoadPlanStitcher';
 import { extractSubgridName } from '../utils/subgrid';
 import {
   saveRoadAnalysisStateToSupabase,
@@ -482,7 +481,7 @@ function basemapToMapStyle(key?: string, customUrl?: string) {
 }
 
 const EMPTY_COVERAGE_RUNS: LonLat[][] = [];
-const EMPTY_STITCH_INPUT: RoadPlanStitchInput = { runs: [], endpointIds: [] };
+const EMPTY_PLAN_RUNS: { runs: LonLat[][]; endpointIds: [] } = { runs: [], endpointIds: [] };
 
 export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
   translate = (k) => k,
@@ -1273,14 +1272,14 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
     () =>
       planSource === 'manual'
         ? extractLineRunsWithIds(manualGeoJson)
-        : EMPTY_STITCH_INPUT,
+        : EMPTY_PLAN_RUNS,
     [planSource, manualGeoJson]
   );
 
   const roadPlanInput = useMemo(() => {
     if (planSource === 'extracted') return extractedRuns;
     if (planSource === 'manual') return manualRuns;
-    return EMPTY_STITCH_INPUT;
+    return EMPTY_PLAN_RUNS;
   }, [planSource, extractedRuns, manualRuns]);
 
   // Runs currently used as the active road plan (for map rendering, metrics, and coverage).

@@ -12,7 +12,6 @@ import { appendStageEventToSupabase } from '../../../services/api/stageEventLedg
 
 export interface QAAuditStationProps {
   subgrid: string;
-  surveyDate: string;
   totalFrames: number;
   projectSettings?: any;
   pairedRecords?: Array<{
@@ -31,10 +30,9 @@ export interface QAAuditStationProps {
   addNotification?: (item: any) => void;
   addAuditLog?: (type: any, title: string, details: string, status?: any) => void;
   userLabel: string;
-  isGuestUser?: boolean;
 }
 
-export interface DefectRecord {
+interface DefectRecord {
   frameIdx: number;
   frameName: string;
   defectType: 'BLUR' | 'TILT' | 'OBSTRUCTION' | 'STITCH_SEAM' | 'GPS_JUMP';

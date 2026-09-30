@@ -1,5 +1,5 @@
 import { supabase, scoped, getServiceProjectId } from './client';
-import type { StationBoardRow, StationBoardMetricUnit, WorkstationStationId } from '../../types/production';
+import type { StationBoardRow, StationBoardMetricUnit } from '../../types/production';
 
 const STATION_BOARD_TABLE = 'station_board_items';
 
@@ -80,5 +80,3 @@ export async function upsertStationBoardItemInSupabase(
     return false;
   }
 }
-
-export type StationBoardDelta = Partial<StationBoardRow> & { station_id: WorkstationStationId };

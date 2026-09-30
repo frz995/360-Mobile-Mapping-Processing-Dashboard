@@ -49,15 +49,6 @@ export function captureException(error: unknown, context?: Record<string, unknow
   }
 }
 
-export function captureMessage(message: string, level: 'info' | 'warning' | 'error' = 'info'): string | undefined {
-  if (!enabled) return undefined;
-  try {
-    return Sentry.captureMessage(message, level);
-  } catch {
-    return undefined;
-  }
-}
-
 /** Adapts a captured report entry into a Sentry event. Used as a report sink. */
 export function sentryReportSink(entry: ReportEntry): void {
   if (!enabled) return;

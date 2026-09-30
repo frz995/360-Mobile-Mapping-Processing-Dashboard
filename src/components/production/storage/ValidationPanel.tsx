@@ -10,7 +10,6 @@ import { MetaList, TextAction } from '../chrome';
 export interface ValidationPanelProps {
   api: ProductionApiClient;
   datasets: DatasetRecord[];
-  translate: (key: string) => string;
 }
 
 const INPUT_CLASS =

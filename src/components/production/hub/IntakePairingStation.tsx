@@ -120,7 +120,7 @@ export function computeTrajectorySpan(
   return { km: metres === null ? null : metres / 1000, source: 'coordinates' };
 }
 
-export interface SurveyFolderMeta {
+interface SurveyFolderMeta {
   id: string;
   name: string;
   displayDate: string;
@@ -138,15 +138,13 @@ function getFoldersForSubgrid(_sg: string): SurveyFolderMeta[] {
   return [];
 }
 
-export interface SubgridOption {
+interface SubgridOption {
   code: string;
   label: string;
   existsInStitching: boolean;
 }
 
 export const DEFAULT_AVAILABLE_SUBGRIDS: SubgridOption[] = [];
-
-export const AVAILABLE_SUBGRIDS = DEFAULT_AVAILABLE_SUBGRIDS;
 
 export interface IntakeSessionSource {
   selectedFolderId?: string;

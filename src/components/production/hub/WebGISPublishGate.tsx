@@ -312,17 +312,21 @@ export const WebGISPublishGate: React.FC<WebGISPublishGateProps> = ({
         <div className="min-w-0 flex items-start gap-2.5">
           {!isPublished && publishError && <AlertTriangle size={15} className="text-red-400 shrink-0 mt-0.5" />}
           {isPublished ? (
-            <CheckCircle2 size={15} className="text-emerald-400 shrink-0 mt-0.5" />
+            <div className="min-w-0 flex items-start gap-2.5">
+              <CheckCircle2 size={15} className="text-emerald-400 shrink-0 mt-0.5" />
+              <div className="min-w-0">
+                <div className="text-[11px] font-semibold text-text-base">Promotion Complete</div>
+                <p className="text-[11px] text-text-muted mt-0.5">
+                  {publishMessage || `Upserted ${promotableRecords.length} record(s) into public.panoramas.`}
+                </p>
+              </div>
+            </div>
           ) : (
             <div className="min-w-0">
-              <div className="text-[11px] font-semibold text-text-base">
-                {isPublished ? 'Promotion Complete' : 'Ready to Publish to WebGIS'}
-              </div>
+              <div className="text-[11px] font-semibold text-text-base">Ready to Publish to WebGIS</div>
               <p className="text-[11px] text-text-muted mt-0.5">
-                {isPublished
-                  ? publishMessage
-                  : publishError ||
-                    `Upserts ${promotableRecords.length} record(s) into public.panoramas. This database write cannot be previewed or rolled back from here.`}
+                {publishError ||
+                  `Upserts ${promotableRecords.length} record(s) into public.panoramas. This database write cannot be previewed or rolled back from here.`}
               </p>
             </div>
           )}

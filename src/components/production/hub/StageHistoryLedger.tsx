@@ -19,7 +19,7 @@ import type {
 } from '../../../types/production';
 import { fetchStageEventLedgerFromSupabase } from '../../../services/api/stageEventLedger';
 
-export interface StageHistoryLedgerProps {
+interface StageHistoryLedgerProps {
   subgrid?: string;
   totalFrames?: number;
 }

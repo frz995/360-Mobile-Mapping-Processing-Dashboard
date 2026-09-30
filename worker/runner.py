@@ -10,7 +10,6 @@ import logging
 import os
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass, field
 from typing import Optional, TYPE_CHECKING
 
 try:

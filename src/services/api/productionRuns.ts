@@ -1,51 +1,15 @@
 import { getServiceProjectId, supabase } from './client';
-import { extractSurveyDate, subgridOf } from '../../utils/datasetLineage';
 import {
   buildReleaseFolder,
   formatReleaseCode,
-  formatRunCode,
-  normalizeReleaseDate,
   normalizeReleaseSubgrid,
   type ReleaseManifest
 } from '../../utils/releaseNaming';
 import type {
   ProductionAttemptRecord,
-  ProductionAttemptStatus,
   ProductionReleaseRecord,
-  ProductionReleaseStatus,
-  ProductionRunRecord,
-  ProductionRunStatus
+  ProductionReleaseStatus
 } from '../../types/production';
-
-export interface ProductionRunFilters {
-  subgrid?: string;
-  captureDate?: string;
-  status?: ProductionRunStatus;
-}
-
-export interface ProductionAttemptFilters {
-  status?: ProductionAttemptStatus;
-}
-
-export interface CreateProductionRunInput {
-  subgrid: string;
-  captureDate: string;
-  sourceFolder?: string;
-  cameraModel?: string;
-  metadata?: Record<string, unknown>;
-  createdBy?: string;
-  sequence?: number;
-}
-
-export interface CreateProductionAttemptInput {
-  productionRunId: string;
-  status?: ProductionAttemptStatus;
-  sourceDatasetId?: string;
-  outputDatasetId?: string;
-  processingJobId?: string;
-  metadata?: Record<string, unknown>;
-  createdBy?: string;
-}
 
 export interface SaveProductionReleaseInput {
   productionRunId: string;
@@ -314,188 +278,6 @@ function releaseFileRow(projectId: string, releaseId: string, file: ReleaseManif
     sort_order: file.sortOrder,
     metadata: {}
   };
-}
-
-export async function fetchProductionRuns(filters: ProductionRunFilters = {}): Promise<ProductionRunRecord[]> {
-  const projectId = requireProjectId();
-  let query = supabase.from('production_runs').select('*').eq('project_id', projectId);
-  if (filters.subgrid) query = query.eq('subgrid', normalizeReleaseSubgrid(filters.subgrid));
-  if (filters.captureDate) query = query.eq('capture_date', normalizeReleaseDate(filters.captureDate));
-  if (filters.status) query = query.eq('status', filters.status);
-  const { data, error } = await query.order('capture_date', { ascending: false }).order('sequence', { ascending: false });
-  if (error) throw new Error(error.message);
-  return (data || []) as ProductionRunRecord[];
-}
-
-export async function fetchProductionAttempts(
-  productionRunId: string,
-  filters: ProductionAttemptFilters = {}
-): Promise<ProductionAttemptRecord[]> {
-  const projectId = requireProjectId();
-  let query = supabase
-    .from('production_run_attempts')
-    .select('*')
-    .eq('project_id', projectId)
-    .eq('production_run_id', productionRunId);
-  if (filters.status) query = query.eq('status', filters.status);
-  const { data, error } = await query.order('attempt_number', { ascending: false });
-  if (error) throw new Error(error.message);
-  return (data || []) as ProductionAttemptRecord[];
-}
-
-export async function fetchProductionReleases(
-  filters: { productionRunId?: string; subgrid?: string; status?: ProductionReleaseStatus } = {}
-): Promise<ProductionReleaseRecord[]> {
-  const projectId = requireProjectId();
-  let query = supabase.from('production_releases').select('*').eq('project_id', projectId);
-  if (filters.productionRunId) query = query.eq('production_run_id', filters.productionRunId);
-  if (filters.subgrid) query = query.eq('subgrid', normalizeReleaseSubgrid(filters.subgrid));
-  if (filters.status) query = query.eq('status', filters.status);
-  const { data, error } = await query.order('created_at', { ascending: false });
-  if (error) throw new Error(error.message);
-  return (data || []) as ProductionReleaseRecord[];
-}
-
-export async function fetchProductionReleaseFiles(releaseId: string): Promise<Array<Record<string, unknown>>> {
-  const projectId = requireProjectId();
-  const { data, error } = await supabase
-    .from('production_release_files')
-    .select('*')
-    .eq('project_id', projectId)
-    .eq('release_id', releaseId)
-    .order('sort_order', { ascending: true });
-  if (error) throw new Error(error.message);
-  return (data || []) as Array<Record<string, unknown>>;
-}
-
-export async function createProductionRun(input: CreateProductionRunInput): Promise<{
-  run: ProductionRunRecord;
-  attempt: ProductionAttemptRecord;
-}> {
-  const projectId = requireProjectId();
-  const subgrid = normalizeReleaseSubgrid(input.subgrid);
-  const captureDate = normalizeReleaseDate(input.captureDate);
-  const sequence = input.sequence || 1;
-  const runCode = formatRunCode(subgrid, captureDate, sequence);
-  const runId = newId();
-  const attemptId = newId();
-  const { data: latest, error: latestError } = await supabase
-    .from('production_runs')
-    .select('sequence')
-    .eq('project_id', projectId)
-    .eq('subgrid', subgrid)
-    .eq('capture_date', captureDate)
-    .order('sequence', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (latestError) throw new Error(latestError.message);
-  const resolvedSequence = input.sequence || Number((latest as { sequence?: number } | null)?.sequence || 0) + 1;
-  const resolvedRunCode = input.sequence ? runCode : formatRunCode(subgrid, captureDate, resolvedSequence);
-  const { data: run, error: runError } = await supabase
-    .from('production_runs')
-    .insert([{
-      id: runId,
-      project_id: projectId,
-      subgrid,
-      capture_date: captureDate,
-      run_code: resolvedRunCode,
-      sequence: resolvedSequence,
-      status: 'CAPTURED',
-      camera_model: input.cameraModel?.trim() || null,
-      source_folder: input.sourceFolder?.trim() || '',
-      metadata: input.metadata || {},
-      created_by: input.createdBy || 'System'
-    }])
-    .select('*')
-    .single();
-  if (runError || !run) throw new Error(runError?.message || 'Unable to create production run');
-
-  const { data: attempt, error: attemptError } = await supabase
-    .from('production_run_attempts')
-    .insert([{
-      id: attemptId,
-      project_id: projectId,
-      production_run_id: runId,
-      attempt_number: 1,
-      status: 'ACTIVE',
-      source_dataset_id: null,
-      output_dataset_id: null,
-      processing_job_id: null,
-      metadata: {},
-      created_by: input.createdBy || 'System'
-    }])
-    .select('*')
-    .single();
-  if (attemptError || !attempt) throw new Error(attemptError?.message || 'Unable to create initial production attempt');
-
-  await linkExistingRecordsToRun(runId, attemptId, subgrid, captureDate, projectId);
-  return {
-    run: run as ProductionRunRecord,
-    attempt: attempt as ProductionAttemptRecord
-  };
-}
-
-export async function createProductionAttempt(input: CreateProductionAttemptInput): Promise<ProductionAttemptRecord> {
-  const projectId = requireProjectId();
-  const { data: latest, error: latestError } = await supabase
-    .from('production_run_attempts')
-    .select('attempt_number')
-    .eq('project_id', projectId)
-    .eq('production_run_id', input.productionRunId)
-    .order('attempt_number', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (latestError) throw new Error(latestError.message);
-  const attemptNumber = Number((latest as { attempt_number?: number } | null)?.attempt_number || 0) + 1;
-  const { data, error } = await supabase
-    .from('production_run_attempts')
-    .insert([{
-      project_id: projectId,
-      production_run_id: input.productionRunId,
-      attempt_number: attemptNumber,
-      status: input.status || 'ACTIVE',
-      source_dataset_id: input.sourceDatasetId || null,
-      output_dataset_id: input.outputDatasetId || null,
-      processing_job_id: input.processingJobId || null,
-      metadata: input.metadata || {},
-      created_by: input.createdBy || 'System'
-    }])
-    .select('*')
-    .single();
-  if (error || !data) throw new Error(error?.message || 'Unable to create production attempt');
-  return data as ProductionAttemptRecord;
-}
-
-export async function updateProductionRun(
-  productionRunId: string,
-  fields: Partial<ProductionRunRecord>
-): Promise<ProductionRunRecord> {
-  const projectId = requireProjectId();
-  const { data, error } = await supabase
-    .from('production_runs')
-    .update({ ...fields, updated_at: new Date().toISOString() })
-    .eq('project_id', projectId)
-    .eq('id', productionRunId)
-    .select('*')
-    .single();
-  if (error || !data) throw new Error(error?.message || 'Unable to update production run');
-  return data as ProductionRunRecord;
-}
-
-export async function updateProductionAttempt(
-  attemptId: string,
-  fields: Partial<ProductionAttemptRecord>
-): Promise<ProductionAttemptRecord> {
-  const projectId = requireProjectId();
-  const { data, error } = await supabase
-    .from('production_run_attempts')
-    .update({ ...fields, updated_at: new Date().toISOString() })
-    .eq('project_id', projectId)
-    .eq('id', attemptId)
-    .select('*')
-    .single();
-  if (error || !data) throw new Error(error?.message || 'Unable to update production attempt');
-  return data as ProductionAttemptRecord;
 }
 
 export async function fetchProductionReleaseHandoffStatus(
@@ -797,36 +579,4 @@ export async function markReleasePublished(
     .eq('id', data.production_run_id);
   if (activeError) throw new Error(activeError.message);
   return data as ProductionReleaseRecord;
-}
-
-async function linkExistingRecordsToRun(
-  productionRunId: string,
-  attemptId: string,
-  subgrid: string,
-  captureDate: string,
-  projectId: string
-): Promise<void> {
-  const targetSubgrid = subgridOf(subgrid);
-  if (!targetSubgrid) return;
-  const [datasetsResult, jobsResult, stagingResult] = await Promise.all([
-    supabase.from('datasets').select('id, subgrid, metadata, name, source_folder, output_folder, created_at').eq('project_id', projectId),
-    supabase.from('processing_jobs').select('id, subgrid, settings, name, source_folder, output_folder, created_at').eq('project_id', projectId),
-    supabase.from('staging_panoramas').select('id, subgrid, filename, created_at').eq('project_id', projectId)
-  ]);
-  const linkRows = async (table: string, rows: any[] | null, updateFields: Record<string, string>) => {
-    for (const row of rows || []) {
-      if (subgridOf(row.subgrid || row.filename) !== targetSubgrid) continue;
-      const rowDate = extractSurveyDate(row);
-      if (rowDate !== captureDate || !row.id) continue;
-      const { error } = await supabase
-        .from(table)
-        .update(updateFields)
-        .eq('project_id', projectId)
-        .eq('id', row.id);
-      if (error) throw new Error(error.message);
-    }
-  };
-  await linkRows('datasets', datasetsResult.data as any[] | null, { production_run_id: productionRunId, production_attempt_id: attemptId });
-  await linkRows('processing_jobs', jobsResult.data as any[] | null, { production_run_id: productionRunId, production_attempt_id: attemptId });
-  await linkRows('staging_panoramas', stagingResult.data as any[] | null, { production_run_id: productionRunId, production_attempt_id: attemptId });
 }

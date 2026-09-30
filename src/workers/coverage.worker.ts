@@ -5,7 +5,7 @@
  * covered-vs-uncovered pass runs. Streams live run-by-run progress so the map
  * can show a progress popup over a blurred backdrop.
  *
- * Mirrors the planStitch / gisImport protocol: numeric request id is filtered
+ * Mirrors the gisImport protocol: numeric request id is filtered
  * on the main thread so stale replies from an older request are dropped.
  */
 import {

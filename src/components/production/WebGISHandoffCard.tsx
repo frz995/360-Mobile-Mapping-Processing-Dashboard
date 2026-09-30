@@ -17,7 +17,6 @@ interface WebGISHandoffCardProps {
   lifecycle: SubgridLifecycleStatus;
   bucketName?: string;
   onNavigateToDataManagement?: (subgrid: string) => void;
-  onDirectUploadImages?: (files: FileList | File[]) => void;
 }
 
 export const WebGISHandoffCard: React.FC<WebGISHandoffCardProps> = ({

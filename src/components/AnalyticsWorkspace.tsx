@@ -21,16 +21,9 @@ import { QualityPanel } from './production/analytics/QualityPanel';
 
 export interface AnalyticsWorkspaceProps {
   projectSettings: any;
-  setProjectSettings: React.Dispatch<React.SetStateAction<any>>;
-  authSession?: any;
-  isGuestUser?: boolean;
-  addNotification?: (item: any) => void;
-  addAuditLog?: (type: any, title: string, details: string, status?: any) => void;
-  onBackToDashboard?: () => void;
   translate?: (key: string) => string;
   batchLogs: any[];
   dailyData: any[];
-  onRefreshData?: () => void;
 }
 
 type AnalyticsTab = 'overview' | 'ledger' | 'coverage' | 'quality';
@@ -45,12 +38,9 @@ const TABS: ChromeTab<AnalyticsTab>[] = [
 
 export const AnalyticsWorkspace: React.FC<AnalyticsWorkspaceProps> = ({
   projectSettings,
-  isGuestUser: _isGuestUser,
-  onBackToDashboard: _onBackToDashboard,
   translate = (k) => k,
   batchLogs = [],
-  dailyData = [],
-  onRefreshData: _onRefreshData
+  dailyData = []
 }) => {
   const [activeTab, setActiveTab] = useState<AnalyticsTab>(() => {
     // Legacy 'distance' persisted tabs redirect to the merged coverage view.

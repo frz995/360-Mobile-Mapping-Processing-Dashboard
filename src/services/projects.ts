@@ -30,8 +30,6 @@ export function getActiveProjectStorageKey(userKey: string): string {
 
 export type ProjectStatus = 'planning' | 'active' | 'paused' | 'completed' | 'archived';
 
-export const PROJECT_STATUS_KEYS: ProjectStatus[] = ['planning', 'active', 'paused', 'completed', 'archived'];
-
 export interface ProjectScope {
   crs?: string;
   /** Malaysia region preset id, e.g. 'peninsular_malaysia'. */

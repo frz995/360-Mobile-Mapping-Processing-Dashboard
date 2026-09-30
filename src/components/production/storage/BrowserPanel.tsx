@@ -20,12 +20,7 @@ import { TextAction } from '../chrome';
 export interface BrowserPanelProps {
   api: ProductionApiClient;
   projectSettings: any;
-  translate: (key: string) => string;
-  isGuestUser?: boolean;
-  onAddNotification?: (item: any) => void;
-  onAddAuditLog?: (type: any, title: string, details: string, status?: any) => void;
   onOpenProductionHub?: (path: string, subgrid?: string) => void;
-  userLabel: string;
   initialPath?: string;
 }
 

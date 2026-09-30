@@ -50,7 +50,6 @@ describe('ProductionHubWorkspace session restore (last activity)', () => {
     render(
       <ProductionHubWorkspace
         projectSettings={{}}
-        setProjectSettings={vi.fn()}
         authSession={{ user: { email: 'qa@tnb.com.my' } }}
         addNotification={vi.fn()}
         addAuditLog={vi.fn()}
@@ -77,7 +76,6 @@ describe('ProductionHubWorkspace session restore (last activity)', () => {
     render(
       <ProductionHubWorkspace
         projectSettings={{}}
-        setProjectSettings={vi.fn()}
         authSession={{ user: { email: 'qa@tnb.com.my' } }}
         addNotification={vi.fn()}
         addAuditLog={vi.fn()}
@@ -103,7 +101,6 @@ describe('ProductionHubWorkspace session restore (last activity)', () => {
     render(
       <ProductionHubWorkspace
         projectSettings={{}}
-        setProjectSettings={vi.fn()}
         authSession={{ user: { email: 'qa@tnb.com.my' } }}
         addNotification={vi.fn()}
         addAuditLog={vi.fn()}
@@ -129,7 +126,6 @@ describe('ProductionHubWorkspace session restore (last activity)', () => {
     render(
       <ProductionHubWorkspace
         projectSettings={{}}
-        setProjectSettings={vi.fn()}
         authSession={{ user: { email: 'qa@tnb.com.my' } }}
         addNotification={vi.fn()}
         addAuditLog={vi.fn()}

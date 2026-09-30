@@ -15,13 +15,12 @@ import type { DatasetRecord, StorageInfo, WorkerHealthInfo } from '../../../type
 import { formatBytes, pct } from './storageCommon';
 import { TextAction, StatusDot } from '../chrome';
 
-export interface OverviewPanelProps {
+interface OverviewPanelProps {
   api: ProductionApiClient;
   projectSettings: any;
   setProjectSettings?: React.Dispatch<React.SetStateAction<any>>;
   addNotification?: (item: any) => void;
   datasets: DatasetRecord[];
-  translate: (key: string) => string;
 }
 
 export const OverviewPanel: React.FC<OverviewPanelProps> = ({

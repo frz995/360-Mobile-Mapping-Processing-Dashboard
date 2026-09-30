@@ -276,11 +276,12 @@ export const BucketPublicationGate: React.FC<BucketPublicationGateProps> = ({
 
   // A real frame name from the current NAS pairing, if one is loaded. Used instead
   // of a "<SUBGRID>-0001.jpg" guess so any sample URL we render can resolve to an
-  // object that actually exists.
+  // object that actually exists. targetFilename is the post-rename name, so it is
+  // preferred; sourceFilename is the pre-rename on-disk name.
   const realSampleFilename = useMemo(() => {
     const fromPaired = (pairedRecords || [])
-      .map((r: any) => r?.filename)
-      .find((f: any) => Boolean(f && String(f).trim()));
+      .map((r: PairedFrameRecord) => r?.targetFilename || r?.sourceFilename)
+      .find((f: unknown) => Boolean(f && String(f).trim()));
     return fromPaired ? String(fromPaired) : '';
   }, [pairedRecords]);
 
@@ -710,7 +711,7 @@ export const BucketPublicationGate: React.FC<BucketPublicationGateProps> = ({
           statusText: res.type === 'opaque' ? 'Opaque response' : `HTTP ${res.status}`,
           latencyMs,
           corsOk: res.type === 'opaque' ? true : res.headers.get('access-control-allow-origin') !== null,
-          error: res.type === 'opaque' ? undefined : undefined
+          error: undefined
         });
       }
     } catch (err: any) {

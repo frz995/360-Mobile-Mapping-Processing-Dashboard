@@ -432,9 +432,6 @@ export default function App() {
     } else if (targetView === 'lineage') {
       goToWorkspace('lineage');
       setFocusedSection(null);
-    } else if (targetView === 'reports') {
-      goToWorkspace('reports');
-      setFocusedSection(null);
     } else if (targetView === 'analytics') {
       goToWorkspace('analytics');
       setFocusedSection(null);

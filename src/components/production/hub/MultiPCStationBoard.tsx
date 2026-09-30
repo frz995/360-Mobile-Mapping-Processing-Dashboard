@@ -30,13 +30,11 @@ import { DailyProcessingRegistry } from './DailyProcessingRegistry';
 
 export interface MultiPCStationBoardProps {
   subgrid: string;
-  surveyDate?: string;
   totalFrames: number;
   onAdvanceToQA: () => void;
   addNotification?: (item: any) => void;
   addAuditLog?: (type: any, title: string, details: string, status?: any) => void;
   userLabel: string;
-  isGuestUser?: boolean;
   projectSettings?: { workstationsConfig?: WorkstationStationConfig[] } & Record<string, unknown>;
   /** Latest per-station agent observations from useStationAgents(). */
   stationObservations?: Record<string, StationAgentObservation>;

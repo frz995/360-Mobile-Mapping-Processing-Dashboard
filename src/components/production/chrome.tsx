@@ -5,14 +5,14 @@ import React from 'react';
    Token-driven across all palettes and the light-mode surface layer.
    ===================================================================== */
 
-export interface MastheadReadout {
+interface MastheadReadout {
   key: string;
   label: string;
   value: string;
   tone?: string;
 }
 
-export interface MastheadProps {
+interface MastheadProps {
   icon?: React.ReactNode;
   title: string;
   context?: string;
@@ -127,97 +127,6 @@ export function UnderlineTabStrip<K extends string>({
   );
 }
 
-export interface ProcessSegment<K extends string = string> {
-  key: K;
-  label: string;
-  status: 'COMPLETE' | 'IN_PROGRESS' | 'FAILED' | 'WAITING';
-  pct?: number;
-  note?: string;
-  active?: boolean;
-}
-
-const SEGMENT_LABEL: Record<ProcessSegment['status'], string> = {
-  COMPLETE: 'text-emerald-300',
-  IN_PROGRESS: 'text-amber-300',
-  FAILED: 'text-red-300',
-  WAITING: 'text-text-muted'
-};
-
-const SEGMENT_DOT: Record<ProcessSegment['status'], string> = {
-  COMPLETE: 'bg-emerald-400',
-  IN_PROGRESS: 'bg-amber-400',
-  FAILED: 'bg-red-400',
-  WAITING: 'bg-text-muted/60'
-};
-
-const SEGMENT_BAR: Record<ProcessSegment['status'], string> = {
-  COMPLETE: '#34d399',
-  IN_PROGRESS: '#fbbf24',
-  FAILED: '#f87171',
-  WAITING: '#64748b'
-};
-
-export function ProcessStrip<K extends string>({
-  segments,
-  onSelect,
-  flush = false
-}: {
-  segments: ProcessSegment<K>[];
-  onSelect?: (key: K | null) => void;
-  flush?: boolean;
-}) {
-  return (
-    <div
-      className={`w-full flex items-stretch ${
-        flush ? '' : 'bg-card border border-subtle rounded-xl shadow-sm overflow-hidden'
-      } shrink-0`}
-    >
-      {segments.map((s, i) => (
-        <button
-          key={s.key}
-          onClick={() => onSelect?.(s.active ? null : s.key)}
-          className={`relative flex-1 min-w-0 px-3 py-2.5 text-left transition-colors cursor-pointer group ${
-            s.active ? 'bg-sky-500/10' : 'hover:bg-inner/50'
-          } ${i > 0 ? 'border-l border-divider' : ''}`}
-        >
-          <div className="flex items-center justify-between gap-1 mb-1.5">
-            <span className={`flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-wider truncate ${SEGMENT_LABEL[s.status]}`}>
-              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${SEGMENT_DOT[s.status]} ${s.status === 'IN_PROGRESS' ? 'animate-pulse' : ''}`} />
-              {s.label}
-            </span>
-            {s.status === 'IN_PROGRESS' && typeof s.pct === 'number' && (
-              <span className="text-[9px] font-sans text-text-base shrink-0">{s.pct}%</span>
-            )}
-          </div>
-          <div className="w-full h-1 bg-inner border border-subtle/40 rounded-full overflow-hidden">
-            <div
-              className="h-full rounded-full transition-all duration-500"
-              style={{
-                width:
-                  s.status === 'COMPLETE'
-                    ? '100%'
-                    : s.status === 'IN_PROGRESS'
-                      ? `${Math.min(100, s.pct || 0)}%`
-                      : '0%',
-                background: SEGMENT_BAR[s.status]
-              }}
-            />
-          </div>
-          {s.note && <div className="mt-1.5 text-[9px] text-text-muted truncate">{s.note}</div>}
-          {s.active && <span className="absolute inset-x-0 top-0 h-[2px] bg-sky-400" />}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-export function Surface({ children, className = '' }: { children: React.ReactNode; className?: string }) {
-  return (
-    <div className={`bg-card border border-subtle rounded-xl overflow-hidden shadow-sm ${className}`}>
-      {children}
-    </div>
-  );
-}
 
 /* ── Flat tab-content primitives (Theme Packages canvas idiom) ─────────────
    Sections are a small uppercase label + bare content, separated by
@@ -246,7 +155,7 @@ export function SectionLabel({
   );
 }
 
-export interface MetaRowItem {
+interface MetaRowItem {
   key: string;
   label: string;
   value?: React.ReactNode;

@@ -53,11 +53,6 @@ def _cascade_path(config: dict, kind: str, candidates) -> str | None:
     return None
 
 
-def _default_blur_strength(img: np.ndarray) -> int:
-    """Scale a sensible Gaussian kernel to the image width."""
-    return max(15, int(round(img.shape[1] * 0.01)) // 2 * 2 + 1)
-
-
 def apply_privacy_blur(img, settings: dict) -> np.ndarray:
     """img: BGR numpy array. settings mirrors the dashboard ProductionJobSettings.blur.
 

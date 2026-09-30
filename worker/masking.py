@@ -102,9 +102,6 @@ def _lama_backend() -> tuple:
     return None, "opencv-fallback"
 
 
-_MASK_CACHE: dict = {}
-
-
 def _inpaint_lama(img: np.ndarray, mask: np.ndarray, backend) -> np.ndarray:
     """Region-limited LaMa inference: run the model only on the mask's
     bounding box (+ margin), downscaling oversized crops, and feather-blend
@@ -184,13 +181,3 @@ def apply_mask_pipeline(img: np.ndarray, settings: dict, frame_dir: str | None =
 
     logger.info("Using OpenCV TELEA inpaint (preview-grade). Install simple-lama-inpainting for production generative-fill.")
     return cv2.inpaint(work, residual, 3, cv2.INPAINT_TELEA)
-
-
-def run_external_models() -> None:
-    """Download/prepare model weights once (see scripts/download_models.py)."""
-    if os.getenv("LAZY_MODEL_DOWNLOAD", "0") == "1":
-        from simple_lama_inpainting import SimpleLama  # nosec (validated import)
-        SimpleLama()
-
-
-run_external_models.__doc__ = "Download model weights on first successful import."

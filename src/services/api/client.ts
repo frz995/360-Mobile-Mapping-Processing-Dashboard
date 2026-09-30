@@ -435,9 +435,4 @@ export function configureSupabaseBackend(cfg: SupabaseBackendConfig): boolean {
   return true;
 }
 
-/** Return the backend currently wired into the active client. */
-export function getActiveSupabaseBackend(): SupabaseBackendConfig {
-  return { url: _backendUrl || supabaseUrl, anonKey: _backendKey || supabaseKey };
-}
-
 _activeSupabaseClient = createSafeSupabaseClient();

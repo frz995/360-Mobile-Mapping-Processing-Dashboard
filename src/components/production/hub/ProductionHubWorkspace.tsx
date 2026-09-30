@@ -20,11 +20,10 @@ import { useStationAgents } from '../../../hooks/useStationAgents';
 import { fetchHubSessionFromSupabase, purgeHubSession, saveHubSessionToSupabase } from '../../../services/api/hubSession';
 import { DEFAULT_4_WORKSTATIONS, type WorkstationStationConfig } from '../../../types/production';
 
-export type ProductionHubStationKey = 'intake' | 'stations' | 'qa' | 'bucket' | 'publish' | 'history';
+type ProductionHubStationKey = 'intake' | 'stations' | 'qa' | 'bucket' | 'publish' | 'history';
 
-export interface ProductionHubWorkspaceProps {
+interface ProductionHubWorkspaceProps {
   projectSettings: any;
-  setProjectSettings: React.Dispatch<React.SetStateAction<any>>;
   authSession?: any;
   isGuestUser?: boolean;
   addNotification?: (item: any) => void;
@@ -225,13 +224,11 @@ export const ProductionHubWorkspace: React.FC<ProductionHubWorkspaceProps> = ({
             {activeStation === 'stations' && (
               <MultiPCStationBoard
                 subgrid={subgrid}
-                surveyDate={surveyDate}
                 totalFrames={totalFrames}
                 onAdvanceToQA={() => setActiveStation('qa')}
                 addNotification={addNotification}
                 addAuditLog={addAuditLog}
                 userLabel={userLabel}
-                isGuestUser={isGuestUser}
                 projectSettings={projectSettings}
                 stationObservations={stationObservations}
               />
@@ -240,7 +237,6 @@ export const ProductionHubWorkspace: React.FC<ProductionHubWorkspaceProps> = ({
             {activeStation === 'qa' && (
               <QAAuditStation
                 subgrid={subgrid}
-                surveyDate={surveyDate}
                 totalFrames={totalFrames}
                 pairedRecords={pairedRecords}
                 projectSettings={projectSettings}
@@ -248,7 +244,6 @@ export const ProductionHubWorkspace: React.FC<ProductionHubWorkspaceProps> = ({
                 addNotification={addNotification}
                 addAuditLog={addAuditLog}
                 userLabel={userLabel}
-                isGuestUser={isGuestUser}
               />
             )}
 

@@ -383,37 +383,3 @@ export async function testCloudflareStorageHealth(
     };
   }
 }
-
-let storageCountsCache: { data: Record<string, number>; timestamp: number } | null = null;
-
-/**
- * Count actual uploaded images in storage bucket grouped by subgrid.
- * Caches results for 10 seconds to prevent unnecessary duplicate network calls.
- */
-export async function getStorageImageCountsFromSupabase(forceRefresh: boolean = false, settings?: any): Promise<Record<string, number>> {
-  const now = Date.now();
-  if (!forceRefresh && storageCountsCache && (now - storageCountsCache.timestamp < 10000)) {
-    return storageCountsCache.data;
-  }
-
-  const bucketName = settings?.supabaseBucket || import.meta.env.VITE_SUPABASE_BUCKET || STORAGE_BUCKET_DEFAULT;
-  const storageCounts: Record<string, number> = {};
-
-  try {
-    const storageResolved = await resolveStorageFiles([
-      { bucket: bucketName, path: '' },
-      { bucket: bucketName.toLowerCase(), path: '' },
-      { bucket: bucketName.toUpperCase(), path: '' },
-      { bucket: 'MMS_PIC', path: '' },
-      { bucket: 'panoramas', path: '' }
-    ]);
-    storageResolved.countsBySubgrid.forEach((count, sg) => {
-      storageCounts[sg] = count;
-    });
-  } catch (err) {
-    console.warn('Storage file inventory exception:', err);
-  }
-
-  storageCountsCache = { data: storageCounts, timestamp: now };
-  return storageCounts;
-}

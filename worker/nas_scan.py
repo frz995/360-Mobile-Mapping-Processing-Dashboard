@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import csv
-import os
 import re
 from datetime import datetime
 from pathlib import Path
@@ -71,15 +70,6 @@ def _date_labels(run_name: str) -> tuple[str, str]:
     except ValueError:
         display = run_name
     return raw, display
-
-
-def _subgrid_roots(base: str, subgrid: str) -> dict[str, Path]:
-    sg = _safe_segment(subgrid, "subgrid")
-    return {
-        "stitching": _safe_path(base, "03_Stitching", "Project-OUT", "Grid 1", sg),
-        "metadata": _safe_path(base, "01_Metadata", "Grid 1", sg),
-        "raw": _safe_path(base, "00_Raw_data", "Grid 1", sg),
-    }
 
 
 def scan_nas(

@@ -60,11 +60,7 @@ export const WorkspaceRouter = ({
         key="workspace-storage"
         projectSettings={projectSettings}
         setProjectSettings={setProjectSettings}
-        authSession={authSession}
-        isGuestUser={isGuestUser}
         addNotification={addNotification}
-        addAuditLog={addAuditLog}
-        onBackToDashboard={() => goToWorkspace('dashboard')}
         onOpenProductionHub={(_path, subgrid) => goToWorkspace('production', subgrid ? { subgrid } : undefined)}
         translate={t}
         initialFocusPath={storageFocusPath ?? undefined}
@@ -77,7 +73,6 @@ export const WorkspaceRouter = ({
       <ProductionHubWorkspace
         key="workspace-production"
         projectSettings={projectSettings}
-        setProjectSettings={setProjectSettings}
         authSession={authSession}
         isGuestUser={isGuestUser}
         addNotification={addNotification}
@@ -111,16 +106,9 @@ export const WorkspaceRouter = ({
       <AnalyticsWorkspace
         key="workspace-analytics"
         projectSettings={projectSettings}
-        setProjectSettings={setProjectSettings}
-        authSession={authSession}
-        isGuestUser={isGuestUser}
-        addNotification={addNotification}
-        addAuditLog={addAuditLog}
-        onBackToDashboard={() => goToWorkspace('dashboard')}
         translate={t}
         batchLogs={activeBatchLogs}
         dailyData={dailyData}
-        onRefreshData={handleRefreshMap}
       />
     );
   }

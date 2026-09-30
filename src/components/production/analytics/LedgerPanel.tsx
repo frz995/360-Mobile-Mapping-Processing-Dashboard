@@ -7,7 +7,7 @@ import {
 import type { SurveyAnalytics } from '../../../utils/surveyAnalytics';
 import { openPrintableReport, buildExecutiveReportHtml } from '../../../utils/reportDocuments';
 
-export interface LedgerPanelProps {
+interface LedgerPanelProps {
   analytics: SurveyAnalytics;
   batchLogs?: any[];
   dailyData?: any[];

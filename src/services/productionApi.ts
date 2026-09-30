@@ -8,66 +8,17 @@
 
 import type {
   NasFolderListing,
-  ProcessingJobRecord,
-  ProcessingJobStatus,
   ProductionApiSettings,
   StorageInfo,
   WorkerHealthInfo
 } from '../types/production';
-import type { ReleaseManifest } from '../utils/releaseNaming';
 import { workerProxyAvailable, workerTransportMode } from '../config/transport';
-import { getActiveProjectId } from './projectContext';
 import { supabase } from './api/client';
 import { fetchDashboardApi } from './cloudflareApi';
-
-export interface SubmitJobResult {
-  ok: boolean;
-  message: string;
-}
-
-export interface WorkerJobStatus {
-  job_id: string;
-  status: ProcessingJobStatus;
-  progress: number;
-  completed_items: number;
-  total_items: number;
-  current_item?: string;
-  error_count?: number;
-  message?: string;
-  failed_items?: string[];
-  error_log?: Array<{ at: string; message: string }>;
-  last_heartbeat?: string | null;
-  worker?: string;
-  finished: boolean;
-}
-
-export interface PrepareReleaseRequest {
-  sourceFolder: string;
-  releaseFolder: string;
-  subgrid: string;
-  runCode: string;
-  projectId: string;
-  runId: string;
-  attemptId: string;
-  captureDate: string;
-}
-
-export interface PrepareReleaseResult {
-  ok: boolean;
-  message?: string;
-  manifest?: ReleaseManifest;
-  manifestPath?: string;
-  copiedCount?: number;
-  reusedCount?: number;
-}
 
 export interface ProductionApiClient {
   readonly mode: 'http';
   readonly baseUrl: string;
-  submitJob(job: ProcessingJobRecord): Promise<SubmitJobResult>;
-  prepareRelease(request: PrepareReleaseRequest): Promise<PrepareReleaseResult>;
-  getJobStatus(jobId: string): Promise<WorkerJobStatus | null>;
-  cancelJob(jobId: string): Promise<boolean>;
   listFolder(path: string): Promise<NasFolderListing | null>;
   getStorageInfo(): Promise<StorageInfo | null>;
   getHealth(): Promise<WorkerHealthInfo | null>;
@@ -132,83 +83,6 @@ function buildHttpClient(settings: ProductionApiSettings): ProductionApiClient {
   return {
     mode: 'http' as const,
     baseUrl,
-    async submitJob(job: ProcessingJobRecord): Promise<SubmitJobResult> {
-      try {
-        const res = await api('/api/jobs', {
-          method: 'POST',
-          body: JSON.stringify({
-            job_id: job.id,
-            job_type: job.job_type,
-            source_folder: job.source_folder,
-            output_folder: job.output_folder,
-            subgrid: job.subgrid,
-            total_items: job.total_items || 0,
-            settings: job.settings || {},
-            ...(getActiveProjectId() ? { project_id: getActiveProjectId() } : {})
-          })
-        });
-        const body = await res.json().catch(() => ({}));
-        if (!res.ok) return { ok: false, message: body.detail || `HTTP ${res.status}` };
-        return { ok: true, message: body.message || 'Job submitted to NAS GPU Worker.' };
-      } catch (err) {
-        return {
-          ok: false,
-          message: `Unable to reach NAS GPU Worker at ${baseUrl}: ${err instanceof Error ? err.message : String(err)}`
-        };
-      }
-    },
-    async prepareRelease(request: PrepareReleaseRequest): Promise<PrepareReleaseResult> {
-      try {
-        const res = await api('/api/releases/prepare', {
-          method: 'POST',
-          signal: AbortSignal.timeout(120_000),
-          body: JSON.stringify({
-            source_folder: request.sourceFolder,
-            release_folder: request.releaseFolder,
-            subgrid: request.subgrid,
-            run_code: request.runCode,
-            project_id: request.projectId,
-            run_id: request.runId,
-            attempt_id: request.attemptId,
-            capture_date: request.captureDate
-          })
-        });
-        const body = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          return { ok: false, message: body.detail || `HTTP ${res.status}` };
-        }
-        return {
-          ok: true,
-          manifest: body.manifest as ReleaseManifest,
-          manifestPath: body.manifest_path,
-          copiedCount: body.copied_count,
-          reusedCount: body.reused_count
-        };
-      } catch (err) {
-        return {
-          ok: false,
-          message: `Unable to prepare release at ${baseUrl}: ${err instanceof Error ? err.message : String(err)}`
-        };
-      }
-    },
-    async getJobStatus(jobId: string): Promise<WorkerJobStatus | null> {
-      try {
-        const res = await api(`/api/jobs/${jobId}`);
-        if (!res.ok) return null;
-        const body = await res.json();
-        return body as WorkerJobStatus;
-      } catch {
-        return null;
-      }
-    },
-    async cancelJob(jobId: string): Promise<boolean> {
-      try {
-        const res = await api(`/api/jobs/${jobId}/cancel`, { method: 'POST' });
-        return res.ok;
-      } catch {
-        return false;
-      }
-    },
     async listFolder(path: string): Promise<NasFolderListing | null> {
       try {
         const res = await api(`/api/folders?path=${encodeURIComponent(path || '')}`);

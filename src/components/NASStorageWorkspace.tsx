@@ -19,11 +19,7 @@ import { ValidationPanel } from './production/storage/ValidationPanel';
 export interface NASStorageWorkspaceProps {
   projectSettings: any;
   setProjectSettings: React.Dispatch<React.SetStateAction<any>>;
-  authSession?: any;
-  isGuestUser?: boolean;
   addNotification?: (item: any) => void;
-  addAuditLog?: (type: any, title: string, details: string, status?: any) => void;
-  onBackToDashboard?: () => void;
   onOpenProductionHub?: (path?: string, subgrid?: string) => void;
   translate?: (key: string) => string;
   initialFocusPath?: string;
@@ -44,11 +40,7 @@ const TAB_TITLES: Record<string, string> = {
 export const NASStorageWorkspace: React.FC<NASStorageWorkspaceProps> = ({
   projectSettings,
   setProjectSettings,
-  authSession,
-  isGuestUser,
   addNotification,
-  addAuditLog,
-  onBackToDashboard: _onBackToDashboard,
   onOpenProductionHub,
   translate = (k) => k,
   initialFocusPath
@@ -75,10 +67,6 @@ export const NASStorageWorkspace: React.FC<NASStorageWorkspaceProps> = ({
   useEffect(() => {
     refreshDatasets();
   }, [refreshDatasets]);
-
-  const userEmail =
-    authSession?.user?.email || authSession?.user?.user_metadata?.full_name || 'Operator';
-  const userLabel = isGuestUser ? 'Guest' : userEmail;
 
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-y-auto animate-in fade-in duration-300">
@@ -123,12 +111,7 @@ export const NASStorageWorkspace: React.FC<NASStorageWorkspaceProps> = ({
               <BrowserPanel
                 api={api}
                 projectSettings={projectSettings}
-                translate={translate}
-                isGuestUser={isGuestUser}
-                onAddNotification={addNotification}
-                onAddAuditLog={addAuditLog}
                 onOpenProductionHub={onOpenProductionHub}
-                userLabel={userLabel}
                 initialPath={initialFocusPath}
               />
             )}
@@ -139,14 +122,12 @@ export const NASStorageWorkspace: React.FC<NASStorageWorkspaceProps> = ({
                 setProjectSettings={setProjectSettings}
                 addNotification={addNotification}
                 datasets={datasets}
-                translate={translate}
               />
             )}
             {activeTab === 'validation' && (
               <ValidationPanel
                 api={api}
                 datasets={datasets}
-                translate={translate}
               />
             )}
           </div>
