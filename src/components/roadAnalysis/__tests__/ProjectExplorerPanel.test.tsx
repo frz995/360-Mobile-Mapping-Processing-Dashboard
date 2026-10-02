@@ -137,6 +137,184 @@ describe('ProjectExplorerPanel', () => {
     expect(screen.queryByText('Click any subgrid box to focus & dim')).not.toBeInTheDocument();
   });
 
+  describe('grid provenance', () => {
+    it('states the grid the density and complexity values were measured over', () => {
+      render(
+        <ProjectExplorerPanel
+          {...defaultProps}
+          gridInfo={{ source: 'imported', cellCount: 25, cellKm: 5, areaFloored: false, declared: false, cellKmSource: 'measured' }}
+        />
+      );
+
+      expect(
+        screen.getByText('Imported grid · ~5 km · 25 cells')
+      ).toBeInTheDocument();
+    });
+
+    it('distinguishes a derived grid so the resolution is never ambiguous', () => {
+      render(
+        <ProjectExplorerPanel
+          {...defaultProps}
+          gridInfo={{ source: 'derived', cellCount: 225, cellKm: 3.9, areaFloored: false, declared: false, cellKmSource: 'auto' }}
+        />
+      );
+
+      expect(
+        screen.getByText('Derived grid · ~3.9 km · 225 cells')
+      ).toBeInTheDocument();
+    });
+
+    it('warns when the area floor makes density read low, and stays quiet otherwise', () => {
+      const { rerender } = render(
+        <ProjectExplorerPanel
+          {...defaultProps}
+          gridInfo={{ source: 'derived', cellCount: 12, cellKm: 1, areaFloored: true, declared: false, cellKmSource: 'auto' }}
+        />
+      );
+      expect(screen.getByText(/under 0.5 km²/i)).toBeInTheDocument();
+
+      rerender(
+        <ProjectExplorerPanel
+          {...defaultProps}
+          gridInfo={{ source: 'derived', cellCount: 12, cellKm: 1, areaFloored: false, declared: false, cellKmSource: 'auto' }}
+        />
+      );
+      expect(screen.queryByText(/under 0.5 km²/i)).not.toBeInTheDocument();
+    });
+
+    it('omits the provenance line when no grid has been measured yet', () => {
+      render(<ProjectExplorerPanel {...defaultProps} gridInfo={null} />);
+      expect(screen.queryByText(/grid ·/)).not.toBeInTheDocument();
+    });
+
+    describe('grid size control', () => {
+      const derived = {
+        source: 'derived' as const,
+        cellCount: 225,
+        cellKm: 3.9,
+        areaFloored: false,
+        declared: false,
+        cellKmSource: 'auto' as const
+      };
+      const imported = {
+        source: 'imported' as const,
+        cellCount: 25,
+        cellKm: 5,
+        areaFloored: false,
+        declared: false,
+        cellKmSource: 'measured' as const
+      };
+
+      it('offers the presets and hides the control when no handler is given', () => {
+        const { unmount } = render(<ProjectExplorerPanel {...defaultProps} gridInfo={derived} />);
+        expect(screen.queryByLabelText('Grid cell size')).not.toBeInTheDocument();
+        unmount();
+
+        render(<ProjectExplorerPanel {...defaultProps} gridInfo={derived} onGridSpecChange={vi.fn()} />);
+        const select = screen.getByLabelText('Grid cell size') as HTMLSelectElement;
+        expect(Array.from(select.options).map((o) => o.value)).toEqual([
+          'auto',
+          '2',
+          '3.9',
+          '5',
+          '10',
+          'custom'
+        ]);
+        expect(screen.getByText('Grid size')).toBeInTheDocument();
+      });
+
+      it('relabels itself for an imported grid, where the value means cell area', () => {
+        render(<ProjectExplorerPanel {...defaultProps} gridInfo={imported} onGridSpecChange={vi.fn()} />);
+        expect(screen.getByText('Declared cell size')).toBeInTheDocument();
+        expect(screen.queryByText('Grid size')).not.toBeInTheDocument();
+      });
+
+      it('sends the declared size to the matching field for the active grid', () => {
+        const onChange = vi.fn();
+        const { rerender } = render(
+          <ProjectExplorerPanel
+            {...defaultProps}
+            gridInfo={derived}
+            gridSpec={{ derivedCellKm: null, importedCellKm: null }}
+            onGridSpecChange={onChange}
+          />
+        );
+
+        fireEvent.change(screen.getByLabelText('Grid cell size'), { target: { value: '10' } });
+        expect(onChange).toHaveBeenCalledWith({ derivedCellKm: 10, importedCellKm: null });
+
+        onChange.mockClear();
+        rerender(
+          <ProjectExplorerPanel
+            {...defaultProps}
+            gridInfo={imported}
+            gridSpec={{ derivedCellKm: null, importedCellKm: null }}
+            onGridSpecChange={onChange}
+          />
+        );
+        fireEvent.change(screen.getByLabelText('Grid cell size'), { target: { value: '10' } });
+        expect(onChange).toHaveBeenCalledWith({ derivedCellKm: null, importedCellKm: 10 });
+      });
+
+      it('resets to auto, clearing both fields', () => {
+        const onChange = vi.fn();
+        render(
+          <ProjectExplorerPanel
+            {...defaultProps}
+            gridInfo={derived}
+            gridSpec={{ derivedCellKm: 5, importedCellKm: null }}
+            onGridSpecChange={onChange}
+          />
+        );
+
+        // The declared value is reflected in the select, not 'auto'.
+        expect((screen.getByLabelText('Grid cell size') as HTMLSelectElement).value).toBe('5');
+
+        fireEvent.change(screen.getByLabelText('Grid cell size'), { target: { value: 'auto' } });
+        expect(onChange).toHaveBeenCalledWith({ derivedCellKm: null, importedCellKm: null });
+      });
+
+      it('accepts a custom size and rejects one outside the range', () => {
+        const onChange = vi.fn();
+        render(
+          <ProjectExplorerPanel
+            {...defaultProps}
+            gridInfo={derived}
+            gridSpec={{ derivedCellKm: null, importedCellKm: null }}
+            onGridSpecChange={onChange}
+          />
+        );
+
+        fireEvent.change(screen.getByLabelText('Grid cell size'), { target: { value: 'custom' } });
+        const input = screen.getByLabelText('Custom grid size in kilometres');
+        fireEvent.change(input, { target: { value: '7.5' } });
+        fireEvent.blur(input);
+        expect(onChange).toHaveBeenCalledWith({ derivedCellKm: 7.5, importedCellKm: null });
+
+        onChange.mockClear();
+        fireEvent.change(screen.getByLabelText('Grid cell size'), { target: { value: 'custom' } });
+        const bad = screen.getByLabelText('Custom grid size in kilometres');
+        fireEvent.change(bad, { target: { value: '900' } });
+        fireEvent.blur(bad);
+        // An unusable value is dropped rather than applied.
+        expect(onChange).not.toHaveBeenCalled();
+      });
+
+      it('shows a declared size in the provenance chip', () => {
+        render(
+          <ProjectExplorerPanel
+            {...defaultProps}
+            gridInfo={{ ...derived, declared: true, cellKmSource: 'declared', cellKm: 5 }}
+            gridSpec={{ derivedCellKm: 5, importedCellKm: null }}
+            onGridSpecChange={vi.fn()}
+          />
+        );
+
+        expect(screen.getByText(/Declared 5 × 5 km/)).toBeInTheDocument();
+      });
+    });
+  });
+
   it('switches categories and reads each category from the aggregated mesh data', () => {
     render(<ProjectExplorerPanel {...defaultProps} />);
 

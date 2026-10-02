@@ -13,11 +13,17 @@
 // - Bottom-left choropleth class legend driven by `choroplethSettings`.
 // =====================================================================
 
-import React, { useState, useEffect, useRef } from 'react';
-import { X, RotateCcw, ChevronDown, ChevronLeft, ChevronRight, Check, SlidersHorizontal } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { X, RotateCcw, ChevronDown, ChevronLeft, ChevronRight, Check, SlidersHorizontal, AlertTriangle } from 'lucide-react';
 import {
   type ExplorerChoroplethPalette,
-  type CatchmentTabKey
+  type CatchmentTabKey,
+  type ExplorerGridSpec,
+  type MeshGridInfo,
+  GRID_PRESETS_KM,
+  GRID_MIN_KM,
+  GRID_MAX_KM,
+  sanitizeGridKm
 } from '../../utils/projectExplorerGeometry';
 import type { CatchmentCategory, CatchmentRow } from '../../utils/catchmentStats';
 import {
@@ -41,6 +47,15 @@ export interface ProjectExplorerPanelProps {
   categories: Record<CatchmentTabKey, CatchmentCategory>;
   /** What the numbers cover: the district grid, or one focused subgrid. */
   scopeLabel: string;
+  /**
+   * The grid the cells were measured over. Density and complexity are per-cell,
+   * so their magnitude moves with cell size; stating the resolution keeps two
+   * projects' numbers honestly comparable (or visibly not).
+   */
+  gridInfo?: MeshGridInfo | null;
+  /** Operator-declared grid geometry; omit to hide the control entirely. */
+  gridSpec?: ExplorerGridSpec | null;
+  onGridSpecChange?: (spec: ExplorerGridSpec) => void;
   palette: ExplorerChoroplethPalette;
   onPaletteChange: (palette: ExplorerChoroplethPalette) => void;
   colorByMetric?: string;
@@ -149,6 +164,9 @@ export const ProjectExplorerPanel: React.FC<ProjectExplorerPanelProps> = ({
   onClose: _onClose,
   categories,
   scopeLabel,
+  gridInfo,
+  gridSpec,
+  onGridSpecChange,
   palette,
   onPaletteChange,
   colorByMetric,
@@ -169,6 +187,37 @@ export const ProjectExplorerPanel: React.FC<ProjectExplorerPanelProps> = ({
   const [hoveredColumn, setHoveredColumn] = useState<CatchmentRow | null>(null);
   const [hoveredSlice, setHoveredSlice] = useState<CatchmentRow | null>(null);
   const [tabAnimKey, setTabAnimKey] = useState(0);
+
+  // Grid-size control. The select mirrors the persisted spec so it survives a
+  // remount; `customOpen` is local UI state because "Custom…" is a mode, not a
+  // stored value.
+  const [customOpen, setCustomOpen] = useState(false);
+  const [customDraft, setCustomDraft] = useState('');
+  const declaredKm =
+    gridInfo?.source === 'imported'
+      ? sanitizeGridKm(gridSpec?.importedCellKm)
+      : sanitizeGridKm(gridSpec?.derivedCellKm);
+  const gridSelectValue = useMemo(() => {
+    if (declaredKm === null) return 'auto';
+    const match = GRID_PRESETS_KM.find((p) => Math.abs(p.value - declaredKm) < 0.05);
+    return match ? String(match.value) : 'custom';
+  }, [declaredKm]);
+
+  // An unusable entry (blank, non-numeric, or outside the accepted range) is
+  // rejected outright rather than applied, so a typo cannot skew every density.
+  const commitCustomGrid = (forImported: boolean) => {
+    const km = sanitizeGridKm(customDraft);
+    if (km === null) {
+      setCustomDraft('');
+      setCustomOpen(false);
+      return;
+    }
+    onGridSpecChange?.(
+      forImported ? { derivedCellKm: null, importedCellKm: km } : { derivedCellKm: km, importedCellKm: null }
+    );
+    setCustomDraft('');
+    setCustomOpen(false);
+  };
 
   // Auto-expand Details Card when a new subgrid is clicked on the map. A remount
   // never fires mouseleave, so the hover readouts are cleared here too.
@@ -355,7 +404,107 @@ export const ProjectExplorerPanel: React.FC<ProjectExplorerPanelProps> = ({
                 }`}
               />
               <span className="truncate">Scope: {scopeLabel}</span>
+              {gridInfo && gridInfo.cellCount > 0 && (
+                <span
+                  className="shrink-0 px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-[10px] font-mono text-[var(--text-muted,#9BAAA9)] whitespace-nowrap"
+                  title={
+                    `Density and complexity are measured per cell, so their magnitude depends on cell size.\n\n` +
+                    `Grid: ${gridInfo.source === 'imported' ? 'imported layer' : 'derived automatically'} · ` +
+                    `~${gridInfo.cellKm} km cells · ${gridInfo.cellCount} cells in scope.\n\n` +
+                    `Values are comparable within this grid. A finer grid measures the same roads as a higher density.`
+                  }
+                >
+                  {gridInfo.declared
+                    ? `Declared ${gridInfo.cellKm} × ${gridInfo.cellKm} km`
+                    : `${gridInfo.source === 'imported' ? 'Imported' : 'Derived'} grid · ~${gridInfo.cellKm} km`}{' '}
+                  · {gridInfo.cellCount} cells
+                </span>
+              )}
             </div>
+
+            {/* Grid size control. Meaning depends on which grid is in play: with an
+                imported layer the declared size becomes the authoritative cell
+                AREA (so a district-clipped edge cell cannot report a fraction of
+                the real denominator and double its own density); with the derived
+                fallback it sets the lattice step. */}
+            {onGridSpecChange && (
+              <div className="mt-1.5 flex items-center gap-1.5">
+                <span
+                  className="text-[10px] text-[var(--text-muted,#9BAAA9)] shrink-0"
+                  title="Sets the mesh cell size. Density and complexity are measured per cell, so changing this changes those values and any class breaks set for the previous size may need re-fitting."
+                >
+                  {gridInfo?.source === 'imported' ? 'Declared cell size' : 'Grid size'}
+                </span>
+                <select
+                  value={gridSelectValue}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (v === 'custom') {
+                      setCustomOpen(true);
+                      return;
+                    }
+                    if (v === 'auto') {
+                      onGridSpecChange({ derivedCellKm: null, importedCellKm: null });
+                      setCustomOpen(false);
+                      return;
+                    }
+                    const km = Number(v);
+                    onGridSpecChange(
+                      gridInfo?.source === 'imported'
+                        ? { derivedCellKm: null, importedCellKm: km }
+                        : { derivedCellKm: km, importedCellKm: null }
+                    );
+                    setCustomOpen(false);
+                  }}
+                  className="bg-[var(--bg-inner,rgba(255,255,255,0.05))] border border-white/10 rounded px-1 py-0.5 text-[10px] font-mono text-[var(--text-primary,#EEF2F1)] cursor-pointer outline-none focus:border-sky-500/60"
+                  title="Sets the mesh cell size. Density and complexity are measured per cell, so changing this changes those values."
+                  aria-label="Grid cell size"
+                >
+                  <option value="auto">Auto</option>
+                  {GRID_PRESETS_KM.map((p) => (
+                    <option key={p.value} value={p.value}>
+                      {p.label}
+                    </option>
+                  ))}
+                  <option value="custom">Custom…</option>
+                </select>
+                {customOpen && (
+                  <span className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      min={GRID_MIN_KM}
+                      max={GRID_MAX_KM}
+                      step="0.1"
+                      value={customDraft}
+                      onChange={(e) => setCustomDraft(e.target.value)}
+                      onBlur={() => commitCustomGrid(gridInfo?.source === 'imported')}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') commitCustomGrid(gridInfo?.source === 'imported');
+                      }}
+                      placeholder="km"
+                      aria-label="Custom grid size in kilometres"
+                      className="w-14 bg-[var(--bg-inner,rgba(255,255,255,0.05))] border border-white/10 rounded px-1 py-0.5 text-[10px] font-mono text-[var(--text-primary,#EEF2F1)] outline-none focus:border-sky-500/60"
+                    />
+                    <span className="text-[10px] text-[var(--text-muted,#9BAAA9)]">km</span>
+                  </span>
+                )}
+              </div>
+            )}
+
+            {/* Density is understated wherever a cell was clamped up to the 0.5 km²
+                area floor. Say so rather than let the floor quietly bias the read. */}
+            {gridInfo?.areaFloored && (
+              <div
+                className="flex items-start gap-1.5 mt-1.5 px-2 py-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 text-[10px] leading-snug text-amber-300/90"
+                title="One or more mesh cells fell below the 0.5 km² minimum area and were measured against that floor. Their density (and the complexity derived from it) reads lower than the true value."
+              >
+                <AlertTriangle size={11} className="shrink-0 mt-px" />
+                <span>
+                  Some cells are under 0.5 km² and were measured against that floor, so their density
+                  reads low.
+                </span>
+              </div>
+            )}
 
               {/* Pill Tabs Row (Roads, Density, Complexity, Panotrack, Coverage) */}
               <div

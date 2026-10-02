@@ -17,6 +17,14 @@ import { RoadAnalysisMap } from './RoadAnalysisMap';
 import type { CatalogVectorLayer } from '../../utils/gisImportParser';
 import type { SystemLayerStyles } from './RoadCatalogPanel';
 import { minMaxOf } from '../../utils/arrayBounds';
+import type { ExplorerChoroplethPalette } from '../../utils/projectExplorerGeometry';
+import {
+  classRangeLabel,
+  resolveSetting,
+  METRIC_UNIT,
+  type ChoroplethSetting,
+  type ChoroplethSettingsMap
+} from '../../utils/choroplethSettings';
 
 export interface RoadAnalysisPrintPointsSummary {
   published: number;
@@ -48,9 +56,31 @@ export interface RoadAnalysisPrintPanelProps {
   /** Whether this panel is currently visible (active tab = print). */
   isActive?: boolean;
   onNotify?: (item: any) => void;
+  /** Print subject: road-analysis overlays (default) or the Project Explorer choropleth. */
+  variant?: 'road' | 'explorer';
+  /** Explorer: currently colouring metric id (e.g. 'density'). */
+  explorerMetric?: string;
+  /** Explorer: human label for the active metric. */
+  explorerMetricLabel?: string;
+  /** Explorer: observed scope label (district grid or focused subgrid). */
+  scopeLabel?: string;
+  /** Explorer: number of mesh cells in scope. */
+  explorerCellCount?: number;
+  /** Explorer: palette used when no explicit class settings are supplied. */
+  projectExplorerPalette?: ExplorerChoroplethPalette;
+  /** Explorer: all metric class settings fed to the print map. */
+  choroplethSettings?: ChoroplethSettingsMap;
+  /** Explorer: subgrid metrics used to build the choropleth mesh. */
+  subgridMetrics?: any[];
 }
 
 type ExtentMode = 'region' | 'live' | 'draw';
+type LegendSwatch = 'line' | 'dot' | 'fill';
+interface PrintLegendRow {
+  color: string;
+  label: string;
+  swatch: LegendSwatch;
+}
 
 const BBOX_SOURCE_ID = 'print-bbox-source';
 const BBOX_FILL_ID = 'print-bbox-fill';
@@ -142,8 +172,8 @@ function makeLegendRows(
   systemStyles?: SystemLayerStyles,
   catalogLayers: CatalogVectorLayer[] = [],
   points?: RoadAnalysisPrintPointsSummary
-): { color: string; label: string; swatch: 'line' | 'dot' }[] {
-  const rows: { color: string; label: string; swatch: 'line' | 'dot' }[] = [];
+): PrintLegendRow[] {
+  const rows: PrintLegendRow[] = [];
   if (systemStyles?.districtBoundary) {
     rows.push({ color: systemStyles.districtBoundary.color || '#94a3b8', label: 'District boundary', swatch: 'line' });
   }
@@ -161,6 +191,17 @@ function makeLegendRows(
     }
   }
   return rows;
+}
+
+/** Class-break legend for the Project Explorer choropleth. */
+function makeExplorerLegendRows(setting?: ChoroplethSetting, metric?: string): PrintLegendRow[] {
+  if (!setting?.classes?.length) return [];
+  const unit = (metric && METRIC_UNIT[metric]) || '';
+  return setting.classes.map((c, i) => ({
+    color: c.color,
+    label: classRangeLabel(i, setting.classes, unit),
+    swatch: 'fill'
+  }));
 }
 
 export const RoadAnalysisPrintPanel: React.FC<RoadAnalysisPrintPanelProps> = ({
@@ -182,7 +223,15 @@ export const RoadAnalysisPrintPanel: React.FC<RoadAnalysisPrintPanelProps> = ({
   districtNames = [],
   basemapName = 'basemap',
   isActive = false,
-  onNotify
+  onNotify,
+  variant = 'road',
+  explorerMetric,
+  explorerMetricLabel,
+  scopeLabel,
+  explorerCellCount = 0,
+  projectExplorerPalette,
+  choroplethSettings,
+  subgridMetrics = []
 }) => {
   const [mode, setMode] = useState<ExtentMode>('region');
   const [printBbox, setPrintBbox] = useState<[number, number, number, number] | null>(null);
@@ -196,9 +245,20 @@ export const RoadAnalysisPrintPanel: React.FC<RoadAnalysisPrintPanelProps> = ({
     [districtGeojson, capturedPoints, roadRuns]
   );
 
+  const explorerSetting = useMemo(
+    () =>
+      variant === 'explorer'
+        ? resolveSetting(choroplethSettings, explorerMetric || 'density', projectExplorerPalette)
+        : undefined,
+    [variant, choroplethSettings, explorerMetric, projectExplorerPalette]
+  );
+
   const legendRows = useMemo(
-    () => makeLegendRows(systemStyles, catalogLayers, pointsSummary),
-    [systemStyles, catalogLayers, pointsSummary]
+    () =>
+      variant === 'explorer'
+        ? makeExplorerLegendRows(explorerSetting, explorerMetric)
+        : makeLegendRows(systemStyles, catalogLayers, pointsSummary),
+    [variant, explorerSetting, explorerMetric, systemStyles, catalogLayers, pointsSummary]
   );
 
   // ── Refs mirroring live state so the map pointer handlers stay stable ──
@@ -335,6 +395,9 @@ export const RoadAnalysisPrintPanel: React.FC<RoadAnalysisPrintPanelProps> = ({
     const wasInactive = !prevActiveRef.current;
     prevActiveRef.current = isActive;
     if (!isActive || !wasInactive) return;
+    // Never clobber a bbox the operator drew by hand — they bounce back to the
+    // map to compare, and losing the drawn extent on return was surprising.
+    if (modeRef.current === 'draw') return;
     // Small delay to let the print map resize into its container first.
     const timer = window.setTimeout(() => {
       const liveMap = liveMapRef.current;
@@ -424,28 +487,71 @@ export const RoadAnalysisPrintPanel: React.FC<RoadAnalysisPrintPanelProps> = ({
   }), []);
 
   const buildPrintHtml = useCallback((dataUrl: string) => {
+    const isExplorer = variant === 'explorer';
     const now = new Date();
     const generatedAt =
       now.toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' }) +
       ' • ' +
       now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-    const docRef = `GEO-RA-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const docRef = `${isExplorer ? 'GEO-PE' : 'GEO-RA'}-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const docTitle = isExplorer ? 'Project Explorer Map' : 'Road Analysis Map';
 
     const legendHtml = legendRows
       .map((row) => {
         const swatch =
           row.swatch === 'dot'
             ? `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${row.color};margin-right:7px;"></span>`
-            : `<span style="display:inline-block;width:22px;height:4px;border-radius:2px;background:${row.color};margin-right:7px;vertical-align:middle;"></span>`;
+            : row.swatch === 'fill'
+              ? `<span style="display:inline-block;width:12px;height:12px;border-radius:2px;background:${row.color};margin-right:7px;"></span>`
+              : `<span style="display:inline-block;width:22px;height:4px;border-radius:2px;background:${row.color};margin-right:7px;vertical-align:middle;"></span>`;
         return `<div style="display:flex;align-items:center;font-size:12px;color:#334155;margin-bottom:6px;">${swatch}${row.label}</div>`;
       })
       .join('');
+
+    const metaRowHtml = isExplorer
+      ? `<span class="meta-chip">Region: <b>${selectedStateName}</b></span>
+    <span class="meta-chip">Scope: <b>${scopeLabel || 'all district subgrids'}</b></span>
+    <span class="meta-chip">Metric: <b>${explorerMetricLabel || explorerMetric || '—'}</b></span>
+    <span class="meta-chip">Basemap: <b>${basemapName}</b></span>
+    <span class="meta-chip">Doc Ref: <b>${docRef}</b></span>
+    <span class="meta-chip">Generated: <b>${generatedAt}</b></span>`
+      : `<span class="meta-chip">Region: <b>${selectedStateName}</b></span>
+    <span class="meta-chip">Districts: <b>${districtNames.length ? districtNames.join(', ') : '—'}</b></span>
+    <span class="meta-chip">Basemap: <b>${basemapName}</b></span>
+    <span class="meta-chip">Doc Ref: <b>${docRef}</b></span>
+    <span class="meta-chip">Generated: <b>${generatedAt}</b></span>`;
+
+    const summaryCardsHtml = (isExplorer
+      ? [
+          { k: 'Metric', v: explorerMetricLabel || explorerMetric || '—' },
+          { k: 'Mesh Cells', v: (explorerCellCount ?? 0).toLocaleString() },
+          { k: 'Classes', v: String(explorerSetting?.classes.length ?? 0) },
+          { k: 'Scope', v: scopeLabel || 'All subgrids' },
+          { k: 'Basemap', v: basemapName },
+          { k: 'Generated', v: generatedAt.split(' • ')[1] || generatedAt }
+        ]
+      : [
+          { k: 'Plan Length', v: `${planDistanceKm.toFixed(2)} km` },
+          { k: 'Captured Length', v: `${capturedDistanceKm.toFixed(2)} km` },
+          { k: 'Coverage', v: coverageRatio ?? '—' },
+          { k: 'Survey Points', v: pointsSummary.total.toLocaleString() },
+          { k: 'Published / Staging', v: `${pointsSummary.published} / ${pointsSummary.staging}` },
+          { k: 'Defects', v: String(pointsSummary.defect) }
+        ]
+    )
+      .map((c) => `<div class="summary-card"><div class="k">${c.k}</div><div class="v">${c.v}</div></div>`)
+      .join('');
+
+    const notesHtml = isExplorer
+      ? `Project Explorer choropleth mesh classified by <b>${explorerMetricLabel || explorerMetric || 'metric'}</b> over ${scopeLabel || 'all district subgrids'}. Class breaks and colours reflect the current workspace choropleth settings.`
+      : `Road network plan compared against captured Panotrack survey points per subgrid allocation.
+      Boundary, road-plan and imported-layer symbology reflects the current workspace style settings.`;
 
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>GeoSphere 360 — Road Analysis Map</title>
+<title>GeoSphere 360 — ${docTitle}</title>
 <style>
   @page { size: A4 landscape; margin: 10mm 12mm 12mm 12mm; }
   * { box-sizing: border-box; }
@@ -473,29 +579,20 @@ export const RoadAnalysisPrintPanel: React.FC<RoadAnalysisPrintPanelProps> = ({
 </head>
 <body>
   <div class="action-bar">
-    <div class="action-bar-title">GeoSphere 360 — Road Analysis Map</div>
+    <div class="action-bar-title">GeoSphere 360 — ${docTitle}</div>
     <button class="print-btn" onclick="window.print()">PRINT / SAVE AS PDF</button>
   </div>
 
   <div class="meta-row">
-    <span class="meta-chip">Region: <b>${selectedStateName}</b></span>
-    <span class="meta-chip">Districts: <b>${districtNames.length ? districtNames.join(', ') : '—'}</b></span>
-    <span class="meta-chip">Basemap: <b>${basemapName}</b></span>
-    <span class="meta-chip">Doc Ref: <b>${docRef}</b></span>
-    <span class="meta-chip">Generated: <b>${generatedAt}</b></span>
+    ${metaRowHtml}
   </div>
 
   <div class="map-frame">
-    <img src="${dataUrl}" alt="Road Analysis Map" />
+    <img src="${dataUrl}" alt="${docTitle}" />
   </div>
 
   <div class="summary-grid">
-    <div class="summary-card"><div class="k">Plan Length</div><div class="v">${planDistanceKm.toFixed(2)} km</div></div>
-    <div class="summary-card"><div class="k">Captured Length</div><div class="v">${capturedDistanceKm.toFixed(2)} km</div></div>
-    <div class="summary-card"><div class="k">Coverage</div><div class="v">${coverageRatio ?? '—'}</div></div>
-    <div class="summary-card"><div class="k">Survey Points</div><div class="v">${pointsSummary.total.toLocaleString()}</div></div>
-    <div class="summary-card"><div class="k">Published / Staging</div><div class="v">${pointsSummary.published} / ${pointsSummary.staging}</div></div>
-    <div class="summary-card"><div class="k">Defects</div><div class="v">${pointsSummary.defect}</div></div>
+    ${summaryCardsHtml}
   </div>
 
   <div class="lower-row">
@@ -505,18 +602,18 @@ export const RoadAnalysisPrintPanel: React.FC<RoadAnalysisPrintPanelProps> = ({
     </div>
     <div class="notes-box">
       <div class="notes-title">Project Notes</div>
-      Road network plan compared against captured Panotrack survey points per subgrid allocation.
-      Boundary, road-plan and imported-layer symbology reflects the current workspace style settings.
+      ${notesHtml}
     </div>
   </div>
 
   <div class="footer">
-    <span>GeoSphere 360 Road Analysis Module</span>
+    <span>GeoSphere 360 ${isExplorer ? 'Project Explorer Module' : 'Road Analysis Module'}</span>
     <span>Generated by GIS Engineer — ${generatedAt}</span>
   </div>
 </body>
 </html>`;
   }, [
+    variant,
     legendRows,
     selectedStateName,
     districtNames,
@@ -524,7 +621,12 @@ export const RoadAnalysisPrintPanel: React.FC<RoadAnalysisPrintPanelProps> = ({
     planDistanceKm,
     capturedDistanceKm,
     coverageRatio,
-    pointsSummary
+    pointsSummary,
+    scopeLabel,
+    explorerMetric,
+    explorerMetricLabel,
+    explorerCellCount,
+    explorerSetting
   ]);
 
   const handlePrint = useCallback(async () => {
@@ -567,8 +669,10 @@ export const RoadAnalysisPrintPanel: React.FC<RoadAnalysisPrintPanelProps> = ({
       setLastPrintedAt(timeStr);
       onNotify?.({
         id: `print-ok-${Date.now()}`,
-        title: 'Road Analysis Map Ready',
-        message: `Printable map generated (${selectedStateName}, ${planDistanceKm.toFixed(2)} km plan). Use PRINT / SAVE AS PDF in the new window.`,
+        title: variant === 'explorer' ? 'Project Explorer Map Ready' : 'Road Analysis Map Ready',
+        message: variant === 'explorer'
+          ? `Printable explorer map generated (${selectedStateName}, ${scopeLabel || 'all subgrids'}, ${explorerMetricLabel || explorerMetric || 'metric'}). Use PRINT / SAVE AS PDF in the new window.`
+          : `Printable map generated (${selectedStateName}, ${planDistanceKm.toFixed(2)} km plan). Use PRINT / SAVE AS PDF in the new window.`,
         category: 'SUCCESS',
         read: false
       });
@@ -582,7 +686,7 @@ export const RoadAnalysisPrintPanel: React.FC<RoadAnalysisPrintPanelProps> = ({
       setCapturing(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [printBbox, regionBbox, fitMapToBbox, waitForSettle, buildPrintHtml, mapInstanceRef, onNotify, selectedStateName, planDistanceKm]);
+  }, [printBbox, regionBbox, fitMapToBbox, waitForSettle, buildPrintHtml, mapInstanceRef, onNotify, selectedStateName, planDistanceKm, variant, scopeLabel, explorerMetric, explorerMetricLabel]);
 
   const activeModeButton = (label: string, active: boolean, onClick: () => void, icon: React.ReactNode) => (
     <button
@@ -605,7 +709,7 @@ export const RoadAnalysisPrintPanel: React.FC<RoadAnalysisPrintPanelProps> = ({
       <div className="flex-1 min-h-0 relative overflow-hidden">
         <RoadAnalysisMap
           active={isActive}
-          showRoadLines={showRoadLines}
+          showRoadLines={variant === 'explorer' ? true : showRoadLines}
           style={style}
           districtGeojson={districtGeojson}
           dimmedRegionsGeojson={dimmedRegionsGeojson}
@@ -615,6 +719,11 @@ export const RoadAnalysisPrintPanel: React.FC<RoadAnalysisPrintPanelProps> = ({
           systemStyles={systemStyles}
           focusBbox={printBbox}
           mapInstanceRef={mapInstanceRef}
+          projectExplorerActive={variant === 'explorer'}
+          projectExplorerPalette={projectExplorerPalette}
+          projectExplorerColorByMetric={explorerMetric}
+          choroplethSettings={choroplethSettings}
+          subgridMetrics={subgridMetrics}
         />
 
         {/* Extent Mode Toolbar */}
@@ -675,6 +784,8 @@ export const RoadAnalysisPrintPanel: React.FC<RoadAnalysisPrintPanelProps> = ({
               <div key={`${row.label}-${i}`} className="flex items-center gap-2 py-0.5">
                 {row.swatch === 'dot' ? (
                   <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: row.color }} />
+                ) : row.swatch === 'fill' ? (
+                  <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: row.color }} />
                 ) : (
                   <span className="w-4 h-0.5 rounded shrink-0" style={{ backgroundColor: row.color }} />
                 )}
@@ -688,6 +799,19 @@ export const RoadAnalysisPrintPanel: React.FC<RoadAnalysisPrintPanelProps> = ({
       {/* Bottom Action Bar */}
       <div className="shrink-0 px-3 py-2 border-t border-subtle bg-card flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-[10px] text-text-muted min-w-0">
+          {/* The subject is derived from the Project Explorer, not chosen here, so
+              state it outright — otherwise the preview silently changes subject
+              depending on whether that panel happens to be open. */}
+          <span
+            className="shrink-0 px-1.5 py-0.5 rounded font-mono text-[9px] font-semibold uppercase tracking-wider border border-sky-500/40 bg-sky-500/10 text-sky-300"
+            title={
+              variant === 'explorer'
+                ? 'Printing the Project Explorer choropleth (close the Explorer for the road-analysis map)'
+                : 'Printing the road-analysis overlays'
+            }
+          >
+            {variant === 'explorer' ? `Explorer · ${explorerMetricLabel || explorerMetric || 'metric'}` : 'Road Analysis'}
+          </span>
           {lastPrintedAt ? (
             <span className="text-emerald-400 font-medium">Printed {lastPrintedAt}</span>
           ) : (

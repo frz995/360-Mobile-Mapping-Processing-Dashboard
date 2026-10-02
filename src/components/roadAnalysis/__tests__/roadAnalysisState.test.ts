@@ -7,6 +7,9 @@ import {
   mirrorRoadAnalysisToCache,
   computeRoadAnalysisFingerprint,
   prepareCatalogLayersForCloudPersistence,
+  normalizeSystemStyles,
+  normalizeExplorerGridSpec,
+  resolvePrintVariant,
   ROAD_ANALYSIS_CACHE_VERSION,
   type RoadAnalysisSavedState
 } from '../../RoadAnalysisWorkspace';
@@ -203,12 +206,14 @@ describe('RoadAnalysisWorkspace state persistence', () => {
       const styled = computeRoadAnalysisFingerprint('JHR', ['JHR-007'], 'system', 'ofm-dark', true, null, [], undefined, {
         districtBoundary: { visible: true, color: '#e2e8f0', opacity: 0.8, strokeWidth: 2.5 },
         capturedPoints: { visible: true, opacity: 0.9, pointRadius: 6 },
-        roadPlan: { visible: true, color: '#10b981', opacity: 1, strokeWidth: 3 }
+        roadPlan: { visible: true, color: '#10b981', opacity: 1, strokeWidth: 3 },
+        dimOutside: { visible: false, color: '#0b1220', opacity: 0.45 }
       });
       const tweaked = computeRoadAnalysisFingerprint('JHR', ['JHR-007'], 'system', 'ofm-dark', true, null, [], undefined, {
         districtBoundary: { visible: true, color: '#e2e8f0', opacity: 0.55, strokeWidth: 2.5 },
         capturedPoints: { visible: true, opacity: 0.9, pointRadius: 6 },
-        roadPlan: { visible: true, color: '#10b981', opacity: 1, strokeWidth: 3 }
+        roadPlan: { visible: true, color: '#10b981', opacity: 1, strokeWidth: 3 },
+        dimOutside: { visible: false, color: '#0b1220', opacity: 0.45 }
       });
 
       expect(base).not.toBe(styled);
@@ -298,7 +303,8 @@ describe('RoadAnalysisWorkspace state persistence', () => {
       const systemStyles = {
         districtBoundary: { visible: true, color: '#e2e8f0', opacity: 0.65, strokeWidth: 1.8 },
         capturedPoints: { visible: true, opacity: 0.9, pointRadius: 6 },
-        roadPlan: { visible: true, color: '#10b981', opacity: 1, strokeWidth: 4 }
+        roadPlan: { visible: true, color: '#10b981', opacity: 1, strokeWidth: 4 },
+        dimOutside: { visible: true, color: '#0b1220', opacity: 0.5 }
       };
       persistRoadAnalysisCache('user-cache-5', { systemStyles });
 
@@ -306,6 +312,7 @@ describe('RoadAnalysisWorkspace state persistence', () => {
       expect(cache.savedToCloud).toBe(false);
       expect(cache.systemStyles?.districtBoundary?.opacity).toBe(0.65);
       expect(cache.systemStyles?.roadPlan?.strokeWidth).toBe(4);
+      expect(cache.systemStyles?.dimOutside).toEqual({ visible: true, color: '#0b1220', opacity: 0.5 });
     });
 
     it('persists catalog layer edits with the full layer payload', () => {
@@ -349,7 +356,8 @@ describe('RoadAnalysisWorkspace state persistence', () => {
         systemStyles: {
           districtBoundary: { visible: true, color: '#e2e8f0', opacity: 0.7, strokeWidth: 2 },
           capturedPoints: { visible: true, opacity: 0.9, pointRadius: 6 },
-          roadPlan: { visible: true, color: '#10b981', opacity: 1, strokeWidth: 3 }
+          roadPlan: { visible: true, color: '#10b981', opacity: 1, strokeWidth: 3 },
+          dimOutside: { visible: false, color: '#0b1220', opacity: 0.45 }
         },
         selectedDistrictIds: ['JHR-007']
       });
@@ -359,6 +367,66 @@ describe('RoadAnalysisWorkspace state persistence', () => {
       expect(cache.mapBasemap).toBe('google-satellite');
       expect(cache.selectedDistrictIds).toEqual(['JHR-007']);
       expect(cache.systemStyles?.districtBoundary?.opacity).toBe(0.7);
+    });
+  });
+
+  describe('normalizeSystemStyles', () => {
+    it('fills dimOutside defaults for a cache saved before the field existed', () => {
+      const legacy = {
+        districtBoundary: { visible: true, color: '#e2e8f0', opacity: 0.7, strokeWidth: 2 },
+        capturedPoints: { visible: true, opacity: 0.9, pointRadius: 6 },
+        roadPlan: { visible: true, color: '#10b981', opacity: 1, strokeWidth: 3 }
+      } as any;
+
+      const normalized = normalizeSystemStyles(legacy);
+      expect(normalized.dimOutside).toEqual({ visible: false, color: '#0b1220', opacity: 0.45 });
+      expect(normalized.districtBoundary.opacity).toBe(0.7);
+    });
+
+    it('defaults dim off but preserves an explicit opt-in', () => {
+      expect(normalizeSystemStyles(undefined).dimOutside.visible).toBe(false);
+      expect(
+        normalizeSystemStyles({ dimOutside: { visible: true, color: '#111827', opacity: 0.6 } }).dimOutside
+      ).toEqual({ visible: true, color: '#111827', opacity: 0.6 });
+    });
+  });
+
+  describe('resolvePrintVariant', () => {
+    it('prints the explorer choropleth while the Project Explorer is open', () => {
+      expect(resolvePrintVariant(true)).toBe('explorer');
+    });
+
+    it('prints the road-analysis overlays when the Project Explorer is closed', () => {
+      expect(resolvePrintVariant(false)).toBe('road');
+    });
+  });
+
+  describe('normalizeExplorerGridSpec', () => {
+    it('round-trips a declared grid size through persistence', () => {
+      const spec = normalizeExplorerGridSpec({ derivedCellKm: 5, importedCellKm: 10 });
+      expect(spec).toEqual({ derivedCellKm: 5, importedCellKm: 10 });
+    });
+
+    it('falls back to auto for a missing, malformed, or out-of-range value', () => {
+      expect(normalizeExplorerGridSpec(undefined)).toEqual({ derivedCellKm: null, importedCellKm: null });
+      expect(normalizeExplorerGridSpec(null)).toEqual({ derivedCellKm: null, importedCellKm: null });
+      expect(normalizeExplorerGridSpec({})).toEqual({ derivedCellKm: null, importedCellKm: null });
+      expect(normalizeExplorerGridSpec({ derivedCellKm: 0 })).toEqual({
+        derivedCellKm: null,
+        importedCellKm: null
+      });
+      expect(normalizeExplorerGridSpec({ importedCellKm: 900 })).toEqual({
+        derivedCellKm: null,
+        importedCellKm: null
+      });
+      expect(normalizeExplorerGridSpec({ derivedCellKm: 'big' })).toEqual({
+        derivedCellKm: null,
+        importedCellKm: null
+      });
+    });
+
+    it('coerces numeric strings so a hand-edited cache still loads', () => {
+      expect(normalizeExplorerGridSpec({ derivedCellKm: '7.5' }).derivedCellKm).toBe(7.5);
     });
   });
 

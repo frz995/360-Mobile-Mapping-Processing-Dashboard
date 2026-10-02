@@ -48,6 +48,12 @@ export interface SystemLayerStyles {
     opacity: number;
     strokeWidth: number;
   };
+  /** Shade every non-selected district so the selected AOI stands out. Off by default. */
+  dimOutside: {
+    visible: boolean;
+    color: string;
+    opacity: number;
+  };
 }
 
 export interface RoadCatalogPanelProps {
@@ -1063,6 +1069,87 @@ export const RoadCatalogPanel: React.FC<RoadCatalogPanelProps> = ({
                   </div>
                 </div>
               )}
+
+              {/* 4. Dim Outside Selection (only shades non-selected districts) */}
+              <div className="p-2.5 rounded-lg bg-inner/40 border border-subtle flex flex-col gap-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onUpdateSystemStyles((prev) => ({
+                          ...prev,
+                          dimOutside: {
+                            ...prev.dimOutside,
+                            visible: !prev.dimOutside.visible
+                          }
+                        }))
+                      }
+                      className={`p-1 rounded transition-colors ${
+                        systemStyles.dimOutside.visible
+                          ? 'text-indigo-400 hover:text-indigo-300'
+                          : 'text-text-muted/40 hover:text-text-muted'
+                      }`}
+                      title={systemStyles.dimOutside.visible ? 'Hide dim outside selection' : 'Show dim outside selection'}
+                    >
+                      {systemStyles.dimOutside.visible ? <Eye size={14} /> : <EyeOff size={14} />}
+                    </button>
+                    <span className="text-[10px] font-semibold text-text-base">Dim Outside Selection</span>
+                  </div>
+                  <input
+                    type="color"
+                    value={systemStyles.dimOutside.color}
+                    onChange={(e) =>
+                      onUpdateSystemStyles((prev) => ({
+                        ...prev,
+                        dimOutside: {
+                          ...prev.dimOutside,
+                          color: e.target.value
+                        }
+                      }))
+                    }
+                    className="w-4 h-4 rounded cursor-pointer border-0 bg-transparent p-0"
+                    title="Change dim shade color"
+                  />
+                </div>
+                <p className="text-[9px] text-text-muted leading-snug">
+                  Shades every district outside your selection. Applies once a district is selected.
+                </p>
+                <div className="flex flex-col gap-1 pt-2 border-t border-subtle/50">
+                  <div className="flex items-center justify-between text-[9px]">
+                    <span className="text-text-muted font-medium">Dim Opacity</span>
+                    <span className="font-mono text-text-base font-semibold">
+                      {Math.round(systemStyles.dimOutside.opacity * 100)}%
+                    </span>
+                  </div>
+                  <CommitSlider
+                    value={systemStyles.dimOutside.opacity}
+                    min={0.1}
+                    max={0.8}
+                    step={0.05}
+                    onPreview={(v) =>
+                      onPreviewSystemStyles?.((prev) => ({
+                        ...prev,
+                        dimOutside: {
+                          ...prev.dimOutside,
+                          opacity: v
+                        }
+                      }))
+                    }
+                    onCommit={(v) =>
+                      onUpdateSystemStyles((prev) => ({
+                        ...prev,
+                        dimOutside: {
+                          ...prev.dimOutside,
+                          opacity: v
+                        }
+                      }))
+                    }
+                    style={getSliderStyle(systemStyles.dimOutside.color)}
+                    className="slider-sm"
+                  />
+                </div>
+              </div>
             </div>
           )}
         </div>
@@ -1379,7 +1466,7 @@ export const RoadCatalogPanel: React.FC<RoadCatalogPanelProps> = ({
                             onClick={() => handleActivatePlan(layer)}
                             className={`p-1.5 rounded border transition-colors cursor-pointer ${
                               isActivePlan
-                                ? 'bg-emerald-500/20 border-emerald-500 text-emerald-400 shadow-sm'
+                                ? 'bg-inner/60 border-subtle text-emerald-400'
                                 : 'bg-inner/60 hover:bg-inner text-text-muted hover:text-emerald-400 border-subtle'
                             } ${activatingLayerId === layer.id ? 'opacity-80 cursor-wait' : ''}`}
                             title={

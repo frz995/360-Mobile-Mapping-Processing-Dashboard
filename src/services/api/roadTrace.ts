@@ -24,6 +24,14 @@ export interface RoadAnalysisProductionState {
    * styling module; `choroplethSettings.ts` normalises it on read.
    */
   choroplethSettings?: Record<string, unknown>;
+  /**
+   * Operator-declared Project Explorer grid geometry (derived cell km and
+   * imported nominal cell km). Loosely typed for the same reason as
+   * choroplethSettings; `normalizeExplorerGridSpec` coerces it on read so a
+   * malformed or out-of-range value degrades to auto rather than breaking the
+   * mesh build.
+   */
+  explorerGridSpec?: Record<string, unknown>;
   updatedAt?: string;
   updatedBy?: string;
   projectId?: string;

@@ -303,4 +303,71 @@ describe('SharedMapPage', () => {
       expect(screen.getByText('Extracted road trace')).toBeInTheDocument();
     });
   });
+
+  it('renders the project explorer choropleth with a class-break legend', async () => {
+    delete (window as any).location;
+    window.location = new URL('http://localhost:5173/share/explorershare123') as any;
+
+    vi.spyOn(mapShares, 'fetchShareByToken').mockResolvedValue({
+      id: 's6',
+      token: 'explorershare123',
+      kind: 'road',
+      title: 'Segamat Explorer Choropleth',
+      project_id: null,
+      snapshot: {
+        center: [2.5, 102.8],
+        zoom: 11,
+        explorer: {
+          metric: 'density',
+          metricLabel: 'Road density',
+          scopeLabel: 'GRID-007',
+          palette: 'greens',
+          setting: {
+            metric: 'density',
+            method: 'manual',
+            alpha: 0.85,
+            reverse: false,
+            classes: [
+              { upperBound: 3.5, color: '#edf8e9' },
+              { upperBound: 9, color: '#74c476' },
+              { upperBound: null, color: '#006d2c' }
+            ]
+          },
+          mesh: {
+            type: 'FeatureCollection',
+            features: [
+              {
+                type: 'Feature',
+                properties: { subgrid: 'GRID-007', density: 2.5, complexity: 40, panotrack: 120, roads: 9.1, coverage: 66 },
+                geometry: { type: 'Polygon', coordinates: [[[102.8, 2.5], [102.81, 2.5], [102.81, 2.51], [102.8, 2.51], [102.8, 2.5]]] }
+              }
+            ]
+          },
+          cellCount: 1
+        },
+        stats: { subgrids: 1, km: 12.5, poi: 0, frames: 0, defects: 0, passRate: 100, lines: 0 }
+      },
+      basemap: 'ofm-positron',
+      password_hash: null,
+      created_by: null,
+      created_at: new Date().toISOString(),
+      expires_at: null,
+      revoked_at: null,
+      view_count: 1
+    });
+
+    render(<SharedMapPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Segamat Explorer Choropleth')).toBeInTheDocument();
+      // Header switches to the explorer descriptor instead of "Road Analysis".
+      expect(screen.getByText(/Project Explorer · Road density/i)).toBeInTheDocument();
+      // Legend replaces the road swatches with the frozen class breaks.
+      expect(screen.getByText('≤ 3.5 km/km²')).toBeInTheDocument();
+      expect(screen.getByText('3.5 – 9 km/km²')).toBeInTheDocument();
+      expect(screen.getByText('> 9 km/km²')).toBeInTheDocument();
+      expect(screen.getByText('GRID-007')).toBeInTheDocument();
+      expect(screen.queryByText('Extracted road trace')).not.toBeInTheDocument();
+    });
+  });
 });

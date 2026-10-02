@@ -23,16 +23,22 @@ import {
 } from 'lucide-react';
 import type { Map as MaplibreMap } from 'maplibre-gl';
 import { RoadAnalysis3DStudio } from './roadAnalysis/RoadAnalysis3DStudio';
-import { ProjectExplorerPanel } from './roadAnalysis/ProjectExplorerPanel';
+import { ProjectExplorerPanel, CHOROPLETH_METRIC_OPTIONS } from './roadAnalysis/ProjectExplorerPanel';
 import {
   type ExplorerChoroplethPalette,
-  type MeshCellData
+  type ExplorerGridSpec,
+  type MeshCellData,
+  type MeshGridInfo,
+  buildGridInfoFromCells,
+  buildMeshGeojsonFromCells,
+  sanitizeGridKm
 } from '../utils/projectExplorerGeometry';
 import { getAllMeshCategories } from '../utils/catchmentStats';
 import {
   EXPLORER_METRICS,
   createDefaultSettings,
   normalizeSettings,
+  resolveSetting,
   valuesFromMesh,
   type ChoroplethSetting,
   type ChoroplethSettingsMap
@@ -54,7 +60,7 @@ import { RoadAnalysisMap } from './roadAnalysis/RoadAnalysisMap';
 import { RoadImportPanel, type ImportPreview } from './roadAnalysis/RoadImportPanel';
 import { RoadAnalysisPrintPanel } from './roadAnalysis/RoadAnalysisPrintPanel';
 import { ShareMapDialog } from '../share/ShareMapDialog';
-import { buildRoadSnapshot, buildShareSegments } from '../utils/mapShares';
+import { buildRoadSnapshot, buildShareSegments, buildExplorerBlock } from '../utils/mapShares';
 import { RoadCatalogPanel, RoadAttributeTableDrawer, resolveLayerFeatures, type SystemLayerStyles } from './roadAnalysis/RoadCatalogPanel';
 import type { CatalogVectorLayer } from '../utils/gisImportParser';
 import {
@@ -184,9 +190,63 @@ export interface RoadAnalysisSavedState {
   projectId?: string;
   /** True when catalog geometry was too large to persist in the local cache. */
   catalogGeometryDropped?: boolean;
+  /** Operator-declared Project Explorer grid geometry. */
+  explorerGridSpec?: { derivedCellKm?: number | null; importedCellKm?: number | null };
 }
 
 export const ROAD_ANALYSIS_CACHE_VERSION = 3;
+
+/**
+ * System Baseline defaults. `dimOutside` is deliberately off, so selecting a
+ * district never darkens the rest of the map unless the operator opts in.
+ */
+export const DEFAULT_SYSTEM_STYLES: SystemLayerStyles = {
+  districtBoundary: { visible: true, color: '#000000', opacity: 1, strokeWidth: 2.5 },
+  capturedPoints: { visible: true, opacity: 0.95, pointRadius: 5 },
+  roadPlan: { visible: true, color: '#10b981', opacity: 0.85, strokeWidth: 3.5 },
+  dimOutside: { visible: false, color: '#0b1220', opacity: 0.45 }
+};
+
+/**
+ * Merge a (possibly partial / legacy) saved System Baseline blob over the
+ * defaults so a cache written before `dimOutside` existed still resolves every
+ * field instead of yielding `undefined` paint values.
+ */
+export function normalizeSystemStyles(
+  styles?: Partial<SystemLayerStyles> | null
+): SystemLayerStyles {
+  return {
+    districtBoundary: { ...DEFAULT_SYSTEM_STYLES.districtBoundary, ...(styles?.districtBoundary || {}) },
+    capturedPoints: { ...DEFAULT_SYSTEM_STYLES.capturedPoints, ...(styles?.capturedPoints || {}) },
+    roadPlan: { ...DEFAULT_SYSTEM_STYLES.roadPlan, ...(styles?.roadPlan || {}) },
+    dimOutside: { ...DEFAULT_SYSTEM_STYLES.dimOutside, ...(styles?.dimOutside || {}) }
+  };
+}
+
+/**
+ * What the Print tab renders. The Project Explorer is the single source of
+ * truth: while it is open the tab previews the choropleth, otherwise the
+ * road-analysis overlays. Both the explorer panel and the explorer toggle live
+ * inside the live-map container, which is hidden while the Print tab is active,
+ * so this cannot change while the operator is looking at the print preview.
+ */
+export function resolvePrintVariant(showProjectExplorer: boolean): 'road' | 'explorer' {
+  return showProjectExplorer ? 'explorer' : 'road';
+}
+
+/**
+ * Coerces a persisted grid spec into a usable one. Anything absent, malformed,
+ * or outside the accepted range becomes `null`, i.e. the built-in auto
+ * resolution. A stored value must never be able to produce a broken lattice or
+ * an impossible cell area.
+ */
+export function normalizeExplorerGridSpec(raw: unknown): ExplorerGridSpec {
+  const src = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  return {
+    derivedCellKm: sanitizeGridKm(src.derivedCellKm),
+    importedCellKm: sanitizeGridKm(src.importedCellKm)
+  };
+}
 
 export function getRoadAnalysisStorageKey(userKey: string): string {
   const pid = getActiveProjectId();
@@ -543,15 +603,9 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
   const [catalogLayers, setCatalogLayers] = useState<CatalogVectorLayer[]>(() => {
     return Array.isArray(initialSaved?.catalogLayers) ? initialSaved.catalogLayers : [];
   });
-  const [systemStyles, setSystemStyles] = useState<SystemLayerStyles>(() => {
-    return (
-      initialSaved?.systemStyles || {
-        districtBoundary: { visible: true, color: '#000000', opacity: 1, strokeWidth: 2.5 },
-        capturedPoints: { visible: true, opacity: 0.95, pointRadius: 5 },
-        roadPlan: { visible: true, color: '#10b981', opacity: 0.85, strokeWidth: 3.5 }
-      }
-    );
-  });
+  const [systemStyles, setSystemStyles] = useState<SystemLayerStyles>(() =>
+    normalizeSystemStyles(initialSaved?.systemStyles)
+  );
   const [focusBbox, setFocusBbox] = useState<[number, number, number, number] | null>(null);
   const [activePlanName, setActivePlanName] = useState<string>('');
   const [catalogPlanLayerId, setCatalogPlanLayerId] = useState<string | null>(() => {
@@ -773,6 +827,22 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
   // Mesh cells reported by RoadAnalysisMap. One source for both the class-break
   // values and the Details card aggregation.
   const [explorerMeshCells, setExplorerMeshCells] = useState<MeshCellData[]>([]);
+  // Grid provenance for the cells above. Published with them from one build, and
+  // shown in the Details card because density and complexity are per-cell
+  // measures — their magnitude depends on the cell size, so a reader must be
+  // able to see what resolution they were measured at.
+  const [explorerGridInfo, setExplorerGridInfo] = useState<MeshGridInfo | null>(null);
+  /**
+   * Operator-declared grid geometry. `derivedCellKm` sets the fallback lattice
+   * step; `importedCellKm` declares the nominal size of an imported grid and
+   * becomes the cell AREA for every cell, so a cell clipped by the district
+   * edge cannot report a fraction of the real denominator and inflate its own
+   * density. Null on both = the built-in auto resolution.
+   */
+  const [explorerGridSpec, setExplorerGridSpec] = useState<ExplorerGridSpec>({
+    derivedCellKm: null,
+    importedCellKm: null
+  });
 
   // Stable map callbacks: inline lambdas at the call site defeated
   // RoadAnalysisMap's React.memo, so every raw MapLibre `pitch` event (≈60Hz)
@@ -795,9 +865,15 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
     return out;
   }, [explorerMeshCells]);
 
-  const handleExplorerMeshCells = useCallback((cells: MeshCellData[] | null) => {
-    setExplorerMeshCells(cells || []);
-  }, []);
+  const handleExplorerMeshCells = useCallback(
+    (cells: MeshCellData[] | null, grid?: MeshGridInfo) => {
+      setExplorerMeshCells(cells || []);
+      // Fall back to deriving from the cells so provenance is never blank when
+      // an older caller omits the descriptor.
+      setExplorerGridInfo(grid ?? buildGridInfoFromCells(cells));
+    },
+    []
+  );
 
   const handleChoroplethSettingChange = useCallback((metric: string, setting: ChoroplethSetting) => {
     setChoroplethSettings((prev) => ({ ...prev, [metric]: setting }));
@@ -885,6 +961,14 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
   const [hasExplored, setHasExplored] = useState<boolean>(false);
   const [selectedExplorerGrid, setSelectedExplorerGrid] = useState<MeshCellData | any | null>(null);
   const [centerTopNotice, setCenterTopNotice] = useState<string | null>(null);
+
+  // Shared by the Details card and the printed explorer document so the scope
+  // line can never drift between the panel and the sheet.
+  const explorerScopeLabel = selectedExplorerGrid
+    ? String(selectedExplorerGrid.subgrid)
+    : 'all district subgrids';
+  const explorerMetricLabel =
+    CHOROPLETH_METRIC_OPTIONS.find((o) => o.value === colorByMetric)?.label || colorByMetric;
 
   /**
    * Mesh cells for the Explorer card. Idle covers every cell in the district
@@ -1103,9 +1187,13 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
         setCatalogLayers(chosen);
       }
       if (remoteState.systemStyles) {
-        setSystemStyles(preferLocal && localCache?.systemStyles ? localCache.systemStyles : remoteState.systemStyles);
+        setSystemStyles(
+          normalizeSystemStyles(
+            preferLocal && localCache?.systemStyles ? localCache.systemStyles : remoteState.systemStyles
+          )
+        );
       } else if (localCache?.systemStyles) {
-        setSystemStyles(localCache.systemStyles);
+        setSystemStyles(normalizeSystemStyles(localCache.systemStyles));
       }
       if (typeof remoteState.showRoadLines === 'boolean') setShowRoadLines(remoteState.showRoadLines);
       if (typeof remoteState.showCoverage === 'boolean') setShowCoverage(remoteState.showCoverage);
@@ -1116,6 +1204,9 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
           normalizeSettings(remoteState.choroplethSettings, EXPLORER_METRICS, explorerPalette)
         );
       }
+      // Normalised on read: a missing, malformed, or out-of-range declared size
+      // falls back to auto rather than poisoning every density value.
+      setExplorerGridSpec(normalizeExplorerGridSpec(remoteState.explorerGridSpec));
       if (remoteState.mapBasemap) setMapBasemap(remoteState.mapBasemap);
       if (remoteState.updatedAt) setLastSavedAt(new Date(remoteState.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
 
@@ -1161,7 +1252,8 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
       if (saved.catalogPlanLayerId) setCatalogPlanLayerId(saved.catalogPlanLayerId);
       if (Array.isArray(saved.extractedLines)) setExtractedLines(saved.extractedLines);
       if (Array.isArray(saved.catalogLayers)) setCatalogLayers(saved.catalogLayers);
-      if (saved.systemStyles) setSystemStyles(saved.systemStyles);
+      if (saved.systemStyles) setSystemStyles(normalizeSystemStyles(saved.systemStyles));
+    if (saved.explorerGridSpec) setExplorerGridSpec(normalizeExplorerGridSpec(saved.explorerGridSpec));
       if (typeof saved.showRoadLines === 'boolean') setShowRoadLines(saved.showRoadLines);
       if (typeof saved.showCoverage === 'boolean') setShowCoverage(saved.showCoverage);
       if (saved.mapBasemap) setMapBasemap(saved.mapBasemap);
@@ -1700,6 +1792,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
       subgridPlanKm: Object.fromEntries(subgridMetrics.map((m) => [m.subgrid, m.planKm])),
       totalSubgrids: subgridMetrics.length || 0,
       choroplethSettings: choroplethSettings as unknown as Record<string, unknown>,
+      explorerGridSpec: explorerGridSpec as unknown as Record<string, unknown>,
       updatedAt: new Date().toISOString(),
       updatedBy: userEmail,
       projectId: getActiveProjectId() || undefined
@@ -1775,6 +1868,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
     planDistanceKm,
     subgridMetrics.length,
     choroplethSettings,
+    explorerGridSpec,
     userKey,
     catalogPlanLayerId,
     currentFingerprint,
@@ -2366,15 +2460,6 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
             </button>
             <button
               type="button"
-              onClick={() => setActiveTab('print')}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-inner border border-subtle text-[11px] font-semibold text-text-base hover:text-sky-400 transition-colors cursor-pointer shrink-0"
-              title="Generate a printable Road Analysis map from the current extent or a drawn bbox"
-            >
-              <Printer size={13} />
-              <span>Print</span>
-            </button>
-            <button
-              type="button"
               onClick={handleRefresh}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-inner border border-subtle text-[11px] font-semibold text-text-base hover:text-sky-400 transition-colors cursor-pointer shrink-0"
             >
@@ -2387,7 +2472,16 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
         <ShareMapDialog
           open={shareOpen}
           kind="road"
-          defaultTitle={`${projectSettings?.projectName || 'GeoSphere 360'} — Road Analysis Map`}
+          subtitle={
+            showProjectExplorer
+              ? `Project Explorer choropleth · ${explorerMetricLabel} · ${explorerScopeLabel}`
+              : undefined
+          }
+          defaultTitle={
+            showProjectExplorer
+              ? `${projectSettings?.projectName || 'GeoSphere 360'} — Project Explorer Map`
+              : `${projectSettings?.projectName || 'GeoSphere 360'} — Road Analysis Map`
+          }
           buildSnapshot={() => {
             const hasCatalogRoads = (catalogLayers || []).some(
               (cl) => cl.visible !== false && cl.geometryType !== 'Point'
@@ -2423,6 +2517,23 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
               ? effectiveLines.length
               : (catalogLayers || []).reduce((acc, l) => acc + (l.featureCount || 0), 0);
 
+            // Project Explorer choropleth. Rebuilt from the very cells the live
+            // map publishes (so the share matches what the operator is looking
+            // at) and classified with the SAME resolved class breaks the map
+            // paints, which is what makes manual break edits and a reversed
+            // palette reproduce exactly on the public link.
+            const explorerBlock = showProjectExplorer
+              ? buildExplorerBlock({
+                  metric: colorByMetric,
+                  metricLabel: explorerMetricLabel,
+                  scopeLabel: explorerScopeLabel,
+                  palette: explorerPalette,
+                  setting: resolveSetting(choroplethSettings, colorByMetric, explorerPalette),
+                  mesh: buildMeshGeojsonFromCells(explorerMeshCells),
+                  grid: explorerGridInfo
+                })
+              : undefined;
+
             return buildRoadSnapshot(effectiveLines, {
               planName: activePlanName || (regionLabel ? `Region: ${regionLabel}` : undefined),
               projectSettings,
@@ -2430,7 +2541,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
               catalogLayers,
               segments: buildShareSegments(internalDailyData || [], projectSettings),
               stats: {
-                subgrids: activeSubgridsCount || (capturedPoints.length > 0 ? new Set(capturedPoints.map((p) => p.subgrid).filter(Boolean)).size : 0),
+                subgrids: explorerBlock?.cellCount || activeSubgridsCount || (capturedPoints.length > 0 ? new Set(capturedPoints.map((p) => p.subgrid).filter(Boolean)).size : 0),
                 km: Number(capturedDistanceKm?.toFixed(2)) || extractedLengthKm || 0,
                 poi: capturedPoints.length,
                 frames: 0,
@@ -2438,7 +2549,8 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                 passRate: panotrackCounts.total > 0 ? Math.round((panotrackCounts.published / panotrackCounts.total) * 100) : 100,
                 lines: totalFeaturesOrLines
               },
-              bbox: regionGeo?.bbox
+              bbox: regionGeo?.bbox,
+              explorer: explorerBlock
             });
           }}
           basemap={mapBasemap || defaultBasemapKey}
@@ -3414,8 +3526,8 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                       type="button"
                       onClick={() => setShowBasemapMenu((prev) => !prev)}
                       style={{
-                        backgroundColor: showBasemapMenu ? 'rgba(56, 189, 248, 0.18)' : 'var(--bg-inner)',
-                        borderColor: showBasemapMenu ? 'rgba(56, 189, 248, 0.45)' : 'var(--border-subtle)',
+                        backgroundColor: 'var(--bg-inner)',
+                        borderColor: 'var(--border-subtle)',
                         color: showBasemapMenu ? 'var(--sky, #38bdf8)' : 'var(--text-muted)'
                       }}
                       className="w-7 h-7 flex items-center justify-center rounded-md border transition-all cursor-pointer hover:border-sky-400/50 hover:text-sky-400 shadow-sm"
@@ -3486,8 +3598,8 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                       }
                     }}
                     style={{
-                      backgroundColor: show3D ? 'rgba(56, 189, 248, 0.18)' : 'var(--bg-inner)',
-                      borderColor: show3D ? 'rgba(56, 189, 248, 0.45)' : 'var(--border-subtle)',
+                      backgroundColor: 'var(--bg-inner)',
+                      borderColor: 'var(--border-subtle)',
                       color: show3D ? 'var(--sky, #38bdf8)' : 'var(--text-muted)'
                     }}
                     className="w-7 h-7 flex items-center justify-center rounded-md border transition-all cursor-pointer hover:border-sky-400/50 hover:text-sky-400 shadow-sm"
@@ -3503,8 +3615,8 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                       type="button"
                       onClick={() => setShow3DStudio((s) => !s)}
                       style={{
-                        backgroundColor: show3DStudio ? 'rgba(56, 189, 248, 0.22)' : 'var(--bg-inner)',
-                        borderColor: show3DStudio ? 'rgba(56, 189, 248, 0.5)' : 'var(--border-subtle)',
+                        backgroundColor: 'var(--bg-inner)',
+                        borderColor: 'var(--border-subtle)',
                         color: show3DStudio ? 'var(--sky, #38bdf8)' : 'var(--text-muted)'
                       }}
                       className="w-7 h-7 flex items-center justify-center rounded-md border transition-all cursor-pointer hover:border-sky-400/50 hover:text-sky-400 shadow-sm"
@@ -3556,8 +3668,8 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                       });
                     }}
                     style={{
-                      backgroundColor: showProjectExplorer ? 'rgba(56, 189, 248, 0.18)' : 'var(--bg-inner)',
-                      borderColor: showProjectExplorer ? 'rgba(56, 189, 248, 0.45)' : 'var(--border-subtle)',
+                      backgroundColor: 'var(--bg-inner)',
+                      borderColor: 'var(--border-subtle)',
                       color: showProjectExplorer ? 'var(--sky, #38bdf8)' : 'var(--text-muted)'
                     }}
                     className="w-7 h-7 flex items-center justify-center rounded-md border transition-all cursor-pointer hover:border-sky-400/50 hover:text-sky-400 shadow-sm"
@@ -3848,9 +3960,10 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                     active={showProjectExplorer}
                     onClose={() => setShowProjectExplorer(false)}
                     categories={explorerCatchment}
-                    scopeLabel={
-                    selectedExplorerGrid ? selectedExplorerGrid.subgrid : 'all district subgrids'
-                  }
+                    scopeLabel={explorerScopeLabel}
+                    gridInfo={explorerGridInfo}
+                    gridSpec={explorerGridSpec}
+                    onGridSpecChange={setExplorerGridSpec}
                     palette={explorerPalette}
                     onPaletteChange={(p) => setExplorerPalette(p)}
                     colorByMetric={colorByMetric}
@@ -3886,6 +3999,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                   projectExplorerColorByMetric={colorByMetric}
                   choroplethSettings={choroplethSettings}
                   onExplorerMeshCells={handleExplorerMeshCells}
+                  explorerGridSpec={explorerGridSpec}
                   subgridMetrics={subgridMetrics}
                   onProjectExplorerCenterChange={handleExplorerCenterChange}
                   onPitchChange={handlePitchChange}
@@ -4031,6 +4145,14 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                       districtNames={selectedDistrictsList.map((d) => d.name)}
                       basemapName={mapBasemap}
                       isActive={activeTab === 'print'}
+                      variant={resolvePrintVariant(showProjectExplorer)}
+                      projectExplorerPalette={explorerPalette}
+                      explorerMetric={colorByMetric}
+                      explorerMetricLabel={explorerMetricLabel}
+                      scopeLabel={explorerScopeLabel}
+                      explorerCellCount={explorerMeshCells.length}
+                      choroplethSettings={choroplethSettings}
+                      subgridMetrics={subgridMetrics}
                       onNotify={addNotification}
                     />
                   </div>

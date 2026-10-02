@@ -834,6 +834,100 @@ export function isCellIntersectingDistrict(
   return false;
 }
 
+/**
+ * Floor on a cell's area, guarding divide-by-zero on degenerate slivers. A cell
+ * clamped up to this UNDERSTATES density (larger denominator), so any cell that
+ * hits it is reported via `MeshGridInfo.areaFloored`.
+ */
+const MIN_CELL_AREA_KM2 = 0.5;
+
+/**
+ * Where the mesh cells came from, and how big they are.
+ *
+ * Density (`planKm / areaKm2`) and complexity (`junctions / areaKm2`) are both
+ * PER-CELL measures, so halving the cell size roughly doubles density for
+ * identical roads. Against the fixed breaks in DEFAULT_METRIC_BREAKS the same
+ * physical place therefore classifies differently on a 5x5 grid than on a
+ * 10x10 one. That is correct — but only legible if the operator can see the
+ * cell size they are reading, which is what this carries.
+ */
+export interface MeshGridInfo {
+  /** 'imported' = the operator's own polygon grid layer; 'derived' = synthetic fallback. */
+  source: 'imported' | 'derived';
+  cellCount: number;
+  /** Representative cell edge length in km. Median for an imported grid. */
+  cellKm: number;
+  /**
+   * True when at least one cell was clamped up to the 0.5 km² area floor. Such
+   * cells UNDERSTATE density, because the denominator is inflated. Surfaced so
+   * the floor is never a silent bias.
+   */
+  areaFloored: boolean;
+  /** True when the operator declared this size rather than the code measuring it. */
+  declared: boolean;
+  /** Where `cellKm` came from, so the UI can say so. */
+  cellKmSource: 'declared' | 'measured' | 'auto';
+}
+
+/**
+ * Operator-declared grid geometry.
+ *
+ * Both fields are optional and independent:
+ *  - `derivedCellKm` sets the fallback lattice step when no grid layer is
+ *    imported. `null` keeps the built-in auto resolution.
+ *  - `importedCellKm` declares the nominal cell size of an imported grid and
+ *    becomes the authoritative cell AREA for every cell.
+ *
+ * The second field is not cosmetic. Survey grids are usually clipped to the
+ * district, so an edge cell's measured bbox is a fraction of a real cell. Using
+ * that fraction as the denominator makes a half-cell report roughly double the
+ * density of an interior cell, which then misclassifies it as denser urban
+ * fabric. Declaring the nominal size keeps every cell on one denominator.
+ */
+export interface ExplorerGridSpec {
+  derivedCellKm?: number | null;
+  importedCellKm?: number | null;
+}
+
+/** Presets offered in the Explorer grid control. */
+export const GRID_PRESETS_KM = [
+  { label: '2 × 2 km', value: 2 },
+  { label: '3.9 × 3.9 km (auto)', value: 3.9 },
+  { label: '5 × 5 km', value: 5 },
+  { label: '10 × 10 km', value: 10 }
+] as const;
+
+/** Accepted range for a custom declared cell size. */
+export const GRID_MIN_KM = 0.1;
+export const GRID_MAX_KM = 100;
+
+/** Keeps a declared size usable, or null when it is absent / out of range. */
+export function sanitizeGridKm(value: unknown): number | null {
+  const n = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(n)) return null;
+  if (n < GRID_MIN_KM || n > GRID_MAX_KM) return null;
+  return Number(n.toFixed(2));
+}
+
+/**
+ * Degrees of longitude/latitude that spans `km` at the given latitude.
+ *
+ * A degree of longitude shrinks with latitude (cos φ) while a degree of
+ * latitude does not, so a single "stepDeg" only yields square ground cells near
+ * the equator. The fallback lattice is a regular DEGREE grid (one stepDeg for
+ * both axes), so this returns the step that keeps the cells closest to square
+ * in real distance for the region's latitude.
+ */
+export function kmToStepDeg(km: number, latitude: number): number {
+  const lat = Number.isFinite(latitude) ? Math.min(85, Math.max(-85, latitude)) : 0;
+  const kmPerDegLat = 110.574;
+  const kmPerDegLng = 111.32 * Math.cos((lat * Math.PI) / 180);
+  // Average the two so neither axis is badly off; the lattice is square in
+  // degrees, so the cell is as square as a degree-square allows here.
+  const denom = (kmPerDegLat + kmPerDegLng) / 2;
+  return denom > 0 ? km / denom : km / kmPerDegLat;
+}
+
 export interface MeshRoadChoroplethResult {
   meshGeojson: GeoJSON.FeatureCollection;
   annotatedRoadsGeojson: GeoJSON.FeatureCollection;
@@ -843,6 +937,8 @@ export interface MeshRoadChoroplethResult {
    * so idle means "all cells in the district grid".
    */
   cells: MeshCellData[];
+  /** Grid provenance, reported alongside the cells so UI can explain the numbers. */
+  grid: MeshGridInfo;
 }
 
 /**
@@ -917,8 +1013,17 @@ export function buildMeshRoadChoroplethGeojson(
   districtGeojson?: any,
   catalogOrSubgrids?: any[],
   fallbackSubgridMetrics?: any[],
-  capturedPoints: any[] = []
+  capturedPoints: any[] = [],
+  spec?: ExplorerGridSpec | null
 ): MeshRoadChoroplethResult {
+  // Operator-declared geometry. Invalid or absent values fall back to the
+  // built-in behaviour, so an old caller is completely unaffected.
+  const declaredDerivedKm = sanitizeGridKm(spec?.derivedCellKm);
+  const declaredImportedKm = sanitizeGridKm(spec?.importedCellKm);
+  // Every cell is measured against this area instead of its own bbox when the
+  // operator declares an imported grid size. `null` keeps per-cell measurement.
+  const nominalAreaKm2 =
+    declaredImportedKm !== null ? Number((declaredImportedKm * declaredImportedKm).toFixed(2)) : null;
   // Normalize arguments to support both signatures:
   // (roadRuns, districtGeojson, catalogLayers, subgridMetrics, capturedPoints)
   // or (roadRuns, districtGeojson, subgridMetrics)
@@ -990,6 +1095,12 @@ export function buildMeshRoadChoroplethGeojson(
 
   const cells: MeshCellData[] = [];
 
+  // Set when any cell's area is clamped up to the floor; reported in `grid`.
+  let areaFloored = false;
+  // Side of the square cell this build is working at, in km. Recorded so the
+  // UI can show cell size for the synthetic branch.
+  let derivedCellKm = 0;
+
   // Helper to compute metrics for a cell
   const computeCellMetrics = (bbox: [number, number, number, number]) => {
     let roadMetersInCell = 0;
@@ -1043,7 +1154,16 @@ export function buildMeshRoadChoroplethGeojson(
     const planKm = Number((roadMetersInCell / 1000).toFixed(2));
     const widthKm = haversineMeters([bbox[0], bbox[1]], [bbox[2], bbox[1]]) / 1000;
     const heightKm = haversineMeters([bbox[0], bbox[1]], [bbox[0], bbox[3]]) / 1000;
-    const areaKm2 = Math.max(0.5, Number((widthKm * heightKm).toFixed(1)));
+    // Floor guards divide-by-zero on slivers, but it also inflates the
+    // denominator and so UNDERSTATES density. Record when it bites.
+    const rawAreaKm2 = Number((widthKm * heightKm).toFixed(1));
+    // A declared imported-grid size is authoritative: a cell clipped by the
+    // district edge is still a real cell, so it must not report a fraction of
+    // the nominal area and inflate its own density.
+    const areaKm2 = nominalAreaKm2 !== null
+      ? nominalAreaKm2
+      : Math.max(MIN_CELL_AREA_KM2, rawAreaKm2);
+    if (nominalAreaKm2 === null && rawAreaKm2 < MIN_CELL_AREA_KM2) areaFloored = true;
     const density = Number((planKm / areaKm2).toFixed(2));
 
     // Panotrack survey frames inside cell, split by capture status.
@@ -1100,6 +1220,10 @@ export function buildMeshRoadChoroplethGeojson(
   // Branch 1: Check catalog layers for polygon subgrid features (e.g. Grid_5km_tangkak_segamat)
   // If an imported polygon grid layer exists, use ONLY its grid cells — never mix in rawMetrics or fallback grids.
   let foundImportedGrid = false;
+  // Representative edge of the imported grid, filled in once a grid layer wins.
+  let importedCellKm = 0;
+  // True when the size came from the operator rather than from measurement.
+  let gridIsDeclared = declaredDerivedKm !== null || declaredImportedKm !== null;
   for (const item of rawLayers) {
     if (!item) continue;
     const feats = getCatalogLayerFeatures(item);
@@ -1131,6 +1255,10 @@ export function buildMeshRoadChoroplethGeojson(
 
     areas.sort((a, b) => a - b);
     const medianArea = areas.length > 0 ? areas[Math.floor(areas.length / 2)] : 0;
+    // Median edge of the operator's grid, so the card can state the cell size
+    // that density and complexity are being measured over.
+    importedCellKm = medianArea > 0 ? Number(Math.sqrt(medianArea).toFixed(1)) : 0;
+    if (declaredImportedKm !== null) importedCellKm = declaredImportedKm;
 
     for (const { feat, geom, bbox, area } of validPolyFeats) {
       // Strip oversized boundary envelope polygons wrapping the grid (area > 2.5× median)
@@ -1282,6 +1410,18 @@ export function buildMeshRoadChoroplethGeojson(
     } else if (spanX < 0.25 && spanY < 0.25) {
       stepDeg = 0.018; // ~2.0 km for compact urban centers
     }
+    // An operator-declared size overrides the auto resolution entirely. Convert
+    // km to degrees at this region's own latitude so the cells come out square
+    // in ground distance rather than in degrees.
+    if (declaredDerivedKm !== null) {
+      stepDeg = kmToStepDeg(declaredDerivedKm, (minY + maxY) / 2);
+    }
+    // Record the cell edge this build chose, so the UI can explain the
+    // resolution the density/complexity values were measured at.
+    derivedCellKm = declaredDerivedKm !== null
+      ? declaredDerivedKm
+      : Number((stepDeg * 111.32).toFixed(1));
+    gridIsDeclared = declaredDerivedKm !== null;
 
     let cellIdx = 1;
 
@@ -1404,8 +1544,70 @@ export function buildMeshRoadChoroplethGeojson(
   return {
     meshGeojson,
     annotatedRoadsGeojson,
-    cells
+    cells,
+    grid: {
+      source: foundImportedGrid ? 'imported' : 'derived',
+      cellCount: cells.length,
+      cellKm: foundImportedGrid ? importedCellKm : derivedCellKm,
+      areaFloored,
+      declared: gridIsDeclared,
+      cellKmSource: gridIsDeclared ? 'declared' : foundImportedGrid ? 'measured' : 'auto'
+    }
   };
+}
+
+/**
+ * Ring-expands cells into the mesh FeatureCollection, the same way
+ * `buildMeshRoadChoroplethGeojson` does internally.
+ *
+ * The map builds that collection itself, but the cells it derives from are
+ * published upward via `onExplorerMeshCells` — so a share created outside the
+ * map (Share Map) can rebuild the identical geometry from state rather than
+ * re-running the whole spatial pass. Same input cells, same output GeoJSON.
+ */
+export function buildGridInfoFromCells(
+  cells: MeshCellData[] | null | undefined,
+  source: MeshGridInfo['source'] = 'derived'
+): MeshGridInfo {
+  const list = cells || [];
+  // Median of the observed cell areas — the same statistic an imported grid
+  // reports, so both branches state a comparable cell size.
+  const areas = list
+    .map((c) => (Number.isFinite(c?.areaKm2) ? (c.areaKm2 as number) : 0))
+    .filter((a) => a > 0)
+    .sort((a, b) => a - b);
+  const medianArea = areas.length > 0 ? areas[Math.floor(areas.length / 2)] : 0;
+  return {
+    source,
+    cellCount: list.length,
+    cellKm: medianArea > 0 ? Number(Math.sqrt(medianArea).toFixed(1)) : 0,
+    areaFloored: false,
+    declared: false,
+    cellKmSource: 'measured'
+  };
+}
+
+export function buildMeshGeojsonFromCells(cells: MeshCellData[] | null | undefined): GeoJSON.FeatureCollection {
+  const features: GeoJSON.Feature[] = [];
+  (cells || []).forEach((cell, idx) => {
+    (cell.rings || []).forEach((ring) => {
+      if (!Array.isArray(ring) || ring.length < 3) return;
+      features.push({
+        type: 'Feature',
+        id: idx + 1,
+        properties: {
+          subgrid: cell.subgrid,
+          density: cell.density,
+          complexity: cell.complexity,
+          panotrack: cell.panotrack,
+          roads: cell.roads,
+          coverage: cell.coverage
+        },
+        geometry: { type: 'Polygon', coordinates: [ring] }
+      });
+    });
+  });
+  return { type: 'FeatureCollection', features };
 }
 
 /**

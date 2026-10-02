@@ -11,6 +11,7 @@ import { resolvePanoramaUrl, resolvePanoramaConfigUrl, type StorageResolveSettin
 import { getActiveProjectId } from '../services/projectContext';
 import { getPOICount, getImagesProcessedCount } from './dashboardData';
 import { extractSubgridName } from './subgrid';
+import type { ChoroplethSetting, ExplorerChoroplethPalette } from './choroplethSettings';
 
 export type ShareKind = 'webgis' | 'road';
 
@@ -70,6 +71,34 @@ export interface ShareCatalogLayer {
   geojson: any;
 }
 
+/**
+ * The Project Explorer choropleth, frozen at share time.
+ *
+ * The viewer classifies this with the SAME `buildMeshExpression` the workspace
+ * map uses, so `setting` must be the already-resolved class breaks for the
+ * active metric — not the raw per-metric settings map. Shipping `setting`
+ * rather than re-deriving it means an operator's manual break edits and
+ * reversed palette are reproduced exactly on the public link.
+ */
+export interface ShareExplorerBlock {
+  /** Metric id, e.g. 'density'. Also the GeoJSON property the classifier reads. */
+  metric: string;
+  /** Human label for the active metric, e.g. 'Road density'. */
+  metricLabel: string;
+  /** Focused subgrid name, or 'all district subgrids'. */
+  scopeLabel: string;
+  palette: ExplorerChoroplethPalette;
+  setting: ChoroplethSetting;
+  mesh: any;
+  cellCount: number;
+  /**
+   * Grid resolution the values were measured at. Carried into the share so a
+   * public link can state it: density and complexity are per-cell, so a reader
+   * comparing this share against another needs to know the cell size.
+   */
+  grid?: { source: string; cellKm: number; areaFloored: boolean };
+}
+
 export interface ShareSnapshot {
   center: [number, number];
   zoom: number;
@@ -79,6 +108,12 @@ export interface ShareSnapshot {
   segments?: ShareSegment[];
   lines?: ShareLine[];
   catalogLayers?: ShareCatalogLayer[];
+  /**
+   * Present only when the Project Explorer was open at share creation. The
+   * viewer renders this choropleth INSTEAD of the road overlays, so a road
+   * share with no explorer block behaves exactly as it always has.
+   */
+  explorer?: ShareExplorerBlock;
   /**
    * Frozen storage-resolution prefs captured at share creation. Allows the
    * viewer to resolve panorama URLs (and later signed/tokenized media) from the
@@ -434,6 +469,72 @@ function roundGeometryCoords(coords: any): any {
   return Array.isArray(coords) ? coords.map(roundGeometryCoords) : coords;
 }
 
+/**
+ * Metric properties the choropleth classifier actually reads. Everything else
+ * on a mesh feature is dropped:
+ *
+ *   corridor / junctions / frames — per-CELL breakdowns, but the mesh emits one
+ *     feature per RING, so a cell with three rings ships the same three nested
+ *     objects three times. The public legend never reads them.
+ *   bbox / bbox_str             — redundant (bbox_str is JSON.stringify(bbox)),
+ *     and only the workspace's click-to-focus needs them.
+ *
+ * That duplication is ~56% of a mesh feature's JSON, so stripping it takes an
+ * imported grid share from ~180 KB down to ~80 KB. Cells themselves are never
+ * dropped: a shared map must not silently lose part of the region.
+ */
+const SHARE_EXPLORER_KEEP_PROPS = ['subgrid', 'density', 'complexity', 'panotrack', 'roads', 'coverage'] as const;
+
+export function serializeExplorerMesh(mesh?: any | null): any | null {
+  if (!mesh || !Array.isArray(mesh.features) || mesh.features.length === 0) return null;
+  const features: any[] = [];
+  for (const f of mesh.features) {
+    if (!f?.geometry?.coordinates) continue;
+    const src = f.properties || {};
+    const properties: Record<string, unknown> = {};
+    for (const key of SHARE_EXPLORER_KEEP_PROPS) {
+      const v = src[key];
+      // Drop null/undefined/NaN so a partially-computed cell cannot poison the
+      // MapLibre `step` expression with a non-numeric operand.
+      if (v === null || v === undefined || (typeof v === 'number' && !isFinite(v))) continue;
+      properties[key] = typeof v === 'number' ? roundCoord(v) : v;
+    }
+    features.push({
+      type: 'Feature',
+      ...(f.id !== undefined && f.id !== null ? { id: f.id } : {}),
+      properties,
+      geometry: { ...f.geometry, coordinates: roundGeometryCoords(f.geometry.coordinates) }
+    });
+  }
+  if (features.length === 0) return null;
+  return { type: 'FeatureCollection', features };
+}
+
+export function buildExplorerBlock(input: {
+  metric: string;
+  metricLabel?: string;
+  scopeLabel?: string;
+  palette?: ExplorerChoroplethPalette;
+  setting: ChoroplethSetting;
+  mesh?: any | null;
+  grid?: { source: string; cellKm: number; areaFloored: boolean } | null;
+}): ShareExplorerBlock | undefined {
+  const mesh = serializeExplorerMesh(input.mesh);
+  if (!mesh) return undefined;
+  return {
+    metric: input.metric,
+    metricLabel: input.metricLabel || input.metric,
+    scopeLabel: input.scopeLabel || 'all district subgrids',
+    palette: input.palette || 'greens',
+    setting: input.setting,
+    mesh,
+    cellCount: mesh.features.length,
+    grid: input.grid
+      ? { source: input.grid.source, cellKm: input.grid.cellKm, areaFloored: input.grid.areaFloored }
+      : undefined
+  };
+}
+
 export interface BuildRoadSnapshotOptions {
   planName?: string;
   projectSettings?: any;
@@ -450,6 +551,8 @@ export interface BuildRoadSnapshotOptions {
   segments?: ShareSegment[];
   stats?: Partial<ShareSnapshot['stats']>;
   bbox?: [number, number, number, number] | null;
+  /** Project Explorer choropleth, attached only when the explorer was open. */
+  explorer?: ShareSnapshot['explorer'];
 }
 
 export function buildRoadSnapshot(
@@ -591,6 +694,7 @@ export function buildRoadSnapshot(
     tracks: tracks.length > 0 ? tracks : undefined,
     segments: opts?.segments?.length ? opts.segments : undefined,
     catalogLayers: catalogLayers.length > 0 ? catalogLayers : undefined,
+    explorer: opts?.explorer,
     stats: {
       subgrids: effectiveSubgrids,
       km: effectiveKm,

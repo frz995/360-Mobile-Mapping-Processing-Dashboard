@@ -39,7 +39,9 @@ import {
   buildMeshRoadChoroplethGeojson,
   hexToRgba,
   type ExplorerChoroplethPalette,
-  type MeshCellData
+  type ExplorerGridSpec,
+  type MeshCellData,
+  type MeshGridInfo
 } from '../../utils/projectExplorerGeometry';
 import {
   buildMeshExpression,
@@ -340,7 +342,17 @@ export interface RoadAnalysisMapProps {
    * quantile) from them. Fires only when the measurements change, not on palette
    * or class edits.
    */
-  onExplorerMeshCells?: (cells: MeshCellData[] | null) => void;
+  /**
+ * Publishes the measured mesh cells, plus the grid they were measured over.
+ * Both come from one memoized build, so the provenance always describes the
+ * data it accompanies.
+ */
+  onExplorerMeshCells?: (cells: MeshCellData[] | null, grid?: MeshGridInfo) => void;
+  /**
+   * Operator-declared grid geometry. Part of the mesh memo deps, so changing a
+   * declared size rebuilds the cells rather than relabelling stale ones.
+   */
+  explorerGridSpec?: ExplorerGridSpec;
 }
 
 const DEFAULT_CENTER: [number, number] = [101.9758, 4.2105];
@@ -736,6 +748,12 @@ function applySystemStyles(
     const cp = ss?.capturedPoints;
     map.setPaintProperty('ra-captured-clusters', 'circle-opacity', cp?.visible !== false ? (cp?.opacity ?? 0.95) : 0);
   }
+  if (map.getLayer('ra-dim')) {
+    const d = ss?.dimOutside;
+    const dimVisible = d?.visible === true && !isExplorerActive;
+    map.setPaintProperty('ra-dim', 'fill-color', d?.color || '#0b1220');
+    map.setPaintProperty('ra-dim', 'fill-opacity', dimVisible ? (d?.opacity ?? 0.45) : 0);
+  }
 }
 
 const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
@@ -778,7 +796,8 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
   onSelectExplorerGrid,
   projectExplorerColorByMetric = 'density',
   choroplethSettings,
-  onExplorerMeshCells
+  onExplorerMeshCells,
+  explorerGridSpec
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MaplibreMap | null>(null);
@@ -934,6 +953,8 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
   const selectedExplorerGridRef = useRef<any | null>(selectedExplorerGrid ?? null);
   const onSelectExplorerGridRef = useRef(onSelectExplorerGrid);
   const explorerMeshResultRef = useRef<any | null>(null);
+  // Read by the map-load build, which runs before the first memo can supply it.
+  const explorerGridSpecRef = useRef<ExplorerGridSpec | undefined>(explorerGridSpec);
 
   catalogLayersRef.current   = catalogLayers;
   systemStylesRef.current    = systemStyles;
@@ -961,6 +982,7 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
   onProjectExplorerCenterBChangeRef.current = onProjectExplorerCenterBChange;
   isCompareModeRef.current = isCompareMode ?? false;
   selectedExplorerGridRef.current = selectedExplorerGrid ?? null;
+  explorerGridSpecRef.current = explorerGridSpec;
   onSelectExplorerGridRef.current = onSelectExplorerGrid;
 
   const buildOverlay = useCallback(() => {
@@ -998,15 +1020,21 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
     dynamicLayersRef.current = [];
     dynamicSourcesRef.current = [];
 
-    // 1. Dim the non-selected regions so the selected one stands out.
+    // 1. Optionally dim the non-selected regions so the selected one stands
+    //    out. Off by default — the operator opts in via System Baseline.
     if (dimmedRegionsGeojson?.features) {
+      const dim = systemStyles?.dimOutside;
+      const dimVisible = dim?.visible === true && !projectExplorerActiveRef.current;
       map.addSource('ra-dim', { type: 'geojson', data: dimmedRegionsGeojson });
       addedSourceIdsRef.current.add('ra-dim');
       map.addLayer({
         id: 'ra-dim',
         type: 'fill',
         source: 'ra-dim',
-        paint: { 'fill-color': '#0b1220', 'fill-opacity': 0.45 }
+        paint: {
+          'fill-color': dim?.color || '#0b1220',
+          'fill-opacity': dimVisible ? (dim?.opacity ?? 0.45) : 0
+        }
       });
     }
 
@@ -1378,7 +1406,8 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
         districtGeojson,
         catalogLayersRef.current,
         subgridMetricsRef.current,
-        capturedPoints
+        capturedPoints,
+        explorerGridSpecRef.current
       );
       initialRoadsData = annotatedRoadsGeojson;
       // Populate mesh source immediately so clipped grid displays on frame 1 with zero lag
@@ -1409,13 +1438,6 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
         'line-opacity': isExplorerActive ? 0.30 : planOpacity
       }
     });
-
-    if (isExplorerActive) {
-      if (map.getLayer('ra-dim')) {
-        map.setPaintProperty('ra-dim', 'fill-color', '#030712');
-        map.setPaintProperty('ra-dim', 'fill-opacity', 0);
-      }
-    }
 
     // 4b. Coverage segmentation: plan stretches WITHOUT any panotrack within
     //     tolerance, drawn in red directly on the plan geometry. Always register
@@ -2010,7 +2032,8 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
       districtGeojson,
       catalogLayersRef.current,
       subgridMetrics,
-      capturedPoints
+      capturedPoints,
+      explorerGridSpec
     );
   }, [
     projectExplorerActive,
@@ -2019,7 +2042,8 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
     districtGeojson,
     catalogGeometryKey,
     subgridMetrics,
-    capturedPoints
+    capturedPoints,
+    explorerGridSpec
   ]);
   explorerMeshResultRef.current = explorerMeshResult;
 
@@ -2030,6 +2054,8 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
   // but not measurements does not re-notify the parent.
   const onExplorerMeshCellsRef = useRef(onExplorerMeshCells);
   onExplorerMeshCellsRef.current = onExplorerMeshCells;
+  // The grid descriptor is read from the same memoized result as the cells, so
+  // provenance can never describe a different build than the data it labels.
   const meshCellSignatureRef = useRef<string | null>(null);
   useEffect(() => {
     const cells = explorerMeshResult?.cells || null;
@@ -2059,9 +2085,13 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
           )
           .join('|')
       : null;
-    if (sig === meshCellSignatureRef.current) return;
-    meshCellSignatureRef.current = sig;
-    onExplorerMeshCellsRef.current?.(cells);
+    // Grid provenance is part of the identity: the same cells measured over a
+    // different grid describe different numbers, so it must invalidate the cache.
+    const gridSig = `${explorerMeshResult?.grid?.source}|${explorerMeshResult?.grid?.cellCount}|${explorerMeshResult?.grid?.cellKm}|${explorerMeshResult?.grid?.areaFloored}|${explorerMeshResult?.grid?.declared}`;
+    const fullSig = `${sig}|${gridSig}`;
+    if (fullSig === meshCellSignatureRef.current) return;
+    meshCellSignatureRef.current = fullSig;
+    onExplorerMeshCellsRef.current?.(cells, explorerMeshResult?.grid);
   }, [explorerMeshResult]);
 
   // ── 2. Update mesh and road data ONLY when underlying geometry actually changes ──
@@ -2408,10 +2438,12 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
         }
       });
 
-      // Revert dimmed regions styling
+      // Restore the dim overlay to the operator's chosen System Baseline setting
+      // (it was forced off while the Project Explorer was active).
       if (map.getLayer('ra-dim')) {
-        map.setPaintProperty('ra-dim', 'fill-color', '#0b1220');
-        map.setPaintProperty('ra-dim', 'fill-opacity', 0);
+        const dim = systemStylesRef.current?.dimOutside;
+        map.setPaintProperty('ra-dim', 'fill-color', dim?.color || '#0b1220');
+        map.setPaintProperty('ra-dim', 'fill-opacity', dim?.visible === true ? (dim?.opacity ?? 0.45) : 0);
       }
       if (map.getLayer('ra-explorer-mask')) {
         map.setPaintProperty('ra-explorer-mask', 'fill-opacity', 0);

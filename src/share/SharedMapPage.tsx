@@ -18,6 +18,7 @@ import {
   type ShareSegment
 } from '../utils/mapShares';
 import { SharePasswordGate } from './SharePasswordGate';
+import { buildMeshExpression, classRangeLabel, METRIC_UNIT } from '../utils/choroplethSettings';
 
 const effectiveWorkerUrl = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_MAPLIBRE_WORKER_URL) || workerUrl;
 if (typeof (maplibregl as any).setWorkerUrl === 'function') {
@@ -363,6 +364,28 @@ function ShareMap({
         try {
           const lines = (snap.lines || []).filter((l: any) => l && Array.isArray(l.coords) && l.coords.length > 1);
           const pts = (snap.points || []).filter((p: any) => p && isFinite(p.lat) && isFinite(p.lng));
+
+          // 0. Project Explorer choropleth. Coloured with the SAME
+          //    buildMeshExpression the workspace map uses, driven by the class
+          //    breaks frozen into the snapshot — so the operator's manual break
+          //    edits and reversed palette reproduce exactly here. Added first so
+          //    road lines and stations still paint above the mesh blocks.
+          const explorer = snap.explorer;
+          if (explorer?.mesh?.features?.length && explorer.setting) {
+            map.addSource('explorer-mesh', { type: 'geojson', data: explorer.mesh });
+            map.addLayer({
+              id: 'explorer-mesh-fill',
+              type: 'fill',
+              source: 'explorer-mesh',
+              paint: { 'fill-color': buildMeshExpression(explorer.setting, explorer.metric) as any }
+            });
+            map.addLayer({
+              id: 'explorer-mesh-line',
+              type: 'line',
+              source: 'explorer-mesh',
+              paint: { 'line-color': '#ffffff', 'line-width': 1.2, 'line-opacity': 0.85 }
+            });
+          }
 
           // 1. Road lines (from extracted network or road plans)
           if (lines.length) {
@@ -756,6 +779,52 @@ function LegendCard({ share }: { share: MapShare }) {
   const sw = (color: string, dashed?: boolean) => (
     <span className="inline-block w-4 h-[3px] rounded" style={{ background: dashed ? `repeating-linear-gradient(90deg, ${color} 0 4px, transparent 4px 7px)` : color }} />
   );
+  // Class-break legend for the Project Explorer choropleth. Same
+  // classRangeLabel() the print sheet uses, so a printed map and a shared link
+  // describe identical bands.
+  const explorer = share?.snapshot?.explorer;
+  if (explorer?.setting?.classes?.length) {
+    const unit = METRIC_UNIT[explorer.metric] || '';
+    return (
+      <div className="absolute bottom-6 left-4 z-10 bg-white/95 backdrop-blur border border-slate-200 rounded-xl shadow-lg p-3.5 w-[240px]">
+        <div className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-wider text-slate-500 mb-2">
+          <MapPinned size={11} /> Legend
+        </div>
+        <div className="text-[11px] font-bold text-slate-900 mb-1.5">
+          {explorer.metricLabel || explorer.metric}
+        </div>
+        <div className="space-y-1.5 text-[11px] text-slate-700">
+          {explorer.setting.classes.map((c: any, i: number) => (
+            <div key={i} className="flex items-center gap-2">
+              <span className="w-3 h-3 rounded-sm border border-slate-300 shrink-0" style={{ background: c.color }} />
+              {classRangeLabel(i, explorer.setting.classes, unit)}
+            </div>
+          ))}
+        </div>
+        <div className="pt-1.5 mt-1.5 border-t border-slate-100 text-[11px] text-slate-600 leading-relaxed">
+          <strong className="text-slate-900">{explorer.cellCount?.toLocaleString() || 0}</strong> mesh cells
+          {explorer.grid?.cellKm ? (
+            <>
+              <br />
+              <span className="text-slate-500">
+                {explorer.grid.source === 'imported' ? 'Imported' : 'Derived'} grid · ~
+                {explorer.grid.cellKm} km cells
+              </span>
+            </>
+          ) : null}
+          <br />
+          <span className="text-slate-500">{explorer.scopeLabel}</span>
+        </div>
+        {/* Density and complexity are per-cell measures, so the cell size is part
+            of what the numbers mean. A reader comparing two shares needs it. */}
+        {explorer.grid?.areaFloored && (
+          <div className="mt-1.5 text-[10px] leading-snug text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-1">
+            Some cells are under 0.5 km² and were measured against that floor, so their density reads low.
+          </div>
+        )}
+      </div>
+    );
+  }
   return (
     <div className="absolute bottom-6 left-4 z-10 bg-white/95 backdrop-blur border border-slate-200 rounded-xl shadow-lg p-3.5 w-[240px]">
       <div className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-wider text-slate-500 mb-2">
@@ -990,7 +1059,7 @@ function LiveMapReference({
     <iframe
       ref={iframeRef}
       src={src}
-      title={`Shared ${share.kind === 'road' ? 'Road Analysis' : 'WebGIS'} map · direct reference`}
+      title={`Shared ${share.snapshot?.explorer ? `Project Explorer (${share.snapshot.explorer.metricLabel || share.snapshot.explorer.metric})` : share.kind === 'road' ? 'Road Analysis' : 'WebGIS'} map · direct reference`}
       className="absolute inset-0 w-full h-full border-0"
       allowFullScreen
     />
@@ -1150,6 +1219,12 @@ export function SharedMapPage() {
 
   const st = share?.snapshot?.stats || { subgrids: 0, km: 0, poi: 0, frames: 0, defects: 0, passRate: 100, lines: 0 };
   const hasKm = typeof st.km === 'number' && st.km > 0;
+  const ex = share?.snapshot?.explorer;
+  const shareDescriptor = ex
+    ? `Project Explorer · ${ex.metricLabel || ex.metric}`
+    : share.kind === 'road'
+      ? 'Road Analysis'
+      : 'WebGIS Survey';
   return (
     <div className="fixed inset-0 flex flex-col bg-white font-[Arial,Helvetica,sans-serif]">
       <header className="h-[52px] shrink-0 bg-white border-b border-slate-200 flex items-center justify-between px-4 z-20">
@@ -1160,7 +1235,7 @@ export function SharedMapPage() {
           <div className="min-w-0">
             <div className="text-[12.5px] font-bold text-slate-900 truncate">{share.title}</div>
             <div className="text-[9.5px] text-slate-500 uppercase tracking-wide truncate">
-              {share.kind === 'road' ? 'Road Analysis' : 'WebGIS Survey'}{hasKm ? ` · ${st.km.toFixed(2)} km` : ''}{share.snapshot?.contractCode ? ` · ${share.snapshot.contractCode}` : ''}
+              {shareDescriptor}{!ex && hasKm ? ` · ${st.km.toFixed(2)} km` : ''}{!ex && share.snapshot?.contractCode ? ` · ${share.snapshot.contractCode}` : ''}
             </div>
           </div>
         </div>

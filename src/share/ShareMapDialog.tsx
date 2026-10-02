@@ -15,6 +15,8 @@ interface ShareMapDialogProps {
   buildSnapshot: () => ShareSnapshot | Promise<ShareSnapshot>;
   basemap?: string;
   createdBy?: string | null;
+  /** Overrides the default "Road analysis map" / "WebGIS survey map" blurb. */
+  subtitle?: string;
   onClose: () => void;
 }
 
@@ -38,7 +40,7 @@ const DotOption = ({ label, selected, onSelect }: { label: string; selected: boo
   </button>
 );
 
-export function ShareMapDialog({ open, kind, defaultTitle, buildSnapshot, basemap, createdBy, onClose }: ShareMapDialogProps) {
+export function ShareMapDialog({ open, kind, defaultTitle, buildSnapshot, basemap, createdBy, subtitle, onClose }: ShareMapDialogProps) {
   const [title, setTitle] = useState(defaultTitle);
   const [usePassword, setUsePassword] = useState(false);
   const [password, setPassword] = useState('');
@@ -125,7 +127,7 @@ export function ShareMapDialog({ open, kind, defaultTitle, buildSnapshot, basema
             <div>
               <h3 className="text-sm font-bold text-text-base">Share Map Link</h3>
               <p className="text-[10px] text-text-muted">
-                {kind === 'road' ? 'Road analysis map · public read-only view' : 'WebGIS survey map · public read-only view'}
+                {subtitle || (kind === 'road' ? 'Road analysis map · public read-only view' : 'WebGIS survey map · public read-only view')}
               </p>
             </div>
           </div>

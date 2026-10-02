@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildExplorerBlock,
   buildRoadSnapshot,
   buildWebgisSnapshot,
   generateShareToken,
@@ -8,8 +9,10 @@ import {
   parseShareToken,
   pickStorageResolveSettings,
   resolveSegmentPanorama,
+  serializeExplorerMesh,
   verifySharePassword
 } from '../mapShares';
+import type { ChoroplethSetting } from '../choroplethSettings';
 
 describe('mapShares token + password', () => {
   it('generates unique 32-char hex tokens', () => {
@@ -206,6 +209,167 @@ describe('snapshot builders', () => {
       catalogLayers: [{ id: 'huge', name: 'Huge', geometryType: 'Point', geojson: { type: 'FeatureCollection', features } }]
     });
     expect(road.catalogLayers?.[0]?.featureCount).toBeLessThanOrEqual(25000);
+  });
+});
+
+describe('mapShares project explorer block', () => {
+  const setting: ChoroplethSetting = {
+    metric: 'density',
+    method: 'manual',
+    alpha: 0.85,
+    reverse: false,
+    classes: [
+      { upperBound: 3.5, color: '#edf8e9' },
+      { upperBound: null, color: '#31a354' }
+    ]
+  };
+
+  /** Mirrors the property bag the mesh builder emits, heavy fields included. */
+  function meshFeature(subgrid: string) {
+    return {
+      type: 'Feature',
+      id: 1,
+      properties: {
+        subgrid,
+        density: 2.5,
+        complexity: 40,
+        panotrack: 120,
+        roads: 9.1,
+        coverage: 66,
+        coverageKm: 6,
+        planKm: 9.1,
+        areaKm2: 3.6,
+        corridor: { shortKm: 1, mediumKm: 3, arterialKm: 2, trunkKm: 1 },
+        junctions: { deadEnd: 6, threeWay: 8, fourWay: 4, fivePlus: 2 },
+        frames: { verified: 150, defect: 60, transit: 50, mismatch: 40 },
+        bbox: [101.4, 2.9, 101.44, 2.94],
+        bbox_str: '[101.4,2.9,101.44,2.94]'
+      },
+      geometry: {
+        type: 'Polygon',
+        coordinates: [[[101.4, 2.9], [101.44, 2.9], [101.44, 2.94], [101.4, 2.94], [101.4, 2.9]]]
+      }
+    };
+  }
+
+  it('keeps only the properties the choropleth classifier reads', () => {
+    const mesh = serializeExplorerMesh({
+      type: 'FeatureCollection',
+      features: [meshFeature('GRID-001')]
+    });
+
+    expect(mesh.features).toHaveLength(1);
+    expect(Object.keys(mesh.features[0].properties).sort()).toEqual(
+      ['complexity', 'coverage', 'density', 'panotrack', 'roads', 'subgrid']
+    );
+    // The per-cell breakdowns are stamped onto every ring of a cell, so they
+    // are the bulk of the payload and the viewer never reads them.
+    expect(mesh.features[0].properties).not.toHaveProperty('corridor');
+    expect(mesh.features[0].properties).not.toHaveProperty('frames');
+    expect(mesh.features[0].properties).not.toHaveProperty('bbox_str');
+  });
+
+  it('drops non-finite metric values so they cannot poison the step expression', () => {
+    const f = meshFeature('GRID-002');
+    (f.properties as Record<string, unknown>).density = null;
+    f.properties.coverage = Number.NaN;
+    const mesh = serializeExplorerMesh({ type: 'FeatureCollection', features: [f] });
+
+    expect(mesh.features[0].properties).not.toHaveProperty('density');
+    expect(mesh.features[0].properties).not.toHaveProperty('coverage');
+    expect(mesh.features[0].properties.subgrid).toBe('GRID-002');
+  });
+
+  it('shrinks the payload by discarding the duplicated per-ring breakdowns', () => {
+    const features = Array.from({ length: 200 }, (_, i) => meshFeature(`GRID-${i}`));
+    const raw = JSON.stringify({ type: 'FeatureCollection', features }).length;
+    const lean = JSON.stringify(
+      serializeExplorerMesh({ type: 'FeatureCollection', features })
+    ).length;
+
+    expect(lean).toBeLessThan(raw * 0.6);
+  });
+
+  it('sends every cell with no cap, so a share never silently loses the region', () => {
+    const features = Array.from({ length: 5000 }, (_, i) => meshFeature(`GRID-${i}`));
+    const block = buildExplorerBlock({
+      metric: 'density',
+      setting,
+      mesh: { type: 'FeatureCollection', features }
+    });
+
+    expect(block?.cellCount).toBe(5000);
+    expect(block?.mesh.features).toHaveLength(5000);
+  });
+
+  it('carries grid provenance so a public reader knows the cell size', () => {
+    const block = buildExplorerBlock({
+      metric: 'density',
+      setting,
+      mesh: { type: 'FeatureCollection', features: [meshFeature('GRID-001')] },
+      grid: { source: 'imported', cellKm: 5, areaFloored: false }
+    });
+
+    expect(block?.grid).toEqual({ source: 'imported', cellKm: 5, areaFloored: false });
+  });
+
+  it('omits grid provenance rather than inventing it when none was measured', () => {
+    const block = buildExplorerBlock({
+      metric: 'density',
+      setting,
+      mesh: { type: 'FeatureCollection', features: [meshFeature('GRID-001')] }
+    });
+
+    expect(block?.grid).toBeUndefined();
+  });
+
+  it('flags a floored area so the viewer can qualify a low density', () => {
+    const block = buildExplorerBlock({
+      metric: 'density',
+      setting,
+      mesh: { type: 'FeatureCollection', features: [meshFeature('GRID-001')] },
+      grid: { source: 'derived', cellKm: 1.2, areaFloored: true }
+    });
+
+    expect(block?.grid?.areaFloored).toBe(true);
+  });
+
+  it('freezes the resolved class breaks so the viewer reproduces manual edits', () => {
+    const block = buildExplorerBlock({
+      metric: 'density',
+      metricLabel: 'Road density',
+      scopeLabel: 'GRID-007',
+      palette: 'greens',
+      setting,
+      mesh: { type: 'FeatureCollection', features: [meshFeature('GRID-007')] }
+    });
+
+    expect(block?.metricLabel).toBe('Road density');
+    expect(block?.scopeLabel).toBe('GRID-007');
+    expect(block?.palette).toBe('greens');
+    expect(block?.setting.classes).toEqual(setting.classes);
+  });
+
+  it('returns no block when the explorer produced no mesh', () => {
+    expect(buildExplorerBlock({ metric: 'density', setting, mesh: null })).toBeUndefined();
+    expect(
+      buildExplorerBlock({
+        metric: 'density',
+        setting,
+        mesh: { type: 'FeatureCollection', features: [] }
+      })
+    ).toBeUndefined();
+  });
+
+  it('attaches the block to a road share, and leaves road shares untouched without one', () => {
+    const block = buildExplorerBlock({
+      metric: 'density',
+      setting,
+      mesh: { type: 'FeatureCollection', features: [meshFeature('GRID-001')] }
+    });
+
+    expect(buildRoadSnapshot([], { explorer: block }).explorer?.cellCount).toBe(1);
+    expect(buildRoadSnapshot([]).explorer).toBeUndefined();
   });
 });
 

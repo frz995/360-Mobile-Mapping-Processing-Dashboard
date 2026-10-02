@@ -14,6 +14,9 @@ import {
   clipPolygonRingToBbox,
   clipDistrictToCellBbox,
   buildMeshRoadChoroplethGeojson,
+  buildGridInfoFromCells,
+  kmToStepDeg,
+  sanitizeGridKm,
   ATLAS_PALETTES
 } from '../projectExplorerGeometry';
 
@@ -412,6 +415,273 @@ describe('projectExplorerGeometry', () => {
       cell!.corridor.arterialKm +
       cell!.corridor.trunkKm;
     expect(corridorTotal).toBeLessThan(cell!.planKm + 0.01);
+  });
+
+  describe('grid provenance', () => {
+    // ~0.2 deg on a side, so the compact-urban branch (stepDeg 0.018) applies.
+    const districtGeojson = {
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          geometry: {
+            type: 'Polygon',
+            coordinates: [
+              [
+                [101.0, 4.0],
+                [101.2, 4.0],
+                [101.2, 4.2],
+                [101.0, 4.2],
+                [101.0, 4.0]
+              ]
+            ]
+          }
+        }
+      ]
+    };
+
+    it('reports a derived grid with the cell size it chose', () => {
+      const roadRuns = [[[101.05, 4.05], [101.15, 4.15]]] as any;
+      const result = buildMeshRoadChoroplethGeojson(roadRuns, districtGeojson, []);
+
+      expect(result.grid.source).toBe('derived');
+      expect(result.grid.cellCount).toBe(result.cells.length);
+      // stepDeg 0.018 deg is ~2.0 km at the equator.
+      expect(result.grid.cellKm).toBeCloseTo(2, 0);
+    });
+
+    it('reports an imported grid and never mixes it with the derived fallback', () => {
+      const importedLayer = {
+        hasFeatures: true,
+        geojson: {
+          type: 'FeatureCollection',
+          features: [
+            {
+              type: 'Feature',
+              properties: { NAME: 'G5x5-01' },
+              geometry: {
+                type: 'Polygon',
+                coordinates: [
+                  [
+                    [101.0, 4.0],
+                    [101.05, 4.0],
+                    [101.05, 4.05],
+                    [101.0, 4.05],
+                    [101.0, 4.0]
+                  ]
+                ]
+              }
+            }
+          ]
+        }
+      } as any;
+
+      const roadRuns = [[[101.0, 4.0], [101.05, 4.05]]] as any;
+      const result = buildMeshRoadChoroplethGeojson(roadRuns, districtGeojson, [importedLayer]);
+
+      expect(result.grid.source).toBe('imported');
+      expect(result.cells.map((c) => c.subgrid)).toEqual(['G5x5-01']);
+    });
+
+    it('flags cells clamped up to the 0.5 km2 floor so a low density is not read as real', () => {
+      // ~0.004 deg on a side is roughly 0.02 km2 — well under the floor.
+      const tinyDistrict = {
+        type: 'FeatureCollection',
+        features: [
+          {
+            type: 'Feature',
+            geometry: {
+              type: 'Polygon',
+              coordinates: [
+                [
+                  [101.0, 4.0],
+                  [101.004, 4.0],
+                  [101.004, 4.004],
+                  [101.0, 4.004],
+                  [101.0, 4.0]
+                ]
+              ]
+            }
+          }
+        ]
+      };
+      const subgridMetrics = [{ subgrid: 'TINY', bbox: [101.0, 4.0, 101.004, 4.004], planKm: 1 }];
+      const roadRuns = [[[101.0, 4.0], [101.004, 4.004]]] as any;
+
+      const result = buildMeshRoadChoroplethGeojson(
+        roadRuns,
+        tinyDistrict,
+        subgridMetrics
+      );
+
+      expect(result.cells).toHaveLength(1);
+      // The floor is applied, so area is never the true sub-0.5 km2 value.
+      expect(result.cells[0].areaKm2).toBeGreaterThanOrEqual(0.5);
+      expect(result.grid.areaFloored).toBe(true);
+    });
+
+    it('does not flag the floor for a cell of ordinary size', () => {
+      const subgridMetrics = [{ subgrid: 'NORMAL', bbox: [101.0, 4.0, 101.05, 4.05], planKm: 4 }];
+      const roadRuns = [[[101.0, 4.0], [101.05, 4.05]]] as any;
+
+      const result = buildMeshRoadChoroplethGeojson(roadRuns, districtGeojson, subgridMetrics);
+
+      expect(result.grid.areaFloored).toBe(false);
+    });
+  });
+
+  it('derives a comparable cell size from cells alone, for callers without a descriptor', () => {
+    const info = buildGridInfoFromCells([
+      { areaKm2: 25 },
+      { areaKm2: 25 },
+      { areaKm2: 16 }
+    ] as any);
+
+    expect(info.cellCount).toBe(3);
+    // Median area 25 km2 -> 5 km edge.
+    expect(info.cellKm).toBe(5);
+    expect(info.source).toBe('derived');
+  });
+
+  describe('operator-declared grid', () => {
+    const districtGeojson = {
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          geometry: {
+            type: 'Polygon',
+            coordinates: [
+              [
+                [101.0, 4.0],
+                [101.7, 4.0],
+                [101.7, 4.6],
+                [101.0, 4.6],
+                [101.0, 4.0]
+              ]
+            ]
+          }
+        }
+      ]
+    };
+    const roadRuns = [[[101.1, 4.1], [101.6, 4.5]]] as any;
+
+    it('defaults to the auto resolution when no spec is supplied', () => {
+      const auto = buildMeshRoadChoroplethGeojson(roadRuns, districtGeojson, []);
+      const explicitNull = buildMeshRoadChoroplethGeojson(roadRuns, districtGeojson, [], [], [], null);
+      const emptySpec = buildMeshRoadChoroplethGeojson(roadRuns, districtGeojson, [], [], [], {});
+
+      expect(explicitNull.cells.length).toBe(auto.cells.length);
+      expect(emptySpec.cells.length).toBe(auto.cells.length);
+      expect(auto.grid.declared).toBe(false);
+      expect(auto.grid.cellKmSource).toBe('auto');
+    });
+
+    it('builds a 5 km lattice when 5 km is declared for the derived grid', () => {
+      const declared = buildMeshRoadChoroplethGeojson(roadRuns, districtGeojson, [], [], [], {
+        derivedCellKm: 5
+      });
+      const auto = buildMeshRoadChoroplethGeojson(roadRuns, districtGeojson, []);
+
+      expect(declared.grid.declared).toBe(true);
+      expect(declared.grid.cellKmSource).toBe('declared');
+      expect(declared.grid.cellKm).toBe(5);
+      // Coarser cells must mean fewer of them.
+      expect(declared.grid.cellCount).toBeLessThan(auto.grid.cellCount);
+    });
+
+    it('grows the cell count as the declared size shrinks', () => {
+      const coarse = buildMeshRoadChoroplethGeojson(roadRuns, districtGeojson, [], [], [], { derivedCellKm: 10 });
+      const fine = buildMeshRoadChoroplethGeojson(roadRuns, districtGeojson, [], [], [], { derivedCellKm: 2 });
+
+      expect(fine.grid.cellCount).toBeGreaterThan(coarse.grid.cellCount);
+    });
+
+    it('gives a district-clipped edge cell the same area as an interior one when declared', () => {
+      // One whole cell plus one clipped sliver, as a real clipped survey grid has.
+      const subgridMetrics = [
+        { subgrid: 'FULL', bbox: [101.1, 4.1, 101.15, 4.15], planKm: 4 },
+        { subgrid: 'CLIPPED', bbox: [101.15, 4.1, 101.175, 4.15], planKm: 1 }
+      ];
+
+      const measured = buildMeshRoadChoroplethGeojson(roadRuns, districtGeojson, subgridMetrics);
+      const clippedMeasured = measured.cells.find((c) => c.subgrid === 'CLIPPED');
+      const fullMeasured = measured.cells.find((c) => c.subgrid === 'FULL');
+      // Measured areas differ, so the sliver reports a different density.
+      expect(clippedMeasured!.areaKm2).not.toBe(fullMeasured!.areaKm2);
+
+      const declared = buildMeshRoadChoroplethGeojson(roadRuns, districtGeojson, subgridMetrics, [], [], {
+        importedCellKm: 5
+      });
+      const clippedDeclared = declared.cells.find((c) => c.subgrid === 'CLIPPED');
+      const fullDeclared = declared.cells.find((c) => c.subgrid === 'FULL');
+      // Declared: one denominator for every cell, so the sliver is not penalised
+      // nor rewarded by its clipped footprint.
+      expect(clippedDeclared!.areaKm2).toBe(fullDeclared!.areaKm2);
+      expect(clippedDeclared!.areaKm2).toBe(25);
+      expect(declared.grid.declared).toBe(true);
+      expect(declared.grid.cellKmSource).toBe('declared');
+    });
+
+    it('does not flag the area floor once a nominal area is declared', () => {
+      const tinyDistrict = {
+        type: 'FeatureCollection',
+        features: [
+          {
+            type: 'Feature',
+            geometry: {
+              type: 'Polygon',
+              coordinates: [
+                [
+                  [101.0, 4.0],
+                  [101.004, 4.0],
+                  [101.004, 4.004],
+                  [101.0, 4.004],
+                  [101.0, 4.0]
+                ]
+              ]
+            }
+          }
+        ]
+      };
+      const subgridMetrics = [{ subgrid: 'TINY', bbox: [101.0, 4.0, 101.004, 4.004], planKm: 1 }];
+      const tinyRun = [[[101.0, 4.0], [101.004, 4.004]]] as any;
+
+      const declared = buildMeshRoadChoroplethGeojson(tinyRun, tinyDistrict, subgridMetrics, [], [], {
+        importedCellKm: 5
+      });
+      expect(declared.cells[0].areaKm2).toBe(25);
+      expect(declared.grid.areaFloored).toBe(false);
+    });
+
+    it('rejects an unusable declared size and falls back to auto', () => {
+      for (const bad of [0, -5, 500, Number.NaN, 'abc', null]) {
+        const result = buildMeshRoadChoroplethGeojson(roadRuns, districtGeojson, [], [], [], {
+          derivedCellKm: bad as any
+        });
+        expect(result.grid.declared).toBe(false);
+        expect(result.grid.cellKmSource).toBe('auto');
+      }
+    });
+  });
+
+  describe('grid helpers', () => {
+    it('sanitises a declared size and rejects out-of-range values', () => {
+      expect(sanitizeGridKm(5)).toBe(5);
+      expect(sanitizeGridKm('7.5')).toBe(7.5);
+      expect(sanitizeGridKm(0.05)).toBeNull();
+      expect(sanitizeGridKm(150)).toBeNull();
+      expect(sanitizeGridKm('nope')).toBeNull();
+      expect(sanitizeGridKm(undefined)).toBeNull();
+    });
+
+    it('converts km to a latitude-aware degree step', () => {
+      // At the equator a degree is ~111 km, so 5 km is ~0.045 deg.
+      expect(kmToStepDeg(5, 0)).toBeCloseTo(0.045, 3);
+      // Away from the equator a degree of longitude is shorter, so the same km
+      // needs a bigger step.
+      expect(kmToStepDeg(5, 60)).toBeGreaterThan(kmToStepDeg(5, 0));
+    });
   });
 
   it('generates inverted polygon mask and outline for selected grid focus', () => {
