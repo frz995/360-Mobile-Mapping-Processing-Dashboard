@@ -2392,12 +2392,20 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
       const selectedSrc = map.getSource('ra-explorer-selected-box') as maplibregl.GeoJSONSource | undefined;
       selectedSrc?.setData?.(EMPTY_FC);
 
-      // Restore catalog polygon outlines and fills
+      // Restore catalog polygon outlines and fills, but only the layers the
+      // operator still has switched on. Forcing every polygon back to 'visible'
+      // here overrode a layer whose eye icon was toggled off, so the hide
+      // button appeared to do nothing for imported polygon layers.
       catalogLayers.forEach((catLayer) => {
+        const layerVisible = catLayer.visible !== false;
         const outlineId = `ra-cat-${catLayer.id}-poly-line`;
         const fillId = `ra-cat-${catLayer.id}-fill`;
-        if (map.getLayer(outlineId)) map.setLayoutProperty(outlineId, 'visibility', 'visible');
-        if (map.getLayer(fillId)) map.setLayoutProperty(fillId, 'visibility', 'visible');
+        if (map.getLayer(outlineId)) {
+          map.setLayoutProperty(outlineId, 'visibility', layerVisible ? 'visible' : 'none');
+        }
+        if (map.getLayer(fillId)) {
+          map.setLayoutProperty(fillId, 'visibility', layerVisible ? 'visible' : 'none');
+        }
       });
 
       // Revert dimmed regions styling
