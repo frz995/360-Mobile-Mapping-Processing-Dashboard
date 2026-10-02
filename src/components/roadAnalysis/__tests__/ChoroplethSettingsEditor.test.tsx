@@ -33,18 +33,16 @@ const classSwatches = () =>
   screen.getAllByLabelText(/Class \d colour/) as HTMLInputElement[];
 
 describe('ChoroplethSettingsEditor', () => {
-  it('opens with Apply/Save disabled until something changes', () => {
+  it('opens with Revert/Save disabled until something changes', () => {
     openEditor();
-    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Apply' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /Save/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Revert' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
   });
 
-  it('applies a manually typed class bound', () => {
+  it('applies a manually typed class bound live', () => {
     const { props } = openEditor();
 
     fireEvent.change(screen.getByLabelText('Class 2 upper bound'), { target: { value: '4.25' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
 
     expect(props.onApply).toHaveBeenCalledTimes(1);
     const applied = props.onApply.mock.calls[0][0] as ChoroplethSetting;
@@ -63,9 +61,9 @@ describe('ChoroplethSettingsEditor', () => {
   it('applies a palette change through both the ramp picker and the map palette', () => {
     const { props } = openEditor();
     fireEvent.click(screen.getByRole('button', { name: 'Use purples ramp' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
 
     expect(props.onPaletteChange).toHaveBeenCalledWith('purples');
+    expect(props.onApply).toHaveBeenCalledTimes(1);
     const applied = props.onApply.mock.calls[0][0] as ChoroplethSetting;
     const purples = createDefaultSetting(METRIC, 'purples');
     expect(applied.classes.map(c => c.color)).toEqual(purples.classes.map(c => c.color));
@@ -80,32 +78,38 @@ describe('ChoroplethSettingsEditor', () => {
     expect((props.onSave.mock.calls[0][0] as ChoroplethSetting).classes[2].upperBound).toBe(7);
   });
 
-  it('Cancel discards the draft without applying', () => {
+  it('Revert discards the draft and restores the applied value', () => {
     const { props } = openEditor();
     fireEvent.change(screen.getByLabelText('Class 1 upper bound'), { target: { value: '99' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(props.onApply).toHaveBeenCalledTimes(1);
 
-    expect(props.onApply).not.toHaveBeenCalled();
-    expect(props.onSave).not.toHaveBeenCalled();
-    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Revert' }));
+
+    // A second apply pushes the pre-edit snapshot back to the live workspace.
+    expect(props.onApply).toHaveBeenCalledTimes(2);
+    const rollback = props.onApply.mock.calls[1][0] as ChoroplethSetting;
+    expect(rollback.classes[0].upperBound).toBe(1.5);
+    expect(screen.getByDisplayValue('1.5')).toBeInTheDocument();
+    expect(screen.queryByDisplayValue('99')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Revert' })).toBeDisabled();
   });
 
-  it('Cancel restores the last applied value, not the first one', () => {
+  it('Revert restores the last saved value, not the first one', () => {
     const { props } = openEditor();
 
     fireEvent.change(screen.getByLabelText('Class 2 upper bound'), { target: { value: '5' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     fireEvent.change(screen.getByLabelText('Class 3 upper bound'), { target: { value: '77' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Revert' }));
 
     expect(screen.getByDisplayValue('5')).toBeInTheDocument();
     expect(screen.queryByDisplayValue('77')).not.toBeInTheDocument();
-    expect(props.onApply).toHaveBeenCalledTimes(1);
+    expect(props.onSave).toHaveBeenCalledTimes(1);
   });
 
   it('adds and removes classes within the supported range', () => {
     openEditor();
-    const remove = screen.getByRole('button', { name: 'Remove class' });
+    const remove = screen.getByRole('button', { name: 'Remove last class' });
     const add = screen.getByRole('button', { name: 'Add class' });
 
     fireEvent.click(remove);
@@ -142,11 +146,11 @@ describe('ChoroplethSettingsEditor', () => {
     expect(classSwatches().map(s => s.value)).toEqual(classColors(reversed));
   });
 
-  it('toggles the ramp direction on Apply', () => {
+  it('toggles the ramp direction live', () => {
     const { props } = openEditor();
     fireEvent.click(screen.getByRole('button', { name: /Reverse ramp/ }));
-    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
 
+    expect(props.onApply).toHaveBeenCalledTimes(1);
     const applied = props.onApply.mock.calls[0][0] as ChoroplethSetting;
     expect(applied.reverse).toBe(true);
     // Bounds stay ascending when the ramp flips.
@@ -154,18 +158,18 @@ describe('ChoroplethSettingsEditor', () => {
     expect([...bounds].sort((a, b) => a - b)).toEqual(bounds);
   });
 
-  it('applies opacity changes', () => {
+  it('applies opacity changes live', () => {
     const { props } = openEditor();
     fireEvent.change(screen.getByLabelText('Fill opacity'), { target: { value: '0.4' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+    expect(props.onApply).toHaveBeenCalledTimes(1);
     expect((props.onApply.mock.calls[0][0] as ChoroplethSetting).alpha).toBe(0.4);
   });
 
   it('computes natural breaks from the observed values', () => {
     const { props } = openEditor();
     fireEvent.click(screen.getByRole('button', { name: /Natural/ }));
-    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
 
+    expect(props.onApply).toHaveBeenCalledTimes(1);
     const applied = props.onApply.mock.calls[0][0] as ChoroplethSetting;
     expect(applied.method).toBe('natural');
     const bounds = applied.classes.slice(0, -1).map(c => c.upperBound as number);

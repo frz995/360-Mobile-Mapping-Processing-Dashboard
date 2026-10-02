@@ -8,14 +8,12 @@
 // metric, with a live preview that drives the map, legend and charts from the
 // same classifier.
 //
-// Save = keep the live state and persist it to Supabase
-// (project_settings.roadAnalysisState). Apply = commit to the live workspace
-// without writing to the database. Cancel = discard the draft and restore the
-// last applied value.
-//
-// Every edit applies immediately, so the map, legend and charts always show the
-// operator's change before they commit. `applied` is the snapshot Cancel rolls
-// back to, and the only thing Save writes.
+// There is no Apply button: every edit applies to the live workspace
+// immediately, so the map, legend and charts always show the operator's change
+// before they commit. `applied` is the snapshot the Revert button rolls back
+// to, and the only thing Save writes to Supabase
+// (project_settings.roadAnalysisState). Cancel-style discard is therefore a
+// live re-apply of `applied`, not a local state reset.
 // =====================================================================
 
 import React, { useEffect, useMemo, useState } from 'react';
