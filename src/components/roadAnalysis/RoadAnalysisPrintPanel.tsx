@@ -604,7 +604,7 @@ export const RoadAnalysisPrintPanel: React.FC<RoadAnalysisPrintPanelProps> = ({
       {/* Print Preview Map (reuses the same overlay renderer as the main map) */}
       <div className="flex-1 min-h-0 relative overflow-hidden">
         <RoadAnalysisMap
-          active
+          active={isActive}
           showRoadLines={showRoadLines}
           style={style}
           districtGeojson={districtGeojson}

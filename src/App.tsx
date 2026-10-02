@@ -1710,6 +1710,42 @@ export default function App() {
     stitching: true
   });
 
+  // Push the trajectory filter to the embedded map. Scoped to the captured
+  // iframe ref: the previous document.querySelectorAll('iframe') broadcast hit
+  // every iframe on the page (viewer panels, share previews, thumbnails), so a
+  // toggle in one place could retarget a map the operator was not looking at.
+  const pushTrajectoryFilter = React.useCallback((
+    filters: { published: boolean; defect: boolean; stitching: boolean },
+    layerVisible: boolean
+  ) => {
+    const win = inspectionMapIframeRef.current?.contentWindow;
+    if (!win) return;
+    try {
+      win.postMessage({
+        type: 'FILTER_STATUS_TYPES',
+        statusFilters: { ...filters, selected: true },
+        showPanotrackData: layerVisible
+      }, '*');
+    } catch (err) { }
+  }, []);
+
+  // Restore the operator's trajectory filter once the iframe finishes booting.
+  // Messages sent before the WebGIS listener attaches are dropped, so without
+  // this the toggle silently resets to "everything on" on every page load.
+  useEffect(() => {
+    const win = inspectionMapIframeRef.current?.contentWindow;
+    if (!win) return;
+    const onReady = (e: MessageEvent) => {
+      if (e.source !== win) return;
+      if (e.data?.type === 'MAP_READY' || e.data?.type === 'VIEWER_READY'
+        || e.data?.type === 'WEBGIS_READY' || e.data?.type === 'MAP_LOADED') {
+        pushTrajectoryFilter(statusFilters, showPanotrackData);
+      }
+    };
+    window.addEventListener('message', onReady);
+    return () => window.removeEventListener('message', onReady);
+  }, [pushTrajectoryFilter, statusFilters, showPanotrackData]);
+
   const lastUpdateDate = React.useMemo(() => {
     // Determine the most recent daily operation date dynamically
     let sourceDaily = dailyData;
@@ -3059,12 +3095,7 @@ export default function App() {
                                   onChange={(e) => {
                                     const val = e.target.checked;
                                     setShowPanotrackData(val);
-                                    const iframes = document.querySelectorAll('iframe');
-                                    iframes.forEach(f => {
-                                      try {
-                                        f.contentWindow?.postMessage({ type: 'FILTER_STATUS_TYPES', statusFilters, showPanotrackData: val }, '*');
-                                      } catch (err) { }
-                                    });
+                                    pushTrajectoryFilter(statusFilters, val);
                                   }}
                                   className="rounded text-sky-500 focus:ring-0 cursor-pointer accent-sky-500 w-3.5 h-3.5"
                                 />
@@ -3083,12 +3114,7 @@ export default function App() {
                                     onChange={(e) => {
                                       const next = { ...statusFilters, published: e.target.checked };
                                       setStatusFilters(next);
-                                      const iframes = document.querySelectorAll('iframe');
-                                      iframes.forEach(f => {
-                                        try {
-                                          f.contentWindow?.postMessage({ type: 'FILTER_STATUS_TYPES', statusFilters: next, showPanotrackData }, '*');
-                                        } catch (err) { }
-                                      });
+                                      pushTrajectoryFilter(next, showPanotrackData);
                                     }}
                                     className="rounded text-sky-500 focus:ring-0 cursor-pointer accent-sky-500 w-3.5 h-3.5"
                                   />
@@ -3106,12 +3132,7 @@ export default function App() {
                                     onChange={(e) => {
                                       const next = { ...statusFilters, defect: e.target.checked };
                                       setStatusFilters(next);
-                                      const iframes = document.querySelectorAll('iframe');
-                                      iframes.forEach(f => {
-                                        try {
-                                          f.contentWindow?.postMessage({ type: 'FILTER_STATUS_TYPES', statusFilters: next, showPanotrackData }, '*');
-                                        } catch (err) { }
-                                      });
+                                      pushTrajectoryFilter(next, showPanotrackData);
                                     }}
                                     className="rounded text-sky-500 focus:ring-0 cursor-pointer accent-sky-500 w-3.5 h-3.5"
                                   />
@@ -3129,12 +3150,7 @@ export default function App() {
                                     onChange={(e) => {
                                       const next = { ...statusFilters, stitching: e.target.checked };
                                       setStatusFilters(next);
-                                      const iframes = document.querySelectorAll('iframe');
-                                      iframes.forEach(f => {
-                                        try {
-                                          f.contentWindow?.postMessage({ type: 'FILTER_STATUS_TYPES', statusFilters: next, showPanotrackData }, '*');
-                                        } catch (err) { }
-                                      });
+                                      pushTrajectoryFilter(next, showPanotrackData);
                                     }}
                                     className="rounded text-sky-500 focus:ring-0 cursor-pointer accent-sky-500 w-3.5 h-3.5"
                                   />
@@ -3294,6 +3310,8 @@ export default function App() {
                           projectSettings={projectSettings}
                           defectsList={allKnownDefects}
                           iframeRefCb={(el) => { inspectionMapIframeRef.current = el; }}
+                          showPanotrackLayer={showPanotrackData}
+                          trajectoryStatusFilters={statusFilters}
                         />
                         <ShareMapDialog
                           open={shareMapOpen}

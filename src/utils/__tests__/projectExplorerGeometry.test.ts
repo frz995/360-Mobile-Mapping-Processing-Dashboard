@@ -272,6 +272,148 @@ describe('projectExplorerGeometry', () => {
     expect(result.annotatedRoadsGeojson.features[0].properties?.subgrid).toBe('SG01');
   });
 
+  it('returns un-ring-expanded cells carrying the per-cell breakdown the card aggregates', () => {
+    const districtGeojson = {
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          geometry: {
+            type: 'Polygon',
+            coordinates: [
+              [
+                [101.0, 4.0],
+                [101.2, 4.0],
+                [101.2, 4.2],
+                [101.0, 4.2],
+                [101.0, 4.0]
+              ]
+            ]
+          }
+        }
+      ]
+    };
+
+    const subgridMetrics = [
+      { subgrid: 'SG01', bbox: [101.05, 4.05, 101.15, 4.15], planKm: 12.5 },
+      { subgrid: 'SG02', bbox: [101.06, 4.06, 101.16, 4.16], planKm: 7.5 }
+    ];
+
+    // Four runs meeting at one shared node, so the cell has a 4-way junction to
+    // classify. Degree counts segment ends, so four arms from one point.
+    const hub: [number, number] = [101.1, 4.1];
+    const roadRuns = [
+      [
+        hub,
+        [101.06, 4.06]
+      ],
+      [
+        hub,
+        [101.14, 4.14]
+      ],
+      [
+        hub,
+        [101.06, 4.14]
+      ],
+      [
+        hub,
+        [101.14, 4.06]
+      ]
+    ] as any;
+
+    const capturedPoints = [
+      [101.1, 4.1],
+      [101.11, 4.11]
+    ] as any;
+
+    const result = buildMeshRoadChoroplethGeojson(
+      roadRuns,
+      districtGeojson,
+      subgridMetrics,
+      capturedPoints
+    );
+
+    expect(result.cells).toHaveLength(2);
+    expect(new Set(result.cells.map((c) => c.subgrid))).toEqual(new Set(['SG01', 'SG02']));
+
+    for (const c of result.cells) {
+      expect(c.corridor).toBeDefined();
+      expect(c.junctions).toBeDefined();
+      expect(c.frames).toBeDefined();
+      expect(typeof c.coverageKm).toBe('number');
+      expect(c.coverageKm).toBeGreaterThanOrEqual(0);
+      expect(c.coverageKm).toBeLessThanOrEqual(c.planKm);
+    }
+
+    const corridorTotal = result.cells.reduce(
+      (acc, c) =>
+        acc +
+        c.corridor.shortKm +
+        c.corridor.mediumKm +
+        c.corridor.arterialKm +
+        c.corridor.trunkKm,
+      0
+    );
+    expect(corridorTotal).toBeGreaterThan(0);
+
+    // Junction nodes are counted, not invented.
+    const nodeTotal = result.cells.reduce(
+      (acc, c) => acc + c.junctions.threeWay + c.junctions.fourWay + c.junctions.fivePlus,
+      0
+    );
+    expect(nodeTotal).toBeGreaterThan(0);
+
+    // Frame counts match the captured points that fall inside each cell.
+    const frameTotal = result.cells.reduce((acc, c) => acc + c.panotrack, 0);
+    expect(frameTotal).toBeGreaterThanOrEqual(2);
+  });
+
+  it('derives corridor km from the clipped length, so a clipped segment never exceeds its cell', () => {
+    const districtGeojson = {
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          geometry: {
+            type: 'Polygon',
+            coordinates: [
+              [
+                [101.0, 4.0],
+                [101.2, 4.0],
+                [101.2, 4.2],
+                [101.0, 4.2],
+                [101.0, 4.0]
+              ]
+            ]
+          }
+        }
+      ]
+    };
+
+    const subgridMetrics = [
+      { subgrid: 'SMALL', bbox: [101.05, 4.05, 101.06, 4.06], planKm: 4 }
+    ];
+
+    // A run much longer than the tiny cell: the corridor split must use the
+    // clipped length, so the totals stay inside the cell.
+    const roadRuns = [
+      [
+        [101.0, 4.0],
+        [101.2, 4.2]
+      ]
+    ] as any;
+
+    const result = buildMeshRoadChoroplethGeojson(roadRuns, districtGeojson, subgridMetrics);
+    const cell = result.cells.find((c) => c.subgrid === 'SMALL');
+    expect(cell).toBeDefined();
+    const corridorTotal =
+      cell!.corridor.shortKm +
+      cell!.corridor.mediumKm +
+      cell!.corridor.arterialKm +
+      cell!.corridor.trunkKm;
+    expect(corridorTotal).toBeLessThan(cell!.planKm + 0.01);
+  });
+
   it('generates inverted polygon mask and outline for selected grid focus', () => {
     const ring: [number, number][] = [
       [101.0, 4.0],

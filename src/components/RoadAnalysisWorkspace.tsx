@@ -25,12 +25,18 @@ import type { Map as MaplibreMap } from 'maplibre-gl';
 import { RoadAnalysis3DStudio } from './roadAnalysis/RoadAnalysis3DStudio';
 import { ProjectExplorerPanel } from './roadAnalysis/ProjectExplorerPanel';
 import {
-  calculateBufferAnalytics,
-  haversineMeters,
-  type BufferAnalytics,
   type ExplorerChoroplethPalette,
   type MeshCellData
 } from '../utils/projectExplorerGeometry';
+import { getAllMeshCategories } from '../utils/catchmentStats';
+import {
+  EXPLORER_METRICS,
+  createDefaultSettings,
+  normalizeSettings,
+  valuesFromMesh,
+  type ChoroplethSetting,
+  type ChoroplethSettingsMap
+} from '../utils/choroplethSettings';
 import { toast } from './common/toast';
 import { type LightingPreset, type ColorThemePreset } from '../utils/map3DLighting';
 import { UnderlineTabStrip, StatusDot, type ChromeTab } from './production/chrome';
@@ -78,6 +84,7 @@ import {
   saveRoadAnalysisStateToSupabase,
   fetchRoadAnalysisStateFromSupabase,
   fetchSupabaseData,
+  supabase,
   type RoadAnalysisProductionState
 } from '../services/supabase';
 import { getActiveProjectId } from '../services/projectContext';
@@ -752,18 +759,149 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
   const [showLabels, setShowLabels] = useState<boolean>(true);
   const [atmosphereTint, setAtmosphereTint] = useState<boolean>(true);
 
-  // Project Explorer state: live buffer radius slider, center pin, urban density analytics
+  // Project Explorer state. There is no buffer radius: the card aggregates the
+  // mesh cells the map paints, so idle needs no pin and no dragged circle.
   const [showProjectExplorer, setShowProjectExplorer] = useState<boolean>(false);
   const [explorerCenter, setExplorerCenter] = useState<[number, number] | null>(null);
-  const [explorerCenterB, setExplorerCenterB] = useState<[number, number] | null>(null);
-  const [explorerRadius, setExplorerRadius] = useState<number>(5000);
   const [explorerPalette, setExplorerPalette] = useState<ExplorerChoroplethPalette>('greens');
-  const [isCompareMode, setIsCompareMode] = useState<boolean>(false);
-  const [activePinFocus, setActivePinFocus] = useState<'A' | 'B'>('A');
   const [colorByMetric, setColorByMetric] = useState<string>('density');
+  // Operator-defined class breaks per metric. Seeded with the built-in
+  // defaults so the map, legend and charts agree before any edit is made.
+  const [choroplethSettings, setChoroplethSettings] = useState<ChoroplethSettingsMap>(() =>
+    createDefaultSettings(EXPLORER_METRICS, 'greens')
+  );
+  // Mesh cells reported by RoadAnalysisMap. One source for both the class-break
+  // values and the Details card aggregation.
+  const [explorerMeshCells, setExplorerMeshCells] = useState<MeshCellData[]>([]);
+
+  // Stable map callbacks: inline lambdas at the call site defeated
+  // RoadAnalysisMap's React.memo, so every raw MapLibre `pitch` event (≈60Hz)
+  // re-rendered the entire workspace. Commit pitch state at most ~10×/s.
+  const lastPitchAtRef = useRef(0);
+  const handlePitchChange = useCallback((pitch: number) => {
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    if (now - lastPitchAtRef.current < 100) return;
+    lastPitchAtRef.current = now;
+    setCurrentPitch(pitch);
+  }, []);
+  const handleExplorerCenterChange = useCallback((c: [number, number] | null) => {
+    setExplorerCenter(c);
+  }, []);
+  const choroplethValues = useMemo(() => {
+    const out: Record<string, number[]> = {};
+    for (const metric of EXPLORER_METRICS) {
+      out[metric] = valuesFromMesh(explorerMeshCells, metric);
+    }
+    return out;
+  }, [explorerMeshCells]);
+
+  const handleExplorerMeshCells = useCallback((cells: MeshCellData[] | null) => {
+    setExplorerMeshCells(cells || []);
+  }, []);
+
+  const handleChoroplethSettingChange = useCallback((metric: string, setting: ChoroplethSetting) => {
+    setChoroplethSettings((prev) => ({ ...prev, [metric]: setting }));
+  }, []);
+
+  /**
+   * Save the choropleth classes to Supabase. This is a targeted save of just the
+   * styling, not the whole workspace snapshot: an operator tweaking class breaks
+   * should not need to wait for geometry serialization or re-upload catalog
+   * layers.
+   */
+  const handleChoroplethSettingSave = useCallback(
+    async (metric: string, setting: ChoroplethSetting) => {
+      setChoroplethSettings((prev) => ({ ...prev, [metric]: setting }));
+
+      const userEmail = authSession?.user?.email || (isGuestUser ? 'guest@example.com' : 'authenticated-user');
+      const timestamp = new Date().toISOString();
+      const nextSettings: ChoroplethSettingsMap = {
+        ...choroplethSettings,
+        [metric]: setting
+      };
+
+      const { data } = await supabase
+        .from('project_settings')
+        .select('settings')
+        .eq('id', 'default')
+        .maybeSingle();
+
+      if (data?.settings?.roadAnalysisState) {
+        await supabase
+          .from('project_settings')
+          .update({
+            settings: {
+              ...data.settings,
+              roadAnalysisState: {
+                ...data.settings.roadAnalysisState,
+                choroplethSettings: nextSettings,
+                updatedAt: timestamp,
+                updatedBy: userEmail,
+                projectId: getActiveProjectId() || undefined
+              }
+            },
+            updated_at: timestamp
+          })
+          .eq('id', 'default');
+      }
+
+      setProjectSettings?.((prev: any) => ({
+        ...prev,
+        roadAnalysisState: {
+          ...(prev?.roadAnalysisState || {}),
+          choroplethSettings: nextSettings,
+          updatedAt: timestamp,
+          updatedBy: userEmail
+        }
+      }));
+
+      const timeStr = new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      setLastSavedAt(timeStr);
+
+      addNotification?.({
+        id: `choropleth-saved-${Date.now()}`,
+        title: 'Choropleth Classes Saved',
+        message: `${metric} class breaks and colours saved to Supabase.`,
+        category: 'SUCCESS',
+        read: false
+      });
+      addAuditLog?.(
+        'EDIT',
+        'Choropleth Classes Saved',
+        `${metric}: ${setting.method} breaks (${setting.classes.length} classes) saved by ${userEmail}`,
+        'success'
+      );
+    },
+    [
+      authSession?.user?.email,
+      isGuestUser,
+      choroplethSettings,
+      setProjectSettings,
+      addNotification,
+      addAuditLog
+    ]
+  );
+
   const [hasExplored, setHasExplored] = useState<boolean>(false);
   const [selectedExplorerGrid, setSelectedExplorerGrid] = useState<MeshCellData | any | null>(null);
   const [centerTopNotice, setCenterTopNotice] = useState<string | null>(null);
+
+  /**
+   * Mesh cells for the Explorer card. Idle covers every cell in the district
+   * grid; focusing a subgrid narrows the same list to that one cell, so idle and
+   * focused are the same aggregation at different scopes. A subgrid can own
+   * several rings, so de-duplicate by name first.
+   */
+  const explorerCells = useMemo<MeshCellData[]>(() => {
+    const unique = explorerMeshCells.filter((c) => c && Array.isArray(c.bbox));
+    if (!selectedExplorerGrid) return unique;
+    return unique.filter((c) => c.subgrid === selectedExplorerGrid.subgrid);
+  }, [explorerMeshCells, selectedExplorerGrid]);
+
+  const explorerCatchment = useMemo(
+    () => getAllMeshCategories(explorerCells, choroplethSettings),
+    [explorerCells, choroplethSettings]
+  );
 
   useEffect(() => {
     if (!centerTopNotice) return;
@@ -971,6 +1109,13 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
       }
       if (typeof remoteState.showRoadLines === 'boolean') setShowRoadLines(remoteState.showRoadLines);
       if (typeof remoteState.showCoverage === 'boolean') setShowCoverage(remoteState.showCoverage);
+      if (remoteState.choroplethSettings) {
+        // Normalised on read so a partial or hand-edited blob falls back to the
+        // built-in defaults instead of producing an invalid MapLibre style.
+        setChoroplethSettings(
+          normalizeSettings(remoteState.choroplethSettings, EXPLORER_METRICS, explorerPalette)
+        );
+      }
       if (remoteState.mapBasemap) setMapBasemap(remoteState.mapBasemap);
       if (remoteState.updatedAt) setLastSavedAt(new Date(remoteState.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
 
@@ -1342,85 +1487,13 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
     );
   }, [capturedPoints, internalDailyData, internalBatchLogs, activePlanRuns, capturedTracks.length, catalogLayers]);
 
-  // ── Project Explorer: Spatial Buffer Analytics & Urban Classification ──
-  const bufferAnalytics = useMemo<BufferAnalytics>(() => {
-    let center = explorerCenter;
-    let radius = explorerRadius;
-
-    if (selectedExplorerGrid?.bbox) {
-      const b = selectedExplorerGrid.bbox;
-      center = [(b[0] + b[2]) / 2, (b[1] + b[3]) / 2];
-      radius = Math.max(1000, Math.round(haversineMeters([b[0], b[1]], [b[2], b[3]]) / 2));
-    } else if (!center) {
-      if (regionGeo?.bbox) {
-        center = [
-          (regionGeo.bbox[0] + regionGeo.bbox[2]) / 2,
-          (regionGeo.bbox[1] + regionGeo.bbox[3]) / 2
-        ];
-      } else if (activePlanRuns.length > 0 && activePlanRuns[0].length > 0) {
-        center = activePlanRuns[0][0];
-      } else if (capturedPoints.length > 0) {
-        const p: any = capturedPoints[0];
-        const lng = Array.isArray(p) ? p[0] : (p?.lng ?? p?.lon ?? p?.longitude);
-        const lat = Array.isArray(p) ? p[1] : (p?.lat ?? p?.latitude);
-        if (Number.isFinite(lng) && Number.isFinite(lat)) {
-          center = [Number(lng), Number(lat)];
-        }
-      }
-    }
-    const targetCenter = center || [101.9758, 4.2105];
-    const baseAnalytics = calculateBufferAnalytics(
-      targetCenter,
-      radius,
-      activePlanRuns,
-      capturedPoints,
-      explorerPalette,
-      capturedTracks
-    );
-
-    if (selectedExplorerGrid) {
-      return {
-        ...baseAnalytics,
-        roadLengthKm: selectedExplorerGrid.planKm ?? baseAnalytics.roadLengthKm,
-        roadDensityKmPerKm2: selectedExplorerGrid.density ?? baseAnalytics.roadDensityKmPerKm2,
-        areaKm2: selectedExplorerGrid.areaKm2 ?? baseAnalytics.areaKm2
-      };
-    }
-
-    return baseAnalytics;
-  }, [
-    explorerCenter,
-    selectedExplorerGrid,
-    regionGeo?.bbox,
-    activePlanRuns,
-    capturedPoints,
-    explorerRadius,
-    explorerPalette,
-    capturedTracks
-  ]);
-
-  const bufferAnalyticsB = useMemo<BufferAnalytics | null>(() => {
-    if (!isCompareMode) return null;
-    let center = explorerCenterB;
-    if (!center && explorerCenter) {
-      center = [explorerCenter[0] + 0.035, explorerCenter[1] + 0.018];
-    }
-    if (!center) return null;
-    return calculateBufferAnalytics(
-      center,
-      explorerRadius,
-      activePlanRuns,
-      capturedPoints,
-      explorerPalette,
-      capturedTracks
-    );
-  }, [isCompareMode, explorerCenterB, explorerCenter, explorerRadius, activePlanRuns, capturedPoints, explorerPalette, capturedTracks]);
+  // ── Project Explorer: mesh cell aggregation ──
+  // The card reads `explorerCatchment`, aggregated from the mesh cells the map
+  // paints. There is no buffer radius: idle is every cell in the district grid,
+  // and focusing a subgrid narrows the same aggregation to one cell.
 
   const handleResetExplorer = useCallback(() => {
     setSelectedExplorerGrid(null);
-    setExplorerRadius(5000);
-    setIsCompareMode(false);
-    setActivePinFocus('A');
     if (regionGeo?.bbox) {
       setExplorerCenter([
         (regionGeo.bbox[0] + regionGeo.bbox[2]) / 2,
@@ -1626,6 +1699,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
       planDistanceKm: Number(planDistanceKm) || 0,
       subgridPlanKm: Object.fromEntries(subgridMetrics.map((m) => [m.subgrid, m.planKm])),
       totalSubgrids: subgridMetrics.length || 0,
+      choroplethSettings: choroplethSettings as unknown as Record<string, unknown>,
       updatedAt: new Date().toISOString(),
       updatedBy: userEmail,
       projectId: getActiveProjectId() || undefined
@@ -1700,6 +1774,7 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
     systemStyles,
     planDistanceKm,
     subgridMetrics.length,
+    choroplethSettings,
     userKey,
     catalogPlanLayerId,
     currentFingerprint,
@@ -3772,32 +3847,23 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                   <ProjectExplorerPanel
                     active={showProjectExplorer}
                     onClose={() => setShowProjectExplorer(false)}
-                    centerA={explorerCenter}
-                    onCenterAChange={(c) => setExplorerCenter(c)}
-                    centerB={explorerCenterB}
-                    onCenterBChange={(c) => setExplorerCenterB(c)}
-                    radius={explorerRadius}
-                    onRadiusChange={(r) => setExplorerRadius(r)}
-                    analyticsA={bufferAnalytics}
-                    analyticsB={bufferAnalyticsB}
+                    categories={explorerCatchment}
+                    scopeLabel={
+                    selectedExplorerGrid ? selectedExplorerGrid.subgrid : 'all district subgrids'
+                  }
                     palette={explorerPalette}
                     onPaletteChange={(p) => setExplorerPalette(p)}
                     colorByMetric={colorByMetric}
                     onColorByMetricChange={(m) => setColorByMetric(m)}
-                    isCompareMode={isCompareMode}
-                    onToggleCompareMode={(cmp) => {
-                      setIsCompareMode(cmp);
-                      if (cmp && !explorerCenterB && explorerCenter) {
-                        setExplorerCenterB([explorerCenter[0] + 0.035, explorerCenter[1] + 0.018]);
-                      }
-                    }}
-                    activePinFocus={activePinFocus}
-                    onSelectPinFocus={(p: 'A' | 'B') => setActivePinFocus(p)}
                     onReset={handleResetExplorer}
                     onExploreUrbanArea={handleExploreUrbanArea}
                     hasExplored={hasExplored}
                     selectedGrid={selectedExplorerGrid}
                     onClearGridSelection={() => setSelectedExplorerGrid(null)}
+                    choroplethSettings={choroplethSettings}
+                    choroplethValues={choroplethValues}
+                    onChoroplethSettingsChange={handleChoroplethSettingChange}
+                    onChoroplethSettingsSave={handleChoroplethSettingSave}
                   />
                 )}
 
@@ -3816,16 +3882,13 @@ export const RoadAnalysisWorkspace: React.FC<RoadAnalysisWorkspaceProps> = ({
                   selectedExplorerGrid={selectedExplorerGrid}
                   onSelectExplorerGrid={setSelectedExplorerGrid}
                   projectExplorerCenter={explorerCenter}
-                  projectExplorerCenterB={explorerCenterB}
-                  projectExplorerRadius={explorerRadius}
                   projectExplorerPalette={explorerPalette}
                   projectExplorerColorByMetric={colorByMetric}
+                  choroplethSettings={choroplethSettings}
+                  onExplorerMeshCells={handleExplorerMeshCells}
                   subgridMetrics={subgridMetrics}
-                  projectExplorerRoadsGeojson={showProjectExplorer ? bufferAnalytics.clippedRoadsGeojson : null}
-                  onProjectExplorerCenterChange={(c) => setExplorerCenter(c)}
-                  onProjectExplorerCenterBChange={(c) => setExplorerCenterB(c)}
-                  isCompareMode={isCompareMode}
-                  onPitchChange={(p) => setCurrentPitch(p)}
+                  onProjectExplorerCenterChange={handleExplorerCenterChange}
+                  onPitchChange={handlePitchChange}
                   style={mapStyle}
                   bbox={regionGeo?.bbox ?? null}
                   districtGeojson={regionGeo?.geojson}

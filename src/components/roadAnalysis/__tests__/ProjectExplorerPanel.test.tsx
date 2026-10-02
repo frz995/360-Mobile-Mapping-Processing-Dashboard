@@ -1,75 +1,279 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { ProjectExplorerPanel } from '../ProjectExplorerPanel';
-import { calculateBufferAnalytics } from '../../../utils/projectExplorerGeometry';
+import { EXPLORER_DONUT_COLORS } from '../ExplorerCharts';
+import { getAllMeshCategories } from '../../../utils/catchmentStats';
+import type { ChoroplethSettingsMap } from '../../../utils/choroplethSettings';
+import type { MeshCellData } from '../../../utils/projectExplorerGeometry';
 
-describe('ProjectExplorerPanel Component (Catchment Demographic Visualizer)', () => {
-  const mockAnalytics = calculateBufferAnalytics(
-    [101.0, 4.0],
-    5000,
-    [
-      [
-        [100.995, 4.0],
-        [101.005, 4.0]
-      ]
-    ],
-    [[101.0, 4.0]]
-  );
+function cell(over: Partial<MeshCellData> & { subgrid: string }): MeshCellData {
+  return {
+    density: 0,
+    planKm: 0,
+    roads: over.planKm ?? 0,
+    areaKm2: 1,
+    coverage: 0,
+    panotrack: 0,
+    complexity: 0,
+    bbox: [0, 0, 1, 1],
+    corridor: { shortKm: 0, mediumKm: 0, arterialKm: 0, trunkKm: 0 },
+    junctions: { deadEnd: 0, threeWay: 0, fourWay: 0, fivePlus: 0 },
+    frames: { verified: 0, defect: 0, transit: 0, mismatch: 0 },
+    ...over
+  } as MeshCellData;
+}
 
+/** Four populated cells plus one empty, so both populated and empty rows exist. */
+const meshCells: MeshCellData[] = [
+  cell({
+    subgrid: 'SG01',
+    bbox: [0, 0, 1, 1],
+    planKm: 12,
+    areaKm2: 4,
+    density: 3,
+    coverage: 80,
+    coverageKm: 9.6,
+    panotrack: 300,
+    corridor: { shortKm: 4, mediumKm: 5, arterialKm: 2, trunkKm: 1 },
+    junctions: { deadEnd: 6, threeWay: 8, fourWay: 4, fivePlus: 2 },
+    frames: { verified: 150, defect: 60, transit: 50, mismatch: 40 }
+  }),
+  cell({
+    subgrid: 'SG02',
+    bbox: [1, 0, 2, 1],
+    planKm: 8,
+    areaKm2: 3,
+    density: 2.7,
+    coverage: 40,
+    coverageKm: 3.2,
+    panotrack: 100,
+    corridor: { shortKm: 3, mediumKm: 4, arterialKm: 1, trunkKm: 0 },
+    junctions: { deadEnd: 4, threeWay: 4, fourWay: 2, fivePlus: 0 },
+    frames: { verified: 60, defect: 20, transit: 10, mismatch: 10 }
+  }),
+  cell({
+    subgrid: 'SG03',
+    bbox: [2, 0, 3, 1],
+    planKm: 20,
+    areaKm2: 5,
+    density: 4,
+    coverage: 100,
+    coverageKm: 20,
+    panotrack: 0,
+    corridor: { shortKm: 6, mediumKm: 8, arterialKm: 4, trunkKm: 2 },
+    junctions: { deadEnd: 2, threeWay: 6, fourWay: 6, fivePlus: 3 },
+    frames: { verified: 0, defect: 0, transit: 0, mismatch: 0 }
+  }),
+  cell({ subgrid: 'SG04', bbox: [3, 0, 4, 1] })
+];
+
+describe('ProjectExplorerPanel', () => {
   const defaultProps = {
     active: true,
     onClose: vi.fn(),
-    centerA: [101.0, 4.0] as [number, number],
-    radius: 5000,
-    onRadiusChange: vi.fn(),
-    analyticsA: mockAnalytics,
-    palette: 'viridis' as const,
+    categories: getAllMeshCategories(meshCells),
+    scopeLabel: 'all subgrids',
+    palette: 'greens' as const,
     onPaletteChange: vi.fn(),
-    onToggleCompareMode: vi.fn(),
     onReset: vi.fn()
   };
 
-  it('renders Details card with categories, subgrid guidance and system charts', () => {
+  it('renders the Details card with all five category pills and mesh-derived rows', () => {
     render(<ProjectExplorerPanel {...defaultProps} />);
+
     expect(screen.getByText('Details')).toBeInTheDocument();
-    expect(screen.getByText('Click any subgrid box to focus & dim')).toBeInTheDocument();
-    expect(screen.getByText('Roads')).toBeInTheDocument();
-    expect(screen.getByText('Density')).toBeInTheDocument();
-    expect(screen.getByText('Complexity')).toBeInTheDocument();
-    expect(screen.getByText('Panotrack')).toBeInTheDocument();
-    expect(screen.getByText('Coverage')).toBeInTheDocument();
+    for (const label of ['Roads', 'Density', 'Complexity', 'Panotrack', 'Coverage']) {
+      expect(screen.getByText(label)).toBeInTheDocument();
+    }
     expect(screen.getByText('Road corridor classification')).toBeInTheDocument();
     expect(screen.getAllByText('Dense urban block (<150m)').length).toBeGreaterThan(0);
   });
 
-  it('switches tabs and updates breakdown charts dynamically', () => {
+  it('colours the donut with the shared segment palette on every tab', () => {
+    const { container } = render(<ProjectExplorerPanel {...defaultProps} />);
+    const firstSliceFill = () =>
+      container.querySelector('path.explorer-donut-slice')?.getAttribute('fill');
+
+    expect(firstSliceFill()).toBe(EXPLORER_DONUT_COLORS[0]);
+
+    fireEvent.click(screen.getByText('Density'));
+    expect(firstSliceFill()).toBe(EXPLORER_DONUT_COLORS[0]);
+  });
+
+  it('colours the class-share columns with the active choropleth class colours', () => {
+    const settings: ChoroplethSettingsMap = {
+      roads: {
+        metric: 'roads',
+        method: 'manual',
+        alpha: 0.85,
+        reverse: false,
+        classes: [
+          { upperBound: 15, color: '#111111' },
+          { upperBound: null, color: '#222222' }
+        ]
+      }
+    };
+    const categories = getAllMeshCategories(meshCells, settings);
+    const { container } = render(
+      <ProjectExplorerPanel
+        {...defaultProps}
+        categories={categories}
+        colorByMetric="roads"
+        choroplethSettings={settings}
+      />
+    );
+    const fills = Array.from(
+      container.querySelectorAll('rect.explorer-bar-segment')
+    ).map((bar) => bar.getAttribute('fill'));
+
+    // SG01 (12) and SG02 (8) fall in <= 15; SG03 (20) in > 15; SG04 has no roads.
+    expect(fills).toEqual(['#111111', '#222222']);
+  });
+
+  it('states the aggregation scope instead of duplicating the focus banner', () => {
     render(<ProjectExplorerPanel {...defaultProps} />);
-    const complexityTab = screen.getByText('Complexity');
-    fireEvent.click(complexityTab);
+    expect(screen.getByText('Scope: all subgrids')).toBeInTheDocument();
+    expect(screen.queryByText('Subgrid SG01 focused')).not.toBeInTheDocument();
+    expect(screen.queryByText('Click any subgrid box to focus & dim')).not.toBeInTheDocument();
+  });
+
+  it('switches categories and reads each category from the aggregated mesh data', () => {
+    render(<ProjectExplorerPanel {...defaultProps} />);
+
+    fireEvent.click(screen.getByText('Complexity'));
     expect(screen.getByText('Intersection topology')).toBeInTheDocument();
     expect(screen.getAllByText('4 way multi road grid').length).toBeGreaterThan(0);
 
-    const panotrackTab = screen.getByText('Panotrack');
-    fireEvent.click(panotrackTab);
+    fireEvent.click(screen.getByText('Panotrack'));
     expect(screen.getByText('Survey capture status')).toBeInTheDocument();
 
-    const coverageTab = screen.getByText('Coverage');
-    fireEvent.click(coverageTab);
+    fireEvent.click(screen.getByText('Coverage'));
     expect(screen.getByText('Survey vs Plan Network')).toBeInTheDocument();
   });
 
-  it('renders subgrid focus guidance pill in the bottom control bar', () => {
+  it('shows the second section as a choropleth class share, never radial buffer zones', () => {
     render(<ProjectExplorerPanel {...defaultProps} />);
-    expect(screen.getByText('Click subgrid to focus & dim')).toBeInTheDocument();
+    expect(screen.getByText('Choropleth class share')).toBeInTheDocument();
+    expect(screen.queryByText('Distance from mesh centre')).not.toBeInTheDocument();
+    expect(screen.queryByText('Radial network distribution')).not.toBeInTheDocument();
+    expect(screen.queryByText('Radial Buffer Zones')).not.toBeInTheDocument();
   });
 
-  it('renders bottom-left spectrum bar with 5-category thresholds', () => {
+  it('reports the number of mesh cells behind the numbers', () => {
+    render(<ProjectExplorerPanel {...defaultProps} />);
+    expect(screen.getByText(/Aggregated over all 4 mesh cells in all subgrids/)).toBeInTheDocument();
+  });
+
+  it('shows the focused subgrid pill in the bottom bar and a single-cell scope line', () => {
+    const selectedGrid = {
+      subgrid: 'SG01',
+      density: 3,
+      planKm: 12,
+      areaKm2: 4,
+      bbox: [0, 0, 1, 1] as [number, number, number, number]
+    };
+    render(<ProjectExplorerPanel {...defaultProps} selectedGrid={selectedGrid} scopeLabel="SG01" />);
+
+    expect(screen.getByText('Subgrid: SG01')).toBeInTheDocument();
+    expect(screen.getByText('Scope: SG01')).toBeInTheDocument();
+    expect(screen.queryByText('Grid SG01')).not.toBeInTheDocument();
+  });
+
+  it('clears focus from the bottom pill', () => {
+    const onClearGridSelection = vi.fn();
+    const selectedGrid = {
+      subgrid: 'SG01',
+      density: 3,
+      planKm: 12,
+      areaKm2: 4,
+      bbox: [0, 0, 1, 1] as [number, number, number, number]
+    };
+    render(
+      <ProjectExplorerPanel
+        {...defaultProps}
+        selectedGrid={selectedGrid}
+        onClearGridSelection={onClearGridSelection}
+      />
+    );
+
+    fireEvent.click(screen.getByLabelText('Clear focus'));
+    expect(onClearGridSelection).toHaveBeenCalledTimes(1);
+  });
+
+  it('omits rows for a category with no real denominator instead of showing a fake split', () => {
+    render(<ProjectExplorerPanel {...defaultProps} />);
+    fireEvent.click(screen.getByText('Panotrack'));
+    // SG03 has plan length but zero frames, and SG04 is empty; the whole scope
+    // still has 400 frames, so rows exist from the cells that do have them.
+    expect(screen.getByText('Verified active frames')).toBeInTheDocument();
+  });
+
+  it('renders an empty scope without fabricated rows or values', () => {
+    const empty = getAllMeshCategories([]);
+    render(
+      <ProjectExplorerPanel {...defaultProps} categories={empty} scopeLabel="no mesh yet" />
+    );
+
+    expect(screen.getAllByText('No data').length).toBeGreaterThan(0);
+    expect(screen.getByText(/Aggregated over all 0 mesh cells in no mesh yet/)).toBeInTheDocument();
+    expect(screen.queryByText('25%')).not.toBeInTheDocument();
+  });
+
+  it('collapses and expands the card, hiding both sections', () => {
+    render(<ProjectExplorerPanel {...defaultProps} />);
+    expect(screen.getByText('Road corridor classification')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTitle('Collapse Details'));
+    expect(screen.queryByText('Road corridor classification')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTitle('Expand Details'));
+    expect(screen.getByText('Road corridor classification')).toBeInTheDocument();
+  });
+
+  it('renders the class legend from the active choropleth setting', () => {
     render(<ProjectExplorerPanel {...defaultProps} colorByMetric="density" />);
     expect(screen.getAllByText('Road network density').length).toBeGreaterThan(0);
-    expect(screen.getByText('9.0+')).toBeInTheDocument();
+    expect(screen.getByText('1.5')).toBeInTheDocument();
+    expect(screen.getByText('9+')).toBeInTheDocument();
+    expect(screen.getByText('Class 1–5')).toBeInTheDocument();
   });
 
-  it('opens custom glassmorphic dropdown and switches analysis metric to update catchment chart', () => {
+  it('renders legend breaks from a saved choropleth setting', () => {
+    const settings: ChoroplethSettingsMap = {
+      coverage: {
+        metric: 'coverage',
+        method: 'manual',
+        alpha: 0.85,
+        reverse: false,
+        classes: [
+          { upperBound: 30, color: '#111111' },
+          { upperBound: 60, color: '#222222' },
+          { upperBound: null, color: '#333333' }
+        ]
+      }
+    };
+    const { container } = render(
+      <ProjectExplorerPanel
+        {...defaultProps}
+        categories={getAllMeshCategories(meshCells, settings)}
+        colorByMetric="coverage"
+        choroplethSettings={settings}
+      />
+    );
+    expect(screen.getByText('30')).toBeInTheDocument();
+    expect(screen.getByText('60+')).toBeInTheDocument();
+    expect(screen.queryByText('20')).not.toBeInTheDocument();
+    expect(screen.getByText('Class 1–3')).toBeInTheDocument();
+
+    // The same saved colours reach the class-share bars: SG02 (40) and SG03
+    // (100) land in class 2 and class 3 respectively.
+    const fills = Array.from(
+      container.querySelectorAll('rect.explorer-bar-segment')
+    ).map((bar) => bar.getAttribute('fill'));
+    expect(fills).toEqual(['#222222', '#333333']);
+  });
+
+  it('switches the analysed metric from the Colour by dropdown', () => {
     const onColorByMetricChange = vi.fn();
     const onPaletteChange = vi.fn();
     render(
@@ -80,87 +284,24 @@ describe('ProjectExplorerPanel Component (Catchment Demographic Visualizer)', ()
       />
     );
 
-    // Click "Colour by" trigger button to open custom dropdown
-    const dropdownTrigger = screen.getByLabelText('Colour by metric selection');
-    fireEvent.click(dropdownTrigger);
-
-    // Verify popover menu appears with buffer metric options
+    fireEvent.click(screen.getByLabelText('Colour by metric selection'));
     expect(screen.getByText('Choropleth Metric')).toBeInTheDocument();
-    const complexityOption = screen.getByText('Urban complexity');
-    expect(complexityOption).toBeInTheDocument();
 
-    // Select "Urban complexity" option
-    fireEvent.click(complexityOption);
-
-    // Verify callbacks are triggered with matched palette and value
+    fireEvent.click(screen.getByText('Urban complexity'));
     expect(onColorByMetricChange).toHaveBeenCalledWith('complexity');
     expect(onPaletteChange).toHaveBeenCalledWith('purples');
-
-    // Catchment chart display should immediately update to Complexity data
     expect(screen.getByText('Intersection topology')).toBeInTheDocument();
-    expect(screen.getAllByText('4 way multi road grid').length).toBeGreaterThan(0);
   });
 
-  it('supports collapsing and expanding the Details card and renders both breakdowns simultaneously', () => {
-    render(<ProjectExplorerPanel {...defaultProps} />);
-
-    // Both breakdowns are displayed cleanly by default
-    expect(screen.getByText('Road corridor classification')).toBeInTheDocument();
-    expect(screen.getByText('Radial network distribution')).toBeInTheDocument();
-
-    // Click collapse button
-    const collapseBtn = screen.getByTitle('Collapse Details');
-    fireEvent.click(collapseBtn);
-
-    // Body charts are hidden when collapsed
-    expect(screen.queryByText('Road corridor classification')).not.toBeInTheDocument();
-    expect(screen.queryByText('Radial network distribution')).not.toBeInTheDocument();
-
-    // Click expand button to restore
-    const expandBtn = screen.getByTitle('Expand Details');
-    fireEvent.click(expandBtn);
-    expect(screen.getByText('Road corridor classification')).toBeInTheDocument();
-    expect(screen.getByText('Radial network distribution')).toBeInTheDocument();
+  it('resets without touching a buffer radius', () => {
+    const onReset = vi.fn();
+    render(<ProjectExplorerPanel {...defaultProps} onReset={onReset} />);
+    fireEvent.click(screen.getByTitle('Reset Explorer focus'));
+    expect(onReset).toHaveBeenCalledTimes(1);
   });
 
-  it('renders focused subgrid pill in bottom controls bar when grid is selected', () => {
-    const selectedGrid = {
-      subgrid: 'N93E70',
-      density: 6.85,
-      planKm: 18.2,
-      areaKm2: 2.65,
-      bbox: [102.8, 2.3, 102.85, 2.35] as [number, number, number, number]
-    };
-    render(<ProjectExplorerPanel {...defaultProps} selectedGrid={selectedGrid} />);
-    expect(screen.getByText('Subgrid: N93E70')).toBeInTheDocument();
-    expect(screen.getByText('(6.85 km/km²)')).toBeInTheDocument();
-  });
-
-  it('renders focused grid details and handles clear focus click', () => {
-    const onClearGridSelection = vi.fn();
-    const selectedGrid = {
-      subgrid: 'N93E70',
-      density: 6.85,
-      planKm: 18.2,
-      areaKm2: 2.65,
-      bbox: [102.8, 2.3, 102.85, 2.35] as [number, number, number, number]
-    };
-
-    render(
-      <ProjectExplorerPanel
-        {...defaultProps}
-        selectedGrid={selectedGrid}
-        onClearGridSelection={onClearGridSelection}
-      />
-    );
-
-    expect(screen.getByText('Subgrid N93E70 focused')).toBeInTheDocument();
-    expect(screen.getByText('Grid N93E70')).toBeInTheDocument();
-    expect(screen.getByText('(6.85 km/km² · 18.2 km)')).toBeInTheDocument();
-
-    const clearBtn = screen.getByText('Clear focus');
-    fireEvent.click(clearBtn);
-    expect(onClearGridSelection).toHaveBeenCalledTimes(1);
+  it('renders nothing while inactive', () => {
+    render(<ProjectExplorerPanel {...defaultProps} active={false} />);
+    expect(screen.queryByText('Details')).not.toBeInTheDocument();
   });
 });
-

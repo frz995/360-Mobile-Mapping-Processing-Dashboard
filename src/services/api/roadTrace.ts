@@ -18,6 +18,12 @@ export interface RoadAnalysisProductionState {
   planDistanceKm?: number;
   subgridPlanKm?: Record<string, number>;
   totalSubgrids?: number;
+  /**
+   * Operator-defined Project Explorer choropleth classes, keyed by metric.
+   * Typed loosely here so the persistence layer stays independent of the
+   * styling module; `choroplethSettings.ts` normalises it on read.
+   */
+  choroplethSettings?: Record<string, unknown>;
   updatedAt?: string;
   updatedBy?: string;
   projectId?: string;

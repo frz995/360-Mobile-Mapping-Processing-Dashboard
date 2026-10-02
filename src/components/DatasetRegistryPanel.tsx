@@ -177,7 +177,7 @@ export const DatasetRegistryPanel: React.FC<DatasetRegistryPanelProps> = ({
           disabled={loading}
           className="flex items-center gap-2 bg-inner hover:bg-inner border border-subtle text-text-base px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer disabled:opacity-50"
         >
-          <RefreshCw size={13} className={loading ? 'animate-spin text-sky-400' : 'text-sky-400'} />
+          <RefreshCw size={13} className={`text-text-muted ${loading ? 'animate-spin' : ''}`} />
           <span>{translate('dataRegistryRefresh')}</span>
         </button>
 
@@ -190,8 +190,8 @@ export const DatasetRegistryPanel: React.FC<DatasetRegistryPanelProps> = ({
             onClick={() => setSourceFilter(f.id)}
             className={`px-2.5 py-1 rounded-md text-[11px] font-semibold border transition-colors cursor-pointer ${
               sourceFilter === f.id
-                ? 'bg-sky-500/20 text-sky-300 border-sky-500/40'
-                : 'bg-inner text-text-muted border-subtle hover:text-text-base'
+                ? 'bg-inner text-text-base border-text-base/30'
+                : 'bg-transparent text-text-muted border-subtle hover:text-text-base'
             }`}
           >
             {translate(f.label)}
@@ -207,8 +207,8 @@ export const DatasetRegistryPanel: React.FC<DatasetRegistryPanelProps> = ({
             onClick={() => setStateFilter(f.id)}
             className={`px-2.5 py-1 rounded-md text-[11px] font-semibold border transition-colors cursor-pointer ${
               stateFilter === f.id
-                ? 'bg-sky-500/20 text-sky-300 border-sky-500/40'
-                : 'bg-inner text-text-muted border-subtle hover:text-text-base'
+                ? 'bg-inner text-text-base border-text-base/30'
+                : 'bg-transparent text-text-muted border-subtle hover:text-text-base'
             }`}
           >
             {translate(f.label)}
@@ -356,17 +356,20 @@ export const DatasetRegistryPanel: React.FC<DatasetRegistryPanelProps> = ({
                               <button
                                 onClick={() => onOpenInMap(node.subgrid)}
                                 title={translate('dataRegistryOpenInMap')}
-                                className="p-1.5 rounded-md text-sky-300 border border-sky-500/30 hover:bg-sky-500/10 transition-colors cursor-pointer"
+                                className="p-1.5 rounded-md text-text-muted border border-subtle hover:text-text-base hover:bg-inner transition-colors cursor-pointer"
                               >
                                 <MapPin size={13} />
                               </button>
+                              {/* Icon-only, matching MapPin. The previous pill
+                                  carried a bold emerald label that read as a
+                                  status colour even though it is just an action. */}
                               <button
                                 onClick={() => openHandoff(node.subgrid)}
                                 title="Open WebGIS Handoff Guide"
-                                className="px-2 py-1 rounded-md text-[10px] font-bold text-emerald-300 border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 transition-colors cursor-pointer flex items-center gap-1 shrink-0"
+                                aria-label="Open WebGIS Handoff Guide"
+                                className="p-1.5 rounded-md text-text-muted border border-subtle hover:text-text-base hover:bg-inner transition-colors cursor-pointer shrink-0"
                               >
-                                <Globe size={11} />
-                                <span>Handoff</span>
+                                <Globe size={13} />
                               </button>
                             </>
                           )}

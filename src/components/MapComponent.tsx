@@ -2,7 +2,9 @@ import { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import { Layers } from 'lucide-react';
 import { extractSubgridName } from '../utils/subgrid';
 import { getItemId } from '../utils/items';
-import { STORAGE_BUCKET_DEFAULT, REGION_DEFAULTS, DEFAULT_BASEMAP } from '../config/defaults';
+import { STORAGE_BUCKET_DEFAULT, REGION_DEFAULTS, DEFAULT_BASEMAP, resolveBasemapId } from '../config/defaults';
+
+const DEFAULT_TRAJECTORY_FILTERS = { published: true, defect: true, stitching: true } as const;
 import type { Layer, Folder } from '../types/catalog';
 import { ensureDistrictGeometriesLoaded, rehydrateDistrictBoundary } from './boundary/malaysiaDistricts';
 
@@ -19,7 +21,9 @@ export const MapComponent = ({
   iframeRefCb,
   selectedSubgrids,
   selectedPoints,
-  isAfterDeletionPreview = false
+  isAfterDeletionPreview = false,
+  showPanotrackLayer = true,
+  trajectoryStatusFilters
 }: {
   dataManagement?: boolean;
   layerCatalog?: (Layer | Folder)[];
@@ -36,6 +40,10 @@ export const MapComponent = ({
   selectedSubgrids?: string[];
   selectedPoints?: any[];
   isAfterDeletionPreview?: boolean;
+  /** Master trajectory layer toggle owned by App.tsx. */
+  showPanotrackLayer?: boolean;
+  /** Per-status trajectory filters owned by App.tsx. */
+  trajectoryStatusFilters?: { published: boolean; defect: boolean; stitching: boolean };
 }) => {
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -295,11 +303,13 @@ export const MapComponent = ({
           }, '*');
         }
 
-        // 3. Send FILTER_STATUS_TYPES to ensure stitching/in-progress trajectory filter is active
+        // 3. Re-assert the operator's current trajectory filter. This used to
+        // hardcode "everything on", so every staged-data refresh silently undid
+        // an unchecked status or an unchecked master layer toggle.
         iframeRef.current.contentWindow.postMessage({
           type: 'FILTER_STATUS_TYPES',
-          statusFilters: { published: true, defect: true, stitching: true, selected: true },
-          showPanotrackData: true
+          statusFilters: { ...(trajectoryStatusFilters || DEFAULT_TRAJECTORY_FILTERS), selected: true },
+          showPanotrackData: showPanotrackLayer
         }, '*');
 
         // 4. Send QAQC_DEFECTS_SYNC with all known defect items
@@ -315,7 +325,20 @@ export const MapComponent = ({
         }
       } catch (e) { }
     }
-  }, [formattedStagedItems, dataManagement, defectsList, selectedDailyRunId, selectedSubgridFilter, selectedSubgrids, isAfterDeletionPreview, selectedDateFilter]);
+  }, [formattedStagedItems, dataManagement, defectsList, selectedDailyRunId, selectedSubgridFilter, selectedSubgrids, isAfterDeletionPreview, selectedDateFilter, showPanotrackLayer, trajectoryStatusFilters]);
+
+  // Push the trajectory filter state on its own so toggling a status takes
+  // effect immediately instead of waiting for the next staged-data push.
+  useEffect(() => {
+    if (!iframeRef.current?.contentWindow) return;
+    try {
+      iframeRef.current.contentWindow.postMessage({
+        type: 'FILTER_STATUS_TYPES',
+        statusFilters: { ...(trajectoryStatusFilters || DEFAULT_TRAJECTORY_FILTERS), selected: true },
+        showPanotrackData: showPanotrackLayer
+      }, '*');
+    } catch (e) { }
+  }, [showPanotrackLayer, trajectoryStatusFilters]);
 
   // Debounced wrapper using requestAnimationFrame to coalesce bursts and avoid locking the main thread
   const sendStagedData = useCallback(() => {
@@ -341,11 +364,27 @@ export const MapComponent = ({
     if (!iframeRef.current || !iframeRef.current.contentWindow) return;
     try {
       const s = effectiveSettings || {};
-      // 1. Send Basemap
+      // 1. Send Basemap. The id is validated here because an unregistered value
+      // makes the iframe fall back to its default with no feedback, which reads
+      // as "my saved basemap was ignored". custom_tile additionally needs a
+      // non-empty URL or it resolves to the placeholder tile server.
+      const requestedBasemap = s.defaultBasemap;
+      let basemap = resolveBasemapId(requestedBasemap);
+      let customUrl = s.customBasemapUrl || '';
+      if (basemap === 'custom_tile' && !customUrl.trim()) {
+        basemap = DEFAULT_BASEMAP;
+        customUrl = '';
+      }
+      if (requestedBasemap && requestedBasemap !== basemap) {
+        console.warn('[MapComponent] unregistered basemap id, falling back:', {
+          requested: requestedBasemap,
+          resolved: basemap
+        });
+      }
       iframeRef.current.contentWindow.postMessage({
         type: 'SET_BASEMAP',
-        basemap: s.defaultBasemap || DEFAULT_BASEMAP,
-        customUrl: s.customBasemapUrl || '',
+        basemap,
+        customUrl,
         opacity: (s.basemapOpacity ?? 100) / 100
       }, '*');
 
@@ -526,14 +565,16 @@ export const MapComponent = ({
           </div>
         </div>
       </div>
-      {/* Live Cursor Coordinate Badge (bottom-right) — non-overlapping position */}
-      <div className="absolute bottom-3 right-3 z-20 pointer-events-none hidden sm:block">
-        <div className="bg-app backdrop-blur-md border border-subtle rounded-lg px-2.5 py-1 text-[11px] text-text-base shadow-xl flex items-center gap-2 font-sans">
+      {/* Live Cursor Coordinate Badge (bottom-right) — non-overlapping position.
+          Visible on mobile too: it was hidden below sm, so tablet/phone users had
+          no coordinate readout at all even though the iframe was emitting it. */}
+      <div className="absolute bottom-3 right-3 z-20 pointer-events-none">
+        <div className="bg-app backdrop-blur-md border border-subtle rounded-lg px-2 py-0.5 sm:px-2.5 sm:py-1 text-[10px] sm:text-[11px] text-text-base shadow-xl flex items-center gap-1.5 sm:gap-2 font-sans">
           <span className="text-sky-400 font-semibold">EPSG:4326</span>
           <span className="text-text-muted">|</span>
           {coords ? (
-            <span className="text-text-base">
-              {coords.lat.toFixed(5)}° N, {coords.lng.toFixed(5)}° E
+            <span className="text-text-base tabular-nums">
+              {`${Math.abs(coords.lat).toFixed(5)}° ${coords.lat < 0 ? 'S' : 'N'}, ${Math.abs(coords.lng).toFixed(5)}° ${coords.lng < 0 ? 'W' : 'E'}`}
             </span>
           ) : (
             <span className="text-text-muted italic">Move cursor over map...</span>

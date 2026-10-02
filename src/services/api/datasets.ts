@@ -326,7 +326,16 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
       const rawDate = r.captured_at
         ? new Date(r.captured_at).toISOString().slice(0, 10)
         : (r.date || r.survey_date || (r.created_at ? new Date(r.created_at).toISOString().slice(0, 10) : ''));
-      const extractedBatchId = r.description ? (r.description.match(/\[csv:(.*?)\]/)?.[1] || r.description.match(/\[id:(.*?)\]/)?.[1] || r.description.match(/\[(.*?)\]/)?.[1] || r.description.match(/daily-[\w-]+/)?.[0] || r.description.match(/staging-[\w-]+/)?.[0]) : null;
+      // Prefer the authoritative column over the `[csv:…]` tag (migration 0029),
+      // and never let a synthetic `daily-csv-<timestamp>-…` value become the run
+      // key — it makes every published record read as an internal id instead of
+      // a survey run. Falls through to the `[id:…]` tag / date signature.
+      const publishedCsv = [
+        (r.csv_file_name || '').toString().trim(),
+        r.description?.match(/\[csv:(.*?)\]/)?.[1]?.trim() || ''
+      ].find(s => s && !/^daily-csv-/i.test(s));
+      const extractedBatchId = publishedCsv
+        || (r.description ? (r.description.match(/\[id:(.*?)\]/)?.[1] || r.description.match(/\[(.*?)\]/)?.[1] || r.description.match(/staging-[\w-]+/)?.[0]) : null);
       const extractedPublishSignature = r.description ? r.description.match(/Published Batch \([^)]+\) - ([\d\-: ]+)/)?.[0] : null;
       // Always scope the run key by subgrid: one raw CSV can cover more than one
       // subgrid, and without the prefix those runs merge into a single record
@@ -508,7 +517,21 @@ export async function fetchSupabaseData(settings?: ExtendedProjectSettings): Pro
           // Extract encoded metadata tags. `[csv:…]` is the real raw CSV file
           // name and wins over `[id:…]`, which may still hold a legacy
           // synthetic `daily-csv-<timestamp>-…` value on rows staged earlier.
-          const extractedCsvName = r.csv_file_name || r.source_file || (desc.match(/\[csv:(.*?)\]/)?.[1]) || null;
+          // `csv_file_name` is authoritative (migration 0029). It supersedes the
+          // `[csv:…]` description tag, which still carries synthetic
+          // `daily-csv-<timestamp>-…` values on rows staged before the column
+          // existed, and would otherwise become the registry record name.
+          const SYNTHETIC_CSV_ID = /^daily-csv-/i;
+          const tagCsvName = desc.match(/\[csv:(.*?)\]/)?.[1] || null;
+          const columnCsvName = (r.csv_file_name || '').toString().trim() || null;
+          const usable = (v: unknown) => {
+            const s = (v || '').toString().trim();
+            return s && !SYNTHETIC_CSV_ID.test(s) ? s : null;
+          };
+          const extractedCsvName = usable(columnCsvName)
+            || usable(r.source_file)
+            || usable(tagCsvName)
+            || null;
           const extractedBatchId = extractedCsvName || r.batch_id || r.run_id || (desc.match(/\[id:(.*?)\]/)?.[1]) || (desc.match(/\[(.*?)\]/)?.[1]) || null;
           const extractedPic = r.pic || r.person_in_charge || (desc.match(/\[pic:(.*?)\]/)?.[1]) || knownMetadata[sg]?.pic || 'Unassigned';
           const extractedGrid = r.grid ? String(r.grid) : (desc.match(/\[grid:(.*?)\]/)?.[1] || knownMetadata[sg]?.grid || '1');
@@ -994,6 +1017,12 @@ export async function saveToStagingSupabase(record: {
     // in the registry. `Project-OUT/Grid <n>/<subgrid>/<date>` file names also
     // survive here, so the run is identifiable straight from the NAS layout.
     const batchId = (record.csvFileName || record.imageFilename || record.id || 'batch').toString().trim();
+    // Only persist the column when it is a real file name. Falling back to
+    // `batchId` here would write synthetic `daily-csv-<timestamp>-…` values into
+    // the authoritative field, which is exactly what migration 0029 exists to
+    // clean up. Absent a real name, the column stays NULL and the read path
+    // derives a label from the panorama filename instead.
+    const realCsvFileName = (record.csvFileName || '').toString().trim();
     const itemsToInsert = rawList.map((p: any) => {
       const filename = p.filename || p.imageFilename || record.imageFilename || '';
       const sgKey = record.subgrid ? record.subgrid.toUpperCase() : extractSubgrid(filename);
@@ -1031,6 +1060,10 @@ export async function saveToStagingSupabase(record: {
         filename,
         image_url: filename,
         captured_at: capturedAtIso,
+        // Authoritative raw CSV name (migration 0029). The `[csv:…]` tag in
+        // description is still written for backwards compatibility with
+        // already-deployed rows and any external reader.
+        ...(realCsvFileName ? { csv_file_name: realCsvFileName } : {}),
         description: `Staged Batch (${record.subgrid || filename}) [id:${batchId}] [csv:${record.csvFileName || batchId}] [pic:${record.pic || p.pic || 'Unassigned'}] [grid:${record.grid || '1'}] [poi:${record.poiCount || rawList.length}] [km:${record.kmProcessed || 0}] [eq:${record.captureEquipment || 'MMS'}] [pub:${record.publishToWebGIS || 'in process'}]`,
         latitude,
         longitude,

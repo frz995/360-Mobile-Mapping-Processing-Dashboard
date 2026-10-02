@@ -36,11 +36,17 @@ import {
   buildBuildingHeightExpression
 } from '../../utils/map3DLighting';
 import {
-  buildMaplibreChoroplethMeshExpression,
   buildMeshRoadChoroplethGeojson,
+  hexToRgba,
   type ExplorerChoroplethPalette,
   type MeshCellData
 } from '../../utils/projectExplorerGeometry';
+import {
+  buildMeshExpression,
+  colorForValue,
+  resolveSetting,
+  type ChoroplethSettingsMap
+} from '../../utils/choroplethSettings';
 
 const effectiveWorkerUrl = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_MAPLIBRE_WORKER_URL) || workerUrl;
 maplibregl.setWorkerUrl(effectiveWorkerUrl);
@@ -322,6 +328,19 @@ export interface RoadAnalysisMapProps {
   onSelectExplorerGrid?: (grid: any | null) => void;
   /** Project Explorer: active choropleth metric ('density' | 'complexity' | 'panotrack' | 'roads' | 'coverage') */
   projectExplorerColorByMetric?: string;
+  /**
+   * Project Explorer: operator-defined class breaks per metric. When supplied
+   * these drive the map fill/legend/charts; otherwise the component falls back
+   * to the built-in palette + threshold defaults.
+   */
+  choroplethSettings?: ChoroplethSettingsMap;
+  /**
+   * Reports the mesh cells upward so the Details card aggregates real values and
+   * the settings editor can compute data-driven class breaks (natural / equal /
+   * quantile) from them. Fires only when the measurements change, not on palette
+   * or class edits.
+   */
+  onExplorerMeshCells?: (cells: MeshCellData[] | null) => void;
 }
 
 const DEFAULT_CENTER: [number, number] = [101.9758, 4.2105];
@@ -453,16 +472,17 @@ function extractPointCollection(
 // ──────────────────────────────────────────────────────────────────────────────
 
 /**
- * Structural fingerprint: changes ONLY when layers are added/removed, toggled,
- * or their geometry type / dash pattern / label toggle changes.
- * Style-only changes (color, opacity, size …) do NOT change the fingerprint.
+ * Structural fingerprint: changes ONLY when layers are added/removed, or their
+ * geometry type / dash pattern / label toggle changes.
+ * Style-only changes (color, opacity, size, visibility …) do NOT change the
+ * fingerprint — visibility is applied in-place via setLayoutProperty so toggling
+ * a layer's eye icon never tears down and rebuilds the whole overlay (no blink).
  */
 function computeStructuralFingerprint(layers: CatalogVectorLayer[]): string {
   return layers
     .map((l) =>
       [
         l.id,
-        l.visible ? '1' : '0',
         l.geometryType,
         l.showLabels ? '1' : '0',
         l.strokeStyle || 'solid',
@@ -477,6 +497,25 @@ function computeStructuralFingerprint(layers: CatalogVectorLayer[]): string {
     .join('|');
 }
 
+/**
+ * Style-spec properties that MapLibre only accepts via setLayoutProperty.
+ * Passing one of these to setPaintProperty throws, which aborts the enclosing
+ * style update and leaves the layer half-applied — this exact mistake previously
+ * broke `text-size` on the catalog label layer.
+ */
+const LAYOUT_ONLY_PROPS = new Set([
+  'text-field', 'text-size', 'text-font', 'text-anchor', 'text-offset',
+  'text-max-width', 'text-transform', 'text-letter-spacing', 'text-justify',
+  'text-radial-offset', 'text-variable-anchor', 'text-rotation-alignment',
+  'text-pitch-alignment', 'symbol-placement', 'symbol-spacing',
+  'symbol-sort-key', 'symbol-z-order', 'text-allow-overlap',
+  'text-ignore-placement', 'text-optional', 'visibility', 'fill-pattern',
+  'line-pattern', 'line-cap', 'line-join', 'line-miter-limit',
+  'line-round-limit', 'line-offset', 'circle-sort-key', 'fill-sort-key',
+  'icon-image', 'icon-size', 'icon-rotate', 'icon-offset',
+  'icon-anchor', 'icon-allow-overlap', 'icon-ignore-placement', 'icon-padding'
+]);
+
 /** Updates paint / layout properties of an already-rendered catalog layer in-place. */
 function updateCatalogLayerStyle(
   map: MaplibreMap,
@@ -485,6 +524,15 @@ function updateCatalogLayerStyle(
   isExplorerActive = false
 ): void {
   const sp = (id: string, prop: string, val: unknown) => {
+    if (LAYOUT_ONLY_PROPS.has(prop)) {
+      console.warn(
+        `[RoadAnalysisMap] "${prop}" is a LAYOUT property on "${id}" — ` +
+        `setPaintProperty would throw and abort the remaining style updates. ` +
+        'Use sl() instead.'
+      );
+      if (map.getLayer(id)) (map as any).setLayoutProperty(id, prop, val);
+      return;
+    }
     if (map.getLayer(id)) (map as any).setPaintProperty(id, prop, val);
   };
   const sl = (id: string, prop: string, val: unknown) => {
@@ -500,11 +548,16 @@ function updateCatalogLayerStyle(
   sp(`${srcId}-fill`, 'fill-color',   catLayer.fillColor || color);
   sp(`${srcId}-fill`, 'fill-opacity',  catLayer.fillOpacity !== undefined ? catLayer.fillOpacity : 0);
 
-  // When Explorer is active, polygon fills and outlines are suppressed so the choropleth mesh displays cleanly
-  if (isExplorerActive) {
-    sl(`${srcId}-fill`, 'visibility', 'none');
-    sl(`${srcId}-poly-line`, 'visibility', 'none');
-  }
+  // Visibility is applied in-place so toggling a layer's eye icon never triggers
+  // a full overlay rebuild. Explorer suppresses polygon fill + outline so the
+  // choropleth mesh displays cleanly; all other layers honour `catLayer.visible`.
+  const baseVisible = catLayer.visible !== false;
+  const polyVisible = baseVisible && !isExplorerActive;
+  sl(`${srcId}-fill`, 'visibility', polyVisible ? 'visible' : 'none');
+  sl(`${srcId}-poly-line`, 'visibility', polyVisible ? 'visible' : 'none');
+  sl(`${srcId}-line`, 'visibility', baseVisible ? 'visible' : 'none');
+  sl(`${srcId}-circle`, 'visibility', baseVisible ? 'visible' : 'none');
+  sl(`${srcId}-labels`, 'visibility', baseVisible ? 'visible' : 'none');
 
   // Polygon + standalone line
   for (const lid of [`${srcId}-poly-line`, `${srcId}-line`]) {
@@ -521,10 +574,14 @@ function updateCatalogLayerStyle(
   sp(`${srcId}-circle`, 'circle-stroke-width',  catLayer.pointStrokeWidth  ?? 1.5);
 
   // Labels
+  // `text-size` is a LAYOUT property in the MapLibre style spec. Calling it via
+  // setPaintProperty throws "text-size is a LAYOUT property, but it is being
+  // set as a PAINT property", which aborts the rest of this function and leaves
+  // the layer half-styled. Must go through sl().
   sp(`${srcId}-labels`, 'text-color',       catLayer.labelColor     || '#f8fafc');
   sp(`${srcId}-labels`, 'text-halo-color',  catLayer.labelHaloColor || '#090d16');
   sp(`${srcId}-labels`, 'text-halo-width',  catLayer.labelHaloWidth ?? 2);
-  sp(`${srcId}-labels`, 'text-size',        catLayer.labelSize      || 11);
+  sl(`${srcId}-labels`, 'text-size',        catLayer.labelSize      || 11);
   const lf = pickCatalogLabelField(catLayer);
   if (lf) sl(`${srcId}-labels`, 'text-field', ['to-string', ['get', lf]]);
 }
@@ -719,7 +776,9 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
   subgridMetrics = [],
   selectedExplorerGrid = null,
   onSelectExplorerGrid,
-  projectExplorerColorByMetric = 'density'
+  projectExplorerColorByMetric = 'density',
+  choroplethSettings,
+  onExplorerMeshCells
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MaplibreMap | null>(null);
@@ -727,6 +786,12 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
   const buildOverlayRef = useRef<(() => void) | null>(null);
   const dynamicLayersRef = useRef<string[]>([]);
   const dynamicSourcesRef = useRef<string[]>([]);
+  // Cleanup callbacks for delegated per-layer listeners registered inside
+  // buildOverlay. Removed before each rebuild so handlers never stack.
+  const delegatedListenersRef = useRef<Array<() => void>>([]);
+  // Source ids captured once per overlay build; the readiness poll iterates this
+  // instead of calling map.getStyle() (a deep style serialization) every tick.
+  const trackedSourceIdsRef = useRef<string[]>([]);
   const lastFittedBboxRef = useRef<string>('');
   const selectedPopupRef = useRef<maplibregl.Popup | null>(null);
 
@@ -793,11 +858,11 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
     if (!map.areTilesLoaded() && !toleratedTileErrors) { cleanPollsRef.current = 0; return; }
     if (now - lastDataLoadAtRef.current < 650) { cleanPollsRef.current = 0; return; }
 
+    // Iterate the cached source id list captured at build time — no per-tick
+    // map.getStyle() serialization.
     let allLoaded = true;
     try {
-      const style = map.getStyle();
-      const styleSources = style?.sources ? Object.keys(style.sources) : [];
-      for (const id of styleSources) {
+      for (const id of trackedSourceIdsRef.current) {
         const src = map.getSource(id);
         if (!src) continue;
         // Geojson/canvas overlay sources (district, roads, captured points) are
@@ -815,13 +880,6 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
     } catch {
       allLoaded = false;
     }
-    if (allLoaded) {
-      addedSourceIdsRef.current.forEach((id) => {
-        if (!allLoaded) return;
-        const src = map.getSource(id);
-        if (src && !map.isSourceLoaded(id)) allLoaded = false;
-      });
-    }
     if (!allLoaded) { cleanPollsRef.current = 0; return; }
 
     // Sustained-clean window required so late tile batches reset the counter.
@@ -830,6 +888,9 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
   }, []);
 
   useEffect(() => {
+    // Once ready the overlay is finished; while hidden (`!active`, e.g. the
+    // print map) there is nothing to dismiss — don't poll at all.
+    if (ready || !active) return;
     const poll = window.setInterval(verifyAndDismiss, 300);
     // Absolute escape hatch (background tabs / paused renderer): the overlay can
     // never outlast this, regardless of stalled state.
@@ -838,7 +899,7 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
       window.clearInterval(poll);
       window.clearTimeout(failsafe);
     };
-  }, [verifyAndDismiss]);
+  }, [verifyAndDismiss, ready, active]);
 
   // Refs for values that should NOT trigger a full overlay rebuild
   // (style-only changes are applied via setPaintProperty in separate effects)
@@ -865,6 +926,7 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
   const projectExplorerRoadsGeojsonRef = useRef<GeoJSON.FeatureCollection | null>(projectExplorerRoadsGeojson ?? null);
   const projectExplorerPaletteRef = useRef<ExplorerChoroplethPalette>(projectExplorerPalette ?? 'viridis');
   const projectExplorerColorByMetricRef = useRef<string>(projectExplorerColorByMetric ?? 'density');
+  const choroplethSettingsRef = useRef<ChoroplethSettingsMap | undefined>(choroplethSettings);
   const subgridMetricsRef = useRef<any[]>(subgridMetrics ?? []);
   const onProjectExplorerCenterChangeRef = useRef(onProjectExplorerCenterChange);
   const onProjectExplorerCenterBChangeRef = useRef(onProjectExplorerCenterBChange);
@@ -893,6 +955,7 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
   projectExplorerRoadsGeojsonRef.current = projectExplorerRoadsGeojson ?? null;
   projectExplorerPaletteRef.current = projectExplorerPalette ?? 'viridis';
   projectExplorerColorByMetricRef.current = projectExplorerColorByMetric ?? 'density';
+  choroplethSettingsRef.current = choroplethSettings;
   subgridMetricsRef.current = subgridMetrics ?? [];
   onProjectExplorerCenterChangeRef.current = onProjectExplorerCenterChange;
   onProjectExplorerCenterBChangeRef.current = onProjectExplorerCenterBChange;
@@ -907,6 +970,17 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
     const catalogLayers = catalogLayersRef.current;
     const systemStyles  = systemStylesRef.current;
     // selectedFeature is read from selectedFeatureRef.current later where needed
+
+    // Drop the previous build's delegated layer listeners before registering new
+    // ones — otherwise every rebuild stacks duplicate popup/cursor handlers.
+    delegatedListenersRef.current.forEach((off) => off());
+    delegatedListenersRef.current = [];
+    const onLayer = (event: string, layerId: string, handler: (...args: any[]) => void) => {
+      map.on(event as any, layerId, handler as any);
+      delegatedListenersRef.current.push(() => map.off(event as any, layerId, handler as any));
+    };
+    // Every tracked source is re-added below, so reset the readiness set.
+    addedSourceIdsRef.current.clear();
 
     dynamicLayersRef.current.forEach((id) => {
       if (map.getLayer(id)) map.removeLayer(id);
@@ -973,10 +1047,13 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
             visibility: projectExplorerActiveRef.current ? 'visible' : 'none'
           },
           paint: {
-            'fill-color': buildMaplibreChoroplethMeshExpression(
-              projectExplorerPaletteRef.current,
-              projectExplorerColorByMetricRef.current || 'density',
-              0.82
+            'fill-color': buildMeshExpression(
+              resolveSetting(
+                choroplethSettingsRef.current,
+                projectExplorerColorByMetricRef.current || 'density',
+                projectExplorerPaletteRef.current
+              ),
+              projectExplorerColorByMetricRef.current || 'density'
             ) as any,
             'fill-opacity': 0.85
           }
@@ -1051,7 +1128,9 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
     // 3. User Catalog Vector Layers (rendered below baseline lines so road analysis remains clear)
     const pendingCatalogGeometry: Array<{ srcId: string; geojson: any; geojsonJson?: string; isPolyType?: boolean }> = [];
     catalogLayers.forEach((catLayer) => {
-      if (!catLayer.visible || (!catLayer.geojson && !catLayer.geojsonJson)) return;
+      // Register even hidden layers (with visibility:none) so toggling a layer's
+      // eye icon can be applied in-place without a full overlay rebuild.
+      if (!catLayer.geojson && !catLayer.geojsonJson) return;
 
       const srcId = `ra-cat-${catLayer.id}`;
       const heavy =
@@ -1106,7 +1185,7 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
           type: 'fill',
           source: srcId,
           layout: {
-            visibility: isExplorerActive ? 'none' : 'visible'
+            visibility: isExplorerActive || !catLayer.visible ? 'none' : 'visible'
           },
           paint: {
             'fill-color': fillColor,
@@ -1126,7 +1205,7 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
           type: 'line',
           source: srcId,
           layout: {
-            visibility: isExplorerActive ? 'none' : 'visible'
+            visibility: isExplorerActive || !catLayer.visible ? 'none' : 'visible'
           },
           paint: linePaint
         });
@@ -1148,6 +1227,9 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
           id: lineId,
           type: 'line',
           source: srcId,
+          layout: {
+            visibility: catLayer.visible ? 'visible' : 'none'
+          },
           paint: linePaint
         });
         dynamicLayersRef.current.push(lineId);
@@ -1161,6 +1243,9 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
           id: ptId,
           type: 'circle',
           source: srcId,
+          layout: {
+            visibility: catLayer.visible ? 'visible' : 'none'
+          },
           paint: {
             'circle-color': color,
             'circle-opacity': opacity,
@@ -1190,6 +1275,7 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
             source: srcId,
             minzoom: minZoom,
             layout: {
+              visibility: catLayer.visible ? 'visible' : 'none',
               'text-field': ['to-string', ['get', labelField]],
               'text-size': catLayer.labelSize || 11,
               // OpenFreeMap basemaps serve only the Noto Sans family; the
@@ -1214,15 +1300,15 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
 
       // Interactive popup on feature click
       clickableLayerIds.forEach((layerId) => {
-        map.on('mouseenter', layerId, () => {
+        onLayer('mouseenter', layerId, () => {
           if (projectExplorerActiveRef.current) return;
           map.getCanvas().style.cursor = 'pointer';
         });
-        map.on('mouseleave', layerId, () => {
+        onLayer('mouseleave', layerId, () => {
           if (projectExplorerActiveRef.current) return;
           map.getCanvas().style.cursor = '';
         });
-        map.on('click', layerId, (e) => {
+        onLayer('click', layerId, (e) => {
           if (projectExplorerActiveRef.current) return;
           // If a point on ra-captured was clicked at this same location, suppress polygon popup
           if (map.getLayer('ra-captured')) {
@@ -1448,7 +1534,7 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
       });
 
       // Cluster click: smooth expansion zoom
-      map.on('click', 'ra-captured-clusters', (e) => {
+      onLayer('click', 'ra-captured-clusters', (e) => {
         const features = map.queryRenderedFeatures(e.point, { layers: ['ra-captured-clusters'] });
         const clusterId = features[0]?.properties?.cluster_id;
         const source = map.getSource('ra-captured') as any;
@@ -1462,23 +1548,23 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
           });
         }
       });
-      map.on('mouseenter', 'ra-captured-clusters', () => {
+      onLayer('mouseenter', 'ra-captured-clusters', () => {
         map.getCanvas().style.cursor = 'pointer';
       });
-      map.on('mouseleave', 'ra-captured-clusters', () => {
+      onLayer('mouseleave', 'ra-captured-clusters', () => {
         map.getCanvas().style.cursor = '';
       });
 
       // Pointer cursor on hover
-      map.on('mouseenter', 'ra-captured', () => {
+      onLayer('mouseenter', 'ra-captured', () => {
         map.getCanvas().style.cursor = 'pointer';
       });
-      map.on('mouseleave', 'ra-captured', () => {
+      onLayer('mouseleave', 'ra-captured', () => {
         map.getCanvas().style.cursor = '';
       });
 
       // Click popup on panotrack point
-      map.on('click', 'ra-captured', (e) => {
+      onLayer('click', 'ra-captured', (e) => {
         const feat = e.features?.[0];
         if (!feat) return;
         const coords = (feat.geometry as any).coordinates.slice();
@@ -1750,6 +1836,15 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
 
     // 8. Everything (style + boundary + points + roads) is now painted.
     overlayBuiltRef.current = true;
+
+    // Cache the live source id list once per build. The readiness poll reads this
+    // instead of calling map.getStyle() (deep serialization) every 300ms.
+    try {
+      const style = map.getStyle();
+      trackedSourceIdsRef.current = style?.sources ? Object.keys(style.sources) : [];
+    } catch {
+      trackedSourceIdsRef.current = [];
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bbox, districtGeojson, dimmedRegionsGeojson, capturedPoints]);
   // catalogLayers, systemStyles, roadRuns, selectedFeature intentionally omitted — they are
@@ -1895,6 +1990,17 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
   }, [focusBbox]);
 
   // ── 1. Memoize mesh and road GeoJSON so switching palettes or metrics NEVER re-runs heavy spatial clipping ──
+  // Geometry-only signature of the catalog layers. Style edits (color/opacity/
+  // stroke) leave it unchanged, so moving an Explorer slider does not re-run the
+  // heavy O(cells × road segments) mesh clip. Reads the live ref (not the prop)
+  // so the memo body always sees the current geometry.
+  const catalogGeometryKey = useMemo(
+    () =>
+      catalogLayers
+        .map((l) => `${l.id}:${l.geometryType}:${l.featureCount ?? 0}:${l.geojson ? 'g' : ''}${l.geojsonJson ? 'j' : ''}`)
+        .join('|'),
+    [catalogLayers]
+  );
   const explorerMeshResult = useMemo(() => {
     if (!projectExplorerActive || !showRoadLines) {
       return null;
@@ -1902,7 +2008,7 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
     return buildMeshRoadChoroplethGeojson(
       roadRuns,
       districtGeojson,
-      catalogLayers,
+      catalogLayersRef.current,
       subgridMetrics,
       capturedPoints
     );
@@ -1911,11 +2017,52 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
     showRoadLines,
     roadRuns,
     districtGeojson,
-    catalogLayers,
+    catalogGeometryKey,
     subgridMetrics,
     capturedPoints
   ]);
   explorerMeshResultRef.current = explorerMeshResult;
+
+  // ── 1b. Publish mesh cells so the Explorer card and class editor share one source ──
+  // Publishes `cells`, not the ring-expanded GeoJSON features: the card needs the
+  // per-cell corridor/junction/frame breakdowns, which ring expansion duplicates.
+  // The signature covers the measured values, so a rebuild that changes geometry
+  // but not measurements does not re-notify the parent.
+  const onExplorerMeshCellsRef = useRef(onExplorerMeshCells);
+  onExplorerMeshCellsRef.current = onExplorerMeshCells;
+  const meshCellSignatureRef = useRef<string | null>(null);
+  useEffect(() => {
+    const cells = explorerMeshResult?.cells || null;
+    const sig = cells
+      ? cells
+          .map((c) =>
+            [
+              c.subgrid,
+              c.planKm,
+              c.areaKm2,
+              c.density,
+              c.coverage,
+              c.panotrack,
+              c.corridor?.shortKm,
+              c.corridor?.mediumKm,
+              c.corridor?.arterialKm,
+              c.corridor?.trunkKm,
+              c.junctions?.deadEnd,
+              c.junctions?.threeWay,
+              c.junctions?.fourWay,
+              c.junctions?.fivePlus,
+              c.frames?.verified,
+              c.frames?.defect,
+              c.frames?.transit,
+              c.frames?.mismatch
+            ].join(':')
+          )
+          .join('|')
+      : null;
+    if (sig === meshCellSignatureRef.current) return;
+    meshCellSignatureRef.current = sig;
+    onExplorerMeshCellsRef.current?.(cells);
+  }, [explorerMeshResult]);
 
   // ── 2. Update mesh and road data ONLY when underlying geometry actually changes ──
   useEffect(() => {
@@ -1957,13 +2104,13 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
     }
 
     // Suppress catalog layer polygon outlines and fills so they don't double-render over choropleth mesh outlines
-    catalogLayers.forEach((catLayer) => {
+    catalogLayersRef.current.forEach((catLayer) => {
       const outlineId = `ra-cat-${catLayer.id}-poly-line`;
       const fillId = `ra-cat-${catLayer.id}-fill`;
       if (map.getLayer(outlineId)) map.setLayoutProperty(outlineId, 'visibility', 'none');
       if (map.getLayer(fillId)) map.setLayoutProperty(fillId, 'visibility', 'none');
     });
-  }, [explorerMeshResult, projectExplorerActive, showRoadLines, catalogLayers]);
+  }, [explorerMeshResult, projectExplorerActive, showRoadLines, catalogGeometryKey]);
 
   // ── 3. Dedicated Ultra-Fast Palette & Metric Choropleth Switcher (< 1ms GPU update, zero data re-parsing) ──
   useEffect(() => {
@@ -1979,9 +2126,12 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
     map.setPaintProperty(
       'ra-explorer-mesh-fill',
       'fill-color',
-      buildMaplibreChoroplethMeshExpression(activePalette, activeMetric, 0.82) as any
+      buildMeshExpression(
+        resolveSetting(choroplethSettings, activeMetric, activePalette),
+        activeMetric
+      ) as any
     );
-  }, [projectExplorerPalette, projectExplorerColorByMetric, projectExplorerActive, showRoadLines]);
+  }, [projectExplorerPalette, projectExplorerColorByMetric, choroplethSettings, projectExplorerActive, showRoadLines]);
 
   // ── Helper: Compute Full Extent of the Active Grid ──
   const getFullGridExtent = useCallback((): [number, number, number, number] | null => {
@@ -2283,7 +2433,7 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
 
     let hoverPopup: maplibregl.Popup | null = null;
 
-    const handleMouseMove = (e: maplibregl.MapMouseEvent) => {
+    const processMouseMove = (e: maplibregl.MapMouseEvent) => {
       if (!projectExplorerActiveRef.current) {
         map.getCanvas().style.cursor = '';
         if (hoverPopup) {
@@ -2327,26 +2477,31 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
 
       const activeMetric = projectExplorerColorByMetricRef.current || 'density';
       let metricBadge = `${density} km/km²`;
-      let metricBadgeColor = '#34d399';
-      let metricBadgeBg = 'rgba(52, 211, 153, 0.18)';
+      let metricValue = Number(p.density || 0);
 
       if (activeMetric === 'complexity') {
         metricBadge = `${complexity}/100 complexity`;
-        metricBadgeColor = '#CCADD8';
-        metricBadgeBg = 'rgba(204, 173, 216, 0.22)';
+        metricValue = complexity;
       } else if (activeMetric === 'panotrack') {
         metricBadge = `${panotrack} survey frames`;
-        metricBadgeColor = '#FF8890';
-        metricBadgeBg = 'rgba(255, 136, 144, 0.22)';
+        metricValue = panotrack;
       } else if (activeMetric === 'roads') {
         metricBadge = `${planKm} km roads`;
-        metricBadgeColor = '#66E3C3';
-        metricBadgeBg = 'rgba(102, 227, 195, 0.22)';
+        metricValue = Number(p.planKm || 0);
       } else if (activeMetric === 'coverage') {
         metricBadge = `${coverage}% covered`;
-        metricBadgeColor = '#D3EEA5';
-        metricBadgeBg = 'rgba(211, 238, 165, 0.22)';
+        metricValue = coverage;
       }
+
+      // Badge colour tracks the cell's choropleth class so the tooltip and the
+      // map can never disagree after a class break is edited.
+      const activeSetting = resolveSetting(
+        choroplethSettingsRef.current,
+        activeMetric,
+        projectExplorerPaletteRef.current
+      );
+      const metricBadgeColor = colorForValue(activeSetting, metricValue);
+      const metricBadgeBg = hexToRgba(metricBadgeColor, 0.22);
 
       if (!hoverPopup) {
         hoverPopup = new maplibregl.Popup({
@@ -2506,12 +2661,28 @@ const RoadAnalysisMapComponent: React.FC<RoadAnalysisMapProps> = ({
       }
     };
 
+    // Coalesce raw mousemove events into at most one tooltip update per frame —
+    // queryRenderedFeatures + DOM popup churn is the hot path when hovering.
+    let pendingMove: maplibregl.MapMouseEvent | null = null;
+    let moveRaf: number | null = null;
+    const handleMouseMove = (e: maplibregl.MapMouseEvent) => {
+      pendingMove = e;
+      if (moveRaf !== null) return;
+      moveRaf = requestAnimationFrame(() => {
+        moveRaf = null;
+        const ev = pendingMove;
+        pendingMove = null;
+        if (ev) processMouseMove(ev);
+      });
+    };
+
     map.on('mousemove', handleMouseMove);
     map.on('mouseout', handleMouseLeave);
     map.on('click', handleMapClick);
 
     return () => {
       map.getCanvas().style.cursor = '';
+      if (moveRaf !== null) cancelAnimationFrame(moveRaf);
       map.off('mousemove', handleMouseMove);
       map.off('mouseout', handleMouseLeave);
       map.off('click', handleMapClick);
@@ -2728,7 +2899,7 @@ function areStylesEqual(a?: string | StyleSpecification, b?: string | StyleSpeci
   // ── Cinematic Camera Orbit ──
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !isOrbiting) return;
+    if (!map || !isOrbiting || !active) return;
     let animFrame: number;
     let lastTime = performance.now();
     const orbitSpeed = 4.0; // degrees per second
@@ -2745,17 +2916,27 @@ function areStylesEqual(a?: string | StyleSpecification, b?: string | StyleSpeci
     return () => {
       cancelAnimationFrame(animFrame);
     };
-  }, [isOrbiting]);
+  }, [isOrbiting, active]);
 
   // ── 2D↔3D Camera FLIGHT: swoop down to / up from the 3D surface view ──
+  const didMountFlightRef = useRef(false);
   useEffect(() => {
     const map = mapRef.current;
-    if (!map) return;
+    if (!map || !active) return;
 
-    const stop = startCameraFlight(map, show3D
-      ? { targetPitch: 60, targetBearing: map.getBearing(), duration: 2600 }
-      : { targetPitch: 0, targetBearing: 0, duration: 2200 }
-    );
+    const targetPitch = show3D ? 60 : 0;
+    const targetBearing = show3D ? map.getBearing() : 0;
+    const firstRun = !didMountFlightRef.current;
+    didMountFlightRef.current = true;
+    // On mount the camera is already flat: a 2.2s no-op flight only burns frames
+    // and competes with the initial tile/overlay paint.
+    if (firstRun && Math.abs(map.getPitch() - targetPitch) < 1) return;
+
+    const stop = startCameraFlight(map, {
+      targetPitch,
+      targetBearing,
+      duration: show3D ? 2600 : 2200
+    });
 
     // Let the user's own gestures take over if they drag mid-flight.
     const interrupt = () => stop();
@@ -2767,7 +2948,7 @@ function areStylesEqual(a?: string | StyleSpecification, b?: string | StyleSpeci
       map.off('dragstart', interrupt);
       stop();
     };
-  }, [show3D]);
+  }, [show3D, active]);
 
   return (
     <div

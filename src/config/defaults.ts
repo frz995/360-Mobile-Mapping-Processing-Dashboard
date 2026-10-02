@@ -129,6 +129,51 @@ export function getProviderConnectionDefaults(provider: string): ProviderConnect
 export const DEFAULT_BASEMAP = 'ofm-positron';
 
 /**
+ * Canonical basemap ids accepted by the embedded WebGIS app. These are the ids
+ * registered in the map repo's `src/config/basemaps.js`. Anything else is
+ * rejected at the host boundary so an unknown/typo'd value cannot silently
+ * degrade to the default basemap mid-session.
+ */
+export const BASEMAP_IDS = [
+  'ofm-positron',
+  'ofm-dark',
+  'ofm-fiord',
+  'ofm-liberty',
+  'ofm-bright',
+  'positron',
+  'voyager',
+  'osm',
+  'osm-hot',
+  'osm-france',
+  'google-streets',
+  'google-satellite',
+  'google-hybrid',
+  'google-terrain',
+  'esri-streets',
+  'esri-topo',
+  'esri-gray',
+  'dark',
+  'satellite',
+  'usgs-imagery',
+  'usgs-topo',
+  'esri-physical',
+  'esri-shaded-relief',
+  'esri-terrain-base',
+  'esri-natgeo',
+  'esri-ocean',
+  'topo',
+  'cyclosm',
+  'custom_tile'
+] as const;
+
+export type BasemapId = (typeof BASEMAP_IDS)[number];
+
+/** Narrow an arbitrary stored value to a registered basemap id. */
+export const resolveBasemapId = (value: unknown): BasemapId => {
+  return BASEMAP_IDS.includes(value as BasemapId) ? (value as BasemapId) : DEFAULT_BASEMAP;
+};
+
+/**
  * Current application version. The sign-in welcome gate replays when this
  * value changes (stored in localStorage as `geosphere360_welcome_version`),
  * so shipping a new version re-engages first-run onboarding for existing users.

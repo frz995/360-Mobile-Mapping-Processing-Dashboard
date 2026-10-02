@@ -1,3 +1,5 @@
+import type { BasemapId } from '../config/defaults';
+
 export type UserRole = 'Administrator' | 'Survey Operator' | 'QA Inspector' | 'Viewer';
 export type UserStatus = 'Active' | 'Disabled' | 'Pending';
 
@@ -173,7 +175,11 @@ export interface ExtendedProjectSettings {
   twoFactorRequired?: boolean;
 
   // Basemap & Layer Management
-  defaultBasemap?: 'esri_satellite' | 'osm_standard' | 'carto_dark' | 'carto_light' | 'google_hybrid' | 'custom_tile';
+  // BasemapId is the canonical registry from config/defaults.ts. The previous
+  // inline union only listed six legacy underscore ids ('osm_standard',
+  // 'carto_dark', ...) that the embedded WebGIS does not register, while
+  // omitting the ones the settings UI actually offers.
+  defaultBasemap?: BasemapId;
   customBasemapUrl?: string;
   basemapOpacity?: number; // 0 - 100
   publishedTrackColor?: string;

@@ -477,6 +477,11 @@ export function buildMaplibreChoroplethExpression(
  * Empty cells (value <= 0) evaluate to completely transparent rgba(0, 0, 0, 0), ensuring choropleth
  * styling colors strictly on active grid boxes and never blankets empty district areas.
  */
+/**
+ * @deprecated Prefer `buildMeshExpression` from `./choroplethSettings`, which
+ * reads the operator's saved class breaks instead of the fixed thresholds
+ * below. Retained for callers that have no access to a saved setting.
+ */
 export function buildMaplibreChoroplethMeshExpression(
   palette: ExplorerChoroplethPalette = 'greens',
   property = 'density',
@@ -485,7 +490,8 @@ export function buildMaplibreChoroplethMeshExpression(
   const cfg = ATLAS_PALETTES[palette] || ATLAS_PALETTES.greens;
   const stops = cfg.stops;
 
-  // Thresholds separating the 5 sequential categories:
+  // Thresholds separating the 5 sequential categories. These now mirror
+  // DEFAULT_METRIC_BREAKS in ./choroplethSettings.
   let thresholds: [number, number, number, number];
   switch (property) {
     case 'complexity':
@@ -831,6 +837,12 @@ export function isCellIntersectingDistrict(
 export interface MeshRoadChoroplethResult {
   meshGeojson: GeoJSON.FeatureCollection;
   annotatedRoadsGeojson: GeoJSON.FeatureCollection;
+  /**
+   * The same cells as `meshGeojson`, un-ring-expanded. The Details card
+   * aggregates these instead of re-deriving values from GeoJSON properties,
+   * so idle means "all cells in the district grid".
+   */
+  cells: MeshCellData[];
 }
 
 /**
@@ -841,6 +853,34 @@ export interface MeshRoadChoroplethResult {
  *    Bearing road density, urban complexity, Panotrack survey frames, road length, and coverage.
  * 2. Road LineString features annotated with density, complexity, and survey metrics.
  */
+/**
+ * Road length in a cell, bucketed by corridor class. The boundaries match the
+ * ones `calculateBufferAnalytics` uses so a focused cell and a circle buffer
+ * classify the same segment into the same bucket.
+ */
+export interface MeshCorridorBreakdown {
+  shortKm: number;
+  mediumKm: number;
+  arterialKm: number;
+  trunkKm: number;
+}
+
+/** Junction nodes in a cell, bucketed by the number of ways meeting there. */
+export interface MeshJunctionBreakdown {
+  deadEnd: number;
+  threeWay: number;
+  fourWay: number;
+  fivePlus: number;
+}
+
+/** Panotrack survey frames in a cell, bucketed by capture status. */
+export interface MeshFrameBreakdown {
+  verified: number;
+  defect: number;
+  transit: number;
+  mismatch: number;
+}
+
 export interface MeshCellData {
   subgrid: string;
   bbox: [number, number, number, number];
@@ -850,8 +890,26 @@ export interface MeshCellData {
   complexity: number;
   panotrack: number;
   coverage: number;
+  /** Surveyed road length in km. `coverage` is a percentage, so this has to be
+   *  derived per cell — summing percentages across cells is meaningless. */
+  coverageKm: number;
   areaKm2: number;
+  corridor: MeshCorridorBreakdown;
+  junctions: MeshJunctionBreakdown;
+  frames: MeshFrameBreakdown;
   rings: [number, number][][];
+}
+
+/**
+ * Bucket a captured survey frame into one of the four capture states the
+ * Explorer charts report. Defect wins over transit wins over mismatch, so a
+ * flagged frame is never double-counted.
+ */
+export function classifyFrameStatus(pt: any): keyof MeshFrameBreakdown {
+  if (pt?.status === 'defect' || pt?.color === '#ef4444') return 'defect';
+  if (pt?.relationType === 'INTERSECT' || pt?.isTransit) return 'transit';
+  if (pt?.relationType === 'MISMATCH') return 'mismatch';
+  return 'verified';
 }
 
 export function buildMeshRoadChoroplethGeojson(
@@ -902,15 +960,33 @@ export function buildMeshRoadChoroplethGeojson(
     }
   }
 
-  // Pre-filter valid coordinate points
-  const validPoints: [number, number][] = [];
+  // Pre-filter valid coordinate points, keeping capture status so a cell can
+  // report its own frame breakdown instead of a bare count.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  type FrameStatus = keyof MeshFrameBreakdown;
+  const validPoints: Array<{ lng: number; lat: number; status: FrameStatus }> = [];
   for (const pt of rawPoints) {
     const lng = Array.isArray(pt) ? pt[0] : (pt?.lng ?? pt?.lon ?? pt?.longitude);
     const lat = Array.isArray(pt) ? pt[1] : (pt?.lat ?? pt?.latitude);
     if (typeof lng === 'number' && typeof lat === 'number') {
-      validPoints.push([lng, lat]);
+      validPoints.push({ lng, lat, status: classifyFrameStatus(pt) });
     }
   }
+
+  // Node degree map, built once. Degree is the number of segment ends that land
+  // on a coordinate — the same definition `calculateBufferAnalytics` uses to find
+  // junctions. Quantising to 4 decimals merges the near-identical coordinates
+  // that a track logger emits for one physical intersection.
+  const nodeDegrees = new Map<string, { lng: number; lat: number; degree: number }>();
+  for (const s of preSegments) {
+    for (const p of [s.p1, s.p2]) {
+      const key = `${p[0].toFixed(4)},${p[1].toFixed(4)}`;
+      const hit = nodeDegrees.get(key);
+      if (hit) hit.degree++;
+      else nodeDegrees.set(key, { lng: p[0], lat: p[1], degree: 1 });
+    }
+  }
+  const nodeList = [...nodeDegrees.values()];
 
   const cells: MeshCellData[] = [];
 
@@ -918,6 +994,7 @@ export function buildMeshRoadChoroplethGeojson(
   const computeCellMetrics = (bbox: [number, number, number, number]) => {
     let roadMetersInCell = 0;
     let junctionCount = 0;
+    const corridor: MeshCorridorBreakdown = { shortKm: 0, mediumKm: 0, arterialKm: 0, trunkKm: 0 };
 
     const [bMinX, bMinY, bMaxX, bMaxY] = bbox;
     for (let i = 0; i < preSegments.length; i++) {
@@ -927,18 +1004,40 @@ export function buildMeshRoadChoroplethGeojson(
         continue;
       }
       // Fully inside cell
+      let segLen = s.len;
       if (s.minX >= bMinX && s.maxX <= bMaxX && s.minY >= bMinY && s.maxY <= bMaxY) {
         roadMetersInCell += s.len;
         junctionCount += 2;
-        continue;
+      } else {
+        // Partial intersection
+        segLen = segmentLengthInBbox(s.p1, s.p2, bbox);
+        roadMetersInCell += segLen;
+        if (segLen > 0) {
+          if (pointInBbox(s.p1, bbox)) junctionCount++;
+          if (pointInBbox(s.p2, bbox)) junctionCount++;
+        }
       }
-      // Partial intersection
-      const segLen = segmentLengthInBbox(s.p1, s.p2, bbox);
-      roadMetersInCell += segLen;
+      // Corridor length buckets. A segment clipped at the cell edge contributes
+      // only its in-cell length, so the buckets still sum to planKm.
       if (segLen > 0) {
-        if (pointInBbox(s.p1, bbox)) junctionCount++;
-        if (pointInBbox(s.p2, bbox)) junctionCount++;
+        const km = segLen / 1000;
+        if (segLen < 150) corridor.shortKm += km;
+        else if (segLen < 500) corridor.mediumKm += km;
+        else if (segLen < 1200) corridor.arterialKm += km;
+        else corridor.trunkKm += km;
       }
+    }
+
+    // Junction nodes inside the cell, by degree. Tracked separately from the
+    // endpoint tally above, which counts segment ends rather than junctions.
+    const junctions: MeshJunctionBreakdown = { deadEnd: 0, threeWay: 0, fourWay: 0, fivePlus: 0 };
+    for (let i = 0; i < nodeList.length; i++) {
+      const n = nodeList[i];
+      if (n.lng < bMinX || n.lng > bMaxX || n.lat < bMinY || n.lat > bMaxY) continue;
+      if (n.degree === 1) junctions.deadEnd++;
+      else if (n.degree === 3) junctions.threeWay++;
+      else if (n.degree === 4) junctions.fourWay++;
+      else if (n.degree >= 5) junctions.fivePlus++;
     }
 
     const planKm = Number((roadMetersInCell / 1000).toFixed(2));
@@ -947,12 +1046,14 @@ export function buildMeshRoadChoroplethGeojson(
     const areaKm2 = Math.max(0.5, Number((widthKm * heightKm).toFixed(1)));
     const density = Number((planKm / areaKm2).toFixed(2));
 
-    // Panotrack survey points inside cell
+    // Panotrack survey frames inside cell, split by capture status.
+    const frames: MeshFrameBreakdown = { verified: 0, defect: 0, transit: 0, mismatch: 0 };
     let cellPanoCount = 0;
     for (let i = 0; i < validPoints.length; i++) {
       const pt = validPoints[i];
-      if (pt[0] >= bMinX && pt[0] <= bMaxX && pt[1] >= bMinY && pt[1] <= bMaxY) {
+      if (pt.lng >= bMinX && pt.lng <= bMaxX && pt.lat >= bMinY && pt.lat <= bMaxY) {
         cellPanoCount++;
+        frames[pt.status]++;
       }
     }
 
@@ -983,7 +1084,16 @@ export function buildMeshRoadChoroplethGeojson(
       panotrack: cellPanoCount,
       complexity,
       coverage,
-      areaKm2
+      coverageKm: Number(Math.min(planKm, (planKm * coverage) / 100).toFixed(2)),
+      areaKm2,
+      corridor: {
+        shortKm: Number(corridor.shortKm.toFixed(2)),
+        mediumKm: Number(corridor.mediumKm.toFixed(2)),
+        arterialKm: Number(corridor.arterialKm.toFixed(2)),
+        trunkKm: Number(corridor.trunkKm.toFixed(2))
+      },
+      junctions,
+      frames
     };
   };
 
@@ -1065,7 +1175,11 @@ export function buildMeshRoadChoroplethGeojson(
           complexity: m.complexity,
           panotrack: m.panotrack,
           coverage: m.coverage,
+          coverageKm: m.coverageKm,
           areaKm2: m.areaKm2,
+          corridor: m.corridor,
+          junctions: m.junctions,
+          frames: m.frames,
           rings
         });
       }
@@ -1105,7 +1219,11 @@ export function buildMeshRoadChoroplethGeojson(
         complexity: m.complexity,
         panotrack: m.panotrack,
         coverage: m.coverage,
+        coverageKm: m.coverageKm,
         areaKm2: m.areaKm2,
+        corridor: m.corridor,
+        junctions: m.junctions,
+        frames: m.frames,
         rings: [cellRectRing]
       });
     }
@@ -1195,7 +1313,11 @@ export function buildMeshRoadChoroplethGeojson(
           complexity: m.complexity,
           panotrack: m.panotrack,
           coverage: m.coverage,
+          coverageKm: m.coverageKm,
           areaKm2: m.areaKm2,
+          corridor: m.corridor,
+          junctions: m.junctions,
+          frames: m.frames,
           rings: [cellRectRing]
         });
       }
@@ -1216,8 +1338,12 @@ export function buildMeshRoadChoroplethGeojson(
           panotrack: cell.panotrack,
           roads: cell.roads,
           coverage: cell.coverage,
+          coverageKm: cell.coverageKm,
           planKm: cell.planKm,
           areaKm2: cell.areaKm2,
+          corridor: cell.corridor,
+          junctions: cell.junctions,
+          frames: cell.frames,
           bbox: cell.bbox,
           bbox_str: JSON.stringify(cell.bbox)
         },
@@ -1277,7 +1403,8 @@ export function buildMeshRoadChoroplethGeojson(
 
   return {
     meshGeojson,
-    annotatedRoadsGeojson
+    annotatedRoadsGeojson,
+    cells
   };
 }
 

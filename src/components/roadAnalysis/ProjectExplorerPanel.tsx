@@ -1,45 +1,50 @@
 // =====================================================================
-// Project Explorer / Catchment Visualizer Component
-// Modeled directly on the Sydney Catchment Demographic Explorer:
-// - Left floating "Catchment" card with category pills, pin badge [A]/[B],
-//   primary metric, and dual animated demographic horizontal bar charts.
-// - Bottom floating pill toolbar: [Buffer] preset toggle, live radius slider,
-//   and sleek glassmorphic "Colour by" custom dropdown menu.
-// - Bottom-left continuous choropleth gradient spectrum bar with quantile ticks.
-// - Top-left branding pill badge.
+// Project Explorer card.
+//
+// Reads its numbers from `categories`, aggregated over the mesh cells the map
+// paints (see `utils/catchmentStats`). Idle covers every cell in the district
+// grid; focusing a subgrid narrows the same aggregation to one cell. There is
+// no buffer radius — the old circle geometry is gone, along with the pin A/B
+// compare mode that depended on it.
+//
+// Layout:
+// - Details card: category pills, hero metric, donut, class-share columns.
+// - Bottom floating pill toolbar: focused-scope pill and "Colour by" dropdown.
+// - Bottom-left choropleth class legend driven by `choroplethSettings`.
 // =====================================================================
 
 import React, { useState, useEffect, useRef } from 'react';
-import { X, RotateCcw, ChevronDown, ChevronLeft, ChevronRight, Check } from 'lucide-react';
+import { X, RotateCcw, ChevronDown, ChevronLeft, ChevronRight, Check, SlidersHorizontal } from 'lucide-react';
 import {
-  type BufferAnalytics,
   type ExplorerChoroplethPalette,
-  type CatchmentTabKey,
-  ATLAS_PALETTES,
-  getCatchmentTabData
+  type CatchmentTabKey
 } from '../../utils/projectExplorerGeometry';
+import type { CatchmentCategory, CatchmentRow } from '../../utils/catchmentStats';
+import {
+  classColors,
+  classRangeLabel,
+  resolveSetting,
+  type ChoroplethSetting,
+  type ChoroplethSettingsMap
+} from '../../utils/choroplethSettings';
+import { ChoroplethSettingsEditor } from './ChoroplethSettingsEditor';
+import {
+  DonutChart,
+  ClassShareColumns,
+  EXPLORER_DONUT_COLORS
+} from './ExplorerCharts';
 
 export interface ProjectExplorerPanelProps {
   active: boolean;
   onClose: () => void;
-  center?: [number, number] | null;
-  centerA?: [number, number] | null;
-  onCenterAChange?: (center: [number, number]) => void;
-  centerB?: [number, number] | null;
-  onCenterBChange?: (center: [number, number]) => void;
-  radius: number; // meters
-  onRadiusChange: (radius: number) => void;
-  analytics?: BufferAnalytics;
-  analyticsA?: BufferAnalytics;
-  analyticsB?: BufferAnalytics | null;
+  /** Every category, already aggregated over the current mesh scope. */
+  categories: Record<CatchmentTabKey, CatchmentCategory>;
+  /** What the numbers cover: the district grid, or one focused subgrid. */
+  scopeLabel: string;
   palette: ExplorerChoroplethPalette;
   onPaletteChange: (palette: ExplorerChoroplethPalette) => void;
   colorByMetric?: string;
   onColorByMetricChange?: (metric: string) => void;
-  isCompareMode?: boolean;
-  onToggleCompareMode?: (compare: boolean) => void;
-  activePinFocus?: 'A' | 'B';
-  onSelectPinFocus?: (pin: 'A' | 'B') => void;
   onReset?: () => void;
   onExploreUrbanArea?: () => void;
   hasExplored?: boolean;
@@ -51,6 +56,12 @@ export interface ProjectExplorerPanelProps {
     bbox?: [number, number, number, number];
   } | null;
   onClearGridSelection?: () => void;
+  /** Operator-defined choropleth classes per metric (map + legend + charts). */
+  choroplethSettings?: ChoroplethSettingsMap;
+  /** Observed mesh values per metric, used to compute data-driven class breaks. */
+  choroplethValues?: Record<string, number[]>;
+  onChoroplethSettingsChange?: (metric: string, setting: ChoroplethSetting) => void;
+  onChoroplethSettingsSave?: (metric: string, setting: ChoroplethSetting) => void;
 }
 
 export const CATCHMENT_TABS: Array<{ key: CatchmentTabKey; label: string }> = [
@@ -61,7 +72,7 @@ export const CATCHMENT_TABS: Array<{ key: CatchmentTabKey; label: string }> = [
   { key: 'coverage', label: 'Coverage' }
 ];
 
-export interface BufferMetricOption {
+export interface ChoroplethMetricOption {
   value: string;
   label: string;
   tabKey: CatchmentTabKey;
@@ -71,7 +82,18 @@ export interface BufferMetricOption {
   description: string;
 }
 
-export const BUFFER_METRIC_OPTIONS: BufferMetricOption[] = [
+// Ordered to mirror the Details card pill tabs (`CATCHMENT_TABS`) so the
+// Choropleth Metric list reads in the same sequence as the on-card categories.
+export const CHOROPLETH_METRIC_OPTIONS: ChoroplethMetricOption[] = [
+  {
+    value: 'roads',
+    label: 'Road corridors',
+    tabKey: 'roads',
+    palette: 'ylgnbu',
+    accentColor: '#41b6c4',
+    unit: 'km length',
+    description: 'Corridor hierarchy & total road length (5 sequential categories)'
+  },
   {
     value: 'density',
     label: 'Road density',
@@ -100,15 +122,6 @@ export const BUFFER_METRIC_OPTIONS: BufferMetricOption[] = [
     description: 'Survey frame coverage & capture status (5 sequential categories)'
   },
   {
-    value: 'roads',
-    label: 'Road corridors',
-    tabKey: 'roads',
-    palette: 'ylgnbu',
-    accentColor: '#41b6c4',
-    unit: 'km length',
-    description: 'Corridor hierarchy & total road length (5 sequential categories)'
-  },
-  {
     value: 'coverage',
     label: 'Network coverage',
     tabKey: 'coverage',
@@ -119,62 +132,7 @@ export const BUFFER_METRIC_OPTIONS: BufferMetricOption[] = [
   }
 ];
 
-export const BUFFER_PRESETS = [
-  { radius: 1000, label: '1 km', hint: 'Walking buffer' },
-  { radius: 3000, label: '3 km', hint: 'Neighborhood' },
-  { radius: 5000, label: '5 km', hint: 'District standard' },
-  { radius: 8000, label: '8 km', hint: 'Sub-regional' },
-  { radius: 10000, label: '10 km', hint: 'Macro corridor' }
-];
 
-/**
- * Curated pastel color palette from reference specification:
- * - Mint Cyan:      #66E3C3
- * - Soft Lime:      #D3EEA5
- * - Warm Yellow:    #FFDD84
- * - Pastel Coral:   #FA897B
- * - Lilac Lavender: #CCADD8
- * - Cobalt Blue:    #5573EB
- * - Coral Rose:     #FF8890
- * - Pastel Peach:   #FDC094
- *
- * Tab Configurations (Primary Section 1 & Secondary Section 2):
- * - Roads:      Mint Cyan (#66E3C3) + Soft Lime (#D3EEA5)
- * - Density:    Cobalt Blue (#5573EB) + Pastel Coral (#FA897B)
- * - Complexity: Lilac Lavender (#CCADD8) + Warm Yellow (#FFDD84)
- * - Panotrack:  Coral Rose (#FF8890) + Pastel Peach (#FDC094)
- * - Coverage:   Soft Lime (#D3EEA5) + Lilac Lavender (#CCADD8)
- */
-export const TAB_PASTEL_COLORS: Record<CatchmentTabKey, { primaryBar: string; secondaryBar: string }> = {
-  roads: {
-    primaryBar: '#66E3C3',   // Mint Cyan
-    secondaryBar: '#D3EEA5'  // Soft Lime
-  },
-  density: {
-    primaryBar: '#5573EB',   // Cobalt Blue (matches reference screenshot)
-    secondaryBar: '#FA897B'  // Pastel Coral (matches reference screenshot)
-  },
-  complexity: {
-    primaryBar: '#CCADD8',   // Lilac Lavender
-    secondaryBar: '#FFDD84'  // Warm Yellow
-  },
-  panotrack: {
-    primaryBar: '#FF8890',   // Coral Rose
-    secondaryBar: '#FDC094'  // Pastel Peach
-  },
-  coverage: {
-    primaryBar: '#D3EEA5',   // Soft Lime
-    secondaryBar: '#CCADD8'  // Lilac Lavender
-  }
-};
-
-export const DONUT_PALETTES: Record<CatchmentTabKey, string[]> = {
-  roads: ['#2dd4bf', '#38bdf8', '#818cf8', '#c084fc'],        // Teal, Sky, Indigo, Purple
-  density: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444'],      // Blue, Green, Amber, Red
-  complexity: ['#a855f7', '#6366f1', '#ec4899', '#f97316'],   // Violet, Indigo, Pink, Orange
-  panotrack: ['#10b981', '#38bdf8', '#f59e0b', '#ef4444'],    // Green, Sky, Amber, Red
-  coverage: ['#10b981', '#64748b', '#38bdf8', '#818cf8']      // Green, Slate, Sky, Indigo
-};
 
 function metricToTab(metric?: string): CatchmentTabKey {
   if (!metric) return 'roads';
@@ -189,51 +147,51 @@ function metricToTab(metric?: string): CatchmentTabKey {
 export const ProjectExplorerPanel: React.FC<ProjectExplorerPanelProps> = ({
   active,
   onClose: _onClose,
-  center: _center,
-  centerA: _centerA,
-  centerB: _centerB,
-  radius: _radius,
-  onRadiusChange: _onRadiusChange,
-  analytics,
-  analyticsA,
-  analyticsB,
+  categories,
+  scopeLabel,
   palette,
   onPaletteChange,
   colorByMetric,
   onColorByMetricChange,
-  isCompareMode: _isCompareMode = false,
-  onToggleCompareMode: _onToggleCompareMode,
-  activePinFocus = 'A',
-  onSelectPinFocus: _onSelectPinFocus,
   onReset,
   onExploreUrbanArea: _onExploreUrbanArea,
   selectedGrid = null,
-  onClearGridSelection
+  onClearGridSelection,
+  choroplethSettings,
+  choroplethValues,
+  onChoroplethSettingsChange,
+  onChoroplethSettingsSave
 }) => {
   const [selectedTab, setSelectedTab] = useState<CatchmentTabKey>(() =>
     colorByMetric ? metricToTab(colorByMetric) : 'roads'
   );
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [localPinFocus] = useState<'A' | 'B'>('A');
-  const [hoveredStackSegment, setHoveredStackSegment] = useState<{
-    zone: string;
-    label: string;
-    pct: number;
-  } | null>(null);
+  const [hoveredColumn, setHoveredColumn] = useState<CatchmentRow | null>(null);
+  const [hoveredSlice, setHoveredSlice] = useState<CatchmentRow | null>(null);
   const [tabAnimKey, setTabAnimKey] = useState(0);
 
-  // Auto-expand Details Card when a new subgrid is clicked on the map
+  // Auto-expand Details Card when a new subgrid is clicked on the map. A remount
+  // never fires mouseleave, so the hover readouts are cleared here too.
   const prevSubgridIdRef = useRef<string | null>(null);
   useEffect(() => {
     if (selectedGrid?.subgrid && selectedGrid.subgrid !== prevSubgridIdRef.current) {
       prevSubgridIdRef.current = String(selectedGrid.subgrid);
       setIsCollapsed(false);
     }
+    setHoveredSlice(null);
+    setHoveredColumn(null);
   }, [selectedGrid?.subgrid]);
 
   // Custom UI dropdown state
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const settingsRef = useRef<HTMLDivElement>(null);
+
+  // The class definition that drives the map, the legend and both charts.
+  const activeMetric = colorByMetric || selectedTab;
+  const activeSetting = resolveSetting(choroplethSettings, activeMetric, palette);
+  const activeClassColors = classColors(activeSetting);
 
   // Sync selectedTab whenever parent colorByMetric changes
   useEffect(() => {
@@ -246,13 +204,18 @@ export const ProjectExplorerPanel: React.FC<ProjectExplorerPanelProps> = ({
   // Click-outside and Escape key listener to close custom popovers
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (dropdownRef.current && !dropdownRef.current.contains(target)) {
         setIsDropdownOpen(false);
+      }
+      if (settingsRef.current && !settingsRef.current.contains(target)) {
+        setIsSettingsOpen(false);
       }
     };
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         setIsDropdownOpen(false);
+        setIsSettingsOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -263,32 +226,43 @@ export const ProjectExplorerPanel: React.FC<ProjectExplorerPanelProps> = ({
     };
   }, []);
 
-  if (!active) return null;
+  if (!active || !categories) return null;
 
-  const effectivePinFocus = activePinFocus || localPinFocus;
+  // Every number below comes from this category, already aggregated over the
+  // current mesh scope (all cells when idle, one cell when a subgrid is focused).
+  const currentTabContent = categories[selectedTab] || categories.roads;
+  const cellCount = currentTabContent.cellCount || 0;
+  // One key for both charts, and it is also their React `key`, so a tab switch,
+  // a focused subgrid, a cleared subgrid and the "Colour by" dropdown each
+  // remount them. Remounting seeds the reveal at zero instead of painting the
+  // previous scope's finished geometry for one frame before it collapses.
+  const chartAnimKey = `${selectedTab}-${tabAnimKey}-${scopeLabel}-${cellCount}`;
 
-  // Resolve analytics for active pin
-  const activeAnalytics =
-    effectivePinFocus === 'B' && analyticsB
-      ? analyticsB
-      : (analyticsA || analytics);
-
-  if (!activeAnalytics) return null;
-
-  const currentTabContent = getCatchmentTabData(activeAnalytics, selectedTab);
-  const currentPalette = ATLAS_PALETTES[palette] || ATLAS_PALETTES.viridis;
+  // A hovered slice reports its label, from the arc or from its legend row.
+  const handleSliceHover = (label: string | null) => {
+    if (!label) {
+      setHoveredSlice(null);
+      return;
+    }
+    setHoveredSlice(currentTabContent.sections[0].rows.find((r) => r.label === label) ?? null);
+  };
+  const totalsHint = selectedGrid
+    ? `subgrid ${selectedGrid.subgrid} (${cellCount} mesh ${cellCount === 1 ? 'cell' : 'cells'}).`
+    : `all ${cellCount} mesh ${cellCount === 1 ? 'cell' : 'cells'} in ${scopeLabel}.`;
 
   // Find active buffer metric option for display
   const currentMetricOption =
-    BUFFER_METRIC_OPTIONS.find((o) => o.tabKey === selectedTab) ||
-    BUFFER_METRIC_OPTIONS.find((o) => o.value === colorByMetric) ||
-    BUFFER_METRIC_OPTIONS[0];
+    CHOROPLETH_METRIC_OPTIONS.find((o) => o.tabKey === selectedTab) ||
+    CHOROPLETH_METRIC_OPTIONS.find((o) => o.value === colorByMetric) ||
+    CHOROPLETH_METRIC_OPTIONS[0];
 
   // Handler for Catchment tab clicks
   const handleSelectTab = (tabKey: CatchmentTabKey) => {
     setSelectedTab(tabKey);
     setTabAnimKey((k) => k + 1);
-    const matching = BUFFER_METRIC_OPTIONS.find((o) => o.tabKey === tabKey);
+    setHoveredSlice(null);
+    setHoveredColumn(null);
+    const matching = CHOROPLETH_METRIC_OPTIONS.find((o) => o.tabKey === tabKey);
     if (matching) {
       onColorByMetricChange?.(matching.value);
       onPaletteChange(matching.palette);
@@ -296,11 +270,13 @@ export const ProjectExplorerPanel: React.FC<ProjectExplorerPanelProps> = ({
   };
 
   // Handler for dropdown selection
-  const handleSelectMetricOption = (opt: BufferMetricOption) => {
+  const handleSelectMetricOption = (opt: ChoroplethMetricOption) => {
     onColorByMetricChange?.(opt.value);
     onPaletteChange(opt.palette);
     setSelectedTab(opt.tabKey);
     setTabAnimKey((k) => k + 1);
+    setHoveredSlice(null);
+    setHoveredColumn(null);
     setIsDropdownOpen(false);
   };
 
@@ -350,10 +326,7 @@ export const ProjectExplorerPanel: React.FC<ProjectExplorerPanelProps> = ({
 
               <button
                 type="button"
-                onClick={() => {
-                  onReset?.();
-                  _onRadiusChange?.(5000);
-                }}
+                onClick={() => onReset?.()}
                 className="text-[11px] text-[var(--text-muted,#9BAAA9)] hover:text-[var(--text-primary,#EEF2F1)] cursor-pointer transition-colors flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-white/5"
                 title="Reset Explorer focus"
               >
@@ -373,44 +346,16 @@ export const ProjectExplorerPanel: React.FC<ProjectExplorerPanelProps> = ({
             </div>
           </div>
 
-          <div className="text-[11px] text-[var(--text-muted,#9BAAA9)] mt-0.5">
-            {selectedGrid ? (
-              <span className="flex items-center gap-1.5 text-sky-400 font-medium">
-                <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse" />
-                Subgrid {selectedGrid.subgrid} focused
-              </span>
-            ) : (
-              'Click any subgrid box to focus & dim'
-            )}
-          </div>
-
-              {selectedGrid && (
-                <div
-                  className="flex items-center justify-between mt-2 px-2.5 py-1.5 rounded-lg border text-[11px] animate-in fade-in duration-150"
-                  style={{
-                    backgroundColor: 'var(--accent-bg, rgba(56, 189, 248, 0.15))',
-                    borderColor: 'var(--accent, rgba(56, 189, 248, 0.35))',
-                    color: 'var(--text-primary, #EEF2F1)'
-                  }}
-                >
-                  <div className="flex items-center gap-1.5 font-semibold truncate text-sky-300">
-                    <span className="truncate">Grid {selectedGrid.subgrid}</span>
-                    <span className="text-[10px] text-sky-300/80 font-normal">
-                      ({selectedGrid.density} km/km² · {selectedGrid.planKm} km)
-                    </span>
-                  </div>
-                  {onClearGridSelection && (
-                    <button
-                      type="button"
-                      onClick={onClearGridSelection}
-                      className="text-[10px] text-sky-300 hover:text-white underline cursor-pointer shrink-0 ml-2"
-                      title="Clear grid focus and dimming"
-                    >
-                      Clear focus
-                    </button>
-                  )}
-                </div>
-              )}
+          {/* Scope line. The focused-subgrid name and its clear affordance also live
+              in the bottom pill, so the card does not repeat them. */}
+            <div className="text-[11px] text-[var(--text-muted,#9BAAA9)] mt-0.5 flex items-center gap-1.5">
+              <span
+                className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                  selectedGrid ? 'bg-sky-400 animate-pulse' : 'bg-slate-500'
+                }`}
+              />
+              <span className="truncate">Scope: {scopeLabel}</span>
+            </div>
 
               {/* Pill Tabs Row (Roads, Density, Complexity, Panotrack, Coverage) */}
               <div
@@ -457,18 +402,6 @@ export const ProjectExplorerPanel: React.FC<ProjectExplorerPanelProps> = ({
               }}
             >
               <div className="flex items-center gap-2.5">
-                {effectivePinFocus === 'A' ? (
-                  <img
-                    src="/Icon%20road%20analysis/pin.png"
-                    alt="A"
-                    className="w-5 h-5 object-contain drop-shadow-sm shrink-0 select-none pointer-events-none"
-                  />
-                ) : (
-                  <div className="w-5 h-5 rounded-full flex items-center justify-center font-bold text-[10px] shadow-sm shrink-0 bg-sky-500 text-white">
-                    {effectivePinFocus}
-                  </div>
-                )}
-
                 <div className="flex items-baseline gap-1.5 min-w-0">
                   <span className="text-xl sm:text-2xl font-bold font-mono tracking-tight text-[var(--text-primary,#EEF2F1)]">
                     {currentTabContent.primaryValue}
@@ -478,12 +411,6 @@ export const ProjectExplorerPanel: React.FC<ProjectExplorerPanelProps> = ({
                   </span>
                 </div>
               </div>
-
-              {selectedGrid && (
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-sky-500/20 text-sky-300 font-semibold">
-                  SUBGRID
-                </span>
-              )}
             </div>
 
             {/* Section 1 Breakdown: Donut Proportions Chart */}
@@ -497,163 +424,35 @@ export const ProjectExplorerPanel: React.FC<ProjectExplorerPanelProps> = ({
                 </span>
               </div>
 
-              {(() => {
-                const rows = currentTabContent.sections[0].rows;
-                const paletteColors = DONUT_PALETTES[selectedTab] || DONUT_PALETTES.roads;
-                const totalPct = rows.reduce((acc, r) => acc + Math.max(0, r.percentage), 0) || 100;
-                const R = 36;
-                const C = 2 * Math.PI * R;
+              {/* Hover readout, kept at a fixed height so the card never reflows. */}
+              <div
+                className={`flex items-center justify-between px-2 py-1 rounded-md text-[10px] min-h-[24px] transition-opacity duration-150 ${
+                  hoveredSlice
+                    ? 'bg-white/5 border border-white/10 opacity-100'
+                    : 'opacity-0 border border-transparent pointer-events-none select-none'
+                }`}
+                aria-hidden={!hoveredSlice}
+              >
+                <span className="text-[var(--text-primary,#EEF2F1)] font-medium truncate max-w-[220px]">
+                  {hoveredSlice ? hoveredSlice.label : ''}
+                </span>
+                <span className="font-mono font-bold text-sky-400">
+                  {hoveredSlice
+                    ? (hoveredSlice.displayValue ?? `${hoveredSlice.percentage}%`)
+                    : ''}
+                </span>
+              </div>
 
-                // Precompute slices so we can generate keyframes and continuous 1-by-1 merge delays
-                let sliceOffset = 0;
-                const sliceData = rows
-                  .map((row, idx) => {
-                    const sliceLen = (Math.max(0, row.percentage) / totalPct) * C;
-                    if (sliceLen <= 0) return null;
-                    const gap = rows.filter((r) => r.percentage > 0).length > 1 ? 1.5 : 0;
-                    const targetLen = Math.max(0.5, sliceLen - gap);
-                    const dash = `${targetLen.toFixed(2)} ${(C - targetLen).toFixed(2)}`;
-                    const offset = -sliceOffset;
-                    sliceOffset += sliceLen;
-                    const color = paletteColors[idx % paletteColors.length];
-                    return {
-                      idx,
-                      sliceLen,
-                      targetLen,
-                      dash,
-                      offset,
-                      color,
-                      delay: idx * 0.22
-                    };
-                  })
-                  .filter(Boolean) as Array<{
-                    idx: number;
-                    sliceLen: number;
-                    targetLen: number;
-                    dash: string;
-                    offset: number;
-                    color: string;
-                    delay: number;
-                  }>;
-
-                const centerDelay = (sliceData.length * 0.22 + 0.1).toFixed(2);
-
-                return (
-                  <div
-                    className="flex items-center gap-3 p-2.5 rounded-xl border style-surface-inner"
-                    style={{
-                      backgroundColor: 'var(--bg-inner, rgba(255, 255, 255, 0.03))',
-                      borderColor: 'var(--border-subtle, rgba(255, 255, 255, 0.08))'
-                    }}
-                  >
-                    {/* Donut SVG Ring */}
-                    <div className="relative w-24 h-24 shrink-0 flex items-center justify-center">
-                      <svg
-                        key={`donut-${selectedTab}`}
-                        className="w-full h-full -rotate-90 explorer-donut-ring"
-                        viewBox="0 0 100 100"
-                      >
-                        {/* Dynamic keyframe styles per slice for continuous 1-by-1 merge */}
-                        <style>{`
-                          ${sliceData
-                            .map(
-                              (s) => `@keyframes explorerSliceSweep_${selectedTab}_${s.idx} {
-                                0% {
-                                  stroke-dasharray: 0 ${C.toFixed(2)};
-                                  opacity: 0;
-                                }
-                                10% {
-                                  opacity: 1;
-                                }
-                                100% {
-                                  stroke-dasharray: ${s.dash};
-                                  opacity: 1;
-                                }
-                              }`
-                            )
-                            .join('\n')}
-                        `}</style>
-
-                        {/* Background track circle */}
-                        <circle
-                          cx="50"
-                          cy="50"
-                          r={R}
-                          fill="transparent"
-                          stroke="var(--bg-inner, rgba(255, 255, 255, 0.08))"
-                          strokeWidth="11"
-                        />
-                        {sliceData.map((s) => (
-                          <circle
-                            key={s.idx}
-                            cx="50"
-                            cy="50"
-                            r={R}
-                            fill="transparent"
-                            stroke={s.color}
-                            strokeWidth="11"
-                            strokeDasharray={s.dash}
-                            strokeDashoffset={s.offset}
-                            className="explorer-donut-slice"
-                            style={{
-                              animation: `explorerSliceSweep_${selectedTab}_${s.idx} 0.65s cubic-bezier(0.16, 1, 0.3, 1) ${s.delay.toFixed(2)}s both`
-                            }}
-                          />
-                        ))}
-                      </svg>
-
-                      {/* Center summary text */}
-                      <div
-                        key={`center-${selectedTab}`}
-                        className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center px-1 explorer-donut-center"
-                        style={{ animationDelay: `${centerDelay}s` }}
-                      >
-                        <span
-                          className={`font-bold font-mono tracking-tight text-[var(--text-primary,#EEF2F1)] leading-tight ${
-                            String(currentTabContent.primaryValue).length > 10
-                              ? 'text-[8px] max-w-[62px]'
-                              : 'text-[10px] max-w-[56px] truncate'
-                          }`}
-                        >
-                          {currentTabContent.primaryValue}
-                        </span>
-                        <span className="text-[7px] text-[var(--text-muted,#9BAAA9)] font-mono uppercase tracking-wider mt-0.5 truncate max-w-[56px]">
-                          {currentTabContent.primaryUnit}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Donut Legend */}
-                    <div key={`legend-${selectedTab}`} className="flex-1 space-y-1.5 min-w-0">
-                      {rows.map((row, idx) => {
-                        const color = paletteColors[idx % paletteColors.length];
-                        return (
-                          <div key={idx} className="flex items-center justify-between text-[9.5px] gap-1.5 explorer-legend-row">
-                            <div className="flex items-center gap-1.5 min-w-0">
-                              <span
-                                className="w-1.5 h-1.5 rounded-full shrink-0"
-                                style={{ backgroundColor: color }}
-                              />
-                              <span
-                                className="text-[var(--text-primary,#EEF2F1)] truncate"
-                                title={row.label}
-                              >
-                                {row.label}
-                              </span>
-                            </div>
-                            <span className="font-mono text-[var(--text-muted,#9BAAA9)] shrink-0 font-medium text-[9px]">
-                              {row.displayValue ?? `${row.percentage}%`}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })()}
+              <DonutChart
+                key={chartAnimKey}
+                rows={currentTabContent.sections[0].rows}
+                colors={EXPLORER_DONUT_COLORS}
+                animKey={chartAnimKey}
+                onSliceHover={handleSliceHover}
+              />
             </div>
 
-            {/* Section 2 Breakdown: Stacked Column Bar Chart (Modeled on GIS reference example) */}
+            {/* Section 2 Breakdown: choropleth class share columns */}
             <div className="space-y-1.5 pt-1 animate-in fade-in duration-150">
               <div className="flex items-center justify-between text-xs pb-1 border-b border-[var(--divider,rgba(255,255,255,0.08))]">
                 <span className="font-semibold text-[var(--text-primary,#EEF2F1)]">
@@ -664,258 +463,42 @@ export const ProjectExplorerPanel: React.FC<ProjectExplorerPanelProps> = ({
                 </span>
               </div>
 
-              {(() => {
-                const ringRows = currentTabContent.sections[1].rows;
-                const catRows = currentTabContent.sections[0].rows;
-                const paletteColors = DONUT_PALETTES[selectedTab] || DONUT_PALETTES.roads;
+              {/* Hover readout, kept at a fixed height so the card never reflows. */}
+              <div
+                className={`flex items-center justify-between px-2 py-1 rounded-md text-[10px] min-h-[24px] transition-opacity duration-150 ${
+                  hoveredColumn
+                    ? 'bg-white/5 border border-white/10 opacity-100'
+                    : 'opacity-0 border border-transparent pointer-events-none select-none'
+                }`}
+                aria-hidden={!hoveredColumn}
+              >
+                <span className="text-[var(--text-primary,#EEF2F1)] font-medium truncate max-w-[220px]">
+                  {hoveredColumn ? hoveredColumn.label : ''}
+                </span>
+                <span className="font-mono font-bold text-sky-400">
+                  {hoveredColumn ? (hoveredColumn.displayValue ?? `${hoveredColumn.percentage}%`) : ''}
+                </span>
+              </div>
 
-                // Max Y calculation
-                const maxPct = Math.max(...ringRows.map((r) => r.percentage), 10);
-                let maxY = 100;
-                let yTicks = [0, 25, 50, 75, 100];
-                if (maxPct <= 25) {
-                  maxY = 25;
-                  yTicks = [0, 5, 10, 15, 20, 25];
-                } else if (maxPct <= 50) {
-                  maxY = 50;
-                  yTicks = [0, 10, 20, 30, 40, 50];
-                } else if (maxPct <= 80) {
-                  maxY = 80;
-                  yTicks = [0, 20, 40, 60, 80];
-                }
-
-                // Short zone labels for X-axis
-                const shortLabels = ['Core (0–25%)', 'Inner (25–50%)', 'Mid (50–75%)', 'Outer (75–100%)'];
-
-                // Dimensions
-                const svgW = 330;
-                const svgH = 158;
-                const plotLeft = 28;
-                const plotRight = 320;
-                const plotW = plotRight - plotLeft; // 292
-                const plotTop = 16;
-                const plotBaseY = 102;
-                const plotH = plotBaseY - plotTop; // 86
-                const colWidth = 28;
-                const slotW = plotW / Math.max(1, ringRows.length);
-
-                return (
-                  <div
-                    className="p-2.5 rounded-xl border style-surface-inner flex flex-col gap-2"
-                    style={{
-                      backgroundColor: 'var(--bg-inner, rgba(255, 255, 255, 0.03))',
-                      borderColor: 'var(--border-subtle, rgba(255, 255, 255, 0.08))'
-                    }}
-                  >
-                    {/* Active hover info banner (fixed-slot to eliminate layout-shift stutter on hover) */}
-                    <div
-                      className={`flex items-center justify-between px-2 py-1 rounded-md text-[10px] min-h-[26px] transition-opacity duration-150 ${
-                        hoveredStackSegment
-                          ? 'bg-white/5 border border-white/10 opacity-100'
-                          : 'opacity-0 border border-transparent pointer-events-none select-none'
-                      }`}
-                      aria-hidden={!hoveredStackSegment}
-                    >
-                      <span className="text-[var(--text-primary,#EEF2F1)] font-medium truncate max-w-[200px]">
-                        {hoveredStackSegment ? `${hoveredStackSegment.zone} · ${hoveredStackSegment.label}` : ''}
-                      </span>
-                      <span className="font-mono font-bold text-sky-400">
-                        {hoveredStackSegment ? `${hoveredStackSegment.pct.toFixed(1)}%` : ''}
-                      </span>
-                    </div>
-
-                    {/* SVG Stacked Bar Chart */}
-                    <div className="w-full overflow-hidden">
-                      <svg
-                        key={`barchart-${selectedTab}`}
-                        className="w-full h-auto select-none"
-                        viewBox={`0 0 ${svgW} ${svgH}`}
-                        style={{ overflow: 'visible' }}
-                      >
-                        {/* Horizontal Grid lines & Y-axis labels */}
-                        {yTicks.map((tick) => {
-                          const y = plotBaseY - (tick / maxY) * plotH;
-                          return (
-                            <g key={tick}>
-                              <line
-                                x1={plotLeft}
-                                y1={y}
-                                x2={plotRight}
-                                y2={y}
-                                stroke="var(--divider, rgba(255, 255, 255, 0.08))"
-                                strokeDasharray={tick === 0 ? undefined : '3 3'}
-                                strokeWidth={tick === 0 ? 1 : 0.75}
-                              />
-                              <text
-                                x={plotLeft - 4}
-                                y={y + 3}
-                                textAnchor="end"
-                                fontSize="7.5"
-                                fill="var(--text-muted, #9BAAA9)"
-                                fontFamily="monospace"
-                              >
-                                {tick}%
-                              </text>
-                            </g>
-                          );
-                        })}
-
-                        {/* Y-axis title on the left rotated 90deg */}
-                        <text
-                          x={9}
-                          y={(plotTop + plotBaseY) / 2}
-                          transform={`rotate(-90 9 ${(plotTop + plotBaseY) / 2})`}
-                          textAnchor="middle"
-                          fontSize="7"
-                          fill="var(--text-muted, #9BAAA9)"
-                          fontWeight="500"
-                        >
-                          {currentTabContent.sections[1].subtitleRight}
-                        </text>
-
-                        {/* Stacked Columns */}
-                        {ringRows.map((ringRow, colIdx) => {
-                          const colTotal = Math.max(0, ringRow.percentage);
-                          const cx = plotLeft + (colIdx + 0.5) * slotW;
-                          const barX = cx - colWidth / 2;
-
-                          // Compute weighted segment values for this radial ring
-                          const weights = catRows.map((cat, catIdx) => {
-                            const base = Math.max(1, cat.percentage);
-                            // Concentrates urban blocks/core in ring 0, arterials/trunks in ring 3
-                            const bias =
-                              1 +
-                              (colIdx === 0
-                                ? (catRows.length - 1 - catIdx) * 0.45
-                                : colIdx === 3
-                                ? catIdx * 0.45
-                                : colIdx === 2
-                                ? catIdx * 0.2
-                                : (catRows.length - 1 - catIdx) * 0.2);
-                            return base * bias;
-                          });
-                          const sumW = weights.reduce((acc, w) => acc + w, 0) || 1;
-                          const segments = catRows.map((cat, catIdx) => {
-                            const segPct = (colTotal * weights[catIdx]) / sumW;
-                            return {
-                              label: cat.label,
-                              pct: segPct,
-                              color: paletteColors[catIdx % paletteColors.length]
-                            };
-                          });
-
-                          let currY = plotBaseY;
-                          const totalColH = (colTotal / maxY) * plotH;
-                          const labelDelay = colIdx * 0.16 + segments.length * 0.20 + 0.05;
-
-                          return (
-                            <g key={colIdx} className="transition-all duration-200 explorer-bar-column">
-                              {/* Stacked Rectangles */}
-                              {segments.map((seg, segIdx) => {
-                                const segH = (seg.pct / maxY) * plotH;
-                                if (segH <= 0.2) return null;
-                                const segY = currY - segH;
-                                currY = segY;
-                                const isTopSeg = segIdx === segments.length - 1 || currY <= plotBaseY - totalColH + 0.5;
-                                const segDelay = colIdx * 0.16 + segIdx * 0.20;
-
-                                return (
-                                  <rect
-                                    key={segIdx}
-                                    x={barX}
-                                    y={segY}
-                                    width={colWidth}
-                                    height={segH}
-                                    fill={seg.color}
-                                    rx={isTopSeg ? 3 : 0}
-                                    ry={isTopSeg ? 3 : 0}
-                                    className="explorer-bar-segment"
-                                    style={{ animationDelay: `${segDelay.toFixed(2)}s` }}
-                                    onMouseEnter={() =>
-                                      setHoveredStackSegment({
-                                        zone: ringRow.label,
-                                        label: seg.label,
-                                        pct: seg.pct
-                                      })
-                                    }
-                                    onMouseLeave={() => setHoveredStackSegment(null)}
-                                  >
-                                    <title>{`${ringRow.label}: ${seg.label} (${seg.pct.toFixed(1)}%)`}</title>
-                                  </rect>
-                                );
-                              })}
-
-                              {/* Column Value on Top of Bar */}
-                              <text
-                                x={cx}
-                                y={Math.max(11, plotBaseY - totalColH - 3)}
-                                textAnchor="middle"
-                                fontSize="8.5"
-                                fontWeight="bold"
-                                fontFamily="monospace"
-                                fill="var(--text-primary, #EEF2F1)"
-                                className="explorer-bar-label"
-                                style={{ animationDelay: `${labelDelay.toFixed(2)}s` }}
-                              >
-                                {colTotal}%
-                              </text>
-
-                              {/* Angled X-axis Label */}
-                              <text
-                                x={cx}
-                                y={plotBaseY + 12}
-                                transform={`rotate(-22 ${cx} ${plotBaseY + 12})`}
-                                textAnchor="end"
-                                fontSize="7.5"
-                                fill="var(--text-muted, #9BAAA9)"
-                                className="select-none"
-                              >
-                                {shortLabels[colIdx] ?? ringRow.label}
-                              </text>
-                            </g>
-                          );
-                        })}
-
-                        {/* X-axis title below */}
-                        <text
-                          x={(plotLeft + plotRight) / 2}
-                          y={svgH - 3}
-                          textAnchor="middle"
-                          fontSize="7.5"
-                          fill="var(--text-muted, #9BAAA9)"
-                          fontWeight="500"
-                        >
-                          Radial Buffer Zones
-                        </text>
-                      </svg>
-                    </div>
-
-                    {/* Bottom Legend (matching reference image) */}
-                    <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 pt-1.5 border-t border-[var(--divider,rgba(255,255,255,0.08))] text-[9.5px]">
-                      {catRows.map((cat, idx) => (
-                        <div key={idx} className="flex items-center gap-1.5 shrink-0">
-                          <span
-                            className="w-2.5 h-1.5 rounded-sm shrink-0"
-                            style={{ backgroundColor: paletteColors[idx % paletteColors.length] }}
-                          />
-                          <span
-                            className="text-[var(--text-muted,#9BAAA9)] hover:text-[var(--text-primary,#EEF2F1)] transition-colors truncate max-w-[130px]"
-                            title={cat.label}
-                          >
-                            {cat.label}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })()}
+              <ClassShareColumns
+                key={chartAnimKey}
+                rows={currentTabContent.sections[1].rows}
+                colors={classColors(
+                  resolveSetting(choroplethSettings, currentTabContent.key, palette)
+                )}
+                animKey={chartAnimKey}
+                measureLabel={currentTabContent.sections[1].subtitleRight}
+                caption={`${currentTabContent.sections[1].title} · ${currentTabContent.sections[1].subtitleRight}`}
+                onHover={setHoveredColumn}
+              />
             </div>
 
-            {/* Footnote matching System Context */}
+            {/* Footnote: where the numbers come from */}
             <div className="pt-2 border-t border-[var(--divider,rgba(255,255,255,0.08))] text-[9px] text-[var(--text-muted,#9BAAA9)] leading-relaxed">
-              <div>Drawn from active road network &amp; Panotrack survey data.</div>
-              <div>Spatial buffer radius apportionment · Dynamic topology &amp; coverage analysis.</div>
+              <div>Drawn from the active road network &amp; Panotrack survey data.</div>
+              <div>
+                Aggregated over {totalsHint}
+              </div>
             </div>
           </div>
         )}
@@ -960,74 +543,45 @@ export const ProjectExplorerPanel: React.FC<ProjectExplorerPanelProps> = ({
             <span className="text-[var(--text-muted,#9BAAA9)] font-mono text-[9px]">{currentMetricOption.unit}</span>
           </div>
 
-          {/* Stepped 5-Category Color Bar */}
+          {/* Class colours. Position i shows the colour the map actually paints on
+              class i (reverse included), so the bar always matches the grid. */}
           <div className="flex w-full h-2.5 rounded-md overflow-hidden border border-white/20 mt-1.5 shadow-inner neu-choropleth-bar">
-            {currentPalette.stops.map((s, idx) => (
+            {activeClassColors.map((color, idx) => (
               <div
                 key={idx}
                 className="flex-1 h-full border-r last:border-r-0 border-black/30 transition-transform hover:scale-105 neu-choropleth-segment"
-                style={{ backgroundColor: s.color }}
-                title={`Category ${idx + 1}`}
+                style={{ backgroundColor: color, opacity: activeSetting.alpha }}
+                title={classRangeLabel(idx, activeSetting.classes)}
               />
             ))}
           </div>
 
-          {/* 5-Category Step Thresholds */}
+          {/* Class break labels — same order as the colours above */}
           <div className="flex items-center justify-between text-[8px] font-mono text-[var(--text-muted,#9BAAA9)] mt-1 px-0.5">
-            {currentMetricOption.value === 'complexity' ? (
-              <>
-                <span>0</span>
-                <span>20</span>
-                <span>40</span>
-                <span>60</span>
-                <span>80+</span>
-              </>
-            ) : currentMetricOption.value === 'panotrack' ? (
-              <>
-                <span>0</span>
-                <span>15</span>
-                <span>45</span>
-                <span>90</span>
-                <span>180+</span>
-              </>
-            ) : currentMetricOption.value === 'roads' ? (
-              <>
-                <span>0</span>
-                <span>5</span>
-                <span>15</span>
-                <span>30</span>
-                <span>50+</span>
-              </>
-            ) : currentMetricOption.value === 'coverage' ? (
-              <>
-                <span>0%</span>
-                <span>20%</span>
-                <span>40%</span>
-                <span>60%</span>
-                <span>80%+</span>
-              </>
-            ) : (
-              <>
-                <span>0.0</span>
-                <span>1.5</span>
-                <span>3.5</span>
-                <span>6.0</span>
-                <span>9.0+</span>
-              </>
-            )}
+            <span>0</span>
+            {activeSetting.classes
+              .slice(0, -1)
+              .map((c, idx) => (
+                <span key={idx}>
+                  {c.upperBound ?? '—'}
+                  {idx === activeSetting.classes.length - 2 ? '+' : ''}
+                </span>
+              ))}
           </div>
 
           <div className="flex items-center justify-between text-[8px] text-[var(--text-muted,#9BAAA9)] mt-1.5 border-t border-[var(--divider,rgba(255,255,255,0.1))] pt-1.5">
-            <span className="flex items-center gap-1.5 text-[var(--text-primary,#EEF2F1)]">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-              5 Sequential Categories
+            <span className="flex items-center gap-1.5 text-[var(--text-primary,#EEF2F1)] min-w-0">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+              <span className="truncate">{activeSetting.method === 'manual' ? 'Manual breaks' : activeSetting.method}</span>
             </span>
-            <span className="font-mono text-[var(--text-muted,#9BAAA9)]">Class 1–5</span>
+            <span className="font-mono text-[var(--text-muted,#9BAAA9)] shrink-0 ml-1">
+              Class 1–{activeSetting.classes.length}
+            </span>
           </div>
         </div>
       </div>
 
-      {/* ── Bottom Floating Controls Bar (Sydney Explorer Style) ── */}
+      {/* ── Bottom Floating Controls Bar ── */}
       <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[1001] pointer-events-auto select-none">
         <div
           className="flex items-center gap-2.5 sm:gap-3 px-3 py-1.5 rounded-full border style-surface backdrop-blur-xl text-[11px]"
@@ -1094,13 +648,6 @@ export const ProjectExplorerPanel: React.FC<ProjectExplorerPanelProps> = ({
                   color: 'var(--text-primary, #EEF2F1)'
                 }}
               >
-                <span
-                  className="w-2 h-2 rounded-full shrink-0 shadow-sm"
-                  style={{
-                    backgroundColor: currentMetricOption.accentColor,
-                    boxShadow: `0 0 6px ${currentMetricOption.accentColor}`
-                  }}
-                />
                 <span>{currentMetricOption.label}</span>
                 <ChevronDown
                   size={12}
@@ -1123,11 +670,11 @@ export const ProjectExplorerPanel: React.FC<ProjectExplorerPanelProps> = ({
                 >
                   <div className="px-2.5 py-1 text-[9px] font-semibold uppercase tracking-wider text-[var(--text-muted,#9BAAA9)] border-b border-[var(--divider,rgba(255,255,255,0.08))] mb-1 flex items-center justify-between">
                     <span>Choropleth Metric</span>
-                    <span className="font-mono text-[9px] text-[var(--text-muted,#9BAAA9)] opacity-70">{BUFFER_METRIC_OPTIONS.length} options</span>
+                    <span className="font-mono text-[9px] text-[var(--text-muted,#9BAAA9)] opacity-70">{CHOROPLETH_METRIC_OPTIONS.length} options</span>
                   </div>
 
                   <div className="space-y-0.5">
-                    {BUFFER_METRIC_OPTIONS.map((opt) => {
+                    {CHOROPLETH_METRIC_OPTIONS.map((opt) => {
                       const isSelected =
                         (colorByMetric === opt.value) ||
                         (!colorByMetric && selectedTab === opt.tabKey) ||
@@ -1173,6 +720,41 @@ export const ProjectExplorerPanel: React.FC<ProjectExplorerPanelProps> = ({
                       );
                     })}
                   </div>
+                </div>
+              )}
+            </div>
+
+            {/* Symbol settings: class breaks, colours, ramp, opacity, reverse */}
+            <div className="relative" ref={settingsRef}>
+              <button
+                type="button"
+                onClick={() => setIsSettingsOpen(!isSettingsOpen)}
+                aria-expanded={isSettingsOpen}
+                aria-label="Choropleth symbol settings"
+                title="Choropleth symbol settings"
+                className="flex items-center gap-1 px-2 py-0.5 rounded-full border transition-all cursor-pointer text-[10.5px] font-semibold shadow-sm"
+                style={{
+                  backgroundColor: 'var(--bg-inner, rgba(255, 255, 255, 0.1))',
+                  borderColor: 'var(--border-subtle, rgba(255, 255, 255, 0.15))',
+                  color: isSettingsOpen ? 'var(--text-primary, #EEF2F1)' : 'var(--text-muted, #9BAAA9)'
+                }}
+              >
+                <SlidersHorizontal size={12} />
+                <span className="hidden md:inline">Classes</span>
+              </button>
+
+              {isSettingsOpen && (
+                <div className="absolute bottom-[calc(100%+10px)] right-0 z-[1003]">
+                  <ChoroplethSettingsEditor
+                    metric={activeMetric}
+                    palette={palette}
+                    settings={choroplethSettings || {}}
+                    metricValues={choroplethValues?.[activeMetric] || []}
+                    onApply={(setting) => onChoroplethSettingsChange?.(activeMetric, setting)}
+                    onSave={(setting) => onChoroplethSettingsSave?.(activeMetric, setting)}
+                    onPaletteChange={onPaletteChange}
+                    onClose={() => setIsSettingsOpen(false)}
+                  />
                 </div>
               )}
             </div>
